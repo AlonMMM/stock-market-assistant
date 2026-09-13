@@ -17,7 +17,7 @@ Phase: TypeScript development harness.
 
 ## Verification
 
-Local formatting, TypeScript, 2 API tests, and builds passed. Browser tests started both servers but could not launch the missing Chromium binary; downloading it timed out. Browser assertions and visual rendering remain unverified locally. See [task evidence](tasks/runtime-harness.md) and [development](development.md).
+Local formatting, TypeScript, 2 API tests, and builds passed. Browser tests started both servers but could not launch the missing Chromium binary; downloading it timed out. Both browser tests passed in [GitHub CI](https://github.com/AlonMMM/stock-market-assistant/actions/runs/34737992056). Manual visual review remains outstanding. See [task evidence](tasks/runtime-harness.md) and [development](development.md).
 
 ## Next task
 

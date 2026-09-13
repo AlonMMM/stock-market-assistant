@@ -1,6 +1,6 @@
 # Task: Runnable TypeScript development harness
 
-Status: implemented; browser verification pending.
+Status: implemented; API and browser checks verified in CI.
 
 ## Outcome
 
@@ -28,7 +28,7 @@ Market feeds, alert rules, charts, delivery, persistence, and hosting are exclud
 - `npm ci --ignore-scripts --prefer-offline`: reproduced the locked install.
 - `npm run test:e2e`: both servers started, but tests could not launch Chromium because the browser binary is unavailable here. Browser download timed out.
 - `git diff --check`: passed.
-- Browser rendering and assertions remain unverified locally. Check the CI run before merging.
+- [GitHub CI run](https://github.com/AlonMMM/stock-market-assistant/actions/runs/34737992056): locked install, doctor, check, and both Chromium browser tests passed. No manual visual QA is claimed.
 
 ## Handoff
 
