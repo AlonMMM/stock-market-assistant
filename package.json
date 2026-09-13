@@ -1,0 +1,40 @@
+{
+  "name": "stock-market-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "concurrently --kill-others --names api,web \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node --watch --import tsx apps/api/src/server.ts",
+    "dev:web": "vite --config apps/web/vite.config.ts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p apps/web/tsconfig.json",
+    "test": "node --import tsx --test tests/api.test.ts",
+    "build": "tsc -p apps/api/tsconfig.json && vite build --config apps/web/vite.config.ts",
+    "start:api": "node dist/apps/api/src/server.js",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && npm run typecheck && npm test && npm run build",
+    "test:e2e": "playwright test",
+    "doctor": "node scripts/doctor.mjs"
+  },
+  "dependencies": {
+    "fastify": "5.12.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.13.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "concurrently": "10.0.5",
+    "prettier": "3.9.6",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vite": "8.3.0"
+  }
+}
