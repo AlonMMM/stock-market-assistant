@@ -24,6 +24,12 @@ for (const name of [
   "docs/decisions.md",
   "docs/development.md",
   "docs/task-template.md",
+  "docs/sessions.md",
+  "docs/roles/index.md",
+  "docs/roles/product-ux.md",
+  "docs/roles/backend.md",
+  "docs/roles/frontend.md",
+  "docs/roles/integration.md",
 ]) {
   const path = resolve(root, name);
   if (!existsSync(path)) {

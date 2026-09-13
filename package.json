@@ -11,14 +11,15 @@
     "dev:api": "node --watch --import tsx apps/api/src/server.ts",
     "dev:web": "vite --config apps/web/vite.config.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p apps/web/tsconfig.json",
-    "test": "node --import tsx --test tests/api.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts tests/*.test.mjs",
     "build": "tsc -p apps/api/tsconfig.json && vite build --config apps/web/vite.config.ts",
     "start:api": "node dist/apps/api/src/server.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run format:check && npm run typecheck && npm test && npm run build",
     "test:e2e": "playwright test",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "session": "node scripts/session.mjs"
   },
   "dependencies": {
     "fastify": "5.12.4",

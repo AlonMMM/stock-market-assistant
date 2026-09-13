@@ -1,4 +1,11 @@
 import { defineConfig } from "@playwright/test";
+import { getPorts } from "./packages/config/src/ports.js";
+
+const ports = getPorts();
+const serverEnv = {
+  SMA_WEB_PORT: String(ports.e2eWeb),
+  SMA_API_PORT: String(ports.e2eApi),
+};
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -6,19 +13,21 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: `http://127.0.0.1:${ports.e2eWeb}`,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
   webServer: [
     {
       command: "npm run dev:api",
-      url: "http://127.0.0.1:3001/api/health",
+      url: `http://127.0.0.1:${ports.e2eApi}/api/health`,
+      env: serverEnv,
       reuseExistingServer: false,
     },
     {
       command: "npm run dev:web",
-      url: "http://127.0.0.1:5173",
+      url: `http://127.0.0.1:${ports.e2eWeb}`,
+      env: serverEnv,
       reuseExistingServer: false,
     },
   ],
