@@ -70,7 +70,7 @@ There is no automatic archive/removal operation yet; finished worktrees and port
 
 ## Direct Claude startup
 
-CLAUDE.md tells Claude to use an explicit role or read local `.sma-session.json`. If neither exists, it asks for the role before substantive interactive work. This is a model instruction after interaction starts, not a guaranteed startup UI or a hook.
+CLAUDE.md and the project-level `.claude/settings.json` SessionStart hook tell Claude to use an explicit role or read local `.sma-session.json`. If neither exists, the first assistant response asks for the role before substantive interactive work. This setting is scoped to this repository and does not change global Claude configuration. Sessions created by `npm run session` already contain their role, so Claude skips the question.
 
 ## Handoff between sessions
 

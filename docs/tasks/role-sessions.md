@@ -16,6 +16,7 @@ The repository can start, resume, list, and refresh isolated Claude Code session
 - `npm run check` — passed: formatting, TypeScript, 8 tests, and API/web builds.
 - `tests/session.test.mjs` — covers parser safety, isolated worktrees and ports, lock behavior, dirty-source refusal, unknown resume refusal, first launch, exact UUID resume, and `--fresh`.
 - `tests/ports.test.ts` — covers session-file and environment-based port resolution.
+- Direct `claude` startup is repository-scoped through `.claude/settings.json` and `scripts/session-start.mjs`; managed sessions carry the role and skip the question.
 
 ## Handoff
 

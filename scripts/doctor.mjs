@@ -25,6 +25,8 @@ for (const name of [
   "docs/development.md",
   "docs/task-template.md",
   "docs/sessions.md",
+  ".claude/settings.json",
+  "scripts/session-start.mjs",
   "docs/roles/index.md",
   "docs/roles/product-ux.md",
   "docs/roles/backend.md",
