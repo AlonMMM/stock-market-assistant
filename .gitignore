@@ -11,3 +11,6 @@ coverage/
 .DS_Store
 artifacts/
 data/local/
+playwright-report/
+test-results/
+.sma-session.json
