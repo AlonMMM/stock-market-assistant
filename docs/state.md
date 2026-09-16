@@ -1,23 +1,28 @@
 # Current state
 
 Updated: 2026-09-13
-Phase: harness foundation.
+Phase: TypeScript development harness.
 
-## Completed in this change
-- Canonical agent instructions and a Claude entry point.
-- Product requirements separated from proposed architecture.
-- Development workflow, decision log, and task template.
-- Dependency-free scaffold validation command.
+## Confirmed choices
+
+- TypeScript throughout; React web and Node.js backend.
+- Primary workflow: Claude Code on the user's computer.
+
+## This milestone
+
+- Local web/API startup with a shared health contract, visible connection state, and retry.
+- Locked npm installation, strict TypeScript, formatting, API tests, browser tests, and build commands.
+- Setup/troubleshooting documentation and CI configuration.
+- Smaller mandatory agent context; details loaded by task.
 
 ## Verification
-Run `python3 scripts/check_harness.py` and `git diff --check` from the repository root.
-These are scaffold checks, not application tests. The delivery message records the actual run results.
+
+Local formatting, TypeScript, 2 API tests, and builds passed. Browser tests started both servers but could not launch the missing Chromium binary; downloading it timed out. Both browser tests passed in [GitHub CI](https://github.com/AlonMMM/stock-market-assistant/actions/runs/34737992056). Manual visual review remains outstanding. See [task evidence](tasks/runtime-harness.md) and [development](development.md).
 
 ## Next task
-Agree on the primary local coding workflow and application stack, then create a minimal runnable development environment with documented startup and verification commands.
-Do not begin implementing alert formulas before their specification is agreed.
 
-## Open items
-- No application runtime, data connection, CI, browser automation, or alert engine yet.
-- No credentials required for the current foundation.
-- See product.md for unresolved product decisions.
+Run the environment on the user's Mac. Then define the first alert contract with positive/negative examples and decide data resolution before implementing alert logic.
+
+## Not implemented
+
+Market data, alert formulas, charts, phone delivery, persistence, and deployment.
