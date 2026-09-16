@@ -9,6 +9,7 @@ Preserve unrelated changes and use a task branch for implementation.
 - User behavior, alerts, scope: [product](docs/product.md).
 - Architecture or technology choices: [decisions](docs/decisions.md).
 - Substantial tasks and handoff: [workflow](docs/workflow.md) and [task template](docs/task-template.md).
+- Role sessions and parallel work: [session guide](docs/sessions.md); read only the selected [role](docs/roles/index.md).
 
 ## Rules
 
@@ -23,7 +24,7 @@ Preserve unrelated changes and use a task branch for implementation.
 
 - `npm run doctor`: environment/context check.
 - `npm run check`: formatting, types, API tests, builds.
-- `npm run test:e2e`: browser checks for UI/API integration changes; stop any running dev servers first.
+- `npm run test:e2e`: browser checks for UI/API integration changes; tests use separate ports from dev servers.
 - `git diff --check`: inspect whitespace; review the actual diff as well.
-- Update state with results, limitations, and next action. Update decisions when choices change.
+- In role sessions, update your own task file with results, limitations, and next action; Integration maintains global state and shared decisions. Outside parallel work, update state directly.
 - Never report an unrun check as passing. Leave changes committed and reviewable.

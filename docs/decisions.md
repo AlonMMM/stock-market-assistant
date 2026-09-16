@@ -39,3 +39,11 @@ The Node doctor replaces Python as the normal scaffold verification entry point;
 Status: implementation choice following the discussion of token overhead.
 
 Start with AGENTS.md and current state. Load product/workflow/decision documents when relevant, instead of requiring all documents on every task. This reduces mandatory context; no token savings have been measured.
+
+## 2026-09-13 — Role sessions and worktree isolation
+
+Status: confirmed by user.
+
+Support parallel Claude Code sessions through `npm run session`. Each session has one explicit role, a dedicated `session/<id>` branch, a sibling Git worktree, and a non-overlapping web/API/E2E port block. The registry is local to the repository's common Git directory and is not product data.
+
+The initial roles are Product + UX, Backend, Frontend, and Integration / Review. Product + UX owns user flows and alert semantics; Backend owns contracts, ingestion, alert evaluation, and persistence; Frontend owns the website and interaction states; Integration / Review owns cross-role wiring, verification, and release readiness.

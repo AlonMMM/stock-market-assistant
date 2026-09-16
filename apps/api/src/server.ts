@@ -1,4 +1,5 @@
 import { buildApp } from "./app.js";
+import { getPorts } from "../../../packages/config/src/ports.js";
 
 const app = buildApp(true);
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -11,7 +12,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 try {
-  await app.listen({ port: 3001, host: "127.0.0.1" });
+  await app.listen({ port: getPorts().api, host: "127.0.0.1" });
 } catch (error) {
   app.log.error(error);
   process.exitCode = 1;

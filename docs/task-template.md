@@ -1,6 +1,9 @@
 # Task: <title>
 
 Status: proposed | active | completed | blocked
+Owner: product-ux | backend | frontend | integration
+Branch: <branch>
+Spec/contract revision: <commit>
 
 ## Outcome
 
@@ -28,4 +31,4 @@ Record exact commands, outcomes, and limitations. Do not mark unrun checks as pa
 
 ## Handoff
 
-Record remaining work and update docs/state.md when finishing.
+Record remaining work and share the committed handoff with Integration, which updates docs/state.md. Keep each task under one owner.
