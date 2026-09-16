@@ -17,7 +17,7 @@ These are discovery notes, not executable definitions. Exact codes, formulas, th
 
 ## Immediate scope
 
-Build the repository harness first. Product implementation follows separately.
+Implement relative-volume alerts first: US stocks including extended hours, evaluated on minute close. See [the initial contract](features/relative-volume.md). The first increment uses synthetic demo or normalized uploaded historical bars.
 
 ## Unresolved choices
 
