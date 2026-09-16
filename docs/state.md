@@ -1,7 +1,13 @@
 # Current state
 
 Updated: 2026-09-13
-Phase: Role-based TypeScript development harness.
+Phase: First relative-volume replay implementation (2026-09-16).
+
+## Relative-volume increment
+
+Implemented the [relative-volume contract](features/relative-volume.md): deterministic minute-bar engine, same-time historical median, crossing/cooldown suppression, replay API, synthetic demo and historical JSON upload UI. Run npm run dev, then Run replay. No live data credentials are required.
+
+Verification: npm run check passed (12 tests, types, formatting, build). Local browser suite could not launch because Chromium is missing; CI must verify the three browser tests. Price charts, live feed, phone delivery and durable storage remain pending. Next: choose a data provider and implement calendar-aware normalization and data-quality checks before live monitoring. Only task-planner and reviewer agents are authorized; neither was added in this increment.
 
 ## Confirmed choices
 
@@ -24,8 +30,8 @@ Local formatting, TypeScript, 8 tests, and builds passed. Browser tests started 
 
 ## Next task
 
-Run `npm run session -- --role product-ux --task first-alert-contract` on the user's Mac. Define the first alert contract with positive/negative examples, then hand it to Backend and Integration before implementing alert logic.
+Run the replay UI and evaluate relative-volume thresholds; select the live/historical provider next.
 
 ## Not implemented
 
-Market data, alert formulas, charts, phone delivery, persistence, and deployment.
+Live market data, charts, phone delivery, persistence, and deployment.

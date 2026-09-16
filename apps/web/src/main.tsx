@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { isHealthResponse } from "../../../packages/contracts/src/index.js";
 import "./styles.css";
+import { VolumeReplay } from "./VolumeReplay.js";
 
 function App() {
   const [attempt, setAttempt] = useState(0);
@@ -80,6 +81,7 @@ function App() {
           {connection === "error" ? "Try again" : "Check connection"}
         </button>
       </section>
+      <VolumeReplay />
       <section className="roadmap" aria-label="Planned capabilities">
         <article>
           <span className="number">01 / MONITOR</span>

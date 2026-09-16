@@ -4,6 +4,43 @@
   background: #f4f5ef;
   font-synthesis: none;
 }
+.volume-replay {
+  margin-top: 32px;
+  padding: 24px;
+  border: 1px solid #cdd6c7;
+  border-radius: 16px;
+  background: #fff;
+}
+.volume-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  margin: 24px 0;
+}
+.volume-controls label {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  max-width: 100%;
+}
+.volume-controls input {
+  padding: 10px;
+  border: 1px solid #83977a;
+  border-radius: 6px;
+  font: inherit;
+  max-width: 100%;
+  width: 220px;
+}
+.volume-replay button:focus-visible {
+  outline-color: #142b29;
+}
+.volume-alert {
+  padding: 16px 0;
+}
+.volume-alert p {
+  min-height: 0;
+}
 * {
   box-sizing: border-box;
 }
