@@ -16,7 +16,7 @@ Use a dependency-free Python script to check the foundation; this does not selec
 
 ## Pending
 
-Data provider, deployment, alert timing, and detailed product architecture remain undecided.
+Detailed product architecture remains incremental; later entries supersede earlier pending choices.
 
 ## 2026-09-13 — TypeScript and local Claude Code
 
@@ -47,3 +47,14 @@ Status: confirmed by user.
 Support parallel Claude Code sessions through `npm run session`. Each session has one explicit role, a dedicated `session/<id>` branch, a sibling Git worktree, and a non-overlapping web/API/E2E port block. The registry is local to the repository's common Git directory and is not product data.
 
 The initial roles are Product + UX, Backend, Frontend, and Integration / Review. Product + UX owns user flows and alert semantics; Backend owns contracts, ingestion, alert evaluation, and persistence; Frontend owns the website and interaction states; Integration / Review owns cross-role wiring, verification, and release readiness.
+
+## 2026-09-19 — IBKR data, up to 50 symbols
+
+Status: confirmed by user; runtime choices are reversible implementation decisions.
+
+Use existing IBKR API market-data entitlements for price and volume, initially up to 50
+US stocks at minute close. The user uses only mobile and authorized us to handle setup.
+Keep the existing private Sites replay site. Add a long-running Node collector beside
+IB Gateway, using the pinned community TypeScript TWS adapter and SQLite on persistent
+storage. No brokerage order or account-position operations are implemented. Runtime
+provisioning awaits a connected cloud account and direct user IBKR authentication.
