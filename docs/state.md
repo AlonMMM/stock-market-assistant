@@ -1,9 +1,11 @@
 # Current state
 
-Updated: 2026-09-13
+Updated: 2026-09-19
 Phase: First relative-volume replay implementation (2026-09-16).
 
 ## Relative-volume increment
+
+The approved mobile mockup is now implemented as the replay homepage, with configurable cooldown, historical upload/reset, responsive evidence cards and proportional volume bars. See [design task](tasks/replay-mobile-design.md). Hosting and live data remain pending.
 
 Implemented the [relative-volume contract](features/relative-volume.md): deterministic minute-bar engine, same-time historical median, crossing/cooldown suppression, replay API, synthetic demo and historical JSON upload UI. Run npm run dev, then Run replay. No live data credentials are required.
 
