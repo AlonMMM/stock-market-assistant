@@ -103,11 +103,7 @@ api.get("/health", async () => ({
 }));
 api.get("/alerts", async () => ({ source: "ibkr", alerts: store.alerts() }));
 
-try {
-  await api.listen({
-    host: process.env.COLLECTOR_HOST ?? "127.0.0.1",
-    port: Number(process.env.PORT ?? 3002),
-  });
+async function collect() {
   await feed.connect();
   state = "warming-up";
   for (const ticker of tickers as string[]) {
@@ -127,7 +123,7 @@ try {
       const end = `${next.toISOString().slice(0, 10).replaceAll("-", "")}-01:00:00`;
       const rows = await feed.history(ticker, end);
       for (const row of rows) {
-        const bar = normalize(ticker, row, unit);
+        const bar = normalize(ticker, row, unit as "shares" | "lots");
         if (bar && Date.parse(bar.end) <= Date.now()) store.put(bar);
       }
       await delay(1200);
@@ -164,7 +160,7 @@ try {
     }
     const recent = await feed.history(ticker, "", update);
     for (const row of recent.sort((a, b) => a.start - b.start)) {
-      const bar = normalize(ticker, row, unit);
+      const bar = normalize(ticker, row, unit as "shares" | "lots");
       if (bar && Date.parse(bar.end) < Date.now() - 5000) store.put(bar);
       pending.push(row);
     }
@@ -183,6 +179,19 @@ try {
     );
   prune();
   setInterval(prune, 86400000).unref();
+}
+
+try {
+  await api.listen({
+    host: process.env.COLLECTOR_HOST ?? "127.0.0.1",
+    port: Number(process.env.PORT ?? 3002),
+  });
+  if (process.env.IBKR_ENABLED === "true") {
+    await collect();
+  } else {
+    state = "awaiting-ibkr-activation";
+    console.log(JSON.stringify({ state, address: api.server.address() }));
+  }
 } catch (error) {
   failure = error instanceof Error ? error.message : "Collector startup failed";
   await stop(1);
