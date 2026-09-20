@@ -18,5 +18,9 @@ test("IB Gateway uses the official installer and a protected private desktop", (
   assert.match(startup, /proxy_set_header Upgrade \$http_upgrade/);
   assert.match(startup, /supervise_gateway/);
   assert.match(startup, /restarting login/);
+  assert.match(
+    startup,
+    /socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127\.0\.0\.1:4000/,
+  );
   assert.doesNotMatch(startup, /IBKR_(USERNAME|PASSWORD)/);
 });

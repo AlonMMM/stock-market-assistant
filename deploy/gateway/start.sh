@@ -75,6 +75,11 @@ as_gateway fluxbox &
 as_gateway x11vnc -display :99 -localhost -rfbport 5900 -forever -shared -nopw -quiet &
 as_gateway websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 &
 
+# Railway private networking is IPv6-only. Keep IB Gateway's own API bound to
+# loopback with TrustedIPs=127.0.0.1, and bridge only the project's private IPv6
+# network to that local socket. Port 4001 has no public Railway domain.
+socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127.0.0.1:4000 &
+
 # IB Gateway exits after some rejected or interrupted login flows. Keep the
 # protected desktop alive and reopen the vendor login instead of terminating
 # the Railway service and forcing a full image redeploy.

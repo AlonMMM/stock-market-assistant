@@ -3,7 +3,7 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive DISPLAY=:99
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    apache2-utils ca-certificates curl fluxbox nginx novnc websockify x11vnc xvfb \
+    apache2-utils ca-certificates curl fluxbox nginx novnc socat websockify x11vnc xvfb \
     fonts-dejavu-core libasound2t64 libglib2.0-0 libgtk-3-0 libnss3 libxi6 libxrender1 libxtst6 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -20,5 +20,5 @@ RUN useradd --create-home gateway && chown -R gateway:gateway /opt/ibgateway
 COPY deploy/gateway/start.sh /usr/local/bin/start-gateway
 RUN chmod +x /usr/local/bin/start-gateway
 
-EXPOSE 8080 4001 4002
+EXPOSE 8080 4001
 CMD ["/usr/local/bin/start-gateway"]

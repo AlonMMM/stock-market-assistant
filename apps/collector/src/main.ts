@@ -21,12 +21,14 @@ import { LiveEvaluator } from "../../../packages/market-data/src/evaluator.js";
 import { IbkrFeed } from "../../../packages/market-data/src/ibkr.js";
 import { MarketStore } from "../../../packages/market-data/src/store.js";
 
-const tickers: unknown = JSON.parse(
-  readFileSync(
-    process.env.IBKR_WATCHLIST ?? "config/ibkr-watchlist.json",
-    "utf8",
-  ),
-);
+const tickers: unknown = process.env.IBKR_SYMBOLS
+  ? process.env.IBKR_SYMBOLS.split(",").map((ticker) => ticker.trim())
+  : JSON.parse(
+      readFileSync(
+        process.env.IBKR_WATCHLIST ?? "config/ibkr-watchlist.json",
+        "utf8",
+      ),
+    );
 if (
   !Array.isArray(tickers) ||
   tickers.length < 1 ||

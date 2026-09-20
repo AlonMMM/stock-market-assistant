@@ -22,6 +22,8 @@ test(
           PORT: "0",
           COLLECTOR_HOST: "127.0.0.1",
           IBKR_ENABLED: "false",
+          IBKR_SYMBOLS: "AAPL",
+          IBKR_WATCHLIST: "/missing/watchlist.json",
           IBKR_VOLUME_UNIT: "shares",
           COLLECTOR_TOKEN: token,
           COLLECTOR_DB: join(dir, "test.sqlite"),
