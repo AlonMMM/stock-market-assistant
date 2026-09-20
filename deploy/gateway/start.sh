@@ -9,6 +9,13 @@ fi
 # Railway mounts persistent volumes as root. Hand the Gateway home directory to
 # its unprivileged runtime user before starting the desktop.
 chown gateway:gateway /home/gateway
+# The official installer records /root/Jts at image-build time. Keep that
+# expected path, but persist its contents in the Gateway user's volume.
+mkdir -p /home/gateway/Jts
+chown -R gateway:gateway /home/gateway/Jts
+chmod 711 /root
+rm -rf /root/Jts
+ln -s /home/gateway/Jts /root/Jts
 # Only nginx is publicly reachable. VNC and noVNC listen on loopback.
 printf '%s\n' "$GATEWAY_DESKTOP_PASSWORD" | htpasswd -iBc /etc/nginx/desktop.htpasswd trader
 unset GATEWAY_DESKTOP_PASSWORD
