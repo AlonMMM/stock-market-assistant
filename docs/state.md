@@ -1,7 +1,7 @@
 # Current state
 
-Updated: 2026-09-19
-Phase: IBKR collector implemented; live deployment blocked on external connections.
+Updated: 2026-09-20
+Phase: Railway runtimes deployed; migrating authentication to Client Portal Gateway.
 
 ## Working product
 
@@ -20,22 +20,24 @@ User uses IBKR only on the phone. Do not ask again for entitlement proof.
 
 The separate Node collector implements minute TRADES warmup/updates, closed-bar handling,
 calendar/volume normalization, durable SQLite and authenticated health/alert endpoints.
-It is tested with fixtures, not connected to IBKR. No cloud server was provisioned.
-Railway is available but unconnected. Brokerage login must happen directly by the user.
+It is fixture-tested and deployed to Railway in an intentionally disabled waiting state.
+The user rejected the graphical remote-desktop login and selected IBKR's official Client
+Portal Gateway browser proxy. Brokerage login must happen directly by the user.
 See [task](tasks/ibkr-collector.md) and [operations](ibkr-operations.md).
 
 ## Verification
 
 Repository checks (format, types, tests, web/Worker build), collector bundle and doctor
 passed. Tests cover data correctness, restart persistence and adapter behavior with a
-fake transport. Actual Gateway compatibility, real data accuracy, container runtime and
-cloud operations are unverified. Docker is unavailable. No UI changed in this increment.
+fake transport. Actual market-data compatibility and real data accuracy are unverified.
+The collector's TWS adapter is not compatible with Client Portal Gateway and must not be
+enabled. Docker is unavailable locally. The Railway collector passed its waiting-mode test.
 
 ## Next
 
-Connect hosting, provision a private authenticated Gateway, validate live data, connect
-collector to website, then implement phone push. Charts remain pending. GitHub main last
-checked still contains the harness; replay/mobile PRs remain separate. No merge performed.
+Deploy and authenticate Client Portal Gateway, replace the TWS feed with the Web API,
+validate real data, connect the collector to the website, then implement phone push.
+Charts remain pending. Replay/mobile and collector work remain on review branches.
 
 ## Conventions
 

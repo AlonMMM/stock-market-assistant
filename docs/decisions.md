@@ -58,3 +58,17 @@ Keep the existing private Sites replay site. Add a long-running Node collector b
 IB Gateway, using the pinned community TypeScript TWS adapter and SQLite on persistent
 storage. No brokerage order or account-position operations are implemented. Runtime
 provisioning awaits a connected cloud account and direct user IBKR authentication.
+
+## 2026-09-20 — Browser Client Portal Gateway
+
+Status: confirmed by user; supersedes the graphical IB Gateway login choice.
+
+Use IBKR's official Client Portal Gateway for browser SSO instead of publishing a remote
+Linux desktop. Keep an independent HTTP authentication layer around the proxy. The user
+enters brokerage credentials and completes 2FA only in IBKR's form. Authentication is
+manual and normally required daily. Do not automate credentials.
+
+The current TWS-protocol collector must remain disabled until its data adapter is replaced
+with the Client Portal Web API and validated against the authenticated account. A second
+IBKR username is the intended steady-state configuration so mobile trading and collection
+can coexist; the primary username may be used temporarily by explicit user choice.
