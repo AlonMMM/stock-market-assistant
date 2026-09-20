@@ -16,5 +16,7 @@ test("IB Gateway uses the official installer and a protected private desktop", (
   assert.match(startup, /vnc\.html\?resize=scale&autoconnect=true/);
   assert.match(startup, /x11vnc .* -localhost /);
   assert.match(startup, /proxy_set_header Upgrade \$http_upgrade/);
+  assert.match(startup, /supervise_gateway/);
+  assert.match(startup, /restarting login/);
   assert.doesNotMatch(startup, /IBKR_(USERNAME|PASSWORD)/);
 });

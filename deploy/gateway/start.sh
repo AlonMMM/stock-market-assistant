@@ -74,6 +74,19 @@ done
 as_gateway fluxbox &
 as_gateway x11vnc -display :99 -localhost -rfbport 5900 -forever -shared -nopw -quiet &
 as_gateway websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 &
-as_gateway /opt/ibgateway/ibgateway &
+
+# IB Gateway exits after some rejected or interrupted login flows. Keep the
+# protected desktop alive and reopen the vendor login instead of terminating
+# the Railway service and forcing a full image redeploy.
+supervise_gateway() {
+  while true; do
+    status=0
+    as_gateway /opt/ibgateway/ibgateway || status=$?
+    echo "IB Gateway exited with status $status; restarting login" >&2
+    sleep 3
+  done
+}
+
+supervise_gateway &
 nginx -g 'daemon off;' &
 wait -n

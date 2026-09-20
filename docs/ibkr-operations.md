@@ -21,6 +21,8 @@ in chat, stored in Git or automated.
    authentication. Ports 5900 and 6080 remain loopback-only.
 4. The user opens the Railway HTTPS domain on the phone, authenticates as `trader`, and
    signs in inside IB Gateway. The user completes IBKR Mobile 2FA directly.
+   Rejected or interrupted login flows may cause the vendor process to exit; the runtime
+   reopens the login window without dropping the protected desktop.
 5. In IB Gateway settings, enable socket clients, select read-only API access, use the live
    trading port, and allow only the collector's private connection. Do not expose the TWS
    socket on a public Railway domain.
