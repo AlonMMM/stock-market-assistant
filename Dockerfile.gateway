@@ -9,7 +9,7 @@ RUN curl --fail --location --retry 3 \
     https://download2.interactivebrokers.com/installers/ibgateway/stable-standalone/ibgateway-stable-standalone-linux-x64.sh \
     -o /tmp/gateway.sh && chmod +x /tmp/gateway.sh \
     && /tmp/gateway.sh -q -dir /opt/ibgateway && rm /tmp/gateway.sh
-RUN useradd --create-home --uid 1000 gateway && chown -R gateway:gateway /opt/ibgateway
+RUN useradd --create-home gateway && chown -R gateway:gateway /opt/ibgateway
 COPY deploy/gateway/start.sh /usr/local/bin/start-gateway
 RUN chmod +x /usr/local/bin/start-gateway
 EXPOSE 8080
