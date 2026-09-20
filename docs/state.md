@@ -1,7 +1,7 @@
 # Current state
 
 Updated: 2026-09-20
-Phase: Railway runtimes deployed; migrating authentication to Client Portal Gateway.
+Phase: Railway runtimes deployed; restoring the supported IB Gateway/TWS path.
 
 ## Working product
 
@@ -21,8 +21,10 @@ User uses IBKR only on the phone. Do not ask again for entitlement proof.
 The separate Node collector implements minute TRADES warmup/updates, closed-bar handling,
 calendar/volume normalization, durable SQLite and authenticated health/alert endpoints.
 It is fixture-tested and deployed to Railway in an intentionally disabled waiting state.
-The user rejected the graphical remote-desktop login and selected IBKR's official Client
-Portal Gateway browser proxy. Brokerage login must happen directly by the user.
+The Client Portal Gateway experiment failed because IBKR requires its authentication
+browser and API caller to run on the same machine as that Gateway. OAuth is not an
+immediate alternative for an Individual account. The user therefore selected the
+official graphical IB Gateway with phone-accessible remote login and the TWS API.
 See [task](tasks/ibkr-collector.md) and [operations](ibkr-operations.md).
 
 ## Verification
@@ -30,13 +32,14 @@ See [task](tasks/ibkr-collector.md) and [operations](ibkr-operations.md).
 Repository checks (format, types, tests, web/Worker build), collector bundle and doctor
 passed. Tests cover data correctness, restart persistence and adapter behavior with a
 fake transport. Actual market-data compatibility and real data accuracy are unverified.
-The collector's TWS adapter is not compatible with Client Portal Gateway and must not be
-enabled. Docker is unavailable locally. The Railway collector passed its waiting-mode test.
+Docker is unavailable locally. The Railway collector passed its waiting-mode test. The
+remote IB Gateway runtime still requires an interactive login, API configuration and a
+one-symbol real-data comparison before the collector can be enabled.
 
 ## Next
 
-Deploy and authenticate Client Portal Gateway, replace the TWS feed with the Web API,
-validate real data, connect the collector to the website, then implement phone push.
+Deploy and authenticate IB Gateway, configure its read-only TWS API, validate real data,
+connect the collector to the website, then implement phone push.
 Charts remain pending. Replay/mobile and collector work remain on review branches.
 
 ## Conventions

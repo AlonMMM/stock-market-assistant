@@ -1,26 +1,24 @@
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive DISPLAY=:99
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    apache2-utils ca-certificates curl nginx openjdk-17-jre-headless unzip \
+    apache2-utils ca-certificates curl fluxbox nginx novnc websockify x11vnc xvfb \
+    fonts-dejavu-core libasound2t64 libglib2.0-0 libgtk-3-0 libnss3 libxi6 libxrender1 libxtst6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Official IBKR Client Portal Gateway. It exposes the vendor's browser SSO
-# flow and Web API without a remote graphical desktop.
+# Official vendor installer. Brokerage credentials are entered interactively
+# inside IB Gateway and are never supplied to this image or start script.
 RUN curl --fail --location --retry 3 \
-    https://download2.interactivebrokers.com/portal/clientportal.gw.zip \
-    -o /tmp/clientportal.gw.zip \
-    && mkdir -p /opt/cpgw \
-    && unzip -q /tmp/clientportal.gw.zip -d /opt/cpgw \
-    && run_script="$(find /opt/cpgw -type f -path '*/bin/run.sh' -print -quit)" \
-    && test -n "$run_script" \
-    && ln -s "$(dirname "$(dirname "$run_script")")" /opt/clientportal.gw \
-    && rm /tmp/clientportal.gw.zip
+    https://download2.interactivebrokers.com/installers/ibgateway/stable-standalone/ibgateway-stable-standalone-linux-x64.sh \
+    -o /tmp/gateway.sh \
+    && chmod +x /tmp/gateway.sh \
+    && /tmp/gateway.sh -q -dir /opt/ibgateway \
+    && rm /tmp/gateway.sh
 
-RUN useradd --create-home gateway && chown -R gateway:gateway /opt/cpgw
+RUN useradd --create-home gateway && chown -R gateway:gateway /opt/ibgateway
 COPY deploy/gateway/start.sh /usr/local/bin/start-gateway
 RUN chmod +x /usr/local/bin/start-gateway
 
-EXPOSE 8080
+EXPOSE 8080 4001 4002
 CMD ["/usr/local/bin/start-gateway"]

@@ -61,7 +61,7 @@ provisioning awaits a connected cloud account and direct user IBKR authenticatio
 
 ## 2026-09-20 — Browser Client Portal Gateway
 
-Status: confirmed by user; supersedes the graphical IB Gateway login choice.
+Status: superseded after live validation.
 
 Use IBKR's official Client Portal Gateway for browser SSO instead of publishing a remote
 Linux desktop. Keep an independent HTTP authentication layer around the proxy. The user
@@ -72,3 +72,19 @@ The current TWS-protocol collector must remain disabled until its data adapter i
 with the Client Portal Web API and validated against the authenticated account. A second
 IBKR username is the intended steady-state configuration so mobile trading and collection
 can coexist; the primary username may be used temporarily by explicit user choice.
+
+Live validation showed that publishing the login form through a public reverse proxy does
+not satisfy IBKR's same-machine authentication restriction. The form loaded, but login
+could not advance to 2FA. Do not restore this topology.
+
+## 2026-09-20 — Graphical IB Gateway and TWS API
+
+Status: confirmed by user; supersedes the Client Portal Gateway experiment.
+
+Run the official IB Gateway on Railway and expose only a Basic-Auth-protected noVNC page
+for interactive login from the user's phone. The graphical process and TWS API share the
+same runtime; the collector connects privately and remains read-only. Never automate or
+store brokerage credentials. A second IBKR username remains the intended steady state.
+
+OAuth 2.0 is unavailable to Individual accounts. Third-party OAuth 1.0a requires IBKR
+onboarding, compliance and legal approval and is not the immediate implementation path.
