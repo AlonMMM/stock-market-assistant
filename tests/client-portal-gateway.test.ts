@@ -14,5 +14,6 @@ test("Client Portal Gateway uses the official browser proxy without a remote des
   assert.match(startup, /proxy_pass https:\/\/127\.0\.0\.1:5000/);
   assert.match(startup, /auth_basic "Private IBKR connection"/);
   assert.match(startup, /proxy_set_header Upgrade \$http_upgrade/);
+  assert.match(startup, /cd \/opt\/clientportal\.gw/);
   assert.doesNotMatch(startup, /IBKR_(USERNAME|PASSWORD)/);
 });

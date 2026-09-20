@@ -56,8 +56,9 @@ trap cleanup EXIT
 trap 'exit 0' TERM INT
 
 chown gateway:gateway /home/gateway
+cd /opt/clientportal.gw
 runuser -u gateway -- env HOME=/home/gateway USER=gateway LOGNAME=gateway \
-  /opt/clientportal.gw/bin/run.sh /opt/clientportal.gw/root/conf.yaml &
+  ./bin/run.sh root/conf.yaml &
 
 # Do not publish nginx until the local vendor proxy is accepting connections.
 for attempt in {1..120}; do
