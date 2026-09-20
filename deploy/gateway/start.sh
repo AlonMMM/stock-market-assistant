@@ -6,6 +6,9 @@ if [ "${#GATEWAY_DESKTOP_PASSWORD}" -lt 32 ]; then
   echo "Desktop password must have at least 32 characters" >&2
   exit 1
 fi
+# Railway mounts persistent volumes as root. Hand the Gateway home directory to
+# its unprivileged runtime user before starting the desktop.
+chown gateway:gateway /home/gateway
 # Only nginx is publicly reachable. VNC and noVNC listen on loopback.
 printf '%s\n' "$GATEWAY_DESKTOP_PASSWORD" | htpasswd -iBc /etc/nginx/desktop.htpasswd trader
 unset GATEWAY_DESKTOP_PASSWORD
