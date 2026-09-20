@@ -37,14 +37,17 @@ nginx -t
 cleanup() { jobs -pr | xargs -r kill; }
 trap cleanup EXIT
 trap 'exit 0' TERM INT
-runuser -u gateway -- Xvfb :99 -screen 0 1280x800x24 -nolisten tcp &
+as_gateway() {
+  runuser -u gateway -- env HOME=/home/gateway USER=gateway LOGNAME=gateway "$@"
+}
+as_gateway Xvfb :99 -screen 0 1280x800x24 -nolisten tcp &
 for attempt in {1..50}; do
   [ -S /tmp/.X11-unix/X99 ] && break
   sleep 0.1
 done
-runuser -u gateway -- fluxbox &
-runuser -u gateway -- x11vnc -display :99 -localhost -rfbport 5900 -forever -shared -nopw -quiet &
-runuser -u gateway -- websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 &
-runuser -u gateway -- /opt/ibgateway/ibgateway &
+as_gateway fluxbox &
+as_gateway x11vnc -display :99 -localhost -rfbport 5900 -forever -shared -nopw -quiet &
+as_gateway websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 &
+as_gateway /opt/ibgateway/ibgateway &
 nginx -g 'daemon off;' &
 wait -n
