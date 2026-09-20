@@ -1,24 +1,10 @@
-FROM ubuntu:24.04
+FROM ghcr.io/gnzsnz/ib-gateway:10.45.1j
 
-ENV DEBIAN_FRONTEND=noninteractive DISPLAY=:99
+# The upstream image runs IB Gateway through IBC, which applies the API and
+# read-only settings and handles login dialogs. This wrapper only adapts its
+# IPv4 socket to Railway's IPv6-only private network.
+COPY --chown=1000:1000 deploy/gateway/start.sh /home/ibgateway/start-railway.sh
+RUN chmod 755 /home/ibgateway/start-railway.sh
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    apache2-utils ca-certificates curl fluxbox nginx novnc socat websockify x11vnc xvfb \
-    fonts-dejavu-core libasound2t64 libglib2.0-0 libgtk-3-0 libnss3 libxi6 libxrender1 libxtst6 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Official vendor installer. Brokerage credentials are entered interactively
-# inside IB Gateway and are never supplied to this image or start script.
-RUN curl --fail --location --retry 3 \
-    https://download2.interactivebrokers.com/installers/ibgateway/stable-standalone/ibgateway-stable-standalone-linux-x64.sh \
-    -o /tmp/gateway.sh \
-    && chmod +x /tmp/gateway.sh \
-    && /tmp/gateway.sh -q -dir /opt/ibgateway \
-    && rm /tmp/gateway.sh
-
-RUN useradd --create-home gateway && chown -R gateway:gateway /opt/ibgateway
-COPY deploy/gateway/start.sh /usr/local/bin/start-gateway
-RUN chmod +x /usr/local/bin/start-gateway
-
-EXPOSE 8080 4001
-CMD ["/usr/local/bin/start-gateway"]
+EXPOSE 4001
+CMD ["/home/ibgateway/start-railway.sh"]

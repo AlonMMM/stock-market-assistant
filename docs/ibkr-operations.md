@@ -1,37 +1,35 @@
 # IBKR collector operation
 
-Status: Railway waiting-mode collector deployed; graphical IB Gateway deployment in progress.
+Status: Railway waiting-mode collector deployed; automated IB Gateway deployment in progress.
 
 ## Runtime
 
 The private Sites application still uses synthetic replay data. Railway contains a
-persistent Node collector and a separate official IB Gateway service. The collector stays
-disabled until the user logs in, enables read-only API access and one symbol is validated.
+persistent Node collector and a separate automated IB Gateway service. The collector stays
+disabled until the user approves 2FA and one symbol is validated.
 
-IB Gateway runs with a virtual Linux display. nginx publishes only a Basic-Auth-protected
-noVNC page so the user can operate that display from a phone browser. VNC itself listens on
-loopback. Brokerage credentials are entered only into IB Gateway and must never be requested
-in chat, stored in Git or automated.
+The version-pinned Gateway image uses IBC to fill the login dialog, apply read-only API
+settings and handle routine dialogs. Brokerage credentials are Railway secrets: never ask
+for them in chat, commit them to Git or expose them in logs. The public remote desktop is no
+longer part of normal operation.
 
-## Interactive authentication
+## Authentication
 
-1. Build `Dockerfile.gateway`; it downloads IBKR's official stable standalone installer.
-2. Set `GATEWAY_DESKTOP_PASSWORD` to a random value of at least 32 characters.
-3. Publish nginx port 8080. `/healthz` is public for liveness; the desktop requires Basic
-   authentication. Ports 5900 and 6080 remain loopback-only.
-4. The user opens the Railway HTTPS domain on the phone, authenticates as `trader`, and
-   signs in inside IB Gateway. The user completes IBKR Mobile 2FA directly.
-   Rejected or interrupted login flows may cause the vendor process to exit; the runtime
-   reopens the login window without dropping the protected desktop.
-5. In IB Gateway settings, enable socket clients, select read-only API access, use the live
-   trading port, and allow only the collector's private connection. Do not expose the TWS
-   socket on a public Railway domain.
-6. A single IBKR username may lose or compete for its active brokerage session. The primary
-   username is temporary; the intended steady state is a dedicated second username.
+1. Build `Dockerfile.gateway`; it pins the maintained automated Gateway image.
+2. Set `TWS_USERID` and `TWS_PASSWORD` directly as Railway service secrets. Never send
+   either value in chat.
+3. Set `TRADING_MODE=live`, `READ_ONLY_API=yes`, `TWS_ACCEPT_INCOMING=accept`,
+   `TWOFA_TIMEOUT_ACTION=restart` and `RELOGIN_AFTER_TWOFA_TIMEOUT=yes`.
+4. Keep persistent settings in `/home/gateway/automated`. The earlier manual runtime remains
+   untouched under `/home/gateway/Jts` for rollback.
+5. The user only approves IBKR Mobile 2FA. No remote desktop configuration is required.
+6. Use a dedicated IBKR username. A single username cannot keep simultaneous active trading
+   sessions in IBKR Mobile and IB Gateway.
 
 ## Collector activation gate
 
-1. Connect the existing TWS adapter to the Gateway over Railway private networking.
+1. Connect the existing TWS adapter to private port 4001, bridged to the image's live-mode
+   socat port 4003.
 2. Confirm `/health` reports an authenticated feed without entitlement errors.
 3. Compare timestamps and volume for one liquid symbol with IBKR, then expand to the
    configured 50-symbol watchlist.

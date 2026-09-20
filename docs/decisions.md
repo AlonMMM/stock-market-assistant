@@ -79,7 +79,7 @@ could not advance to 2FA. Do not restore this topology.
 
 ## 2026-09-20 — Graphical IB Gateway and TWS API
 
-Status: confirmed by user; supersedes the Client Portal Gateway experiment.
+Status: superseded after phone usability and live-session validation.
 
 Run the official IB Gateway on Railway and expose only a Basic-Auth-protected noVNC page
 for interactive login from the user's phone. The graphical process and TWS API share the
@@ -88,3 +88,18 @@ store brokerage credentials. A second IBKR username remains the intended steady 
 
 OAuth 2.0 is unavailable to Individual accounts. Third-party OAuth 1.0a requires IBKR
 onboarding, compliance and legal approval and is not the immediate implementation path.
+
+## 2026-09-20 — Automated IB Gateway runtime
+
+Status: confirmed by user; supersedes the manually operated graphical runtime.
+
+Run the version-pinned `gnzsnz/ib-gateway` image with IBC automation. Configure API
+access as read-only, automatically accept incoming local API connections, retry expired
+2FA attempts and preserve settings on the Railway volume. The user supplies the IBKR
+username and password once through Railway secrets, never through chat or Git, and only
+approves IBKR Mobile 2FA afterward.
+
+The collector connects only through Railway private networking. An IPv6 listener on
+port 4001 bridges to the image's live-mode socat port 4003; neither port receives a
+public domain. Use a dedicated IBKR username so the Gateway does not compete with the
+user's mobile trading session.

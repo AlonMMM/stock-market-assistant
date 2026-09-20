@@ -1,7 +1,7 @@
 # Current state
 
 Updated: 2026-09-20
-Phase: Railway runtimes deployed; restoring the supported IB Gateway/TWS path.
+Phase: Railway runtimes deployed; switching IB Gateway to phone-friendly automation.
 
 ## Working product
 
@@ -24,7 +24,9 @@ It is fixture-tested and deployed to Railway in an intentionally disabled waitin
 The Client Portal Gateway experiment failed because IBKR requires its authentication
 browser and API caller to run on the same machine as that Gateway. OAuth is not an
 immediate alternative for an Individual account. The user therefore selected the
-official graphical IB Gateway with phone-accessible remote login and the TWS API.
+automated IB Gateway with IBC-assisted login and the TWS API. A live test of the earlier
+manual desktop authenticated but returned to login after three seconds without opening its
+API listener; phone operation was also impractical.
 See [task](tasks/ibkr-collector.md) and [operations](ibkr-operations.md).
 
 ## Verification
@@ -33,12 +35,12 @@ Repository checks (format, types, tests, web/Worker build), collector bundle and
 passed. Tests cover data correctness, restart persistence and adapter behavior with a
 fake transport. Actual market-data compatibility and real data accuracy are unverified.
 Docker is unavailable locally. The Railway collector passed its waiting-mode test. The
-remote IB Gateway runtime still requires an interactive login, API configuration and a
-one-symbol real-data comparison before the collector can be enabled.
+automated IB Gateway runtime still requires Railway credential secrets, IBKR Mobile 2FA and
+a one-symbol real-data comparison before the collector can be enabled.
 
 ## Next
 
-Deploy and authenticate IB Gateway, configure its read-only TWS API, validate real data,
+Deploy the automated IB Gateway, approve 2FA, validate real data,
 connect the collector to the website, then implement phone push.
 Charts remain pending. Replay/mobile and collector work remain on review branches.
 
