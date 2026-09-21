@@ -16,7 +16,7 @@ test("IB Gateway uses pinned IBC automation over Railway private networking", ()
   );
   assert.match(
     startup,
-    /socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127\.0\.0\.1:4003/,
+    /socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127\.0\.0\.1:4000/,
   );
   assert.doesNotMatch(dockerfile + startup, /TWS_(USERID|PASSWORD)=/);
   assert.doesNotMatch(dockerfile + startup, /IBKR_(USERNAME|PASSWORD)/);
