@@ -6,5 +6,9 @@ FROM ghcr.io/gnzsnz/ib-gateway:10.45.1j
 COPY --chown=1000:1000 deploy/gateway/start.sh /home/ibgateway/start-railway.sh
 RUN chmod 755 /home/ibgateway/start-railway.sh
 
+# Railway mounts persistent volumes as root. The wrapper prepares only the new
+# settings directory, then drops privileges before starting IBC and Gateway.
+USER root
+
 EXPOSE 4001
 CMD ["/home/ibgateway/start-railway.sh"]

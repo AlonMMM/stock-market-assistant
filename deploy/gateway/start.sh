@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+install -d -o ibgateway -g ibgateway -m 700 /home/gateway/automated
+
 # The upstream image exposes the live Gateway through socat on 4003. Railway
 # service DNS resolves to IPv6, so bridge the project's private IPv6 socket to
 # that loopback-only IPv4 endpoint. No public domain targets this port.
@@ -12,4 +14,4 @@ cleanup() {
 }
 trap cleanup EXIT TERM INT
 
-exec /home/ibgateway/scripts/run.sh
+exec sudo -E -u ibgateway /home/ibgateway/scripts/run.sh
