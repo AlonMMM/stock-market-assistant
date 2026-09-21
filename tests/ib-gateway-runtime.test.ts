@@ -13,7 +13,7 @@ test("IB Gateway uses pinned IBC automation over Railway private networking", ()
   assert.match(startup, /install -d -o ibgateway -g ibgateway -m 700/);
   assert.match(
     startup,
-    /sed -i 's\/\^LocalServerPort=\.\*\/LocalServerPort=4001\/'/,
+    /sed -i 's\/\^LocalServerPort=\.\*\/LocalServerPort=4000\/'/,
   );
   assert.match(
     startup,
@@ -21,7 +21,7 @@ test("IB Gateway uses pinned IBC automation over Railway private networking", ()
   );
   assert.match(
     startup,
-    /socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127\.0\.0\.1:4003/,
+    /socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127\.0\.0\.1:4000/,
   );
   assert.match(startup, /--name '\^Login Messages\$'/);
   assert.match(startup, /xdotool windowclose/);
