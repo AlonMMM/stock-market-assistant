@@ -3,10 +3,11 @@ set -euo pipefail
 
 install -d -o ibgateway -g ibgateway -m 700 /home/gateway/automated
 
-# The upstream image exposes the live Gateway through socat on 4003. Railway
-# service DNS resolves to IPv6, so bridge the project's private IPv6 socket to
-# that loopback-only IPv4 endpoint. No public domain targets this port.
-socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127.0.0.1:4003 &
+# IB Gateway persists its actual local API port in jts.ini. With this image the
+# authenticated live session listens on loopback port 4000. Railway service DNS
+# resolves to IPv6, so expose only an IPv6 private-network bridge to that local
+# socket. The Gateway still sees every API client as trusted localhost traffic.
+socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127.0.0.1:4000 &
 bridge_pid=$!
 
 cleanup() {
