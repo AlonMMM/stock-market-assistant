@@ -11,9 +11,12 @@ test("IB Gateway uses pinned IBC automation over Railway private networking", ()
   assert.match(dockerfile, /USER root/);
   assert.match(dockerfile, /apt-get install[^\n]*xdotool/);
   assert.match(startup, /install -d -o ibgateway -g ibgateway -m 700/);
+  assert.match(startup, /OverrideTwsApiPort=4001/);
+  assert.match(startup, /CommandServerPort=7462/);
+  assert.match(startup, /BindAddress=127\.0\.0\.1/);
   assert.match(
     startup,
-    /sed -i 's\/\^LocalServerPort=\.\*\/LocalServerPort=4000\/'/,
+    /sed -i 's\/\^LocalServerPort=\.\*\/LocalServerPort=4001\/'/,
   );
   assert.match(
     startup,
@@ -21,8 +24,9 @@ test("IB Gateway uses pinned IBC automation over Railway private networking", ()
   );
   assert.match(
     startup,
-    /socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127\.0\.0\.1:4000/,
+    /socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127\.0\.0\.1:4001/,
   );
+  assert.ok(startup.includes("printf 'ENABLEAPI\\\\nEXIT\\\\n'"));
   assert.match(startup, /--name '\^Login Messages\$'/);
   assert.match(startup, /xdotool windowclose/);
   assert.match(startup, /informational dialog dismissed/);
