@@ -4,14 +4,9 @@ set -euo pipefail
 install -d -o ibgateway -g ibgateway -m 700 /home/gateway/automated
 
 # Let IBC apply the live Gateway API port through the Gateway configuration UI
-# after login. The command server is loopback-only and is used once to ensure
-# that the Socket API checkbox is enabled; it is never exposed by Railway.
+# after login.
 ibc_template=/home/ibgateway/ibc/config.ini.tmpl
-sed -i \
-  -e 's/^OverrideTwsApiPort=.*/OverrideTwsApiPort=4001/' \
-  -e 's/^CommandServerPort=.*/CommandServerPort=7462/' \
-  -e 's/^BindAddress=.*/BindAddress=127.0.0.1/' \
-  "$ibc_template"
+sed -i 's/^OverrideTwsApiPort=.*/OverrideTwsApiPort=4001/' "$ibc_template"
 
 # Normalize settings left by earlier deployments. IBC repeats this setting via
 # the UI after login, so the persisted file and runtime configuration agree.
@@ -38,20 +33,15 @@ dismiss_login_messages() {
     )"
     if [[ -n "$window_id" ]]; then
       echo ".> Dismissing post-login informational dialog"
-      DISPLAY=:1 xdotool windowclose "$window_id" >/dev/null 2>&1 || true
+      # Activate the exact dialog and invoke its default button. A window-manager
+      # close hides the modal without running Gateway's acknowledgement action,
+      # which prevents the local API listener from completing initialization.
+      DISPLAY=:1 xdotool windowactivate --sync "$window_id" >/dev/null 2>&1 || true
+      DISPLAY=:1 xdotool key --window "$window_id" Return >/dev/null 2>&1 || true
       sleep 2
       if ! DISPLAY=:1 xdotool search --onlyvisible \
         --name '^Login Messages$' >/dev/null 2>&1; then
         echo ".> Post-login informational dialog dismissed"
-        sleep 3
-        # IBC's ENABLEAPI command sets only the API enablement checkbox. The
-        # command server is bound to loopback, and EXIT closes this connection.
-        if timeout 10 bash -c \
-          "exec 3<>/dev/tcp/127.0.0.1/7462; printf 'ENABLEAPI\\nEXIT\\n' >&3; cat <&3"; then
-          echo ".> Socket API enablement requested through IBC"
-        else
-          echo ".> Unable to request Socket API enablement through IBC" >&2
-        fi
         return 0
       fi
     fi
