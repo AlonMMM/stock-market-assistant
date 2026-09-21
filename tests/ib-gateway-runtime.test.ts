@@ -12,11 +12,15 @@ test("IB Gateway uses pinned IBC automation over Railway private networking", ()
   assert.match(startup, /install -d -o ibgateway -g ibgateway -m 700/);
   assert.match(
     startup,
+    /sed -i 's\/\^LocalServerPort=\.\*\/LocalServerPort=4001\/'/,
+  );
+  assert.match(
+    startup,
     /exec sudo -E -u ibgateway \/home\/ibgateway\/scripts\/run\.sh/,
   );
   assert.match(
     startup,
-    /socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127\.0\.0\.1:4000/,
+    /socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127\.0\.0\.1:4003/,
   );
   assert.doesNotMatch(dockerfile + startup, /TWS_(USERID|PASSWORD)=/);
   assert.doesNotMatch(dockerfile + startup, /IBKR_(USERNAME|PASSWORD)/);
