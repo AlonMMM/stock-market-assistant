@@ -36,8 +36,8 @@ dismiss_login_messages() {
       # Activate the exact dialog and invoke its default button. A window-manager
       # close hides the modal without running Gateway's acknowledgement action,
       # which prevents the local API listener from completing initialization.
-      DISPLAY=:1 xdotool windowactivate --sync "$window_id" >/dev/null 2>&1 || true
-      DISPLAY=:1 xdotool key --window "$window_id" Return >/dev/null 2>&1 || true
+      DISPLAY=:1 xdotool windowfocus --sync "$window_id" >/dev/null 2>&1 || true
+      DISPLAY=:1 xdotool key --clearmodifiers Return >/dev/null 2>&1 || true
       sleep 2
       if ! DISPLAY=:1 xdotool search --onlyvisible \
         --name '^Login Messages$' >/dev/null 2>&1; then
