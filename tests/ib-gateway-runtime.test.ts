@@ -25,8 +25,8 @@ test("IB Gateway uses pinned IBC automation over Railway private networking", ()
     /socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127\.0\.0\.1:4001/,
   );
   assert.match(startup, /--name '\^Login Messages\$'/);
-  assert.match(startup, /xdotool windowactivate --sync/);
-  assert.match(startup, /xdotool key --window "\$window_id" Return/);
+  assert.match(startup, /xdotool windowfocus --sync/);
+  assert.match(startup, /xdotool key --clearmodifiers Return/);
   assert.match(startup, /informational dialog dismissed/);
   assert.doesNotMatch(startup, /Order|Transmit/);
   assert.doesNotMatch(dockerfile + startup, /TWS_(USERID|PASSWORD)=/);
