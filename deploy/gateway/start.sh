@@ -23,12 +23,23 @@ bridge_pid=$!
 # the loop expires and cannot interact with any trading or order dialog.
 dismiss_login_messages() {
   for _ in {1..240}; do
-    if DISPLAY=:1 xdotool search --onlyvisible --name '^Login Messages$' \
-      windowactivate --sync key --clearmodifiers Return >/dev/null 2>&1; then
-      return 0
+    window_id="$(
+      DISPLAY=:1 xdotool search --onlyvisible --name '^Login Messages$' \
+        2>/dev/null | head -n 1 || true
+    )"
+    if [[ -n "$window_id" ]]; then
+      echo ".> Dismissing post-login informational dialog"
+      DISPLAY=:1 xdotool windowclose "$window_id" >/dev/null 2>&1 || true
+      sleep 2
+      if ! DISPLAY=:1 xdotool search --onlyvisible \
+        --name '^Login Messages$' >/dev/null 2>&1; then
+        echo ".> Post-login informational dialog dismissed"
+        return 0
+      fi
     fi
     sleep 1
   done
+  echo ".> Post-login informational dialog was not dismissed" >&2
 }
 dismiss_login_messages &
 dialog_watcher_pid=$!
