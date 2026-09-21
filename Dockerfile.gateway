@@ -4,7 +4,10 @@ FROM ghcr.io/gnzsnz/ib-gateway:10.45.1j
 # read-only settings and handles login dialogs. This wrapper only adapts its
 # IPv4 socket to Railway's IPv6-only private network.
 COPY --chown=1000:1000 deploy/gateway/start.sh /home/ibgateway/start-railway.sh
-RUN chmod 755 /home/ibgateway/start-railway.sh
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends xdotool \
+    && rm -rf /var/lib/apt/lists/* \
+    && chmod 755 /home/ibgateway/start-railway.sh
 
 # Railway mounts persistent volumes as root. The wrapper prepares only the new
 # settings directory, then drops privileges before starting IBC and Gateway.
