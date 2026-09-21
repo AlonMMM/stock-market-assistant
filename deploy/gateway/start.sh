@@ -18,8 +18,24 @@ fi
 socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127.0.0.1:4003 &
 bridge_pid=$!
 
+# This account receives a post-login informational modal that Gateway leaves
+# open before starting its API listener. Dismiss only that exact window title;
+# the loop expires and cannot interact with any trading or order dialog.
+dismiss_login_messages() {
+  for _ in {1..240}; do
+    if DISPLAY=:1 xdotool search --onlyvisible --name '^Login Messages$' \
+      windowactivate --sync key --clearmodifiers Return >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+}
+dismiss_login_messages &
+dialog_watcher_pid=$!
+
 cleanup() {
   kill "$bridge_pid" 2>/dev/null || true
+  kill "$dialog_watcher_pid" 2>/dev/null || true
 }
 trap cleanup EXIT TERM INT
 
