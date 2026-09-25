@@ -103,3 +103,16 @@ The collector connects only through Railway private networking. An IPv6 listener
 port 4001 bridges to the image's live-mode socat port 4003; neither port receives a
 public domain. Use a dedicated IBKR username so the Gateway does not compete with the
 user's mobile trading session.
+
+Status: superseded on 2026-09-25 by the Alpaca market-data decision below.
+
+## 2026-09-25 — Alpaca market data
+
+Status: confirmed by user.
+
+Replace IBKR and its Gateway runtime with Alpaca for price and volume data. Use Alpaca's
+historical stock-bars REST endpoint for warmup and its stock market-data WebSocket bars
+for live closed one-minute updates. Start with AAPL, then expand to the existing 50-symbol
+watchlist after live validation. Default to the IEX feed so basic access can run; allow
+SIP through configuration for accounts with that entitlement. Keep the integration
+strictly market-data-only and retain the existing provider-neutral evaluator and store.

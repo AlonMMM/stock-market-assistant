@@ -1,48 +1,38 @@
 # Current state
 
-Updated: 2026-09-20
-Phase: Railway runtimes deployed; switching IB Gateway to phone-friendly automation.
+Updated: 2026-09-25
+Phase: replacing IBKR Gateway with Alpaca Market Data.
 
 ## Working product
 
-The mobile replay site was published privately through Sites/Cloudflare Workers at
+The mobile replay site is published privately through Sites/Cloudflare Workers at
 https://stock-market-assistant.alonmor89.chatgpt.site. It uses synthetic demo data or
 uploaded historical JSON, not live market data. The shared relative-volume engine,
 replay API, mobile layout and configurable thresholds/cooldown are implemented.
 See [publication](tasks/sites-publication.md) and [alert contract](features/relative-volume.md).
-Earlier statements that no deployment existed are superseded by this publication.
 
 ## Current increment
 
-User chose IBKR price/volume data, confirmed API entitlements, reduced initial scope to
-50 configurable US tickers and authorized autonomous implementation and deployment.
-User uses IBKR only on the phone. Do not ask again for entitlement proof.
-
-The separate Node collector implements minute TRADES warmup/updates, closed-bar handling,
-calendar/volume normalization, durable SQLite and authenticated health/alert endpoints.
-It is fixture-tested and deployed to Railway in an intentionally disabled waiting state.
-The Client Portal Gateway experiment failed because IBKR requires its authentication
-browser and API caller to run on the same machine as that Gateway. OAuth is not an
-immediate alternative for an Individual account. The user therefore selected the
-automated IB Gateway with IBC-assisted login and the TWS API. A live test of the earlier
-manual desktop authenticated but returned to login after three seconds without opening its
-API listener; phone operation was also impractical.
-See [task](tasks/ibkr-collector.md) and [operations](ibkr-operations.md).
+The user replaced IBKR with Alpaca as the market-data provider. The Node collector now
+uses Alpaca historical one-minute bars for warmup and one authenticated market-data
+WebSocket for live closed bars across up to 50 configurable US symbols. It retains the
+calendar normalization, relative-volume evaluator, durable SQLite store and protected
+health/alert endpoints. IEX is the default feed; SIP is configurable for an entitled plan.
+The implementation never calls account, position or order APIs. See the
+[task](tasks/alpaca-collector.md) and [operations](alpaca-operations.md).
 
 ## Verification
 
-Repository checks (format, types, tests, web/Worker build), collector bundle and doctor
-passed. Tests cover data correctness, restart persistence and adapter behavior with a
-fake transport. Actual market-data compatibility and real data accuracy are unverified.
-Docker is unavailable locally. The Railway collector passed its waiting-mode test. The
-automated IB Gateway runtime still requires Railway credential secrets, IBKR Mobile 2FA and
-a one-symbol real-data comparison before the collector can be enabled.
+Adapter and collector unit tests pass with synthetic Alpaca REST/WebSocket fixtures.
+Actual Alpaca credentials, provider compatibility and live volume accuracy remain to be
+validated. The existing Railway collector must be redeployed in disabled mode, receive
+Alpaca credentials through Railway secrets, and then be enabled for AAPL first.
 
 ## Next
 
-Deploy the automated IB Gateway, approve 2FA, validate real data,
-connect the collector to the website, then implement phone push.
-Charts remain pending. Replay/mobile and collector work remain on review branches.
+Deploy the Alpaca collector, add keys, validate AAPL historical/live bars, then expand to
+50 symbols. Connect the collector to the website and implement phone push afterward.
+Charts remain pending. Do not delete the old Gateway service until Alpaca validation passes.
 
 ## Conventions
 

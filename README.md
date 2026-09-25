@@ -2,7 +2,7 @@
 
 A trading support product starting with configurable alerts, sector/index context, phone notifications, and historical replay.
 
-Current milestone: **runnable TypeScript development harness**. The React page checks the Node API connection. Market data, alert rules, charts, and notifications are not implemented.
+Current milestone: **Alpaca-backed relative-volume alert prototype**. The repository includes historical replay, a mobile UI, and a Railway-ready collector for up to 50 symbols. Live website wiring, charts, and phone notifications remain pending.
 
 ## Run locally
 
@@ -45,8 +45,10 @@ Keep decisions in the repository so work can continue in another session or codi
 
 - `apps/web`: React + Vite.
 - `apps/api`: Fastify + TypeScript.
+- `apps/collector`: Alpaca market-data ingestion and alert evaluation.
+- `packages/market-data`: normalization, calendar, persistence, and Alpaca adapter.
 - `packages/contracts`: shared health-response type and runtime validation.
 - `tests`: API contract checks and browser integration checks.
 - `scripts`: developer environment/context checks.
 
-The repository uses one npm package and lockfile. No monorepo orchestrator, database, provider account, or secret is needed at this stage.
+The repository uses one npm package and lockfile. Local web/replay development needs no provider account. Live collection requires Alpaca credentials supplied outside Git.

@@ -30,10 +30,10 @@ export function normalize(
     raw.high < Math.max(raw.open, raw.close, raw.low) ||
     raw.low > Math.min(raw.open, raw.close)
   )
-    throw new Error("Invalid IBKR price bar");
+    throw new Error("Invalid market-data price bar");
   const volume = raw.volume * (volumeUnit === "lots" ? 100 : 1);
   if (!Number.isSafeInteger(volume) || volume < 0)
-    throw new Error("Invalid IBKR volume");
+    throw new Error("Invalid market-data volume");
   const start = newYork(raw.start * 1000);
   const close = coreClose(start.date);
   // Extended sessions on shortened days vary by venue: exclude instead of guessing.

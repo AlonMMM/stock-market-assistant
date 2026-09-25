@@ -1,6 +1,6 @@
+import { timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { timingSafeEqual } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import Fastify from "fastify";
 import {
@@ -9,23 +9,23 @@ import {
   type Config,
 } from "../../../packages/alerts/src/relative-volume.js";
 import {
-  ClosedMinutes,
-  normalize,
-  type RawBar,
-} from "../../../packages/market-data/src/bars.js";
+  AlpacaFeed,
+  type AlpacaFeedName,
+} from "../../../packages/market-data/src/alpaca.js";
+import { normalize } from "../../../packages/market-data/src/bars.js";
 import {
   newYork,
   previousSessions,
 } from "../../../packages/market-data/src/calendar.js";
 import { LiveEvaluator } from "../../../packages/market-data/src/evaluator.js";
-import { IbkrFeed } from "../../../packages/market-data/src/ibkr.js";
 import { MarketStore } from "../../../packages/market-data/src/store.js";
 
-const tickers: unknown = process.env.IBKR_SYMBOLS
-  ? process.env.IBKR_SYMBOLS.split(",").map((ticker) => ticker.trim())
+const enabled = process.env.ALPACA_ENABLED === "true";
+const tickers: unknown = process.env.ALPACA_SYMBOLS
+  ? process.env.ALPACA_SYMBOLS.split(",").map((ticker) => ticker.trim())
   : JSON.parse(
       readFileSync(
-        process.env.IBKR_WATCHLIST ?? "config/ibkr-watchlist.json",
+        process.env.ALPACA_WATCHLIST ?? "config/alpaca-watchlist.json",
         "utf8",
       ),
     );
@@ -39,9 +39,13 @@ if (
   new Set(tickers).size !== tickers.length
 )
   throw new Error("Watchlist must contain 1–50 distinct US stock symbols");
-const unit = process.env.IBKR_VOLUME_UNIT;
-if (unit !== "shares" && unit !== "lots")
-  throw new Error("Set IBKR_VOLUME_UNIT to match the Gateway's volume setting");
+const feed = process.env.ALPACA_FEED ?? "iex";
+if (!(["iex", "sip", "delayed_sip"] as string[]).includes(feed))
+  throw new Error("ALPACA_FEED must be iex, sip, or delayed_sip");
+const key = process.env.ALPACA_API_KEY ?? "";
+const secret = process.env.ALPACA_API_SECRET ?? "";
+if (enabled && (!key || !secret))
+  throw new Error("Set ALPACA_API_KEY and ALPACA_API_SECRET");
 const token = process.env.COLLECTOR_TOKEN;
 if (!token || token.length < 32)
   throw new Error("Set a random COLLECTOR_TOKEN of at least 32 characters");
@@ -50,34 +54,33 @@ const config: Config = {
   ...JSON.parse(process.env.RVOL_CONFIG ?? "{}"),
 };
 validateConfig(config);
-const dbPath = process.env.COLLECTOR_DB ?? "data/local/ibkr.sqlite";
+const dbPath = process.env.COLLECTOR_DB ?? "data/local/alpaca.sqlite";
 mkdirSync(dirname(dbPath), { recursive: true });
 const store = new MarketStore(dbPath);
 const api = Fastify({ logger: false });
 let stopping = false;
 let failure: string | null = null;
-let state = "connecting";
+let state = "starting";
 const symbols = new Map<
   string,
   { state: string; lastBar: string | null; evaluation: string | null }
 >();
-const feed = new IbkrFeed(
-  process.env.IBKR_HOST ?? "127.0.0.1",
-  Number(process.env.IBKR_PORT ?? 4001),
-  (message) => {
-    failure = message;
-    void stop(1);
-  },
-);
+const feedClient = enabled
+  ? new AlpacaFeed(key, secret, feed as AlpacaFeedName, (message) => {
+      failure = message;
+      void stop(1);
+    })
+  : null;
+
 async function stop(code: number) {
   if (stopping) return;
   stopping = true;
   state = "disconnected";
   console.error(JSON.stringify({ state, error: failure, exitCode: code }));
-  feed.close();
+  feedClient?.close();
   await api.close();
   store.close();
-  process.exit(code); // Supervisor restarts with a delay; never silent stale operation.
+  process.exit(code);
 }
 process.once("SIGINT", () => void stop(0));
 process.once("SIGTERM", () => void stop(0));
@@ -88,7 +91,8 @@ api.addHook("onRequest", async (request, reply) => {
     return reply.code(401).send({ error: "Unauthorized" });
 });
 api.get("/health", async () => ({
-  source: "ibkr",
+  source: "alpaca",
+  feed,
   state,
   failure,
   symbols: Object.fromEntries(
@@ -103,78 +107,68 @@ api.get("/health", async () => ({
     ]),
   ),
 }));
-api.get("/alerts", async () => ({ source: "ibkr", alerts: store.alerts() }));
+api.get("/alerts", async () => ({ source: "alpaca", alerts: store.alerts() }));
 
 async function collect() {
-  await feed.connect();
+  if (!feedClient) throw new Error("Alpaca collector is disabled");
   state = "warming-up";
+  const today = newYork(Date.now()).date;
+  const dates = previousSessions(today, config.days);
+  const from = dates[0]!;
+  const end = new Date();
+  end.setUTCDate(end.getUTCDate() + 1);
+  const evaluators = new Map<string, LiveEvaluator>();
+
   for (const ticker of tickers as string[]) {
-    const today = newYork(Date.now()).date;
-    const dates = previousSessions(today, config.days);
     symbols.set(ticker, {
       state: "warming-up",
       lastBar: null,
       evaluation: null,
     });
-    const cached = new Set(store.bars(ticker, dates[0]!).map((b) => b.date));
-    for (const date of dates) {
-      if (cached.has(date)) continue;
-      // 01:00 UTC on the following date is after all included US sessions.
-      const next = new Date(`${date}T01:00:00Z`);
-      next.setUTCDate(next.getUTCDate() + 1);
-      const end = `${next.toISOString().slice(0, 10).replaceAll("-", "")}-01:00:00`;
-      const rows = await feed.history(ticker, end);
-      for (const row of rows) {
-        const bar = normalize(ticker, row, unit as "shares" | "lots");
-        if (bar && Date.parse(bar.end) <= Date.now()) store.put(bar);
-      }
-      await delay(1200);
+    const cached = store.bars(ticker, from);
+    const cachedDates = new Set(cached.map((bar) => bar.date));
+    const firstMissing = dates.find((date) => !cachedDates.has(date));
+    const rows = await feedClient.history(
+      ticker,
+      `${firstMissing ?? today}T00:00:00Z`,
+      end.toISOString(),
+    );
+    for (const row of rows) {
+      const bar = normalize(ticker, row, "shares");
+      if (bar && Date.parse(bar.end) <= Date.now()) store.put(bar);
     }
-    const pending = new ClosedMinutes();
     const evaluator = new LiveEvaluator(config);
-    const buffered: RawBar[] = [];
-    let ready = false;
-    function update(raw: RawBar) {
-      try {
-        // Validate even the in-progress minute so malformed timestamps cannot
-        // poison the pending buffer and silently prevent all later closes.
-        normalize(ticker, raw, unit as "shares" | "lots");
-        if (!ready) {
-          buffered.push(raw);
-          return;
-        }
-        const closed = pending.push(raw);
-        if (!closed) return;
-        const bar = normalize(ticker, closed, unit as "shares" | "lots");
-        if (!bar) return;
-        store.put(bar);
-        const result = evaluator.push(bar, Date.now(), true);
-        symbols.set(ticker, {
-          state: "receiving",
-          lastBar: bar.end,
-          evaluation: result?.status ?? null,
-        });
-        if (result?.status === "alert") store.alert(result);
-      } catch {
-        failure = `Invalid market data for ${ticker}`;
-        void stop(1);
-      }
-    }
-    const recent = await feed.history(ticker, "", update);
-    for (const row of recent.sort((a, b) => a.start - b.start)) {
-      const bar = normalize(ticker, row, unit as "shares" | "lots");
-      if (bar && Date.parse(bar.end) < Date.now() - 5000) store.put(bar);
-      pending.push(row);
-    }
-    for (const bar of store.bars(ticker, dates[0]!))
+    for (const bar of store.bars(ticker, from))
       evaluator.push(bar, Date.now(), false);
-    ready = true;
-    for (const raw of buffered) update(raw);
-    symbols.get(ticker)!.state = "subscribed";
-    await delay(1200);
+    evaluators.set(ticker, evaluator);
+    symbols.get(ticker)!.state = "subscribing";
+    // A cold 20-session warmup usually paginates twice. This keeps the
+    // 50-symbol rollout below common REST request-per-minute limits.
+    await delay(800);
   }
+
+  await feedClient.stream(tickers as string[], (ticker, raw) => {
+    try {
+      const evaluator = evaluators.get(ticker);
+      const symbol = symbols.get(ticker);
+      if (!evaluator || !symbol) return;
+      const bar = normalize(ticker, raw, "shares");
+      if (!bar || Date.parse(bar.end) > Date.now()) return;
+      store.put(bar);
+      const result = evaluator.push(bar, Date.now(), true);
+      symbols.set(ticker, {
+        state: "receiving",
+        lastBar: bar.end,
+        evaluation: result?.status ?? null,
+      });
+      if (result?.status === "alert") store.alert(result);
+    } catch {
+      failure = `Invalid market data for ${ticker}`;
+      void stop(1);
+    }
+  });
   state = "subscribed";
-  // Retain 120 calendar days for investigations/replays, with bounded disk growth.
+  for (const symbol of symbols.values()) symbol.state = "subscribed";
   const prune = () =>
     store.prune(
       new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10),
@@ -188,10 +182,10 @@ try {
     host: process.env.COLLECTOR_HOST ?? "127.0.0.1",
     port: Number(process.env.PORT ?? 3002),
   });
-  if (process.env.IBKR_ENABLED === "true") {
+  if (enabled) {
     await collect();
   } else {
-    state = "awaiting-ibkr-activation";
+    state = "awaiting-alpaca-activation";
     console.log(JSON.stringify({ state, address: api.server.address() }));
   }
 } catch (error) {

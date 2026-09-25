@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 
 test(
-  "collector waits for activation, protects endpoints, and shuts down without IBKR",
+  "collector waits for activation, protects endpoints, and shuts down without Alpaca",
   { timeout: 10000 },
   async () => {
     const dir = mkdtempSync(join(tmpdir(), "collector-"));
@@ -21,10 +21,9 @@ test(
           ...process.env,
           PORT: "0",
           COLLECTOR_HOST: "127.0.0.1",
-          IBKR_ENABLED: "false",
-          IBKR_SYMBOLS: "AAPL",
-          IBKR_WATCHLIST: "/missing/watchlist.json",
-          IBKR_VOLUME_UNIT: "shares",
+          ALPACA_ENABLED: "false",
+          ALPACA_SYMBOLS: "AAPL",
+          ALPACA_WATCHLIST: "/missing/watchlist.json",
           COLLECTOR_TOKEN: token,
           COLLECTOR_DB: join(dir, "test.sqlite"),
         },
@@ -53,7 +52,9 @@ test(
       assert.equal((await fetch(`${url}/health`)).status, 401);
       const headers = { Authorization: `Bearer ${token}` };
       const health = await (await fetch(`${url}/health`, { headers })).json();
-      assert.equal(health.state, "awaiting-ibkr-activation");
+      assert.equal(health.source, "alpaca");
+      assert.equal(health.feed, "iex");
+      assert.equal(health.state, "awaiting-alpaca-activation");
       assert.deepEqual(health.symbols, {});
       const alerts = await (await fetch(`${url}/alerts`, { headers })).json();
       assert.deepEqual(alerts.alerts, []);

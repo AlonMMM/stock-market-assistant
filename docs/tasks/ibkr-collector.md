@@ -1,6 +1,6 @@
 # Task: IBKR market-data collector
 
-Status: Railway deployed in waiting mode; graphical IB Gateway deployment in progress
+Status: superseded by the Alpaca collector on 2026-09-25
 Owner: integration
 Branch: feat/ibkr-collector
 
