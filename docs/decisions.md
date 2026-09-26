@@ -16,7 +16,7 @@ Use a dependency-free Python script to check the foundation; this does not selec
 
 ## Pending
 
-Data provider, deployment, alert timing, and detailed product architecture remain undecided.
+Detailed product architecture remains incremental; later entries supersede earlier pending choices.
 
 ## 2026-09-13 — TypeScript and local Claude Code
 
@@ -47,3 +47,72 @@ Status: confirmed by user.
 Support parallel Claude Code sessions through `npm run session`. Each session has one explicit role, a dedicated `session/<id>` branch, a sibling Git worktree, and a non-overlapping web/API/E2E port block. The registry is local to the repository's common Git directory and is not product data.
 
 The initial roles are Product + UX, Backend, Frontend, and Integration / Review. Product + UX owns user flows and alert semantics; Backend owns contracts, ingestion, alert evaluation, and persistence; Frontend owns the website and interaction states; Integration / Review owns cross-role wiring, verification, and release readiness.
+
+## 2026-09-19 — IBKR data, up to 50 symbols
+
+Status: confirmed by user; runtime choices are reversible implementation decisions.
+
+Use existing IBKR API market-data entitlements for price and volume, initially up to 50
+US stocks at minute close. The user uses only mobile and authorized us to handle setup.
+Keep the existing private Sites replay site. Add a long-running Node collector beside
+IB Gateway, using the pinned community TypeScript TWS adapter and SQLite on persistent
+storage. No brokerage order or account-position operations are implemented. Runtime
+provisioning awaits a connected cloud account and direct user IBKR authentication.
+
+## 2026-09-20 — Browser Client Portal Gateway
+
+Status: superseded after live validation.
+
+Use IBKR's official Client Portal Gateway for browser SSO instead of publishing a remote
+Linux desktop. Keep an independent HTTP authentication layer around the proxy. The user
+enters brokerage credentials and completes 2FA only in IBKR's form. Authentication is
+manual and normally required daily. Do not automate credentials.
+
+The current TWS-protocol collector must remain disabled until its data adapter is replaced
+with the Client Portal Web API and validated against the authenticated account. A second
+IBKR username is the intended steady-state configuration so mobile trading and collection
+can coexist; the primary username may be used temporarily by explicit user choice.
+
+Live validation showed that publishing the login form through a public reverse proxy does
+not satisfy IBKR's same-machine authentication restriction. The form loaded, but login
+could not advance to 2FA. Do not restore this topology.
+
+## 2026-09-20 — Graphical IB Gateway and TWS API
+
+Status: superseded after phone usability and live-session validation.
+
+Run the official IB Gateway on Railway and expose only a Basic-Auth-protected noVNC page
+for interactive login from the user's phone. The graphical process and TWS API share the
+same runtime; the collector connects privately and remains read-only. Never automate or
+store brokerage credentials. A second IBKR username remains the intended steady state.
+
+OAuth 2.0 is unavailable to Individual accounts. Third-party OAuth 1.0a requires IBKR
+onboarding, compliance and legal approval and is not the immediate implementation path.
+
+## 2026-09-20 — Automated IB Gateway runtime
+
+Status: confirmed by user; supersedes the manually operated graphical runtime.
+
+Run the version-pinned `gnzsnz/ib-gateway` image with IBC automation. Configure API
+access as read-only, automatically accept incoming local API connections, retry expired
+2FA attempts and preserve settings on the Railway volume. The user supplies the IBKR
+username and password once through Railway secrets, never through chat or Git, and only
+approves IBKR Mobile 2FA afterward.
+
+The collector connects only through Railway private networking. An IPv6 listener on
+port 4001 bridges to the image's live-mode socat port 4003; neither port receives a
+public domain. Use a dedicated IBKR username so the Gateway does not compete with the
+user's mobile trading session.
+
+Status: superseded on 2026-09-25 by the Alpaca market-data decision below.
+
+## 2026-09-25 — Alpaca market data
+
+Status: confirmed by user.
+
+Replace IBKR and its Gateway runtime with Alpaca for price and volume data. Use Alpaca's
+historical stock-bars REST endpoint for warmup and its stock market-data WebSocket bars
+for live closed one-minute updates. Start with AAPL, then expand to the existing 50-symbol
+watchlist after live validation. Default to the IEX feed so basic access can run; allow
+SIP through configuration for accounts with that entitlement. Keep the integration
+strictly market-data-only and retain the existing provider-neutral evaluator and store.

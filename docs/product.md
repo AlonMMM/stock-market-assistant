@@ -23,7 +23,7 @@ Implement relative-volume alerts first: US stocks including extended hours, eval
 
 - Market coverage, ticker universe ownership, session/calendar behavior.
 - Seconds versus bar-close latency and historical data resolution.
-- Market-data provider, permissions, history depth, and budget.
+- Alpaca feed tier (IEX versus full-market SIP) and long-term data budget.
 - Hosting. The user selected TypeScript throughout, React for the web, and Node.js for the backend.
 - Phone delivery channel and authentication/multi-user needs.
 - Sector mapping, comparison benchmarks, and chart source.

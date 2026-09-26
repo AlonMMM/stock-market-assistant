@@ -1,0 +1,21 @@
+FROM node:24-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY apps/collector apps/collector
+COPY packages packages
+RUN npm run build:collector
+
+FROM node:24-bookworm-slim
+ENV NODE_ENV=production COLLECTOR_HOST=0.0.0.0 PORT=3002 COLLECTOR_DB=/data/alpaca.sqlite
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN apt-get update && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm ci --omit=dev && mkdir /data && chown node:node /data
+COPY --from=build /app/dist/collector.mjs ./collector.mjs
+COPY config/alpaca-watchlist.json ./config/alpaca-watchlist.json
+COPY deploy/collector/start.sh /usr/local/bin/start-collector
+RUN chmod +x /usr/local/bin/start-collector
+EXPOSE 3002
+CMD ["start-collector"]
