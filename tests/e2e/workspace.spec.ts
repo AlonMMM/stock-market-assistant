@@ -1,5 +1,20 @@
 import { expect, test } from "@playwright/test";
 
+test("relative-volume demo responds to configuration changes", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Run replay" }).click();
+  await expect(
+    page.getByRole("heading", { name: "NVDA · 3.4× volume" }),
+  ).toBeVisible();
+  await page.getByLabel("Alert ratio").fill("6");
+  await page.getByRole("button", { name: "Run replay" }).click();
+  await expect(
+    page.getByText("No alerts matched these settings."),
+  ).toBeVisible();
+});
+
 test("website connects through the proxy to the real API", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("status")).toHaveText("Workspace connected");
