@@ -1,13 +1,13 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { Evaluation } from "../../../packages/alerts/src/relative-volume.js";
+import { AlertCard, number } from "./AlertCard.js";
 type Result = {
   source: string;
   evaluated: number;
   alerts: Evaluation[];
   diagnostics: Record<string, number>;
 };
-const number = (n: number) => n.toLocaleString("en-US");
-export function VolumeReplay() {
+export function VolumeReplay({ modes }: { modes: ReactNode }) {
   const [threshold, setThreshold] = useState(3);
   const [minimum, setMinimum] = useState(10000);
   const [cooldown, setCooldown] = useState(15);
@@ -60,10 +60,7 @@ export function VolumeReplay() {
       </header>
       <h1>Relative volume</h1>
       <p className="lede">Find activity unusual for this time of day.</p>
-      <nav className="modes" aria-label="Data mode">
-        <span className="selected">▶ Replay</span>
-        <button disabled>Live · Coming soon</button>
-      </nav>
+      {modes}
       <p className="method">
         5-minute volume / same-time median · 20 prior sessions
       </p>
@@ -195,69 +192,7 @@ export function VolumeReplay() {
               <p className="notice">No alerts matched these settings.</p>
             )}
             {result.alerts.map((a) => (
-              <article className="volume-alert" key={a.ticker + a.end}>
-                <h3
-                  aria-label={
-                    a.ticker + " · " + a.ratio?.toFixed(1) + "× volume"
-                  }
-                >
-                  {a.ticker}
-                </h3>
-                <p className="session">
-                  {a.session === "regular"
-                    ? "Regular session"
-                    : a.session === "pre"
-                      ? "Pre-market"
-                      : "After-hours"}{" "}
-                  ·{" "}
-                  {new Date(a.end).toLocaleString("en-US", {
-                    timeZone: "America/New_York",
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}{" "}
-                  ET
-                </p>
-                <div className="metrics">
-                  <strong className="ratio">{a.ratio?.toFixed(1)}×</strong>
-                  <div className="metric">
-                    <strong>{number(a.actual)}</strong>
-                    <small>Actual shares</small>
-                  </div>
-                  <div className="metric">
-                    <strong>{number(a.expected ?? 0)}</strong>
-                    <small>Expected shares</small>
-                  </div>
-                </div>
-                <div aria-hidden="true">
-                  <div className="bar-row">
-                    <span>Actual ({number(a.actual)})</span>
-                    <div className="bar-track">
-                      <div className="bar" style={{ width: "100%" }} />
-                    </div>
-                  </div>
-                  <div className="bar-row">
-                    <span>Expected ({number(a.expected ?? 0)})</span>
-                    <div className="bar-track">
-                      <div
-                        className="bar expected"
-                        style={{
-                          width: ((a.expected ?? 0) / a.actual) * 100 + "%",
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-                <p className="reason">
-                  Volume crossed your {a.config.threshold.toFixed(1)}×
-                  threshold.
-                </p>
-                <p className="evidence">
-                  {a.samples} historical samples · Rule v1 · {a.config.cooldown}{" "}
-                  min cooldown
-                </p>
-              </article>
+              <AlertCard alert={a} key={a.ticker + a.end} />
             ))}
             <details>
               <summary>Data quality &amp; suppressed signals</summary>

@@ -5,6 +5,7 @@ import {
   type Config,
 } from "../../../packages/alerts/src/relative-volume.js";
 import { demoBars } from "../../../packages/alerts/src/demo.js";
+import { handleBacktest } from "../../../packages/market-data/src/backtest.js";
 
 declare const __STATIC_ASSETS__: Record<
   string,
@@ -12,8 +13,35 @@ declare const __STATIC_ASSETS__: Record<
 >;
 
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: { ALPACA_API_KEY?: string; ALPACA_API_SECRET?: string } = {},
+  ): Promise<Response> {
     const path = new URL(request.url).pathname;
+    if (path === "/api/backtest") {
+      if (request.method !== "POST")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "POST" },
+        });
+      let body: unknown;
+      try {
+        const text = await request.text();
+        if (text.length > 65536)
+          return Response.json({ error: "Request too large" }, { status: 413 });
+        body = JSON.parse(text);
+      } catch {
+        return Response.json(
+          { error: "Expected JSON object" },
+          { status: 400 },
+        );
+      }
+      const result = await handleBacktest(body, {
+        key: env.ALPACA_API_KEY,
+        secret: env.ALPACA_API_SECRET,
+      });
+      return Response.json(result.body, { status: result.status });
+    }
     if (path === "/api/health")
       return Response.json({
         status: "ok",
