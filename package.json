@@ -17,7 +17,6 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run format:check && npm run typecheck && npm test && npm run build",
-    "test:e2e": "playwright test",
     "doctor": "node scripts/doctor.mjs",
     "session": "node scripts/session.mjs",
     "start:collector": "node --import tsx apps/collector/src/main.ts",
@@ -29,7 +28,6 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0",
     "@types/node": "24.13.4",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

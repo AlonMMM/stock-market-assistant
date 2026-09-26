@@ -22,9 +22,9 @@ Document conflicting or stale information instead of silently picking an interpr
 - Runtime now: `npm ci`, `npm run dev`, and `npm run check`; see development.md.
 - First alert: positive, negative, boundary, repeated-event, and session-reset examples based on an approved rule contract.
 - Historical replay: deterministic clock, no future data leakage, explicit data limitations.
-- UI now: `npm run test:e2e` covers real API connectivity and failure/retry. Extend it for future user paths.
+- UI now: no automated browser tests (removed for now). Verify UI changes manually and cover logic with Node tests.
 - External services: synthetic fixtures by default; opt-in integration verification with secrets outside Git.
-- CI: the runtime workflow installs locked dependencies and runs checks plus browser tests. Verify a run's result before claiming it passed.
+- CI: the runtime workflow installs locked dependencies and runs doctor and checks. Verify a run's result before claiming it passed.
 
 ## Extending the harness
 

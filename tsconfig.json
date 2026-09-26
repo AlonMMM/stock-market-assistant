@@ -13,7 +13,6 @@
     "apps/api/src/**/*.ts",
     "packages/**/*.ts",
     "tests/**/*.ts",
-    "playwright.config.ts",
     "apps/collector/src/**/*.ts"
   ]
 }

@@ -19,7 +19,7 @@ Current state, active task handoffs, relevant product specs, contracts, decision
 1. Define task owners and spec/contract revisions before parallel implementation.
 2. Review contributions against acceptance criteria, not just successful compilation.
 3. Resolve conflicting semantics with the user/affected owner and document the decision.
-4. Assemble authorized changes on an integration branch; run contract/API/browser checks relevant to the combined result.
+4. Assemble authorized changes on an integration branch; run contract/API checks relevant to the combined result.
 5. Update global state from committed handoffs and give the user the PRs in dependency order.
 
 ## Boundaries

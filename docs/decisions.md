@@ -30,9 +30,9 @@ Status: implementation choice; reversible.
 
 Use Node.js 24, npm with a committed lockfile, React/Vite, and Fastify.
 Keep one root package with separate app directories and a small shared contract module.
-Use TypeScript checks, Node tests via tsx, Prettier, and Playwright for real browser/API feedback.
+Use TypeScript checks, Node tests via tsx, and Prettier. Playwright browser tests were removed for now to keep the harness lean; reintroduce them when UI flows need automated coverage.
 No database or data provider is selected. The connection screen is a development smoke path, not the trading dashboard design.
-The Node doctor replaces Python as the normal scaffold verification entry point; the original Python script remains available for the initial context checks.
+The Node doctor replaces Python as the normal scaffold verification entry point; the original Python script was removed.
 
 ## 2026-09-13 — Load context by task
 

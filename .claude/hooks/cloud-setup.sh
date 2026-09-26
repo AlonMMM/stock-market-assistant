@@ -1,5 +1,5 @@
 #!/bin/bash
-# Prepare Claude Code on the web containers so doctor/check/e2e can run.
+# Prepare Claude Code on the web containers so doctor/check can run.
 # Local sessions are untouched: developers manage Node and npm ci themselves.
 set -euo pipefail
 
@@ -26,9 +26,3 @@ fi
 
 # npm install (not ci) reuses the cached container's node_modules.
 npm install --no-audit --no-fund >&2
-
-# Use the preinstalled Chromium; its build may differ from the pinned
-# Playwright version, so point at the executable (see playwright.config.ts).
-if [ -n "${CLAUDE_ENV_FILE:-}" ] && [ -x /opt/pw-browsers/chromium ]; then
-  echo 'export SMA_CHROMIUM_PATH=/opt/pw-browsers/chromium' >>"$CLAUDE_ENV_FILE"
-fi
