@@ -71,7 +71,13 @@ export class AlpacaFeed {
     private streamUrl = "wss://stream.data.alpaca.markets",
   ) {}
 
-  async history(ticker: string, start: string, end: string): Promise<RawBar[]> {
+  async history(
+    ticker: string,
+    start: string,
+    end: string,
+    timeframe: "1Min" | "1Day" = "1Min",
+    adjustment: "raw" | "split" = "raw",
+  ): Promise<RawBar[]> {
     const rows: RawBar[] = [];
     let pageToken: string | undefined;
     do {
@@ -79,10 +85,10 @@ export class AlpacaFeed {
         `/v2/stocks/${encodeURIComponent(ticker)}/bars`,
         this.restUrl,
       );
-      url.searchParams.set("timeframe", "1Min");
+      url.searchParams.set("timeframe", timeframe);
       url.searchParams.set("start", start);
       url.searchParams.set("end", end);
-      url.searchParams.set("adjustment", "raw");
+      url.searchParams.set("adjustment", adjustment);
       url.searchParams.set("feed", this.feed);
       url.searchParams.set("sort", "asc");
       url.searchParams.set("limit", "10000");

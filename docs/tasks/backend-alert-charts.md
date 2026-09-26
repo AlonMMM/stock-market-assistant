@@ -17,16 +17,26 @@ are in Israel time (see [product](../product.md#display-conventions)).
 `POST /api/day-chart` `{ "ticker": "AAPL", "date": "2026-09-24" }` (US session date)
 returns `series[]`: the ticker, then SPY (omitted when the ticker is SPY), each with
 `previousClose` (last regular bar of the previous session, or null) and `bars[]` of
-`{ start (Unix s, UTC), session, close, volume }`. Same SIP source, 15-minute cutoff,
+`{ start (Unix s, UTC), session, open, close, volume }`, plus
+`beta: { value, returns, lookback }`. Same SIP source, 15-minute cutoff,
 400/502/503 behavior and Worker/local parity as `/api/backtest`.
 
-## Decisions (defaults, not user-confirmed)
+## Decisions
+
+User-confirmed (2026-09-26): SPY is drawn as SPY % change × the ticker's beta. Beta is
+the OLS slope of daily close-to-close returns (split-adjusted SIP daily bars) on SPY's
+over the 60 trading sessions before the chart day; it needs at least 40 paired
+returns, otherwise the chart shows SPY unscaled and says so. Volume bars are green for
+an up minute and red for a down one (close vs open), strong inside the alert window.
+
+Defaults, not user-confirmed:
 
 - % change base: previous regular close; first trade of the day when unavailable.
 - One % axis for both symbols (no dual price axis); volume in its own pane.
 - Charts only for Backtest alerts; Replay data is synthetic.
 - Library: TradingView Lightweight Charts 5.2.1 (lazy-loaded chunk, ~58 kB gzip).
 - Bars are labeled by their close minute, matching alert timestamps.
+- The chart opens on one hour either side of the alert; pinch/scroll shows the day.
 
 ## Verification evidence
 

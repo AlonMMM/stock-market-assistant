@@ -5,14 +5,19 @@ import {
   type Credentials,
   type History,
 } from "./backtest.js";
-import { normalize } from "./bars.js";
-import { coreClose, previousSessions } from "./calendar.js";
+import { normalize, type RawBar } from "./bars.js";
+import { coreClose, newYork, previousSessions } from "./calendar.js";
 
 export const benchmark = "SPY";
+// Beta: OLS slope of the ticker's daily close-to-close returns on SPY's over
+// the 60 trading sessions before the chart day (user-confirmed 2026-09-26).
+export const betaReturns = 60;
+const betaMinimumReturns = 40;
 
 export interface ChartBar {
   start: number; // bar start, Unix seconds (UTC)
   session: "pre" | "regular" | "post";
+  open: number;
   close: number;
   volume: number;
 }
@@ -30,6 +35,8 @@ export interface DayChart {
   feed: "sip";
   date: string;
   series: ChartSeries[]; // requested ticker first, then the benchmark
+  // Ticker beta vs SPY; null for SPY itself or with too few paired returns.
+  beta: { value: number | null; returns: number; lookback: number };
 }
 
 export class DayChartInputError extends Error {}
@@ -53,12 +60,52 @@ function parse(input: unknown) {
   return { ticker, date: date as string };
 }
 
+function dailyCloses(rows: RawBar[]): Map<string, number> {
+  const closes = new Map<string, number>();
+  for (const row of rows)
+    if (Number.isFinite(row.close) && row.close > 0)
+      closes.set(newYork(row.start * 1000).date, row.close);
+  return closes;
+}
+
+/** Beta from daily closes on consecutive sessions present for both symbols. */
+export function dailyBeta(
+  sessions: string[],
+  ticker: RawBar[],
+  market: RawBar[],
+): { value: number | null; returns: number } {
+  const a = dailyCloses(ticker);
+  const m = dailyCloses(market);
+  const x: number[] = [];
+  const y: number[] = [];
+  for (let i = 1; i < sessions.length; i++) {
+    const [p, d] = [sessions[i - 1]!, sessions[i]!];
+    const [a0, a1, m0, m1] = [a.get(p), a.get(d), m.get(p), m.get(d)];
+    if (a0 && a1 && m0 && m1) {
+      y.push(a1 / a0 - 1);
+      x.push(m1 / m0 - 1);
+    }
+  }
+  const n = x.length;
+  if (n < betaMinimumReturns) return { value: null, returns: n };
+  const mx = x.reduce((s, v) => s + v, 0) / n;
+  const my = y.reduce((s, v) => s + v, 0) / n;
+  let cov = 0;
+  let variance = 0;
+  for (let i = 0; i < n; i++) {
+    cov += (x[i]! - mx) * (y[i]! - my);
+    variance += (x[i]! - mx) ** 2;
+  }
+  return { value: variance > 0 ? cov / variance : null, returns: n };
+}
+
 // One trading day of minute bars (pre-market through after-hours) for a ticker
-// and SPY, plus each symbol's previous regular close.
+// and SPY, each symbol's previous regular close, and the ticker's beta.
 export async function runDayChart(
   input: unknown,
   history: History,
   now = Date.now(),
+  daily: History = async () => [],
 ): Promise<DayChart> {
   const { ticker, date } = parse(input);
   let previous: string;
@@ -77,13 +124,33 @@ export async function runDayChart(
   if (Date.parse(start) >= end)
     throw new DayChartInputError("That day has no data yet");
   const tickers = ticker === benchmark ? [ticker] : [ticker, benchmark];
-  const rows = await Promise.all(
-    tickers.map((t) => history(t, start, new Date(end).toISOString())),
-  );
+  let betaSessions: string[] = [];
+  try {
+    betaSessions = previousSessions(date, betaReturns + 1);
+  } catch {
+    // Outside calendar coverage: beta is reported as unavailable.
+  }
+  const [rows, dailyRows] = await Promise.all([
+    Promise.all(
+      tickers.map((t) => history(t, start, new Date(end).toISOString())),
+    ),
+    tickers.length === 2 && betaSessions.length > 0
+      ? Promise.all(
+          // Ends at the chart day's midnight UTC, before its daily bar: no look-ahead.
+          tickers.map((t) =>
+            daily(t, `${betaSessions[0]}T00:00:00Z`, `${date}T00:00:00Z`),
+          ),
+        )
+      : null,
+  ]);
+  const beta = dailyRows
+    ? dailyBeta(betaSessions, dailyRows[0]!, dailyRows[1]!)
+    : { value: null, returns: 0 };
   return {
     source: "alpaca",
     feed: "sip",
     date,
+    beta: { ...beta, lookback: betaReturns },
     series: tickers.map((t, index) => {
       const bars: ChartBar[] = [];
       let previousClose: number | null = null;
@@ -96,6 +163,7 @@ export async function runDayChart(
           bars.push({
             start: row.start,
             session: bar.session,
+            open: bar.open,
             close: bar.close,
             volume: bar.volume,
           });
@@ -131,6 +199,8 @@ export async function handleDayChart(
         body,
         (ticker, start, end) => feed.history(ticker, start, end),
         now,
+        (ticker, start, end) =>
+          feed.history(ticker, start, end, "1Day", "split"),
       ),
     };
   } catch (error) {

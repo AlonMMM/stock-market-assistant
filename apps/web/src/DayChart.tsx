@@ -22,12 +22,14 @@ import {
   usSessionDate,
 } from "./time.js";
 
-// Categorical slots 1–2 of the validated dataviz palette; volume uses a light
-// step of the ticker's hue, and the alert window the full hue.
+// Categorical slots 1–2 of the validated dataviz palette for the lines. Volume
+// follows the trading convention: green for an up minute, red for a down one,
+// at full strength inside the alert window and muted elsewhere.
 const colors = {
   ticker: "#2a78d6",
   benchmark: "#eb6834",
-  volume: "#b7d3f6",
+  up: ["#16a34a", "rgba(22, 163, 74, 0.45)"],
+  down: ["#dc2626", "rgba(220, 38, 38, 0.45)"],
   surface: "#fafbf8",
   text: "#52514e",
   grid: "#e7ece6",
@@ -65,11 +67,15 @@ const sessionName = {
   post: "After-hours",
 };
 
+const label = (data: DayChartData | null) =>
+  data?.beta.value == null ? "SPY" : `SPY × β ${data.beta.value.toFixed(2)}`;
+
 interface Point {
   time: UTCTimestamp;
   instant: number; // ms, bar close (alerts are stamped at minute close)
   percent: number;
   close: number;
+  up: boolean;
   volume: number;
   session: keyof typeof sessionName;
 }
@@ -83,6 +89,7 @@ function points(series: ChartSeries): Point[] {
     instant: (b.start + 60) * 1000,
     percent: (b.close / reference - 1) * 100,
     close: b.close,
+    up: b.close >= b.open,
     volume: b.volume,
     session: b.session,
   }));
@@ -91,7 +98,7 @@ function points(series: ChartSeries): Point[] {
 interface Readout {
   time: number;
   session: string;
-  rows: { ticker: string; percent: number; close: number; color: string }[];
+  rows: { label: string; percent: number; detail: string; color: string }[];
   volume: number;
 }
 
@@ -168,6 +175,9 @@ export function DayChart({
       crosshairMarkerRadius: 4,
     });
     tickerLine.setData(m.map((p) => ({ time: p.time, value: p.percent })));
+    // SPY is scaled by the ticker's beta, so the dashed line is the move the
+    // market explains and the gap to the ticker line is the ticker's own move.
+    const beta = data.beta.value ?? 1;
     const b = bench ? points(bench) : null;
     if (b) {
       const benchLine = chart.addSeries(LineSeries, {
@@ -178,7 +188,9 @@ export function DayChart({
         priceLineVisible: false,
         crosshairMarkerRadius: 4,
       });
-      benchLine.setData(b.map((p) => ({ time: p.time, value: p.percent })));
+      benchLine.setData(
+        b.map((p) => ({ time: p.time, value: p.percent * beta })),
+      );
     }
     const windowStart = alertMs - window * 60000;
     const volume = chart.addSeries(
@@ -194,14 +206,13 @@ export function DayChart({
       m.map((p) => ({
         time: p.time,
         value: p.volume,
-        color:
-          p.instant > windowStart && p.instant <= alertMs
-            ? colors.ticker
-            : colors.volume,
+        color: (p.up ? colors.up : colors.down)[
+          p.instant > windowStart && p.instant <= alertMs ? 0 : 1
+        ],
       })),
     );
     chart.panes()[0]?.setStretchFactor(3);
-    chart.panes()[1]?.setStretchFactor(1);
+    chart.panes()[1]?.setStretchFactor(1.6);
     const alertBar = m.find((p) => p.instant === alertMs);
     if (alertBar)
       createSeriesMarkers(tickerLine, [
@@ -213,7 +224,17 @@ export function DayChart({
           text: `Alert ${israelClock(alertMs)}`,
         },
       ]);
-    chart.timeScale().fitContent();
+    // Open on two hours around the alert so minute volume bars stay legible;
+    // pinch or scroll zooms out to the whole day.
+    // Applied after the first layout; autoSize would otherwise shift it.
+    const frame = requestAnimationFrame(() =>
+      alertBar
+        ? chart.timeScale().setVisibleRange({
+            from: (alertBar.time - 3600) as UTCTimestamp,
+            to: (alertBar.time + 3600) as UTCTimestamp,
+          })
+        : chart.timeScale().fitContent(),
+    );
 
     const benchByTime = new Map(b?.map((p) => [p.time, p]));
     const readoutAt = (p: Point): Readout => {
@@ -224,17 +245,20 @@ export function DayChart({
         volume: p.volume,
         rows: [
           {
-            ticker: main.ticker,
+            label: main.ticker,
             percent: p.percent,
-            close: p.close,
+            detail: `$${p.close.toFixed(2)}`,
             color: colors.ticker,
           },
           ...(q && bench
             ? [
                 {
-                  ticker: bench.ticker,
-                  percent: q.percent,
-                  close: q.close,
+                  label: label(data),
+                  percent: q.percent * beta,
+                  detail:
+                    data.beta.value === null
+                      ? `$${q.close.toFixed(2)}`
+                      : `(SPY ${signed(q.percent)}%)`,
                   color: colors.benchmark,
                 },
               ]
@@ -250,6 +274,7 @@ export function DayChart({
     };
     chart.subscribeCrosshairMove(onMove);
     return () => {
+      cancelAnimationFrame(frame);
       chart.unsubscribeCrosshairMove(onMove);
       chart.remove();
     };
@@ -257,6 +282,7 @@ export function DayChart({
 
   const shown = readout ?? latest;
   const main = data?.series[0];
+  const benchLabel = label(data);
   const base = main?.previousClose === null ? "first trade" : "previous close";
   return (
     <figure className="day-chart" aria-busy={!data && !error}>
@@ -279,9 +305,12 @@ export function DayChart({
                       borderColor: i === 0 ? colors.ticker : colors.benchmark,
                     }}
                   />
-                  {s.ticker}
+                  {i === 0 ? s.ticker : benchLabel}
                 </span>
               ))}
+              {data.series[1] && data.beta.value === null && (
+                <span>β unavailable, SPY unscaled</span>
+              )}
               <span>% vs {base}</span>
             </span>
             {shown && (
@@ -290,10 +319,9 @@ export function DayChart({
                   {israelClock(shown.time)} {israelLabel} · {shown.session}
                 </span>
                 {shown.rows.map((r) => (
-                  <span key={r.ticker}>
+                  <span key={r.label}>
                     <i className="key" style={{ borderColor: r.color }} />
-                    <strong>{signed(r.percent)}%</strong> {r.ticker} $
-                    {r.close.toFixed(2)}
+                    <strong>{signed(r.percent)}%</strong> {r.label} {r.detail}
                   </span>
                 ))}
                 <span>
@@ -306,7 +334,7 @@ export function DayChart({
             className="chart-canvas"
             ref={host}
             role="img"
-            aria-label={`${ticker}${data.series[1] ? " and SPY" : ""} percent change and ${ticker} one-minute volume on ${date}, times in ${israelLabel}`}
+            aria-label={`${ticker}${data.series[1] ? ` and ${benchLabel}` : ""} percent change and ${ticker} one-minute volume on ${date}, times in ${israelLabel}`}
           />
         </>
       )}
