@@ -48,8 +48,13 @@ Keep the allow-list to the owner until the Alpaca agreement is checked.
 
 `tests/access.test.ts` covers valid header/cookie tokens and rejects missing, malformed,
 expired, wrong-audience, wrong-issuer, email-less, wrong-key and unknown-kid tokens,
-plus incomplete configuration. Not yet run: the agent sandbox has no network access to
-install dependencies. `npm run check` must be run locally before merge.
+plus incomplete configuration. `npm run check` passed locally (30 tests, build).
+
+2026-09-26: first deploy with placeholder Access values (fails closed) to
+https://stock-market-assistant.stock-market-assistant.workers.dev (version
+f6a948f9). The HTTP 401 response was not confirmed from the development Mac: its
+network fails TLS to that host (curl exit 35). The Wrangler OAuth token has no Access
+scope, so the Access application must be created in the dashboard.
 
 ## Handoff
 
