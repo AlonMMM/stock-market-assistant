@@ -7,7 +7,7 @@ Load only the selected role's document in addition to AGENTS.md and current stat
 | -------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------- |
 | [Product + UX](product-ux.md)          | User problem, scope, flows, acceptance criteria               | Feature spec, interaction states, mockups               |
 | [Backend](backend.md)                  | API, event processing, persistence when selected              | Implementation, deterministic tests, contract proposals |
-| [Frontend](frontend.md)                | Web interface and interactions                                | Accessible UI, browser tests, screenshots               |
+| [Frontend](frontend.md)                | Web interface and interactions                                | Accessible UI, screenshots                              |
 | [Integration / Review](integration.md) | Shared contracts, cross-cutting decisions, integration review | Review findings, verified integration, global state     |
 
 ## Shared agreement

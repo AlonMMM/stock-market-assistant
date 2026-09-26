@@ -1,11 +1,35 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(npm run doctor)",
+      "Bash(npm run check)",
+      "Bash(npm run format:check)",
+      "Bash(npm run typecheck)",
+      "Bash(npm test)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "ask": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "mcp__Interactive_Brokers_IBKR__create_order_instruction",
+      "mcp__Interactive_Brokers_IBKR__delete_order_instruction"
+    ],
+    "deny": ["Read(./.env)", "Read(./.env.*)", "Edit(./.env)", "Edit(./.env.*)"]
+  },
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/session-start.mjs"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/cloud-setup.sh"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/scripts/session-start.mjs"
           }
         ]
       }

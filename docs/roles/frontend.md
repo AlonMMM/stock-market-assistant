@@ -13,7 +13,7 @@ The assigned task, accepted feature/UX spec, shared contract revision, apps/web,
 - Responsive interface, interaction state, navigation, accessibility, and browser behavior.
 - Explicit live/delayed/synthetic data labels and meaningful loading, empty, stale, and error states.
 - Frontend fixtures that match the agreed contract and remain clearly separated from live data.
-- Browser tests for meaningful user flows and screenshots for visual review.
+- Screenshots for visual review; automated browser tests are currently out of scope.
 
 ## Working loop
 

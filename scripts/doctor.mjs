@@ -52,5 +52,5 @@ if (errors.length) {
   process.exitCode = 1;
 } else
   console.log(
-    "PASS: Node 24, Git, installed dependencies, and context links. Next: npm run check and npm run test:e2e.",
+    "PASS: Node 24, Git, installed dependencies, and context links. Next: npm run check.",
   );

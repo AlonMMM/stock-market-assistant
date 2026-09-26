@@ -20,11 +20,7 @@ Open http://127.0.0.1:5173. Both servers run in the terminal; Ctrl+C stops them.
 
 ```sh
 npm run check
-npx playwright install chromium
-npm run test:e2e
 ```
-
-Stop `npm run dev` before E2E: the tests start their own servers on ports 3001 and 5173.
 
 ## Work with Claude Code
 
