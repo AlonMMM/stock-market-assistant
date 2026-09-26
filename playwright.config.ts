@@ -31,5 +31,16 @@ export default defineConfig({
       reuseExistingServer: false,
     },
   ],
-  projects: [{ name: "chromium", use: { browserName: "chromium" } }],
+  projects: [
+    {
+      name: "chromium",
+      use: {
+        browserName: "chromium",
+        // Optional: reuse a preinstalled browser (e.g. in cloud containers).
+        launchOptions: process.env.SMA_CHROMIUM_PATH
+          ? { executablePath: process.env.SMA_CHROMIUM_PATH }
+          : {},
+      },
+    },
+  ],
 });

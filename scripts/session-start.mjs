@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 
 const sessionPath = ".sma-session.json";
 let additionalContext =
-  "This is the stock-market-assistant repository. Before substantive work, ask the user in Hebrew: באיזה כובע עובדים בסשן הזה — Product + UX, Backend, Frontend או Integration / Review? Ask only once and retain the answer for the conversation.";
+  "This is the stock-market-assistant repository. Before substantive work in an interactive conversation, ask the user in Hebrew: באיזה כובע עובדים בסשן הזה — Product + UX, Backend, Frontend או Integration / Review? Ask only once and retain the answer for the conversation. Read-only questions about the repository can be answered without a role. For unattended tasks, infer the narrowest suitable role and state the assumption instead of asking.";
 
 if (existsSync(sessionPath)) {
   try {

@@ -10,6 +10,12 @@
 
 No environment file, cloud account, API key, or Python installation is needed for the normal workflow.
 
+## Claude Code on the web
+
+`.claude/hooks/cloud-setup.sh` runs at session start only when `CLAUDE_CODE_REMOTE=true`. It installs the `.nvmrc` Node version through nvm when needed, runs `npm install`, and sets `SMA_CHROMIUM_PATH` so Playwright uses the container's preinstalled Chromium. That variable works anywhere to reuse an existing Chromium executable. Local sessions skip it.
+
+`.claude/settings.json` also pre-approves the verification commands, asks before force-pushes and IBKR order instructions, and blocks reading or editing `.env` files.
+
 ## Commands
 
 | Command                           | Purpose                                                             |
