@@ -6,6 +6,7 @@ import {
 } from "../../../packages/alerts/src/relative-volume.js";
 import { demoBars } from "../../../packages/alerts/src/demo.js";
 import { handleBacktest } from "../../../packages/market-data/src/backtest.js";
+import { verifyAccess } from "./access.js";
 
 declare const __STATIC_ASSETS__: Record<
   string,
@@ -15,8 +16,25 @@ declare const __STATIC_ASSETS__: Record<
 export default {
   async fetch(
     request: Request,
-    env: { ALPACA_API_KEY?: string; ALPACA_API_SECRET?: string } = {},
+    env: {
+      ALPACA_API_KEY?: string;
+      ALPACA_API_SECRET?: string;
+      ACCESS_TEAM_DOMAIN?: string;
+      ACCESS_AUD?: string;
+    } = {},
   ): Promise<Response> {
+    // Access protection is enabled by configuration; without both values the
+    // Worker stays open (local tests, the owner-private Sites publication).
+    if (env.ACCESS_TEAM_DOMAIN || env.ACCESS_AUD) {
+      if (!env.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUD)
+        return new Response("Access is misconfigured", { status: 500 });
+      const identity = await verifyAccess(request, {
+        teamDomain: env.ACCESS_TEAM_DOMAIN.replace(/\/+$/, ""),
+        audience: env.ACCESS_AUD,
+      }).catch(() => null);
+      if (!identity)
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const path = new URL(request.url).pathname;
     if (path === "/api/backtest") {
       if (request.method !== "POST")

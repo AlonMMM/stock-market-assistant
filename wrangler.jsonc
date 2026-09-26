@@ -1,0 +1,19 @@
+// Cloudflare Worker for the website and its API (apps/api/src/worker.ts).
+// The long-running collector is deployed separately (Dockerfile.collector).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "stock-market-assistant",
+  "main": "dist/server/index.js",
+  "compatibility_date": "2026-09-01",
+  "build": { "command": "npm run build" },
+  // Preview URLs are not covered by the Access application; keep them off.
+  "preview_urls": false,
+  "vars": {
+    // Filled in from the Zero Trust Access application. The Worker rejects
+    // every request (401) until these match a real Access application.
+    "ACCESS_TEAM_DOMAIN": "https://REPLACE_ME.cloudflareaccess.com",
+    "ACCESS_AUD": "REPLACE_ME",
+  },
+  // ALPACA_API_KEY and ALPACA_API_SECRET are Worker secrets:
+  //   npx wrangler secret put ALPACA_API_KEY
+}
