@@ -6,8 +6,7 @@ const team = "https://example-team.cloudflareaccess.com";
 const aud = "test-audience";
 const env = { ACCESS_TEAM_DOMAIN: team, ACCESS_AUD: aud };
 
-const encode = (bytes: Uint8Array) =>
-  Buffer.from(bytes).toString("base64url");
+const encode = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64url");
 const encodeJson = (value: unknown) =>
   encode(new TextEncoder().encode(JSON.stringify(value)));
 

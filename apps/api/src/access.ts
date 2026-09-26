@@ -13,7 +13,10 @@ export interface AccessIdentity {
 
 type Jwk = JsonWebKey & { kid?: string };
 
-const keyCache = new Map<string, { keys: Map<string, CryptoKey>; at: number }>();
+const keyCache = new Map<
+  string,
+  { keys: Map<string, CryptoKey>; at: number }
+>();
 const keyTtl = 10 * 60000;
 
 function base64url(input: string): Uint8Array<ArrayBuffer> {
