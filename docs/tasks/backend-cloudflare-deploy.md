@@ -57,8 +57,7 @@ network fails TLS to that host (curl exit 35). The Wrangler OAuth token has no A
 scope, so the Access application must be created in the dashboard.
 
 Second deploy (version fa46c4fe) with team `broad-boat-f733` and the application AUD.
-Unauthenticated requests now get a 302 to the Access login; the certs endpoint returns
-200. Alpaca secrets are not yet set, so backtest returns 503.
+Unauthenticated requests now get a 302 to the Access login; the certs endpoint returns 200. Alpaca secrets are not yet set, so backtest returns 503.
 
 ## Handoff
 

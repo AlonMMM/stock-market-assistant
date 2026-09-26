@@ -87,7 +87,8 @@ export class AlpacaFeed {
       url.searchParams.set("sort", "asc");
       url.searchParams.set("limit", "10000");
       if (pageToken) url.searchParams.set("page_token", pageToken);
-      const response = await this.fetcher(url, {
+      // Workers reject fetch invoked with a foreign `this` ("Illegal invocation").
+      const response = await this.fetcher.call(globalThis, url, {
         headers: {
           "APCA-API-KEY-ID": this.key,
           "APCA-API-SECRET-KEY": this.secret,

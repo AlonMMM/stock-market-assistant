@@ -152,3 +152,17 @@ test("Alpaca adapter rejects REST errors without exposing response bodies", asyn
     /^Error: Alpaca REST request failed \(403\)$/,
   );
 });
+
+test("history calls fetch unbound, as Cloudflare Workers require", async () => {
+  // Workers throw "Illegal invocation" when fetch runs with a foreign `this`.
+  const fetcher = function (this: unknown) {
+    if (this !== undefined && this !== globalThis)
+      throw new TypeError("Illegal invocation");
+    return Promise.resolve(Response.json({ bars: [], next_page_token: null }));
+  } as unknown as typeof fetch;
+  const feed = new AlpacaFeed("key", "secret", "sip", () => {}, fetcher);
+  assert.deepEqual(
+    await feed.history("AAPL", "2026-06-01T00:00:00Z", "2026-06-02T00:00:00Z"),
+    [],
+  );
+});
