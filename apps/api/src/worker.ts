@@ -6,6 +6,7 @@ import {
 } from "../../../packages/alerts/src/relative-volume.js";
 import { demoBars } from "../../../packages/alerts/src/demo.js";
 import { handleBacktest } from "../../../packages/market-data/src/backtest.js";
+import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
 import { verifyAccess } from "./access.js";
 
 declare const __STATIC_ASSETS__: Record<
@@ -36,7 +37,12 @@ export default {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
     const path = new URL(request.url).pathname;
-    if (path === "/api/backtest") {
+    const alpacaRoutes = {
+      "/api/backtest": handleBacktest,
+      "/api/day-chart": handleDayChart,
+    };
+    const alpacaRoute = alpacaRoutes[path as keyof typeof alpacaRoutes];
+    if (alpacaRoute) {
       if (request.method !== "POST")
         return new Response("Method not allowed", {
           status: 405,
@@ -54,7 +60,7 @@ export default {
           { status: 400 },
         );
       }
-      const result = await handleBacktest(body, {
+      const result = await alpacaRoute(body, {
         key: env.ALPACA_API_KEY,
         secret: env.ALPACA_API_SECRET,
       });

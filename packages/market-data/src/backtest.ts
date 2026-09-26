@@ -10,8 +10,9 @@ import { coreClose, previousSessions } from "./calendar.js";
 import { LiveEvaluator } from "./evaluator.js";
 
 export const backtestLimits = { tickers: 10, sessions: 20 };
+export const tickerPattern = /^[A-Z][A-Z0-9. -]{0,9}$/;
 // Alpaca's free plan serves SIP history except the most recent 15 minutes.
-const sipDelay = 15 * 60000;
+export const sipDelay = 15 * 60000;
 
 export type History = (
   ticker: string,
@@ -63,9 +64,7 @@ function parse(input: unknown, now: number) {
     !Array.isArray(tickers) ||
     tickers.length < 1 ||
     tickers.length > backtestLimits.tickers ||
-    !tickers.every(
-      (t) => typeof t === "string" && /^[A-Z][A-Z0-9. -]{0,9}$/.test(t),
-    ) ||
+    !tickers.every((t) => typeof t === "string" && tickerPattern.test(t)) ||
     new Set(tickers).size !== tickers.length
   )
     throw new BacktestInputError(

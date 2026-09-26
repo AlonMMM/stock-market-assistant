@@ -1,12 +1,22 @@
+import { lazy, Suspense, useState } from "react";
 import type { Evaluation } from "../../../packages/alerts/src/relative-volume.js";
+import { israelDateTime, israelLabel } from "./time.js";
+
+// Loaded on first use so the chart library stays out of the initial bundle.
+const DayChart = lazy(() =>
+  import("./DayChart.js").then((m) => ({ default: m.DayChart })),
+);
 
 export const number = (n: number) => n.toLocaleString("en-US");
 
 export function AlertCard({
   alert: a,
+  chart = false,
 }: {
   alert: Evaluation & { close?: number };
+  chart?: boolean; // real market data is available for this alert
 }) {
+  const [open, setOpen] = useState(false);
   return (
     <article className="volume-alert">
       <h3 aria-label={a.ticker + " · " + a.ratio?.toFixed(1) + "× volume"}>
@@ -18,15 +28,7 @@ export function AlertCard({
           : a.session === "pre"
             ? "Pre-market"
             : "After-hours"}{" "}
-        ·{" "}
-        {new Date(a.end).toLocaleString("en-US", {
-          timeZone: "America/New_York",
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })}{" "}
-        ET
+        · {israelDateTime(Date.parse(a.end))} {israelLabel}
       </p>
       <div className="metrics">
         <strong className="ratio">{a.ratio?.toFixed(1)}×</strong>
@@ -66,6 +68,29 @@ export function AlertCard({
         {a.samples} historical samples · Rule v1 · {a.config.cooldown} min
         cooldown
       </p>
+      {chart && (
+        <>
+          <button
+            type="button"
+            className="chart-toggle"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+          >
+            {open ? "Hide chart" : "Show day chart with SPY"}
+          </button>
+          {open && (
+            <Suspense
+              fallback={<p className="chart-status">Loading day chart…</p>}
+            >
+              <DayChart
+                ticker={a.ticker}
+                alertEnd={a.end}
+                window={a.config.window}
+              />
+            </Suspense>
+          )}
+        </>
+      )}
     </article>
   );
 }

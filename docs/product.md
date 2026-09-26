@@ -9,6 +9,13 @@
 - Make alert settings configurable.
 - Run alert rules against historical data.
 
+## Display conventions
+
+- Show every user-facing time in Israel time (`Asia/Jerusalem`, 24-hour clock), always,
+  including US-session times; label it as Israel time. Confirmed by the user on 2026-09-26.
+  Internal data, API payloads and logs keep UTC timestamps and US session dates; convert
+  only for display. US trading-date inputs (such as backtest ranges) stay US session dates.
+
 ## Initial alert families
 
 The user supplied an image describing breakouts/new highs and lows, percentage change and momentum, pullbacks, and volume-related signals.

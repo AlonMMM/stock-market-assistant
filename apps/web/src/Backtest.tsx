@@ -215,7 +215,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
               <p className="notice">No alerts matched these settings.</p>
             )}
             {result.alerts.map((a) => (
-              <AlertCard alert={a} key={a.ticker + a.end} />
+              <AlertCard alert={a} key={a.ticker + a.end} chart />
             ))}
             <details>
               <summary>Data quality &amp; suppressed signals</summary>

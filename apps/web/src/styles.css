@@ -319,3 +319,60 @@ footer {
     font-size: 14px;
   }
 }
+.chart-toggle {
+  width: 100%;
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid #b9c8bf;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.day-chart {
+  margin: 16px 0 0;
+}
+.day-chart figcaption {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #52514e;
+}
+.chart-legend,
+.chart-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: center;
+}
+.chart-readout strong {
+  color: #0b0b0b;
+  font-variant-numeric: tabular-nums;
+}
+.chart-time {
+  flex-basis: 100%;
+}
+.key {
+  display: inline-block;
+  width: 14px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-top: 2px solid;
+}
+.key.dashed {
+  border-top-style: dashed;
+}
+.chart-canvas {
+  height: 340px;
+}
+.chart-status {
+  color: #61736b;
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  .chart-canvas {
+    height: 300px;
+  }
+}
