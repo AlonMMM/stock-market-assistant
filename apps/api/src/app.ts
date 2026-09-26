@@ -7,9 +7,23 @@ import {
 } from "../../../packages/alerts/src/relative-volume.js";
 import { demoBars } from "../../../packages/alerts/src/demo.js";
 import type { HealthResponse } from "../../../packages/contracts/src/index.js";
+import {
+  handleBacktest,
+  type Credentials,
+} from "../../../packages/market-data/src/backtest.js";
 
-export function buildApp(logging = false) {
+export function buildApp(
+  logging = false,
+  alpaca: Credentials & { fetcher?: typeof fetch } = {
+    key: process.env.ALPACA_API_KEY,
+    secret: process.env.ALPACA_API_SECRET,
+  },
+) {
   const app = Fastify({ logger: logging });
+  app.post("/api/backtest", async (request, reply) => {
+    const result = await handleBacktest(request.body, alpaca, alpaca.fetcher);
+    return reply.code(result.status).send(result.body);
+  });
   app.post<{ Body: { config?: Partial<Config>; bars?: Bar[] } }>(
     "/api/replay",
     async (request, reply) => {

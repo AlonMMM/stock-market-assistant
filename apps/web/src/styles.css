@@ -53,7 +53,7 @@ h1 {
 }
 .modes {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 4px;
   border: 1px solid #cdd7ce;
   border-radius: 12px;
@@ -71,9 +71,27 @@ h1 {
 }
 .modes button {
   background: transparent;
-  color: #65736e;
+  color: #142b29;
   opacity: 1;
+  cursor: pointer;
+}
+.modes button:disabled {
+  color: #65736e;
   cursor: not-allowed;
+}
+.volume-controls.backtest-range {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+.backtest-range .tickers {
+  grid-column: 1 / -1;
+}
+.backtest-range input[type="date"] {
+  font-size: 16px;
+  padding: 10px 4px;
+}
+.coverage-warning {
+  color: #8a4b0f;
 }
 .method {
   font-size: 14px;

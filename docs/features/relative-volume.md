@@ -14,6 +14,10 @@ Each bar: `{ "ticker": "NVDA", "end": "2026-03-30T15:20:00.000Z", "date": "2026-
 
 end is the UTC close timestamp, date and minute are the New York session date and local end-minute. The adapter supplies calendar-verified pre/regular/post labels and only finalized bars. Early closes, holidays, adjustments and missing full sessions need provider normalization. Duplicate or out-of-order streaming bars are rejected. Replay sorts input by event time. Only earlier dates contribute to the baseline.
 
+## Alpaca backtest
+
+POST /api/backtest with `{ "tickers": ["AAPL"], "from": "YYYY-MM-DD", "to": "YYYY-MM-DD", "config": {...} }` fetches Alpaca SIP minute bars, including the 20 warmup sessions, and replays them through the live evaluator. The response lists the alerts the collector would have sent (each with its bar close price), diagnostic counts and per-symbol missing sessions. See the [task](../tasks/backend-alpaca-backtest.md).
+
 ## Current delivery
 
 Deterministic streaming engine, JSON historical replay API, website demo/upload and ratio/liquidity controls. No live provider, database, price/sector charts or phone delivery yet. Historical input must contain its warmup history. The demo contains 21 synthetic weekdays with a single NVDA anomaly and accounts for March DST.
