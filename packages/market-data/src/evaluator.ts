@@ -8,7 +8,8 @@ import { previousSessions } from "./calendar.js";
 
 export class LiveEvaluator {
   private engine: RelativeVolume;
-  private coverage = new Set<string>();
+  // Observed minutes per "date:session", as a bitmap indexed by minute of day.
+  private coverage = new Map<string, Uint8Array>();
   private last = "";
   private date = "";
   private dates: string[] = [];
@@ -20,13 +21,15 @@ export class LiveEvaluator {
     if (bar.date !== this.date) {
       this.dates = previousSessions(bar.date, this.config.days);
       const oldest = this.dates[0]!;
-      this.coverage = new Set(
-        [...this.coverage].filter((k) => k.slice(0, 10) >= oldest),
-      );
+      for (const key of this.coverage.keys())
+        if (key.slice(0, 10) < oldest) this.coverage.delete(key);
       this.date = bar.date;
     }
     this.last = bar.end;
-    this.coverage.add(`${bar.date}:${bar.session}:${bar.minute}`);
+    const key = `${bar.date}:${bar.session}`;
+    let minutes = this.coverage.get(key);
+    if (!minutes) this.coverage.set(key, (minutes = new Uint8Array(1441)));
+    minutes[bar.minute] = 1;
     const result = this.engine.push(bar);
     if (
       !result ||
@@ -36,11 +39,13 @@ export class LiveEvaluator {
     )
       return null;
     // Do not substitute older observed dates when a whole trading day is missing.
-    const complete = this.dates.every((date) =>
-      Array.from({ length: this.config.window }, (_, i) =>
-        this.coverage.has(`${date}:${bar.session}:${bar.minute - i}`),
-      ).every(Boolean),
-    );
+    const complete = this.dates.every((date) => {
+      const minutes = this.coverage.get(`${date}:${bar.session}`);
+      if (!minutes) return false;
+      for (let i = 0; i < this.config.window; i++)
+        if (bar.minute - i < 0 || !minutes[bar.minute - i]) return false;
+      return true;
+    });
     return complete
       ? result
       : {

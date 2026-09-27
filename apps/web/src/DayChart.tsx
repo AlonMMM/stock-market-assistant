@@ -21,6 +21,7 @@ import {
   israelWallSeconds,
   usSessionDate,
 } from "./time.js";
+import { readJson } from "./api.js";
 
 // Categorical slots 1–2 of the validated dataviz palette for the lines. Volume
 // follows the trading convention: green for an up minute, red for a down one,
@@ -45,11 +46,7 @@ function load(ticker: string, date: string): Promise<DayChartData> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ticker, date }),
       signal: AbortSignal.timeout(60000),
-    }).then(async (response) => {
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Chart failed");
-      return payload as DayChartData;
-    });
+    }).then((response) => readJson<DayChartData>(response));
     request.catch(() => cache.delete(key));
     cache.set(key, request);
   }

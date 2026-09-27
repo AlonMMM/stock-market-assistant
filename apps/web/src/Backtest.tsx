@@ -3,7 +3,7 @@ import type {
   BacktestResult,
   BacktestAlert,
 } from "../../../packages/market-data/src/backtest.js";
-import { number } from "./AlertCard.js";
+import { number, readJson } from "./api.js";
 import { AlertFeed } from "./AlertFeed.js";
 import { savedTickers, useWatchlist, Watchlist } from "./Watchlist.js";
 
@@ -76,9 +76,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
           }),
           signal: AbortSignal.timeout(120000),
         });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error ?? "Backtest failed");
-        parts.push(payload);
+        parts.push(await readJson<BacktestResult>(response));
       } catch (e) {
         const message =
           e instanceof Error && e.name === "TimeoutError"

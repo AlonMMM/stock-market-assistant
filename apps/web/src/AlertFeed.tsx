@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import type { BacktestAlert } from "../../../packages/market-data/src/backtest.js";
-import { number } from "./AlertCard.js";
+import { number } from "./api.js";
 import { israelDateTime, israelLabel } from "./time.js";
 
 const DayChart = lazy(() =>

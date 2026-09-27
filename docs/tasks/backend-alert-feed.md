@@ -41,3 +41,16 @@ remedies.
   expanded chart. The synthetic generator is path-dependent on the request start, so
   preview numbers differ between the row and the chart; real bars do not have this.
 - Not verified: real 40-symbol run time and Cloudflare CPU limits.
+
+## 2026-09-27 follow-up
+
+- Replay mode was removed from the site at the user's request; Backtest is the only
+  mode. `/api/replay` and the synthetic demo remain for tests.
+- Real 47-symbol runs failed on later batches and on day charts with Cloudflare HTML
+  error pages. Local profiling of one batch (6 symbols × 40 sessions of synthetic
+  minute bars) measured about 630 ms CPU per symbol; the free Workers plan allows 10 ms
+  per request. The history-coverage check (string keys per bar) and New York time
+  conversion (Intl per bar) were optimized to about 240 ms per symbol without behavior
+  change (all tests; `newYork` matched Intl at every sampled minute 2026–2028). This
+  remains far above the free-plan limit; hosting choice pending with the user.
+- Non-JSON responses now show "Server limit reached (HTTP …)" instead of a parse error.
