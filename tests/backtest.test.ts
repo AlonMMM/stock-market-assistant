@@ -58,6 +58,8 @@ test("backtest reconstructs the alerts the live collector would have sent", asyn
   );
   assert.deepEqual(requests, [
     ["AAPL", `${sessions[0]}T00:00:00Z`, "2026-06-06T06:00:00.000Z"],
+    // SPY minute bars from the last warmup session, for alert context.
+    ["SPY", "2026-05-29T00:00:00Z", "2026-06-06T06:00:00.000Z"],
   ]);
   assert.equal(result.alerts.length, 1);
   const [alert] = result.alerts;
@@ -67,6 +69,8 @@ test("backtest reconstructs the alerts the live collector would have sent", asyn
   assert.equal(alert?.actual, 24000);
   assert.equal(alert?.expected, 5000);
   assert.equal(alert?.close, 105);
+  // No daily bars, so no beta: the alert carries no market context.
+  assert.equal(alert?.context, null);
   // Windows ending 14:02–14:09 still contain a burst minute: no repeat alert.
   assert.equal(result.diagnostics.suppressed, 8);
   // Only in-range windows are counted: 5 sessions × 386 complete windows.
@@ -152,7 +156,8 @@ test("local API and hosted Worker share the backtest contract", async () => {
     });
     assert.equal(ok.statusCode, 200);
     assert.equal(ok.json().source, "alpaca");
-    assert.deepEqual(pages, ["sip"]);
+    // AAPL and SPY minute bars, then AAPL and SPY daily bars for beta.
+    assert.deepEqual(pages, ["sip", "sip", "sip", "sip"]);
 
     const failed = await app.inject({
       method: "POST",
@@ -194,4 +199,38 @@ test("local API and hosted Worker share the backtest contract", async () => {
     await app.close();
     await unconfigured.close();
   }
+});
+
+test("alerts carry the move against SPY scaled by the ticker's beta", async () => {
+  // SPY flat at 500, 501 at the alert minute (+0.2%); AAPL +5% at the alert.
+  const spyMinutes = syntheticBars().map((b) => {
+    const close = b.close === 105 && b.start === 1780495260 - 60 ? 501 : 500;
+    return { ...b, open: close, high: close, low: close, close };
+  });
+  const days = previousSessions("2026-06-05", 70);
+  const moves = days.map((_, i) => ((i * 7) % 5) / 500 - 0.004);
+  const daily = (scale: number, base: number): RawBar[] => {
+    let close = base;
+    return days.map((d, i) => {
+      if (i) close *= 1 + scale * moves[i]!;
+      // Midday UTC falls on the same New York date in both EST and EDT.
+      const start = Date.parse(`${d}T12:00:00Z`) / 1000;
+      return { start, open: close, high: close, low: close, close, volume: 1 };
+    });
+  };
+  const result = await runBacktest(
+    { tickers: ["AAPL"], from, to },
+    async (ticker) => (ticker === "SPY" ? spyMinutes : syntheticBars()),
+    later,
+    async (ticker, _start, end) => {
+      assert.equal(end, `${to}T00:00:00Z`);
+      return ticker === "SPY" ? daily(1, 500) : daily(1.5, 200);
+    },
+  );
+  const context = result.alerts[0]?.context;
+  assert.ok(context);
+  assert.ok(Math.abs(context.beta - 1.5) < 1e-9);
+  assert.ok(Math.abs(context.change - 5) < 1e-9);
+  assert.ok(Math.abs(context.spyChange - 0.2) < 1e-9);
+  assert.ok(Math.abs(context.excess - 4.7) < 1e-9);
 });

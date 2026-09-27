@@ -3,13 +3,35 @@ import type {
   BacktestResult,
   BacktestAlert,
 } from "../../../packages/market-data/src/backtest.js";
-import { AlertCard, number } from "./AlertCard.js";
+import { number } from "./AlertCard.js";
+import { AlertFeed } from "./AlertFeed.js";
+import { savedTickers, Watchlist } from "./Watchlist.js";
+
+// Each request stays within Cloudflare's per-request subrequest and CPU limits:
+// a symbol needs about four minute-bar pages plus one daily page.
+const batchSize = 6;
+
+function merge(parts: BacktestResult[]): BacktestResult {
+  const [first] = parts;
+  const diagnostics: Record<string, number> = {};
+  for (const p of parts)
+    for (const [k, n] of Object.entries(p.diagnostics))
+      diagnostics[k] = (diagnostics[k] ?? 0) + n;
+  return {
+    ...first!,
+    tickers: parts.flatMap((p) => p.tickers),
+    evaluated: parts.reduce((n, p) => n + p.evaluated, 0),
+    alerts: parts.flatMap((p) => p.alerts),
+    diagnostics,
+    coverage: parts.flatMap((p) => p.coverage),
+  };
+}
 
 const day = (offset: number) =>
   new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
 
 export function Backtest({ modes }: { modes: ReactNode }) {
-  const [tickers, setTickers] = useState("AAPL");
+  const [tickers, setTickers] = useState<string[]>(savedTickers);
   const [from, setFrom] = useState(day(8));
   const [to, setTo] = useState(day(1));
   const [threshold, setThreshold] = useState(3);
@@ -18,6 +40,10 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [progress, setProgress] = useState(0);
+  const [failed, setFailed] = useState<{ tickers: string[]; error: string }[]>(
+    [],
+  );
   function changed() {
     setResult(null);
     setError("");
@@ -26,35 +52,48 @@ export function Backtest({ modes }: { modes: ReactNode }) {
     setBusy(true);
     setError("");
     setResult(null);
-    try {
-      const response = await fetch("/api/backtest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tickers: tickers
-            .split(/[\s,]+/)
-            .map((t) => t.trim().toUpperCase())
-            .filter(Boolean),
-          from,
-          to,
-          config: { threshold, minVolume: minimum, cooldown },
-        }),
-        signal: AbortSignal.timeout(120000),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Backtest failed");
-      setResult(payload);
-    } catch (e) {
-      setError(
-        e instanceof Error && e.name === "TimeoutError"
-          ? "The backtest took too long. Try fewer symbols or a shorter range."
-          : e instanceof Error
-            ? e.message
-            : "Backtest failed",
-      );
-    } finally {
-      setBusy(false);
+    setFailed([]);
+    setProgress(0);
+    const parts: BacktestResult[] = [];
+    const failures: { tickers: string[]; error: string }[] = [];
+    for (let i = 0; i < tickers.length; i += batchSize) {
+      const batch = tickers.slice(i, i + batchSize);
+      try {
+        const response = await fetch("/api/backtest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tickers: batch,
+            from,
+            to,
+            config: { threshold, minVolume: minimum, cooldown },
+          }),
+          signal: AbortSignal.timeout(120000),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? "Backtest failed");
+        parts.push(payload);
+      } catch (e) {
+        const message =
+          e instanceof Error && e.name === "TimeoutError"
+            ? "Timed out"
+            : e instanceof Error
+              ? e.message
+              : "Backtest failed";
+        // Invalid settings fail every batch identically: stop and say so.
+        if (e instanceof Error && /^(Choose|Dates|The range)/.test(message)) {
+          setError(message);
+          setBusy(false);
+          return;
+        }
+        failures.push({ tickers: batch, error: message });
+      }
+      setProgress(Math.min(i + batchSize, tickers.length));
     }
+    setFailed(failures);
+    if (parts.length) setResult(merge(parts));
+    else setError(failures[0]?.error ?? "Backtest failed");
+    setBusy(false);
   }
   function download(alerts: BacktestAlert[]) {
     const url = URL.createObjectURL(
@@ -103,7 +142,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
       {modes}
       <p className="method">
         Historical Alpaca minute bars replayed through the live evaluator · up
-        to 10 symbols and 20 sessions
+        to 40 symbols and 20 sessions
       </p>
       <form
         onSubmit={(e) => {
@@ -111,20 +150,15 @@ export function Backtest({ modes }: { modes: ReactNode }) {
           void run();
         }}
       >
+        <Watchlist
+          selected={tickers}
+          disabled={busy}
+          onChange={(t) => {
+            setTickers(t);
+            changed();
+          }}
+        />
         <div className="volume-controls backtest-range">
-          <label className="tickers">
-            Symbols (comma separated)
-            <input
-              required
-              disabled={busy}
-              value={tickers}
-              autoCapitalize="characters"
-              onChange={(e) => {
-                setTickers(e.target.value);
-                changed();
-              }}
-            />
-          </label>
           <label>
             From
             <input
@@ -169,8 +203,14 @@ export function Backtest({ modes }: { modes: ReactNode }) {
             step: "1",
           })}
         </div>
-        <button className="run" disabled={busy} type="submit">
-          {busy ? "Running…" : "Run backtest"}
+        <button
+          className="run"
+          disabled={busy || tickers.length === 0}
+          type="submit"
+        >
+          {busy
+            ? `Running… ${progress} / ${tickers.length} symbols`
+            : `Run backtest · ${tickers.length} symbols`}
         </button>
       </form>
       {error && (
@@ -181,7 +221,8 @@ export function Backtest({ modes }: { modes: ReactNode }) {
       <div aria-live="polite" aria-busy={busy}>
         {busy && (
           <p className="notice">
-            Downloading minute bars and 20 warmup sessions from Alpaca…
+            Downloading minute bars and 20 warmup sessions from Alpaca ·{" "}
+            {progress} of {tickers.length} symbols done…
           </p>
         )}
         {!result && !busy && !error && (
@@ -194,8 +235,9 @@ export function Backtest({ modes }: { modes: ReactNode }) {
             <div className="result-header">
               <h2>
                 {result.alerts.length}{" "}
-                {result.alerts.length === 1 ? "alert" : "alerts"} would have
-                been sent
+                {result.alerts.length === 1 ? "alert" : "alerts"} ·{" "}
+                {new Set(result.alerts.map((a) => a.ticker)).size} of{" "}
+                {result.tickers.length} symbols
               </h2>
               <button
                 type="button"
@@ -205,22 +247,30 @@ export function Backtest({ modes }: { modes: ReactNode }) {
                 ↓ Download JSON
               </button>
             </div>
-            {gaps.map((c) => (
-              <p className="notice coverage-warning" key={c.ticker}>
-                {c.ticker}: no bars for {c.missingSessions.join(", ")}. Later
-                baselines that need these sessions are marked insufficient.
+            {failed.map((f) => (
+              <p className="notice error" key={f.tickers.join()}>
+                {f.tickers.join(", ")}: {f.error}
               </p>
             ))}
+            {gaps.length > 0 && (
+              <p className="notice coverage-warning">
+                Missing sessions for {gaps.map((c) => c.ticker).join(", ")}.
+                Later baselines that need them are marked insufficient.
+              </p>
+            )}
             {result.alerts.length === 0 && (
               <p className="notice">No alerts matched these settings.</p>
             )}
-            {result.alerts.map((a) => (
-              <AlertCard alert={a} key={a.ticker + a.end} chart />
-            ))}
+            {result.alerts.length > 0 && <AlertFeed alerts={result.alerts} />}
             <details>
               <summary>Data quality &amp; suppressed signals</summary>
               <p>{number(result.evaluated)} complete windows evaluated.</p>
               <ul>
+                {gaps.map((c) => (
+                  <li key={c.ticker + "-gaps"}>
+                    {c.ticker}: no bars for {c.missingSessions.join(", ")}
+                  </li>
+                ))}
                 {result.coverage.map((c) => (
                   <li key={c.ticker}>
                     {c.ticker}: {number(c.bars)} minute bars in range
