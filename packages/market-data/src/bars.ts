@@ -52,6 +52,7 @@ export function normalize(
     session:
       start.minute < 570 ? "pre" : start.minute < close ? "regular" : "post",
     volume,
+    regularClose: close,
     open: raw.open,
     high: raw.high,
     low: raw.low,
