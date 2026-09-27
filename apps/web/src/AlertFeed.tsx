@@ -103,7 +103,19 @@ export function AlertFeed({
                     <em className="feed-session">{sessionTag[a.session]}</em>
                   )}
                 </span>
-                <strong className="feed-ratio">{a.ratio?.toFixed(1)}×</strong>
+                <strong className="feed-ratio">
+                  {a.ratio?.toFixed(1)}×
+                  {a.direction && (
+                    <span
+                      className={
+                        a.direction === "up" ? "feed-move up" : "feed-move down"
+                      }
+                    >
+                      {a.direction === "up" ? "▲" : "▼"}{" "}
+                      {Math.abs(a.move).toFixed(2)}%
+                    </span>
+                  )}
+                </strong>
                 <span className="feed-excess">
                   {c ? (
                     <>
@@ -122,6 +134,15 @@ export function AlertFeed({
                   <p className="evidence">
                     {number(a.actual)} shares in {a.config.window} min vs{" "}
                     {number(a.expected ?? 0)} expected
+                    {a.expectedMove !== null &&
+                      a.expectedMove !== undefined && (
+                        <>
+                          {" "}
+                          · move {a.move >= 0 ? "+" : "−"}
+                          {Math.abs(a.move).toFixed(2)}% vs typical ±
+                          {a.expectedMove.toFixed(2)}% at this time
+                        </>
+                      )}
                     {a.close !== undefined && (
                       <> · close ${a.close.toFixed(2)}</>
                     )}

@@ -72,26 +72,51 @@ test("live alert requires actual prior trading dates and never publishes warmup 
     threshold: 3,
     cooldown: 15,
     minVolume: 0,
+    priceMultiple: 1,
+    minMovePercent: 0,
   };
-  const b = (date: string, v = 100) =>
-    normalize("NVDA", raw(`${date}T15:00:00Z`, v), "shares")!;
+  // Each day: a flat 10.00 bar at 10:59 New York, then the evaluated 11:00
+  // bar. Baseline days rise 1%; the alert day rises 5% on 4× volume.
+  const day = (e: LiveEvaluator, date: string, now: number, live: boolean) => {
+    const bar = (time: string, close: number, volume: number) =>
+      normalize(
+        "NVDA",
+        {
+          start: Date.parse(`${date}T${time}:00Z`) / 1000,
+          open: 10,
+          high: close,
+          low: 10,
+          close,
+          volume,
+        },
+        "shares",
+      )!;
+    const alertDay = date === "2026-09-18";
+    e.push(bar("14:59", 10, 100), now, live);
+    return e.push(
+      bar("15:00", alertDay ? 10.5 : 10.1, alertDay ? 400 : 100),
+      now,
+      live,
+    );
+  };
   const now = Date.parse("2026-09-18T15:01:05Z");
   const ok = new LiveEvaluator(config);
-  assert.equal(ok.push(b("2026-09-16"), now, false), null);
-  ok.push(b("2026-09-17"), now, false);
-  assert.equal(ok.push(b("2026-09-18", 400), now, true)?.status, "alert");
-  assert.equal(ok.push(b("2026-09-18", 400), now, true), null);
+  assert.equal(day(ok, "2026-09-16", now, false), null);
+  day(ok, "2026-09-17", now, false);
+  const alert = day(ok, "2026-09-18", now, true);
+  assert.equal(alert?.status, "alert");
+  assert.equal(alert?.direction, "up");
   const missing = new LiveEvaluator(config);
-  missing.push(b("2026-09-15"), now, false);
-  missing.push(b("2026-09-17"), now, false);
+  day(missing, "2026-09-15", now, false);
+  day(missing, "2026-09-17", now, false);
   assert.equal(
-    missing.push(b("2026-09-18", 400), now, true)?.status,
+    day(missing, "2026-09-18", now, true)?.status,
     "insufficient-history",
   );
   const stale = new LiveEvaluator(config);
-  stale.push(b("2026-09-16"), now, false);
-  stale.push(b("2026-09-17"), now, false);
-  assert.equal(stale.push(b("2026-09-18", 400), now + 300000, true), null);
+  day(stale, "2026-09-16", now, false);
+  day(stale, "2026-09-17", now, false);
+  assert.equal(day(stale, "2026-09-18", now + 300000, true), null);
 });
 test("durable bars survive restart, deduplicate and preserve corrected volume", () => {
   const dir = mkdtempSync(join(tmpdir(), "sma-"));

@@ -116,3 +116,13 @@ for live closed one-minute updates. Start with AAPL, then expand to the existing
 watchlist after live validation. Default to the IEX feed so basic access can run; allow
 SIP through configuration for accounts with that entitlement. Keep the integration
 strictly market-data-only and retain the existing provider-neutral evaluator and store.
+
+## 2026-09-27 — Relative volume v2: price confirmation
+
+Status: confirmed by user.
+
+Alerts require a 3-minute window (was 5) with volume ≥ 3× its time-of-day median, a
+price move ≥ 3× the symbol's median move at that time of day and ≥ 0.5%, measured from
+the close before the window, with every close beyond the previous close and every
+candle the same color. See [relative volume](features/relative-volume.md). Live data is
+IEX, so the 10,000-share floor is stricter live than in SIP backtests; revisit.

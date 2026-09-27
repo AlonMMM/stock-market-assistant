@@ -44,6 +44,8 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   const [threshold, setThreshold] = useState(3);
   const [minimum, setMinimum] = useState(10000);
   const [cooldown, setCooldown] = useState(15);
+  const [priceMultiple, setPriceMultiple] = useState(3);
+  const [minMove, setMinMove] = useState(0.5);
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -73,7 +75,13 @@ export function Backtest({ modes }: { modes: ReactNode }) {
             tickers: batch,
             from,
             to,
-            config: { threshold, minVolume: minimum, cooldown },
+            config: {
+              threshold,
+              minVolume: minimum,
+              cooldown,
+              priceMultiple,
+              minMovePercent: minMove,
+            },
           }),
           signal: AbortSignal.timeout(120000),
         });
@@ -212,7 +220,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
           </label>
         </div>
         <div className="volume-controls">
-          {numberInput("Alert threshold (×)", threshold, setThreshold, {
+          {numberInput("Volume (× typical)", threshold, setThreshold, {
             min: "1.1",
             step: "0.1",
           })}
@@ -224,6 +232,20 @@ export function Backtest({ modes }: { modes: ReactNode }) {
             min: "0",
             max: "1440",
             step: "1",
+          })}
+          {numberInput(
+            "Price move (× typical)",
+            priceMultiple,
+            setPriceMultiple,
+            {
+              min: "1",
+              step: "0.1",
+            },
+          )}
+          {numberInput("Minimum move (%)", minMove, setMinMove, {
+            min: "0",
+            max: "100",
+            step: "0.05",
           })}
         </div>
         <button
