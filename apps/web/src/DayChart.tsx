@@ -9,6 +9,8 @@ import {
   LineStyle,
   type IChartApi,
   type MouseEventParams,
+  type SeriesMarker,
+  type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
 import type {
@@ -31,6 +33,7 @@ const colors = {
   benchmark: "#eb6834",
   up: ["#16a34a", "rgba(22, 163, 74, 0.45)"],
   down: ["#dc2626", "rgba(220, 38, 38, 0.45)"],
+  session: "#6b7280",
   surface: "#fafbf8",
   text: "#52514e",
   grid: "#e7ece6",
@@ -268,16 +271,38 @@ export function DayChart({
     chart.panes()[0]?.setStretchFactor(3);
     chart.panes()[1]?.setStretchFactor(1.6);
     const alertBar = m.find((p) => p.instant === alertMs);
+    // Regular session open and close (from the bars' session labels, so
+    // early closes are right), plus the alert, as markers on the price line.
+    const regular = m.filter((p) => p.session === "regular");
+    const firstRegular = regular[0];
+    const lastRegular = regular.at(-1);
+    const markers: SeriesMarker<Time>[] = [];
+    if (firstRegular)
+      markers.push({
+        time: firstRegular.time,
+        position: "belowBar",
+        shape: "arrowUp",
+        color: colors.session,
+        text: `Open ${israelClock(firstRegular.instant - 60000)}`,
+      });
+    if (lastRegular && lastRegular !== firstRegular)
+      markers.push({
+        time: lastRegular.time,
+        position: "belowBar",
+        shape: "square",
+        color: colors.session,
+        text: `Close ${israelClock(lastRegular.instant)}`,
+      });
     if (alertBar)
-      createSeriesMarkers(tickerLine, [
-        {
-          time: alertBar.time,
-          position: "aboveBar",
-          shape: "arrowDown",
-          color: colors.ticker,
-          text: `Alert ${israelClock(alertMs)}`,
-        },
-      ]);
+      markers.push({
+        time: alertBar.time,
+        position: "aboveBar",
+        shape: "arrowDown",
+        color: colors.ticker,
+        text: `Alert ${israelClock(alertMs)}`,
+      });
+    markers.sort((a, b) => Number(a.time) - Number(b.time));
+    if (markers.length) createSeriesMarkers(tickerLine, markers);
     // Open on two hours around the alert so minute volume bars stay legible;
     // pinch or scroll zooms out to the whole day.
     // Applied after the first layout; autoSize would otherwise shift it.

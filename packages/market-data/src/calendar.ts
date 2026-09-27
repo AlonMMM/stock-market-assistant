@@ -98,3 +98,15 @@ export function newYork(time: number) {
     minute: wall.getUTCHours() * 60 + wall.getUTCMinutes(),
   };
 }
+
+/** UTC milliseconds for a New York wall-clock minute on a date. */
+export function newYorkToUtc(date: string, minute: number): number {
+  const wall = Date.parse(`${date}T00:00:00Z`) + minute * 60000;
+  // New York is UTC−4 (daylight) or UTC−5 (standard); pick the matching one.
+  for (const hours of [4, 5]) {
+    const utc = wall + hours * 3600000;
+    const back = newYork(utc);
+    if (back.date === date && back.minute === minute) return utc;
+  }
+  throw new Error("Invalid New York time");
+}

@@ -2,7 +2,12 @@ import { AlpacaFeed } from "./alpaca.js";
 import { sipDelay, type Credentials } from "./backtest.js";
 import { normalize, type RawBar } from "./bars.js";
 import { benchmark } from "./beta.js";
-import { coreClose, newYork, previousSessions } from "./calendar.js";
+import {
+  coreClose,
+  newYork,
+  newYorkToUtc,
+  previousSessions,
+} from "./calendar.js";
 
 // Nasdaq-100 proxy: Alpaca serves stocks and ETFs, not index values.
 export const nasdaq = "QQQ";
@@ -18,6 +23,9 @@ export interface Board {
   source: "alpaca";
   feed: "sip";
   date: string; // US session shown: today once pre-market data exists
+  // Regular session open and close (Unix s), from the exchange calendar.
+  open: number;
+  close: number;
   watchlist: string[]; // symbols to show as the board, in watchlist order
   benchmarks: Record<string, string>; // sector benchmark per listed symbol
   series: BoardSeries[]; // watchlist order, then SPY and QQQ if not listed
@@ -66,6 +74,8 @@ export async function runBoard(
     source: "alpaca",
     feed: "sip",
     date,
+    open: newYorkToUtc(date, 570) / 1000,
+    close: newYorkToUtc(date, coreClose(date)!) / 1000,
     watchlist: tickers.filter((t) => symbols.includes(t)),
     benchmarks: Object.fromEntries(
       Object.entries(benchmarks).filter(

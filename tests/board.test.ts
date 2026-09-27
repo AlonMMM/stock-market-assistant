@@ -52,6 +52,9 @@ test("board series follow the watchlist, add SPY and QQQ, and keep the session d
   );
   assert.equal(board.date, "2026-09-25");
   assert.deepEqual(board.watchlist, ["NVDA", "SPY"]);
+  // 09:30 and 16:00 New York (EDT) on 2026-09-25.
+  assert.equal(board.open, at("2026-09-25T13:30:00Z") / 1000);
+  assert.equal(board.close, at("2026-09-25T20:00:00Z") / 1000);
   assert.deepEqual(calls, [
     [
       "NVDA,SPY,QQQ",
@@ -139,4 +142,12 @@ test("board fetches each symbol's sector benchmark and reports the mapping", asy
   ]);
   assert.deepEqual(board.benchmarks, { MSTR: "IBIT", NVDA: "SOXX" });
   assert.deepEqual(board.watchlist, ["MSTR", "NVDA", "WMT"]);
+});
+
+test("New York wall time converts to UTC across DST and early closes", async () => {
+  const { newYorkToUtc } =
+    await import("../packages/market-data/src/calendar.js");
+  assert.equal(newYorkToUtc("2026-01-05", 570), at("2026-01-05T14:30:00Z"));
+  assert.equal(newYorkToUtc("2026-07-06", 570), at("2026-07-06T13:30:00Z"));
+  assert.equal(newYorkToUtc("2026-11-27", 780), at("2026-11-27T18:00:00Z"));
 });
