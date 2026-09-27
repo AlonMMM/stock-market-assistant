@@ -12,20 +12,27 @@ import {
   type Credentials,
 } from "../../../packages/market-data/src/backtest.js";
 import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
+import type { BarCache } from "../../../packages/market-data/src/bar-cache.js";
 import { handleBoard } from "../../../packages/market-data/src/board.js";
 import { loadLive } from "../../../packages/market-data/src/live.js";
 import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
 
 export function buildApp(
   logging = false,
-  alpaca: Credentials & { fetcher?: typeof fetch } = {
+  alpaca: Credentials & { fetcher?: typeof fetch; cache?: BarCache } = {
     key: process.env.ALPACA_API_KEY,
     secret: process.env.ALPACA_API_SECRET,
   },
 ) {
   const app = Fastify({ logger: logging });
   app.post("/api/backtest", async (request, reply) => {
-    const result = await handleBacktest(request.body, alpaca, alpaca.fetcher);
+    const result = await handleBacktest(
+      request.body,
+      alpaca,
+      alpaca.fetcher,
+      Date.now(),
+      alpaca.cache,
+    );
     return reply.code(result.status).send(result.body);
   });
   app.get("/api/board", async (_request, reply) => {
@@ -54,7 +61,13 @@ export function buildApp(
     }),
   );
   app.post("/api/day-chart", async (request, reply) => {
-    const result = await handleDayChart(request.body, alpaca, alpaca.fetcher);
+    const result = await handleDayChart(
+      request.body,
+      alpaca,
+      alpaca.fetcher,
+      Date.now(),
+      alpaca.cache,
+    );
     return reply.code(result.status).send(result.body);
   });
   app.post<{ Body: { config?: Partial<Config>; bars?: Bar[] } }>(

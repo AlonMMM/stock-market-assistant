@@ -5,6 +5,7 @@ import {
   type Evaluation,
 } from "../../alerts/src/relative-volume.js";
 import { AlpacaFeed } from "./alpaca.js";
+import { cachedHistory, type BarCache, type CacheStats } from "./bar-cache.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
 import { normalize, type PriceBar, type RawBar } from "./bars.js";
 import {
@@ -60,6 +61,7 @@ export interface BacktestResult {
   // Outcome summary for these alerts, and for plain momentum entries at every
   // fifth regular minute (the baseline) in the same symbols and days.
   validation: ValidationSummary;
+  cache?: CacheStats; // symbol-days served from the bar cache vs fetched
 }
 
 export class BacktestInputError extends Error {}
@@ -332,11 +334,33 @@ export interface Credentials {
 }
 
 // Shared by the local API and the hosted Worker so both behave identically.
+/** Minute-bar history through the cache when one is configured. */
+export function minuteHistory(
+  feed: AlpacaFeed,
+  cache: BarCache | undefined,
+  now: number,
+  stats?: CacheStats,
+): History {
+  return (ticker, start, end) =>
+    cache
+      ? cachedHistory(
+          `${ticker}:sip:1Min:raw`,
+          start,
+          end,
+          (s, e) => feed.history(ticker, s, e),
+          cache,
+          now - sipDelay,
+          stats,
+        )
+      : feed.history(ticker, start, end);
+}
+
 export async function handleBacktest(
   body: unknown,
   credentials: Credentials,
   fetcher: typeof fetch = fetch,
   now = Date.now(),
+  cache?: BarCache,
 ): Promise<{ status: number; body: BacktestResult | { error: string } }> {
   if (!credentials.key || !credentials.secret)
     return {
@@ -351,16 +375,14 @@ export async function handleBacktest(
     fetcher,
   );
   try {
-    return {
-      status: 200,
-      body: await runBacktest(
-        body,
-        (ticker, start, end) => feed.history(ticker, start, end),
-        now,
-        (ticker, start, end) =>
-          feed.history(ticker, start, end, "1Day", "split"),
-      ),
-    };
+    const stats: CacheStats = { hits: 0, misses: 0 };
+    const result = await runBacktest(
+      body,
+      minuteHistory(feed, cache, now, stats),
+      now,
+      (ticker, start, end) => feed.history(ticker, start, end, "1Day", "split"),
+    );
+    return { status: 200, body: cache ? { ...result, cache: stats } : result };
   } catch (error) {
     if (error instanceof BacktestInputError)
       return { status: 400, body: { error: error.message } };

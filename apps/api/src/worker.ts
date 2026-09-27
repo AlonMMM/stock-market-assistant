@@ -7,6 +7,10 @@ import {
 import { demoBars } from "../../../packages/alerts/src/demo.js";
 import { handleBacktest } from "../../../packages/market-data/src/backtest.js";
 import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
+import {
+  D1BarCache,
+  type D1Like,
+} from "../../../packages/market-data/src/bar-cache.js";
 import { handleBoard } from "../../../packages/market-data/src/board.js";
 import { loadLive } from "../../../packages/market-data/src/live.js";
 import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
@@ -26,6 +30,7 @@ export default {
       ACCESS_TEAM_DOMAIN?: string;
       ACCESS_AUD?: string;
       COLLECTOR_URL?: string;
+      BARS_CACHE?: D1Like; // D1 database caching Alpaca minute bars
       COLLECTOR_TOKEN?: string;
     } = {},
   ): Promise<Response> {
@@ -65,10 +70,13 @@ export default {
           { status: 400 },
         );
       }
-      const result = await alpacaRoute(body, {
-        key: env.ALPACA_API_KEY,
-        secret: env.ALPACA_API_SECRET,
-      });
+      const result = await alpacaRoute(
+        body,
+        { key: env.ALPACA_API_KEY, secret: env.ALPACA_API_SECRET },
+        fetch,
+        Date.now(),
+        env.BARS_CACHE ? new D1BarCache(env.BARS_CACHE) : undefined,
+      );
       return Response.json(result.body, { status: result.status });
     }
     if (path === "/api/board") {

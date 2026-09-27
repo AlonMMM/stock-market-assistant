@@ -38,6 +38,12 @@ function merge(parts: BacktestResult[]): BacktestResult {
     alerts,
     diagnostics,
     validation,
+    cache: parts.some((p) => p.cache)
+      ? {
+          hits: parts.reduce((n, p) => n + (p.cache?.hits ?? 0), 0),
+          misses: parts.reduce((n, p) => n + (p.cache?.misses ?? 0), 0),
+        }
+      : undefined,
     coverage: parts.flatMap((p) => p.coverage),
   };
 }
@@ -368,6 +374,12 @@ export function Backtest({ modes }: { modes: ReactNode }) {
             <details>
               <summary>Data quality &amp; suppressed signals</summary>
               <p>{number(result.evaluated)} complete windows evaluated.</p>
+              {result.cache && (
+                <p>
+                  Bar cache: {number(result.cache.hits)} symbol-days from the
+                  cache, {number(result.cache.misses)} fetched from Alpaca.
+                </p>
+              )}
               <ul>
                 {gaps.map((c) => (
                   <li key={c.ticker + "-gaps"}>
