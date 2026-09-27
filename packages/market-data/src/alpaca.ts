@@ -114,6 +114,54 @@ export class AlpacaFeed {
     return rows;
   }
 
+  // Several symbols in one paginated request (GET /v2/stocks/bars).
+  async multiHistory(
+    tickers: string[],
+    start: string,
+    end: string,
+    timeframe: "5Min" | "1Day",
+    adjustment: "raw" | "split" = "raw",
+  ): Promise<Map<string, RawBar[]>> {
+    const result = new Map<string, RawBar[]>(tickers.map((t) => [t, []]));
+    let pageToken: string | undefined;
+    do {
+      const url = new URL("/v2/stocks/bars", this.restUrl);
+      url.searchParams.set("symbols", tickers.join(","));
+      url.searchParams.set("timeframe", timeframe);
+      url.searchParams.set("start", start);
+      url.searchParams.set("end", end);
+      url.searchParams.set("adjustment", adjustment);
+      url.searchParams.set("feed", this.feed);
+      url.searchParams.set("sort", "asc");
+      url.searchParams.set("limit", "10000");
+      if (pageToken) url.searchParams.set("page_token", pageToken);
+      const response = await this.fetcher.call(globalThis, url, {
+        headers: {
+          "APCA-API-KEY-ID": this.key,
+          "APCA-API-SECRET-KEY": this.secret,
+        },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!response.ok)
+        throw new Error(`Alpaca REST request failed (${response.status})`);
+      const body = (await response.json()) as {
+        bars?: Record<string, AlpacaBar[] | null> | null;
+        next_page_token?: string | null;
+      };
+      const bars = body.bars ?? {};
+      if (typeof bars !== "object" || Array.isArray(bars))
+        throw new Error("Invalid Alpaca history response");
+      for (const [ticker, rows] of Object.entries(bars)) {
+        if (rows === null) continue;
+        if (!Array.isArray(rows) || !result.has(ticker))
+          throw new Error("Invalid Alpaca history response");
+        result.get(ticker)!.push(...rows.map(raw));
+      }
+      pageToken = body.next_page_token ?? undefined;
+    } while (pageToken);
+    return result;
+  }
+
   stream(
     tickers: string[],
     onBar: (ticker: string, bar: RawBar) => void,
