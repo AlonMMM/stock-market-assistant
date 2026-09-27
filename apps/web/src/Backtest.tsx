@@ -5,7 +5,7 @@ import type {
 } from "../../../packages/market-data/src/backtest.js";
 import { number } from "./AlertCard.js";
 import { AlertFeed } from "./AlertFeed.js";
-import { savedTickers, Watchlist } from "./Watchlist.js";
+import { savedTickers, useWatchlist, Watchlist } from "./Watchlist.js";
 
 // Each request stays within Cloudflare's per-request subrequest and CPU limits:
 // a symbol needs about four minute-bar pages plus one daily page.
@@ -31,7 +31,13 @@ const day = (offset: number) =>
   new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
 
 export function Backtest({ modes }: { modes: ReactNode }) {
-  const [tickers, setTickers] = useState<string[]>(savedTickers);
+  const watchlist = useWatchlist();
+  const [tickers, setTickers] = useState<string[]>([]);
+  const [loadedList, setLoadedList] = useState(false);
+  if (watchlist.list && !loadedList) {
+    setLoadedList(true);
+    setTickers(savedTickers(watchlist.list.tickers));
+  }
   const [from, setFrom] = useState(day(8));
   const [to, setTo] = useState(day(1));
   const [threshold, setThreshold] = useState(3);
@@ -150,14 +156,21 @@ export function Backtest({ modes }: { modes: ReactNode }) {
           void run();
         }}
       >
-        <Watchlist
-          selected={tickers}
-          disabled={busy}
-          onChange={(t) => {
-            setTickers(t);
-            changed();
-          }}
-        />
+        {watchlist.error && <p className="notice error">{watchlist.error}</p>}
+        {!watchlist.list && !watchlist.error && (
+          <p className="notice">Loading watchlist…</p>
+        )}
+        {watchlist.list && (
+          <Watchlist
+            list={watchlist.list}
+            selected={tickers}
+            disabled={busy}
+            onChange={(t) => {
+              setTickers(t);
+              changed();
+            }}
+          />
+        )}
         <div className="volume-controls backtest-range">
           <label>
             From

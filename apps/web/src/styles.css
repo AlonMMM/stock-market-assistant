@@ -536,3 +536,8 @@ footer {
     grid-area: chevron;
   }
 }
+.watchlist-source {
+  margin: 0 0 12px;
+  color: #61736b;
+  font-size: 12px;
+}

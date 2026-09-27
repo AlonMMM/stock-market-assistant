@@ -1,23 +1,39 @@
-import { useState } from "react";
-import defaults from "../../../config/alpaca-watchlist.json";
+import { useEffect, useState } from "react";
+import type { Watchlist as WatchlistData } from "../../../packages/market-data/src/watchlist.js";
+import { israelDateTime } from "./time.js";
 
 export const maxTickers = 40;
-const storageKey = "sma.backtest.tickers.v1";
+const storageKey = "sma.backtest.tickers.v2";
 const symbol = /^[A-Z][A-Z0-9. -]{0,9}$/;
 
-// The selection is a per-device convenience; storage can be unavailable.
-export function savedTickers(): string[] {
+// The watchlist comes from the server (synced from IBKR); the selection within
+// it is a per-device convenience, and storage can be unavailable.
+export function useWatchlist() {
+  const [list, setList] = useState<WatchlistData | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    fetch("/api/watchlist", { signal: AbortSignal.timeout(15000) })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`Watchlist unavailable (${r.status})`);
+        setList((await r.json()) as WatchlistData);
+      })
+      .catch((e: Error) => setError(e.message));
+  }, []);
+  return { list, error };
+}
+
+export function savedTickers(universe: string[]): string[] {
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey) ?? "null");
     if (
       Array.isArray(saved) &&
       saved.every((t) => typeof t === "string" && symbol.test(t))
     )
-      return saved.slice(0, maxTickers);
+      return saved.filter((t) => universe.includes(t)).slice(0, maxTickers);
   } catch {
     // Fall through to the default selection.
   }
-  return defaults.slice(0, 30);
+  return universe.slice(0, maxTickers);
 }
 
 function save(tickers: string[]) {
@@ -29,18 +45,20 @@ function save(tickers: string[]) {
 }
 
 export function Watchlist({
+  list,
   selected,
   onChange,
   disabled,
 }: {
+  list: WatchlistData;
   selected: string[];
   onChange: (tickers: string[]) => void;
   disabled: boolean;
 }) {
   const [extra, setExtra] = useState("");
   const universe = [
-    ...defaults,
-    ...selected.filter((t) => !defaults.includes(t)),
+    ...list.tickers,
+    ...selected.filter((t) => !list.tickers.includes(t)),
   ];
   const set = (tickers: string[]) => {
     save(tickers);
@@ -65,6 +83,15 @@ export function Watchlist({
       <legend>
         Symbols · {selected.length} of max {maxTickers}
       </legend>
+      <p className="watchlist-source">
+        {list.source === "ibkr"
+          ? `IBKR “${list.name}” · ${list.tickers.length} symbols${
+              list.syncedAt
+                ? ` · synced ${israelDateTime(Date.parse(list.syncedAt))}`
+                : ""
+            }`
+          : "Default list · IBKR watchlist not synced"}
+      </p>
       <div className="watchlist-actions">
         <button
           type="button"
