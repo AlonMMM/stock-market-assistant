@@ -187,8 +187,9 @@ async function unpack(text: string): Promise<RawBar[]> {
 }
 // Days per INSERT: each D1 statement counts against the Workers Free limit of
 // 50 subrequests per request (shared with Alpaca calls), so days are written
-// several per statement, kept well under D1's 100 KB statement limit.
-const daysPerInsert = 10;
+// several per statement. Real compressed days reach ~21 KB, so 4 per statement
+// stays under D1's 100 KB statement limit even if bound values count.
+const daysPerInsert = 4;
 
 /** D1-backed cache for the Worker. */
 export class D1BarCache implements BarCache {

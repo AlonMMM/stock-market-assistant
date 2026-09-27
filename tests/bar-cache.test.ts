@@ -242,7 +242,7 @@ test("a cached backtest returns the same result and reports cache use", async ()
   assert.deepEqual(restB, restA);
 });
 
-test("D1 writes fit Cloudflare's per-request limits: 10 days per statement, compressed", async () => {
+test("D1 writes fit Cloudflare's per-request limits: 4 days per statement, compressed", async () => {
   const sqlite = new SqliteD1(":memory:");
   let statements = 0;
   const counting = {
@@ -270,17 +270,17 @@ test("D1 writes fit Cloudflare's per-request limits: 10 days per statement, comp
     );
   }
   await cache.put("NVDA:sip:1Min:raw", days);
-  assert.equal(statements, 4, "38 days in 4 statements");
+  assert.equal(statements, 10, "38 days in 10 statements");
   const read = await cache.get("NVDA:sip:1Min:raw", [...days.keys()]);
   assert.deepEqual(read, days);
-  // Stored compressed, far below the 100 KB statement limit for 10 days.
+  // Stored compressed; 4 days stay below the 100 KB statement limit.
   const row = (
     await sqlite
       .prepare("SELECT bars FROM minute_bars LIMIT 1")
       .all<{ bars: string }>()
   ).results[0]!;
   assert.ok(row.bars.startsWith("gz:"));
-  assert.ok(row.bars.length * 10 < 100_000, `${row.bars.length} bytes a day`);
+  assert.ok(row.bars.length * 4 < 100_000, `${row.bars.length} bytes a day`);
   // Rows written before compression still read.
   await sqlite
     .prepare("INSERT INTO minute_bars VALUES (?, ?, ?, ?)")
