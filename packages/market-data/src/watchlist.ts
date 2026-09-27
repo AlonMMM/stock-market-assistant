@@ -9,6 +9,9 @@ export interface Watchlist {
   syncedAt: string | null;
   tickers: string[];
   live: string[]; // subscribed to the live stream (first N)
+  // Sector or theme benchmark per symbol (an ETF, e.g. MSTR → IBIT), chosen by
+  // the syncing agent; symbols without one compare with SPY only.
+  benchmarks: Record<string, string>;
 }
 
 export const maxWatchlist = 200;
@@ -19,10 +22,15 @@ export class WatchlistInputError extends Error {}
 export function parseWatchlistInput(input: unknown): {
   name: string;
   tickers: string[];
+  benchmarks: Record<string, string>;
 } {
   if (!input || typeof input !== "object" || Array.isArray(input))
     throw new WatchlistInputError("Expected JSON object");
-  const { name, tickers } = input as { name?: unknown; tickers?: unknown };
+  const { name, tickers, benchmarks } = input as {
+    name?: unknown;
+    tickers?: unknown;
+    benchmarks?: unknown;
+  };
   if (typeof name !== "string" || !name.trim() || name.length > 100)
     throw new WatchlistInputError("Expected a watchlist name");
   if (
@@ -34,7 +42,31 @@ export function parseWatchlistInput(input: unknown): {
     throw new WatchlistInputError(
       `Expected 1–${maxWatchlist} US stock symbols`,
     );
-  return { name: name.trim(), tickers: [...new Set(tickers as string[])] };
+  const unique = [...new Set(tickers as string[])];
+  if (
+    benchmarks !== undefined &&
+    (!benchmarks ||
+      typeof benchmarks !== "object" ||
+      Array.isArray(benchmarks) ||
+      !Object.entries(benchmarks).every(
+        ([symbol, etf]) =>
+          unique.includes(symbol) &&
+          typeof etf === "string" &&
+          tickerPattern.test(etf),
+      ))
+  )
+    throw new WatchlistInputError(
+      "Expected benchmarks as {symbol: benchmark symbol} for listed symbols",
+    );
+  return {
+    name: name.trim(),
+    tickers: unique,
+    benchmarks: Object.fromEntries(
+      Object.entries((benchmarks ?? {}) as Record<string, string>).filter(
+        ([symbol, etf]) => symbol !== etf,
+      ),
+    ),
+  };
 }
 
 export function defaultWatchlist(): Watchlist {
@@ -44,6 +76,7 @@ export function defaultWatchlist(): Watchlist {
     syncedAt: null,
     tickers: fallback,
     live: [],
+    benchmarks: {},
   };
 }
 
@@ -72,7 +105,7 @@ export async function loadWatchlist(
       syncedAt?: unknown;
       live?: unknown;
     };
-    const { name, tickers } = parseWatchlistInput(body);
+    const { name, tickers, benchmarks } = parseWatchlistInput(body);
     const live = Array.isArray(body.live)
       ? body.live.filter((t): t is string => tickers.includes(t as string))
       : [];
@@ -82,6 +115,7 @@ export async function loadWatchlist(
       syncedAt: typeof body.syncedAt === "string" ? body.syncedAt : null,
       tickers,
       live,
+      benchmarks,
     };
   } catch {
     return defaultWatchlist();

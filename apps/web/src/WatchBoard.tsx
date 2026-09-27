@@ -22,10 +22,12 @@ function change(s: BoardSeries): number | null {
 function ChartModal({
   ticker,
   date,
+  sector,
   onClose,
 }: {
   ticker: string;
   date: string;
+  sector?: string;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -54,7 +56,12 @@ function ChartModal({
           </button>
         </div>
         <Suspense fallback={<p className="chart-status">Loading chart…</p>}>
-          <DayChart ticker={ticker} date={date} className="big" />
+          <DayChart
+            ticker={ticker}
+            date={date}
+            sector={sector}
+            className="big"
+          />
         </Suspense>
       </div>
     </dialog>
@@ -69,10 +76,39 @@ export function WatchBoard({
   symbols: string[]; // watchlist order
 }) {
   const [open, setOpen] = useState<string | null>(null);
+  const [compare, setCompare] = useState<"SPY" | "sector">("SPY");
   const bySymbol = new Map(board.series.map((s) => [s.ticker, s]));
   const spy = bySymbol.get("SPY")?.points;
+  const against = (ticker: string) => {
+    const sector = board.benchmarks[ticker];
+    return compare === "sector" && sector ? sector : "SPY";
+  };
   return (
     <section className="watch-board" aria-label="Watchlist">
+      {Object.keys(board.benchmarks).length > 0 && (
+        <div
+          className="chips chart-modes"
+          role="group"
+          aria-label="Compare with"
+        >
+          <button
+            type="button"
+            className="chip"
+            aria-pressed={compare === "SPY"}
+            onClick={() => setCompare("SPY")}
+          >
+            vs SPY
+          </button>
+          <button
+            type="button"
+            className="chip"
+            aria-pressed={compare === "sector"}
+            onClick={() => setCompare("sector")}
+          >
+            vs sector
+          </button>
+        </div>
+      )}
       <ul className="watch-grid">
         {symbols.map((ticker) => {
           const s = bySymbol.get(ticker);
@@ -107,8 +143,15 @@ export function WatchBoard({
                 </span>
                 <Sparkline
                   ticker={s?.points ?? []}
-                  benchmark={ticker === "SPY" ? undefined : spy}
+                  benchmark={
+                    ticker === against(ticker)
+                      ? undefined
+                      : against(ticker) === "SPY"
+                        ? spy
+                        : bySymbol.get(against(ticker))?.points
+                  }
                 />
+                <span className="watch-against">vs {against(ticker)}</span>
               </button>
             </li>
           );
@@ -118,6 +161,7 @@ export function WatchBoard({
         <ChartModal
           ticker={open}
           date={board.date}
+          sector={board.benchmarks[open]}
           onClose={() => setOpen(null)}
         />
       )}

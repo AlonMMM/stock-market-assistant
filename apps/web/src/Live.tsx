@@ -150,7 +150,10 @@ export function Live({ modes }: { modes: ReactNode }) {
           </p>
         )}
         {status && status.alerts.length > 0 && (
-          <AlertFeed alerts={status.alerts} />
+          <AlertFeed
+            alerts={status.alerts}
+            benchmarks={board.value?.benchmarks}
+          />
         )}
       </section>
 

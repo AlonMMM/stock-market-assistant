@@ -19,7 +19,13 @@ const sessionTag = { pre: "Pre", regular: "", post: "After" };
 
 type Sort = "time" | "ratio";
 
-export function AlertFeed({ alerts }: { alerts: FeedAlert[] }) {
+export function AlertFeed({
+  alerts,
+  benchmarks = {},
+}: {
+  alerts: FeedAlert[];
+  benchmarks?: Record<string, string>; // sector benchmark per symbol
+}) {
   const [ticker, setTicker] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("time");
   const [open, setOpen] = useState<string | null>(null);
@@ -136,6 +142,7 @@ export function AlertFeed({ alerts }: { alerts: FeedAlert[] }) {
                       ticker={a.ticker}
                       alertEnd={a.end}
                       window={a.config.window}
+                      sector={benchmarks[a.ticker]}
                     />
                   </Suspense>
                 </div>

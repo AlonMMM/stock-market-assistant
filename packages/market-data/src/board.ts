@@ -19,6 +19,7 @@ export interface Board {
   feed: "sip";
   date: string; // US session shown: today once pre-market data exists
   watchlist: string[]; // symbols to show as the board, in watchlist order
+  benchmarks: Record<string, string>; // sector benchmark per listed symbol
   series: BoardSeries[]; // watchlist order, then SPY and QQQ if not listed
 }
 
@@ -41,13 +42,16 @@ export async function runBoard(
   tickers: string[],
   multi: MultiHistory,
   now = Date.now(),
+  benchmarks: Record<string, string> = {},
 ): Promise<Board> {
   const date = latestSession(now);
   const previous = previousSessions(date, 1)[0]!;
-  const symbols = [...new Set([...tickers, benchmark, nasdaq])].slice(
-    0,
-    maxBoardSymbols,
+  const sectors = tickers.flatMap((t) =>
+    benchmarks[t] ? [benchmarks[t]] : [],
   );
+  const symbols = [
+    ...new Set([...tickers, benchmark, nasdaq, ...sectors]),
+  ].slice(0, maxBoardSymbols);
   const next = new Date(`${date}T12:00:00Z`);
   next.setUTCDate(next.getUTCDate() + 1);
   const end = Math.min(
@@ -63,6 +67,11 @@ export async function runBoard(
     feed: "sip",
     date,
     watchlist: tickers.filter((t) => symbols.includes(t)),
+    benchmarks: Object.fromEntries(
+      Object.entries(benchmarks).filter(
+        ([t, etf]) => tickers.includes(t) && symbols.includes(etf),
+      ),
+    ),
     series: symbols.map((ticker) => {
       const points: [number, number][] = [];
       for (const row of intraday.get(ticker) ?? []) {
@@ -79,6 +88,7 @@ export async function runBoard(
 
 export async function handleBoard(
   tickers: string[],
+  benchmarks: Record<string, string>,
   credentials: Credentials,
   fetcher: typeof fetch = fetch,
   now = Date.now(),
@@ -103,6 +113,7 @@ export async function handleBoard(
         (symbols, start, end, timeframe) =>
           feed.multiHistory(symbols, start, end, timeframe),
         now,
+        benchmarks,
       ),
     };
   } catch (error) {

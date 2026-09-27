@@ -41,9 +41,15 @@ export class DayChartInputError extends Error {}
 function parse(input: unknown) {
   if (!input || typeof input !== "object" || Array.isArray(input))
     throw new DayChartInputError("Expected JSON object");
-  const { ticker, date } = input as { ticker?: unknown; date?: unknown };
+  const {
+    ticker,
+    date,
+    benchmark: against = benchmark,
+  } = input as { ticker?: unknown; date?: unknown; benchmark?: unknown };
   if (typeof ticker !== "string" || !tickerPattern.test(ticker))
     throw new DayChartInputError("Choose one US stock symbol");
+  if (typeof against !== "string" || !tickerPattern.test(against))
+    throw new DayChartInputError("Choose one US benchmark symbol");
   let open: boolean;
   try {
     open =
@@ -54,7 +60,7 @@ function parse(input: unknown) {
     open = false;
   }
   if (!open) throw new DayChartInputError("Choose a 2026–2028 US trading day");
-  return { ticker, date: date as string };
+  return { ticker, date: date as string, against };
 }
 
 // One trading day of minute bars (pre-market through after-hours) for a ticker
@@ -65,7 +71,7 @@ export async function runDayChart(
   now = Date.now(),
   daily: History = async () => [],
 ): Promise<DayChart> {
-  const { ticker, date } = parse(input);
+  const { ticker, date, against } = parse(input);
   let previous: string;
   try {
     previous = previousSessions(date, 1)[0]!;
@@ -81,7 +87,7 @@ export async function runDayChart(
   const start = `${previous}T00:00:00Z`;
   if (Date.parse(start) >= end)
     throw new DayChartInputError("That day has no data yet");
-  const tickers = ticker === benchmark ? [ticker] : [ticker, benchmark];
+  const tickers = ticker === against ? [ticker] : [ticker, against];
   let betaSessions: string[] = [];
   try {
     betaSessions = previousSessions(date, betaReturns + 1);

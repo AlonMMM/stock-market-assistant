@@ -81,7 +81,7 @@ export default {
         url: env.COLLECTOR_URL,
         token: env.COLLECTOR_TOKEN,
       });
-      const result = await handleBoard(list.tickers, {
+      const result = await handleBoard(list.tickers, list.benchmarks, {
         key: env.ALPACA_API_KEY,
         secret: env.ALPACA_API_SECRET,
       });

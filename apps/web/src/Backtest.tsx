@@ -268,7 +268,12 @@ export function Backtest({ modes }: { modes: ReactNode }) {
             {result.alerts.length === 0 && (
               <p className="notice">No alerts matched these settings.</p>
             )}
-            {result.alerts.length > 0 && <AlertFeed alerts={result.alerts} />}
+            {result.alerts.length > 0 && (
+              <AlertFeed
+                alerts={result.alerts}
+                benchmarks={watchlist.list?.benchmarks}
+              />
+            )}
             <details>
               <summary>Data quality &amp; suppressed signals</summary>
               <p>{number(result.evaluated)} complete windows evaluated.</p>

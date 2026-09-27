@@ -6,6 +6,7 @@ export interface StoredWatchlist {
   name: string;
   syncedAt: string;
   tickers: string[];
+  benchmarks?: Record<string, string>;
 }
 
 export class MarketStore {

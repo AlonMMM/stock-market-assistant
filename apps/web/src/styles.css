@@ -752,3 +752,14 @@ header .modes .selected {
     height: 58dvh;
   }
 }
+.watch-against {
+  grid-area: spark;
+  align-self: end;
+  justify-self: end;
+  font-size: 10px;
+  color: #9a6a3a;
+  pointer-events: none;
+}
+.watch-board > .chart-modes {
+  margin-bottom: 10px;
+}
