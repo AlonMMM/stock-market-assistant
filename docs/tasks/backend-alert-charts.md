@@ -49,3 +49,12 @@ Defaults, not user-confirmed:
 ## Handoff
 
 Pending: user check on the hosted site; optional session shading, sector comparison.
+
+## 2026-09-27: overlay view
+
+At the user's request (matching their trading platform), the chart opens in an
+"Overlay" view: ticker price on the right axis and SPY price on the left, each
+auto-fitted to the visible range, so the shape and timing of moves line up. This is
+a deliberate dual-axis view; vertical distances do not compare move sizes, so the
+readout shows both % changes. "% vs SPY×β" remains a toggle; the choice is remembered
+per device. Alpaca's finest bars are one minute (the user's platform showed 10 s).

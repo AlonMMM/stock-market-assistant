@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import Fastify from "fastify";
@@ -19,29 +19,19 @@ import {
 } from "../../../packages/market-data/src/calendar.js";
 import { LiveEvaluator } from "../../../packages/market-data/src/evaluator.js";
 import { MarketStore } from "../../../packages/market-data/src/store.js";
+import {
+  parseWatchlistInput,
+  WatchlistInputError,
+} from "../../../packages/market-data/src/watchlist.js";
 
 const enabled = process.env.ALPACA_ENABLED === "true";
-const tickers: unknown = process.env.ALPACA_SYMBOLS
-  ? process.env.ALPACA_SYMBOLS.split(",").map((ticker) => ticker.trim())
-  : JSON.parse(
-      readFileSync(
-        process.env.ALPACA_WATCHLIST ?? "config/alpaca-watchlist.json",
-        "utf8",
-      ),
-    );
-if (
-  !Array.isArray(tickers) ||
-  tickers.length < 1 ||
-  tickers.length > 50 ||
-  !tickers.every(
-    (t) => typeof t === "string" && /^[A-Z][A-Z0-9. -]{0,9}$/.test(t),
-  ) ||
-  new Set(tickers).size !== tickers.length
-)
-  throw new Error("Watchlist must contain 1–50 distinct US stock symbols");
 const feed = process.env.ALPACA_FEED ?? "iex";
 if (!(["iex", "sip", "delayed_sip"] as string[]).includes(feed))
   throw new Error("ALPACA_FEED must be iex, sip, or delayed_sip");
+// Alpaca's free plan allows 30 symbols on one IEX stream subscription.
+const maxLive = Number(process.env.ALPACA_MAX_SYMBOLS ?? 30);
+if (!Number.isInteger(maxLive) || maxLive < 1 || maxLive > 1000)
+  throw new Error("ALPACA_MAX_SYMBOLS must be an integer from 1 to 1000");
 const key = process.env.ALPACA_API_KEY ?? "";
 const secret = process.env.ALPACA_API_SECRET ?? "";
 if (enabled && (!key || !secret))
@@ -49,6 +39,11 @@ if (enabled && (!key || !secret))
 const token = process.env.COLLECTOR_TOKEN;
 if (!token || token.length < 32)
   throw new Error("Set a random COLLECTOR_TOKEN of at least 32 characters");
+// Optional narrower credential that may only replace the watchlist, for the
+// scheduled IBKR sync job.
+const syncToken = process.env.WATCHLIST_SYNC_TOKEN;
+if (syncToken !== undefined && syncToken.length < 32)
+  throw new Error("WATCHLIST_SYNC_TOKEN must have at least 32 characters");
 const config: Config = {
   ...defaults,
   ...JSON.parse(process.env.RVOL_CONFIG ?? "{}"),
@@ -65,12 +60,12 @@ const symbols = new Map<
   string,
   { state: string; lastBar: string | null; evaluation: string | null }
 >();
-const feedClient = enabled
-  ? new AlpacaFeed(key, secret, feed as AlpacaFeedName, (message) => {
-      failure = message;
-      void stop(1);
-    })
-  : null;
+// Each watchlist change starts a new session with its own stream connection;
+// a superseded session stops quietly.
+let session = 0;
+let feedClient: AlpacaFeed | null = null;
+
+const live = (tickers: string[]) => tickers.slice(0, maxLive);
 
 async function stop(code: number) {
   if (stopping) return;
@@ -84,10 +79,22 @@ async function stop(code: number) {
 }
 process.once("SIGINT", () => void stop(0));
 process.once("SIGTERM", () => void stop(0));
-api.addHook("onRequest", async (request, reply) => {
-  const expected = Buffer.from(`Bearer ${token}`);
+
+function bearer(
+  request: { headers: { authorization?: string } },
+  value: string,
+) {
+  const expected = Buffer.from(`Bearer ${value}`);
   const actual = Buffer.from(request.headers.authorization ?? "");
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual))
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+api.addHook("onRequest", async (request, reply) => {
+  const sync =
+    syncToken !== undefined &&
+    request.method === "PUT" &&
+    request.url === "/watchlist" &&
+    bearer(request, syncToken);
+  if (!sync && !bearer(request, token))
     return reply.code(401).send({ error: "Unauthorized" });
 });
 api.get("/health", async () => ({
@@ -108,10 +115,55 @@ api.get("/health", async () => ({
   ),
 }));
 api.get("/alerts", async () => ({ source: "alpaca", alerts: store.alerts() }));
+api.get("/watchlist", async (_request, reply) => {
+  const list = store.watchlist();
+  if (!list) return reply.code(404).send({ error: "No watchlist synced yet" });
+  return { source: "ibkr", ...list, live: live(list.tickers) };
+});
+api.put("/watchlist", async (request, reply) => {
+  let input: { name: string; tickers: string[] };
+  try {
+    input = parseWatchlistInput(request.body);
+  } catch (error) {
+    if (error instanceof WatchlistInputError)
+      return reply.code(400).send({ error: error.message });
+    throw error;
+  }
+  const previous = store.watchlist();
+  const list = { ...input, syncedAt: new Date().toISOString() };
+  store.setWatchlist(list);
+  const changed =
+    live(previous?.tickers ?? []).join() !== live(list.tickers).join();
+  console.log(
+    JSON.stringify({
+      event: "watchlist-synced",
+      symbols: list.tickers.length,
+      changed,
+    }),
+  );
+  if (changed && enabled) void restart(list.tickers);
+  return {
+    source: "ibkr",
+    ...list,
+    live: live(list.tickers),
+    restarting: changed && enabled,
+  };
+});
 
-async function collect() {
-  if (!feedClient) throw new Error("Alpaca collector is disabled");
+async function collect(tickers: string[], id: number) {
+  const client = new AlpacaFeed(
+    key,
+    secret,
+    feed as AlpacaFeedName,
+    (message) => {
+      if (id !== session) return;
+      failure = message;
+      void stop(1);
+    },
+  );
+  feedClient = client;
   state = "warming-up";
+  symbols.clear();
   const today = newYork(Date.now()).date;
   const dates = previousSessions(today, config.days);
   const from = dates[0]!;
@@ -119,7 +171,8 @@ async function collect() {
   end.setUTCDate(end.getUTCDate() + 1);
   const evaluators = new Map<string, LiveEvaluator>();
 
-  for (const ticker of tickers as string[]) {
+  for (const ticker of tickers) {
+    if (id !== session) return;
     symbols.set(ticker, {
       state: "warming-up",
       lastBar: null,
@@ -128,7 +181,7 @@ async function collect() {
     const cached = store.bars(ticker, from);
     const cachedDates = new Set(cached.map((bar) => bar.date));
     const firstMissing = dates.find((date) => !cachedDates.has(date));
-    const rows = await feedClient.history(
+    const rows = await client.history(
       ticker,
       `${firstMissing ?? today}T00:00:00Z`,
       end.toISOString(),
@@ -143,11 +196,13 @@ async function collect() {
     evaluators.set(ticker, evaluator);
     symbols.get(ticker)!.state = "subscribing";
     // A cold 20-session warmup usually paginates twice. This keeps the
-    // 50-symbol rollout below common REST request-per-minute limits.
+    // rollout below common REST request-per-minute limits.
     await delay(800);
   }
+  if (id !== session) return;
 
-  await feedClient.stream(tickers as string[], (ticker, raw) => {
+  await client.stream(tickers, (ticker, raw) => {
+    if (id !== session) return;
     try {
       const evaluator = evaluators.get(ticker);
       const symbol = symbols.get(ticker);
@@ -167,14 +222,27 @@ async function collect() {
       void stop(1);
     }
   });
+  if (id !== session) return;
   state = "subscribed";
   for (const symbol of symbols.values()) symbol.state = "subscribed";
-  const prune = () =>
-    store.prune(
-      new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10),
-    );
-  prune();
-  setInterval(prune, 86400000).unref();
+  console.log(JSON.stringify({ state, symbols: tickers.length }));
+}
+
+// Replaces the live subscription. Alpaca allows one stream connection per
+// account, so the previous one is closed and given a moment to drop first.
+async function restart(tickers: string[]) {
+  const id = ++session;
+  feedClient?.close();
+  feedClient = null;
+  await delay(2000);
+  if (id !== session) return;
+  try {
+    await collect(live(tickers), id);
+  } catch (error) {
+    if (id !== session) return;
+    failure = error instanceof Error ? error.message : "Collector failed";
+    await stop(1);
+  }
 }
 
 try {
@@ -182,12 +250,21 @@ try {
     host: process.env.COLLECTOR_HOST ?? "127.0.0.1",
     port: Number(process.env.PORT ?? 3002),
   });
-  if (enabled) {
-    await collect();
-  } else {
+  const prune = () =>
+    store.prune(
+      new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10),
+    );
+  prune();
+  setInterval(prune, 86400000).unref();
+  const list = store.watchlist();
+  if (!enabled) {
     state = "awaiting-alpaca-activation";
-    console.log(JSON.stringify({ state, address: api.server.address() }));
+  } else if (!list) {
+    state = "awaiting-watchlist";
+  } else {
+    void restart(list.tickers);
   }
+  console.log(JSON.stringify({ state, address: api.server.address() }));
 } catch (error) {
   failure = error instanceof Error ? error.message : "Collector startup failed";
   await stop(1);
