@@ -153,3 +153,71 @@ test(
     }
   },
 );
+
+test(
+  "notification endpoints report, mute and refuse when Telegram is not set",
+  { timeout: 10000 },
+  async () => {
+    const token = randomBytes(32).toString("hex");
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    };
+    const plain = await start({
+      ALPACA_ENABLED: "false",
+      COLLECTOR_TOKEN: token,
+    });
+    try {
+      assert.equal((await fetch(`${plain.url}/notifications`)).status, 401);
+      const status = await (
+        await fetch(`${plain.url}/notifications`, { headers })
+      ).json();
+      assert.deepEqual(status, { channel: null, muted: null, recent: [] });
+      const test = await fetch(`${plain.url}/notifications/test`, {
+        method: "POST",
+        headers: { Authorization: headers.Authorization },
+      });
+      assert.equal(test.status, 409);
+    } finally {
+      await plain.close();
+    }
+
+    // No message is sent: mute changes and status reads make no Telegram call.
+    const telegram = await start({
+      ALPACA_ENABLED: "false",
+      COLLECTOR_TOKEN: token,
+      TELEGRAM_BOT_TOKEN: "123:fake",
+      TELEGRAM_CHAT_ID: "42",
+    });
+    try {
+      const put = (body: unknown) =>
+        fetch(`${telegram.url}/notifications`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify(body),
+        });
+      assert.equal((await put({ muted: "yes" })).status, 400);
+      assert.deepEqual(await (await put({ muted: true })).json(), {
+        channel: "telegram",
+        muted: true,
+      });
+      const status = await (
+        await fetch(`${telegram.url}/notifications`, { headers })
+      ).json();
+      assert.equal(status.muted, true);
+    } finally {
+      await telegram.close();
+    }
+  },
+);
+
+test("a half-configured Telegram channel stops startup", async () => {
+  await assert.rejects(
+    start({
+      ALPACA_ENABLED: "false",
+      COLLECTOR_TOKEN: randomBytes(32).toString("hex"),
+      TELEGRAM_BOT_TOKEN: "123:fake",
+    }),
+    /Unexpected exit 1/,
+  );
+});

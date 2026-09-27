@@ -1,0 +1,46 @@
+# Task: Phone notifications through Telegram
+
+Status: implemented; real bot check pending
+Owner: backend
+Branch: feat/telegram-notifications
+
+## Outcome
+
+Each new live relative-volume alert from the collector reaches the user's phone as a
+Telegram message, with Israel time, direction, move, volume and ratio.
+
+## User-confirmed (2026-09-27)
+
+Channel: Telegram bot. First version includes a durable send log with retry and no
+duplicate after restart, a mute switch, and a test endpoint. Rate capping is deferred.
+
+## Design
+
+- `packages/notifications/src/telegram.ts`: message format and `sendMessage` client.
+  The message shows the evaluator's values only; nothing is recomputed.
+- `packages/notifications/src/outbox.ts`: SQLite outbox keyed by `(ticker, end)` in the
+  collector database, drained sequentially after each alert and every 5 s.
+- Collector endpoints (collector token): `GET/PUT /notifications`,
+  `POST /notifications/test`. Operation details: [operations](../alpaca-operations.md#telegram-notifications).
+- Backtest and replay never send notifications; only the live stream enqueues.
+
+## Limits
+
+- At-most-once: a crash between Telegram accepting a message and the outbox recording it
+  leaves the row `unknown`; that alert is not resent.
+- Alerts older than 15 minutes are not sent. No rate cap: a burst sends one message per
+  alert, paced only by Telegram's 429 `retry_after`.
+- Single chat, no per-user settings. The website does not show delivery state yet.
+
+## Verification evidence
+
+- `tests/notifications.test.ts`: Israel-time formatting (summer/winter), duplicate enqueue
+  and reopen, backoff and `retry_after`, permanent failure, attempt limit, expiry, mute
+  persistence without backlog replay, crash recovery, token never in errors.
+- `tests/collector-startup.test.ts`: endpoint auth, unconfigured 409s, mute toggle,
+  half-configured Telegram stops startup.
+- Not verified: a real bot and chat; live alerts (collector's Alpaca validation pending).
+
+## Next
+
+Create the bot, set Railway secrets, run the test endpoint, then watch the first live alert.

@@ -18,6 +18,8 @@ import {
   previousSessions,
 } from "../../../packages/market-data/src/calendar.js";
 import { LiveEvaluator } from "../../../packages/market-data/src/evaluator.js";
+import { Outbox } from "../../../packages/notifications/src/outbox.js";
+import { TelegramSender } from "../../../packages/notifications/src/telegram.js";
 import { MarketStore } from "../../../packages/market-data/src/store.js";
 import {
   parseWatchlistInput,
@@ -52,6 +54,19 @@ validateConfig(config);
 const dbPath = process.env.COLLECTOR_DB ?? "data/local/alpaca.sqlite";
 mkdirSync(dirname(dbPath), { recursive: true });
 const store = new MarketStore(dbPath);
+// Phone notifications are on when both Telegram values are set.
+const telegramToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
+const telegramChat = process.env.TELEGRAM_CHAT_ID ?? "";
+if (!telegramToken !== !telegramChat)
+  throw new Error(
+    "Set both TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, or neither",
+  );
+const telegram = telegramToken
+  ? new TelegramSender(telegramToken, telegramChat)
+  : null;
+const outbox = telegram
+  ? new Outbox(dbPath, telegram, { siteUrl: process.env.SITE_URL })
+  : null;
 const api = Fastify({ logger: false });
 let stopping = false;
 let failure: string | null = null;
@@ -74,6 +89,7 @@ async function stop(code: number) {
   console.error(JSON.stringify({ state, error: failure, exitCode: code }));
   feedClient?.close();
   await api.close();
+  outbox?.close();
   store.close();
   process.exit(code);
 }
@@ -115,6 +131,31 @@ api.get("/health", async () => ({
   ),
 }));
 api.get("/alerts", async () => ({ source: "alpaca", alerts: store.alerts() }));
+api.get("/notifications", async () => ({
+  channel: outbox ? "telegram" : null,
+  muted: outbox?.muted() ?? null,
+  recent: outbox?.recent() ?? [],
+}));
+api.put("/notifications", async (request, reply) => {
+  if (!outbox)
+    return reply.code(409).send({ error: "Telegram is not configured" });
+  const muted = (request.body as { muted?: unknown } | null)?.muted;
+  if (typeof muted !== "boolean")
+    return reply.code(400).send({ error: "Body must be { muted: boolean }" });
+  outbox.setMuted(muted);
+  console.log(JSON.stringify({ event: "notifications-muted", muted }));
+  return { channel: "telegram", muted };
+});
+// Sends a labeled test message now, bypassing mute and the outbox.
+api.post("/notifications/test", async (_request, reply) => {
+  if (!telegram)
+    return reply.code(409).send({ error: "Telegram is not configured" });
+  const result = await telegram.send(
+    "🧪 <b>Test message</b> from the stock-market collector. Not a market alert.",
+  );
+  if (!result.ok) return reply.code(502).send({ error: result.error });
+  return { sent: true };
+});
 api.get("/watchlist", async (_request, reply) => {
   const list = store.watchlist();
   if (!list) return reply.code(404).send({ error: "No watchlist synced yet" });
@@ -216,8 +257,11 @@ async function collect(tickers: string[], id: number) {
         lastBar: bar.end,
         evaluation: result?.status ?? null,
       });
-      if (result?.status === "alert")
-        store.alert({ ...result, close: bar.close });
+      if (result?.status === "alert") {
+        const alert = { ...result, close: bar.close };
+        store.alert(alert);
+        if (outbox?.enqueue(alert)) void outbox.drain();
+      }
     } catch {
       failure = `Invalid market data for ${ticker}`;
       void stop(1);
@@ -257,6 +301,8 @@ try {
     );
   prune();
   setInterval(prune, 86400000).unref();
+  // Picks up retries and rows left pending by a restart.
+  if (outbox) setInterval(() => void outbox.drain(), 5000).unref();
   const list = store.watchlist();
   if (!enabled) {
     state = "awaiting-alpaca-activation";
