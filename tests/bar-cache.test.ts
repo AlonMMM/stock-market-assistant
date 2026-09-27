@@ -241,3 +241,81 @@ test("a cached backtest returns the same result and reports cache use", async ()
   const { cache: _b, ...restB } = second.body as Record<string, unknown>;
   assert.deepEqual(restB, restA);
 });
+
+test("D1 writes fit Cloudflare's per-request limits: 10 days per statement, compressed", async () => {
+  const sqlite = new SqliteD1(":memory:");
+  let statements = 0;
+  const counting = {
+    prepare: (sql: string) => sqlite.prepare(sql),
+    batch: async (list: Parameters<typeof sqlite.batch>[0]) => {
+      statements += list.length;
+      return sqlite.batch(list);
+    },
+  };
+  const cache = new D1BarCache(counting);
+  const days = new Map<string, RawBar[]>();
+  const bar = (i: number): RawBar => ({
+    start: 1790150400 + i * 60,
+    open: 228.75,
+    high: 229.25,
+    low: 228.4,
+    close: 229.06 + i / 100,
+    volume: 93972 + i,
+  });
+  for (let d = 0; d < 38; d++) {
+    const date = new Date(Date.UTC(2026, 7, 20 + d)).toISOString().slice(0, 10);
+    days.set(
+      date,
+      Array.from({ length: 900 }, (_, i) => bar(i + d)),
+    );
+  }
+  await cache.put("NVDA:sip:1Min:raw", days);
+  assert.equal(statements, 4, "38 days in 4 statements");
+  const read = await cache.get("NVDA:sip:1Min:raw", [...days.keys()]);
+  assert.deepEqual(read, days);
+  // Stored compressed, far below the 100 KB statement limit for 10 days.
+  const row = (
+    await sqlite
+      .prepare("SELECT bars FROM minute_bars LIMIT 1")
+      .all<{ bars: string }>()
+  ).results[0]!;
+  assert.ok(row.bars.startsWith("gz:"));
+  assert.ok(row.bars.length * 10 < 100_000, `${row.bars.length} bytes a day`);
+  // Rows written before compression still read.
+  await sqlite
+    .prepare("INSERT INTO minute_bars VALUES (?, ?, ?, ?)")
+    .bind("OLD:sip:1Min:raw", "2026-09-01", "[[1,2,3,1,2,10]]", 0)
+    .run();
+  assert.deepEqual(
+    (await cache.get("OLD:sip:1Min:raw", ["2026-09-01"])).get("2026-09-01"),
+    [{ start: 1, open: 2, high: 3, low: 1, close: 2, volume: 10 }],
+  );
+});
+
+test("cache errors are counted and reported, results unaffected", async () => {
+  const broken: BarCache = {
+    get: async () => {
+      throw new Error("Too many API requests by single worker invocation.");
+    },
+    put: async () => {
+      throw new Error("Too many API requests by single worker invocation.");
+    },
+  };
+  const stats = { hits: 0, misses: 0 };
+  const s = source();
+  const rows = await cachedHistory(
+    "NVDA",
+    ...range,
+    s.fetchRange,
+    broken,
+    later,
+    stats,
+  );
+  assert.equal(rows.length, 5);
+  assert.deepEqual(stats, {
+    hits: 0,
+    misses: 5,
+    errors: 2,
+    lastError: "Too many API requests by single worker invocation.",
+  });
+});
