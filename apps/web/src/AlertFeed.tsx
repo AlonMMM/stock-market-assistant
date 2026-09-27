@@ -1,14 +1,18 @@
 import { lazy, Suspense, useState } from "react";
 import type { Evaluation } from "../../../packages/alerts/src/relative-volume.js";
 import type { AlertContext } from "../../../packages/market-data/src/backtest.js";
+import type { Outcome } from "../../../packages/market-data/src/outcome.js";
 
 // Backtest alerts carry close and market context; live alerts may lack them.
 export type FeedAlert = Evaluation & {
   close?: number;
   context?: AlertContext | null;
+  outcome?: Outcome; // backtest only: what the price did after the alert
 };
+
+const outcomeBadge = { good: "✅", stopped: "❌", weak: "⏸", unscored: "·" };
 import { number } from "./api.js";
-import { israelDateTime, israelLabel } from "./time.js";
+import { israelClock, israelDateTime, israelLabel } from "./time.js";
 
 const DayChart = lazy(() =>
   import("./DayChart.js").then((m) => ({ default: m.DayChart })),
@@ -28,6 +32,8 @@ export function AlertFeed({
 }) {
   const [ticker, setTicker] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("time");
+  const [result, setResult] = useState<Outcome["result"] | null>(null);
+  const scored = alerts.some((a) => a.outcome);
   const [open, setOpen] = useState<string | null>(null);
 
   const counts = new Map<string, number>();
@@ -37,6 +43,7 @@ export function AlertFeed({
   );
   const shown = alerts
     .filter((a) => !ticker || a.ticker === ticker)
+    .filter((a) => !result || a.outcome?.result === result)
     .sort((a, b) =>
       sort === "ratio"
         ? (b.ratio ?? 0) - (a.ratio ?? 0)
@@ -46,6 +53,28 @@ export function AlertFeed({
   return (
     <div className="feed">
       <div className="feed-filters">
+        {scored && (
+          <div className="chips" role="group" aria-label="Filter by outcome">
+            {(
+              [
+                [null, "Any outcome"],
+                ["good", "✅ Good"],
+                ["stopped", "❌ Stopped"],
+                ["weak", "⏸ Weak"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                type="button"
+                key={label}
+                className="chip"
+                aria-pressed={result === value}
+                onClick={() => setResult(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="chips" role="group" aria-label="Filter by symbol">
           <button
             type="button"
@@ -96,7 +125,17 @@ export function AlertFeed({
                 aria-expanded={expanded}
                 onClick={() => setOpen(expanded ? null : key)}
               >
-                <strong className="feed-ticker">{a.ticker}</strong>
+                <strong className="feed-ticker">
+                  {a.outcome && (
+                    <span
+                      className="feed-outcome"
+                      title={a.outcome.reason ?? a.outcome.result}
+                    >
+                      {outcomeBadge[a.outcome.result]}{" "}
+                    </span>
+                  )}
+                  {a.ticker}
+                </strong>
                 <span className="feed-time">
                   {israelDateTime(Date.parse(a.end))}
                   {sessionTag[a.session] && (
@@ -165,9 +204,11 @@ export function AlertFeed({
                       <p className="chart-status">Loading day chart…</p>
                     }
                   >
+                    {a.outcome && <OutcomeLine outcome={a.outcome} />}
                     <DayChart
                       ticker={a.ticker}
                       alertEnd={a.end}
+                      outcome={a.outcome}
                       window={a.config.window}
                       sector={benchmarks[a.ticker]}
                     />
@@ -179,5 +220,27 @@ export function AlertFeed({
         })}
       </ul>
     </div>
+  );
+}
+
+function OutcomeLine({ outcome: o }: { outcome: Outcome }) {
+  if (o.result === "unscored")
+    return <p className="evidence">Not scored: {o.reason}.</p>;
+  const f = (n: number | null) =>
+    n === null ? "—" : `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(2)}%`;
+  return (
+    <p className="evidence outcome-line">
+      <strong>
+        {o.result === "good"
+          ? `✅ Good momentum in ${o.minutes} min`
+          : o.result === "stopped"
+            ? `❌ Stopped after ${o.minutes} min`
+            : "⏸ Weak: no follow-through"}
+      </strong>{" "}
+      · entry ${o.entry?.toFixed(2)} at {israelClock(Date.parse(o.entryAt!))} ·
+      u = ±{o.unit?.toFixed(2)}% · best {f(o.run)} ({o.runUnits?.toFixed(1)}u) ·
+      worst {f(o.pullback)} · after 5/15/30/60 min: {f(o.forward[5])} /{" "}
+      {f(o.forward[15])} / {f(o.forward[30])} / {f(o.forward[60])}
+    </p>
   );
 }

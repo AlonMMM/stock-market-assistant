@@ -6,7 +6,16 @@ import {
 } from "../../alerts/src/relative-volume.js";
 import { AlpacaFeed } from "./alpaca.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
-import { normalize, type RawBar } from "./bars.js";
+import { normalize, type PriceBar, type RawBar } from "./bars.js";
+import {
+  OutcomeScorer,
+  parseValidation,
+  summarize,
+  ValidationInputError,
+  type Outcome,
+  type ValidationConfig,
+  type ValidationSummary,
+} from "./outcome.js";
 import { coreClose, previousSessions } from "./calendar.js";
 import { LiveEvaluator } from "./evaluator.js";
 
@@ -34,6 +43,7 @@ export interface AlertContext {
 export interface BacktestAlert extends Evaluation {
   close: number;
   context: AlertContext | null; // null for SPY or without enough data
+  outcome: Outcome; // what the price did after the alert
 }
 
 export interface BacktestResult {
@@ -47,6 +57,9 @@ export interface BacktestResult {
   alerts: BacktestAlert[];
   diagnostics: Record<string, number>;
   coverage: { ticker: string; bars: number; missingSessions: string[] }[];
+  // Outcome summary for these alerts, and for plain momentum entries at every
+  // fifth regular minute (the baseline) in the same symbols and days.
+  validation: ValidationSummary;
 }
 
 export class BacktestInputError extends Error {}
@@ -122,7 +135,23 @@ function parse(input: unknown, now: number) {
     throw new BacktestInputError(
       `Choose at most ${backtestLimits.sessions} trading sessions`,
     );
-  return { tickers: tickers as string[], from, to, config, sessions, warmup };
+  let validation: ValidationConfig;
+  try {
+    validation = parseValidation((body as { validation?: unknown }).validation);
+  } catch (error) {
+    if (error instanceof ValidationInputError)
+      throw new BacktestInputError(error.message);
+    throw error;
+  }
+  return {
+    tickers: tickers as string[],
+    from,
+    to,
+    config,
+    sessions,
+    warmup,
+    validation,
+  };
 }
 
 interface MarketTrack {
@@ -178,7 +207,12 @@ export async function runBacktest(
   now = Date.now(),
   daily: History = async () => [],
 ): Promise<BacktestResult> {
-  const { tickers, from, to, config, sessions, warmup } = parse(input, now);
+  const { tickers, from, to, config, sessions, warmup, validation } = parse(
+    input,
+    now,
+  );
+  const outcomes: Outcome[] = [];
+  const baseline: Outcome[] = [];
   const next = new Date(`${to}T12:00:00Z`);
   next.setUTCDate(next.getUTCDate() + 1);
   // 06:00Z is after the latest post-market close (01:00Z in winter) and
@@ -222,10 +256,13 @@ export async function runBacktest(
     const evaluator = new LiveEvaluator(config);
     const seen = new Set<string>();
     const lastRegular = new Map<string, number>();
+    const normalized: PriceBar[] = [];
+    const tickerAlerts: BacktestAlert[] = [];
     let count = 0;
     for (const row of rows[index]!) {
       const bar = normalize(ticker, row, "shares");
       if (!bar || bar.date > to || Date.parse(bar.end) > end) continue;
+      normalized.push(bar);
       if (bar.session === "regular") lastRegular.set(bar.date, bar.close);
       const inRange = bar.date >= from;
       if (inRange) {
@@ -237,9 +274,10 @@ export async function runBacktest(
       evaluated++;
       diagnostics[result.status] = (diagnostics[result.status] ?? 0) + 1;
       if (result.status === "alert")
-        alerts.push({
+        tickerAlerts.push({
           ...result,
           close: bar.close,
+          outcome: undefined as unknown as Outcome, // scored below
           context:
             ticker === benchmark || !betaStart
               ? null
@@ -254,6 +292,14 @@ export async function runBacktest(
                 ),
         });
     }
+    // Outcomes need the bars after each alert, so score once all are read.
+    const scorer = new OutcomeScorer(normalized, validation);
+    for (const alert of tickerAlerts) {
+      alert.outcome = scorer.score(alert.end, alert.direction ?? "up");
+      outcomes.push(alert.outcome);
+      alerts.push(alert);
+    }
+    baseline.push(...scorer.baseline(from, to));
     coverage.push({
       ticker,
       bars: count,
@@ -276,6 +322,7 @@ export async function runBacktest(
     alerts,
     diagnostics,
     coverage,
+    validation: summarize(outcomes, baseline, validation),
   };
 }
 

@@ -17,6 +17,7 @@ import type {
   ChartSeries,
   DayChart as DayChartData,
 } from "../../../packages/market-data/src/day-chart.js";
+import type { Outcome } from "../../../packages/market-data/src/outcome.js";
 import {
   israelClock,
   israelLabel,
@@ -129,6 +130,7 @@ export function DayChart({
   window = 0,
   date: day,
   sector,
+  outcome,
   className = "",
 }: {
   ticker: string;
@@ -136,6 +138,7 @@ export function DayChart({
   window?: number; // alert window length in minutes
   date?: string; // US session date when there is no alert
   sector?: string; // the symbol's sector/theme benchmark ETF, if known
+  outcome?: Outcome; // backtest validation of the alert, if scored
   className?: string;
 }) {
   const alertMs = alertEnd ? Date.parse(alertEnd) : NaN;
@@ -301,6 +304,30 @@ export function DayChart({
         color: colors.ticker,
         text: `Alert ${israelClock(alertMs)}`,
       });
+    // Validation: the simulated entry and where it turned good or was stopped.
+    if (outcome?.entryAt) {
+      const entryMs = Date.parse(outcome.entryAt);
+      const at = (ms: number) => m.find((p) => p.instant === ms);
+      const entryBar = at(entryMs + 60000);
+      if (entryBar)
+        markers.push({
+          time: entryBar.time,
+          position: "belowBar",
+          shape: "circle",
+          color: colors.ticker,
+          text: `Entry $${outcome.entry?.toFixed(2)}`,
+        });
+      const done =
+        outcome.minutes !== null ? at(entryMs + outcome.minutes * 60000) : null;
+      if (done)
+        markers.push({
+          time: done.time,
+          position: outcome.result === "good" ? "aboveBar" : "belowBar",
+          shape: "circle",
+          color: outcome.result === "good" ? "#15803d" : "#b91c1c",
+          text: outcome.result === "good" ? "✅ good" : "❌ stop",
+        });
+    }
     markers.sort((a, b) => Number(a.time) - Number(b.time));
     if (markers.length) createSeriesMarkers(tickerLine, markers);
     // Open on two hours around the alert so minute volume bars stay legible;
@@ -366,7 +393,7 @@ export function DayChart({
       chart.unsubscribeCrosshairMove(onMove);
       chart.remove();
     };
-  }, [data, alertMs, window, overlay]);
+  }, [data, alertMs, window, overlay, outcome]);
 
   const shown = readout ?? latest;
   const main = data?.series[0];

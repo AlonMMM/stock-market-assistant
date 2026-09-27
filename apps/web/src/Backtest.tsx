@@ -5,7 +5,9 @@ import type {
 } from "../../../packages/market-data/src/backtest.js";
 import { number, readJson } from "./api.js";
 import { Notices } from "./Notices.js";
+import { summarize } from "../../../packages/market-data/src/outcome.js";
 import { AlertFeed } from "./AlertFeed.js";
+import { ValidationCard } from "./Validation.js";
 import { savedTickers, useWatchlist, Watchlist } from "./Watchlist.js";
 
 // Each request stays within Cloudflare's per-request subrequest and CPU limits:
@@ -14,6 +16,17 @@ const batchSize = 6;
 
 function merge(parts: BacktestResult[]): BacktestResult {
   const [first] = parts;
+  const alerts = parts.flatMap((p) => p.alerts);
+  // Medians cannot be combined across batches: recompute from all alerts and
+  // add up the baseline counts.
+  const validation = summarize(
+    alerts.map((a) => a.outcome),
+    [],
+    first!.validation.config,
+  );
+  for (const p of parts)
+    for (const k of ["scored", "good", "stopped", "weak"] as const)
+      validation.baseline[k] += p.validation.baseline[k];
   const diagnostics: Record<string, number> = {};
   for (const p of parts)
     for (const [k, n] of Object.entries(p.diagnostics))
@@ -22,8 +35,9 @@ function merge(parts: BacktestResult[]): BacktestResult {
     ...first!,
     tickers: parts.flatMap((p) => p.tickers),
     evaluated: parts.reduce((n, p) => n + p.evaluated, 0),
-    alerts: parts.flatMap((p) => p.alerts),
+    alerts,
     diagnostics,
+    validation,
     coverage: parts.flatMap((p) => p.coverage),
   };
 }
@@ -49,6 +63,9 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   const [lastMove, setLastMove] = useState(0.5);
   const [directionBars, setDirectionBars] = useState(3);
   const [pace, setPace] = useState(3);
+  const [stopUnits, setStopUnits] = useState(1);
+  const [goodUnits, setGoodUnits] = useState(2);
+  const [horizon, setHorizon] = useState(60);
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -88,6 +105,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
               directionBars,
               paceMultiple: pace,
             },
+            validation: { stopUnits, goodUnits, horizon },
           }),
           signal: AbortSignal.timeout(120000),
         });
@@ -268,6 +286,29 @@ export function Backtest({ modes }: { modes: ReactNode }) {
               step: "1",
             },
           )}
+          {numberInput(
+            "Validation: stop (u against)",
+            stopUnits,
+            setStopUnits,
+            {
+              min: "0.1",
+              step: "0.1",
+            },
+          )}
+          {numberInput(
+            "Validation: good (u in favour)",
+            goodUnits,
+            setGoodUnits,
+            {
+              min: "0.1",
+              step: "0.1",
+            },
+          )}
+          {numberInput("Validation: horizon (min)", horizon, setHorizon, {
+            min: "1",
+            max: "390",
+            step: "1",
+          })}
           {numberInput("Today's pace (×, 0 = off)", pace, setPace, {
             min: "0",
             step: "0.1",
@@ -314,6 +355,9 @@ export function Backtest({ modes }: { modes: ReactNode }) {
             </div>
             {result.alerts.length === 0 && (
               <p className="notice">No alerts matched these settings.</p>
+            )}
+            {result.alerts.length > 0 && (
+              <ValidationCard summary={result.validation} />
             )}
             {result.alerts.length > 0 && (
               <AlertFeed
