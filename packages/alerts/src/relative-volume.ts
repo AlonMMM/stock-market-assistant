@@ -41,7 +41,9 @@ export const defaults: Config = {
   minVolume: 10000,
   priceMultiple: 3,
   minMovePercent: 0.5,
-  lastBarMinMovePercent: 0.5,
+  // Off by default: a 0.5% gate cut alerts 6× and made them worse than
+  // chance in validation (2026-09-27); kept as an opt-in setting.
+  lastBarMinMovePercent: 0,
   directionBars: 3,
   paceMultiple: 3,
   paceMinMinutes: 15,

@@ -211,8 +211,8 @@ test("session separation, zero baseline, duplicates, fresh crossings and cooldow
     "alert",
     "suppressed",
     "suppressed",
-    "weak-last-bar", // flat minutes are not evaluated
-    "weak-last-bar",
+    "below-threshold",
+    "below-threshold",
     "alert",
     "suppressed",
     "suppressed",
@@ -334,15 +334,13 @@ test("the last-minute gate and the number of same-direction candles are configur
     return day;
   };
   const gentle = [100, 101, 102, 102.3];
+  // Off by default; opt in with a percentage.
   assert.equal(
-    engine({})("2026-03-03", gentle, 300).at(-1)?.status,
+    engine({ lastBarMinMovePercent: 0.5 })("2026-03-03", gentle, 300).at(-1)
+      ?.status,
     "weak-last-bar",
   );
-  assert.equal(
-    engine({ lastBarMinMovePercent: 0 })("2026-03-03", gentle, 300).at(-1)
-      ?.status,
-    "alert",
-  );
+  assert.equal(engine({})("2026-03-03", gentle, 300).at(-1)?.status, "alert");
   // First window minute dips; only the last two must share the direction.
   const dip = [100, 99.5, 100.5, 101.5];
   assert.equal(

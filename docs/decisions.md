@@ -136,3 +136,11 @@ The last minute must move ≥ 0.5% from the previous close (configurable, 0 = of
 qualifies against the 20-day time-of-day median OR ≥ 3× today's own pace (regular
 session, excluding the first and last 30 minutes, after 15 minutes of data). The number
 of same-direction candles is configurable (default 3).
+
+## 2026-09-27 — Last-minute gate off by default
+
+Status: confirmed by user after validation.
+
+On 30 symbols, 2026-09-14…25, the 0.5% last-minute gate produced 36 alerts with 17%
+good momentum (baseline 30%); 0.25%: 115 alerts, 26%; off: 210 alerts, 32%. The gate is
+now 0 by default and remains an opt-in setting.

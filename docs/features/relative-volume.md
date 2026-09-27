@@ -6,7 +6,7 @@ Approved: US stocks, extended hours, minute-close evaluation, same-time volume a
 
 Evaluated on each closed one-minute bar, per symbol and session, over the last `window` = 3 contiguous bars plus the bar before them. An alert requires all of:
 
-1. **Last minute moved:** the last bar's close is ≥ `lastBarMinMovePercent` (0.5%) from the previous close; otherwise the window is not evaluated (`weak-last-bar`). 0 turns this off.
+1. **Last minute moved (opt-in):** when `lastBarMinMovePercent` > 0, the last bar's close must move at least that much from the previous close, otherwise the window is not evaluated (`weak-last-bar`). Default 0 (off) since 2026-09-27: at 0.5% it cut alerts about 6× and they validated worse than chance (17% good vs 30% baseline; off: 32%).
 2. **Volume**, either of (the alert records which in `volumeBasis`):
    - **vs history:** window volume ≥ `threshold` (3) × the median window volume ending at the same New York minute, same session, over the previous `days` (20) sessions;
    - **vs today's pace:** window volume ≥ `paceMultiple` (3) × today's average window volume. Regular session only, inside the pace zone that excludes the first `paceSkipOpen` (30) and last `paceSkipClose` (30) minutes, whose volume is naturally far above the day's average; the average uses today's pace-zone bars before the window and needs ≥ `paceMinMinutes` (15) of them. The early close (13:00) is respected. 0 turns this off. At the open and close only the historical time-of-day comparison applies.
