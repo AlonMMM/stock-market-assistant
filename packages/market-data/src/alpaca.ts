@@ -12,7 +12,7 @@ interface AlpacaBar {
 }
 
 interface HistoryResponse {
-  bars?: AlpacaBar[];
+  bars?: AlpacaBar[] | null;
   next_page_token?: string | null;
 }
 
@@ -104,6 +104,8 @@ export class AlpacaFeed {
       if (!response.ok)
         throw new Error(`Alpaca REST request failed (${response.status})`);
       const body = (await response.json()) as HistoryResponse;
+      // Alpaca answers a range without trades (a weekend, say) with null.
+      if (body.bars === null) body.bars = [];
       if (!Array.isArray(body.bars))
         throw new Error("Invalid Alpaca history response");
       rows.push(...body.bars.map(raw));

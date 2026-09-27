@@ -166,3 +166,18 @@ test("history calls fetch unbound, as Cloudflare Workers require", async () => {
     [],
   );
 });
+
+test("history treats Alpaca's null bars for an empty range as no bars", async () => {
+  const feed = new AlpacaFeed("key", "secret", "iex", () => {}, (async () =>
+    Response.json({ bars: null, next_page_token: null })) as typeof fetch);
+  assert.deepEqual(
+    await feed.history("AAPL", "2026-09-27T00:00:00Z", "2026-09-28T00:00:00Z"),
+    [],
+  );
+  const broken = new AlpacaFeed("key", "secret", "iex", () => {}, (async () =>
+    Response.json({ bars: "nope" })) as typeof fetch);
+  await assert.rejects(
+    broken.history("AAPL", "2026-09-27T00:00:00Z", "2026-09-28T00:00:00Z"),
+    /Invalid Alpaca history response/,
+  );
+});
