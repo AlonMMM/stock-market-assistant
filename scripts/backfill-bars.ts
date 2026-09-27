@@ -160,6 +160,7 @@ const cache: BarCache = local
     };
 
 const totals: CacheStats = { hits: 0, misses: 0 };
+const failed: string[] = [];
 const dir = mkdtempSync(join(tmpdir(), "backfill-"));
 const began = Date.now();
 console.log(
@@ -188,20 +189,47 @@ try {
     if (sql.length) {
       const file = join(dir, `${symbol}.sql`);
       writeFileSync(file, sql.join("\n"));
-      execFileSync(
-        wrangler,
-        [
-          "d1",
-          "execute",
-          "sma-bars-cache",
-          "--remote",
-          "--yes",
-          "--file",
-          file,
-        ],
-        { stdio: "ignore" },
-      );
       sql.length = 0;
+      // Retry transient import failures; a symbol that still fails is
+      // reported and picked up by the next run.
+      let imported = false;
+      for (let attempt = 1; attempt <= 3 && !imported; attempt++)
+        try {
+          execFileSync(
+            wrangler,
+            [
+              "d1",
+              "execute",
+              "sma-bars-cache",
+              "--remote",
+              "--yes",
+              "--file",
+              file,
+            ],
+            { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+          );
+          imported = true;
+        } catch (error) {
+          const detail = String(
+            (error as { stderr?: string; stdout?: string }).stderr ||
+              (error as { stdout?: string }).stdout ||
+              error,
+          )
+            .trim()
+            .split("\n")
+            .filter((line) => line.trim())
+            .slice(-3)
+            .join(" | ");
+          console.error(
+            `${symbol}: D1 import attempt ${attempt} failed: ${detail}`,
+          );
+          if (attempt < 3)
+            await new Promise((r) => setTimeout(r, 5000 * attempt));
+        }
+      if (!imported) {
+        failed.push(symbol);
+        continue;
+      }
     }
     if (stats.errors)
       console.error(`${symbol}: cache error ${stats.lastError}`);
@@ -221,3 +249,7 @@ console.log(
   `Done: ${totals.misses} symbol-days fetched, ${totals.hits} already cached, ` +
     `${requests} Alpaca requests in ${Math.round((Date.now() - began) / 1000)} s.`,
 );
+if (failed.length) {
+  console.error(`Not stored (rerun to retry): ${failed.join(", ")}`);
+  process.exitCode = 1;
+}
