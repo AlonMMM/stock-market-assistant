@@ -1,6 +1,6 @@
-import type { Evaluation } from "../../alerts/src/relative-volume.js";
+import type { AlertEvent } from "../../alerts/src/events.js";
 
-export type Alert = Evaluation & { close?: number };
+export type Alert = AlertEvent;
 
 const israelTime = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Jerusalem",

@@ -33,10 +33,13 @@ export class MarketStore {
       .all(ticker, from)
       .map((r) => JSON.parse(String(r.payload)) as PriceBar);
   }
-  alert(result: Evaluation & { close?: number }) {
-    this.db
-      .prepare("INSERT OR IGNORE INTO alerts VALUES (?,?,?)")
-      .run(result.ticker, result.end, JSON.stringify(result));
+  // True when the alert is new; a repeated (ticker, end) is ignored.
+  alert(result: Evaluation & { close?: number }): boolean {
+    return (
+      this.db
+        .prepare("INSERT OR IGNORE INTO alerts VALUES (?,?,?)")
+        .run(result.ticker, result.end, JSON.stringify(result)).changes > 0
+    );
   }
   alerts(): (Evaluation & { close?: number })[] {
     return this.db

@@ -18,7 +18,11 @@ import {
   previousSessions,
 } from "../../../packages/market-data/src/calendar.js";
 import { LiveEvaluator } from "../../../packages/market-data/src/evaluator.js";
-import { Outbox } from "../../../packages/notifications/src/outbox.js";
+import { AlertEvents } from "../../../packages/alerts/src/events.js";
+import {
+  notifyOnAlerts,
+  Outbox,
+} from "../../../packages/notifications/src/outbox.js";
 import { TelegramSender } from "../../../packages/notifications/src/telegram.js";
 import { MarketStore } from "../../../packages/market-data/src/store.js";
 import {
@@ -54,6 +58,8 @@ validateConfig(config);
 const dbPath = process.env.COLLECTOR_DB ?? "data/local/alpaca.sqlite";
 mkdirSync(dirname(dbPath), { recursive: true });
 const store = new MarketStore(dbPath);
+// Every new live alert is published here; consumers subscribe below.
+const alertEvents = new AlertEvents();
 // Phone notifications are on when both Telegram values are set.
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const telegramChat = process.env.TELEGRAM_CHAT_ID ?? "";
@@ -67,6 +73,7 @@ const telegram = telegramToken
 const outbox = telegram
   ? new Outbox(dbPath, telegram, { siteUrl: process.env.SITE_URL })
   : null;
+if (outbox) notifyOnAlerts(alertEvents, outbox);
 const api = Fastify({ logger: false });
 let stopping = false;
 let failure: string | null = null;
@@ -259,8 +266,7 @@ async function collect(tickers: string[], id: number) {
       });
       if (result?.status === "alert") {
         const alert = { ...result, close: bar.close };
-        store.alert(alert);
-        if (outbox?.enqueue(alert)) void outbox.drain();
+        if (store.alert(alert)) alertEvents.publish(alert);
       }
     } catch {
       failure = `Invalid market data for ${ticker}`;

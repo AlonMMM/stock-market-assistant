@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import type { AlertEvents } from "../../alerts/src/events.js";
 import { formatAlert, type Alert, type Sender } from "./telegram.js";
 
 // pending → sending → sent | failed | expired; muted when queued while muted.
@@ -171,4 +172,11 @@ export class Outbox {
   close() {
     this.db.close();
   }
+}
+
+// Queues every published alert for delivery. Returns the unsubscribe function.
+export function notifyOnAlerts(events: AlertEvents, outbox: Outbox) {
+  return events.subscribe("telegram", (alert) => {
+    if (outbox.enqueue(alert)) return outbox.drain();
+  });
 }

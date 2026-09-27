@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { defaults } from "../packages/alerts/src/relative-volume.js";
-import { Outbox } from "../packages/notifications/src/outbox.js";
+import { AlertEvents } from "../packages/alerts/src/events.js";
+import {
+  notifyOnAlerts,
+  Outbox,
+} from "../packages/notifications/src/outbox.js";
 import {
   formatAlert,
   TelegramSender,
@@ -249,4 +253,22 @@ test("TelegramSender classifies responses without leaking the token", async () =
   assert.equal(!down.ok && down.retry, true);
   for (const r of [limited, bad, down])
     assert.doesNotMatch(JSON.stringify(r), /SECRET/);
+});
+
+test("the outbox subscribes to published alerts and sends each once", async () => {
+  const t = setup([]);
+  const box = t.open();
+  const events = new AlertEvents();
+  const stop = notifyOnAlerts(events, box);
+  const a = alert("AAPL", "2026-09-28T14:00:00Z");
+  events.publish(a);
+  events.publish(a);
+  await box.drain();
+  assert.equal(t.sent.length, 1);
+  stop();
+  events.publish(alert("MSFT", "2026-09-28T14:00:30Z"));
+  await box.drain();
+  assert.equal(t.sent.length, 1);
+  box.close();
+  t.cleanup();
 });
