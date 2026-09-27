@@ -92,6 +92,19 @@ function points(series: ChartSeries): Point[] {
   }));
 }
 
+// "overlay": each symbol's price on its own auto-fitted axis (ticker right,
+// SPY left), matching trading platforms, to compare the shape and timing of
+// moves. "beta": one % axis with SPY × beta, to compare the size of moves.
+type Mode = "overlay" | "beta";
+const modeKey = "sma.chart.mode.v1";
+function savedMode(): Mode {
+  try {
+    return localStorage.getItem(modeKey) === "beta" ? "beta" : "overlay";
+  } catch {
+    return "overlay";
+  }
+}
+
 interface Readout {
   time: number;
   session: string;
@@ -109,12 +122,23 @@ export function DayChart({
   window: number; // alert window length in minutes
 }) {
   const alertMs = Date.parse(alertEnd);
+  const viewed = useRef<{ from: UTCTimestamp; to: UTCTimestamp } | null>(null);
   const date = usSessionDate(alertMs - 60000);
   const host = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<DayChartData | null>(null);
   const [error, setError] = useState("");
   const [readout, setReadout] = useState<Readout | null>(null);
   const [latest, setLatest] = useState<Readout | null>(null);
+  const [mode, setModeState] = useState<Mode>(savedMode);
+  const setMode = (m: Mode) => {
+    setModeState(m);
+    try {
+      localStorage.setItem(modeKey, m);
+    } catch {
+      // Remembered for this visit only.
+    }
+  };
+  const overlay = mode === "overlay";
 
   useEffect(() => {
     let live = true;
@@ -150,6 +174,7 @@ export function DayChart({
         horzLines: { color: colors.grid },
       },
       rightPriceScale: { borderVisible: false },
+      leftPriceScale: { borderVisible: false, visible: overlay && !!bench },
       timeScale: {
         borderVisible: false,
         timeVisible: true,
@@ -163,30 +188,38 @@ export function DayChart({
       formatter: (p: number) => `${signed(p)}%`,
       minMove: 0.01,
     };
+    const priceFormat = { type: "price" as const, precision: 2, minMove: 0.01 };
     const m = points(main);
     const tickerLine = chart.addSeries(LineSeries, {
       color: colors.ticker,
       lineWidth: 2,
-      priceFormat: percentFormat,
+      priceScaleId: "right",
+      priceFormat: overlay ? priceFormat : percentFormat,
       priceLineVisible: false,
       crosshairMarkerRadius: 4,
     });
-    tickerLine.setData(m.map((p) => ({ time: p.time, value: p.percent })));
-    // SPY is scaled by the ticker's beta, so the dashed line is the move the
-    // market explains and the gap to the ticker line is the ticker's own move.
-    const beta = data.beta.value ?? 1;
+    tickerLine.setData(
+      m.map((p) => ({ time: p.time, value: overlay ? p.close : p.percent })),
+    );
+    // Beta mode: SPY × beta on the same % axis, so the gap between the lines is
+    // the ticker's own move. Overlay mode: SPY's price on the left axis.
+    const beta = overlay ? 1 : (data.beta.value ?? 1);
     const b = bench ? points(bench) : null;
     if (b) {
       const benchLine = chart.addSeries(LineSeries, {
         color: colors.benchmark,
         lineWidth: 2,
         lineStyle: LineStyle.Dashed,
-        priceFormat: percentFormat,
+        priceScaleId: overlay ? "left" : "right",
+        priceFormat: overlay ? priceFormat : percentFormat,
         priceLineVisible: false,
         crosshairMarkerRadius: 4,
       });
       benchLine.setData(
-        b.map((p) => ({ time: p.time, value: p.percent * beta })),
+        b.map((p) => ({
+          time: p.time,
+          value: overlay ? p.close : p.percent * beta,
+        })),
       );
     }
     const windowStart = alertMs - window * 60000;
@@ -224,13 +257,16 @@ export function DayChart({
     // Open on two hours around the alert so minute volume bars stay legible;
     // pinch or scroll zooms out to the whole day.
     // Applied after the first layout; autoSize would otherwise shift it.
+    // Switching modes rebuilds the chart; keep the range the user was viewing.
     const frame = requestAnimationFrame(() =>
-      alertBar
-        ? chart.timeScale().setVisibleRange({
-            from: (alertBar.time - 3600) as UTCTimestamp,
-            to: (alertBar.time + 3600) as UTCTimestamp,
-          })
-        : chart.timeScale().fitContent(),
+      viewed.current
+        ? chart.timeScale().setVisibleRange(viewed.current)
+        : alertBar
+          ? chart.timeScale().setVisibleRange({
+              from: (alertBar.time - 3600) as UTCTimestamp,
+              to: (alertBar.time + 3600) as UTCTimestamp,
+            })
+          : chart.timeScale().fitContent(),
     );
 
     const benchByTime = new Map(b?.map((p) => [p.time, p]));
@@ -250,10 +286,10 @@ export function DayChart({
           ...(q && bench
             ? [
                 {
-                  label: label(data),
+                  label: overlay ? bench.ticker : label(data),
                   percent: q.percent * beta,
                   detail:
-                    data.beta.value === null
+                    overlay || data.beta.value === null
                       ? `$${q.close.toFixed(2)}`
                       : `(SPY ${signed(q.percent)}%)`,
                   color: colors.benchmark,
@@ -271,15 +307,21 @@ export function DayChart({
     };
     chart.subscribeCrosshairMove(onMove);
     return () => {
+      const range = chart.timeScale().getVisibleRange();
+      if (range)
+        viewed.current = {
+          from: range.from as UTCTimestamp,
+          to: range.to as UTCTimestamp,
+        };
       cancelAnimationFrame(frame);
       chart.unsubscribeCrosshairMove(onMove);
       chart.remove();
     };
-  }, [data, alertMs, window]);
+  }, [data, alertMs, window, overlay]);
 
   const shown = readout ?? latest;
   const main = data?.series[0];
-  const benchLabel = label(data);
+  const benchLabel = overlay ? "SPY" : label(data);
   const base = main?.previousClose === null ? "first trade" : "previous close";
   return (
     <figure className="day-chart" aria-busy={!data && !error}>
@@ -292,6 +334,30 @@ export function DayChart({
       )}
       {data && main && main.bars.length > 0 && (
         <>
+          {data.series[1] && (
+            <div
+              className="chips chart-modes"
+              role="group"
+              aria-label="Chart view"
+            >
+              <button
+                type="button"
+                className="chip"
+                aria-pressed={overlay}
+                onClick={() => setMode("overlay")}
+              >
+                Overlay
+              </button>
+              <button
+                type="button"
+                className="chip"
+                aria-pressed={!overlay}
+                onClick={() => setMode("beta")}
+              >
+                % vs SPY×β
+              </button>
+            </div>
+          )}
           <figcaption>
             <span className="chart-legend">
               {data.series.map((s, i) => (
@@ -303,12 +369,19 @@ export function DayChart({
                     }}
                   />
                   {i === 0 ? s.ticker : benchLabel}
+                  {overlay &&
+                    data.series[1] &&
+                    (i === 0 ? " · right" : " · left")}
                 </span>
               ))}
-              {data.series[1] && data.beta.value === null && (
+              {!overlay && data.series[1] && data.beta.value === null && (
                 <span>β unavailable, SPY unscaled</span>
               )}
-              <span>% vs {base}</span>
+              <span>
+                {overlay && data.series[1]
+                  ? "Price, each axis fitted to its own range"
+                  : `% vs ${base}`}
+              </span>
             </span>
             {shown && (
               <span className="chart-readout" aria-live="off">
@@ -331,7 +404,7 @@ export function DayChart({
             className="chart-canvas"
             ref={host}
             role="img"
-            aria-label={`${ticker}${data.series[1] ? ` and ${benchLabel}` : ""} percent change and ${ticker} one-minute volume on ${date}, times in ${israelLabel}`}
+            aria-label={`${ticker}${data.series[1] ? ` and ${benchLabel}` : ""} ${overlay ? "price" : "percent change"} and ${ticker} one-minute volume on ${date}, times in ${israelLabel}`}
           />
         </>
       )}
