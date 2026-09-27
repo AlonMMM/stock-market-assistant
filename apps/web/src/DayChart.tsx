@@ -37,14 +37,18 @@ const colors = {
 };
 
 const cache = new Map<string, Promise<DayChartData>>();
-function load(ticker: string, date: string): Promise<DayChartData> {
-  const key = `${ticker}/${date}`;
+function load(
+  ticker: string,
+  date: string,
+  benchmark: string,
+): Promise<DayChartData> {
+  const key = `${ticker}/${date}/${benchmark}`;
   let request = cache.get(key);
   if (!request) {
     request = fetch("/api/day-chart", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ticker, date }),
+      body: JSON.stringify({ ticker, date, benchmark }),
       signal: AbortSignal.timeout(60000),
     }).then((response) => readJson<DayChartData>(response));
     request.catch(() => cache.delete(key));
@@ -64,8 +68,12 @@ const sessionName = {
   post: "After-hours",
 };
 
-const label = (data: DayChartData | null) =>
-  data?.beta.value == null ? "SPY" : `SPY × β ${data.beta.value.toFixed(2)}`;
+const label = (data: DayChartData | null) => {
+  const bench = data?.series[1]?.ticker ?? "SPY";
+  return data?.beta.value == null
+    ? bench
+    : `${bench} × β ${data.beta.value.toFixed(2)}`;
+};
 
 interface Point {
   time: UTCTimestamp;
@@ -117,12 +125,14 @@ export function DayChart({
   alertEnd,
   window = 0,
   date: day,
+  sector,
   className = "",
 }: {
   ticker: string;
   alertEnd?: string; // ISO time the alert window closed, if charting an alert
   window?: number; // alert window length in minutes
   date?: string; // US session date when there is no alert
+  sector?: string; // the symbol's sector/theme benchmark ETF, if known
   className?: string;
 }) {
   const alertMs = alertEnd ? Date.parse(alertEnd) : NaN;
@@ -143,10 +153,16 @@ export function DayChart({
     }
   };
   const overlay = mode === "overlay";
+  // Compare with SPY or the symbol's sector benchmark.
+  const hasSector = !!sector && sector !== ticker && sector !== "SPY";
+  const [against, setAgainst] = useState("SPY");
+  const benchmark = hasSector ? against : "SPY";
 
   useEffect(() => {
     let live = true;
-    load(ticker, date).then(
+    setData(null);
+    setError("");
+    load(ticker, date, benchmark).then(
       (d) => live && setData(d),
       (e: Error) =>
         live &&
@@ -157,7 +173,7 @@ export function DayChart({
     return () => {
       live = false;
     };
-  }, [ticker, date]);
+  }, [ticker, date, benchmark]);
 
   useEffect(() => {
     if (!data || !host.current) return;
@@ -299,7 +315,7 @@ export function DayChart({
                   detail:
                     overlay || data.beta.value === null
                       ? `$${q.close.toFixed(2)}`
-                      : `(SPY ${signed(q.percent)}%)`,
+                      : `(${bench.ticker} ${signed(q.percent)}%)`,
                   color: colors.benchmark,
                 },
               ]
@@ -329,10 +345,31 @@ export function DayChart({
 
   const shown = readout ?? latest;
   const main = data?.series[0];
-  const benchLabel = overlay ? "SPY" : label(data);
+  const benchLabel = overlay
+    ? (data?.series[1]?.ticker ?? benchmark)
+    : label(data);
   const base = main?.previousClose === null ? "first trade" : "previous close";
   return (
     <figure className={`day-chart ${className}`} aria-busy={!data && !error}>
+      {hasSector && (
+        <div
+          className="chips chart-modes"
+          role="group"
+          aria-label="Compare with"
+        >
+          {["SPY", sector!].map((symbol) => (
+            <button
+              type="button"
+              key={symbol}
+              className="chip"
+              aria-pressed={benchmark === symbol}
+              onClick={() => setAgainst(symbol)}
+            >
+              vs {symbol}
+            </button>
+          ))}
+        </div>
+      )}
       {error && <p className="notice error">{error}</p>}
       {!data && !error && <p className="chart-status">Loading day chart…</p>}
       {data && main?.bars.length === 0 && (
@@ -362,7 +399,7 @@ export function DayChart({
                 aria-pressed={!overlay}
                 onClick={() => setMode("beta")}
               >
-                % vs SPY×β
+                % vs {benchmark}×β
               </button>
             </div>
           )}
@@ -383,7 +420,7 @@ export function DayChart({
                 </span>
               ))}
               {!overlay && data.series[1] && data.beta.value === null && (
-                <span>β unavailable, SPY unscaled</span>
+                <span>β unavailable, {benchmark} unscaled</span>
               )}
               <span>
                 {overlay && data.series[1]

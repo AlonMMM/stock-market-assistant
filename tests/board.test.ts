@@ -114,5 +114,29 @@ test("multi-symbol history paginates, skips null symbols and rejects bad shapes"
     bad.multiHistory(["AAPL"], "a", "b", "5Min"),
     /Invalid Alpaca history response/,
   );
-  assert.equal((await handleBoard(["AAPL"], {})).status, 503);
+  assert.equal((await handleBoard(["AAPL"], {}, {})).status, 503);
+});
+
+test("board fetches each symbol's sector benchmark and reports the mapping", async () => {
+  let fetched: string[] = [];
+  const board = await runBoard(
+    ["MSTR", "NVDA", "WMT"],
+    async (symbols) => {
+      fetched = symbols;
+      return new Map(symbols.map((s) => [s, []]));
+    },
+    at("2026-09-27T12:00:00Z"),
+    { MSTR: "IBIT", NVDA: "SOXX" },
+  );
+  assert.deepEqual(fetched, [
+    "MSTR",
+    "NVDA",
+    "WMT",
+    "SPY",
+    "QQQ",
+    "IBIT",
+    "SOXX",
+  ]);
+  assert.deepEqual(board.benchmarks, { MSTR: "IBIT", NVDA: "SOXX" });
+  assert.deepEqual(board.watchlist, ["MSTR", "NVDA", "WMT"]);
 });

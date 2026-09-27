@@ -95,9 +95,21 @@ test(
         (await put(syncToken, { name: "F", tickers: ["ES@CME"] })).status,
         400,
       );
+      assert.equal(
+        (
+          await put(syncToken, {
+            name: "F",
+            tickers: ["NVDA"],
+            benchmarks: { AAPL: "XLK" },
+          })
+        ).status,
+        400,
+        "benchmark for an unlisted symbol",
+      );
       const synced = await put(syncToken, {
         name: "Favorites",
         tickers: ["NVDA", "AAPL", "NVDA", "MSFT"],
+        benchmarks: { NVDA: "SOXX", MSFT: "MSFT" },
       });
       assert.equal(synced.status, 200);
       const body = await synced.json();
@@ -108,6 +120,8 @@ test(
       const list = await (await fetch(`${url}/watchlist`, { headers })).json();
       assert.equal(list.name, "Favorites");
       assert.deepEqual(list.live, ["NVDA", "AAPL"]);
+      // A symbol cannot be its own benchmark; that entry is dropped.
+      assert.deepEqual(list.benchmarks, { NVDA: "SOXX" });
       // The sync token may only replace the watchlist.
       const syncHeaders = { Authorization: `Bearer ${syncToken}` };
       for (const path of ["/watchlist", "/health", "/alerts"])

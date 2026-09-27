@@ -19,6 +19,7 @@ test("the site serves the collector's synced watchlist", async () => {
       syncedAt: "2026-09-27T08:00:00Z",
       tickers: ["NVDA", "AAPL"],
       live: ["NVDA"],
+      benchmarks: { NVDA: "SOXX" },
     });
   };
   try {
@@ -33,6 +34,7 @@ test("the site serves the collector's synced watchlist", async () => {
       syncedAt: "2026-09-27T08:00:00Z",
       tickers: ["NVDA", "AAPL"],
       live: ["NVDA"],
+      benchmarks: { NVDA: "SOXX" },
     });
     assert.deepEqual(requests, [
       ["https://collector.test/watchlist", `Bearer ${collector.token}`],

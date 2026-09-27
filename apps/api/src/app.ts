@@ -33,7 +33,12 @@ export function buildApp(
       url: process.env.COLLECTOR_URL,
       token: process.env.COLLECTOR_TOKEN,
     });
-    const result = await handleBoard(list.tickers, alpaca, alpaca.fetcher);
+    const result = await handleBoard(
+      list.tickers,
+      list.benchmarks,
+      alpaca,
+      alpaca.fetcher,
+    );
     return reply.code(result.status).send(result.body);
   });
   app.get("/api/live", async () =>

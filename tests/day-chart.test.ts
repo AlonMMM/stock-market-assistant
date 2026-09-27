@@ -256,3 +256,34 @@ test("day chart beta uses only sessions before the chart day", async () => {
     assert.equal(r.beta.value, null, JSON.stringify(input));
   }
 });
+
+test("day chart compares with a requested sector benchmark instead of SPY", async () => {
+  const minute: string[] = [];
+  const daily: string[] = [];
+  const result = await runDayChart(
+    { ticker: "MSTR", date: "2026-06-02", benchmark: "IBIT" },
+    async (ticker) => {
+      minute.push(ticker);
+      return [];
+    },
+    later,
+    async (ticker) => {
+      daily.push(ticker);
+      return [];
+    },
+  );
+  assert.deepEqual(minute, ["MSTR", "IBIT"]);
+  assert.deepEqual(daily, ["MSTR", "IBIT"]);
+  assert.deepEqual(
+    result.series.map((s) => s.ticker),
+    ["MSTR", "IBIT"],
+  );
+  await assert.rejects(
+    runDayChart(
+      { ticker: "MSTR", date: "2026-06-02", benchmark: "btc" },
+      async () => [],
+      later,
+    ),
+    /benchmark/,
+  );
+});
