@@ -9,8 +9,8 @@ import {
 import type { RawBar } from "../packages/market-data/src/bars.js";
 import { previousSessions } from "../packages/market-data/src/calendar.js";
 
-// Synthetic regular-session bars (EDT: 13:30Z–20:00Z), 1,000 shares a minute,
-// with a 20,000-share burst on 2026-06-03 from 14:00Z to 14:04Z.
+// Synthetic regular-session bars (EDT: 13:30Z–20:00Z), flat at 100 on 1,000
+// shares a minute, with a rising 20,000-share burst on 2026-06-03 14:00Z–14:04Z.
 const from = "2026-06-01";
 const to = "2026-06-05";
 const sessions = [
@@ -32,12 +32,14 @@ function syntheticBars(skip: string[] = []): RawBar[] {
         date === "2026-06-03" &&
         start >= Date.parse("2026-06-03T14:00:00Z") / 1000 &&
         start < Date.parse("2026-06-03T14:05:00Z") / 1000;
+      // The burst climbs 1.00 a minute in green candles: 100 → 101 … → 105.
+      const step = (start - Date.parse("2026-06-03T14:00:00Z") / 1000) / 60;
       rows.push({
         start,
-        open: 100,
-        high: burst ? 106 : 101,
-        low: 99,
-        close: burst ? 105 : 100,
+        open: burst ? 100 + step : 100,
+        high: burst ? 101 + step : 100,
+        low: burst ? 100 + step : 100,
+        close: burst ? 101 + step : 100,
         volume: burst ? 20000 : 1000,
       });
     }
@@ -65,16 +67,19 @@ test("backtest reconstructs the alerts the live collector would have sent", asyn
   const [alert] = result.alerts;
   assert.equal(alert?.ticker, "AAPL");
   // The first burst minute already lifts the 5-minute window to 4.8×.
-  assert.equal(alert?.end, "2026-06-03T14:01:00.000Z");
-  assert.equal(alert?.actual, 24000);
-  assert.equal(alert?.expected, 5000);
-  assert.equal(alert?.close, 105);
+  // Bars 14:00–14:02 (window ending 14:03Z) rise 100 → 103 in green candles.
+  assert.equal(alert?.end, "2026-06-03T14:03:00.000Z");
+  assert.equal(alert?.actual, 60000);
+  assert.equal(alert?.expected, 3000);
+  assert.equal(alert?.direction, "up");
+  assert.equal(alert?.close, 103);
   // No daily bars, so no beta: the alert carries no market context.
   assert.equal(alert?.context, null);
-  // Windows ending 14:02–14:09 still contain a burst minute: no repeat alert.
-  assert.equal(result.diagnostics.suppressed, 8);
-  // Only in-range windows are counted: 5 sessions × 386 complete windows.
-  assert.equal(result.evaluated, 5 * 386);
+  // Windows ending 14:04 and 14:05 are still rising: no repeat alert. Later
+  // windows include a flat 100 bar and break the direction.
+  assert.equal(result.diagnostics.suppressed, 2);
+  // Only in-range windows are counted: 5 sessions × 387 (window + prior bar).
+  assert.equal(result.evaluated, 5 * 387);
   assert.deepEqual(result.coverage, [
     { ticker: "AAPL", bars: 5 * 390, missingSessions: [] },
   ]);
@@ -89,7 +94,7 @@ test("a missing session is reported and blocks baselines that need it", async ()
   assert.deepEqual(result.coverage[0]?.missingSessions, ["2026-06-02"]);
   // Every session after the gap has the missing date in its baseline.
   assert.equal(result.alerts.length, 0);
-  assert.equal(result.diagnostics["insufficient-history"], 3 * 386);
+  assert.equal(result.diagnostics["insufficient-history"], 3 * 387);
 });
 
 test("the most recent 15 minutes of SIP data are never requested or used", async () => {
@@ -204,7 +209,9 @@ test("local API and hosted Worker share the backtest contract", async () => {
 test("alerts carry the move against SPY scaled by the ticker's beta", async () => {
   // SPY flat at 500, 501 at the alert minute (+0.2%); AAPL +5% at the alert.
   const spyMinutes = syntheticBars().map((b) => {
-    const close = b.close === 105 && b.start === 1780495260 - 60 ? 501 : 500;
+    // 501 at the alert minute (bar 14:02Z), 500 otherwise.
+    const close =
+      b.start === Date.parse("2026-06-03T14:02:00Z") / 1000 ? 501 : 500;
     return { ...b, open: close, high: close, low: close, close };
   });
   const days = previousSessions("2026-06-05", 70);
@@ -230,7 +237,7 @@ test("alerts carry the move against SPY scaled by the ticker's beta", async () =
   const context = result.alerts[0]?.context;
   assert.ok(context);
   assert.ok(Math.abs(context.beta - 1.5) < 1e-9);
-  assert.ok(Math.abs(context.change - 5) < 1e-9);
+  assert.ok(Math.abs(context.change - 3) < 1e-9);
   assert.ok(Math.abs(context.spyChange - 0.2) < 1e-9);
-  assert.ok(Math.abs(context.excess - 4.7) < 1e-9);
+  assert.ok(Math.abs(context.excess - 2.7) < 1e-9);
 });

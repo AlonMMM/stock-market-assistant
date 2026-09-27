@@ -8,20 +8,26 @@ export interface Bar {
   minute: number;
   session: Session;
   volume: number;
+  open: number;
+  close: number;
 }
 export interface Config {
-  window: number;
-  days: number;
-  threshold: number;
-  cooldown: number;
-  minVolume: number;
+  window: number; // minutes in the evaluated window
+  days: number; // previous sessions forming each baseline
+  threshold: number; // volume ÷ median volume at this time of day
+  cooldown: number; // minutes between alerts for a symbol
+  minVolume: number; // shares in the window
+  priceMultiple: number; // |move| ÷ median |move| at this time of day
+  minMovePercent: number; // absolute |move| floor, percent
 }
 export const defaults: Config = {
-  window: 5,
+  window: 3,
   days: 20,
   threshold: 3,
   cooldown: 15,
   minVolume: 10000,
+  priceMultiple: 3,
+  minMovePercent: 0.5,
 };
 export interface Evaluation {
   ticker: string;
@@ -30,15 +36,22 @@ export interface Evaluation {
   actual: number;
   expected: number | null;
   ratio: number | null;
+  // Percent change from the close before the window to its last close.
+  move: number;
+  // Median |move| for this symbol at this time of day over `days` sessions.
+  expectedMove: number | null;
+  direction: "up" | "down" | null;
   samples: number;
   status:
     | "insufficient-history"
     | "zero-baseline"
     | "below-threshold"
     | "low-volume"
+    | "mixed-direction"
+    | "small-move"
     | "suppressed"
     | "alert";
-  rule: "rvol-time-of-day-v1";
+  rule: "rvol-v2";
   config: Config;
 }
 export function validateConfig(c: Config) {
@@ -53,10 +66,26 @@ export function validateConfig(c: Config) {
     c.days > 60 ||
     c.cooldown > 1440 ||
     !Number.isFinite(c.threshold) ||
-    c.threshold <= 1
+    c.threshold <= 1 ||
+    !Number.isFinite(c.priceMultiple) ||
+    c.priceMultiple < 1 ||
+    !Number.isFinite(c.minMovePercent) ||
+    c.minMovePercent < 0 ||
+    c.minMovePercent > 100
   )
     throw new Error("Invalid configuration");
 }
+const median = (values: number[]) =>
+  (values[Math.floor((values.length - 1) / 2)]! +
+    values[Math.floor(values.length / 2)]!) /
+  2;
+
+// Relative volume v2 (user-confirmed 2026-09-27). On each closed bar, over the
+// last `window` bars: volume ≥ threshold × its time-of-day median; price move
+// (from the close before the window) ≥ priceMultiple × its time-of-day median
+// |move| and ≥ minMovePercent; every close beyond the previous close and every
+// candle the same color. Alerts on a fresh crossing into that state, outside
+// the cooldown.
 export class RelativeVolume {
   private config: Config;
   private states = new Map<
@@ -64,7 +93,7 @@ export class RelativeVolume {
     {
       last: number;
       bars: Bar[];
-      history: Map<string, Map<number, number>>;
+      history: Map<string, Map<number, { volume: number; move: number }>>;
       above: boolean;
       alerted: number;
     }
@@ -85,14 +114,16 @@ export class RelativeVolume {
       bar.minute < 0 ||
       bar.minute > 1439 ||
       !Number.isSafeInteger(bar.volume) ||
-      bar.volume < 0
+      bar.volume < 0 ||
+      !(Number.isFinite(bar.open) && bar.open > 0) ||
+      !(Number.isFinite(bar.close) && bar.close > 0)
     )
       throw new Error("Invalid closed bar");
     const key = `${bar.ticker}:${bar.session}`;
     const s = this.states.get(key) ?? {
       last: -Infinity,
       bars: [],
-      history: new Map<string, Map<number, number>>(),
+      history: new Map<string, Map<number, { volume: number; move: number }>>(),
       above: false,
       alerted: -Infinity,
     };
@@ -110,43 +141,71 @@ export class RelativeVolume {
     if (previous && previous.date !== bar.date) s.alerted = -Infinity;
     s.last = time;
     s.bars.push({ ...bar });
-    if (s.bars.length > this.config.window) s.bars.shift();
+    // The window plus the bar before it, whose close anchors the move.
+    if (s.bars.length > this.config.window + 1) s.bars.shift();
     this.states.set(key, s);
     if (!s.history.has(bar.date)) s.history.set(bar.date, new Map());
     // Retain current date plus the last N observed session dates. Missing
     // windows on those dates are not replaced with older available samples.
     while (s.history.size > this.config.days + 1)
       s.history.delete(s.history.keys().next().value!);
-    if (s.bars.length < this.config.window) return null;
-    const actual = s.bars.reduce((sum, b) => sum + b.volume, 0);
-    const values = [...s.history.entries()]
+    if (s.bars.length < this.config.window + 1) return null;
+    const before = s.bars[0]!;
+    const window = s.bars.slice(1);
+    const actual = window.reduce((sum, b) => sum + b.volume, 0);
+    const move = (window.at(-1)!.close / before.close - 1) * 100;
+    const samples = [...s.history.entries()]
       .filter(([date]) => date < bar.date)
       .map(([, windows]) => windows.get(bar.minute))
-      .filter((v): v is number => v !== undefined)
-      .sort((a, b) => a - b);
-    s.history.get(bar.date)!.set(bar.minute, actual);
-    const expected =
-      values.length === this.config.days
-        ? (values[Math.floor((values.length - 1) / 2)]! +
-            values[Math.floor(values.length / 2)]!) /
-          2
-        : null;
+      .filter((v) => v !== undefined);
+    s.history.get(bar.date)!.set(bar.minute, {
+      volume: actual,
+      move: Math.abs(move),
+    });
+    const complete = samples.length === this.config.days;
+    const expected = complete
+      ? median(samples.map((v) => v.volume).sort((a, b) => a - b))
+      : null;
+    const expectedMove = complete
+      ? median(samples.map((v) => v.move).sort((a, b) => a - b))
+      : null;
     const ratio = expected !== null && expected > 0 ? actual / expected : null;
-    const crossing = ratio !== null && ratio >= this.config.threshold;
+    const closes = (up: boolean) =>
+      window.every((b, i) => {
+        const prior = i ? window[i - 1]!.close : before.close;
+        return up
+          ? b.close > prior && b.close > b.open
+          : b.close < prior && b.close < b.open;
+      });
+    const direction = closes(true) ? "up" : closes(false) ? "down" : null;
+    const volumeOk = ratio !== null && ratio >= this.config.threshold;
+    const moveOk =
+      expectedMove !== null &&
+      Math.abs(move) >= this.config.priceMultiple * expectedMove &&
+      Math.abs(move) >= this.config.minMovePercent;
+    const signal =
+      volumeOk &&
+      actual >= this.config.minVolume &&
+      direction !== null &&
+      moveOk;
     let status: Evaluation["status"] =
       expected === null
         ? "insufficient-history"
         : expected === 0
           ? "zero-baseline"
-          : !crossing
+          : !volumeOk
             ? "below-threshold"
             : actual < this.config.minVolume
               ? "low-volume"
-              : s.above || time - s.alerted < this.config.cooldown * 60000
-                ? "suppressed"
-                : "alert";
+              : direction === null
+                ? "mixed-direction"
+                : !moveOk
+                  ? "small-move"
+                  : s.above || time - s.alerted < this.config.cooldown * 60000
+                    ? "suppressed"
+                    : "alert";
     if (status === "alert") s.alerted = time;
-    s.above = crossing;
+    s.above = signal;
     return {
       ticker: bar.ticker,
       end: bar.end,
@@ -154,9 +213,12 @@ export class RelativeVolume {
       actual,
       expected,
       ratio,
-      samples: values.length,
+      move,
+      expectedMove,
+      direction,
+      samples: samples.length,
       status,
-      rule: "rvol-time-of-day-v1",
+      rule: "rvol-v2",
       config: { ...this.config },
     };
   }

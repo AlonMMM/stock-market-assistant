@@ -42,7 +42,8 @@ export class LiveEvaluator {
     const complete = this.dates.every((date) => {
       const minutes = this.coverage.get(`${date}:${bar.session}`);
       if (!minutes) return false;
-      for (let i = 0; i < this.config.window; i++)
+      // The window plus the minute before it, whose close anchors the move.
+      for (let i = 0; i <= this.config.window; i++)
         if (bar.minute - i < 0 || !minutes[bar.minute - i]) return false;
       return true;
     });
