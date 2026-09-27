@@ -8,9 +8,9 @@ type Mode = "backtest" | "live";
 const modeKey = "sma.mode.v1";
 function savedMode(): Mode {
   try {
-    return localStorage.getItem(modeKey) === "live" ? "live" : "backtest";
+    return localStorage.getItem(modeKey) === "backtest" ? "backtest" : "live";
   } catch {
-    return "backtest";
+    return "live";
   }
 }
 
@@ -28,13 +28,13 @@ function App() {
     <nav className="modes" aria-label="Data mode">
       {(
         [
-          ["backtest", "Backtest"],
           ["live", "Live"],
+          ["backtest", "Backtest"],
         ] as const
       ).map(([value, label]) =>
         value === mode ? (
-          <span className="selected" key={value}>
-            ▶ {label}
+          <span className="selected" key={value} aria-current="page">
+            {label}
           </span>
         ) : (
           <button type="button" key={value} onClick={() => setMode(value)}>

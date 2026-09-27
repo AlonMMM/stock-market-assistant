@@ -12,6 +12,7 @@ import {
   type Credentials,
 } from "../../../packages/market-data/src/backtest.js";
 import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
+import { handleBoard } from "../../../packages/market-data/src/board.js";
 import { loadLive } from "../../../packages/market-data/src/live.js";
 import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
 
@@ -25,6 +26,14 @@ export function buildApp(
   const app = Fastify({ logger: logging });
   app.post("/api/backtest", async (request, reply) => {
     const result = await handleBacktest(request.body, alpaca, alpaca.fetcher);
+    return reply.code(result.status).send(result.body);
+  });
+  app.get("/api/board", async (_request, reply) => {
+    const list = await loadWatchlist({
+      url: process.env.COLLECTOR_URL,
+      token: process.env.COLLECTOR_TOKEN,
+    });
+    const result = await handleBoard(list.tickers, alpaca, alpaca.fetcher);
     return reply.code(result.status).send(result.body);
   });
   app.get("/api/live", async () =>

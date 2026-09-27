@@ -115,15 +115,19 @@ interface Readout {
 export function DayChart({
   ticker,
   alertEnd,
-  window,
+  window = 0,
+  date: day,
+  className = "",
 }: {
   ticker: string;
-  alertEnd: string; // ISO time the alert window closed
-  window: number; // alert window length in minutes
+  alertEnd?: string; // ISO time the alert window closed, if charting an alert
+  window?: number; // alert window length in minutes
+  date?: string; // US session date when there is no alert
+  className?: string;
 }) {
-  const alertMs = Date.parse(alertEnd);
+  const alertMs = alertEnd ? Date.parse(alertEnd) : NaN;
   const viewed = useRef<{ from: UTCTimestamp; to: UTCTimestamp } | null>(null);
-  const date = usSessionDate(alertMs - 60000);
+  const date = alertEnd ? usSessionDate(alertMs - 60000) : day!;
   const host = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<DayChartData | null>(null);
   const [error, setError] = useState("");
@@ -237,7 +241,11 @@ export function DayChart({
         time: p.time,
         value: p.volume,
         color: (p.up ? colors.up : colors.down)[
-          p.instant > windowStart && p.instant <= alertMs ? 0 : 1
+          // Without an alert every bar is drawn at full strength.
+          Number.isNaN(alertMs) ||
+          (p.instant > windowStart && p.instant <= alertMs)
+            ? 0
+            : 1
         ],
       })),
     );
@@ -324,7 +332,7 @@ export function DayChart({
   const benchLabel = overlay ? "SPY" : label(data);
   const base = main?.previousClose === null ? "first trade" : "previous close";
   return (
-    <figure className="day-chart" aria-busy={!data && !error}>
+    <figure className={`day-chart ${className}`} aria-busy={!data && !error}>
       {error && <p className="notice error">{error}</p>}
       {!data && !error && <p className="chart-status">Loading day chart…</p>}
       {data && main?.bars.length === 0 && (

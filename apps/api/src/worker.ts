@@ -7,6 +7,7 @@ import {
 import { demoBars } from "../../../packages/alerts/src/demo.js";
 import { handleBacktest } from "../../../packages/market-data/src/backtest.js";
 import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
+import { handleBoard } from "../../../packages/market-data/src/board.js";
 import { loadLive } from "../../../packages/market-data/src/live.js";
 import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
 import { verifyAccess } from "./access.js";
@@ -69,6 +70,25 @@ export default {
         secret: env.ALPACA_API_SECRET,
       });
       return Response.json(result.body, { status: result.status });
+    }
+    if (path === "/api/board") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const list = await loadWatchlist({
+        url: env.COLLECTOR_URL,
+        token: env.COLLECTOR_TOKEN,
+      });
+      const result = await handleBoard(list.tickers, {
+        key: env.ALPACA_API_KEY,
+        secret: env.ALPACA_API_SECRET,
+      });
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
     if (path === "/api/live")
       return request.method === "GET"

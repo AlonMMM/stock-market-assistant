@@ -4,6 +4,7 @@ import type {
   BacktestAlert,
 } from "../../../packages/market-data/src/backtest.js";
 import { number, readJson } from "./api.js";
+import { Notices } from "./Notices.js";
 import { AlertFeed } from "./AlertFeed.js";
 import { savedTickers, useWatchlist, Watchlist } from "./Watchlist.js";
 
@@ -139,11 +140,23 @@ export function Backtest({ modes }: { modes: ReactNode }) {
         <span className="brand">
           SMA<span className="brand-dot">.</span>
         </span>
-        <span className="badge">ALPACA SIP HISTORY</span>
+        {modes}
       </header>
-      <h1>Relative volume</h1>
-      <p className="lede">See the alerts the bot would have sent.</p>
-      {modes}
+      <Notices
+        items={[
+          ...gaps.map(
+            (c) =>
+              `${c.ticker}: no bars for ${c.missingSessions.join(", ")}; later baselines that need them are marked insufficient.`,
+          ),
+          ...failed.map((f) => `${f.tickers.join(", ")}: ${f.error}`),
+          ...(watchlist.error ? [watchlist.error] : []),
+          ...(error ? [error] : []),
+        ]}
+      />
+      <h2 className="section-title">
+        Backtest{" "}
+        <small>alerts the bot would have sent · Alpaca SIP history</small>
+      </h2>
       <p className="method">
         Historical Alpaca minute bars replayed through the live evaluator · up
         to 40 symbols and 20 sessions
@@ -154,7 +167,6 @@ export function Backtest({ modes }: { modes: ReactNode }) {
           void run();
         }}
       >
-        {watchlist.error && <p className="notice error">{watchlist.error}</p>}
         {!watchlist.list && !watchlist.error && (
           <p className="notice">Loading watchlist…</p>
         )}
@@ -224,11 +236,6 @@ export function Backtest({ modes }: { modes: ReactNode }) {
             : `Run backtest · ${tickers.length} symbols`}
         </button>
       </form>
-      {error && (
-        <p className="notice error" role="alert">
-          {error}
-        </p>
-      )}
       <div aria-live="polite" aria-busy={busy}>
         {busy && (
           <p className="notice">
@@ -258,17 +265,6 @@ export function Backtest({ modes }: { modes: ReactNode }) {
                 ↓ Download JSON
               </button>
             </div>
-            {failed.map((f) => (
-              <p className="notice error" key={f.tickers.join()}>
-                {f.tickers.join(", ")}: {f.error}
-              </p>
-            ))}
-            {gaps.length > 0 && (
-              <p className="notice coverage-warning">
-                Missing sessions for {gaps.map((c) => c.ticker).join(", ")}.
-                Later baselines that need them are marked insufficient.
-              </p>
-            )}
             {result.alerts.length === 0 && (
               <p className="notice">No alerts matched these settings.</p>
             )}
