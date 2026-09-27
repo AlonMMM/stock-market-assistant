@@ -7,7 +7,7 @@ import {
 import { demoBars } from "../../../packages/alerts/src/demo.js";
 import { handleBacktest } from "../../../packages/market-data/src/backtest.js";
 import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
-import { readWatchlist } from "../../../packages/market-data/src/watchlist.js";
+import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
 import { verifyAccess } from "./access.js";
 
 declare const __STATIC_ASSETS__: Record<
@@ -23,7 +23,8 @@ export default {
       ALPACA_API_SECRET?: string;
       ACCESS_TEAM_DOMAIN?: string;
       ACCESS_AUD?: string;
-      WATCHLIST?: string;
+      COLLECTOR_URL?: string;
+      COLLECTOR_TOKEN?: string;
     } = {},
   ): Promise<Response> {
     // Access protection is enabled by configuration; without both values the
@@ -70,9 +71,15 @@ export default {
     }
     if (path === "/api/watchlist")
       return request.method === "GET"
-        ? Response.json(readWatchlist(env.WATCHLIST), {
-            headers: { "Cache-Control": "no-store" },
-          })
+        ? Response.json(
+            await loadWatchlist({
+              url: env.COLLECTOR_URL,
+              token: env.COLLECTOR_TOKEN,
+            }),
+            {
+              headers: { "Cache-Control": "no-store" },
+            },
+          )
         : new Response("Method not allowed", {
             status: 405,
             headers: { Allow: "GET" },

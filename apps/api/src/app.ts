@@ -12,7 +12,7 @@ import {
   type Credentials,
 } from "../../../packages/market-data/src/backtest.js";
 import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
-import { readWatchlist } from "../../../packages/market-data/src/watchlist.js";
+import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
 
 export function buildApp(
   logging = false,
@@ -26,7 +26,12 @@ export function buildApp(
     const result = await handleBacktest(request.body, alpaca, alpaca.fetcher);
     return reply.code(result.status).send(result.body);
   });
-  app.get("/api/watchlist", async () => readWatchlist(process.env.WATCHLIST));
+  app.get("/api/watchlist", async () =>
+    loadWatchlist({
+      url: process.env.COLLECTOR_URL,
+      token: process.env.COLLECTOR_TOKEN,
+    }),
+  );
   app.post("/api/day-chart", async (request, reply) => {
     const result = await handleDayChart(request.body, alpaca, alpaca.fetcher);
     return reply.code(result.status).send(result.body);

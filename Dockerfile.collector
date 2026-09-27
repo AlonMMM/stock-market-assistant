@@ -4,6 +4,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY apps/collector apps/collector
 COPY packages packages
+COPY config config
 RUN npm run build:collector
 
 FROM node:24-bookworm-slim
@@ -14,7 +15,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends gosu \
     && rm -rf /var/lib/apt/lists/* \
     && npm ci --omit=dev && mkdir /data && chown node:node /data
 COPY --from=build /app/dist/collector.mjs ./collector.mjs
-COPY config/alpaca-watchlist.json ./config/alpaca-watchlist.json
 COPY deploy/collector/start.sh /usr/local/bin/start-collector
 RUN chmod +x /usr/local/bin/start-collector
 EXPOSE 3002
