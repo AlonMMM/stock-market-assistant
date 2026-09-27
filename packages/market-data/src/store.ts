@@ -32,16 +32,18 @@ export class MarketStore {
       .all(ticker, from)
       .map((r) => JSON.parse(String(r.payload)) as PriceBar);
   }
-  alert(result: Evaluation) {
+  alert(result: Evaluation & { close?: number }) {
     this.db
       .prepare("INSERT OR IGNORE INTO alerts VALUES (?,?,?)")
       .run(result.ticker, result.end, JSON.stringify(result));
   }
-  alerts(): Evaluation[] {
+  alerts(): (Evaluation & { close?: number })[] {
     return this.db
       .prepare("SELECT payload FROM alerts ORDER BY end DESC LIMIT 100")
       .all()
-      .map((r) => JSON.parse(String(r.payload)) as Evaluation);
+      .map(
+        (r) => JSON.parse(String(r.payload)) as Evaluation & { close?: number },
+      );
   }
   watchlist(): StoredWatchlist | null {
     const row = this.db

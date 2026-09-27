@@ -216,7 +216,8 @@ async function collect(tickers: string[], id: number) {
         lastBar: bar.end,
         evaluation: result?.status ?? null,
       });
-      if (result?.status === "alert") store.alert(result);
+      if (result?.status === "alert")
+        store.alert({ ...result, close: bar.close });
     } catch {
       failure = `Invalid market data for ${ticker}`;
       void stop(1);

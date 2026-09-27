@@ -544,3 +544,37 @@ footer {
 .chart-modes {
   margin-bottom: 10px;
 }
+.live-status {
+  border: 1px solid #cdd7ce;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin: 20px 0 12px;
+  background: #fafbf8;
+}
+.live-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.live-meta {
+  margin: 6px 0 0;
+  color: #61736b;
+  font-size: 13px;
+}
+.live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+.live-dot.on {
+  background: #16a34a;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.18);
+}
+.live-dot.idle {
+  background: #d97706;
+}
+.live-dot.off {
+  background: #9ca3af;
+}

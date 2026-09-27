@@ -56,15 +56,16 @@ It may be reconsidered if this becomes an external commercial product.
 
 ## Watchlist sync
 
-The Backtest screen's symbol list comes from the user's IBKR watchlist "Favorites"
-(IBKR watchlist id `10`, confirmed by the user on 2026-09-27). It is account data, so it
-is stored outside Git as the Worker secret `WATCHLIST`, served by `GET /api/watchlist`
-behind Cloudflare Access; without the secret the site falls back to
-`config/alpaca-watchlist.json`. Locally, `WATCHLIST` can be set in the ignored `.env`.
+The watchlist comes from the user's IBKR watchlist "Favorites" (IBKR id `10`, confirmed
+2026-09-27). It is account data, so it is not in Git: the Railway collector stores it in
+its SQLite database. `PUT /watchlist` on the collector replaces it, accepting either
+`COLLECTOR_TOKEN` or the narrower `WATCHLIST_SYNC_TOKEN` (which may call nothing else).
+The first `ALPACA_MAX_SYMBOLS` (default 30, the free IEX stream limit) are streamed
+live; a change to that set resubscribes in place. The site reads the list from the
+collector (`/api/watchlist`) and falls back to `config/alpaca-watchlist.json`.
 
-To sync, an agent with the IBKR connector reads the list (`get_watchlist`, read-only),
-keeps stock and ETF symbols (futures such as `…@CME` are dropped because Alpaca stock
-data does not cover them), and writes
-`{"name": "Favorites", "syncedAt": "<ISO time>", "tickers": [...]}` with
-`wrangler secret put WATCHLIST`. No redeploy is needed. The sync is manual; the site
-does not call IBKR.
+The sync is weekly (user decision 2026-09-27) plus on demand: a Claude routine, created
+by the user, reads the list with the IBKR connector (`get_watchlist`, read-only), drops
+futures (`contract_id_ex` containing `@`) and sends
+`{"name": "Favorites", "tickers": [...]}` to `PUT /watchlist` with the sync token. The
+servers never call IBKR themselves.
