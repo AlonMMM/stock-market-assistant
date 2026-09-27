@@ -1,10 +1,12 @@
 import { AlpacaFeed } from "./alpaca.js";
 import {
+  minuteHistory,
   sipDelay,
   tickerPattern,
   type Credentials,
   type History,
 } from "./backtest.js";
+import type { BarCache } from "./bar-cache.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
 import { normalize } from "./bars.js";
 import { coreClose, previousSessions } from "./calendar.js";
@@ -143,6 +145,7 @@ export async function handleDayChart(
   credentials: Credentials,
   fetcher: typeof fetch = fetch,
   now = Date.now(),
+  cache?: BarCache,
 ): Promise<{ status: number; body: DayChart | { error: string } }> {
   if (!credentials.key || !credentials.secret)
     return {
@@ -161,7 +164,7 @@ export async function handleDayChart(
       status: 200,
       body: await runDayChart(
         body,
-        (ticker, start, end) => feed.history(ticker, start, end),
+        minuteHistory(feed, cache, now),
         now,
         (ticker, start, end) =>
           feed.history(ticker, start, end, "1Day", "split"),

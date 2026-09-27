@@ -16,6 +16,14 @@
     // Railway collector; requests carry the COLLECTOR_TOKEN secret.
     "COLLECTOR_URL": "https://market-collector-production-b05d.up.railway.app",
   },
+  // Cache of Alpaca minute bars per symbol and day (backtests, day charts).
+  "d1_databases": [
+    {
+      "binding": "BARS_CACHE",
+      "database_name": "sma-bars-cache",
+      "database_id": "c3eec64d-d164-4632-8049-5f7b6e74b75a",
+    },
+  ],
   // ALPACA_API_KEY, ALPACA_API_SECRET and COLLECTOR_TOKEN are Worker secrets:
   //   npx wrangler secret put ALPACA_API_KEY
 }
