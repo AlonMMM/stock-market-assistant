@@ -13,7 +13,9 @@
     // every request (401) whose Access token does not match these values.
     "ACCESS_TEAM_DOMAIN": "https://broad-boat-f733.cloudflareaccess.com",
     "ACCESS_AUD": "ee019b5ddf9a5fc866f8105dde682c0374984712fa029b47361642d5c0967586",
+    // Railway collector; requests carry the COLLECTOR_TOKEN secret.
+    "COLLECTOR_URL": "https://market-collector-production-b05d.up.railway.app",
   },
-  // ALPACA_API_KEY and ALPACA_API_SECRET are Worker secrets:
+  // ALPACA_API_KEY, ALPACA_API_SECRET and COLLECTOR_TOKEN are Worker secrets:
   //   npx wrangler secret put ALPACA_API_KEY
 }

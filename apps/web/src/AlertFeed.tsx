@@ -1,5 +1,12 @@
 import { lazy, Suspense, useState } from "react";
-import type { BacktestAlert } from "../../../packages/market-data/src/backtest.js";
+import type { Evaluation } from "../../../packages/alerts/src/relative-volume.js";
+import type { AlertContext } from "../../../packages/market-data/src/backtest.js";
+
+// Backtest alerts carry close and market context; live alerts may lack them.
+export type FeedAlert = Evaluation & {
+  close?: number;
+  context?: AlertContext | null;
+};
 import { number } from "./api.js";
 import { israelDateTime, israelLabel } from "./time.js";
 
@@ -12,7 +19,7 @@ const sessionTag = { pre: "Pre", regular: "", post: "After" };
 
 type Sort = "time" | "ratio";
 
-export function AlertFeed({ alerts }: { alerts: BacktestAlert[] }) {
+export function AlertFeed({ alerts }: { alerts: FeedAlert[] }) {
   const [ticker, setTicker] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("time");
   const [open, setOpen] = useState<string | null>(null);
@@ -66,8 +73,9 @@ export function AlertFeed({ alerts }: { alerts: BacktestAlert[] }) {
         </label>
       </div>
       <p className="feed-note">
-        Times in {israelLabel}. “vs SPY×β”: the symbol’s move from the previous
-        close minus SPY’s move times the symbol’s 60-day beta.
+        Times in {israelLabel}.
+        {alerts.some((a) => a.context) &&
+          " “vs SPY×β”: the symbol’s move from the previous close minus SPY’s move times the symbol’s 60-day beta."}
       </p>
       <ul className="feed-list">
         {shown.map((a) => {
@@ -107,8 +115,10 @@ export function AlertFeed({ alerts }: { alerts: BacktestAlert[] }) {
                 <div className="feed-detail">
                   <p className="evidence">
                     {number(a.actual)} shares in {a.config.window} min vs{" "}
-                    {number(a.expected ?? 0)} expected · close $
-                    {a.close.toFixed(2)}
+                    {number(a.expected ?? 0)} expected
+                    {a.close !== undefined && (
+                      <> · close ${a.close.toFixed(2)}</>
+                    )}
                     {c && (
                       <>
                         {" "}

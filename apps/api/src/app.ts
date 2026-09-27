@@ -12,6 +12,7 @@ import {
   type Credentials,
 } from "../../../packages/market-data/src/backtest.js";
 import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
+import { loadLive } from "../../../packages/market-data/src/live.js";
 import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
 
 export function buildApp(
@@ -26,6 +27,12 @@ export function buildApp(
     const result = await handleBacktest(request.body, alpaca, alpaca.fetcher);
     return reply.code(result.status).send(result.body);
   });
+  app.get("/api/live", async () =>
+    loadLive({
+      url: process.env.COLLECTOR_URL,
+      token: process.env.COLLECTOR_TOKEN,
+    }),
+  );
   app.get("/api/watchlist", async () =>
     loadWatchlist({
       url: process.env.COLLECTOR_URL,
