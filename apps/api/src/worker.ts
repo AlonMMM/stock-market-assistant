@@ -21,6 +21,13 @@ declare const __STATIC_ASSETS__: Record<
   { content: string; type: string }
 >;
 
+// One cache per Worker instance, so the table check runs once, not per request.
+let cache: { db: D1Like; cache: D1BarCache } | undefined;
+function barCache(db: D1Like) {
+  if (cache?.db !== db) cache = { db, cache: new D1BarCache(db) };
+  return cache.cache;
+}
+
 export default {
   async fetch(
     request: Request,
@@ -75,7 +82,7 @@ export default {
         { key: env.ALPACA_API_KEY, secret: env.ALPACA_API_SECRET },
         fetch,
         Date.now(),
-        env.BARS_CACHE ? new D1BarCache(env.BARS_CACHE) : undefined,
+        env.BARS_CACHE ? barCache(env.BARS_CACHE) : undefined,
       );
       return Response.json(result.body, { status: result.status });
     }

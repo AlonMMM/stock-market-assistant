@@ -14,7 +14,15 @@ export interface BarCache {
 export interface CacheStats {
   hits: number; // symbol-days served from the cache
   misses: number; // symbol-days fetched from Alpaca
+  errors?: number; // failed cache reads or writes (results stay correct)
+  lastError?: string;
 }
+
+const recordError = (stats: CacheStats | undefined, error: unknown) => {
+  if (!stats) return;
+  stats.errors = (stats.errors ?? 0) + 1;
+  stats.lastError = error instanceof Error ? error.message : String(error);
+};
 
 // Compact storage form: [start, open, high, low, close, volume] per bar.
 export const encodeBars = (bars: RawBar[]) =>
@@ -82,8 +90,8 @@ export async function cachedHistory(
   let cached = new Map<string, RawBar[]>();
   try {
     cached = await cache.get(key, dates.filter(finished));
-  } catch {
-    // Degrade to fetching everything.
+  } catch (error) {
+    recordError(stats, error); // degrade to fetching everything
   }
   const days = new Map(cached);
   const missing = dates.filter((d) => !cached.has(d));
@@ -118,8 +126,8 @@ export async function cachedHistory(
     if (store.size)
       try {
         await cache.put(key, store);
-      } catch {
-        // Not cached this time; the result is still correct.
+      } catch (error) {
+        recordError(stats, error); // not cached this time; result still correct
       }
   }
   if (stats) stats.hits += cached.size;
@@ -157,6 +165,31 @@ export interface D1Like {
   batch(statements: D1Statement[]): Promise<unknown>;
 }
 
+// Stored form in D1: gzip of the compact JSON, base64 ("gz:" prefix) — about
+// a quarter of the size. Plain JSON rows from before are still readable.
+async function pack(bars: RawBar[]): Promise<string> {
+  const stream = new Blob([encodeBars(bars)])
+    .stream()
+    .pipeThrough(new CompressionStream("gzip"));
+  const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `gz:${btoa(binary)}`;
+}
+async function unpack(text: string): Promise<RawBar[]> {
+  if (!text.startsWith("gz:")) return decodeBars(text);
+  const bytes = Uint8Array.from(atob(text.slice(3)), (c) => c.charCodeAt(0));
+  const stream = new Blob([bytes])
+    .stream()
+    .pipeThrough(new DecompressionStream("gzip"));
+  return decodeBars(await new Response(stream).text());
+}
+// Days per INSERT: each D1 statement counts against the Workers Free limit of
+// 50 subrequests per request (shared with Alpaca calls), so days are written
+// several per statement, kept well under D1's 100 KB statement limit.
+const daysPerInsert = 10;
+
 /** D1-backed cache for the Worker. */
 export class D1BarCache implements BarCache {
   private ready?: Promise<unknown>;
@@ -183,19 +216,32 @@ export class D1BarCache implements BarCache {
       .bind(key, sorted[0], sorted.at(-1))
       .all<{ date: string; bars: string }>();
     for (const row of results)
-      if (wanted.has(row.date)) result.set(row.date, decodeBars(row.bars));
+      if (wanted.has(row.date)) result.set(row.date, await unpack(row.bars));
     return result;
   }
   async put(key: string, days: Map<string, RawBar[]>) {
     await this.init();
-    const statements = [...days].map(([date, bars]) =>
-      this.db
-        .prepare(
-          "INSERT OR REPLACE INTO minute_bars (key, date, bars, stored_at) VALUES (?, ?, ?, ?)",
-        )
-        .bind(key, date, encodeBars(bars), Date.now()),
+    const rows = await Promise.all(
+      [...days].map(async ([date, bars]) => [
+        key,
+        date,
+        await pack(bars),
+        Date.now(),
+      ]),
     );
-    for (let i = 0; i < statements.length; i += 50)
-      await this.db.batch(statements.slice(i, i + 50));
+    const statements = [];
+    for (let i = 0; i < rows.length; i += daysPerInsert) {
+      const chunk = rows.slice(i, i + daysPerInsert);
+      statements.push(
+        this.db
+          .prepare(
+            `INSERT OR REPLACE INTO minute_bars (key, date, bars, stored_at) VALUES ${chunk
+              .map(() => "(?, ?, ?, ?)")
+              .join(", ")}`,
+          )
+          .bind(...chunk.flat()),
+      );
+    }
+    if (statements.length) await this.db.batch(statements);
   }
 }

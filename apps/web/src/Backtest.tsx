@@ -10,9 +10,10 @@ import { AlertFeed } from "./AlertFeed.js";
 import { ValidationCard } from "./Validation.js";
 import { savedTickers, useWatchlist, Watchlist } from "./Watchlist.js";
 
-// Each request stays within Cloudflare's per-request subrequest and CPU limits:
-// a symbol needs about four minute-bar pages plus one daily page.
-const batchSize = 6;
+// Each request stays within Cloudflare's free-plan limit of 50 subrequests
+// (Alpaca calls plus bar-cache statements) and its CPU limit: a symbol needs
+// about four minute-bar pages, one daily page and a few cache statements.
+const batchSize = 3;
 
 function merge(parts: BacktestResult[]): BacktestResult {
   const [first] = parts;
@@ -42,6 +43,9 @@ function merge(parts: BacktestResult[]): BacktestResult {
       ? {
           hits: parts.reduce((n, p) => n + (p.cache?.hits ?? 0), 0),
           misses: parts.reduce((n, p) => n + (p.cache?.misses ?? 0), 0),
+          errors: parts.reduce((n, p) => n + (p.cache?.errors ?? 0), 0),
+          lastError: parts.findLast((p) => p.cache?.lastError)?.cache
+            ?.lastError,
         }
       : undefined,
     coverage: parts.flatMap((p) => p.coverage),
@@ -378,6 +382,8 @@ export function Backtest({ modes }: { modes: ReactNode }) {
                 <p>
                   Bar cache: {number(result.cache.hits)} symbol-days from the
                   cache, {number(result.cache.misses)} fetched from Alpaca.
+                  {(result.cache.errors ?? 0) > 0 &&
+                    ` ${result.cache.errors} cache errors (last: ${result.cache.lastError}); results are unaffected.`}
                 </p>
               )}
               <ul>
