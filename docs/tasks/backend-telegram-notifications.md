@@ -1,6 +1,6 @@
 # Task: Phone notifications through Telegram
 
-Status: implemented; real bot check pending
+Status: implemented; test message delivered, live alert check pending
 Owner: backend
 Branch: feat/telegram-notifications
 
@@ -49,8 +49,12 @@ duplicate after restart, a mute switch, and a test endpoint. Rate capping is def
   duplicate names, new-alert detection in the store.
 - `tests/collector-startup.test.ts`: endpoint auth, unconfigured 409s, mute toggle,
   half-configured Telegram stops startup.
-- Not verified: a real bot and chat; live alerts (collector's Alpaca validation pending).
+- 2026-09-27: with a real bot and the user's chat, a local collector
+  (`ALPACA_ENABLED=false`) delivered the `POST /notifications/test` message to the phone.
+- Not verified: an alert message through the outbox with a real bot; live alerts
+  (collector's Alpaca validation pending); Railway configuration.
 
 ## Next
 
-Create the bot, set Railway secrets, run the test endpoint, then watch the first live alert.
+Set the Railway secrets (new bot token after revoking the exposed one), run the test
+endpoint against Railway, then watch the first live alert.
