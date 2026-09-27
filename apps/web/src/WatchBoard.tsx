@@ -142,6 +142,7 @@ export function WatchBoard({
                     : `${pct >= 0 ? "▲" : "▼"} ${signed(pct)}%`}
                 </span>
                 <Sparkline
+                  marks={[board.open, board.close]}
                   ticker={s?.points ?? []}
                   benchmark={
                     ticker === against(ticker)

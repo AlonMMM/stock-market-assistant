@@ -30,9 +30,11 @@ function path(
 export function Sparkline({
   ticker,
   benchmark,
+  marks = [],
 }: {
   ticker: [number, number][];
   benchmark?: [number, number][];
+  marks?: number[]; // session open/close instants (Unix s) to draw as lines
 }) {
   const width = 120;
   const height = 40;
@@ -47,6 +49,24 @@ export function Sparkline({
       preserveAspectRatio="none"
       aria-hidden="true"
     >
+      {marks
+        .filter((t) => t > from && t < to)
+        .map((t) => {
+          const x = ((t - from) / (to - from)) * width;
+          return (
+            <line
+              key={t}
+              x1={x}
+              x2={x}
+              y1={0}
+              y2={height}
+              stroke="#9ca3af"
+              strokeWidth="1"
+              strokeDasharray="1 2"
+              vectorEffect="non-scaling-stroke"
+            />
+          );
+        })}
       {benchmark && benchmark.length > 1 && (
         <path
           d={path(benchmark, from, to, width, height)}

@@ -162,8 +162,8 @@ export function Live({ modes }: { modes: ReactNode }) {
           Watchlist{" "}
           {board.value && (
             <small>
-              {board.value.watchlist.length} symbols · vs SPY (dashed) · 15-min
-              delayed
+              {board.value.watchlist.length} symbols · benchmark dashed · dotted
+              lines mark the open and close · 15-min delayed
             </small>
           )}
         </h2>
