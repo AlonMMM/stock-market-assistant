@@ -5,13 +5,15 @@ import {
   type Evaluation,
 } from "../../alerts/src/relative-volume.js";
 import { AlpacaFeed } from "./alpaca.js";
+import { benchmark, betaReturns, dailyBeta } from "./beta.js";
 import { normalize, type RawBar } from "./bars.js";
 import { coreClose, previousSessions } from "./calendar.js";
 import { LiveEvaluator } from "./evaluator.js";
 
 export const backtestLimits = { tickers: 10, sessions: 20 };
+export const tickerPattern = /^[A-Z][A-Z0-9. -]{0,9}$/;
 // Alpaca's free plan serves SIP history except the most recent 15 minutes.
-const sipDelay = 15 * 60000;
+export const sipDelay = 15 * 60000;
 
 export type History = (
   ticker: string,
@@ -19,8 +21,19 @@ export type History = (
   end: string,
 ) => Promise<RawBar[]>;
 
+// Where the ticker stood against the market at the alert minute. Percent
+// changes are from each symbol's previous regular close; `excess` is the gap
+// between the ticker line and the SPY × beta line on the day chart.
+export interface AlertContext {
+  change: number;
+  spyChange: number;
+  beta: number;
+  excess: number; // change − beta × spyChange, percentage points
+}
+
 export interface BacktestAlert extends Evaluation {
   close: number;
+  context: AlertContext | null; // null for SPY or without enough data
 }
 
 export interface BacktestResult {
@@ -63,9 +76,7 @@ function parse(input: unknown, now: number) {
     !Array.isArray(tickers) ||
     tickers.length < 1 ||
     tickers.length > backtestLimits.tickers ||
-    !tickers.every(
-      (t) => typeof t === "string" && /^[A-Z][A-Z0-9. -]{0,9}$/.test(t),
-    ) ||
+    !tickers.every((t) => typeof t === "string" && tickerPattern.test(t)) ||
     new Set(tickers).size !== tickers.length
   )
     throw new BacktestInputError(
@@ -114,12 +125,58 @@ function parse(input: unknown, now: number) {
   return { tickers: tickers as string[], from, to, config, sessions, warmup };
 }
 
+interface MarketTrack {
+  lastRegular: Map<string, number>;
+  byDate: Map<string, { end: number; close: number }[]>;
+}
+
+function marketTrack(ticker: string, rows: RawBar[]): MarketTrack {
+  const track: MarketTrack = { lastRegular: new Map(), byDate: new Map() };
+  for (const row of rows) {
+    const bar = normalize(ticker, row, "shares");
+    if (!bar) continue;
+    if (bar.session === "regular") track.lastRegular.set(bar.date, bar.close);
+    const day = track.byDate.get(bar.date) ?? [];
+    day.push({ end: Date.parse(bar.end), close: bar.close });
+    track.byDate.set(bar.date, day);
+  }
+  return track;
+}
+
+function context(
+  date: string,
+  end: number,
+  close: number,
+  lastRegular: Map<string, number>,
+  spy: MarketTrack,
+  tickerDaily: RawBar[],
+  spyDaily: RawBar[],
+): AlertContext | null {
+  const previous = previousSessions(date, 1)[0]!;
+  const base = lastRegular.get(previous);
+  const spyBase = spy.lastRegular.get(previous);
+  // Latest SPY minute that closed at or before the alert minute, same day.
+  const spyBar = spy.byDate
+    .get(date)
+    ?.findLast((b) => b.end <= end && b.end > end - 5 * 60000);
+  const beta = dailyBeta(
+    previousSessions(date, betaReturns + 1),
+    tickerDaily,
+    spyDaily,
+  ).value;
+  if (!base || !spyBase || !spyBar || beta === null) return null;
+  const change = (close / base - 1) * 100;
+  const spyChange = (spyBar.close / spyBase - 1) * 100;
+  return { change, spyChange, beta, excess: change - beta * spyChange };
+}
+
 // Replays Alpaca minute bars through the live evaluator, as if each bar had
 // been received the moment it closed. Warmup bars build the baseline only.
 export async function runBacktest(
   input: unknown,
   history: History,
   now = Date.now(),
+  daily: History = async () => [],
 ): Promise<BacktestResult> {
   const { tickers, from, to, config, sessions, warmup } = parse(input, now);
   const next = new Date(`${to}T12:00:00Z`);
@@ -130,11 +187,33 @@ export async function runBacktest(
     Date.parse(`${next.toISOString().slice(0, 10)}T06:00:00Z`),
     now - sipDelay,
   );
-  const rows = await Promise.all(
-    tickers.map((ticker) =>
-      history(ticker, `${warmup[0]}T00:00:00Z`, new Date(end).toISOString()),
+  const until = new Date(end).toISOString();
+  const others = tickers.filter((t) => t !== benchmark);
+  let betaStart: string | null = null;
+  try {
+    betaStart = previousSessions(from, betaReturns + 1)[0]!;
+  } catch {
+    // Outside calendar coverage: alerts carry no market context.
+  }
+  const [rows, spyRows, dailyRows] = await Promise.all([
+    Promise.all(
+      tickers.map((ticker) => history(ticker, `${warmup[0]}T00:00:00Z`, until)),
     ),
+    others.length && betaStart
+      ? history(benchmark, `${warmup[warmup.length - 1]}T00:00:00Z`, until)
+      : [],
+    others.length && betaStart
+      ? Promise.all(
+          [...others, benchmark].map((t) =>
+            daily(t, `${betaStart}T00:00:00Z`, `${to}T00:00:00Z`),
+          ),
+        )
+      : [],
+  ]);
+  const dailyBy = new Map(
+    [...others, benchmark].map((t, i) => [t, dailyRows[i] ?? []]),
   );
+  const spy = marketTrack(benchmark, spyRows);
   const alerts: BacktestAlert[] = [];
   const diagnostics: Record<string, number> = {};
   const coverage: BacktestResult["coverage"] = [];
@@ -142,10 +221,12 @@ export async function runBacktest(
   tickers.forEach((ticker, index) => {
     const evaluator = new LiveEvaluator(config);
     const seen = new Set<string>();
+    const lastRegular = new Map<string, number>();
     let count = 0;
     for (const row of rows[index]!) {
       const bar = normalize(ticker, row, "shares");
       if (!bar || bar.date > to || Date.parse(bar.end) > end) continue;
+      if (bar.session === "regular") lastRegular.set(bar.date, bar.close);
       const inRange = bar.date >= from;
       if (inRange) {
         seen.add(bar.date);
@@ -156,7 +237,22 @@ export async function runBacktest(
       evaluated++;
       diagnostics[result.status] = (diagnostics[result.status] ?? 0) + 1;
       if (result.status === "alert")
-        alerts.push({ ...result, close: bar.close });
+        alerts.push({
+          ...result,
+          close: bar.close,
+          context:
+            ticker === benchmark || !betaStart
+              ? null
+              : context(
+                  bar.date,
+                  Date.parse(bar.end),
+                  bar.close,
+                  lastRegular,
+                  spy,
+                  dailyBy.get(ticker)!,
+                  dailyBy.get(benchmark)!,
+                ),
+        });
     }
     coverage.push({
       ticker,
@@ -214,6 +310,8 @@ export async function handleBacktest(
         body,
         (ticker, start, end) => feed.history(ticker, start, end),
         now,
+        (ticker, start, end) =>
+          feed.history(ticker, start, end, "1Day", "split"),
       ),
     };
   } catch (error) {

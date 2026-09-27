@@ -67,12 +67,34 @@ const ny = new Intl.DateTimeFormat("en-CA", {
   minute: "2-digit",
   hourCycle: "h23",
 });
+// New York's UTC offset only changes on whole UTC hours, so it is computed
+// once per hour with Intl and reused; formatting every bar is the hot path.
+const offsets = new Map<number, number>();
+function offset(time: number): number {
+  const hour = Math.floor(time / 3600000);
+  let value = offsets.get(hour);
+  if (value === undefined) {
+    const at = hour * 3600000;
+    const parts = Object.fromEntries(
+      ny.formatToParts(at).map((p) => [p.type, p.value]),
+    );
+    const wall = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+    );
+    value = wall - at;
+    if (offsets.size > 100000) offsets.clear();
+    offsets.set(hour, value);
+  }
+  return value;
+}
 export function newYork(time: number) {
-  const parts = Object.fromEntries(
-    ny.formatToParts(time).map((p) => [p.type, p.value]),
-  );
+  const wall = new Date(Math.floor(time / 60000) * 60000 + offset(time));
   return {
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    minute: Number(parts.hour) * 60 + Number(parts.minute),
+    date: wall.toISOString().slice(0, 10),
+    minute: wall.getUTCHours() * 60 + wall.getUTCMinutes(),
   };
 }

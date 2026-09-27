@@ -53,7 +53,7 @@ h1 {
 }
 .modes {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 4px;
   border: 1px solid #cdd7ce;
   border-radius: 12px;
@@ -82,9 +82,6 @@ h1 {
 .volume-controls.backtest-range {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 16px;
-}
-.backtest-range .tickers {
-  grid-column: 1 / -1;
 }
 .backtest-range input[type="date"] {
   font-size: 16px;
@@ -318,4 +315,229 @@ footer {
   .modes {
     font-size: 14px;
   }
+}
+.chart-toggle {
+  width: 100%;
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid #b9c8bf;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.day-chart {
+  margin: 16px 0 0;
+}
+.day-chart figcaption {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #52514e;
+}
+.chart-legend,
+.chart-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: center;
+}
+.chart-readout strong {
+  color: #0b0b0b;
+  font-variant-numeric: tabular-nums;
+}
+.chart-time {
+  flex-basis: 100%;
+}
+.key {
+  display: inline-block;
+  width: 14px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-top: 2px solid;
+}
+.key.dashed {
+  border-top-style: dashed;
+}
+.chart-canvas {
+  height: 340px;
+}
+.chart-status {
+  color: #61736b;
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  .chart-canvas {
+    height: 300px;
+  }
+}
+.watchlist {
+  border: 1px solid #cdd7ce;
+  border-radius: 14px;
+  padding: 16px;
+  margin: 0 0 16px;
+  min-width: 0;
+}
+.watchlist legend {
+  padding: 0 6px;
+  font-size: 14px;
+  font-weight: 650;
+}
+.watchlist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.watchlist-actions input {
+  flex: 1 1 110px;
+  width: auto;
+  padding: 8px 10px;
+  font-size: 16px;
+}
+.watchlist-actions button,
+.chip {
+  border: 1px solid #b9c8bf;
+  border-radius: 999px;
+  background: transparent;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  color: inherit;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip[aria-pressed="true"] {
+  background: #142b29;
+  border-color: #142b29;
+  color: #fff;
+}
+.feed-filters {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 8px;
+}
+.feed-sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.feed-sort select {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid #b9c8bf;
+  border-radius: 8px;
+  background: #fff;
+}
+.feed-note {
+  color: #61736b;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 4px 0 8px;
+}
+.feed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #cdd7ce;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fafbf8;
+}
+.feed-row + .feed-row {
+  border-top: 1px solid #e1e8e1;
+}
+.feed-summary {
+  display: grid;
+  grid-template-columns: 4.2em minmax(0, 1fr) 3.4em minmax(0, 7.5em) 1em;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.feed-row.open .feed-summary {
+  background: #eef2ea;
+}
+.feed-time {
+  color: #52514e;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.feed-session {
+  margin-left: 6px;
+  font-style: normal;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #e0ebd2;
+}
+.feed-ratio,
+.feed-excess {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.feed-excess {
+  font-size: 12px;
+  color: #52514e;
+}
+.feed-excess strong {
+  color: #0b0b0b;
+  font-size: 14px;
+}
+.feed-chevron {
+  color: #61736b;
+  text-align: center;
+}
+.feed-detail {
+  padding: 0 14px 16px;
+}
+.feed-detail .day-chart {
+  margin-top: 8px;
+}
+@media (max-width: 440px) {
+  .feed-summary {
+    grid-template-columns: 3.8em minmax(0, 1fr) 3em 1em;
+    grid-template-areas:
+      "ticker time ratio chevron"
+      "ticker excess excess chevron";
+    row-gap: 2px;
+  }
+  .feed-ticker {
+    grid-area: ticker;
+  }
+  .feed-time {
+    grid-area: time;
+  }
+  .feed-ratio {
+    grid-area: ratio;
+  }
+  .feed-excess {
+    grid-area: excess;
+    text-align: left;
+  }
+  .feed-chevron {
+    grid-area: chevron;
+  }
+}
+.watchlist-source {
+  margin: 0 0 12px;
+  color: #61736b;
+  font-size: 12px;
 }

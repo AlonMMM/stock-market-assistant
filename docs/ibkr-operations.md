@@ -53,3 +53,18 @@ It may be reconsidered if this becomes an external commercial product.
 - [Client Portal Gateway limitations](https://www.interactivebrokers.com/docs/web-api/authentication/cpgw/limitations-of-the-client-portal-gateway)
 - [OAuth 2.0 registration](https://www.interactivebrokers.com/docs/web-api/authentication/oauth-2/register)
 - [Third-party OAuth 1.0a registration](https://www.interactivebrokers.com/docs/web-api/authentication/oauth-1a/third-party-oauth/registration-process)
+
+## Watchlist sync
+
+The Backtest screen's symbol list comes from the user's IBKR watchlist "Favorites"
+(IBKR watchlist id `10`, confirmed by the user on 2026-09-27). It is account data, so it
+is stored outside Git as the Worker secret `WATCHLIST`, served by `GET /api/watchlist`
+behind Cloudflare Access; without the secret the site falls back to
+`config/alpaca-watchlist.json`. Locally, `WATCHLIST` can be set in the ignored `.env`.
+
+To sync, an agent with the IBKR connector reads the list (`get_watchlist`, read-only),
+keeps stock and ETF symbols (futures such as `…@CME` are dropped because Alpaca stock
+data does not cover them), and writes
+`{"name": "Favorites", "syncedAt": "<ISO time>", "tickers": [...]}` with
+`wrangler secret put WATCHLIST`. No redeploy is needed. The sync is manual; the site
+does not call IBKR.

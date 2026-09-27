@@ -11,6 +11,8 @@ import {
   handleBacktest,
   type Credentials,
 } from "../../../packages/market-data/src/backtest.js";
+import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
+import { readWatchlist } from "../../../packages/market-data/src/watchlist.js";
 
 export function buildApp(
   logging = false,
@@ -22,6 +24,11 @@ export function buildApp(
   const app = Fastify({ logger: logging });
   app.post("/api/backtest", async (request, reply) => {
     const result = await handleBacktest(request.body, alpaca, alpaca.fetcher);
+    return reply.code(result.status).send(result.body);
+  });
+  app.get("/api/watchlist", async () => readWatchlist(process.env.WATCHLIST));
+  app.post("/api/day-chart", async (request, reply) => {
+    const result = await handleDayChart(request.body, alpaca, alpaca.fetcher);
     return reply.code(result.status).send(result.body);
   });
   app.post<{ Body: { config?: Partial<Config>; bars?: Bar[] } }>(
