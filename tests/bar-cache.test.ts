@@ -157,7 +157,7 @@ test("a failing cache falls back to fetching", async () => {
   assert.equal(rows.length, 5);
 });
 
-test("the D1 cache stores and reads days, including more than 90 at once", async () => {
+test("the D1 cache stores days and reads them with one range query", async () => {
   const cache = new D1BarCache(new SqliteD1(":memory:"));
   const days = new Map<string, RawBar[]>();
   for (let i = 0; i < 120; i++) {
@@ -177,6 +177,12 @@ test("the D1 cache stores and reads days, including more than 90 at once", async
     (await cache.get("AAPL:sip:1Min:raw", [...days.keys()])).size,
     0,
   );
+  // Only requested days are returned, even when the range spans others.
+  const some = await cache.get("NVDA:sip:1Min:raw", [
+    "2026-01-01",
+    "2026-03-01",
+  ]);
+  assert.deepEqual([...some.keys()], ["2026-01-01", "2026-03-01"]);
 });
 
 test("a cached backtest returns the same result and reports cache use", async () => {

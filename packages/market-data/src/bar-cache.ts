@@ -172,17 +172,18 @@ export class D1BarCache implements BarCache {
     const result = new Map<string, RawBar[]>();
     if (!dates.length) return result;
     await this.init();
-    // D1 allows at most 100 bound parameters per statement.
-    for (let i = 0; i < dates.length; i += 90) {
-      const chunk = dates.slice(i, i + 90);
-      const { results } = await this.db
-        .prepare(
-          `SELECT date, bars FROM minute_bars WHERE key = ? AND date IN (${chunk.map(() => "?").join(",")})`,
-        )
-        .bind(key, ...chunk)
-        .all<{ date: string; bars: string }>();
-      for (const row of results) result.set(row.date, decodeBars(row.bars));
-    }
+    // One range query per symbol (primary-key range scan); days without a row
+    // are the ones to fetch.
+    const wanted = new Set(dates);
+    const sorted = [...dates].sort();
+    const { results } = await this.db
+      .prepare(
+        "SELECT date, bars FROM minute_bars WHERE key = ? AND date BETWEEN ? AND ?",
+      )
+      .bind(key, sorted[0], sorted.at(-1))
+      .all<{ date: string; bars: string }>();
+    for (const row of results)
+      if (wanted.has(row.date)) result.set(row.date, decodeBars(row.bars));
     return result;
   }
   async put(key: string, days: Map<string, RawBar[]>) {
