@@ -134,6 +134,12 @@ export function AlertFeed({
                   <p className="evidence">
                     {number(a.actual)} shares in {a.config.window} min vs{" "}
                     {number(a.expected ?? 0)} expected
+                    {a.paceRatio !== null && a.paceRatio !== undefined && (
+                      <> · {a.paceRatio.toFixed(1)}× today&apos;s pace</>
+                    )}
+                    {a.volumeBasis === "pace" && (
+                      <> (volume qualified by today&apos;s pace)</>
+                    )}
                     {a.expectedMove !== null &&
                       a.expectedMove !== undefined && (
                         <>

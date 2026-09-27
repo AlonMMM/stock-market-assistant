@@ -39,6 +39,8 @@ const unit: Config = {
   window: 1,
   days: 1,
   minVolume: 0,
+  directionBars: 1,
+  paceMultiple: 0,
 };
 function today(open: number, close: number, volume = 300, config = unit) {
   const engine = new RelativeVolume(config);
@@ -55,16 +57,17 @@ test("demo: volume, meaningful move and one direction alert once; the past is fi
   assert.equal(alerts.length, 1);
   const [alert] = alerts;
   assert.equal(alert!.ticker, "NVDA");
-  // Window 11:09–11:11: 100.00 → 100.05 → 100.45 → 100.85, all green, on
+  // Window 11:09–11:11: 100.00 → 100.05 → 100.65 → 101.25, all green, on
   // 10,000 + 50,000 + 50,000 shares against a 30,000 baseline.
   assert.equal(alert!.end.slice(11, 16), "15:11");
   assert.equal(alert!.actual, 110000);
   assert.equal(alert!.expected, 30000);
   assert.ok(Math.abs(alert!.ratio! - 110000 / 30000) < 1e-12);
   assert.equal(alert!.direction, "up");
-  assert.ok(Math.abs(alert!.move - 0.85) < 1e-9);
+  assert.ok(Math.abs(alert!.move - 1.25) < 1e-9);
+  assert.equal(alert!.volumeBasis, "history");
   assert.equal(alert!.samples, 20);
-  assert.equal(alert!.rule, "rvol-v2");
+  assert.equal(alert!.rule, "rvol-v3");
   const cutoff = alert!.end;
   assert.deepEqual(
     replay(bars.filter((b) => b.end <= cutoff)),
@@ -72,7 +75,9 @@ test("demo: volume, meaningful move and one direction alert once; the past is fi
   );
   for (const config of [
     { ...defaults, threshold: 6 },
-    { ...defaults, minMovePercent: 1.5 },
+    // The steepest demo window moves 3 × 0.6 ≈ 1.8%.
+    { ...defaults, minMovePercent: 2 },
+    { ...defaults, lastBarMinMovePercent: 0.7 },
   ])
     assert.equal(
       replay(bars, config).filter((r) => r.status === "alert").length,
@@ -85,7 +90,7 @@ test("price move is relative to the symbol's time-of-day median and has a floor"
   // 0.55%: above the 0.5% floor but below 3 × 0.2%.
   assert.equal(today(100, 100.55).status, "small-move");
   // Baseline of 0.1%: 3× is 0.3%, so the 0.5% floor decides.
-  const quiet = new RelativeVolume(unit);
+  const quiet = new RelativeVolume({ ...unit, lastBarMinMovePercent: 0 });
   quiet.push(bar("2026-03-02", 660, 100, 100, 100));
   quiet.push(bar("2026-03-02", 661, 100, 100.1, 100));
   quiet.push(bar("2026-03-03", 660, 100, 100, 100));
@@ -105,7 +110,12 @@ test("every close must pass the previous close and every candle must share the c
   // Green candle, but closing below the prior close.
   assert.equal(today(98, 99.5).status, "mixed-direction");
   // Three-minute window: a middle bar that dips breaks the staircase.
-  const engine = new RelativeVolume({ ...defaults, days: 1, minVolume: 0 });
+  const engine = new RelativeVolume({
+    ...defaults,
+    days: 1,
+    minVolume: 0,
+    paceMultiple: 0,
+  });
   const day = (date: string, closes: number[], volume: number) =>
     closes.map((c, i) =>
       engine.push(
@@ -201,8 +211,8 @@ test("session separation, zero baseline, duplicates, fresh crossings and cooldow
     "alert",
     "suppressed",
     "suppressed",
-    "below-threshold",
-    "below-threshold",
+    "weak-last-bar", // flat minutes are not evaluated
+    "weak-last-bar",
     "alert",
     "suppressed",
     "suppressed",
@@ -243,4 +253,105 @@ test("API validates configuration and supports demo and uploaded replay", async 
   } finally {
     await app.close();
   }
+});
+
+// Pace scenarios: one baseline day at 1,000 shares a minute, then a quiet day
+// at 100 shares a minute that jumps to 500 shares with a 1% green minute. The
+// jump is only 0.5× the 20-day style baseline but 5× today's own pace.
+function paceDay(
+  minutes: [number, number],
+  jumpAt: number,
+  overrides: Partial<Config> = {},
+  regularClose?: number,
+) {
+  const engine = new RelativeVolume({
+    ...unit,
+    priceMultiple: 1,
+    minMovePercent: 0,
+    paceMultiple: 3,
+    ...overrides,
+  });
+  const run = (date: string, quiet: boolean) => {
+    let close = 100;
+    let result;
+    for (let m = minutes[0]; m <= minutes[1]; m++) {
+      const jump = !quiet ? false : m === jumpAt;
+      const open = close;
+      close = jump ? close * 1.01 : m % 2 ? 100.1 : 100;
+      result = engine.push({
+        ...bar(date, m, open, close, jump ? 500 : quiet ? 100 : 1000),
+        regularClose,
+      });
+      if (jump) return result;
+    }
+    return result;
+  };
+  run("2026-03-02", false);
+  return run("2026-03-03", true)!;
+}
+
+test("a sudden jump on a quiet day alerts against today's pace", () => {
+  const r = paceDay([601, 640], 630);
+  assert.equal(r.status, "alert");
+  assert.equal(r.volumeBasis, "pace");
+  assert.ok(r.ratio! < 3);
+  assert.equal(r.paceRatio, 5);
+  // Pace off: only the 20-day baseline counts, which the jump does not beat.
+  assert.equal(
+    paceDay([601, 640], 630, { paceMultiple: 0 }).status,
+    "below-threshold",
+  );
+});
+
+test("today's pace skips the open and close and needs 15 minutes of data", () => {
+  // Opening half hour (09:30–10:00 New York): baseline only.
+  assert.equal(paceDay([571, 600], 595).status, "below-threshold");
+  // Only 10 pace-zone minutes before the jump.
+  assert.equal(paceDay([601, 612], 611).status, "below-threshold");
+  // Last half hour before a 16:00 close.
+  assert.equal(paceDay([900, 959], 945).status, "below-threshold");
+  assert.equal(paceDay([900, 959], 925).status, "alert");
+  // Early-close day (13:00): the pace zone ends at 12:30.
+  assert.equal(paceDay([700, 779], 765, {}, 780).status, "below-threshold");
+  assert.equal(paceDay([700, 779], 745, {}, 780).status, "alert");
+});
+
+test("the last-minute gate and the number of same-direction candles are configurable", () => {
+  // Last minute +0.3% after two strong minutes.
+  const engine = (config: Partial<Config>) => {
+    const e = new RelativeVolume({
+      ...defaults,
+      days: 1,
+      minVolume: 0,
+      paceMultiple: 0,
+      ...config,
+    });
+    const day = (date: string, closes: number[], volume: number) =>
+      closes.map((c, i) =>
+        e.push(bar(date, 660 + i, i ? closes[i - 1]! : c, c, i ? volume : 100)),
+      );
+    day("2026-03-02", [100, 100.1, 100.2, 100.3], 100);
+    return day;
+  };
+  const gentle = [100, 101, 102, 102.3];
+  assert.equal(
+    engine({})("2026-03-03", gentle, 300).at(-1)?.status,
+    "weak-last-bar",
+  );
+  assert.equal(
+    engine({ lastBarMinMovePercent: 0 })("2026-03-03", gentle, 300).at(-1)
+      ?.status,
+    "alert",
+  );
+  // First window minute dips; only the last two must share the direction.
+  const dip = [100, 99.5, 100.5, 101.5];
+  assert.equal(
+    engine({})("2026-03-03", dip, 300).at(-1)?.status,
+    "mixed-direction",
+  );
+  assert.equal(
+    engine({ directionBars: 2 })("2026-03-03", dip, 300).at(-1)?.status,
+    "alert",
+  );
+  assert.throws(() => new RelativeVolume({ ...defaults, directionBars: 4 }));
 });

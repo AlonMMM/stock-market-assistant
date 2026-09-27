@@ -1,6 +1,6 @@
 import { type Bar } from "./relative-volume.js";
 // Synthetic: 21 weekdays of 11:00–11:29 New York bars for three symbols. Prices
-// alternate by 0.05; on the last day NVDA climbs 0.4 a minute on 5× volume
+// alternate by 0.05; on the last day NVDA climbs 0.6 a minute on 5× volume
 // from 11:10 to 11:19.
 export function demoBars(): Bar[] {
   const bars: Bar[] = [];
@@ -16,7 +16,7 @@ export function demoBars(): Bar[] {
         const hour = date.getUTCDate() < 8 ? 16 : 15;
         const spike = day === 21 && ticker === "NVDA" && m >= 10 && m < 20;
         const open = close;
-        close = spike ? close + 0.4 : m % 2 ? 100.05 : 100;
+        close = spike ? close + 0.6 : m % 2 ? 100.05 : 100;
         bars.push({
           ticker,
           date: date.toISOString().slice(0, 10),

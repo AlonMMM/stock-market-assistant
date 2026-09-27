@@ -14,6 +14,7 @@ import {
   previousSessions,
 } from "../packages/market-data/src/calendar.js";
 import { LiveEvaluator } from "../packages/market-data/src/evaluator.js";
+import { defaults } from "../packages/alerts/src/relative-volume.js";
 import { MarketStore } from "../packages/market-data/src/store.js";
 
 const raw = (time: string, volume = 100): RawBar => ({
@@ -67,13 +68,15 @@ test("holidays and shortened sessions fail closed outside calendar coverage", ()
 });
 test("live alert requires actual prior trading dates and never publishes warmup or stale crossings", () => {
   const config = {
+    ...defaults,
     window: 1,
     days: 2,
-    threshold: 3,
-    cooldown: 15,
     minVolume: 0,
     priceMultiple: 1,
     minMovePercent: 0,
+    lastBarMinMovePercent: 0,
+    directionBars: 1,
+    paceMultiple: 0,
   };
   // Each day: a flat 10.00 bar at 10:59 New York, then the evaluated 11:00
   // bar. Baseline days rise 1%; the alert day rises 5% on 4× volume.

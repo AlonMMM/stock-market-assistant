@@ -126,3 +126,13 @@ price move ≥ 3× the symbol's median move at that time of day and ≥ 0.5%, me
 the close before the window, with every close beyond the previous close and every
 candle the same color. See [relative volume](features/relative-volume.md). Live data is
 IEX, so the 10,000-share floor is stricter live than in SIP backtests; revisit.
+
+## 2026-09-27 — Relative volume v3: last-minute gate and today's pace
+
+Status: confirmed by user; the pace-zone reading of "remove the opening and the closing"
+is an interpretation stated to the user.
+
+The last minute must move ≥ 0.5% from the previous close (configurable, 0 = off). Volume
+qualifies against the 20-day time-of-day median OR ≥ 3× today's own pace (regular
+session, excluding the first and last 30 minutes, after 15 minutes of data). The number
+of same-direction candles is configurable (default 3).

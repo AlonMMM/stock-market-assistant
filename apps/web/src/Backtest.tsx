@@ -46,6 +46,9 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   const [cooldown, setCooldown] = useState(15);
   const [priceMultiple, setPriceMultiple] = useState(3);
   const [minMove, setMinMove] = useState(0.5);
+  const [lastMove, setLastMove] = useState(0.5);
+  const [directionBars, setDirectionBars] = useState(3);
+  const [pace, setPace] = useState(3);
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -81,6 +84,9 @@ export function Backtest({ modes }: { modes: ReactNode }) {
               cooldown,
               priceMultiple,
               minMovePercent: minMove,
+              lastBarMinMovePercent: lastMove,
+              directionBars,
+              paceMultiple: pace,
             },
           }),
           signal: AbortSignal.timeout(120000),
@@ -246,6 +252,25 @@ export function Backtest({ modes }: { modes: ReactNode }) {
             min: "0",
             max: "100",
             step: "0.05",
+          })}
+          {numberInput("Last minute move (%, 0 = off)", lastMove, setLastMove, {
+            min: "0",
+            max: "100",
+            step: "0.05",
+          })}
+          {numberInput(
+            "Same-direction candles",
+            directionBars,
+            setDirectionBars,
+            {
+              min: "1",
+              max: "3",
+              step: "1",
+            },
+          )}
+          {numberInput("Today's pace (×, 0 = off)", pace, setPace, {
+            min: "0",
+            step: "0.1",
           })}
         </div>
         <button
