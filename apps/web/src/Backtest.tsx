@@ -60,7 +60,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   const [cooldown, setCooldown] = useState(15);
   const [priceMultiple, setPriceMultiple] = useState(3);
   const [minMove, setMinMove] = useState(0.5);
-  const [lastMove, setLastMove] = useState(0.5);
+  const [lastMove, setLastMove] = useState(0);
   const [directionBars, setDirectionBars] = useState(3);
   const [pace, setPace] = useState(3);
   const [stopUnits, setStopUnits] = useState(1);
