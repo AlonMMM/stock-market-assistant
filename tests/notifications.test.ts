@@ -92,6 +92,17 @@ test("formats an alert in Israel time with the evaluator's values", () => {
   assert.match(down, /Volume 123,456 · 3.5× today's pace\n/);
 });
 
+test("labels a synthetic alert on its first line", () => {
+  const text = formatAlert({
+    ...alert("TEST", "2026-09-28T14:00:00Z"),
+    synthetic: true,
+  });
+  assert.match(
+    text,
+    /^🧪 <b>SYNTHETIC<\/b> · not a market alert\n<b>TEST<\/b>/,
+  );
+});
+
 test("sends each alert once, even when enqueued twice or reopened", async () => {
   const t = setup([]);
   const box = t.open();

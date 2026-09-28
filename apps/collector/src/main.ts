@@ -18,7 +18,10 @@ import {
   previousSessions,
 } from "../../../packages/market-data/src/calendar.js";
 import { LiveEvaluator } from "../../../packages/market-data/src/evaluator.js";
-import { AlertEvents } from "../../../packages/alerts/src/events.js";
+import {
+  AlertEvents,
+  type AlertEvent,
+} from "../../../packages/alerts/src/events.js";
 import {
   notifyOnAlerts,
   Outbox,
@@ -162,6 +165,34 @@ api.post("/notifications/test", async (_request, reply) => {
   );
   if (!result.ok) return reply.code(502).send({ error: result.error });
   return { sent: true };
+});
+// Publishes a SYNTHETIC alert on the bus, so every consumer (the Telegram
+// outbox included, mute respected) handles it like a live one. It is not
+// stored as an alert. Delivery state appears in GET /notifications.
+api.post("/notifications/synthetic", async (_request, reply) => {
+  const alert: AlertEvent = {
+    ticker: "TEST",
+    end: new Date().toISOString(),
+    session: "regular",
+    actual: 123456,
+    expected: 30000,
+    ratio: 4.1,
+    paceRatio: null,
+    volumeBasis: "history",
+    move: 1.23,
+    expectedMove: 0.3,
+    direction: "up",
+    samples: config.days,
+    status: "alert",
+    rule: "rvol-v3",
+    config,
+    close: 100,
+    synthetic: true,
+  };
+  alertEvents.publish(alert);
+  return reply
+    .code(202)
+    .send({ published: true, ticker: alert.ticker, end: alert.end });
 });
 api.get("/watchlist", async (_request, reply) => {
   const list = store.watchlist();

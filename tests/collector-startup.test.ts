@@ -178,6 +178,16 @@ test(
         headers: { Authorization: headers.Authorization },
       });
       assert.equal(test.status, 409);
+      const synthetic = await fetch(`${plain.url}/notifications/synthetic`, {
+        method: "POST",
+        headers: { Authorization: headers.Authorization },
+      });
+      assert.equal(synthetic.status, 202);
+      assert.equal((await synthetic.json()).ticker, "TEST");
+      const alerts = await (
+        await fetch(`${plain.url}/alerts`, { headers })
+      ).json();
+      assert.deepEqual(alerts.alerts, [], "a synthetic alert is not stored");
     } finally {
       await plain.close();
     }

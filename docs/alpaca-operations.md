@@ -55,6 +55,10 @@ Each new live alert is queued in the `notifications` table and sent to one Teleg
 4. `POST /notifications/test` (collector token) sends a labeled test message now; a
    502 response carries Telegram's error, such as a wrong chat ID.
 
+`POST /notifications/synthetic` publishes a SYNTHETIC alert (ticker `TEST`) on the alert
+bus, so it goes through the outbox like a live alert; the message starts with
+"SYNTHETIC · not a market alert" and nothing is added to `/alerts`.
+
 `GET /notifications` shows the channel, mute state and the 50 latest deliveries.
 `PUT /notifications` with `{ "muted": true }` pauses sending without stopping the
 collector; the mute state is stored in SQLite and survives restarts. Alerts raised while

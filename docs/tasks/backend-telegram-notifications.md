@@ -26,7 +26,8 @@ duplicate after restart, a mute switch, and a test endpoint. Rate capping is def
   collector database. `notifyOnAlerts` subscribes it to the bus; it drains sequentially
   after each alert and every 5 s.
 - Collector endpoints (collector token): `GET/PUT /notifications`,
-  `POST /notifications/test`. Operation details: [operations](../alpaca-operations.md#telegram-notifications).
+  `POST /notifications/test`, `POST /notifications/synthetic` (labeled synthetic alert
+  through the bus and outbox; not stored as an alert). Operation details: [operations](../alpaca-operations.md#telegram-notifications).
 - Backtest and replay never send notifications; only the live stream enqueues.
 
 ## Limits

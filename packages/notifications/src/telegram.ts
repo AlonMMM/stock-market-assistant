@@ -25,6 +25,7 @@ export function formatAlert(alert: Alert, siteUrl?: string): string {
     alert.direction === "up" ? "▲" : alert.direction === "down" ? "▼" : "•";
   const move = `${alert.move >= 0 ? "+" : ""}${alert.move.toFixed(2)}%`;
   const lines = [
+    ...(alert.synthetic ? ["🧪 <b>SYNTHETIC</b> · not a market alert"] : []),
     `<b>${escape(alert.ticker)}</b> ${arrow} ${move} in ${alert.config.window} min`,
     `${israelTime.format(new Date(alert.end))} Israel time · ${sessionName[alert.session]}`,
     `Volume ${shares.format(alert.actual)}` +

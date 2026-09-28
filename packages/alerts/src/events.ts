@@ -1,7 +1,9 @@
 import type { Evaluation } from "./relative-volume.js";
 
 // A new live alert, after it is stored. Each (ticker, end) is published once.
-export type AlertEvent = Evaluation & { close?: number };
+// `synthetic` marks a made-up alert for checking consumers end to end; it is
+// never stored as an alert and consumers that act on markets must ignore it.
+export type AlertEvent = Evaluation & { close?: number; synthetic?: true };
 
 export type AlertListener = (alert: AlertEvent) => void | Promise<void>;
 
