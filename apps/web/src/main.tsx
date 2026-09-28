@@ -1,5 +1,6 @@
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { parseAlertLink } from "../../../packages/contracts/src/alert-link.js";
 import { Backtest } from "./Backtest.js";
 import { Live } from "./Live.js";
 import "./styles.css";
@@ -14,8 +15,11 @@ function savedMode(): Mode {
   }
 }
 
+// A notification link opens the Live view on that alert.
+const link = parseAlertLink(location.search);
+
 function App() {
-  const [mode, setModeState] = useState<Mode>(savedMode);
+  const [mode, setModeState] = useState<Mode>(link ? "live" : savedMode);
   const setMode = (m: Mode) => {
     setModeState(m);
     try {
@@ -44,7 +48,11 @@ function App() {
       )}
     </nav>
   );
-  return mode === "live" ? <Live modes={modes} /> : <Backtest modes={modes} />;
+  return mode === "live" ? (
+    <Live modes={modes} link={link} />
+  ) : (
+    <Backtest modes={modes} />
+  );
 }
 
 createRoot(document.getElementById("root")!).render(

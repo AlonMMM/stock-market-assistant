@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { Evaluation } from "../../../packages/alerts/src/relative-volume.js";
 import type { AlertContext } from "../../../packages/market-data/src/backtest.js";
 import type { Outcome } from "../../../packages/market-data/src/outcome.js";
@@ -26,15 +26,24 @@ type Sort = "time" | "ratio";
 export function AlertFeed({
   alerts,
   benchmarks = {},
+  focus,
 }: {
   alerts: FeedAlert[];
   benchmarks?: Record<string, string>; // sector benchmark per symbol
+  focus?: string; // ticker + end of a row to open and scroll to on mount
 }) {
   const [ticker, setTicker] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("time");
   const [result, setResult] = useState<Outcome["result"] | null>(null);
   const scored = alerts.some((a) => a.outcome);
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(focus ?? null);
+  useEffect(() => {
+    if (focus)
+      document
+        .getElementById(`alert-${focus}`)
+        ?.scrollIntoView({ block: "start" });
+    // Only the first focus scrolls; later polls must not move the page.
+  }, []);
 
   const counts = new Map<string, number>();
   for (const a of alerts) counts.set(a.ticker, (counts.get(a.ticker) ?? 0) + 1);
@@ -118,7 +127,11 @@ export function AlertFeed({
           const expanded = open === key;
           const c = a.context;
           return (
-            <li key={key} className={expanded ? "feed-row open" : "feed-row"}>
+            <li
+              key={key}
+              id={`alert-${key}`}
+              className={expanded ? "feed-row open" : "feed-row"}
+            >
               <button
                 type="button"
                 className="feed-summary"

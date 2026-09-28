@@ -1,4 +1,5 @@
 import type { AlertEvent } from "../../alerts/src/events.js";
+import { alertLink } from "../../contracts/src/alert-link.js";
 
 export type Alert = AlertEvent;
 
@@ -35,7 +36,10 @@ export function formatAlert(alert: Alert, siteUrl?: string): string {
         : ""),
   ];
   if (alert.close !== undefined) lines.push(`Last ${alert.close}`);
-  if (siteUrl) lines.push(escape(siteUrl));
+  if (siteUrl)
+    lines.push(
+      `<a href="${escape(alertLink(siteUrl, alert))}">Open in site</a>`,
+    );
   return lines.join("\n");
 }
 

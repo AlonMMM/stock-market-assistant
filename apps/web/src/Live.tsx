@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import type { Board } from "../../../packages/market-data/src/board.js";
+import type { AlertLink } from "../../../packages/contracts/src/alert-link.js";
 import type { LiveStatus } from "../../../packages/market-data/src/live.js";
 import { AlertFeed } from "./AlertFeed.js";
 import { readJson } from "./api.js";
@@ -61,7 +62,13 @@ function usePolling<T>(
   return { value, at };
 }
 
-export function Live({ modes }: { modes: ReactNode }) {
+export function Live({
+  modes,
+  link = null,
+}: {
+  modes: ReactNode;
+  link?: AlertLink | null;
+}) {
   const [warnings, setWarnings] = useState<string[]>([]);
   const warn = (message: string) =>
     setWarnings((w) => (w.at(-1) === message ? w : [...w, message]));
@@ -84,6 +91,15 @@ export function Live({ modes }: { modes: ReactNode }) {
       ? "Live · receiving 1-minute bars"
       : (stateText[status.state] ?? status.state);
   const day = board.value?.date;
+  const linked =
+    link &&
+    status?.alerts.some((a) => a.ticker === link.ticker && a.end === link.end);
+  const linkNotice =
+    !link || !status || linked
+      ? null
+      : link.synthetic
+        ? "This link came from a SYNTHETIC test alert, which is not stored. Links from real alerts open the alert here."
+        : `The linked alert (${link.ticker}, ${israelDateTime(Date.parse(link.end))} ${israelLabel}) is not among the ${status.alerts.length} most recent live alerts.`;
 
   return (
     <>
@@ -143,6 +159,7 @@ export function Live({ modes }: { modes: ReactNode }) {
             <small>{status.alerts.length} recent</small>
           )}
         </h2>
+        {linkNotice && <p className="notice">{linkNotice}</p>}
         {status && status.alerts.length === 0 && (
           <p className="notice">
             No live alerts yet. US pre-market opens 11:00 {israelLabel}, the
@@ -153,6 +170,7 @@ export function Live({ modes }: { modes: ReactNode }) {
           <AlertFeed
             alerts={status.alerts}
             benchmarks={board.value?.benchmarks}
+            focus={linked ? link.ticker + link.end : undefined}
           />
         )}
       </section>

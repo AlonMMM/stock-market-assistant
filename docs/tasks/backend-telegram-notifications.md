@@ -59,3 +59,15 @@ duplicate after restart, a mute switch, and a test endpoint. Rate capping is def
 
 Set the Railway secrets (new bot token after revoking the exposed one), run the test
 endpoint against Railway, then watch the first live alert.
+
+## 2026-09-28 follow-up
+
+- Production: PR #24 deployed manually to `market-collector` (deployment `85abd4d8`);
+  `/notifications/test` and `/notifications/synthetic` both reached the phone, the
+  synthetic row recorded `sent` on the first attempt. Railway auto-deploy from `main` is
+  not running (last automatic deploy was PR #18).
+- Alert deep link (user request): each message links to
+  `SITE_URL/?alert=<ticker>&end=<bar end>` (`packages/contracts/src/alert-link.ts`). The
+  site opens the Live view, expands that row and scrolls to it. A synthetic link, or an
+  alert outside the 100 most recent, shows a notice instead. Not yet checked in a
+  browser or on the phone.

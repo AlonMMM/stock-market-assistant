@@ -11,6 +11,10 @@ import {
   Outbox,
 } from "../packages/notifications/src/outbox.js";
 import {
+  alertLink,
+  parseAlertLink,
+} from "../packages/contracts/src/alert-link.js";
+import {
   formatAlert,
   TelegramSender,
   type Alert,
@@ -75,7 +79,7 @@ test("formats an alert in Israel time with the evaluator's values", () => {
       "17:00 Israel time · regular",
       "Volume 123,456 · 4.1× usual",
       "Last 187.5",
-      "https://x.test",
+      '<a href="https://x.test/?alert=AAPL&amp;end=2026-09-28T14%3A00%3A00Z">Open in site</a>',
     ].join("\n"),
   );
   const down = formatAlert({
@@ -282,4 +286,29 @@ test("the outbox subscribes to published alerts and sends each once", async () =
   assert.equal(t.sent.length, 1);
   box.close();
   t.cleanup();
+});
+
+test("alert links round-trip and reject incomplete input", () => {
+  const link = alertLink("https://site.test/app?mode=x", {
+    ticker: "BRK.B",
+    end: "2026-09-28T14:00:00Z",
+  });
+  assert.equal(
+    link,
+    "https://site.test/app?alert=BRK.B&end=2026-09-28T14%3A00%3A00Z",
+  );
+  assert.deepEqual(parseAlertLink(new URL(link).search), {
+    ticker: "BRK.B",
+    end: "2026-09-28T14:00:00Z",
+    synthetic: false,
+  });
+  const synthetic = alertLink("https://site.test", {
+    ticker: "TEST",
+    end: "2026-09-28T14:00:00Z",
+    synthetic: true,
+  });
+  assert.equal(parseAlertLink(new URL(synthetic).search)?.synthetic, true);
+  assert.equal(parseAlertLink("?alert=AAPL"), null);
+  assert.equal(parseAlertLink("?alert=AAPL&end=soon"), null);
+  assert.equal(parseAlertLink(""), null);
 });
