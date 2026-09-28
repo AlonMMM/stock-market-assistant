@@ -27,7 +27,8 @@ Set these on the existing collector service; never put real values in Git or cha
 - `COLLECTOR_TOKEN`: keep the existing random value of at least 32 characters.
 - `COLLECTOR_DB=/data/alpaca.sqlite`: persistent Railway volume path.
 - `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`: optional phone notifications; set both or
-  neither. `SITE_URL` optionally adds the website link to each message. See
+  neither. `SITE_URL` (the website origin) adds an "Open in site" link to each message; it opens
+  the Live view with that alert expanded (`/?alert=<ticker>&end=<UTC bar end>`). See
   [Telegram notifications](#telegram-notifications).
 
 ## Validation sequence
