@@ -24,5 +24,6 @@ if [ "$(node -v 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/')" != "$required" ]; th
   fi
 fi
 
-# npm install (not ci) reuses the cached container's node_modules.
-npm install --no-audit --no-fund >&2
+# npm install (not ci) reuses the cached container's node_modules; --no-save
+# keeps it from rewriting package-lock.json (npm 11 drops "peer" flags).
+npm install --no-audit --no-fund --no-save >&2
