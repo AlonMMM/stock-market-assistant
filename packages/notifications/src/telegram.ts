@@ -16,7 +16,7 @@ const sessionName = {
   post: "after-hours",
 };
 
-const escape = (text: string) =>
+export const escape = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 // Telegram HTML message for one alert. It shows the evaluator's own values;
@@ -44,35 +44,78 @@ export function formatAlert(alert: Alert, siteUrl?: string): string {
 }
 
 export type SendResult =
-  | { ok: true }
+  | { ok: true; messageId?: number }
   // `retryAfter` in seconds when Telegram asks to slow down.
   | { ok: false; retry: boolean; error: string; retryAfter?: number };
 
-export interface Sender {
-  send(html: string): Promise<SendResult>;
+export interface SendOptions {
+  // Telegram message to reply to; sent standalone if it is gone.
+  replyTo?: number;
 }
 
-export class TelegramSender implements Sender {
+export interface Sender {
+  send(html: string, options?: SendOptions): Promise<SendResult>;
+}
+
+export interface PhotoSender extends Sender {
+  sendPhoto(
+    png: Buffer,
+    caption: string,
+    options?: SendOptions,
+  ): Promise<SendResult>;
+}
+
+export class TelegramSender implements PhotoSender {
   constructor(
     private token: string,
     private chatId: string,
     private fetcher: typeof fetch = fetch,
   ) {}
-  async send(html: string): Promise<SendResult> {
+  send(html: string, options: SendOptions = {}): Promise<SendResult> {
+    return this.call(
+      "sendMessage",
+      JSON.stringify({
+        chat_id: this.chatId,
+        text: html,
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: true },
+        ...reply(options),
+      }),
+      { "Content-Type": "application/json" },
+    );
+  }
+  sendPhoto(
+    png: Buffer,
+    caption: string,
+    options: SendOptions = {},
+  ): Promise<SendResult> {
+    const form = new FormData();
+    form.set("chat_id", this.chatId);
+    form.set("caption", caption);
+    form.set("parse_mode", "HTML");
+    const replyTo = reply(options).reply_parameters;
+    if (replyTo) form.set("reply_parameters", JSON.stringify(replyTo));
+    form.set(
+      "photo",
+      new Blob([new Uint8Array(png)], { type: "image/png" }),
+      "chart.png",
+    );
+    return this.call("sendPhoto", form, {});
+  }
+  private async call(
+    method: string,
+    body: string | FormData,
+    headers: Record<string, string>,
+  ): Promise<SendResult> {
     let response: Response;
     try {
       response = await this.fetcher(
-        `https://api.telegram.org/bot${this.token}/sendMessage`,
+        `https://api.telegram.org/bot${this.token}/${method}`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: this.chatId,
-            text: html,
-            parse_mode: "HTML",
-            link_preview_options: { is_disabled: true },
-          }),
-          signal: AbortSignal.timeout(10000),
+          headers,
+          body,
+          signal: AbortSignal.timeout(20000),
         },
       );
     } catch (error) {
@@ -82,20 +125,34 @@ export class TelegramSender implements Sender {
         error: error instanceof Error ? error.message : "Network error",
       };
     }
-    if (response.ok) return { ok: true };
-    const body = (await response.json().catch(() => ({}))) as {
+    const result = (await response.json().catch(() => ({}))) as {
       description?: string;
       parameters?: { retry_after?: number };
+      result?: { message_id?: unknown };
     };
+    if (response.ok)
+      return typeof result.result?.message_id === "number"
+        ? { ok: true, messageId: result.result.message_id }
+        : { ok: true };
     // Never echo the URL: it contains the bot token.
-    const error = `Telegram ${response.status}: ${body.description ?? "error"}`;
+    const error = `Telegram ${response.status}: ${result.description ?? "error"}`;
     // 400/401/403/404 mean a wrong token or chat; retrying cannot help.
     const retry = response.status === 429 || response.status >= 500;
     return {
       ok: false,
       retry,
       error,
-      retryAfter: body.parameters?.retry_after,
+      retryAfter: result.parameters?.retry_after,
     };
   }
 }
+
+const reply = (options: SendOptions) =>
+  options.replyTo === undefined
+    ? {}
+    : {
+        reply_parameters: {
+          message_id: options.replyTo,
+          allow_sending_without_reply: true,
+        },
+      };

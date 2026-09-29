@@ -8,7 +8,7 @@ export const benchmark = "SPY";
 export const betaReturns = 60;
 const betaMinimumReturns = 40;
 
-function dailyCloses(rows: RawBar[]): Map<string, number> {
+export function dailyCloses(rows: RawBar[]): Map<string, number> {
   const closes = new Map<string, number>();
   for (const row of rows)
     if (Number.isFinite(row.close) && row.close > 0)

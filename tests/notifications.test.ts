@@ -242,6 +242,19 @@ test("TelegramSender classifies responses without leaking the token", async () =
     parse_mode: "HTML",
     link_preview_options: { is_disabled: true },
   });
+  const threaded = await new TelegramSender(
+    "SECRET",
+    "42",
+    reply(200, { ok: true, result: { message_id: 7 } }),
+  ).send("hi", { replyTo: 5 });
+  assert.deepEqual(threaded, { ok: true, messageId: 7 });
+  assert.deepEqual(
+    (calls[1]!.body as { reply_parameters: unknown }).reply_parameters,
+    {
+      message_id: 5,
+      allow_sending_without_reply: true,
+    },
+  );
   const limited = await new TelegramSender(
     "SECRET",
     "42",
@@ -311,4 +324,22 @@ test("alert links round-trip and reject incomplete input", () => {
   assert.equal(parseAlertLink("?alert=AAPL"), null);
   assert.equal(parseAlertLink("?alert=AAPL&end=soon"), null);
   assert.equal(parseAlertLink(""), null);
+});
+
+test("records the Telegram message id and upgrades an older database", async () => {
+  const t = setup([{ ok: true, messageId: 99 }]);
+  // A database created before the message_id column existed.
+  const old = new DatabaseSync(t.path);
+  old.exec(`CREATE TABLE notifications (ticker TEXT, end TEXT, payload TEXT NOT NULL,
+    status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL,
+    error TEXT, sent_at TEXT, PRIMARY KEY(ticker,end))`);
+  old.close();
+  const box = t.open();
+  const a = alert("AAPL", "2026-09-28T14:00:00Z");
+  assert.equal(box.messageId(a.ticker, a.end), null);
+  box.enqueue(a);
+  await box.drain();
+  assert.equal(box.messageId(a.ticker, a.end), 99);
+  box.close();
+  t.cleanup();
 });

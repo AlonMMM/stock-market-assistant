@@ -231,3 +231,62 @@ test("a half-configured Telegram channel stops startup", async () => {
     /Unexpected exit 1/,
   );
 });
+
+test("analysis is off by default and needs Alpaca keys when enabled", async () => {
+  await assert.rejects(
+    start({
+      ALPACA_ENABLED: "false",
+      COLLECTOR_TOKEN: randomBytes(32).toString("hex"),
+      ANALYSIS_ENABLED: "true",
+    }),
+    /Unexpected exit 1/,
+  );
+  const token = randomBytes(32).toString("hex");
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  const off = await start({ ALPACA_ENABLED: "false", COLLECTOR_TOKEN: token });
+  try {
+    assert.deepEqual(
+      await (await fetch(`${off.url}/analyses`, { headers })).json(),
+      { enabled: false, claude: false, analyses: [] },
+    );
+    const rerun = await fetch(`${off.url}/analyses`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ticker: "AAPL", end: "2026-09-28T14:30:00Z" }),
+    });
+    assert.equal(rerun.status, 409);
+  } finally {
+    await off.close();
+  }
+  // Enabled with (unused, fake) keys; Claude stays off without its key.
+  const on = await start({
+    ALPACA_ENABLED: "false",
+    ALPACA_API_KEY: "fake",
+    ALPACA_API_SECRET: "fake",
+    ANALYSIS_ENABLED: "true",
+    ANTHROPIC_API_KEY: "",
+    COLLECTOR_TOKEN: token,
+  });
+  try {
+    const body = await (await fetch(`${on.url}/analyses`, { headers })).json();
+    assert.deepEqual(body, { enabled: true, claude: false, analyses: [] });
+    assert.equal((await fetch(`${on.url}/analyses`)).status, 401);
+    const bad = await fetch(`${on.url}/analyses`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ticker: "AAPL" }),
+    });
+    assert.equal(bad.status, 400);
+    const missing = await fetch(`${on.url}/analyses`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ticker: "AAPL", end: "2026-09-28T14:30:00Z" }),
+    });
+    assert.equal(missing.status, 404);
+  } finally {
+    await on.close();
+  }
+});

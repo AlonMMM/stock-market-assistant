@@ -51,6 +51,10 @@ export class Outbox {
         error TEXT, sent_at TEXT, PRIMARY KEY(ticker,end));
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       UPDATE notifications SET status='unknown' WHERE status='sending';`);
+    // Added for analysis replies; older databases lack the column.
+    const columns = this.db.prepare("PRAGMA table_info(notifications)").all();
+    if (!columns.some((c) => c.name === "message_id"))
+      this.db.exec("ALTER TABLE notifications ADD COLUMN message_id INTEGER");
   }
   muted(): boolean {
     const row = this.db
@@ -70,7 +74,7 @@ export class Outbox {
   enqueue(alert: Alert): boolean {
     const result = this.db
       .prepare(
-        "INSERT OR IGNORE INTO notifications VALUES (?,?,?,?,0,?,NULL,NULL)",
+        "INSERT OR IGNORE INTO notifications (ticker, end, payload, status, attempts, next_at) VALUES (?,?,?,?,0,?)",
       )
       .run(
         alert.ticker,
@@ -80,6 +84,15 @@ export class Outbox {
         this.now(),
       );
     return result.changes > 0;
+  }
+  // Telegram message id of a sent alert, for threading follow-ups under it.
+  messageId(ticker: string, end: string): number | null {
+    const row = this.db
+      .prepare(
+        "SELECT message_id FROM notifications WHERE ticker=? AND end=? AND status='sent'",
+      )
+      .get(ticker, end);
+    return typeof row?.message_id === "number" ? row.message_id : null;
   }
   recent(limit = 50): NotificationRow[] {
     return this.db
@@ -108,6 +121,9 @@ export class Outbox {
     const update = this.db.prepare(
       "UPDATE notifications SET status=?, attempts=?, next_at=?, error=?, sent_at=? WHERE ticker=? AND end=?",
     );
+    const sent = this.db.prepare(
+      "UPDATE notifications SET message_id=? WHERE ticker=? AND end=?",
+    );
     for (;;) {
       const row = due.get(this.now());
       if (!row) return;
@@ -132,6 +148,7 @@ export class Outbox {
         formatAlert(alert, this.options.siteUrl),
       );
       if (result.ok) {
+        sent.run(result.messageId ?? null, ticker, end);
         update.run(
           "sent",
           attempts,

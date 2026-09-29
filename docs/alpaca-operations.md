@@ -69,3 +69,23 @@ Delivery: one message at a time, up to 5 attempts with 5 s × 3ⁿ backoff (or T
 `retry_after`); wrong token or chat fails at once. An alert older than 15 minutes is marked
 `expired` instead of sent. A send interrupted by a crash is marked `unknown` and never
 repeated, so an alert may be missed but is not sent twice.
+
+## Alert analysis
+
+Off unless `ANALYSIS_ENABLED=true`, which needs `ALPACA_API_KEY`/`ALPACA_API_SECRET` (it
+reads Alpaca bars and news over REST, never the account or order APIs). Set
+`ANTHROPIC_API_KEY` as a Railway secret for the three Claude agents; without it only the
+relative-strength score and the technical scan run. The image already contains the
+technical-scan Python environment (`TECHNICAL_SCAN_PYTHON`, `TECHNICAL_SCAN_SCRIPT`).
+Behavior and formulas: [alert analysis](features/alert-analysis.md).
+
+- `GET /analyses` (collector token): enabled state and the 50 latest analyses with their
+  results, `status` (`pending`, `running`, `done`, `failed`, `expired`) and `delivery`
+  (`sent`, `failed`, `muted`, `off`).
+- `POST /analyses` with `{ "ticker": "AAPL", "end": "<alert end>" }` analyzes a stored
+  alert again and sends the reply, for checking a deployment. Its web searches can see news
+  published after that alert.
+
+Each analysis makes three Claude Sonnet 5.5 calls (two with up to 3 web searches each);
+cost and latency per alert are not measured yet. Mute (`PUT /notifications`) also mutes
+analysis replies.
