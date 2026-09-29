@@ -26,6 +26,7 @@ import type { NewsItem } from "./news.js";
 import { scoreAgainst, type BenchmarkScore } from "./relative-strength.js";
 import {
   runTechnicalScan,
+  type Chart,
   type ScriptRunner,
   type TechnicalScan,
 } from "./technical.js";
@@ -39,6 +40,9 @@ export interface AnalysisResult {
   technical: AgentOutcome<TechnicalView>;
   // technical-scan summary.json; null when the scan failed.
   technicalSummary: Record<string, unknown> | null;
+  // Chart files stored with the analysis (GET /analyses/chart). Absent in
+  // analyses stored before charts were kept.
+  charts?: string[];
   sentiment: AgentOutcome<SentimentView>;
   news: AgentOutcome<CatalystView & { item: NewsItem | null }>;
   completedAt: string;
@@ -139,7 +143,7 @@ export async function analyze(
   alert: AlertEvent,
   data: MarketData,
   deps: AnalysisDeps,
-): Promise<{ result: AnalysisResult; chart: Buffer | null }> {
+): Promise<{ result: AnalysisResult; charts: Chart[] }> {
   const end = Date.parse(alert.end);
   const scores = data.benchmarks.map((b) =>
     scoreAgainst({
@@ -236,12 +240,15 @@ export async function analyze(
       technical: technical.outcome,
       technicalSummary:
         typeof technical.scan === "string" ? null : technical.scan.summary,
+      charts:
+        typeof technical.scan === "string"
+          ? []
+          : technical.scan.charts.map((c) => c.name),
       sentiment,
       news: catalyst,
       completedAt: new Date().toISOString(),
     },
-    chart:
-      typeof technical.scan === "string" ? null : technical.scan.levelsChart,
+    charts: typeof technical.scan === "string" ? [] : technical.scan.charts,
   };
 }
 
@@ -250,7 +257,7 @@ export async function analyze(
 export type AnalysisStatus =
   "pending" | "running" | "done" | "failed" | "expired";
 
-export type DeliveryStatus = "sent" | "failed" | "muted" | "off";
+export type DeliveryStatus = "sent" | "partial" | "failed" | "muted" | "off";
 
 export interface AnalysisRow {
   ticker: string;
@@ -265,7 +272,7 @@ export interface AnalysisRow {
 export type Deliver = (
   alert: AlertEvent,
   result: AnalysisResult,
-  chart: Buffer | null,
+  charts: Chart[],
 ) => Promise<DeliveryStatus>;
 
 export interface QueueOptions {
@@ -310,6 +317,8 @@ export class AnalysisQueue {
         status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL,
         requested_at INTEGER NOT NULL, error TEXT, delivery TEXT, result TEXT,
         PRIMARY KEY(ticker,end));
+      CREATE TABLE IF NOT EXISTS analysis_charts (ticker TEXT, end TEXT, name TEXT, png BLOB NOT NULL,
+        PRIMARY KEY(ticker,end,name));
       UPDATE analyses SET status='pending' WHERE status='running';`);
   }
   // Queues an alert unless it was queued before.
@@ -339,6 +348,19 @@ export class AnalysisQueue {
          requested_at=excluded.requested_at, error=NULL, delivery=NULL, result=NULL`,
       )
       .run(alert.ticker, alert.end, JSON.stringify(alert), now, now);
+  }
+  chart(ticker: string, end: string, name: string): Buffer | null {
+    const row = this.db
+      .prepare(
+        "SELECT png FROM analysis_charts WHERE ticker=? AND end=? AND name=?",
+      )
+      .get(ticker, end, name);
+    return row?.png instanceof Uint8Array ? Buffer.from(row.png) : null;
+  }
+  // Removes analyses (and their charts) of alerts before `before` (ISO).
+  prune(before: string) {
+    this.db.prepare("DELETE FROM analysis_charts WHERE end<?").run(before);
+    this.db.prepare("DELETE FROM analyses WHERE end<?").run(before);
   }
   recent(limit = 50): AnalysisRow[] {
     return this.db
@@ -453,15 +475,22 @@ export class AnalysisQueue {
       );
       return;
     }
-    const { result, chart } = analysis;
+    const { result, charts } = analysis;
     this.db
       .prepare(
         "UPDATE analyses SET status='done', error=NULL, result=? WHERE ticker=? AND end=?",
       )
       .run(JSON.stringify(result), ticker, end);
+    this.db
+      .prepare("DELETE FROM analysis_charts WHERE ticker=? AND end=?")
+      .run(ticker, end);
+    const insert = this.db.prepare(
+      "INSERT INTO analysis_charts VALUES (?,?,?,?)",
+    );
+    for (const chart of charts) insert.run(ticker, end, chart.name, chart.png);
     let delivery: DeliveryStatus = "failed";
     try {
-      delivery = await this.deliver(alert, result, chart);
+      delivery = await this.deliver(alert, result, charts);
     } catch {
       // Reported as failed below.
     }

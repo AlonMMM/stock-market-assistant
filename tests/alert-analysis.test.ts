@@ -34,7 +34,12 @@ import {
 } from "../packages/analysis/src/technical.js";
 import type { PriceBar, RawBar } from "../packages/market-data/src/bars.js";
 import { newYorkToUtc } from "../packages/market-data/src/calendar.js";
-import type { SendResult } from "../packages/notifications/src/telegram.js";
+import type {
+  Photo,
+  SendOptions,
+  SendResult,
+} from "../packages/notifications/src/telegram.js";
+import { technicalFacts } from "../packages/analysis/src/technical-facts.js";
 import {
   alert,
   alertEnd,
@@ -109,12 +114,21 @@ test("runs the technical-scan script on converted series and reads its output", 
     const out = args[args.indexOf("--outdir") + 1]!;
     await mkdir(out);
     writeFileSync(join(out, "summary.json"), '{"spot": 101}');
-    writeFileSync(join(out, "06_trade_levels.png"), "PNG");
+    writeFileSync(join(out, "06_trade_levels.png"), "PNG6");
+    writeFileSync(join(out, "01_daily.png"), "PNG1");
+    writeFileSync(join(out, "report.html"), "<html>");
     return { code: 0, stderr: "" };
   };
   const scan = await runTechnicalScan(scanInput(), run);
   assert.deepEqual(scan.summary, { spot: 101 });
-  assert.equal(scan.levelsChart?.toString(), "PNG");
+  // Every chart the script wrote, in its order; nothing else.
+  assert.deepEqual(
+    scan.charts.map((c) => [c.name, c.png.toString()]),
+    [
+      ["01_daily.png", "PNG1"],
+      ["06_trade_levels.png", "PNG6"],
+    ],
+  );
   assert.deepEqual(seen.slice(0, 4), [
     "--ticker",
     "AAPL",
@@ -160,7 +174,20 @@ test(
         (scan.summary.trade_plan as { support_ladder: unknown }).support_ladder,
       ),
     );
-    assert.ok(scan.levelsChart && scan.levelsChart.length > 1000);
+    assert.deepEqual(
+      scan.charts.map((c) => c.name),
+      [
+        "01_daily.png",
+        "02_hourly.png",
+        "03_intraday_volume_profile.png",
+        "05_relative_strength.png",
+        "06_trade_levels.png",
+        "07_rs_rotation.png",
+      ],
+    );
+    assert.ok(scan.charts.every((c) => c.png.length > 1000));
+    const facts = technicalFacts(scan.summary);
+    assert.ok(facts.pivots && facts.volumeProfile && facts.support.length);
   },
 );
 
@@ -665,56 +692,272 @@ async function sampleResult() {
   return result;
 }
 
-test("formats the follow-up in Israel time with escaped agent text", async () => {
-  const text = formatAnalysis(alert(), await sampleResult());
-  // 14:30 UTC in September is 17:30 in Israel.
-  assert.match(text, /📊 <b>AAPL<\/b> ▲ analysis · alert 17:30 Israel time/);
-  assert.match(text, /vs SPY: <b>AGAINST the index<\/b> · <b>\d+\/100<\/b>/);
-  assert.match(text, /AAPL \+2\.00% vs SPY -0\.60% today/);
-  assert.match(text, /stronger than SPY, confirms the alert/);
-  assert.match(
-    text,
-    /Technical<\/b> · unavailable \(Too few regular-session bars/,
-  );
-  assert.match(text, /Guidance &lt;raised&gt;/);
-  assert.match(
-    text,
-    /benzinga, 12 min before the alert · <a href="https:\/\/x\.test\/7">source<\/a>/,
-  );
-  assert.ok(text.length < 4096);
+// SYNTHETIC technical-scan summary.json in the script's shape.
+const summaryFixture = {
+  ticker: "AAPL",
+  spot: 102,
+  pivots_from_prior_day: {
+    pp: 100.5,
+    r1: 103,
+    r2: 104.2,
+    r3: 106,
+    s1: 99,
+    s2: 97.8,
+    s3: 96,
+  },
+  prior_week_range: { high: 105, low: 96.5 },
+  swing_sr_clusters: [
+    { level: 98.2, strength: 4 },
+    { level: 104.9, strength: 2 },
+  ],
+  volume_profile: { poc: 101.2, value_area_high: 101.8, value_area_low: 100.4 },
+  session_vwap_last: 101.4,
+  options: null,
+  relative_strength: {
+    benchmark: "SPY",
+    beta_60d: 1.5,
+    beta_60d_correlation: 0.62,
+    beta_recent: 1.95,
+    beta_recent_window_days: 20,
+    beta_regime_shift: 0.45,
+    alpha_now_pp: 2.6,
+    pct_session_alpha_positive: 88.5,
+    divergence_windows: [
+      {
+        class: "against",
+        start_time: "2026-09-28T14:00:00+00:00",
+        end_time: "2026-09-28T14:30:00+00:00",
+        stock_move_pp: 1.1,
+        bench_move_pp: -0.3,
+      },
+      {
+        class: "bogus",
+        start_time: "x",
+        end_time: "y",
+        stock_move_pp: 0,
+        bench_move_pp: 0,
+      },
+    ],
+    rs_line_at_new_high: true,
+    rs_ratio_now: 101.2,
+    rs_momentum_now: 100.8,
+    rs_quadrant: "Leading",
+  },
+  trade_plan: {
+    resistance_ladder: [{ level: 103, distance_pct: 0.98, labels: ["R1"] }],
+    support_ladder: [
+      { level: 101.3, distance_pct: -0.69, labels: ["VWAP", "POC"] },
+    ],
+  },
+};
+
+test("reads the technical-scan summary into typed facts", () => {
+  const f = technicalFacts(summaryFixture);
+  assert.equal(f.pivots?.r1, 103);
+  assert.deepEqual(f.volumeProfile, { poc: 101.2, vah: 101.8, val: 100.4 });
+  assert.equal(f.quadrant, "Leading");
+  assert.equal(f.rsNewHigh, true);
+  // The malformed divergence window is dropped.
+  assert.deepEqual(f.divergences, [
+    {
+      kind: "against",
+      start: "2026-09-28T14:00:00.000Z",
+      end: "2026-09-28T14:30:00.000Z",
+      stockPp: 1.1,
+      benchmarkPp: -0.3,
+    },
+  ]);
+  assert.deepEqual(f.support, [
+    { level: 101.3, distancePct: -0.69, labels: ["VWAP", "POC"] },
+  ]);
+  // Anything missing is null or empty, never invented.
+  const empty = technicalFacts({});
+  assert.equal(empty.pivots, null);
+  assert.deepEqual(empty.support, []);
 });
 
-test("delivers under the alert's message, then the chart under the analysis", async () => {
+async function richResult(): Promise<AnalysisResult> {
   const result = await sampleResult();
-  const sent: { kind: string; replyTo?: number }[] = [];
-  const sender = {
-    async send(
-      _html: string,
-      options?: { replyTo?: number },
-    ): Promise<SendResult> {
-      sent.push({ kind: "text", replyTo: options?.replyTo });
-      return { ok: true, messageId: 50 };
+  return {
+    ...result,
+    technicalSummary: summaryFixture,
+    technical: {
+      ok: true,
+      model: analysisModel,
+      value: { ...view, lean: "bullish", drivers: ["Leading <RS>"] } as never,
     },
-    async sendPhoto(
-      _png: Buffer,
-      _caption: string,
-      options?: { replyTo?: number },
-    ): Promise<SendResult> {
-      sent.push({ kind: "photo", replyTo: options?.replyTo });
-      return { ok: true, messageId: 51 };
+    charts: ["01_daily.png", "06_trade_levels.png"],
+  };
+}
+
+test("formats each part in Israel time with the skill's numbers and escaped text", async () => {
+  const text = formatAnalysis(alert(), await richResult(), "https://site.test");
+  // 14:30 UTC in September is 17:30 in Israel.
+  assert.match(
+    text.scores,
+    /📊 <b>Relative strength<\/b> · AAPL · alert 17:30 Israel time/,
+  );
+  assert.match(
+    text.scores,
+    /vs SPY: <b>AGAINST the index<\/b> · <b>\d+\/100<\/b>/,
+  );
+  assert.match(text.scores, /today AAPL \+2\.00% vs SPY -0\.60%/);
+  assert.match(text.scores, /stronger than SPY, confirms the alert/);
+  assert.match(text.technical, /<b>Bottom line: bullish<\/b>/);
+  assert.match(text.technical, /• Leading &lt;RS&gt;/);
+  assert.match(text.technical, /Pivots PP 100\.5 · R1 103/);
+  assert.match(
+    text.technical,
+    /Volume profile POC 101\.2 · VAH 101\.8 · VAL 100\.4/,
+  );
+  assert.match(
+    text.technical,
+    /β vs SPY: 60d 1\.5 \(corr 0\.62\) · 20d 1\.95 · <b>beta regime shift<\/b>/,
+  );
+  assert.match(
+    text.technical,
+    /RS quadrant <b>Leading<\/b> \(ratio 101\.2, momentum 100\.8\) · RS line at a new high/,
+  );
+  assert.match(text.technical, /Moved against the tape 17:00–17:30/);
+  assert.match(text.technical, /Support 101\.3 \(-0\.69%\) VWAP\/POC/);
+  assert.match(text.news, /Guidance &lt;raised&gt;/);
+  assert.match(
+    text.news,
+    /benzinga, 12 min before the alert · <a href="https:\/\/x\.test\/7">source<\/a>/,
+  );
+  assert.match(
+    text.news,
+    /<a href="https:\/\/site\.test\/\?alert=AAPL&amp;end=/,
+  );
+  for (const part of Object.values(text)) assert.ok(part.length < 4096);
+});
+
+function fakeSender() {
+  const sent: { kind: string; options?: SendOptions; count?: number }[] = [];
+  let id = 50;
+  return {
+    sent,
+    sender: {
+      async send(_html: string, options?: SendOptions): Promise<SendResult> {
+        sent.push({ kind: "text", options });
+        return { ok: true, messageId: id++ };
+      },
+      async sendPhotos(
+        photos: Photo[],
+        options?: SendOptions,
+      ): Promise<SendResult> {
+        sent.push({ kind: "photos", options, count: photos.length });
+        return { ok: true, messageId: id++ };
+      },
     },
   };
+}
+
+test("posts every part into the alert's topic, charts as one album", async () => {
+  const result = await richResult();
+  const { sender, sent } = fakeSender();
+  const deliver = telegramDelivery(sender, {
+    muted: () => false,
+    messageId: () => 40,
+    threadId: () => 7,
+  });
+  const charts = [
+    { name: "01_daily.png", png: Buffer.from("1") },
+    { name: "06_trade_levels.png", png: Buffer.from("6") },
+  ];
+  assert.equal(await deliver(alert(), result, charts), "sent");
+  assert.deepEqual(sent, [
+    { kind: "text", options: { threadId: 7 } },
+    { kind: "text", options: { threadId: 7 } },
+    { kind: "photos", options: { threadId: 7 }, count: 2 },
+    { kind: "text", options: { threadId: 7 } },
+    { kind: "text", options: { threadId: 7 } },
+  ]);
+});
+
+test("without a topic every part replies to the alert; mute sends nothing", async () => {
+  const result = await richResult();
+  const { sender, sent } = fakeSender();
   let muted = false;
   const deliver = telegramDelivery(sender, {
     muted: () => muted,
     messageId: () => 40,
+    threadId: () => null,
   });
-  assert.equal(await deliver(alert(), result, Buffer.from("PNG")), "sent");
-  assert.deepEqual(sent, [
-    { kind: "text", replyTo: 40 },
-    { kind: "photo", replyTo: 50 },
-  ]);
+  assert.equal(await deliver(alert(), result, []), "sent");
+  assert.equal(sent.length, 4); // no charts, no album
+  assert.ok(sent.every((s) => s.options?.replyTo === 40));
   muted = true;
-  assert.equal(await deliver(alert(), result, null), "muted");
-  assert.equal(sent.length, 2);
+  assert.equal(await deliver(alert(), result, []), "muted");
+  assert.equal(sent.length, 4);
+  const failing = {
+    ...sender,
+    async send(): Promise<SendResult> {
+      return { ok: false, retry: false, error: "Telegram 400: bad" };
+    },
+  };
+  const errors: string[] = [];
+  const original = console.error;
+  console.error = (m: string) => void errors.push(m);
+  try {
+    const partly = telegramDelivery(failing, {
+      muted: () => false,
+      messageId: () => null,
+      threadId: () => null,
+    });
+    assert.equal(
+      await partly(alert(), result, [
+        { name: "01_daily.png", png: Buffer.from("1") },
+      ]),
+      "partial",
+    );
+  } finally {
+    console.error = original;
+  }
+  assert.equal(errors.length, 4);
+});
+
+test("stores the charts with the analysis and replaces them on a re-run", async () => {
+  const minutes = sessionMinutes("AAPL", sessions.slice(-19).concat(day));
+  const spy = sessionMinutes("SPY", [previous, day], 500);
+  let run = 0;
+  const d = deps({
+    bars: () => minutes,
+    feed: {
+      history: async () => raw(spy),
+      multiHistory: async (tickers) => {
+        const daily = pairedDaily(0.02);
+        return new Map(
+          tickers.map((t) => [t, t === "AAPL" ? daily.stock : daily.benchmark]),
+        );
+      },
+    },
+    script: async (args) => {
+      run++;
+      const out = args[args.indexOf("--outdir") + 1]!;
+      await mkdir(out);
+      writeFileSync(join(out, "summary.json"), JSON.stringify(summaryFixture));
+      writeFileSync(join(out, "01_daily.png"), `run${run}`);
+      if (run === 1) writeFileSync(join(out, "06_trade_levels.png"), "levels");
+      return { code: 0, stderr: "" };
+    },
+  });
+  const t = queue(d.value);
+  const q = t.open();
+  q.enqueue(alert());
+  await q.drain();
+  assert.deepEqual(q.recent()[0]!.result!.charts, [
+    "01_daily.png",
+    "06_trade_levels.png",
+  ]);
+  assert.equal(q.chart("AAPL", alertEnd, "01_daily.png")?.toString(), "run1");
+  q.requeue(alert());
+  await q.drain();
+  assert.equal(q.chart("AAPL", alertEnd, "01_daily.png")?.toString(), "run2");
+  assert.equal(q.chart("AAPL", alertEnd, "06_trade_levels.png"), null);
+  q.prune("2026-09-29T00:00:00Z");
+  assert.deepEqual(q.recent(), []);
+  assert.equal(q.chart("AAPL", alertEnd, "01_daily.png"), null);
+  q.close();
+  t.cleanup();
 });

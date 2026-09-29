@@ -1,13 +1,16 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import type { Evaluation } from "../../../packages/alerts/src/relative-volume.js";
 import type { AlertContext } from "../../../packages/market-data/src/backtest.js";
+import type { LiveAnalysis } from "../../../packages/market-data/src/live.js";
 import type { Outcome } from "../../../packages/market-data/src/outcome.js";
+import { AnalysisPanel } from "./Analysis.js";
 
 // Backtest alerts carry close and market context; live alerts may lack them.
 export type FeedAlert = Evaluation & {
   close?: number;
   context?: AlertContext | null;
   outcome?: Outcome; // backtest only: what the price did after the alert
+  analysis?: LiveAnalysis; // live only, when the collector analyzes alerts
 };
 
 const outcomeBadge = { good: "✅", stopped: "❌", weak: "⏸", unscored: "·" };
@@ -126,6 +129,9 @@ export function AlertFeed({
           const key = a.ticker + a.end;
           const expanded = open === key;
           const c = a.context;
+          const spy = a.analysis?.result?.scores.find(
+            (s) => s.kind === "market",
+          );
           return (
             <li
               key={key}
@@ -173,6 +179,12 @@ export function AlertFeed({
                     <>
                       <strong>{signed(c.excess)}%</strong> vs SPY×β
                     </>
+                  ) : spy?.score !== null && spy?.score !== undefined ? (
+                    <>
+                      <strong>{spy.score}</strong>/100 vs SPY
+                    </>
+                  ) : a.analysis && !a.analysis.result ? (
+                    "analyzing…"
                   ) : (
                     "—"
                   )}
@@ -212,6 +224,14 @@ export function AlertFeed({
                       </>
                     )}
                   </p>
+                  {a.analysis && (
+                    <AnalysisPanel
+                      ticker={a.ticker}
+                      end={a.end}
+                      direction={a.direction}
+                      analysis={a.analysis}
+                    />
+                  )}
                   <Suspense
                     fallback={
                       <p className="chart-status">Loading day chart…</p>

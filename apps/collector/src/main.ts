@@ -36,6 +36,7 @@ import {
   analyzeOnAlerts,
 } from "../../../packages/analysis/src/pipeline.js";
 import { pythonRunner } from "../../../packages/analysis/src/technical.js";
+import { chartNamePattern } from "../../../packages/analysis/src/technical-facts.js";
 import {
   parseWatchlistInput,
   WatchlistInputError,
@@ -109,7 +110,7 @@ const analyses = analysisEnabled
         ),
       },
       telegram && outbox
-        ? telegramDelivery(telegram, outbox)
+        ? telegramDelivery(telegram, outbox, process.env.SITE_URL)
         : async () => "off",
     )
   : null;
@@ -270,6 +271,23 @@ api.post("/analyses", async (request, reply) => {
     .code(202)
     .send({ queued: true, ticker: alert.ticker, end: alert.end });
 });
+// One stored technical-scan chart of an analysis, for the site.
+api.get("/analyses/chart", async (request, reply) => {
+  const { ticker, end, name } = request.query as Record<string, unknown>;
+  if (
+    typeof ticker !== "string" ||
+    typeof end !== "string" ||
+    typeof name !== "string" ||
+    !chartNamePattern.test(name)
+  )
+    return reply.code(400).send({ error: "Expected ticker, end and name" });
+  const png = analyses?.chart(ticker, end, name);
+  if (!png) return reply.code(404).send({ error: "No such chart" });
+  return reply
+    .type("image/png")
+    .header("Cache-Control", "private, max-age=300")
+    .send(png);
+});
 api.get("/watchlist", async (_request, reply) => {
   const list = store.watchlist();
   if (!list) return reply.code(404).send({ error: "No watchlist synced yet" });
@@ -408,10 +426,13 @@ try {
     host: process.env.COLLECTOR_HOST ?? "127.0.0.1",
     port: Number(process.env.PORT ?? 3002),
   });
-  const prune = () =>
+  const prune = () => {
     store.prune(
       new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10),
     );
+    // Analyses carry chart images; keep 60 days.
+    analyses?.prune(new Date(Date.now() - 60 * 86400000).toISOString());
+  };
   prune();
   setInterval(prune, 86400000).unref();
   // Picks up retries and rows left pending by a restart.

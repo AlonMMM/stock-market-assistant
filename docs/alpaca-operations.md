@@ -87,6 +87,12 @@ Behavior and formulas: [alert analysis](features/alert-analysis.md).
   published after that alert. With `"resend": true` the alert message is first sent again
   (labeled "RE-SENT", even while muted) and the analysis replies under that new message.
 
+`GET /analyses/chart?ticker=&end=&name=01_daily.png` returns a stored chart image.
+
+Topics: in `@BotFather`, open the bot's settings and turn on topics (threaded mode) for
+private chats. The collector notices within 10 minutes; from then on each alert opens its
+own topic with the analysis inside. Earlier alerts stay in the main chat.
+
 Each analysis makes three Claude Sonnet 5.5 calls (two with up to 3 web searches each);
 cost and latency per alert are not measured yet. Mute (`PUT /notifications`) also mutes
 analysis replies.

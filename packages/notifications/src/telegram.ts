@@ -58,62 +58,136 @@ export type SendResult =
 export interface SendOptions {
   // Telegram message to reply to; sent standalone if it is gone.
   replyTo?: number;
+  // Topic to post in, when the bot's private chat has topics enabled.
+  threadId?: number;
+}
+
+export interface Photo {
+  png: Buffer;
+  caption?: string; // HTML
 }
 
 export interface Sender {
   send(html: string, options?: SendOptions): Promise<SendResult>;
+  // Optional topic support; senders without it post in the main chat.
+  topicsEnabled?(): Promise<boolean>;
+  createTopic?(name: string): Promise<number | null>;
 }
 
 export interface PhotoSender extends Sender {
-  sendPhoto(
-    png: Buffer,
-    caption: string,
-    options?: SendOptions,
-  ): Promise<SendResult>;
+  sendPhotos(photos: Photo[], options?: SendOptions): Promise<SendResult>;
 }
 
+type Call =
+  | { ok: true; result: unknown }
+  | { ok: false; retry: boolean; error: string; retryAfter?: number };
+
+const topicsCacheMs = 10 * 60000;
+
 export class TelegramSender implements PhotoSender {
+  private topics: { value: boolean; at: number } | null = null;
   constructor(
     private token: string,
     private chatId: string,
     private fetcher: typeof fetch = fetch,
   ) {}
   send(html: string, options: SendOptions = {}): Promise<SendResult> {
-    return this.call(
+    return this.message(
       "sendMessage",
       JSON.stringify({
         chat_id: this.chatId,
         text: html,
         parse_mode: "HTML",
         link_preview_options: { is_disabled: true },
-        ...reply(options),
+        ...target(options),
       }),
       { "Content-Type": "application/json" },
     );
   }
-  sendPhoto(
-    png: Buffer,
-    caption: string,
-    options: SendOptions = {},
-  ): Promise<SendResult> {
+  // One photo, or an album of 2–10 (sendMediaGroup); messageId is the first.
+  sendPhotos(photos: Photo[], options: SendOptions = {}): Promise<SendResult> {
     const form = new FormData();
     form.set("chat_id", this.chatId);
-    form.set("caption", caption);
-    form.set("parse_mode", "HTML");
-    const replyTo = reply(options).reply_parameters;
-    if (replyTo) form.set("reply_parameters", JSON.stringify(replyTo));
-    form.set(
-      "photo",
-      new Blob([new Uint8Array(png)], { type: "image/png" }),
-      "chart.png",
+    for (const [key, value] of Object.entries(target(options)))
+      form.set(
+        key,
+        typeof value === "number" ? String(value) : JSON.stringify(value),
+      );
+    const file = (png: Buffer) =>
+      new Blob([new Uint8Array(png)], { type: "image/png" });
+    const caption = (photo: Photo) =>
+      photo.caption ? { caption: photo.caption, parse_mode: "HTML" } : {};
+    const album = photos.slice(0, 10);
+    if (album.length === 1) {
+      form.set("photo", file(album[0]!.png), "chart.png");
+      for (const [key, value] of Object.entries(caption(album[0]!)))
+        form.set(key, value);
+      return this.message("sendPhoto", form, {});
+    }
+    album.forEach((photo, i) =>
+      form.set(`photo${i}`, file(photo.png), `chart${i}.png`),
     );
-    return this.call("sendPhoto", form, {});
+    form.set(
+      "media",
+      JSON.stringify(
+        album.map((photo, i) => ({
+          type: "photo",
+          media: `attach://photo${i}`,
+          ...caption(photo),
+        })),
+      ),
+    );
+    return this.message("sendMediaGroup", form, {});
+  }
+  // Whether the bot has topics enabled in private chats (BotFather), cached
+  // for 10 minutes so switching it on is picked up without a restart.
+  async topicsEnabled(): Promise<boolean> {
+    if (this.topics && Date.now() - this.topics.at < topicsCacheMs)
+      return this.topics.value;
+    const me = await this.call("getMe", "{}", {
+      "Content-Type": "application/json",
+    });
+    if (!me.ok) return this.topics?.value ?? false;
+    const value =
+      (me.result as { has_topics_enabled?: unknown }).has_topics_enabled ===
+      true;
+    this.topics = { value, at: Date.now() };
+    return value;
+  }
+  async createTopic(name: string): Promise<number | null> {
+    const topic = await this.call(
+      "createForumTopic",
+      JSON.stringify({ chat_id: this.chatId, name: name.slice(0, 128) }),
+      { "Content-Type": "application/json" },
+    );
+    const id = topic.ok
+      ? (topic.result as { message_thread_id?: unknown }).message_thread_id
+      : undefined;
+    if (typeof id === "number") return id;
+    console.error(
+      JSON.stringify({
+        event: "telegram-topic-failed",
+        error: topic.ok ? "No topic id" : topic.error,
+      }),
+    );
+    return null;
+  }
+  private async message(
+    method: string,
+    body: string | FormData,
+    headers: Record<string, string>,
+  ): Promise<SendResult> {
+    const sent = await this.call(method, body, headers);
+    if (!sent.ok) return sent;
+    const first = Array.isArray(sent.result) ? sent.result[0] : sent.result;
+    const id = (first as { message_id?: unknown } | undefined)?.message_id;
+    return typeof id === "number" ? { ok: true, messageId: id } : { ok: true };
   }
   private async call(
     method: string,
     body: string | FormData,
     headers: Record<string, string>,
-  ): Promise<SendResult> {
+  ): Promise<Call> {
     let response: Response;
     try {
       response = await this.fetcher(
@@ -122,7 +196,7 @@ export class TelegramSender implements PhotoSender {
           method: "POST",
           headers,
           body,
-          signal: AbortSignal.timeout(20000),
+          signal: AbortSignal.timeout(30000),
         },
       );
     } catch (error) {
@@ -135,12 +209,9 @@ export class TelegramSender implements PhotoSender {
     const result = (await response.json().catch(() => ({}))) as {
       description?: string;
       parameters?: { retry_after?: number };
-      result?: { message_id?: unknown };
+      result?: unknown;
     };
-    if (response.ok)
-      return typeof result.result?.message_id === "number"
-        ? { ok: true, messageId: result.result.message_id }
-        : { ok: true };
+    if (response.ok) return { ok: true, result: result.result };
     // Never echo the URL: it contains the bot token.
     const error = `Telegram ${response.status}: ${result.description ?? "error"}`;
     // 400/401/403/404 mean a wrong token or chat; retrying cannot help.
@@ -154,12 +225,17 @@ export class TelegramSender implements PhotoSender {
   }
 }
 
-const reply = (options: SendOptions) =>
-  options.replyTo === undefined
+// Where a message goes: a topic, a reply, or both.
+const target = (options: SendOptions) => ({
+  ...(options.threadId === undefined
+    ? {}
+    : { message_thread_id: options.threadId }),
+  ...(options.replyTo === undefined
     ? {}
     : {
         reply_parameters: {
           message_id: options.replyTo,
           allow_sending_without_reply: true,
         },
-      };
+      }),
+});

@@ -1,8 +1,19 @@
 import type { AlertEvent } from "../../alerts/src/events.js";
-import { escape, type PhotoSender } from "../../notifications/src/telegram.js";
+import { alertLink } from "../../contracts/src/alert-link.js";
 import type { Outbox } from "../../notifications/src/outbox.js";
+import {
+  escape,
+  type PhotoSender,
+  type SendOptions,
+} from "../../notifications/src/telegram.js";
 import type { AnalysisResult, Deliver } from "./pipeline.js";
 import type { BenchmarkScore, Relation } from "./relative-strength.js";
+import {
+  chartTitles,
+  regimeShiftThreshold,
+  technicalFacts,
+  type Zone,
+} from "./technical-facts.js";
 
 const israelTime = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Jerusalem",
@@ -10,8 +21,9 @@ const israelTime = new Intl.DateTimeFormat("en-GB", {
   minute: "2-digit",
   hourCycle: "h23",
 });
+const clock = (iso: string) => israelTime.format(new Date(iso));
 
-const relationName: Record<Relation, string> = {
+export const relationName: Record<Relation, string> = {
   against: "AGAINST the index",
   independent: "INDEPENDENT (index flat)",
   with: "WITH the index",
@@ -19,128 +31,232 @@ const relationName: Record<Relation, string> = {
 };
 
 const pct = (value: number) => `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
-const clip = (value: string, max = 300) =>
+const pp = (value: number) => `${value >= 0 ? "+" : ""}${value.toFixed(2)} pts`;
+const clip = (value: string, max = 400) =>
   escape(value.length > max ? `${value.slice(0, max - 1)}…` : value);
 
-function scoreLine(ticker: string, alert: AlertEvent, s: BenchmarkScore) {
-  if (!s.day || s.relation === null)
-    return `vs ${escape(s.benchmark)}: not enough data`;
-  const parts = [
-    `vs ${escape(s.benchmark)}: <b>${relationName[s.relation]}</b>` +
-      (s.score !== null ? ` · <b>${s.score}/100</b>` : ""),
-    `${escape(ticker)} ${pct(s.day.stock)} vs ${escape(s.benchmark)} ${pct(s.day.benchmark)} today`,
-    `excess ${s.day.excess >= 0 ? "+" : ""}${s.day.excess.toFixed(2)} pts (β ${s.beta.toFixed(2)}${s.betaAssumed ? " assumed" : ""})`,
-  ];
-  if (s.score !== null && s.score !== 50 && alert.direction) {
-    const stronger = s.score > 50;
-    const confirms = stronger === (alert.direction === "up");
-    parts.push(
-      `${stronger ? "stronger" : "weaker"} than ${escape(s.benchmark)}, ${confirms ? "confirms" : "against"} the alert`,
-    );
-  }
-  return parts.join(" · ");
+// Whether a score supports the alert's direction; null when it cannot say.
+export function confirms(alert: AlertEvent, s: BenchmarkScore) {
+  if (s.score === null || s.score === 50 || !alert.direction) return null;
+  return s.score > 50 === (alert.direction === "up");
 }
 
-/** Telegram HTML follow-up for one analysis; shows stored values only. */
+function scoreLine(alert: AlertEvent, s: BenchmarkScore) {
+  const b = escape(s.benchmark);
+  if (!s.day || s.relation === null) return `vs ${b}: not enough data`;
+  const verdict = confirms(alert, s);
+  return [
+    `vs ${b}: <b>${relationName[s.relation]}</b>` +
+      (s.score !== null ? ` · <b>${s.score}/100</b>` : ""),
+    `  today ${escape(alert.ticker)} ${pct(s.day.stock)} vs ${b} ${pct(s.day.benchmark)} · excess ${pp(s.day.excess)} (β ${s.beta.toFixed(2)}${s.betaAssumed ? " assumed" : ""})`,
+    ...(s.window
+      ? [
+          `  alert window ${escape(alert.ticker)} ${pct(s.window.stock)} vs ${b} ${pct(s.window.benchmark)}`,
+        ]
+      : []),
+    ...(verdict === null
+      ? []
+      : [
+          `  ${s.score! > 50 ? "stronger" : "weaker"} than ${b}, ${verdict ? "confirms" : "against"} the alert`,
+        ]),
+  ].join("\n");
+}
+
+const zone = (z: Zone) =>
+  `${z.level} (${pct(z.distancePct)}) ${escape(z.labels.join("/"))}`;
+
+function technicalMessage(alert: AlertEvent, result: AnalysisResult) {
+  const t = result.technical;
+  const lines = [`📈 <b>Technical</b> · ${escape(alert.ticker)}`];
+  if (t.ok) {
+    lines.push(
+      `<b>Bottom line: ${t.value.lean}</b>`,
+      `Now: ${clip(t.value.immediate)}`,
+      `Follow-through: ${clip(t.value.followThrough)}`,
+      ...t.value.drivers.map((d) => `• ${clip(d, 300)}`),
+    );
+    if (t.value.caveat) lines.push(`<i>${clip(t.value.caveat, 250)}</i>`);
+  } else lines.push(`Bottom line unavailable (${escape(t.error)})`);
+  if (!result.technicalSummary) return lines.join("\n");
+  const f = technicalFacts(result.technicalSummary);
+  lines.push("");
+  if (f.spot !== null)
+    lines.push(
+      `Spot ${f.spot}` +
+        (f.vwap !== null
+          ? ` · VWAP ${f.vwap} (${f.spot >= f.vwap ? "above" : "below"})`
+          : ""),
+    );
+  if (f.pivots)
+    lines.push(
+      `Pivots PP ${f.pivots.pp} · R1 ${f.pivots.r1} · R2 ${f.pivots.r2} · S1 ${f.pivots.s1} · S2 ${f.pivots.s2}`,
+    );
+  if (f.volumeProfile)
+    lines.push(
+      `Volume profile POC ${f.volumeProfile.poc} · VAH ${f.volumeProfile.vah} · VAL ${f.volumeProfile.val}`,
+    );
+  if (f.priorWeek)
+    lines.push(`Prior week ${f.priorWeek.low}–${f.priorWeek.high}`);
+  if (f.swings.length)
+    lines.push(
+      `Swing levels ${f.swings
+        .slice(0, 4)
+        .map((s) => `${s.level} (${s.strength}×)`)
+        .join(" · ")}`,
+    );
+  if (f.benchmark && f.beta60 !== null) {
+    const shift =
+      f.regimeShift !== null && Math.abs(f.regimeShift) > regimeShiftThreshold;
+    lines.push(
+      `β vs ${escape(f.benchmark)}: 60d ${f.beta60}` +
+        (f.correlation60 !== null ? ` (corr ${f.correlation60})` : "") +
+        (f.beta20 !== null ? ` · 20d ${f.beta20}` : "") +
+        (shift ? " · <b>beta regime shift</b>" : ""),
+    );
+  }
+  if (f.alphaNowPp !== null)
+    lines.push(
+      `Alpha now ${pp(f.alphaNowPp)}` +
+        (f.alphaPositivePct !== null
+          ? ` · positive ${f.alphaPositivePct}% of the session`
+          : ""),
+    );
+  if (f.quadrant)
+    lines.push(
+      `RS quadrant <b>${escape(f.quadrant)}</b>` +
+        (f.rsRatio !== null && f.rsMomentum !== null
+          ? ` (ratio ${f.rsRatio}, momentum ${f.rsMomentum})`
+          : "") +
+        (f.rsNewHigh ? " · RS line at a new high" : ""),
+    );
+  for (const d of f.divergences.slice(-3))
+    lines.push(
+      `${d.kind === "against" ? "Moved against" : "Held through"} the tape ${clock(d.start)}–${clock(d.end)}: stock ${pp(d.stockPp)}, benchmark ${pp(d.benchmarkPp)}`,
+    );
+  if (f.resistance.length)
+    lines.push(`Resistance ${f.resistance.slice(0, 3).map(zone).join(" · ")}`);
+  if (f.support.length)
+    lines.push(`Support ${f.support.slice(0, 3).map(zone).join(" · ")}`);
+  lines.push(
+    "<i>Options open interest not included. RS quadrant is an open reconstruction, not the licensed RRG.</i>",
+  );
+  return lines.join("\n");
+}
+
+/** Telegram HTML messages for one analysis, in order; charts go after the technical one. */
 export function formatAnalysis(
   alert: AlertEvent,
   result: AnalysisResult,
-): string {
-  const arrow =
-    alert.direction === "up" ? "▲" : alert.direction === "down" ? "▼" : "•";
-  const lines = [
-    `📊 <b>${escape(alert.ticker)}</b> ${arrow} analysis · alert ${israelTime.format(new Date(alert.end))} Israel time`,
-    "",
-    "<b>Relative strength</b>",
+  siteUrl?: string,
+): { scores: string; technical: string; sentiment: string; news: string } {
+  const link = siteUrl
+    ? `\n<a href="${escape(alertLink(siteUrl, alert))}">Full analysis on the site</a>`
+    : "";
+  const scores = [
+    `📊 <b>Relative strength</b> · ${escape(alert.ticker)} · alert ${clock(alert.end)} Israel time`,
     ...(result.scores.length
-      ? result.scores.map((s) => scoreLine(alert.ticker, alert, s))
+      ? result.scores.map((s) => scoreLine(alert, s))
       : ["No benchmark"]),
-    "",
-  ];
-  const t = result.technical;
-  if (t.ok) {
-    lines.push(
-      `<b>Technical</b> · ${t.value.lean}`,
-      `Now: ${clip(t.value.immediate)}`,
-      `Follow-through: ${clip(t.value.followThrough)}`,
-    );
-    const levels = [
-      t.value.support !== null ? `support ${t.value.support}` : null,
-      t.value.resistance !== null ? `resistance ${t.value.resistance}` : null,
-    ].filter(Boolean);
-    if (levels.length) lines.push(`Levels: ${levels.join(" · ")}`);
-    if (t.value.caveat) lines.push(`<i>${clip(t.value.caveat, 200)}</i>`);
-  } else lines.push(`<b>Technical</b> · unavailable (${escape(t.error)})`);
-  lines.push("");
+  ].join("\n");
   const s = result.sentiment;
-  lines.push(
-    s.ok
-      ? `<b>Sentiment</b> · ${s.value.sentiment} (${s.value.confidence} confidence)\n${clip(s.value.summary)}`
-      : `<b>Sentiment</b> · unavailable (${escape(s.error)})`,
-  );
-  lines.push("");
+  const sentiment = s.ok
+    ? [
+        `💬 <b>Sentiment</b> · ${s.value.sentiment} (${s.value.confidence} confidence)`,
+        clip(s.value.summary, 700),
+        ...s.value.drivers.map((d) => `• ${clip(d, 300)}`),
+        ...s.value.sources.map(
+          (src) => `<a href="${escape(src.url)}">${clip(src.title, 120)}</a>`,
+        ),
+      ].join("\n")
+    : `💬 <b>Sentiment</b> · unavailable (${escape(s.error)})`;
   const n = result.news;
+  let news: string;
   if (n.ok) {
     const item = n.value.item;
     const minutes = item
       ? Math.floor((Date.parse(alert.end) - Date.parse(item.createdAt)) / 60000)
       : null;
-    lines.push(
-      `<b>News</b> · explains the move: ${n.value.explains}`,
-      clip(n.value.catalyst ?? n.value.summary),
-    );
     const url = item?.url ?? n.value.url;
-    const source = item
-      ? `${escape(item.source)}, ${minutes! < 120 ? `${minutes} min` : `${Math.round(minutes! / 60)} h`} before the alert`
-      : null;
-    if (source || url)
-      lines.push(
-        [source, url ? `<a href="${escape(url)}">source</a>` : null]
-          .filter(Boolean)
-          .join(" · "),
-      );
-  } else lines.push(`<b>News</b> · unavailable (${escape(n.error)})`);
-  lines.push("", "<i>AI analysis, not investment advice.</i>");
-  return lines.join("\n");
+    news = [
+      `📰 <b>News</b> · explains the move: <b>${n.value.explains}</b>`,
+      ...(n.value.catalyst ? [`<b>${clip(n.value.catalyst, 300)}</b>`] : []),
+      clip(n.value.summary, 700),
+      ...(item || url
+        ? [
+            [
+              item
+                ? `${escape(item.source)}, ${minutes! < 120 ? `${minutes} min` : `${Math.round(minutes! / 60)} h`} before the alert`
+                : null,
+              url ? `<a href="${escape(url)}">source</a>` : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          ]
+        : []),
+      `<i>AI analysis, not investment advice.</i>${link}`,
+    ].join("\n");
+  } else
+    news = `📰 <b>News</b> · unavailable (${escape(n.error)})\n<i>AI analysis, not investment advice.</i>${link}`;
+  return {
+    scores,
+    technical: technicalMessage(alert, result),
+    sentiment,
+    news,
+  };
 }
 
-// Replies under the alert's own message when it was sent, then attaches the
-// technical-scan level chart under the analysis.
+// Posts every part into the alert's topic when it has one, otherwise as
+// replies to the alert's own message.
 export function telegramDelivery(
   sender: PhotoSender,
-  outbox: Pick<Outbox, "muted" | "messageId">,
+  outbox: Pick<Outbox, "muted" | "messageId" | "threadId">,
+  siteUrl?: string,
 ): Deliver {
-  return async (alert, result, chart) => {
+  return async (alert, result, charts) => {
     if (outbox.muted()) return "muted";
-    const replyTo = outbox.messageId(alert.ticker, alert.end) ?? undefined;
-    const sent = await sender.send(formatAnalysis(alert, result), { replyTo });
-    if (!sent.ok) {
+    const threadId = outbox.threadId(alert.ticker, alert.end);
+    const where: SendOptions =
+      threadId !== null
+        ? { threadId }
+        : { replyTo: outbox.messageId(alert.ticker, alert.end) ?? undefined };
+    const text = formatAnalysis(alert, result, siteUrl);
+    let failed = 0;
+    const report = (part: string, error: string) => {
+      failed++;
       console.error(
         JSON.stringify({
           event: "analysis-delivery-failed",
           ticker: alert.ticker,
           end: alert.end,
-          error: sent.error,
+          part,
+          error,
         }),
       );
-      return "failed";
+    };
+    for (const [part, html] of [
+      ["scores", text.scores],
+      ["technical", text.technical],
+    ] as const) {
+      const sent = await sender.send(html, where);
+      if (!sent.ok) report(part, sent.error);
     }
-    if (chart) {
-      const photo = await sender.sendPhoto(
-        chart,
-        `${escape(alert.ticker)} · technical-scan levels`,
-        { replyTo: sent.messageId },
+    if (charts.length) {
+      const sent = await sender.sendPhotos(
+        charts.map((c) => ({
+          png: c.png,
+          caption: escape(`${alert.ticker} · ${chartTitles[c.name] ?? c.name}`),
+        })),
+        where,
       );
-      if (!photo.ok)
-        console.error(
-          JSON.stringify({
-            event: "analysis-chart-failed",
-            ticker: alert.ticker,
-            end: alert.end,
-            error: photo.error,
-          }),
-        );
+      if (!sent.ok) report("charts", sent.error);
     }
-    return "sent";
+    for (const [part, html] of [
+      ["sentiment", text.sentiment],
+      ["news", text.news],
+    ] as const) {
+      const sent = await sender.send(html, where);
+      if (!sent.ok) report(part, sent.error);
+    }
+    return failed === 0 ? "sent" : failed < 5 ? "partial" : "failed";
   };
 }

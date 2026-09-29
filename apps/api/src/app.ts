@@ -14,7 +14,10 @@ import {
 import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
 import type { BarCache } from "../../../packages/market-data/src/bar-cache.js";
 import { handleBoard } from "../../../packages/market-data/src/board.js";
-import { loadLive } from "../../../packages/market-data/src/live.js";
+import {
+  loadAnalysisChart,
+  loadLive,
+} from "../../../packages/market-data/src/live.js";
 import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
 
 export function buildApp(
@@ -54,6 +57,18 @@ export function buildApp(
       token: process.env.COLLECTOR_TOKEN,
     }),
   );
+  app.get("/api/live/chart", async (request, reply) => {
+    const chart = await loadAnalysisChart(
+      { url: process.env.COLLECTOR_URL, token: process.env.COLLECTOR_TOKEN },
+      request.query as Record<string, unknown>,
+    );
+    if (!chart.png)
+      return reply.code(chart.status).send({ error: chart.error });
+    return reply
+      .type("image/png")
+      .header("Cache-Control", "private, max-age=300")
+      .send(Buffer.from(chart.png));
+  });
   app.get("/api/watchlist", async () =>
     loadWatchlist({
       url: process.env.COLLECTOR_URL,

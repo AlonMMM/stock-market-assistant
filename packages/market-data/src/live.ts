@@ -1,8 +1,21 @@
 import type { Evaluation } from "../../alerts/src/relative-volume.js";
+import type {
+  AnalysisResult,
+  AnalysisStatus,
+} from "../../analysis/src/pipeline.js";
 import type { CollectorAccess } from "./watchlist.js";
+
+// The collector's analysis of one alert (score, technical scan, sentiment,
+// news); absent when analysis is off or has not started.
+export interface LiveAnalysis {
+  status: AnalysisStatus;
+  error: string | null;
+  result: AnalysisResult | null;
+}
 
 export interface LiveAlert extends Evaluation {
   close?: number;
+  analysis?: LiveAnalysis;
 }
 
 export interface LiveStatus {
@@ -43,9 +56,15 @@ export async function loadLive(
     return response.json();
   };
   try {
-    const [health, alerts] = (await Promise.all([
+    // Analyses are optional: an older collector or analysis being off
+    // leaves the alerts as they are.
+    const analyses = get("/analyses").catch(() => null) as Promise<{
+      analyses?: ({ ticker: string; end: string } & LiveAnalysis)[];
+    } | null>;
+    const [health, alerts, analyzed] = (await Promise.all([
       get("/health"),
       get("/alerts"),
+      analyses,
     ])) as [
       {
         state?: string;
@@ -54,7 +73,14 @@ export async function loadLive(
         symbols?: Record<string, { lastBar?: string | null }>;
       },
       { alerts?: LiveAlert[] },
+      Awaited<typeof analyses>,
     ];
+    const byAlert = new Map(
+      (Array.isArray(analyzed?.analyses) ? analyzed.analyses : []).map((a) => [
+        a.ticker + a.end,
+        { status: a.status, error: a.error, result: a.result },
+      ]),
+    );
     const symbols = Object.values(health.symbols ?? {});
     const bars = symbols
       .map((s) => s.lastBar)
@@ -67,7 +93,10 @@ export async function loadLive(
       symbols: symbols.length,
       receiving: bars.length,
       lastBarAt: bars.at(-1) ?? null,
-      alerts: Array.isArray(alerts.alerts) ? alerts.alerts : [],
+      alerts: (Array.isArray(alerts.alerts) ? alerts.alerts : []).map((a) => {
+        const analysis = byAlert.get(a.ticker + a.end);
+        return analysis ? { ...a, analysis } : a;
+      }),
     };
   } catch (error) {
     return unavailable(
@@ -75,5 +104,42 @@ export async function loadLive(
         ? error.message
         : "Live collector is unreachable",
     );
+  }
+}
+
+/** One technical-scan chart of an analysis, proxied from the collector. */
+export async function loadAnalysisChart(
+  collector: CollectorAccess,
+  query: { ticker?: unknown; end?: unknown; name?: unknown },
+  fetcher: typeof fetch = fetch,
+): Promise<{ status: number; png?: ArrayBuffer; error?: string }> {
+  const { ticker, end, name } = query;
+  if (
+    typeof ticker !== "string" ||
+    typeof end !== "string" ||
+    typeof name !== "string" ||
+    !/^[A-Z][A-Z0-9. -]{0,9}$/.test(ticker) ||
+    !Number.isFinite(Date.parse(end)) ||
+    !/^0\d_[a-z_]+\.png$/.test(name)
+  )
+    return { status: 400, error: "Expected ticker, end and chart name" };
+  if (!collector.url || !collector.token)
+    return { status: 503, error: "Live collector is not configured" };
+  const url = new URL(
+    "/analyses/chart",
+    collector.url.replace(/\/+$/, "") + "/",
+  );
+  url.search = new URLSearchParams({ ticker, end, name }).toString();
+  try {
+    const response = await fetcher.call(globalThis, url, {
+      headers: { Authorization: `Bearer ${collector.token}` },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (response.status === 404) return { status: 404, error: "No such chart" };
+    if (!response.ok)
+      return { status: 502, error: `Collector HTTP ${response.status}` };
+    return { status: 200, png: await response.arrayBuffer() };
+  } catch {
+    return { status: 502, error: "Live collector is unreachable" };
   }
 }
