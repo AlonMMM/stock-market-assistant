@@ -5,7 +5,7 @@ import { mkdir } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type Anthropic from "@anthropic-ai/sdk";
+import Anthropic from "@anthropic-ai/sdk";
 import { AlertEvents } from "../packages/alerts/src/events.js";
 import {
   analysisModel,
@@ -282,6 +282,27 @@ test("an agent reports refusals, invalid reports and API errors plainly", async 
     technicalAgent(agentAlert, {}),
   );
   assert.deepEqual(invalid, { ok: false, error: "Invalid report" });
+  const workspace = await runAgent(
+    fakeClaude([
+      new Anthropic.BadRequestError(
+        400,
+        {
+          type: "error",
+          error: {
+            type: "invalid_request_error",
+            message: "This API key is not scoped to a workspace",
+          },
+        },
+        undefined,
+        new Headers(),
+      ),
+    ]).create,
+    technicalAgent(agentAlert, {}),
+  );
+  assert.deepEqual(workspace, {
+    ok: false,
+    error: "Claude API 400: This API key is not scoped to a workspace",
+  });
   const failed = await runAgent(
     fakeClaude([new Error("socket hang up sk-ant-SECRET")]).create,
     technicalAgent(agentAlert, {}),
