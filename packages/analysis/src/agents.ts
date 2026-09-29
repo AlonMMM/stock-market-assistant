@@ -38,8 +38,13 @@ function describe(error: unknown): string {
   if (error instanceof Anthropic.APIUserAbortError) return "Timed out";
   if (error instanceof Anthropic.APIConnectionTimeoutError)
     return "Claude API timed out";
-  if (error instanceof Anthropic.APIError)
-    return `Claude API ${error.status ?? "error"}`;
+  // The API's own message (never the key), e.g. a key without a workspace.
+  if (error instanceof Anthropic.APIError) {
+    const detail = (
+      error.error as { error?: { message?: unknown } } | undefined
+    )?.error?.message;
+    return `Claude API ${error.status ?? "error"}${typeof detail === "string" ? `: ${detail.slice(0, 200)}` : ""}`;
+  }
   return "Agent failed";
 }
 

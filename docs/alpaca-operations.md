@@ -84,7 +84,8 @@ Behavior and formulas: [alert analysis](features/alert-analysis.md).
   (`sent`, `failed`, `muted`, `off`).
 - `POST /analyses` with `{ "ticker": "AAPL", "end": "<alert end>" }` analyzes a stored
   alert again and sends the reply, for checking a deployment. Its web searches can see news
-  published after that alert.
+  published after that alert. With `"resend": true` the alert message is first sent again
+  (labeled "RE-SENT", even while muted) and the analysis replies under that new message.
 
 Each analysis makes three Claude Sonnet 5.5 calls (two with up to 3 web searches each);
 cost and latency per alert are not measured yet. Mute (`PUT /notifications`) also mutes

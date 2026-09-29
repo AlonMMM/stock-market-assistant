@@ -238,16 +238,32 @@ api.get("/analyses", async () => ({
   analyses: analyses?.recent() ?? [],
 }));
 // Analyzes a stored alert again (manual check); delivery follows as usual.
+// With `resend: true` the alert message is sent again first (labeled) and
+// the analysis replies under it.
 api.post("/analyses", async (request, reply) => {
   if (!analyses)
     return reply.code(409).send({ error: "Analysis is not enabled" });
-  const body = request.body as { ticker?: unknown; end?: unknown } | null;
-  if (typeof body?.ticker !== "string" || typeof body.end !== "string")
-    return reply
-      .code(400)
-      .send({ error: "Body must be { ticker: string, end: string }" });
+  const body = request.body as {
+    ticker?: unknown;
+    end?: unknown;
+    resend?: unknown;
+  } | null;
+  if (
+    typeof body?.ticker !== "string" ||
+    typeof body.end !== "string" ||
+    (body.resend !== undefined && typeof body.resend !== "boolean")
+  )
+    return reply.code(400).send({
+      error: "Body must be { ticker: string, end: string, resend?: boolean }",
+    });
   const alert = store.findAlert(body.ticker, body.end);
   if (!alert) return reply.code(404).send({ error: "No such stored alert" });
+  if (body.resend) {
+    if (!outbox)
+      return reply.code(409).send({ error: "Telegram is not configured" });
+    const sent = await outbox.resend(alert);
+    if (!sent.ok) return reply.code(502).send({ error: sent.error });
+  }
   analyses.requeue(alert);
   void analyses.drain();
   return reply

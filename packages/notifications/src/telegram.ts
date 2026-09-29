@@ -20,13 +20,20 @@ export const escape = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 // Telegram HTML message for one alert. It shows the evaluator's own values;
-// nothing is recomputed here.
-export function formatAlert(alert: Alert, siteUrl?: string): string {
+// nothing is recomputed here. `resent` labels a manual repeat of an old alert.
+export function formatAlert(
+  alert: Alert,
+  siteUrl?: string,
+  resent = false,
+): string {
   const arrow =
     alert.direction === "up" ? "▲" : alert.direction === "down" ? "▼" : "•";
   const move = `${alert.move >= 0 ? "+" : ""}${alert.move.toFixed(2)}%`;
   const lines = [
     ...(alert.synthetic ? ["🧪 <b>SYNTHETIC</b> · not a market alert"] : []),
+    ...(resent
+      ? ["🔁 <b>RE-SENT</b> · earlier alert, sent again for a test"]
+      : []),
     `<b>${escape(alert.ticker)}</b> ${arrow} ${move} in ${alert.config.window} min`,
     `${israelTime.format(new Date(alert.end))} Israel time · ${sessionName[alert.session]}`,
     `Volume ${shares.format(alert.actual)}` +

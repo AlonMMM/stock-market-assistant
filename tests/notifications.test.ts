@@ -343,3 +343,28 @@ test("records the Telegram message id and upgrades an older database", async () 
   box.close();
   t.cleanup();
 });
+
+test("re-sends a stored alert labeled, even while muted, and threads under it", async () => {
+  const t = setup([
+    { ok: true, messageId: 5 },
+    { ok: true, messageId: 8 },
+  ]);
+  const box = t.open();
+  const a = alert("AAPL", "2026-09-28T14:00:00Z");
+  box.enqueue(a);
+  await box.drain();
+  assert.equal(box.messageId(a.ticker, a.end), 5);
+  box.setMuted(true);
+  assert.deepEqual(await box.resend(a), { ok: true, messageId: 8 });
+  assert.match(
+    t.sent[1]!,
+    /^🔁 <b>RE-SENT<\/b> · earlier alert, sent again for a test\n<b>AAPL<\/b>/,
+  );
+  assert.equal(box.messageId(a.ticker, a.end), 8);
+  // An alert that was never sent gets a row on its first re-send.
+  const b = alert("MSFT", "2026-09-28T14:01:00Z");
+  await box.resend(b);
+  assert.equal(box.recent()[0]!.status, "sent");
+  box.close();
+  t.cleanup();
+});

@@ -1,6 +1,11 @@
 import { DatabaseSync } from "node:sqlite";
 import type { AlertEvents } from "../../alerts/src/events.js";
-import { formatAlert, type Alert, type Sender } from "./telegram.js";
+import {
+  formatAlert,
+  type Alert,
+  type SendResult,
+  type Sender,
+} from "./telegram.js";
 
 // pending → sending → sent | failed | expired; muted when queued while muted.
 // A row left in `sending` by a crash becomes `unknown` and is never resent:
@@ -93,6 +98,29 @@ export class Outbox {
       )
       .get(ticker, end);
     return typeof row?.message_id === "number" ? row.message_id : null;
+  }
+  // Sends a stored alert again now, labeled re-sent, bypassing mute; later
+  // replies for it thread under this new message.
+  async resend(alert: Alert): Promise<SendResult> {
+    const result = await this.sender.send(
+      formatAlert(alert, this.options.siteUrl, true),
+    );
+    if (result.ok)
+      this.db
+        .prepare(
+          `INSERT INTO notifications (ticker, end, payload, status, attempts, next_at, sent_at, message_id)
+           VALUES (?,?,?,'sent',1,0,?,?)
+           ON CONFLICT(ticker,end) DO UPDATE SET status='sent', sent_at=excluded.sent_at,
+           message_id=excluded.message_id, error=NULL`,
+        )
+        .run(
+          alert.ticker,
+          alert.end,
+          JSON.stringify(alert),
+          new Date(this.now()).toISOString(),
+          result.messageId ?? null,
+        );
+    return result;
   }
   recent(limit = 50): NotificationRow[] {
     return this.db
