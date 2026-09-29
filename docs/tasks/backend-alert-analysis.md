@@ -75,3 +75,21 @@ decisions above are recorded here and in the spec, not yet in `docs/decisions.md
 2. Measure Claude cost and latency per alert; tune effort and web-search limits.
 3. Frontend: show `result` on the Live view alert row.
 4. Options open interest source (Alpaca option contracts, previous-day OI) if wanted.
+
+## 2026-09-29 follow-up: topics, full technical detail, site
+
+- Production: PR #26 and #27 deployed; with a workspace-scoped Claude key the SMCI re-run
+  (`resend: true`) completed in 32 s with all parts, delivered as replies.
+- User feedback: replies render as quotes, not comments; the technical part showed only
+  levels; the site should show the analysis. Chosen: a topic per alert, all parts inside;
+  both site parts in this session (Backend + Frontend hats).
+- Changes: Telegram topics and albums (`sendPhotos`, `createTopic`, `topicsEnabled`;
+  outbox `thread_id`), per-part delivery, `technical-facts.ts` shared by Telegram and the
+  site, all charts stored (`analysis_charts`), collector `GET /analyses/chart`, site
+  `/api/live` analyses and `/api/live/chart`, Live view `AnalysisPanel`.
+- Verified: `npm run check` (117 tests, 116 pass, 1 opt-in skipped); locally the dev API
+  against a mock collector (real SMCI snapshot, example chart images) returned the
+  analysis in `/api/live` and served a chart PNG.
+- Not verified: the panel's appearance (the Chrome extension was not connected, so no
+  screenshots), Telegram topics with the real bot (needs BotFather topics on), the site
+  Worker deploy.

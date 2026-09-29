@@ -60,6 +60,9 @@ export class Outbox {
     const columns = this.db.prepare("PRAGMA table_info(notifications)").all();
     if (!columns.some((c) => c.name === "message_id"))
       this.db.exec("ALTER TABLE notifications ADD COLUMN message_id INTEGER");
+    // Topic per alert when the bot's chat has topics enabled.
+    if (!columns.some((c) => c.name === "thread_id"))
+      this.db.exec("ALTER TABLE notifications ADD COLUMN thread_id INTEGER");
   }
   muted(): boolean {
     const row = this.db
@@ -102,16 +105,18 @@ export class Outbox {
   // Sends a stored alert again now, labeled re-sent, bypassing mute; later
   // replies for it thread under this new message.
   async resend(alert: Alert): Promise<SendResult> {
+    const threadId = await this.openTopic(alert, true);
     const result = await this.sender.send(
       formatAlert(alert, this.options.siteUrl, true),
+      { threadId },
     );
     if (result.ok)
       this.db
         .prepare(
-          `INSERT INTO notifications (ticker, end, payload, status, attempts, next_at, sent_at, message_id)
-           VALUES (?,?,?,'sent',1,0,?,?)
+          `INSERT INTO notifications (ticker, end, payload, status, attempts, next_at, sent_at, message_id, thread_id)
+           VALUES (?,?,?,'sent',1,0,?,?,?)
            ON CONFLICT(ticker,end) DO UPDATE SET status='sent', sent_at=excluded.sent_at,
-           message_id=excluded.message_id, error=NULL`,
+           message_id=excluded.message_id, thread_id=excluded.thread_id, error=NULL`,
         )
         .run(
           alert.ticker,
@@ -119,8 +124,30 @@ export class Outbox {
           JSON.stringify(alert),
           new Date(this.now()).toISOString(),
           result.messageId ?? null,
+          threadId ?? null,
         );
     return result;
+  }
+  // The alert's topic, if it was sent into one.
+  threadId(ticker: string, end: string): number | null {
+    const row = this.db
+      .prepare(
+        "SELECT thread_id FROM notifications WHERE ticker=? AND end=? AND status='sent'",
+      )
+      .get(ticker, end);
+    return typeof row?.thread_id === "number" ? row.thread_id : null;
+  }
+  // Creates a topic for the alert when topics are enabled; undefined posts in
+  // the main chat (topics off, or creating one failed).
+  private async openTopic(
+    alert: Alert,
+    resent = false,
+  ): Promise<number | undefined> {
+    if (!this.sender.createTopic || !(await this.sender.topicsEnabled?.()))
+      return undefined;
+    return (
+      (await this.sender.createTopic(topicName(alert, resent))) ?? undefined
+    );
   }
   recent(limit = 50): NotificationRow[] {
     return this.db
@@ -152,6 +179,12 @@ export class Outbox {
     const sent = this.db.prepare(
       "UPDATE notifications SET message_id=? WHERE ticker=? AND end=?",
     );
+    const thread = this.db.prepare(
+      "SELECT thread_id FROM notifications WHERE ticker=? AND end=?",
+    );
+    const setThread = this.db.prepare(
+      "UPDATE notifications SET thread_id=? WHERE ticker=? AND end=?",
+    );
     for (;;) {
       const row = due.get(this.now());
       if (!row) return;
@@ -172,8 +205,16 @@ export class Outbox {
         continue;
       }
       update.run("sending", attempts, 0, null, null, ticker, end);
+      // A retry reuses the topic opened by an earlier attempt.
+      const known = thread.get(ticker, end)?.thread_id;
+      let threadId = typeof known === "number" ? known : undefined;
+      if (threadId === undefined) {
+        threadId = await this.openTopic(alert);
+        if (threadId !== undefined) setThread.run(threadId, ticker, end);
+      }
       const result = await this.sender.send(
         formatAlert(alert, this.options.siteUrl),
+        { threadId },
       );
       if (result.ok) {
         sent.run(result.messageId ?? null, ticker, end);
@@ -217,6 +258,23 @@ export class Outbox {
   close() {
     this.db.close();
   }
+}
+
+const topicTime = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Jerusalem",
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+// e.g. "SMCI ▲ +0.79% · 28/09, 18:22" (Israel time).
+export function topicName(alert: Alert, resent = false): string {
+  const arrow =
+    alert.direction === "up" ? "▲" : alert.direction === "down" ? "▼" : "•";
+  const move = `${alert.move >= 0 ? "+" : ""}${alert.move.toFixed(2)}%`;
+  return `${resent ? "🔁 " : ""}${alert.synthetic ? "🧪 " : ""}${alert.ticker} ${arrow} ${move} · ${topicTime.format(new Date(alert.end))}`;
 }
 
 // Queues every published alert for delivery. Returns the unsubscribe function.

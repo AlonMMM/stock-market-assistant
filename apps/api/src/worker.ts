@@ -12,7 +12,10 @@ import {
   type D1Like,
 } from "../../../packages/market-data/src/bar-cache.js";
 import { handleBoard } from "../../../packages/market-data/src/board.js";
-import { loadLive } from "../../../packages/market-data/src/live.js";
+import {
+  loadAnalysisChart,
+  loadLive,
+} from "../../../packages/market-data/src/live.js";
 import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
 import { verifyAccess } from "./access.js";
 
@@ -118,6 +121,25 @@ export default {
             status: 405,
             headers: { Allow: "GET" },
           });
+    if (path === "/api/live/chart") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const chart = await loadAnalysisChart(
+        { url: env.COLLECTOR_URL, token: env.COLLECTOR_TOKEN },
+        Object.fromEntries(new URL(request.url).searchParams),
+      );
+      return chart.png
+        ? new Response(chart.png, {
+            headers: {
+              "Content-Type": "image/png",
+              "Cache-Control": "private, max-age=300",
+            },
+          })
+        : Response.json({ error: chart.error }, { status: chart.status });
+    }
     if (path === "/api/watchlist")
       return request.method === "GET"
         ? Response.json(

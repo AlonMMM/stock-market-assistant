@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PriceBar, RawBar } from "../../market-data/src/bars.js";
 import { newYorkToUtc } from "../../market-data/src/calendar.js";
+import { chartNamePattern } from "./technical-facts.js";
 
 // Runs the user's technical-scan skill script (vendored from
 // AlonMMM/stock-scanner, see technical-scan/README.md) on Alpaca bars. The
@@ -33,10 +34,14 @@ export interface TechnicalInput {
   benchmarkMinutes: PriceBar[]; // the benchmark's, at least two sessions
 }
 
+export interface Chart {
+  name: string; // the script's file name, e.g. 06_trade_levels.png
+  png: Buffer;
+}
+
 export interface TechnicalScan {
   summary: Record<string, unknown>;
-  // 06_trade_levels.png: the level ladder around spot.
-  levelsChart: Buffer | null;
+  charts: Chart[]; // in the script's order
 }
 
 // Regular-session buckets like IBKR's RTH bars: 5-minute, and hourly with a
@@ -164,10 +169,16 @@ export async function runTechnicalScan(
     const summary = JSON.parse(
       await readFile(join(out, "summary.json"), "utf8"),
     ) as Record<string, unknown>;
-    const levelsChart = await readFile(join(out, "06_trade_levels.png")).catch(
-      () => null,
+    const names = (await readdir(out))
+      .filter((name) => chartNamePattern.test(name))
+      .sort();
+    const charts = await Promise.all(
+      names.map(async (name) => ({
+        name,
+        png: await readFile(join(out, name)),
+      })),
     );
-    return { summary, levelsChart };
+    return { summary, charts };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

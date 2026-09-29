@@ -88,6 +88,27 @@ result → Telegram reply. Two alerts run at a time.
   crash lands between sending and recording.
 - Mute (`PUT /notifications`) also mutes the analysis replies; results are still stored.
 
+## Telegram layout (user-confirmed 2026-09-29)
+
+When topics are enabled for the bot's private chat (BotFather, Bot API 9.3; checked with
+`getMe.has_topics_enabled`, cached 10 minutes), each alert opens its own topic named like
+`SMCI ▲ +0.79% · 28/09, 18:22` (Israel time), and the alert plus every analysis part are
+posted inside it: relative strength, technical (bottom line and the skill's numbers:
+pivots, VWAP, volume profile, swing levels, β 60d/20d with regime shift, alpha, RS
+rotation, divergence windows, support/resistance ladder), the charts as one album,
+sentiment, and news with a link to the site. With topics off, or when creating a topic
+fails, the alert goes to the main chat and each part replies to it. `delivery` is
+`partial` when some parts failed.
+
+## On the site
+
+`GET /api/live` adds `analysis: {status, error, result}` to each live alert that has one
+(a collector without analyses leaves alerts unchanged). `GET /api/live/chart?ticker&end&name`
+serves a stored chart through the site (collector `GET /analyses/chart`). The Live view's
+expanded alert row, which the Telegram link opens, shows the scores, the technical bottom
+line with the same numbers and the charts, sentiment and news. The collapsed row shows the
+SPY score. Charts are kept 60 days.
+
 ## Data limitations
 
 - IEX feed by default: volume is IEX-only (a small share of consolidated volume), and
