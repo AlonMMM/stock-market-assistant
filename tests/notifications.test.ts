@@ -16,6 +16,7 @@ import {
   parseAlertLink,
 } from "../packages/contracts/src/alert-link.js";
 import {
+  automaticCopy,
   formatAlert,
   TelegramSender,
   type Alert,
@@ -411,16 +412,22 @@ test("TelegramSender sends one photo or an album into a topic", async () => {
   });
 });
 
-test("TelegramSender detects topics mode once and creates topics", async () => {
+function telegramApi(
+  chat: Record<string, unknown>,
+  extra: Record<string, unknown> = {},
+) {
   const methods: string[] = [];
   const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
     const method = String(url).split("/").at(-1)!;
     methods.push(method);
+    if (method === "getChat") return Response.json({ ok: true, result: chat });
     if (method === "getMe")
       return Response.json({
         ok: true,
         result: { id: 1, has_topics_enabled: true },
       });
+    if (method in extra)
+      return Response.json({ ok: true, result: extra[method] });
     const body = JSON.parse(String(init?.body));
     assert.equal(body.name.length <= 128, true);
     return Response.json({
@@ -428,11 +435,103 @@ test("TelegramSender detects topics mode once and creates topics", async () => {
       result: { message_thread_id: 99, name: body.name },
     });
   }) as typeof fetch;
-  const sender = new TelegramSender("SECRET", "42", fetcher);
+  return { methods, fetcher };
+}
+
+test("TelegramSender detects topics per chat type and creates topics", async () => {
+  const priv = telegramApi({ id: 42, type: "private" });
+  const sender = new TelegramSender("SECRET", "42", priv.fetcher);
   assert.equal(await sender.topicsEnabled(), true);
   assert.equal(await sender.topicsEnabled(), true);
   assert.equal(await sender.createTopic("x".repeat(200)), 99);
-  assert.deepEqual(methods, ["getMe", "createForumTopic"]);
+  assert.deepEqual(priv.methods, ["getChat", "getMe", "createForumTopic"]);
+  // A supergroup follows its own topics switch; a channel has none.
+  const forum = telegramApi({ id: -100, type: "supergroup", is_forum: true });
+  assert.equal(
+    await new TelegramSender("S", "-100", forum.fetcher).topicsEnabled(),
+    true,
+  );
+  const plain = telegramApi({ id: -100, type: "supergroup" });
+  assert.equal(
+    await new TelegramSender("S", "-100", plain.fetcher).topicsEnabled(),
+    false,
+  );
+  const channel = telegramApi({
+    id: -200,
+    type: "channel",
+    linked_chat_id: -300,
+  });
+  assert.equal(
+    await new TelegramSender("S", "-200", channel.fetcher).topicsEnabled(),
+    false,
+  );
+  assert.equal(channel.methods.includes("getMe"), false);
+});
+
+test("recognizes a channel post's automatic copy in its discussion group", () => {
+  const copy = {
+    message_id: 77,
+    is_automatic_forward: true,
+    chat: { id: -300, type: "supergroup" },
+    forward_origin: { type: "channel", chat: { id: -200 }, message_id: 12 },
+  };
+  assert.deepEqual(automaticCopy(copy, "-300"), { postId: 12, messageId: 77 });
+  assert.equal(automaticCopy(copy, "-999"), null);
+  assert.equal(
+    automaticCopy({ ...copy, is_automatic_forward: false }, "-300"),
+    null,
+  );
+  assert.equal(
+    automaticCopy({ ...copy, forward_origin: { type: "user" } }, "-300"),
+    null,
+  );
+  assert.equal(automaticCopy(null, "-300"), null);
+});
+
+test("finds a post's discussion copy from updates, even one sent before tracking", async () => {
+  let polls = 0;
+  const offsets: number[] = [];
+  const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
+    const method = String(url).split("/").at(-1)!;
+    if (method === "getChat")
+      return Response.json({
+        ok: true,
+        result: { id: -200, type: "channel", linked_chat_id: -300 },
+      });
+    if (method === "getUpdates") {
+      offsets.push(JSON.parse(String(init?.body)).offset);
+      polls++;
+      return Response.json({
+        ok: true,
+        result:
+          polls === 1
+            ? [
+                {
+                  update_id: 5,
+                  message: { message_id: 1, chat: { id: -300 }, text: "hi" },
+                },
+                {
+                  update_id: 6,
+                  message: {
+                    message_id: 77,
+                    is_automatic_forward: true,
+                    chat: { id: -300 },
+                    forward_origin: { type: "channel", message_id: 12 },
+                  },
+                },
+              ]
+            : [],
+      });
+    }
+    throw new Error(`unexpected ${method}`);
+  }) as typeof fetch;
+  const sender = new TelegramSender("S", "-200", fetcher);
+  assert.equal(await sender.discussion(), "-300");
+  assert.equal(await sender.discussionCopy(12, 5000), 77);
+  assert.equal(await sender.discussionCopy(13, 1500), null);
+  sender.stop();
+  assert.equal(offsets[0], 0);
+  assert.equal(offsets[1], 7);
 });
 
 function topicSender(enabled: boolean) {

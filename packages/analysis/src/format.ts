@@ -205,8 +205,37 @@ export function formatAnalysis(
   };
 }
 
-// Posts every part into the alert's topic when it has one, otherwise as
-// replies to the alert's own message.
+// Where the parts go: for a channel, comments on the alert's post (replies to
+// its copy in the discussion group); otherwise the alert's topic, or replies
+// to the alert's message.
+async function placement(
+  sender: PhotoSender,
+  outbox: Pick<Outbox, "messageId" | "threadId">,
+  alert: AlertEvent,
+): Promise<SendOptions> {
+  const post = outbox.messageId(alert.ticker, alert.end);
+  const group = await sender.discussion?.();
+  if (group) {
+    const copy =
+      post !== null && sender.discussionCopy
+        ? await sender.discussionCopy(post)
+        : null;
+    if (copy === null)
+      console.error(
+        JSON.stringify({
+          event: "analysis-comment-missing",
+          ticker: alert.ticker,
+          end: alert.end,
+        }),
+      );
+    return { chatId: group, ...(copy === null ? {} : { replyTo: copy }) };
+  }
+  const threadId = outbox.threadId(alert.ticker, alert.end);
+  return threadId !== null ? { threadId } : { replyTo: post ?? undefined };
+}
+
+// Posts every part as comments on the alert's channel post, into its topic,
+// or as replies to it (see placement).
 export function telegramDelivery(
   sender: PhotoSender,
   outbox: Pick<Outbox, "muted" | "messageId" | "threadId">,
@@ -214,11 +243,7 @@ export function telegramDelivery(
 ): Deliver {
   return async (alert, result, charts) => {
     if (outbox.muted()) return "muted";
-    const threadId = outbox.threadId(alert.ticker, alert.end);
-    const where: SendOptions =
-      threadId !== null
-        ? { threadId }
-        : { replyTo: outbox.messageId(alert.ticker, alert.end) ?? undefined };
+    const where = await placement(sender, outbox, alert);
     const text = formatAnalysis(alert, result, siteUrl);
     let failed = 0;
     const report = (part: string, error: string) => {

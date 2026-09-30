@@ -136,6 +136,7 @@ async function stop(code: number) {
   state = "disconnected";
   console.error(JSON.stringify({ state, error: failure, exitCode: code }));
   feedClient?.close();
+  telegram?.stop();
   await api.close();
   outbox?.close();
   analyses?.close();

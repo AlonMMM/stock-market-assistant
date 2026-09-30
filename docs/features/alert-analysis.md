@@ -100,6 +100,16 @@ sentiment, and news with a link to the site. With topics off, or when creating a
 fails, the alert goes to the main chat and each part replies to it. `delivery` is
 `partial` when some parts failed.
 
+## Telegram channel with comments (user-confirmed 2026-09-30)
+
+When `TELEGRAM_CHAT_ID` is a channel with a linked discussion group, each alert is a channel
+post and every analysis part is a comment on it: a reply, in the discussion group, to the
+post's automatic copy there. The collector finds the group from `getChat.linked_chat_id`
+and reads only message updates (`getUpdates` long polling, started on first use) to match
+copies to posts. If no copy appears within 60 s, the parts go to the group without a reply
+(`analysis-comment-missing` is logged). A group with topics on gets a topic per alert; a
+private chat needs the bot's threaded mode.
+
 ## On the site
 
 `GET /api/live` adds `analysis: {status, error, result}` to each live alert that has one
