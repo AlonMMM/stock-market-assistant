@@ -181,6 +181,7 @@ export function AnalysisPanel({
       </h4>
       {t.ok ? (
         <div className="analysis-text">
+          {t.value.brief && <p className="analysis-brief">{t.value.brief}</p>}
           <p>
             <strong>Now:</strong> {t.value.immediate}
           </p>
@@ -343,6 +344,7 @@ export function AnalysisPanel({
       </h4>
       {s.ok ? (
         <div className="analysis-text">
+          {s.value.brief && <p className="analysis-brief">{s.value.brief}</p>}
           <p>{s.value.summary}</p>
           {s.value.drivers.length > 0 && (
             <ul>
@@ -380,6 +382,7 @@ export function AnalysisPanel({
       </h4>
       {n.ok ? (
         <div className="analysis-text">
+          {n.value.brief && <p className="analysis-brief">{n.value.brief}</p>}
           {n.value.catalyst && (
             <p>
               <strong>{n.value.catalyst}</strong>

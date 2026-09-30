@@ -100,6 +100,15 @@ sentiment, and news with a link to the site. With topics off, or when creating a
 fails, the alert goes to the main chat and each part replies to it. `delivery` is
 `partial` when some parts failed.
 
+## Short Telegram follow-up (user request 2026-09-30)
+
+The follow-up is one short message for a quick decision: the relative-strength scores with
+whether they confirm the alert, the technical lean with a one-line takeaway and the nearest
+support/resistance, sentiment and news in one line each, and a link to the site, which
+shows the full analysis and all charts. Each agent writes a one-line `brief` (≤ 90
+characters) for this; analyses stored before that use the first sentence, clipped.
+Charts are no longer sent to Telegram. This supersedes the per-part layout below.
+
 ## Telegram channel with comments (user-confirmed 2026-09-30)
 
 When `TELEGRAM_CHAT_ID` is a channel with a linked discussion group, each alert is a channel

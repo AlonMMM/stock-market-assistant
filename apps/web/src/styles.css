@@ -1028,3 +1028,6 @@ header .modes .selected {
     margin-bottom: 6px;
   }
 }
+.analysis-text .analysis-brief {
+  font-weight: 650;
+}
