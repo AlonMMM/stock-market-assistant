@@ -89,6 +89,12 @@ Behavior and formulas: [alert analysis](features/alert-analysis.md).
 
 `GET /analyses/chart?ticker=&end=&name=01_daily.png` returns a stored chart image.
 
+Comments (preferred): create a channel, link a discussion group (topics off) in the
+channel's settings, make the bot an admin in both (channel: Post messages), and set
+`TELEGRAM_CHAT_ID` to the channel id (from `getUpdates`, e.g. `-100…`). Alerts become channel
+posts and the analysis appears in each post's comments. The collector must be the only
+reader of the bot's updates; do not set a webhook.
+
 Topics: in `@BotFather`, open the bot's settings and turn on topics (threaded mode) for
 private chats. The collector notices within 10 minutes; from then on each alert opens its
 own topic with the analysis inside. Earlier alerts stay in the main chat.

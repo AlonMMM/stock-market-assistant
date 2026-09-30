@@ -58,8 +58,10 @@ export type SendResult =
 export interface SendOptions {
   // Telegram message to reply to; sent standalone if it is gone.
   replyTo?: number;
-  // Topic to post in, when the bot's private chat has topics enabled.
+  // Topic to post in, when the chat has topics.
   threadId?: number;
+  // Another chat than the configured one (a channel's discussion group).
+  chatId?: string;
 }
 
 export interface Photo {
@@ -72,6 +74,16 @@ export interface Sender {
   // Optional topic support; senders without it post in the main chat.
   topicsEnabled?(): Promise<boolean>;
   createTopic?(name: string): Promise<number | null>;
+  // A channel's linked discussion group, where comments on its posts live.
+  discussion?(): Promise<string | null>;
+  // The discussion group's copy of a channel post (null after the timeout).
+  discussionCopy?(postId: number, timeoutMs?: number): Promise<number | null>;
+}
+
+interface ChatInfo {
+  type: string;
+  isForum: boolean;
+  linkedChatId: string | null;
 }
 
 export interface PhotoSender extends Sender {
@@ -82,10 +94,15 @@ type Call =
   | { ok: true; result: unknown }
   | { ok: false; retry: boolean; error: string; retryAfter?: number };
 
-const topicsCacheMs = 10 * 60000;
+const cacheMs = 10 * 60000;
 
 export class TelegramSender implements PhotoSender {
   private topics: { value: boolean; at: number } | null = null;
+  private info: { value: ChatInfo; at: number } | null = null;
+  // Channel post id → its automatic copy in the discussion group.
+  private copies = new Map<number, number>();
+  private tracking = false;
+  private stopped = false;
   constructor(
     private token: string,
     private chatId: string,
@@ -111,7 +128,7 @@ export class TelegramSender implements PhotoSender {
     for (const [key, value] of Object.entries(target(options)))
       form.set(
         key,
-        typeof value === "number" ? String(value) : JSON.stringify(value),
+        typeof value === "object" ? JSON.stringify(value) : String(value),
       );
     const file = (png: Buffer) =>
       new Blob([new Uint8Array(png)], { type: "image/png" });
@@ -139,20 +156,124 @@ export class TelegramSender implements PhotoSender {
     );
     return this.message("sendMediaGroup", form, {});
   }
-  // Whether the bot has topics enabled in private chats (BotFather), cached
-  // for 10 minutes so switching it on is picked up without a restart.
+  // Whether new alerts can open a topic: a private chat needs the bot's
+  // threaded mode (BotFather), a supergroup needs topics on. Cached 10 minutes
+  // so switching either on is picked up without a restart.
   async topicsEnabled(): Promise<boolean> {
-    if (this.topics && Date.now() - this.topics.at < topicsCacheMs)
+    if (this.topics && Date.now() - this.topics.at < cacheMs)
       return this.topics.value;
-    const me = await this.call("getMe", "{}", {
-      "Content-Type": "application/json",
-    });
-    if (!me.ok) return this.topics?.value ?? false;
-    const value =
-      (me.result as { has_topics_enabled?: unknown }).has_topics_enabled ===
-      true;
+    const chat = await this.chat();
+    let value = false;
+    if (chat?.type === "supergroup") value = chat.isForum;
+    else if (chat?.type === "private") {
+      const me = await this.call("getMe", "{}", {
+        "Content-Type": "application/json",
+      });
+      if (!me.ok) return this.topics?.value ?? false;
+      value =
+        (me.result as { has_topics_enabled?: unknown }).has_topics_enabled ===
+        true;
+    } else if (!chat) return this.topics?.value ?? false;
     this.topics = { value, at: Date.now() };
     return value;
+  }
+  // Also starts tracking the group's copies of posts on first use; unread
+  // updates wait up to 24 hours, so a post sent before that is still found.
+  async discussion(): Promise<string | null> {
+    const chat = await this.chat();
+    const group = chat?.type === "channel" ? chat.linkedChatId : null;
+    if (group) void this.trackDiscussion();
+    return group;
+  }
+  private async chat(): Promise<ChatInfo | null> {
+    if (this.info && Date.now() - this.info.at < cacheMs)
+      return this.info.value;
+    const got = await this.call(
+      "getChat",
+      JSON.stringify({ chat_id: this.chatId }),
+      { "Content-Type": "application/json" },
+    );
+    if (!got.ok) return this.info?.value ?? null;
+    const r = got.result as {
+      type?: unknown;
+      is_forum?: unknown;
+      linked_chat_id?: unknown;
+    };
+    const value = {
+      type: typeof r.type === "string" ? r.type : "unknown",
+      isForum: r.is_forum === true,
+      linkedChatId:
+        typeof r.linked_chat_id === "number" ? String(r.linked_chat_id) : null,
+    };
+    this.info = { value, at: Date.now() };
+    return value;
+  }
+  // Long-polls getUpdates while the chat is a channel with a discussion
+  // group, recording each post's automatic copy there. The collector reads no
+  // other updates. Runs until stop(); started by discussion().
+  async trackDiscussion(): Promise<void> {
+    if (this.tracking) return;
+    this.tracking = true;
+    let offset = 0;
+    let failures = 0;
+    while (!this.stopped) {
+      const group = await this.discussion().catch(() => null);
+      if (!group) {
+        await pause(60000, () => this.stopped);
+        continue;
+      }
+      const started = Date.now();
+      const got = await this.call(
+        "getUpdates",
+        JSON.stringify({
+          offset,
+          timeout: 25,
+          allowed_updates: ["message"],
+        }),
+        { "Content-Type": "application/json" },
+        35000,
+      );
+      if (!got.ok) {
+        failures++;
+        if (failures === 1 || failures % 20 === 0)
+          console.error(
+            JSON.stringify({
+              event: "telegram-updates-failed",
+              error: got.error,
+            }),
+          );
+        await pause(Math.min(60000, 2000 * failures), () => this.stopped);
+        continue;
+      }
+      failures = 0;
+      for (const update of Array.isArray(got.result) ? got.result : []) {
+        const u = update as { update_id?: unknown; message?: unknown };
+        if (typeof u.update_id === "number") offset = u.update_id + 1;
+        const copy = automaticCopy(u.message, group);
+        if (copy) this.copies.set(copy.postId, copy.messageId);
+      }
+      // Keep the latest few hundred posts.
+      for (const key of this.copies.keys())
+        if (this.copies.size > 500) this.copies.delete(key);
+      // At least a second per round, even if Telegram answers at once.
+      await pause(1000 - (Date.now() - started), () => this.stopped);
+    }
+    this.tracking = false;
+  }
+  async discussionCopy(
+    postId: number,
+    timeoutMs = 60000,
+  ): Promise<number | null> {
+    const until = Date.now() + timeoutMs;
+    for (;;) {
+      const copy = this.copies.get(postId);
+      if (copy !== undefined) return copy;
+      if (Date.now() >= until || this.stopped) return null;
+      await pause(1000, () => this.stopped);
+    }
+  }
+  stop() {
+    this.stopped = true;
   }
   async createTopic(name: string): Promise<number | null> {
     const topic = await this.call(
@@ -187,6 +308,7 @@ export class TelegramSender implements PhotoSender {
     method: string,
     body: string | FormData,
     headers: Record<string, string>,
+    timeoutMs = 30000,
   ): Promise<Call> {
     let response: Response;
     try {
@@ -196,7 +318,7 @@ export class TelegramSender implements PhotoSender {
           method: "POST",
           headers,
           body,
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(timeoutMs),
         },
       );
     } catch (error) {
@@ -225,8 +347,38 @@ export class TelegramSender implements PhotoSender {
   }
 }
 
-// Where a message goes: a topic, a reply, or both.
+// Waits up to `ms`, checking `stop` every second.
+async function pause(ms: number, stop: () => boolean) {
+  for (let left = ms; left > 0 && !stop(); left -= 1000)
+    await new Promise((resolve) => setTimeout(resolve, Math.min(1000, left)));
+}
+
+// A channel post as automatically forwarded into its discussion group.
+export function automaticCopy(
+  message: unknown,
+  group: string,
+): { postId: number; messageId: number } | null {
+  const m = message as {
+    message_id?: unknown;
+    is_automatic_forward?: unknown;
+    chat?: { id?: unknown };
+    forward_origin?: { type?: unknown; message_id?: unknown };
+  } | null;
+  if (
+    !m ||
+    m.is_automatic_forward !== true ||
+    String(m.chat?.id) !== group ||
+    m.forward_origin?.type !== "channel" ||
+    typeof m.forward_origin.message_id !== "number" ||
+    typeof m.message_id !== "number"
+  )
+    return null;
+  return { postId: m.forward_origin.message_id, messageId: m.message_id };
+}
+
+// Where a message goes: another chat, a topic, a reply.
 const target = (options: SendOptions) => ({
+  ...(options.chatId === undefined ? {} : { chat_id: options.chatId }),
   ...(options.threadId === undefined
     ? {}
     : { message_thread_id: options.threadId }),

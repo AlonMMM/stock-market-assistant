@@ -875,6 +875,51 @@ test("posts every part into the alert's topic, charts as one album", async () =>
   ]);
 });
 
+test("for a channel, every part is a comment on the alert's post", async () => {
+  const result = await richResult();
+  const { sender, sent } = fakeSender();
+  const channel = {
+    ...sender,
+    async discussion() {
+      return "-300";
+    },
+    async discussionCopy(postId: number) {
+      return postId === 40 ? 77 : null;
+    },
+  };
+  const deliver = telegramDelivery(channel, {
+    muted: () => false,
+    messageId: () => 40,
+    threadId: () => null,
+  });
+  assert.equal(
+    await deliver(alert(), result, [
+      { name: "01_daily.png", png: Buffer.from("1") },
+    ]),
+    "sent",
+  );
+  assert.equal(sent.length, 5);
+  assert.ok(
+    sent.every((s) => s.options?.chatId === "-300" && s.options.replyTo === 77),
+  );
+  // No copy found: the parts still go to the discussion group, uncommented.
+  const errors: string[] = [];
+  const original = console.error;
+  console.error = (m: string) => void errors.push(m);
+  try {
+    const lost = telegramDelivery(channel, {
+      muted: () => false,
+      messageId: () => 41,
+      threadId: () => null,
+    });
+    await lost(alert(), result, []);
+  } finally {
+    console.error = original;
+  }
+  assert.deepEqual(sent.at(-1)!.options, { chatId: "-300" });
+  assert.match(errors[0]!, /analysis-comment-missing/);
+});
+
 test("without a topic every part replies to the alert; mute sends nothing", async () => {
   const result = await richResult();
   const { sender, sent } = fakeSender();
