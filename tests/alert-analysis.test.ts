@@ -790,96 +790,84 @@ async function richResult(): Promise<AnalysisResult> {
   };
 }
 
-test("formats each part in Israel time with the skill's numbers and escaped text", async () => {
-  const text = formatAnalysis(alert(), await richResult(), "https://site.test");
+test("formats one short follow-up with briefs, key levels and the site link", async () => {
+  const base = await richResult();
+  const result: AnalysisResult = {
+    ...base,
+    technical: {
+      ok: true,
+      model: analysisModel,
+      value: {
+        ...view,
+        lean: "bullish",
+        brief: "Above VWAP <101.4> → 103; below 101.3 turns bearish",
+      } as never,
+    },
+  };
+  const text = formatAnalysis(alert(), result, "https://site.test");
+  const lines = text.split("\n");
   // 14:30 UTC in September is 17:30 in Israel.
+  assert.equal(lines[0], "<b>AAPL ▲ +1.00%</b> · 17:30 Israel time");
   assert.match(
-    text.scores,
-    /📊 <b>Relative strength<\/b> · AAPL · alert 17:30 Israel time/,
+    lines[1]!,
+    /^📊 vs SPY <b>\d+<\/b> \(against\) · ✅ stronger than the index$/,
   );
+  assert.equal(
+    lines[2],
+    "📈 <b>Bullish</b>: Above VWAP &lt;101.4&gt; → 103; below 101.3 turns bearish",
+  );
+  assert.equal(lines[3], "    Support 101.3 · Resistance 103");
+  assert.equal(lines[4], "💬 <b>Positive</b> (medium): Upbeat.");
+  assert.equal(lines[5], "📰 <b>Yes</b>: Guidance &lt;raised&gt;");
   assert.match(
-    text.scores,
-    /vs SPY: <b>AGAINST the index<\/b> · <b>\d+\/100<\/b>/,
+    lines[6]!,
+    /^<a href="https:\/\/site\.test\/\?alert=AAPL&amp;end=.+">Full analysis and charts ›<\/a>$/,
   );
-  assert.match(text.scores, /today AAPL \+2\.00% vs SPY -0\.60%/);
-  assert.match(text.scores, /stronger than SPY, confirms the alert/);
-  assert.match(text.technical, /<b>Bottom line: bullish<\/b>/);
-  assert.match(text.technical, /• Leading &lt;RS&gt;/);
-  assert.match(text.technical, /Pivots PP 100\.5 · R1 103/);
-  assert.match(
-    text.technical,
-    /Volume profile POC 101\.2 · VAH 101\.8 · VAL 100\.4/,
-  );
-  assert.match(
-    text.technical,
-    /β vs SPY: 60d 1\.5 \(corr 0\.62\) · 20d 1\.95 · <b>beta regime shift<\/b>/,
-  );
-  assert.match(
-    text.technical,
-    /RS quadrant <b>Leading<\/b> \(ratio 101\.2, momentum 100\.8\) · RS line at a new high/,
-  );
-  assert.match(text.technical, /Moved against the tape 17:00–17:30/);
-  assert.match(text.technical, /Support 101\.3 \(-0\.69%\) VWAP\/POC/);
-  assert.match(text.news, /Guidance &lt;raised&gt;/);
-  assert.match(
-    text.news,
-    /benzinga, 12 min before the alert · <a href="https:\/\/x\.test\/7">source<\/a>/,
-  );
-  assert.match(
-    text.news,
-    /<a href="https:\/\/site\.test\/\?alert=AAPL&amp;end=/,
-  );
-  for (const part of Object.values(text)) assert.ok(part.length < 4096);
+  assert.ok(text.length < 700);
+});
+
+test("older analyses without briefs fall back to the first sentence, clipped", async () => {
+  const base = await richResult();
+  const long = "A".repeat(200);
+  const result: AnalysisResult = {
+    ...base,
+    technical: {
+      ok: true,
+      model: analysisModel,
+      value: { ...view, immediate: `First part. ${long}` } as never,
+    },
+    sentiment: { ok: false, error: "Agent failed" },
+  };
+  const text = formatAnalysis(alert({ direction: "down", move: -1 }), result);
+  assert.match(text, /📈 <b>Bullish<\/b>: First part\.\n/);
+  assert.match(text, /💬 Sentiment unavailable/);
+  // A down alert that is stronger than the index does not confirm it.
+  assert.match(text, /⚠️ stronger than the index/);
+  assert.doesNotMatch(text, /Full analysis/);
 });
 
 function fakeSender() {
-  const sent: { kind: string; options?: SendOptions; count?: number }[] = [];
-  let id = 50;
+  const sent: { html: string; options?: SendOptions }[] = [];
   return {
     sent,
     sender: {
-      async send(_html: string, options?: SendOptions): Promise<SendResult> {
-        sent.push({ kind: "text", options });
-        return { ok: true, messageId: id++ };
+      async send(html: string, options?: SendOptions): Promise<SendResult> {
+        sent.push({ html, options });
+        return { ok: true, messageId: 50 };
       },
-      async sendPhotos(
-        photos: Photo[],
-        options?: SendOptions,
-      ): Promise<SendResult> {
-        sent.push({ kind: "photos", options, count: photos.length });
-        return { ok: true, messageId: id++ };
+      async sendPhotos(): Promise<SendResult> {
+        throw new Error("no charts in Telegram");
       },
     },
   };
 }
 
-test("posts every part into the alert's topic, charts as one album", async () => {
+test("sends one follow-up: a channel comment, a topic message, or a reply", async () => {
   const result = await richResult();
-  const { sender, sent } = fakeSender();
-  const deliver = telegramDelivery(sender, {
-    muted: () => false,
-    messageId: () => 40,
-    threadId: () => 7,
-  });
-  const charts = [
-    { name: "01_daily.png", png: Buffer.from("1") },
-    { name: "06_trade_levels.png", png: Buffer.from("6") },
-  ];
-  assert.equal(await deliver(alert(), result, charts), "sent");
-  assert.deepEqual(sent, [
-    { kind: "text", options: { threadId: 7 } },
-    { kind: "text", options: { threadId: 7 } },
-    { kind: "photos", options: { threadId: 7 }, count: 2 },
-    { kind: "text", options: { threadId: 7 } },
-    { kind: "text", options: { threadId: 7 } },
-  ]);
-});
-
-test("for a channel, every part is a comment on the alert's post", async () => {
-  const result = await richResult();
-  const { sender, sent } = fakeSender();
-  const channel = {
-    ...sender,
+  const charts = [{ name: "01_daily.png", png: Buffer.from("1") }];
+  const channel = fakeSender();
+  const asChannel = {
+    ...channel.sender,
     async discussion() {
       return "-300";
     },
@@ -887,79 +875,82 @@ test("for a channel, every part is a comment on the alert's post", async () => {
       return postId === 40 ? 77 : null;
     },
   };
-  const deliver = telegramDelivery(channel, {
+  const outbox = (threadId: number | null) => ({
     muted: () => false,
     messageId: () => 40,
-    threadId: () => null,
+    threadId: () => threadId,
   });
   assert.equal(
-    await deliver(alert(), result, [
-      { name: "01_daily.png", png: Buffer.from("1") },
-    ]),
+    await telegramDelivery(asChannel, outbox(null))(alert(), result, charts),
     "sent",
   );
-  assert.equal(sent.length, 5);
-  assert.ok(
-    sent.every((s) => s.options?.chatId === "-300" && s.options.replyTo === 77),
+  assert.deepEqual(
+    channel.sent.map((s) => s.options),
+    [{ chatId: "-300", replyTo: 77 }],
   );
-  // No copy found: the parts still go to the discussion group, uncommented.
-  const errors: string[] = [];
-  const original = console.error;
-  console.error = (m: string) => void errors.push(m);
-  try {
-    const lost = telegramDelivery(channel, {
-      muted: () => false,
-      messageId: () => 41,
-      threadId: () => null,
-    });
-    await lost(alert(), result, []);
-  } finally {
-    console.error = original;
-  }
-  assert.deepEqual(sent.at(-1)!.options, { chatId: "-300" });
-  assert.match(errors[0]!, /analysis-comment-missing/);
+  const topic = fakeSender();
+  await telegramDelivery(topic.sender, outbox(7))(alert(), result, charts);
+  assert.deepEqual(
+    topic.sent.map((s) => s.options),
+    [{ threadId: 7 }],
+  );
+  const reply = fakeSender();
+  await telegramDelivery(reply.sender, outbox(null))(alert(), result, charts);
+  assert.deepEqual(
+    reply.sent.map((s) => s.options),
+    [{ replyTo: 40 }],
+  );
 });
 
-test("without a topic every part replies to the alert; mute sends nothing", async () => {
+test("a missing channel copy still posts to the group; mute and failures are reported", async () => {
   const result = await richResult();
   const { sender, sent } = fakeSender();
-  let muted = false;
-  const deliver = telegramDelivery(sender, {
-    muted: () => muted,
-    messageId: () => 40,
-    threadId: () => null,
-  });
-  assert.equal(await deliver(alert(), result, []), "sent");
-  assert.equal(sent.length, 4); // no charts, no album
-  assert.ok(sent.every((s) => s.options?.replyTo === 40));
-  muted = true;
-  assert.equal(await deliver(alert(), result, []), "muted");
-  assert.equal(sent.length, 4);
-  const failing = {
+  const lostCopy = {
     ...sender,
-    async send(): Promise<SendResult> {
-      return { ok: false, retry: false, error: "Telegram 400: bad" };
+    async discussion() {
+      return "-300";
+    },
+    async discussionCopy() {
+      return null;
     },
   };
   const errors: string[] = [];
   const original = console.error;
   console.error = (m: string) => void errors.push(m);
   try {
-    const partly = telegramDelivery(failing, {
+    await telegramDelivery(lostCopy, {
       muted: () => false,
-      messageId: () => null,
+      messageId: () => 41,
       threadId: () => null,
-    });
+    })(alert(), result, []);
+    assert.deepEqual(sent.at(-1)!.options, { chatId: "-300" });
+    assert.match(errors[0]!, /analysis-comment-missing/);
     assert.equal(
-      await partly(alert(), result, [
-        { name: "01_daily.png", png: Buffer.from("1") },
-      ]),
-      "partial",
+      await telegramDelivery(sender, {
+        muted: () => true,
+        messageId: () => 40,
+        threadId: () => null,
+      })(alert(), result, []),
+      "muted",
+    );
+    const failing = {
+      ...sender,
+      async send(): Promise<SendResult> {
+        return { ok: false, retry: false, error: "Telegram 400: bad" };
+      },
+    };
+    assert.equal(
+      await telegramDelivery(failing, {
+        muted: () => false,
+        messageId: () => 40,
+        threadId: () => null,
+      })(alert(), result, []),
+      "failed",
     );
   } finally {
     console.error = original;
   }
-  assert.equal(errors.length, 4);
+  assert.equal(sent.length, 1);
 });
 
 test("stores the charts with the analysis and replaces them on a re-run", async () => {

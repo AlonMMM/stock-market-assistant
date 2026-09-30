@@ -145,6 +145,14 @@ const record = (value: unknown) =>
 
 const nullable = (type: string) => ({ type: [type, "null"] });
 
+// One line for the Telegram message; the rest of the report is for the site.
+const brief = {
+  type: "string",
+  description:
+    "One line, at most 90 characters, plain text: the takeaway a trader needs to decide in seconds.",
+};
+const briefText = (value: unknown) => text(value, 120);
+
 // --- Shared instructions ---
 
 export interface AgentAlert {
@@ -183,6 +191,8 @@ export function describeAlert(alert: AgentAlert) {
 
 export interface TechnicalView {
   lean: "bullish" | "bearish" | "neutral";
+  // One-line takeaway with the key level(s); absent in older analyses.
+  brief?: string;
   immediate: string;
   followThrough: string;
   drivers: string[];
@@ -217,6 +227,7 @@ ${JSON.stringify(summary)}
       type: "object",
       properties: {
         lean: { type: "string", enum: [...leans] },
+        brief,
         immediate: { type: "string" },
         followThrough: { type: "string" },
         drivers: { type: "array", items: { type: "string" } },
@@ -226,6 +237,7 @@ ${JSON.stringify(summary)}
       },
       required: [
         "lean",
+        "brief",
         "immediate",
         "followThrough",
         "drivers",
@@ -243,6 +255,7 @@ ${JSON.stringify(summary)}
       if (!r || !lean || !immediate || !followThrough) return null;
       return {
         lean,
+        ...(briefText(r.brief) ? { brief: briefText(r.brief)! } : {}),
         immediate,
         followThrough,
         drivers: texts(r.drivers, 2),
@@ -284,6 +297,7 @@ function formatAge(minutes: number) {
 
 export interface SentimentView {
   sentiment: "positive" | "negative" | "mixed" | "neutral";
+  brief?: string; // the main driver in one line; absent in older analyses
   confidence: "low" | "medium" | "high";
   summary: string;
   drivers: string[];
@@ -313,6 +327,7 @@ ${newsLines(news)}
       properties: {
         sentiment: { type: "string", enum: [...sentiments] },
         confidence: { type: "string", enum: [...confidences] },
+        brief,
         summary: { type: "string" },
         drivers: { type: "array", items: { type: "string" } },
         sources: {
@@ -325,7 +340,14 @@ ${newsLines(news)}
           },
         },
       },
-      required: ["sentiment", "confidence", "summary", "drivers", "sources"],
+      required: [
+        "sentiment",
+        "confidence",
+        "brief",
+        "summary",
+        "drivers",
+        "sources",
+      ],
       additionalProperties: false,
     },
     parse(input) {
@@ -334,6 +356,7 @@ ${newsLines(news)}
       const confidence = oneOf(r?.confidence, confidences);
       const summary = text(r?.summary);
       if (!r || !sentiment || !confidence || !summary) return null;
+      const short = briefText(r.brief);
       const sources = Array.isArray(r.sources)
         ? r.sources.flatMap((s) => {
             const item = record(s);
@@ -343,6 +366,7 @@ ${newsLines(news)}
           })
         : [];
       return {
+        ...(short ? { brief: short } : {}),
         sentiment,
         confidence,
         summary,
@@ -357,6 +381,7 @@ ${newsLines(news)}
 
 export interface CatalystView {
   explains: "yes" | "partly" | "no" | "unknown";
+  brief?: string; // the catalyst (or its absence) in one line
   catalyst: string | null;
   // The Alpaca item that best explains the move, if any.
   newsId: number | null;
@@ -386,12 +411,13 @@ ${newsLines(news)}
       type: "object",
       properties: {
         explains: { type: "string", enum: [...explanations] },
+        brief,
         catalyst: nullable("string"),
         newsId: nullable("integer"),
         url: nullable("string"),
         summary: { type: "string" },
       },
-      required: ["explains", "catalyst", "newsId", "url", "summary"],
+      required: ["explains", "brief", "catalyst", "newsId", "url", "summary"],
       additionalProperties: false,
     },
     parse(input) {
@@ -401,7 +427,9 @@ ${newsLines(news)}
       if (!r || !explains || !summary) return null;
       const id = numberOrNull(r.newsId);
       const url = text(r.url, 500);
+      const short = briefText(r.brief);
       return {
+        ...(short ? { brief: short } : {}),
         explains,
         catalyst: text(r.catalyst, 300),
         newsId: id !== null && news.some((n) => n.id === id) ? id : null,
