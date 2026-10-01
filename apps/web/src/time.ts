@@ -25,6 +25,18 @@ const wallParts = new Intl.DateTimeFormat("en-CA", {
   minute: "2-digit",
   hourCycle: "h23",
 });
+const day = new Intl.DateTimeFormat("en-CA", {
+  timeZone: israelZone,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+const dayLabel = new Intl.DateTimeFormat("en-GB", {
+  timeZone: israelZone,
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+});
 const usDate = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/New_York",
   year: "numeric",
@@ -36,6 +48,10 @@ const usDate = new Intl.DateTimeFormat("en-CA", {
 export const israelDateTime = (ms: number) => dateTime.format(ms);
 /** "16:35" in Israel time. */
 export const israelClock = (ms: number) => clock.format(ms);
+/** "2026-09-24": the Israel calendar date that contains the instant. */
+export const israelDay = (ms: number) => day.format(ms);
+/** "Thu 24 Sep" in Israel time. */
+export const israelDayLabel = (ms: number) => dayLabel.format(ms);
 
 /**
  * Chart libraries render timestamps as UTC. Returns Unix seconds whose UTC
