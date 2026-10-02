@@ -16,7 +16,7 @@ Load only the selected role's document in addition to AGENTS.md and current stat
 - Roles may read the entire repository; editing outside a role's normal scope requires coordination with the affected owner.
 - Product/UX proposals become accepted specifications only when the user agrees. Do not treat design exploration as permission to implement everything.
 - Backend and Frontend use the same agreed contract commit. Route contract changes through Integration before dependent implementation.
-- Each session updates its own task file. Integration maintains docs/state.md and cross-cutting decisions after reconciling handoffs.
+- Each session updates its own task file. A session that changes the app also updates docs/state.md in the same PR; keep the edit short and limited to what changed. Integration reconciles state across parallel sessions, keeps it concise, and maintains cross-cutting decisions.
 - Exchange committed branches/PRs and exact spec/contract revisions. Other worktrees do not update themselves.
 - Resolve shared-file conflicts explicitly; do not overwrite the other session's work.
 - The human opens sessions; these role files do not automatically start other agents.

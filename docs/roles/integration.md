@@ -10,7 +10,7 @@ Current state, active task handoffs, relevant product specs, contracts, decision
 
 ## Own
 
-- Global docs/state.md, cross-cutting decisions, shared contract coordination, and dependency order.
+- Reconciliation and concision of docs/state.md (other sessions update it for their own changes), cross-cutting decisions, shared contract coordination, and dependency order.
 - Reviews of scope, behavior, contract compatibility, failure modes, and integration evidence.
 - A single coherent report of what is working, proposed, blocked, or unverified.
 
@@ -20,7 +20,7 @@ Current state, active task handoffs, relevant product specs, contracts, decision
 2. Review contributions against acceptance criteria, not just successful compilation.
 3. Resolve conflicting semantics with the user/affected owner and document the decision.
 4. Assemble authorized changes on an integration branch; run contract/API checks relevant to the combined result.
-5. Update global state from committed handoffs and give the user the PRs in dependency order.
+5. Reconcile global state with committed handoffs and give the user the PRs in dependency order.
 
 ## Boundaries
 

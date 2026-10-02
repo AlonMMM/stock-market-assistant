@@ -47,6 +47,49 @@ for (const name of [
       errors.push(`Broken link in ${name}: ${target}`);
   }
 }
+// Warn when app code changed after docs/state.md was last committed. Skipped when
+// state.md has uncommitted edits or the history is too shallow to compare (CI).
+const appPaths = [
+  "apps",
+  "packages",
+  "config",
+  "Dockerfile.collector",
+  "wrangler.jsonc",
+];
+const lastCommit = (...paths) => {
+  try {
+    return execFileSync(
+      "git",
+      ["log", "-1", "--format=%ct %h", "--", ...paths],
+      {
+        cwd: root,
+        encoding: "utf8",
+      },
+    ).trim();
+  } catch {
+    return "";
+  }
+};
+const stateEdited = (() => {
+  try {
+    return !!execFileSync(
+      "git",
+      ["status", "--porcelain", "--", "docs/state.md"],
+      {
+        cwd: root,
+        encoding: "utf8",
+      },
+    ).trim();
+  } catch {
+    return true;
+  }
+})();
+const [stateTime] = lastCommit("docs/state.md").split(" ");
+const [appTime, appCommit] = lastCommit(...appPaths).split(" ");
+if (!stateEdited && stateTime && appTime && Number(appTime) > Number(stateTime))
+  console.warn(
+    `WARN: docs/state.md is older than the latest app change (${appCommit}). Update it in the same PR (AGENTS.md).`,
+  );
 if (errors.length) {
   console.error(errors.join("\n"));
   process.exitCode = 1;

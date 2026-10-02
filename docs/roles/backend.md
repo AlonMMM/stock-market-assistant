@@ -31,4 +31,4 @@ The assigned task and accepted feature spec, agreed contract revision, apps/api,
 
 ## Handoff
 
-Record changed endpoints, contract compatibility, test commands/results, limitations, and branch/commit in the task file. Escalate shared contract or architecture changes to Integration; leave unrelated frontend files alone.
+Record changed endpoints, contract compatibility, test commands/results, limitations, and branch/commit in the task file. Update docs/state.md in the same PR for the app changes you made. Escalate shared contract or architecture changes to Integration; leave unrelated frontend files alone.

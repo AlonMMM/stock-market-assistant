@@ -30,4 +30,4 @@ For chart comparison, follow the agreed benchmark, time window, normalization, a
 
 ## Handoff
 
-Record screenshots, user-flow test results, API dependencies, remaining UX gaps, and branch/commit in the task file. Let Integration maintain the global state.
+Record screenshots, user-flow test results, API dependencies, remaining UX gaps, and branch/commit in the task file. Update docs/state.md in the same PR for the app changes you made.

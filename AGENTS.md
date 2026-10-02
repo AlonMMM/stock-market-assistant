@@ -26,5 +26,6 @@ Preserve unrelated changes and use a task branch for implementation.
 - `npm run doctor`: environment/context check.
 - `npm run check`: formatting, types, API tests, builds.
 - `git diff --check`: inspect whitespace; review the actual diff as well.
-- In role sessions, update your own task file with results, limitations, and next action; Integration maintains global state and shared decisions. Outside parallel work, update state directly.
+- Update your task file with results, limitations, and next action.
+- Any session, whatever its role, that changes the app (code, config, deployment) updates [current state](docs/state.md) in the same PR: what now works, what remains unverified, and what comes next. Record unverified behavior as unverified. Integration reconciles state when sessions run in parallel and keeps it concise.
 - Never report an unrun check as passing. Leave changes committed and reviewable.

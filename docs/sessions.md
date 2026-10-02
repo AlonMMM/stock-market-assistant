@@ -74,6 +74,6 @@ CLAUDE.md and the project-level `.claude/settings.json` SessionStart hook tell C
 
 ## Handoff between sessions
 
-Each session owns its task document; Integration owns global state. Share a branch/PR plus the spec/contract commit ID. A peer must explicitly bring that revision into its branch; local sessions do not automatically exchange messages or files.
+Each session owns its task document and updates docs/state.md for its own app changes; Integration reconciles global state across parallel work. Share a branch/PR plus the spec/contract commit ID. A peer must explicitly bring that revision into its branch; local sessions do not automatically exchange messages or files.
 
 Claude CLI flags are documented in [Anthropic's CLI reference](https://code.claude.com/docs/en/cli-reference).
