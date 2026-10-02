@@ -451,6 +451,33 @@ footer {
   overflow: hidden;
   background: #fafbf8;
 }
+.feed-day + .feed-day {
+  margin-top: 10px;
+}
+.feed-day-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.feed-day-chevron {
+  width: 1em;
+  color: #61736b;
+  text-align: center;
+}
+.feed-day-count {
+  color: #61736b;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
 .feed-row + .feed-row {
   border-top: 1px solid #e1e8e1;
 }
