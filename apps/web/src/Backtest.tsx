@@ -30,6 +30,7 @@ import {
   type RunRequest,
 } from "./backtest-model.js";
 import { ResultTabs, Verdict } from "./BacktestResults.js";
+import { LookNowCard } from "./LookNow.js";
 import { usePolling } from "./Live.js";
 import { pillFor } from "./live-model.js";
 import { StatusPill } from "./StatusPill.js";
@@ -744,8 +745,8 @@ export function Backtest({ modes }: { modes: ReactNode }) {
                   <ul>
                     <li>
                       <strong>Verdict</strong>: how often alerts ran to the good
-                      level, were stopped or stayed weak, compared with random
-                      entries in the same symbols and days.
+                      level, were stopped or stayed weak, compared with ordinary
+                      momentum entries in the same symbols and days.
                     </li>
                     <li>
                       <strong>Alerts</strong>: every alert the rule would have
@@ -754,7 +755,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
                     </li>
                     <li>
                       <strong>By symbol</strong>: which symbols the rule works
-                      on, against each symbol&apos;s own random entries.
+                      on, against each symbol&apos;s own baseline entries.
                     </li>
                     <li>
                       <strong>Data quality</strong>: why windows did not alert,
@@ -784,6 +785,9 @@ export function Backtest({ modes }: { modes: ReactNode }) {
                   </button>
                 )}
               </div>
+              {result && result.alerts.length > 0 && result.lookNow && (
+                <LookNowCard summary={result.lookNow} />
+              )}
               {result && result.alerts.length > 0 && (
                 <Verdict result={result} alertsCount={result.alerts.length} />
               )}

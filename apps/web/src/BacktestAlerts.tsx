@@ -5,6 +5,7 @@ import type {
   ValidationConfig,
 } from "../../../packages/market-data/src/outcome.js";
 import { AlertEvidence } from "./AlertFeed.js";
+import { LookNowBadge, LookNowLine } from "./LookNow.js";
 import {
   dayGoodLabel,
   filterOutcome,
@@ -232,6 +233,9 @@ export function BacktestAlerts({
                                   {israelClock(Date.parse(a.end))}
                                 </span>
                                 <span className="alert-symbol">
+                                  {a.lookNow && (
+                                    <LookNowBadge look={a.lookNow} />
+                                  )}
                                   <strong>{a.ticker}</strong>
                                   {a.inPlay && (
                                     <span
@@ -271,6 +275,9 @@ export function BacktestAlerts({
                               {expanded && (
                                 <div className="alert-detail">
                                   <AlertEvidence alert={a} />
+                                  {a.lookNow && (
+                                    <LookNowLine look={a.lookNow} />
+                                  )}
                                   <OutcomeLine outcome={o} />
                                   <Suspense
                                     fallback={
@@ -323,7 +330,8 @@ export function BacktestAlerts({
         the alert&apos;s direction first, stopped = {scoring.stopUnits}u against
         first, weak = neither within {scoring.horizon} min. Best run: the best
         close in the alert&apos;s direction, in u; then the move after 15 and 60
-        min. In play: the symbol&apos;s day volume was well above usual.
+        min. In play: the symbol&apos;s day volume was well above usual. The
+        number before a symbol is its look-now score (0–100; 🔥 very big).
       </p>
     </>
   );

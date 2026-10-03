@@ -51,7 +51,7 @@ export function Verdict({
     <section className="card verdict" aria-labelledby="verdict-title">
       <div className="verdict-head">
         <h3 id="verdict-title">
-          Did the move follow, compared with random entries?
+          Did the move follow, compared with ordinary momentum entries?
         </h3>
         <span className="muted">
           {number(s.scored)} scored of {number(alertsCount)} alerts
@@ -66,7 +66,7 @@ export function Verdict({
                 <strong>{label}</strong>
                 {r.diff !== null && (
                   <span className={`verdict-diff ${r.tone}`}>
-                    {signedPoints(r.diff)} vs random
+                    {signedPoints(r.diff)} vs baseline
                     {r.tone !== "neutral" && ` · ${r.tone}`}
                   </span>
                 )}
@@ -77,11 +77,11 @@ export function Verdict({
                   <span style={{ width: `${r.alerts ?? 0}%` }} />
                 </span>
                 <strong>{pctText(r.alerts)}</strong>
-                <span className="muted">Random</span>
-                <span className="pair-track random" aria-hidden="true">
-                  <span style={{ width: `${r.random ?? 0}%` }} />
+                <span className="muted">Baseline</span>
+                <span className="pair-track baseline" aria-hidden="true">
+                  <span style={{ width: `${r.baseline ?? 0}%` }} />
                 </span>
-                <span className="muted">{pctText(r.random)}</span>
+                <span className="muted">{pctText(r.baseline)}</span>
               </div>
               <span className="muted">{note}</span>
             </div>
@@ -124,7 +124,7 @@ export function Verdict({
           ` · ${number(s.unscored)} not scored (${reasons
             .map(([r, n]) => `${r.toLowerCase()}: ${n}`)
             .join("; ")})`}{" "}
-        · random: {number(s.baseline.scored)} momentum entries at every 5th
+        · baseline: {number(s.baseline.scored)} momentum entries at every 5th
         regular minute in the same symbols and days, scored the same way · u =
         the symbol&apos;s typical {s.config.unitMinutes}-min move at that time
       </p>
@@ -143,7 +143,7 @@ const symbolColumns: [SymbolSort | null, string, string][] = [
   ["alerts", "Alerts", "right"],
   [null, "Good / weak / stopped", ""],
   ["goodPct", "Good", "right"],
-  ["vsRandom", "vs random", "right"],
+  ["vsBaseline", "vs baseline", "right"],
   ["medianRun", "Median run", "right"],
 ];
 
@@ -203,7 +203,7 @@ export function SymbolTable({
                     type="button"
                     className={r.small ? "symbol-row small" : "symbol-row"}
                     onClick={() => onPick(r.ticker)}
-                    aria-label={`${r.ticker}: ${r.alerts} alerts, ${text}, ${pctText(r.goodPct)} good, ${r.vsRandom === null ? "no per-symbol baseline" : `${signedPoints(r.vsRandom)} vs random`}${r.small ? ", too few to judge" : ""}. Show its alerts`}
+                    aria-label={`${r.ticker}: ${r.alerts} alerts, ${text}, ${pctText(r.goodPct)} good, ${r.vsBaseline === null ? "no per-symbol baseline" : `${signedPoints(r.vsBaseline)} vs baseline`}${r.small ? ", too few to judge" : ""}. Show its alerts`}
                   >
                     <strong>{r.ticker}</strong>
                     <span className="num right">{r.alerts}</span>
@@ -224,12 +224,12 @@ export function SymbolTable({
                     <strong className="num right">{pctText(r.goodPct)}</strong>
                     <span
                       className={
-                        r.vsRandom === null
+                        r.vsBaseline === null
                           ? "num right muted"
-                          : `num right excess ${r.vsRandom >= 0 ? "up" : "down"}`
+                          : `num right excess ${r.vsBaseline >= 0 ? "up" : "down"}`
                       }
                     >
-                      {r.vsRandom === null ? "—" : signedPoints(r.vsRandom)}
+                      {r.vsBaseline === null ? "—" : signedPoints(r.vsBaseline)}
                     </span>
                     <span className="num right">
                       {r.medianRun === null
@@ -246,10 +246,11 @@ export function SymbolTable({
       <p className="table-note">
         Bars: green = good, grey = weak, red = stopped (counts in each
         row&apos;s label and on hover). Good %: of the symbol&apos;s scored
-        alerts. vs random: the symbol&apos;s good % minus its own random
-        entries&apos; good %, in points; “—” when the API gives no per-symbol
-        baseline. Rows with fewer than {minSymbolAlerts} scored alerts are faded
-        and listed last: too few to judge. Select a row to see its alerts.
+        alerts. vs baseline: the symbol&apos;s good % minus the good % of its
+        own baseline momentum entries, in points; “—” when the API gives no
+        per-symbol baseline. Rows with fewer than {minSymbolAlerts} scored
+        alerts are faded and listed last: too few to judge. Select a row to see
+        its alerts.
       </p>
     </>
   );

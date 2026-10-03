@@ -62,8 +62,9 @@ test("backtest reconstructs the alerts the live collector would have sent", asyn
   );
   assert.deepEqual(requests, [
     ["AAPL", `${sessions[0]}T00:00:00Z`, "2026-06-06T06:00:00.000Z"],
-    // SPY minute bars from the last warmup session, for alert context.
-    ["SPY", "2026-05-29T00:00:00Z", "2026-06-06T06:00:00.000Z"],
+    // SPY minute bars from the first warmup session: alert context and the
+    // look-now score's market-adjusted normal moves.
+    ["SPY", `${sessions[0]}T00:00:00Z`, "2026-06-06T06:00:00.000Z"],
   ]);
   assert.equal(result.alerts.length, 1);
   const [alert] = result.alerts;

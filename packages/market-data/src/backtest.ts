@@ -1,4 +1,12 @@
 import {
+  lookNow,
+  LookNowScorer,
+  ranks,
+  summarizeLookNow,
+  type LookNow,
+  type LookNowSummary,
+} from "./look-now.js";
+import {
   defaults,
   validateConfig,
   type Config,
@@ -46,7 +54,8 @@ export interface AlertContext {
 export interface BacktestAlert extends Evaluation {
   close: number;
   context: AlertContext | null; // null for SPY or without enough data
-  outcome: Outcome; // what the price did after the alert
+  outcome: Outcome; // trade view: stop/target in the alert's direction
+  lookNow: LookNow; // main grade: how unusual the move after the alert was
 }
 
 export interface BacktestResult {
@@ -65,6 +74,7 @@ export interface BacktestResult {
   // runBacktest always sets `validation.baselineBySymbol`; the type keeps it
   // optional because merged or older-API results may lack it.
   validation: ValidationSummary;
+  lookNow: LookNowSummary;
   cache?: CacheStats; // symbol-days served from the bar cache vs fetched
 }
 
@@ -240,8 +250,10 @@ export async function runBacktest(
     Promise.all(
       tickers.map((ticker) => history(ticker, `${warmup[0]}T00:00:00Z`, until)),
     ),
+    // From the first warmup session: the look-now score's normal moves are
+    // market-adjusted on past days too.
     others.length && betaStart
-      ? history(benchmark, `${warmup[warmup.length - 1]}T00:00:00Z`, until)
+      ? history(benchmark, `${warmup[0]}T00:00:00Z`, until)
       : [],
     others.length && betaStart
       ? Promise.all(
@@ -255,6 +267,22 @@ export async function runBacktest(
     [...others, benchmark].map((t, i) => [t, dailyRows[i] ?? []]),
   );
   const spy = marketTrack(benchmark, spyRows);
+  const spyBars = spyRows
+    .map((row) => normalize(benchmark, row, "shares"))
+    .filter((b): b is PriceBar => b !== null);
+  // Look-now: per-ticker measurements, ranked against all random minutes of
+  // this run once every ticker is read.
+  const pending: {
+    alert: BacktestAlert;
+    measured: ReturnType<LookNowScorer["measure"]>;
+    beta: { beta: number; assumed: boolean };
+    closeMinute: number;
+    minute: number;
+  }[] = [];
+  const randoms: {
+    measured: ReturnType<LookNowScorer["measure"]>;
+    direction: "up" | "down";
+  }[] = [];
   const alerts: BacktestAlert[] = [];
   const diagnostics: Record<string, number> = {};
   const coverage: BacktestResult["coverage"] = [];
@@ -285,6 +313,7 @@ export async function runBacktest(
           ...result,
           close: bar.close,
           outcome: undefined as unknown as Outcome, // scored below
+          lookNow: undefined as unknown as LookNow, // scored below
           context:
             ticker === benchmark || !betaStart
               ? null
@@ -301,14 +330,49 @@ export async function runBacktest(
     }
     // Outcomes need the bars after each alert, so score once all are read.
     const scorer = new OutcomeScorer(normalized, validation);
+    const betas = new Map<string, number | null>();
+    const betaOf = (date: string) => {
+      if (ticker === benchmark) return 0;
+      if (!betaStart) return null;
+      if (!betas.has(date)) {
+        let value: number | null = null;
+        try {
+          value = dailyBeta(
+            previousSessions(date, betaReturns + 1),
+            dailyBy.get(ticker)!,
+            dailyBy.get(benchmark)!,
+          ).value;
+        } catch {
+          // Outside calendar coverage: β is assumed.
+        }
+        betas.set(date, value);
+      }
+      return betas.get(date)!;
+    };
+    const byEnd = new Map(normalized.map((b) => [b.end, b]));
+    const look = new LookNowScorer(
+      normalized,
+      ticker === benchmark ? null : spyBars,
+      betaOf,
+    );
     for (const alert of tickerAlerts) {
       alert.outcome = scorer.score(alert.end, alert.direction ?? "up");
       outcomes.push(alert.outcome);
       alerts.push(alert);
+      const minute = byEnd.get(alert.end)!;
+      pending.push({
+        alert,
+        measured: look.measure(minute.date, minute.minute, minute.session),
+        beta: look.betaInfo(minute.date),
+        closeMinute: minute.regularClose ?? 960,
+        minute: minute.minute,
+      });
     }
     const tickerBaseline = scorer.baseline(from, to);
     baseline.push(...tickerBaseline);
     baselineBySymbol[ticker] = baselineCounts(tickerBaseline);
+    for (const r of look.baseline(from, to))
+      randoms.push({ measured: r.measured, direction: r.direction });
     coverage.push({
       ticker,
       bars: count,
@@ -317,6 +381,19 @@ export async function runBacktest(
       ),
     });
   });
+  const rank = ranks(randoms.map((r) => r.measured));
+  for (const p of pending)
+    p.alert.lookNow = lookNow(
+      p.measured,
+      p.alert.direction,
+      rank,
+      p.beta,
+      p.closeMinute,
+      p.minute,
+    );
+  const randomScores = randoms.map((r) =>
+    lookNow(r.measured, r.direction, rank, null, null, null),
+  );
   alerts.sort(
     (a, b) => a.end.localeCompare(b.end) || a.ticker.localeCompare(b.ticker),
   );
@@ -335,6 +412,10 @@ export async function runBacktest(
       ...summarize(outcomes, baseline, validation),
       baselineBySymbol,
     },
+    lookNow: summarizeLookNow(
+      alerts.map((a) => a.lookNow),
+      randomScores,
+    ),
   };
 }
 

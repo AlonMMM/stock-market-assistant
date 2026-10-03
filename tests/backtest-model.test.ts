@@ -174,7 +174,7 @@ test("symbol presets: alerted recently is disabled without live alerts (scenario
   );
 });
 
-test("verdict: points vs random coloured by whether they are better (scenario 4)", () => {
+test("verdict: points vs baseline coloured by whether they are better (scenario 4)", () => {
   const s = summary({
     scored: 100,
     good: 32,
@@ -186,7 +186,7 @@ test("verdict: points vs random coloured by whether they are better (scenario 4)
   assert.deepEqual(good, {
     key: "good",
     alerts: 32,
-    random: 30,
+    baseline: 30,
     diff: 2,
     tone: "better",
   });
@@ -232,7 +232,7 @@ test("by symbol: per-symbol baseline, faded small symbols sort last (scenarios 5
   });
   const sorted = sortSymbolRows(rows, "goodPct", true);
   assert.deepEqual(
-    sorted.map((r) => [r.ticker, r.goodPct, r.vsRandom, r.small]),
+    sorted.map((r) => [r.ticker, r.goodPct, r.vsBaseline, r.small]),
     [
       ["NVDA", 50, 10, false],
       ["AMD", 40, null, false], // no baseline key: "—"
@@ -245,7 +245,7 @@ test("by symbol: per-symbol baseline, faded small symbols sort last (scenarios 5
   // Ascending still keeps the small symbol last.
   assert.equal(sortSymbolRows(rows, "goodPct", false).at(-1)!.ticker, "COIN");
   assert.deepEqual(
-    symbolRows(alerts).map((r) => r.vsRandom),
+    symbolRows(alerts).map((r) => r.vsBaseline),
     [null, null, null],
   );
 });
@@ -280,27 +280,29 @@ const part = (
   alerts: BacktestAlert[],
   bySymbol?: ValidationSummary["baselineBySymbol"],
   over: Partial<BacktestResult> = {},
-): BacktestResult => ({
-  source: "alpaca",
-  feed: "sip",
-  tickers,
-  from: "2026-09-28",
-  to: "2026-10-02",
-  config: {} as BacktestResult["config"],
-  evaluated: 1000,
-  alerts,
-  diagnostics: { "below-threshold": 900, alert: alerts.length },
-  coverage: tickers.map((ticker) => ({
-    ticker,
-    bars: 4000,
-    missingSessions: [],
-  })),
-  validation: summary({
-    baseline: { scored: 10, good: 3, stopped: 4, weak: 3 },
-    ...(bySymbol ? { baselineBySymbol: bySymbol } : {}),
-  }),
-  ...over,
-});
+): BacktestResult =>
+  // Older APIs omit lookNow; the cast keeps it optional here.
+  ({
+    source: "alpaca",
+    feed: "sip",
+    tickers,
+    from: "2026-09-28",
+    to: "2026-10-02",
+    config: {} as BacktestResult["config"],
+    evaluated: 1000,
+    alerts,
+    diagnostics: { "below-threshold": 900, alert: alerts.length },
+    coverage: tickers.map((ticker) => ({
+      ticker,
+      bars: 4000,
+      missingSessions: [],
+    })),
+    validation: summary({
+      baseline: { scored: 10, good: 3, stopped: 4, weak: 3 },
+      ...(bySymbol ? { baselineBySymbol: bySymbol } : {}),
+    }),
+    ...over,
+  }) as BacktestResult;
 
 test("batch merge adds counts, merges per-symbol baselines and recomputes the summary (scenario 7)", () => {
   const a = part(["NVDA"], [alert("NVDA", "good")], {
@@ -333,6 +335,52 @@ test("batch merge adds counts, merges per-symbol baselines and recomputes the su
   assert.equal(retried.alerts.length, 3);
   assert.equal(retried.validation.baseline.scored, 30);
   assert.equal(retried.coverage.length, 3);
+  // Look-now: alert stats recomputed, random-minute baselines weighted.
+  const look = (score: number | null) => ({
+    score,
+    label: score === null ? null : score >= 90 ? "big" : "normal",
+    reason: score === null ? "Outside regular hours" : undefined,
+    horizons: [],
+    peak: score === null ? null : 5,
+    withBurst: score === null ? null : true,
+    nearClose: false,
+    beta: 1,
+    betaAssumed: false,
+  });
+  const withLook = (t: string, score: number | null, avg: number) => {
+    const a = alert(t, "good");
+    (a as { lookNow: unknown }).lookNow = look(score);
+    return part([t], [a], undefined, {
+      lookNow: {
+        scored: 1,
+        unscored: 0,
+        reasons: {},
+        averageScore: score,
+        big: 0,
+        veryBig: 0,
+        withBurst: 1,
+        peaks: {},
+        baseline: {
+          scored: avg === 50 ? 100 : 300,
+          averageScore: avg,
+          big: 4,
+          veryBig: 1,
+        },
+      } as BacktestResult["lookNow"],
+    });
+  };
+  const looked = mergeResults([withLook("A", 95, 50), withLook("B", null, 54)]);
+  assert.equal(looked.lookNow.scored, 1);
+  assert.equal(looked.lookNow.unscored, 1);
+  assert.equal(looked.lookNow.big, 1);
+  assert.deepEqual(looked.lookNow.reasons, { "Outside regular hours": 1 });
+  assert.deepEqual(looked.lookNow.baseline, {
+    scored: 400,
+    averageScore: 53,
+    big: 8,
+    veryBig: 2,
+  });
+  assert.equal(mergeResults([part(["X"], [])]).lookNow, undefined);
   // Older API: no per-symbol map anywhere stays absent.
   assert.equal(
     mergeResults([part(["X"], []), part(["Y"], [])]).validation

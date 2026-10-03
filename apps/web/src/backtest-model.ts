@@ -16,6 +16,10 @@ import {
   previousSessions,
 } from "../../../packages/market-data/src/calendar.js";
 import {
+  summarizeLookNow,
+  type LookNowSummary,
+} from "../../../packages/market-data/src/look-now.js";
+import {
   summarize,
   type BaselineCounts,
   type ValidationConfig,
@@ -372,7 +376,7 @@ export type Tone = "better" | "worse" | "neutral";
 export interface VerdictRow {
   key: "good" | "stopped" | "weak";
   alerts: number | null; // rounded percent
-  random: number | null;
+  baseline: number | null; // the baseline entries' rounded percent
   diff: number | null; // percentage points (from the rounded percents)
   tone: Tone;
 }
@@ -384,15 +388,16 @@ const percent = (n: number, d: number) =>
 export function verdictRows(s: ValidationSummary): VerdictRow[] {
   return (["good", "stopped", "weak"] as const).map((key) => {
     const alerts = percent(s[key], s.scored);
-    const random = percent(s.baseline[key], s.baseline.scored);
-    const diff = alerts === null || random === null ? null : alerts - random;
+    const baseline = percent(s.baseline[key], s.baseline.scored);
+    const diff =
+      alerts === null || baseline === null ? null : alerts - baseline;
     const tone: Tone =
       diff === null || diff === 0 || key === "weak"
         ? "neutral"
         : (key === "good" ? diff > 0 : diff < 0)
           ? "better"
           : "worse";
-    return { key, alerts, random, diff, tone };
+    return { key, alerts, baseline, diff, tone };
   });
 }
 
@@ -478,7 +483,7 @@ export interface SymbolRow {
   weak: number;
   stopped: number;
   goodPct: number | null; // rounded
-  vsRandom: number | null; // points vs the symbol's own baseline
+  vsBaseline: number | null; // points vs the symbol's own baseline
   medianRun: number | null; // units
   small: boolean; // fewer than `minSymbolAlerts` scored alerts
 }
@@ -516,7 +521,7 @@ export function symbolRows(
       weak: n("weak"),
       stopped: n("stopped"),
       goodPct,
-      vsRandom:
+      vsBaseline:
         goodPct === null || baseGood === null ? null : goodPct - baseGood,
       medianRun: median(
         scored
@@ -529,7 +534,7 @@ export function symbolRows(
 }
 
 export type SymbolSort =
-  "ticker" | "alerts" | "goodPct" | "vsRandom" | "medianRun";
+  "ticker" | "alerts" | "goodPct" | "vsBaseline" | "medianRun";
 
 const symbolValue: Record<
   SymbolSort,
@@ -538,7 +543,7 @@ const symbolValue: Record<
   ticker: (r) => r.ticker,
   alerts: (r) => r.alerts,
   goodPct: (r) => r.goodPct,
-  vsRandom: (r) => r.vsRandom,
+  vsBaseline: (r) => r.vsBaseline,
   medianRun: (r) => r.medianRun,
 };
 
@@ -697,6 +702,7 @@ export function mergeResults(parts: BacktestResult[]): BacktestResult {
       {},
       ...parts.map((p) => p.validation.baselineBySymbol ?? {}),
     ) as Record<string, BaselineCounts>;
+  const lookNow = mergeLookNow(parts, alerts);
   const diagnostics: Record<string, number> = {};
   for (const p of parts)
     for (const [k, n] of Object.entries(p.diagnostics))
@@ -708,6 +714,7 @@ export function mergeResults(parts: BacktestResult[]): BacktestResult {
     alerts,
     diagnostics,
     validation,
+    ...(lookNow ? { lookNow } : {}),
     cache: parts.some((p) => p.cache)
       ? {
           hits: parts.reduce((n, p) => n + (p.cache?.hits ?? 0), 0),
@@ -718,6 +725,39 @@ export function mergeResults(parts: BacktestResult[]): BacktestResult {
         }
       : undefined,
     coverage: parts.flatMap((p) => p.coverage),
+  };
+}
+
+/**
+ * Look-now summary of merged batches: alert statistics from all alerts; each
+ * batch ranked against its own random minutes, so the baselines combine by
+ * weighted average (docs/features/look-now-score.md). Undefined when no part
+ * has one (older API).
+ */
+function mergeLookNow(
+  parts: BacktestResult[],
+  alerts: BacktestAlert[],
+): LookNowSummary | undefined {
+  const bases = parts
+    .map((p) => (p.lookNow as LookNowSummary | undefined)?.baseline)
+    .filter((b) => b !== undefined);
+  if (!bases.length) return undefined;
+  const own = summarizeLookNow(
+    alerts.map((a) => a.lookNow).filter((l) => l !== undefined),
+    [],
+  );
+  const scored = bases.reduce((n, b) => n + b.scored, 0);
+  return {
+    ...own,
+    baseline: {
+      scored,
+      averageScore: scored
+        ? bases.reduce((n, b) => n + (b.averageScore ?? 0) * b.scored, 0) /
+          scored
+        : null,
+      big: bases.reduce((n, b) => n + b.big, 0),
+      veryBig: bases.reduce((n, b) => n + b.veryBig, 0),
+    },
   };
 }
 
