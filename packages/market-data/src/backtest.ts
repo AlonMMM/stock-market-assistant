@@ -17,10 +17,12 @@ import { cachedHistory, type BarCache, type CacheStats } from "./bar-cache.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
 import { normalize, type PriceBar, type RawBar } from "./bars.js";
 import {
+  baselineCounts,
   OutcomeScorer,
   parseValidation,
   summarize,
   ValidationInputError,
+  type BaselineCounts,
   type Outcome,
   type ValidationConfig,
   type ValidationSummary,
@@ -69,6 +71,8 @@ export interface BacktestResult {
   coverage: { ticker: string; bars: number; missingSessions: string[] }[];
   // Outcome summary for these alerts, and for plain momentum entries at every
   // fifth regular minute (the baseline) in the same symbols and days.
+  // runBacktest always sets `validation.baselineBySymbol`; the type keeps it
+  // optional because merged or older-API results may lack it.
   validation: ValidationSummary;
   lookNow: LookNowSummary;
   cache?: CacheStats; // symbol-days served from the bar cache vs fetched
@@ -225,6 +229,7 @@ export async function runBacktest(
   );
   const outcomes: Outcome[] = [];
   const baseline: Outcome[] = [];
+  const baselineBySymbol: Record<string, BaselineCounts> = {};
   const next = new Date(`${to}T12:00:00Z`);
   next.setUTCDate(next.getUTCDate() + 1);
   // 06:00Z is after the latest post-market close (01:00Z in winter) and
@@ -363,7 +368,9 @@ export async function runBacktest(
         minute: minute.minute,
       });
     }
-    baseline.push(...scorer.baseline(from, to));
+    const tickerBaseline = scorer.baseline(from, to);
+    baseline.push(...tickerBaseline);
+    baselineBySymbol[ticker] = baselineCounts(tickerBaseline);
     for (const r of look.baseline(from, to))
       randoms.push({ measured: r.measured, direction: r.direction });
     coverage.push({
@@ -401,7 +408,10 @@ export async function runBacktest(
     alerts,
     diagnostics,
     coverage,
-    validation: summarize(outcomes, baseline, validation),
+    validation: {
+      ...summarize(outcomes, baseline, validation),
+      baselineBySymbol,
+    },
     lookNow: summarizeLookNow(
       alerts.map((a) => a.lookNow),
       randomScores,

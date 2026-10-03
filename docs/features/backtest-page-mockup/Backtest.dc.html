@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Backtest – proposal</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="background: #f4f5ef; color: #142b29; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.4">
+<div style="max-width: 1200px; margin: 0 auto; padding: 20px 40px 48px; display: flex; flex-direction: column; gap: 20px">
+
+<p style="margin: 0; align-self: flex-start; font-size: 12px; color: #61500f; background: #fbf1d6; border: 1px dashed #c9a23f; border-radius: 999px; padding: 4px 12px">Proposal mockup · SAMPLE results, not real backtest output · times in Israel time</p>
+
+<header style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+  <div style="display: flex; align-items: center; gap: 14px">
+    <span style="font-size: 30px; font-weight: 800; letter-spacing: -2px">SMA<span style="color: #9cdc52">.</span></span>
+    <span style="display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 14px 0 12px; border: 1px solid #c9d0c9; border-radius: 999px; background: #eef0ec; color: #33413e; font-size: 13px; font-weight: 600"><span style="width: 8px; height: 8px; border-radius: 50%; border: 2px solid #6b7a76"></span>Market closed</span>
+  </div>
+  <nav aria-label="Data mode" style="display: inline-flex; gap: 2px; padding: 3px; border: 1px solid #cdd7ce; border-radius: 999px">
+    <button type="button" style="padding: 9px 20px; border: 0; border-radius: 999px; background: transparent; color: #142b29; font: inherit; cursor: pointer">Live</button>
+    <span aria-current="page" style="padding: 9px 20px; border-radius: 999px; background: #142b29; color: #ffffff; font-weight: 650">Backtest</span>
+  </nav>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+
+<form aria-label="Backtest setup" style="flex: 1 1 320px; max-width: 360px; display: flex; flex-direction: column; gap: 12px">
+  <div style="display: flex; flex-direction: column; gap: 2px">
+    <h1 style="margin: 0; font-family: Georgia, serif; font-size: 28px; letter-spacing: -0.5px">Backtest</h1>
+    <p style="margin: 0; font-size: 13px; color: #526461">Replays Alpaca SIP minute bars through the live rule. A signal check, not a profitability test.</p>
+  </div>
+
+  <section style="padding: 14px; border: 1px solid #cdd7ce; border-radius: 14px; background: #fafbf8; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-size: 14px">Symbols</h2><span style="font-size: 12px; color: #526461">{{ symCount }} of 30 · max 40</span></div>
+    <div style="display: flex; gap: 6px; flex-wrap: wrap">
+      <sc-for list="{{ symPresets }}" as="p" hint-placeholder-count="3">
+        <button type="button" aria-pressed="{{ p.selected }}" onClick="{{ p.pick }}" style="{{ p.style }}">{{ p.label }}</button>
+      </sc-for>
+    </div>
+    <p style="margin: 0; font-size: 13px; color: #3f4f4c">{{ symPreview }}</p>
+    <div style="display: flex; gap: 8px">
+      <label style="flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526461">Add a symbol
+        <input type="text" placeholder="e.g. SHOP" style="min-height: 38px; padding: 0 10px; border: 1px solid #b9c8bf; border-radius: 10px; background: #ffffff; color: #142b29; font: inherit; font-size: 14px">
+      </label>
+      <button type="button" style="align-self: flex-end; min-height: 38px; padding: 0 12px; border: 1px solid #b9c8bf; border-radius: 10px; background: transparent; color: inherit; font: inherit; font-size: 13px; cursor: pointer">Edit list</button>
+    </div>
+  </section>
+
+  <section style="padding: 14px; border: 1px solid #cdd7ce; border-radius: 14px; background: #fafbf8; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-size: 14px">Dates</h2><span style="font-size: 12px; color: #526461">US sessions · max 20</span></div>
+    <div style="display: flex; gap: 6px; flex-wrap: wrap">
+      <sc-for list="{{ datePresets }}" as="p" hint-placeholder-count="4">
+        <button type="button" aria-pressed="{{ p.selected }}" onClick="{{ p.pick }}" style="{{ p.style }}">{{ p.label }}</button>
+      </sc-for>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+      <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526461">From<input type="date" value="2026-09-25" style="min-height: 38px; padding: 0 8px; border: 1px solid #b9c8bf; border-radius: 10px; background: #ffffff; color: #142b29; font: inherit; font-size: 14px"></label>
+      <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526461">To<input type="date" value="2026-10-02" style="min-height: 38px; padding: 0 8px; border: 1px solid #b9c8bf; border-radius: 10px; background: #ffffff; color: #142b29; font: inherit; font-size: 14px"></label>
+    </div>
+  </section>
+
+  <section style="padding: 14px; border: 1px solid #cdd7ce; border-radius: 14px; background: #fafbf8; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+      <h2 style="margin: 0; font-size: 14px">Rule</h2>
+      <span style="{{ ruleBadgeStyle }}">{{ ruleBadge }}</span>
+    </div>
+    <p style="margin: 0; font-size: 13px; color: #3f4f4c">rvol-v4: volume ≥ 3× typical for that minute, move ≥ 3× typical and ≥ 0.5%, 1 candle in the move's direction, 15 min cooldown. ⭐ in play at 2× day volume.</p>
+    <button type="button" aria-expanded="{{ customOpen }}" onClick="{{ toggleCustom }}" style="display: flex; justify-content: space-between; align-items: center; min-height: 38px; padding: 0 12px; border: 1px solid #b9c8bf; border-radius: 10px; background: transparent; color: inherit; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Customize rule<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" style="{{ customChevron }}"><path d="M3 4.5l3 3 3-3"></path></svg></button>
+    <sc-if value="{{ customOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <sc-for list="{{ groups }}" as="g" hint-placeholder-count="4">
+          <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 6px">
+            <legend style="padding: 0 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #526461">{{ g.title }}</legend>
+            <sc-for list="{{ g.fields }}" as="f" hint-placeholder-count="3">
+              <label style="display: grid; grid-template-columns: minmax(0, 1fr) 84px; align-items: center; gap: 8px; font-size: 13px">
+                <span>{{ f.label }}<span style="{{ f.hintStyle }}">{{ f.hint }}</span></span>
+                <input type="number" value="{{ f.value }}" style="{{ f.inputStyle }}">
+              </label>
+            </sc-for>
+          </fieldset>
+        </sc-for>
+        <button type="button" style="align-self: flex-start; min-height: 32px; padding: 0 12px; border: 0; border-radius: 999px; background: #e1e8e1; color: #142b29; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer">Reset to live settings</button>
+      </div>
+    </sc-if>
+  </section>
+
+  <section style="padding: 14px; border: 1px solid #cdd7ce; border-radius: 14px; background: #fafbf8; display: flex; flex-direction: column; gap: 8px">
+    <h2 style="margin: 0; font-size: 14px">Scoring</h2>
+    <p style="margin: 0; font-size: 13px; color: #3f4f4c">Enter the next minute. <strong>Good</strong> if it runs 2u in the alert's direction first, <strong>stopped</strong> at 1u against, <strong>weak</strong> if neither within 60 min. u = the typical 5-min move at that time.</p>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+      <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526461">Good (u)<input type="number" value="2" style="min-height: 36px; padding: 0 8px; border: 1px solid #b9c8bf; border-radius: 8px; background: #ffffff; color: #142b29; font: inherit; font-size: 14px"></label>
+      <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526461">Stop (u)<input type="number" value="1" style="min-height: 36px; padding: 0 8px; border: 1px solid #b9c8bf; border-radius: 8px; background: #ffffff; color: #142b29; font: inherit; font-size: 14px"></label>
+      <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526461">Horizon (min)<input type="number" value="60" style="min-height: 36px; padding: 0 8px; border: 1px solid #b9c8bf; border-radius: 8px; background: #ffffff; color: #142b29; font: inherit; font-size: 14px"></label>
+    </div>
+  </section>
+
+  <button type="button" style="min-height: 48px; border: 0; border-radius: 12px; background: #142b29; color: #ffffff; font: inherit; font-size: 15px; font-weight: 650; cursor: pointer">Run backtest · {{ symCount }} symbols · 6 sessions</button>
+  <p style="margin: 0; font-size: 12px; color: #526461">Runs in batches of 3 symbols; about 10 s per batch on a cold cache.</p>
+</form>
+
+<section aria-label="Results" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 10px">
+    <div>
+      <h2 style="margin: 0; font-family: Georgia, serif; font-size: 26px; letter-spacing: -0.5px">84 alerts <span style="font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 14px; font-weight: 400; color: #526461">· 21 of 30 symbols · Fri 25 Sep – Fri 2 Oct · rvol-v4 + 1 change</span></h2>
+    </div>
+    <button type="button" style="min-height: 36px; padding: 0 14px; border: 1px solid #b9c8bf; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 13px; cursor: pointer">Download JSON</button>
+  </div>
+
+  <section aria-label="Verdict" style="padding: 16px; border: 1px solid #cdd7ce; border-radius: 14px; background: #fafbf8; display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline">
+      <h3 style="margin: 0; font-size: 16px">Did the move follow, compared with random entries?</h3>
+      <span style="font-size: 12px; color: #526461">84 scored alerts · baseline: 4,120 entries every 5th minute</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px">
+      <sc-for list="{{ verdict }}" as="v" hint-placeholder-count="3">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <div style="display: flex; justify-content: space-between; align-items: baseline"><strong style="font-size: 13px">{{ v.label }}</strong><span style="{{ v.diffStyle }}">{{ v.diff }}</span></div>
+          <div style="display: grid; grid-template-columns: 58px minmax(0, 1fr) 38px; align-items: center; gap: 6px 8px; font-size: 12px">
+            <span>Alerts</span><span style="height: 12px; border-radius: 3px; background: #e7ece6; overflow: hidden"><span style="{{ v.aBar }}"></span></span><strong style="text-align: right; font-variant-numeric: tabular-nums">{{ v.a }}</strong>
+            <span style="color: #526461">Random</span><span style="height: 12px; border-radius: 3px; background: #e7ece6; overflow: hidden"><span style="{{ v.bBar }}"></span></span><span style="text-align: right; color: #526461; font-variant-numeric: tabular-nums">{{ v.b }}</span>
+          </div>
+          <span style="font-size: 12px; color: #526461">{{ v.note }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px 24px; padding-top: 12px; border-top: 1px solid #e1e8e1; font-size: 13px">
+      <span style="color: #526461">Median move in the alert's direction</span>
+      <sc-for list="{{ forward }}" as="f" hint-placeholder-count="4">
+        <span>{{ f.label }} <strong style="{{ f.style }}">{{ f.value }}</strong></span>
+      </sc-for>
+      <span>Median best run <strong>1.4u</strong></span>
+    </div>
+    <p style="margin: 0; padding: 8px 12px; border-radius: 10px; background: #fbefd9; color: #6b3d06; font-size: 13px">Only 84 scored alerts: a 2-point gap is within noise. Use more symbols or sessions before changing the rule.</p>
+  </section>
+
+  <div role="tablist" aria-label="Result views" style="display: flex; gap: 4px; border-bottom: 1px solid #cdd7ce">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+      <button type="button" role="tab" aria-selected="{{ t.selected }}" onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }} <span style="{{ t.countStyle }}">{{ t.count }}</span></button>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ isAlerts }}" hint-placeholder-val="{{ true }}">
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+        <div role="group" aria-label="Outcome" style="display: inline-flex; gap: 2px; padding: 3px; border: 1px solid #cdd7ce; border-radius: 10px; background: #fafbf8">
+          <sc-for list="{{ outcomes }}" as="o" hint-placeholder-count="4">
+            <button type="button" aria-pressed="{{ o.selected }}" onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }} <span style="opacity: 0.75">{{ o.count }}</span></button>
+          </sc-for>
+        </div>
+        <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #526461">Symbol
+          <select style="min-height: 38px; padding: 0 10px; border: 1px solid #b9c8bf; border-radius: 10px; background: #fafbf8; color: #142b29; font: inherit; font-size: 14px"><option>All symbols</option></select>
+        </label>
+        <span style="flex: 1"></span>
+        <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #526461">Sort
+          <select style="min-height: 38px; padding: 0 10px; border: 1px solid #b9c8bf; border-radius: 10px; background: #fafbf8; color: #142b29; font: inherit; font-size: 14px"><option>Newest first</option><option>Highest volume ratio</option><option>Best run</option></select>
+        </label>
+      </div>
+      <div style="border: 1px solid #cdd7ce; border-radius: 14px; background: #fafbf8; overflow: hidden">
+        <div aria-hidden="true" style="display: grid; grid-template-columns: 52px 96px 104px 64px 96px minmax(0, 1fr) 20px; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #e1e8e1; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #526461">
+          <span>Time</span><span>Symbol</span><span>Move</span><span>Vol</span><span>Outcome</span><span>Best run · after 15 / 60 min</span><span></span>
+        </div>
+        <sc-for list="{{ days }}" as="d" hint-placeholder-count="2">
+          <button type="button" aria-expanded="{{ d.open }}" onClick="{{ d.toggle }}" style="display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 0 16px; border: 0; border-bottom: 1px solid #e1e8e1; background: #f1f4ee; color: inherit; font: inherit; text-align: left; cursor: pointer">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" style="{{ d.chev }}"><path d="M3 4.5l3 3 3-3"></path></svg>
+            <strong style="font-size: 13px">{{ d.label }}</strong>
+            <span style="font-size: 12px; color: #526461">{{ d.sub }}</span>
+          </button>
+          <sc-if value="{{ d.open }}" hint-placeholder-val="{{ true }}">
+            <ul style="list-style: none; margin: 0; padding: 0">
+              <sc-for list="{{ d.rows }}" as="r" hint-placeholder-count="4">
+                <li style="display: grid; grid-template-columns: 52px 96px 104px 64px 96px minmax(0, 1fr) 20px; align-items: center; gap: 12px; min-height: 48px; padding: 6px 16px; border-bottom: 1px solid #e1e8e1">
+                  <span style="font-variant-numeric: tabular-nums; color: #3f4f4c">{{ r.t }}</span>
+                  <span style="display: flex; align-items: center; gap: 6px"><strong style="font-size: 15px">{{ r.tk }}</strong><sc-if value="{{ r.inPlay }}" hint-placeholder-val="{{ false }}"><span title="In play: day volume ≥ 2× typical" style="font-size: 11px; font-weight: 650; color: #6b4a00; background: #fbefd0; border-radius: 6px; padding: 1px 5px">In play</span></sc-if></span>
+                  <span style="{{ r.dirStyle }}">{{ r.dir }}</span>
+                  <strong style="font-variant-numeric: tabular-nums">{{ r.ratio }}</strong>
+                  <span style="{{ r.outStyle }}">{{ r.outLabel }}</span>
+                  <span style="font-size: 13px; color: #3f4f4c; font-variant-numeric: tabular-nums">{{ r.run }}</span>
+                  <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="#526461" stroke-width="1.6" aria-hidden="true"><path d="M3 4.5l3 3 3-3"></path></svg>
+                </li>
+              </sc-for>
+            </ul>
+          </sc-if>
+        </sc-for>
+      </div>
+      <p style="margin: 0; font-size: 12px; color: #526461">Rows open like Live: evidence, analysis, and the day chart around the alert with the entry, the good and stop levels and where it ended.</p>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isSymbols }}" hint-placeholder-val="{{ false }}">
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div style="border: 1px solid #cdd7ce; border-radius: 14px; background: #fafbf8; overflow-x: auto">
+        <div style="min-width: 640px">
+          <div aria-hidden="true" style="display: grid; grid-template-columns: 90px 70px minmax(0, 1.4fr) 80px 80px 90px; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #e1e8e1; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #526461">
+            <span>Symbol</span><span>Alerts</span><span>Good / weak / stopped</span><span>Good</span><span>vs random</span><span>Median run</span>
+          </div>
+          <sc-for list="{{ symbols }}" as="s" hint-placeholder-count="8">
+            <div style="{{ s.rowStyle }}">
+              <strong>{{ s.tk }}</strong>
+              <span style="font-variant-numeric: tabular-nums">{{ s.n }}</span>
+              <span style="display: flex; height: 12px; border-radius: 3px; overflow: hidden; gap: 1px"><span style="{{ s.gBar }}"></span><span style="{{ s.wBar }}"></span><span style="{{ s.sBar }}"></span></span>
+              <strong style="font-variant-numeric: tabular-nums">{{ s.good }}</strong>
+              <span style="{{ s.diffStyle }}">{{ s.diff }}</span>
+              <span style="font-variant-numeric: tabular-nums">{{ s.run }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <p style="margin: 0; font-size: 12px; color: #526461">Bars: green good, grey weak, red stopped, also labelled on hover. Rows with fewer than 5 alerts are faded: too few to judge. "vs random" compares with the same symbol's baseline entries.</p>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isQuality }}" hint-placeholder-val="{{ false }}">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px">
+      <section style="padding: 14px 16px; border: 1px solid #cdd7ce; border-radius: 14px; background: #fafbf8; display: flex; flex-direction: column; gap: 8px">
+        <h3 style="margin: 0; font-size: 14px">Why windows did not alert</h3>
+        <sc-for list="{{ diagnostics }}" as="g" hint-placeholder-count="6">
+          <div style="display: grid; grid-template-columns: 150px minmax(0, 1fr) 70px; align-items: center; gap: 8px; font-size: 13px">
+            <span>{{ g.label }}</span>
+            <span style="height: 8px; border-radius: 4px; background: #e7ece6; overflow: hidden"><span style="{{ g.bar }}"></span></span>
+            <span style="text-align: right; font-variant-numeric: tabular-nums; color: #3f4f4c">{{ g.n }}</span>
+          </div>
+        </sc-for>
+        <p style="margin: 0; font-size: 12px; color: #526461">1,148,300 complete windows evaluated. Bars on a log scale.</p>
+      </section>
+      <section style="padding: 14px 16px; border: 1px solid #cdd7ce; border-radius: 14px; background: #fafbf8; display: flex; flex-direction: column; gap: 8px; font-size: 13px">
+        <h3 style="margin: 0; font-size: 14px">Data coverage</h3>
+        <p style="margin: 0">29 of 30 symbols complete · <strong style="color: #7a4307">SOFI missing Mon 28 Sep</strong>; its later baselines are marked insufficient.</p>
+        <p style="margin: 0">Bar cache: 162 symbol-days from cache, 18 fetched from Alpaca, 0 errors.</p>
+        <p style="margin: 0">1 batch failed: <strong>HOOD, RIVN, ARM</strong>: timed out. <button type="button" style="min-height: 28px; padding: 0 10px; border: 1px solid #b9c8bf; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer">Retry these</button></p>
+      </section>
+    </div>
+  </sc-if>
+</section>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1640}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { syms: 'all', dates: '5', custom: true, tab: 'alerts', outcome: 'all', closed: {} };
+  }
+  renderVals() {
+    var self = this, s = this.state;
+    function chip(sel) {
+      return 'min-height: 32px; padding: 0 12px; border-radius: 999px; font: inherit; font-size: 12px; cursor: pointer; ' +
+        (sel ? 'border: 1px solid #142b29; background: #142b29; color: #ffffff; font-weight: 600' : 'border: 1px solid #b9c8bf; background: transparent; color: #142b29');
+    }
+    function seg(sel) {
+      return 'min-height: 34px; padding: 0 12px; border: 0; border-radius: 7px; font: inherit; font-size: 13px; cursor: pointer; ' +
+        (sel ? 'background: #142b29; color: #ffffff; font-weight: 600' : 'background: transparent; color: #142b29');
+    }
+    var symMap = { all: [30, 'NVDA, AMD, TSLA, AAPL, PLTR, META, MSFT, AMZN +22 more'], alerted: [12, 'NVDA, AMD, TSLA, AAPL, PLTR, META, COIN, SMCI +4 more'], custom: [8, 'NVDA, AMD, AVGO, SMCI, MU, ARM, QCOM, INTC'] };
+    var symPresets = [['all', 'Whole watchlist'], ['alerted', 'Alerted this week'], ['custom', 'Semis']].map(function (p) {
+      return { label: p[1], selected: s.syms === p[0], style: chip(s.syms === p[0]), pick: function () { self.setState({ syms: p[0] }); } };
+    });
+    var datePresets = [['5', 'Last 5 sessions'], ['10', '10'], ['20', '20'], ['custom', 'Custom']].map(function (p) {
+      return { label: p[1], selected: s.dates === p[0], style: chip(s.dates === p[0]), pick: function () { self.setState({ dates: p[0] }); } };
+    });
+
+    function field(label, value, live, hint) {
+      var changed = live !== undefined && live !== value;
+      return { label: label, value: value, hint: changed ? ' · live ' + live : (hint ? ' · ' + hint : ''),
+        hintStyle: 'font-size: 12px; ' + (changed ? 'color: #7a4307; font-weight: 600' : 'color: #526461'),
+        inputStyle: 'min-height: 34px; padding: 0 8px; border-radius: 8px; background: #ffffff; color: #142b29; font: inherit; font-size: 14px; border: ' + (changed ? '2px solid #c9862f' : '1px solid #b9c8bf') };
+    }
+    var groups = [
+      { title: 'Volume burst', fields: [field('Volume (× typical)', 2.5, 3), field('Minimum volume', 10000, 10000), field("Today's pace (×)", 3, 3, '0 = off')] },
+      { title: 'Price move', fields: [field('Move (× typical)', 3, 3), field('Minimum move (%)', 0.5, 0.5), field('Last-minute move (%)', 0, 0, '0 = off'), field('Same-direction candles', 1, 1)] },
+      { title: 'Today-relative (optional)', fields: [field("Burst vs today's volume (×)", 0, 0, '0 = off'), field("Move vs today's typical (×)", 0, 0, '0 = off')] },
+      { title: 'Tags and pacing', fields: [field('In play: day volume (×)', 2, 2), field('Cooldown (min)', 15, 15)] }
+    ];
+
+    var verdict = [
+      { label: 'Good momentum', a: 32, b: 30, color: '#16a34a', note: 'ran 2u in the alert’s direction first' },
+      { label: 'Stopped', a: 41, b: 44, color: '#dc2626', note: 'hit 1u against first', inverse: true },
+      { label: 'Weak', a: 27, b: 26, color: '#8a9690', note: 'neither within 60 min' }
+    ].map(function (v) {
+      var d = v.a - v.b, better = v.inverse ? d < 0 : d > 0;
+      return { label: v.label, a: v.a + '%', b: v.b + '%', note: v.note,
+        diff: (d >= 0 ? '+' : '−') + Math.abs(d) + ' pts vs random',
+        diffStyle: 'font-size: 12px; font-weight: 600; color: ' + (v.label === 'Weak' ? '#526461' : better ? '#14642f' : '#9f1a1a'),
+        aBar: 'display: block; height: 100%; width: ' + v.a + '%; background: ' + v.color,
+        bBar: 'display: block; height: 100%; width: ' + v.b + '%; background: ' + v.color + '; opacity: 0.35' };
+    });
+    var forward = [['5 min', 0.08], ['15 min', 0.12], ['30 min', 0.05], ['60 min', -0.02]].map(function (f) {
+      return { label: f[0], value: (f[1] >= 0 ? '+' : '−') + Math.abs(f[1]).toFixed(2) + '%', style: 'font-variant-numeric: tabular-nums; color: ' + (f[1] >= 0 ? '#15803d' : '#b91c1c') };
+    });
+
+    function tabStyle(sel) {
+      return 'display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; margin-bottom: -1px; border: 0; border-bottom: 2px solid ' + (sel ? '#142b29' : 'transparent') +
+        '; border-radius: 0; background: transparent; font: inherit; font-size: 15px; cursor: pointer; ' + (sel ? 'color: #142b29; font-weight: 650' : 'color: #526461; font-weight: 500');
+    }
+    function countStyle(sel) {
+      return 'min-width: 22px; padding: 1px 7px; border-radius: 999px; font-size: 12px; font-weight: 600; ' + (sel ? 'background: #142b29; color: #ffffff' : 'background: #e1e8e1; color: #3f4f4c');
+    }
+    var tabs = [['alerts', 'Alerts', 84], ['symbols', 'By symbol', 21], ['quality', 'Data quality', '1 gap']].map(function (t) {
+      var sel = s.tab === t[0];
+      return { label: t[1], count: t[2], selected: sel, style: tabStyle(sel), countStyle: countStyle(sel), pick: function () { self.setState({ tab: t[0] }); } };
+    });
+
+    var OUT = { good: ['Good', 'background: #e3f1e6; color: #14642f'], stopped: ['Stopped', 'background: #f8e4e2; color: #9f1a1a'], weak: ['Weak', 'background: #eef0ec; color: #3f4f4c'] };
+    var ROWS = [
+      ['fri', '17:42', 'NVDA', 1.84, 5.1, 'good', '2.6u · +0.41% / +0.62%', true], ['fri', '17:21', 'TSLA', -2.05, 4.0, 'stopped', '0.4u · −0.18% / −0.30%', true],
+      ['fri', '16:58', 'AMD', 1.12, 3.4, 'weak', '1.3u · +0.10% / +0.04%', false], ['fri', '16:41', 'AAPL', -0.62, 3.8, 'good', '2.2u · +0.22% / +0.35%', false],
+      ['fri', '15:12', 'PLTR', 2.40, 6.2, 'good', '3.1u · +0.88% / +1.20%', true],
+      ['thu', '22:14', 'META', -1.10, 3.0, 'stopped', '0.2u · −0.25% / −0.41%', false], ['thu', '19:03', 'SMCI', 2.90, 4.6, 'weak', '1.6u · +0.30% / −0.12%', true],
+      ['thu', '17:35', 'COIN', -1.75, 3.9, 'good', '2.4u · +0.66% / +0.70%', false]
+    ];
+    var shown = ROWS.filter(function (r) { return s.outcome === 'all' || r[5] === s.outcome; });
+    var counts = { all: 84, good: 27, stopped: 34, weak: 23 };
+    var outcomes = [['all', 'All'], ['good', 'Good'], ['stopped', 'Stopped'], ['weak', 'Weak']].map(function (o) {
+      return { label: o[1], count: counts[o[0]], selected: s.outcome === o[0], style: seg(s.outcome === o[0]), pick: function () { self.setState({ outcome: o[0] }); } };
+    });
+    var days = [['fri', 'Fri 2 Oct', '14 alerts · 43% good'], ['thu', 'Thu 1 Oct', '17 alerts · 29% good']].map(function (d) {
+      var open = !s.closed[d[0]];
+      return { label: d[1], sub: d[2], open: open, chev: open ? '' : 'transform: rotate(-90deg)',
+        toggle: function () { var c = Object.assign({}, s.closed); c[d[0]] = open; self.setState({ closed: c }); },
+        rows: shown.filter(function (r) { return r[0] === d[0]; }).map(function (r) {
+          return { t: r[1], tk: r[2], ratio: r[4].toFixed(1) + '×', run: r[6], inPlay: r[7],
+            dir: (r[3] >= 0 ? '▲ +' : '▼ −') + Math.abs(r[3]).toFixed(2) + '%',
+            dirStyle: 'justify-self: start; padding: 3px 8px; border-radius: 6px; font-size: 13px; font-weight: 600; ' + (r[3] >= 0 ? 'background: #e3f1e6; color: #14642f' : 'background: #f8e4e2; color: #9f1a1a'),
+            outLabel: OUT[r[5]][0], outStyle: 'justify-self: start; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; ' + OUT[r[5]][1] };
+        }) };
+    });
+
+    var symbols = [
+      ['PLTR', 6, 3, 1, 2, 31, 2.1], ['NVDA', 9, 4, 2, 3, 30, 1.8], ['COIN', 4, 2, 1, 1, 29, 1.7], ['TSLA', 8, 3, 1, 4, 31, 1.2],
+      ['META', 5, 2, 1, 2, 30, 1.3], ['AMD', 7, 2, 2, 3, 29, 1.1], ['SMCI', 4, 1, 1, 2, 28, 0.9], ['AAPL', 5, 1, 1, 3, 30, 0.8]
+    ].map(function (r) {
+      var good = Math.round(r[2] / r[1] * 100), d = good - r[5], small = r[1] < 5;
+      function bar(n, c) { return 'display: block; height: 100%; flex: ' + n + ' 1 0; background: ' + c; }
+      return { tk: r[0], n: r[1], good: good + '%', run: r[6].toFixed(1) + 'u',
+        diff: (d >= 0 ? '+' : '−') + Math.abs(d) + ' pts', diffStyle: 'font-weight: 600; font-variant-numeric: tabular-nums; color: ' + (d >= 0 ? '#14642f' : '#9f1a1a'),
+        gBar: bar(r[2], '#16a34a'), wBar: bar(r[3], '#b9c2bd'), sBar: bar(r[4], '#dc2626'),
+        rowStyle: 'display: grid; grid-template-columns: 90px 70px minmax(0, 1.4fr) 80px 80px 90px; align-items: center; gap: 12px; min-height: 44px; padding: 6px 16px; border-bottom: 1px solid #e1e8e1; opacity: ' + (small ? '0.55' : '1') };
+    });
+
+    var diag = [['Below volume threshold', 812330], ['Move too small', 2104], ['Mixed direction', 1233], ['Low volume', 940], ['Cooldown', 418], ['Insufficient history', 96]];
+    var maxLog = Math.log10(diag[0][1]);
+    var diagnostics = diag.map(function (g) {
+      return { label: g[0], n: g[1].toLocaleString('en-US'), bar: 'display: block; height: 100%; background: #6b7a76; width: ' + (Math.log10(g[1]) / maxLog * 100).toFixed(0) + '%' };
+    });
+
+    return {
+      symCount: symMap[s.syms][0], symPreview: symMap[s.syms][1], symPresets: symPresets, datePresets: datePresets,
+      ruleBadge: '1 change from live', ruleBadgeStyle: 'font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: #fbefd9; color: #7a4307',
+      customOpen: s.custom, customChevron: s.custom ? 'transform: rotate(180deg)' : '', toggleCustom: function () { self.setState({ custom: !s.custom }); },
+      groups: groups, verdict: verdict, forward: forward, tabs: tabs,
+      isAlerts: s.tab === 'alerts', isSymbols: s.tab === 'symbols', isQuality: s.tab === 'quality',
+      outcomes: outcomes, days: days, symbols: symbols, diagnostics: diagnostics
+    };
+  }
+}
+</script>
+</body>
+</html>

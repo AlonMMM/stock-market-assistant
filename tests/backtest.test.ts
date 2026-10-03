@@ -8,6 +8,7 @@ import {
 } from "../packages/market-data/src/backtest.js";
 import type { RawBar } from "../packages/market-data/src/bars.js";
 import { previousSessions } from "../packages/market-data/src/calendar.js";
+import type { BaselineCounts } from "../packages/market-data/src/outcome.js";
 
 // Synthetic regular-session bars (EDT: 13:30Z–20:00Z), flat at 100 on 1,000
 // shares a minute, with a rising 20,000-share burst on 2026-06-03 14:00Z–14:04Z.
@@ -171,6 +172,10 @@ test("local API and hosted Worker share the backtest contract", async () => {
     });
     assert.equal(ok.statusCode, 200);
     assert.equal(ok.json().source, "alpaca");
+    // No bars: the requested symbol is still listed, with zero baseline.
+    assert.deepEqual(ok.json().validation.baselineBySymbol, {
+      AAPL: { scored: 0, good: 0, stopped: 0, weak: 0 },
+    });
     // AAPL and SPY minute bars, then AAPL and SPY daily bars for beta.
     assert.deepEqual(pages, ["sip", "sip", "sip", "sip"]);
 
@@ -251,4 +256,129 @@ test("alerts carry the move against SPY scaled by the ticker's beta", async () =
   assert.ok(Math.abs(context.change - 3) < 1e-9);
   assert.ok(Math.abs(context.spyChange - 0.2) < 1e-9);
   assert.ok(Math.abs(context.excess - 2.7) < 1e-9);
+});
+
+// Synthetic zigzag bars: every minute's close differs from three minutes
+// earlier and fifteen minutes later, so every fifth regular minute in range
+// is a scored baseline entry. `period` changes the pattern per symbol.
+function zigzagBars(period: number): RawBar[] {
+  return syntheticBars().map((b, i) => {
+    const close = 100 + (((i * 3) % period) - period / 2) * 0.05;
+    const open = 100 + ((((i - 1) * 3) % period) - period / 2) * 0.05;
+    return {
+      ...b,
+      open,
+      high: Math.max(open, close),
+      low: Math.min(open, close),
+      close,
+      volume: 1000,
+    };
+  });
+}
+
+test("the baseline is also split by symbol and the split sums to the total", async () => {
+  const bars: Record<string, RawBar[]> = {
+    AAPL: zigzagBars(11),
+    MSFT: zigzagBars(7),
+    FLAT: syntheticBars(), // flat at 100: no baseline entries
+  };
+  const history = async (ticker: string) => bars[ticker] ?? syntheticBars();
+  const result = await runBacktest(
+    { tickers: ["AAPL", "MSFT", "FLAT"], from, to },
+    history,
+    later,
+  );
+  const { baseline, baselineBySymbol } = result.validation;
+  assert.ok(baselineBySymbol);
+  assert.deepEqual(Object.keys(baselineBySymbol), ["AAPL", "MSFT", "FLAT"]);
+  // A symbol without scored baseline entries is present with zeros.
+  assert.deepEqual(baselineBySymbol.FLAT, {
+    scored: 0,
+    good: 0,
+    stopped: 0,
+    weak: 0,
+  });
+  for (const k of ["scored", "good", "stopped", "weak"] as const)
+    assert.equal(
+      Object.values(baselineBySymbol).reduce((n, c) => n + c[k], 0),
+      baseline[k],
+      k,
+    );
+  // Each symbol's counts are exactly its own baseline from a solo run.
+  for (const ticker of ["AAPL", "MSFT"]) {
+    const counts: BaselineCounts = baselineBySymbol[ticker]!;
+    assert.ok(counts.scored > 0, ticker);
+    assert.equal(counts.good + counts.stopped + counts.weak, counts.scored);
+    const solo = await runBacktest(
+      { tickers: [ticker], from, to },
+      history,
+      later,
+    );
+    assert.deepEqual(counts, solo.validation.baseline, ticker);
+  }
+  assert.notDeepEqual(baselineBySymbol.AAPL, baselineBySymbol.MSFT);
+  // Additive: older clients see the same fields, plus the new map.
+  assert.deepEqual(Object.keys(result.validation).sort(), [
+    "baseline",
+    "baselineBySymbol",
+    "config",
+    "good",
+    "medianForward",
+    "medianMinutesToGood",
+    "medianRunUnits",
+    "scored",
+    "stopped",
+    "unscored",
+    "weak",
+  ]);
+});
+
+test("local API and hosted Worker return the same per-symbol baseline", async () => {
+  // Fake Alpaca serving the zigzag fixture for every symbol; placeholder keys.
+  const fixture = zigzagBars(11);
+  const fake = (async (input: URL | RequestInfo) => {
+    const url = new URL(String(input));
+    const minute = url.searchParams.get("timeframe") === "1Min";
+    return Response.json({
+      bars: minute
+        ? fixture.map((b) => ({
+            t: new Date(b.start * 1000).toISOString(),
+            o: b.open,
+            h: b.high,
+            l: b.low,
+            c: b.close,
+            v: b.volume,
+          }))
+        : [],
+      next_page_token: null,
+    });
+  }) as typeof fetch;
+  const payload = { tickers: ["AAPL", "MSFT"], from, to };
+  const app = buildApp(false, { key: "key", secret: "secret", fetcher: fake });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = fake;
+  try {
+    const local = await app.inject({
+      method: "POST",
+      url: "/api/backtest",
+      payload,
+    });
+    const hosted = await worker.fetch(
+      new Request("https://example.test/api/backtest", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+      { ALPACA_API_KEY: "key", ALPACA_API_SECRET: "secret" },
+    );
+    assert.equal(local.statusCode, 200);
+    assert.equal(hosted.status, 200);
+    const a = local.json().validation;
+    const b = (await hosted.json()).validation;
+    assert.ok(a.baselineBySymbol.AAPL.scored > 0);
+    assert.deepEqual(a.baselineBySymbol, b.baselineBySymbol);
+    assert.deepEqual(a.baseline, b.baseline);
+  } finally {
+    globalThis.fetch = realFetch;
+    await app.close();
+  }
 });

@@ -68,3 +68,30 @@ export function bandKinds(
       kinds[i] = kinds[i] === "strong" ? "strong" : e.kind;
   return kinds;
 }
+
+/** Backtest scoring levels for an alert's simulated entry, as prices. */
+export interface OutcomeLevels {
+  entry: number;
+  good: number;
+  stop: number;
+}
+
+/**
+ * Entry, good and stop prices: good is `goodUnits` u in the alert's
+ * direction from the entry, stop `stopUnits` u against it (u = the outcome's
+ * unit, a percent). Null when the alert was not scored.
+ */
+export function outcomeLevels(
+  outcome: { entry: number | null; unit: number | null },
+  direction: "up" | "down",
+  units: { goodUnits: number; stopUnits: number },
+): OutcomeLevels | null {
+  const { entry, unit } = outcome;
+  if (entry === null || unit === null) return null;
+  const sign = direction === "up" ? 1 : -1;
+  return {
+    entry,
+    good: entry * (1 + (sign * units.goodUnits * unit) / 100),
+    stop: entry * (1 - (sign * units.stopUnits * unit) / 100),
+  };
+}
