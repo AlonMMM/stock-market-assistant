@@ -26,7 +26,6 @@ import {
   type Opposite,
   type OppositeKind,
 } from "../../../packages/market-data/src/opposite.js";
-import type { Outcome } from "../../../packages/market-data/src/outcome.js";
 import {
   axisPriceMinWidth,
   bandKinds,
@@ -207,7 +206,6 @@ export function DayChart({
   date: day,
   sector,
   against: initialAgainst = "SPY",
-  outcome,
   className = "",
 }: {
   ticker: string;
@@ -216,7 +214,6 @@ export function DayChart({
   date?: string; // US session date when there is no alert
   sector?: string; // the symbol's sector/theme benchmark ETF, if known
   against?: string; // benchmark shown first: "SPY" or `sector`
-  outcome?: Outcome; // backtest validation of the alert, if scored
   className?: string;
 }) {
   const alertMs = alertEnd ? Date.parse(alertEnd) : NaN;
@@ -482,30 +479,6 @@ export function DayChart({
         color: "#142b29",
         text: `Alert ${israelClock(alertMs)}`,
       });
-    // Validation: the simulated entry and where it turned good or was stopped.
-    if (outcome?.entryAt) {
-      const entryMs = Date.parse(outcome.entryAt);
-      const at = (ms: number) => m.find((p) => p.instant === ms);
-      const entryBar = at(entryMs + 60000);
-      if (entryBar)
-        markers.push({
-          time: entryBar.time,
-          position: "belowBar",
-          shape: "circle",
-          color: colors.ticker,
-          text: `Entry $${outcome.entry?.toFixed(2)}`,
-        });
-      const done =
-        outcome.minutes !== null ? at(entryMs + outcome.minutes * 60000) : null;
-      if (done)
-        markers.push({
-          time: done.time,
-          position: outcome.result === "good" ? "aboveBar" : "belowBar",
-          shape: "circle",
-          color: outcome.result === "good" ? "#15803d" : "#b91c1c",
-          text: outcome.result === "good" ? "✅ good" : "❌ stop",
-        });
-    }
     markers.sort((x, y) => Number(x.time) - Number(y.time));
     if (markers.length) createSeriesMarkers(tickerLine, markers);
     // Applied after the first layout; autoSize would otherwise shift it.
@@ -541,7 +514,7 @@ export function DayChart({
       chartRef.current = null;
     };
     // `opp`, `main`, `bench` and the flags derive from `data`.
-  }, [data, alertMs, window, outcome]);
+  }, [data, alertMs, window]);
 
   useEffect(() => {
     const c = chartRef.current;

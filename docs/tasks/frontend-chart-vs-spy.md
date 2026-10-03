@@ -11,9 +11,10 @@ Spec: [chart-vs-spy](../features/chart-vs-spy.md) at 570b48c. Contract: Backend
 
 The shared day chart (Live alert rows, watchlist rows, Backtest alert rows, market chart):
 
-1. No entry/good/stop horizontal lines; the Backtest trade view keeps its outcome text and
-   the chart keeps the entry and good/stop point markers. `outcomeLevels` and its test
-   were removed (no other user).
+1. No entry/good/stop lines and no entry or good/stop point markers (Product+UX
+   decision 2026-10-03); the alert marker and the Backtest trade-view outcome text stay,
+   and the Backtest note no longer says the chart marks them. `outcomeLevels` and its
+   test, and DayChart's `outcome`/`direction`/`units` props, were removed.
 2. Readout: `NVDA +2.31% · $131.62`, `SPY +0.31% · $573.10` (or the sector ETF) for the
    pointed or latest minute. Axis last-value (and crosshair) labels show the same pair
    when the chart is ≥ 600 px wide; narrower charts keep % only (two price labels would
@@ -48,7 +49,8 @@ to ~755 px on phones; `.watch-table` is now `position: relative`.
   designed to produce one green and several red episodes) at 1280 and 390: watchlist
   table + score column (sort ▼/▲, vs sector keeps SPY scores), NVDA watchlist row chart
   (vs SPY and vs SMH), Live TSLA alert chart (β assumed), Backtest alert chart (no
-  horizontal lines, trade view text present). Hover with real CDP mouse events at 1280
+  horizontal lines, trade view text present; re-checked at 1280 after the
+  markers were removed: only the alert marker remains). Hover with real CDP mouse events at 1280
   updates time, both %·$ pairs and the score; leaving returns to latest. No page overflow
   at 390 (after the fix above); no console errors. A run without `vsSpy` shows "—" in
   header and readout and "not available" in the legend. Screenshots inspected, not
@@ -58,8 +60,6 @@ to ~755 px on phones; `.watch-table` is now `position: relative`.
 
 ## Open questions / handoff
 
-- Entry and good/stop point markers were kept on the Backtest chart (the spec removed the
-  lines only). Product can drop them if wanted.
 - On phones the expanded watchlist row sits inside the horizontally scrolling table (as
   before), so its chart is wider than the screen; the extra column makes the table 1044
   px min instead of 940.
