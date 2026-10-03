@@ -8,7 +8,8 @@ Branch: session/frontend-backtest-page
 
 The Backtest view redesigned per the [spec](../features/backtest-page.md) (spec commit
 fd18ce5), in the Live page's style, with `validation.baselineBySymbol` from the backend
-branch (merged: 94b5cfe contract, ba7e59a implementation).
+branch (merged: 94b5cfe contract, ba7e59a implementation) and origin/main 7893467 (look-now
+score, merged in 488c092).
 
 ## What was built
 
@@ -37,13 +38,24 @@ branch (merged: 94b5cfe contract, ba7e59a implementation).
   Alerts filtered; "—" without a per-symbol baseline), Data quality (log-scale
   diagnostics, coverage, cache, failed batches with Retry these → reruns only those
   batches with the original run's settings and merges).
+- Look-now score (from main): its card sits above the verdict, alert rows show the score
+  badge and detail line, and the batch merge combines look-now summaries (baselines by
+  weighted average). Conflict in `packages/market-data/src/backtest.ts` resolved as the
+  union of both sides (`baselineBySymbol` and `lookNow`), no logic change.
+- Wording per Product+UX: "baseline" / "ordinary momentum entries" instead of "random"
+  (verdict, bars, differences, By-symbol "vs baseline"; spec updated in 6be9347).
+- Orphaned CSS removed (old feed, notices, watchlist, result-header, metrics, etc.), each
+  selector checked unused in `apps/web/src`; dynamic `relation-*`/`lean-*`/`explains-*` kept.
 - Pure logic in `apps/web/src/backtest-model.ts` (tests: `tests/backtest-model.test.ts`);
   `outcomeLevels` in `chart-model.ts`; `groupAlertDays` gained the "run" sort.
 
 ## Verification
 
-- `npm run check`: pass (171 tests: 170 pass, 1 skipped as before). `git diff --check`:
+- `npm run check`: pass (178 tests: 177 pass, 1 skipped as before). `git diff --check`:
   clean.
+- After the main merge: headless re-check (1280 and 390, synthetic mock) of the look-now
+  card, verdict heading/"Baseline" labels/"vs baseline" differences, the meta line and the
+  By-symbol "vs baseline" header; no horizontal page scroll.
 - Headless Chrome against a SYNTHETIC mock API (kept outside the repo), desktop 1280 and
   phone 390: presets, Last 10 sessions dates, scenario 1 highlight/badge/title/Reset, run
   progress, verdict colours, a 503 batch → "2 issues" tab + pill warning → Retry these →
@@ -57,10 +69,11 @@ branch (merged: 94b5cfe contract, ba7e59a implementation).
 ## Notes and open questions
 
 - Dates show as "Sept" (ICU en-GB), the same as the Live day labels; the spec writes "Sep".
-- "Random" is the existing baseline (momentum entries every 5th regular minute); the meta
-  line says so.
-- Unused legacy CSS (`.feed-*`, `.validation*`, `.notices`, `.watchlist*`) remains;
-  removal left for a cleanup.
+- Main now makes the look-now score the main grade and calls stop/target the "trade
+  view"; this page shows both (look-now card first, then the verdict). Whether the verdict
+  should be labelled or collapsed as the trade view is a Product+UX decision.
+- The look-now card is main's existing component (older `.validation` styling, its own
+  "random minutes" wording, which is accurate for that score).
 
 ## Next
 
