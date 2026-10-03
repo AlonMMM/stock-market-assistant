@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Status pill states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 960px; height: 860px; box-sizing: border-box; padding: 40px; background: #f4f5ef; color: #142b29; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 20px">
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <h1 style="margin: 0; font-family: Georgia, serif; font-size: 30px; letter-spacing: -0.5px">Status pill — one place, beside the SMA. title</h1>
+    <p style="margin: 0; color: #3f4f4c">Shape and wording carry the state, not color alone. Tapping the pill opens the details: feed, symbols, last bar, checked time and warnings.</p>
+  </div>
+
+  <div style="border: 1px solid #cdd7ce; border-radius: 14px; background: #fafbf8; overflow: hidden">
+    <div style="display: grid; grid-template-columns: 250px 290px minmax(0, 1fr); gap: 16px; padding: 10px 18px; border-bottom: 1px solid #e1e8e1; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #526461">
+      <span>Pill</span><span>When</span><span>Page behavior</span>
+    </div>
+    <sc-for list="{{ states }}" as="s" hint-placeholder-count="7">
+      <div style="display: grid; grid-template-columns: 250px 290px minmax(0, 1fr); gap: 16px; align-items: center; padding: 12px 18px; border-bottom: 1px solid #e1e8e1">
+        <span style="{{ s.pillStyle }}">
+          <sc-if value="{{ s.isLive }}" hint-placeholder-val="{{ false }}"><span style="width: 9px; height: 9px; border-radius: 50%; background: #16a34a; box-shadow: 0 0 0 4px rgba(22,163,74,0.18)"></span></sc-if>
+          <sc-if value="{{ s.isRing }}" hint-placeholder-val="{{ false }}"><span style="{{ s.ringStyle }}"></span></sc-if>
+          <sc-if value="{{ s.isWarn }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 1.5l6 11H1z"></path><path d="M7 6v3M7 10.8v.2"></path></svg></sc-if>
+          <sc-if value="{{ s.isErr }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7" cy="7" r="5.8"></circle><path d="M4.8 4.8l4.4 4.4M9.2 4.8l-4.4 4.4"></path></svg></sc-if>
+          {{ s.label }}<span style="font-weight: 400; opacity: 0.85">{{ s.detail }}</span>
+        </span>
+        <span style="font-size: 13px; color: #3f4f4c">{{ s.when }}</span>
+        <span style="font-size: 13px">{{ s.page }}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+    <div style="padding: 14px 16px; border: 1px solid #e3b4ae; border-radius: 12px; background: #fbeceb; display: flex; flex-direction: column; gap: 4px">
+      <strong style="color: #8a1c14">Blocking banner (only for Offline)</strong>
+      <span style="font-size: 13px">Live alerts are paused — the collector is unreachable. Showing the last alerts received, up to 17:44. Checked 17:45 Israel time.</span>
+    </div>
+    <div style="padding: 14px 16px; border: 1px solid #cdd7ce; border-radius: 12px; background: #fafbf8; display: flex; flex-direction: column; gap: 4px">
+      <strong>Deep link not found (Alerts tab)</strong>
+      <span style="font-size: 13px">The linked NVDA alert from 17:42 isn't among the recent live alerts. Shown inline above the list, not at the top of the page.</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":860}}'>
+class Component extends DCLogic {
+  renderVals() {
+    function pill(bg, border, color) {
+      return 'justify-self: start; display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 13px; border-radius: 999px; font-size: 13px; font-weight: 600; background: ' + bg + '; border: 1px solid ' + border + '; color: ' + color;
+    }
+    var green = pill('#eaf5ec', '#b8d9bf', '#14532d');
+    var grey = pill('#eef0ec', '#c9d0c9', '#33413e');
+    var amber = pill('#fbefd9', '#e2c38a', '#7a4307');
+    var red = pill('#fbeceb', '#e3b4ae', '#8a1c14');
+    return {
+      states: [
+        { pillStyle: green, isLive: true, label: 'Live', detail: '· 30/30 · 17:44', when: 'Streaming, newest bar under 3 min old', page: 'Normal. Last-bar time on the pill updates every 30 s.' },
+        { pillStyle: grey, isRing: true, ringStyle: 'width: 8px; height: 8px; border-radius: 50%; border: 2px solid #6b7a76', label: 'Market closed', detail: '· pre-market Mon 11:00', when: 'Connected, outside every US session (nights, weekends, holidays)', page: 'Normal. Replaces today’s confusing “Connected · waiting for bars”.' },
+        { pillStyle: grey, isRing: true, ringStyle: 'width: 8px; height: 8px; border-radius: 50%; border: 2px dashed #6b7a76', label: 'Warming up', detail: '· loading history', when: 'Collector starting, loading recent bars', page: 'Alerts list shows its loading state.' },
+        { pillStyle: grey, isRing: true, ringStyle: 'width: 8px; height: 8px; border-radius: 2px; border: 2px solid #6b7a76', label: 'Streaming off', detail: '', when: 'Alpaca streaming switched off by configuration', page: 'Alerts list explains that no live alerts will arrive.' },
+        { pillStyle: amber, isWarn: true, label: 'Delayed', detail: '· last bar 4 min ago', when: 'In a session, but newest bar is 3+ min old', page: 'Alerts stay visible. Details explain the stall.' },
+        { pillStyle: amber, isWarn: true, label: 'Reconnecting', detail: '', when: 'Stream dropped; collector is reconnecting', page: 'Alerts stay visible. Details show the failure text.' },
+        { pillStyle: red, isErr: true, label: 'Offline', detail: '· checked 17:45', when: 'Collector unreachable or not configured', page: 'Blocking banner under the header (below).' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

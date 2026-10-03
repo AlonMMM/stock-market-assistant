@@ -1,0 +1,64 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Main.dc.html": {
+      "expand": "fill",
+      "h": 1240,
+      "is_interactive": true,
+      "title": "Desktop · Alerts tab",
+      "w": 1280,
+      "x": 0,
+      "y": 0
+    },
+    "Phone.dc.html": {
+      "h": 844,
+      "title": "Phone · Alerts tab",
+      "w": 390,
+      "x": 0,
+      "y": 2270
+    },
+    "Status.dc.html": {
+      "h": 860,
+      "title": "Status pill · states",
+      "w": 960,
+      "x": 470,
+      "y": 2270
+    },
+    "Watchlist.dc.html": {
+      "expand": "fill",
+      "h": 2150,
+      "is_interactive": true,
+      "title": "Desktop · Watchlist tab",
+      "w": 1280,
+      "x": 1360,
+      "y": 0
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-10-03T13:22:03Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "title": {
+      "kind": "title1",
+      "maxW": 2640,
+      "text": "Live page redesign — proposal",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Watchlist.dc.html",
+    "Phone.dc.html",
+    "Status.dc.html"
+  ],
+  "pages": [],
+  "title": "Live Page Redesign"
+}
