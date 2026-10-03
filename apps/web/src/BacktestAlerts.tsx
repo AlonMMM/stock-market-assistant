@@ -10,6 +10,8 @@ import {
   filterOutcome,
   outcomeCounts,
   type OutcomeFilter,
+  signedPercent,
+  shownSign,
 } from "./backtest-model.js";
 import {
   alertDirection,
@@ -23,8 +25,6 @@ const DayChart = lazy(() =>
   import("./DayChart.js").then((m) => ({ default: m.DayChart })),
 );
 
-const signedPct = (n: number | null, digits = 2) =>
-  n === null ? "—" : `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(digits)}%`;
 const sessionTag = { pre: "Pre", regular: "", post: "After" };
 const outcomeName = {
   good: "Good",
@@ -66,10 +66,11 @@ function OutcomeLine({ outcome: o }: { outcome: Outcome }) {
       </strong>{" "}
       · entry ${o.entry?.toFixed(2)}
       {o.entryAt && ` at ${israelClock(Date.parse(o.entryAt))}`} · u = ±
-      {o.unit?.toFixed(2)}% · best {signedPct(o.run)} ({o.runUnits?.toFixed(1)}
-      u) · worst {signedPct(o.pullback)} · after 5/15/30/60 min:{" "}
-      {signedPct(o.forward[5])} / {signedPct(o.forward[15])} /{" "}
-      {signedPct(o.forward[30])} / {signedPct(o.forward[60])}
+      {o.unit?.toFixed(2)}% · best {signedPercent(o.run)} (
+      {o.runUnits?.toFixed(1)}
+      u) · worst {signedPercent(o.pullback)} · after 5/15/30/60 min:{" "}
+      {signedPercent(o.forward[5])} / {signedPercent(o.forward[15])} /{" "}
+      {signedPercent(o.forward[30])} / {signedPercent(o.forward[60])}
     </p>
   );
 }
@@ -247,7 +248,7 @@ export function BacktestAlerts({
                                     up ? "move-tag up" : "move-tag down"
                                   }
                                 >
-                                  {up ? "▲" : "▼"} {signedPct(a.move)}
+                                  {up ? "▲" : "▼"} {signedPercent(a.move)}
                                 </span>
                                 <strong className="alert-vol">
                                   {a.ratio === null
@@ -263,7 +264,7 @@ export function BacktestAlerts({
                                 <span className="alert-run">
                                   {o.runUnits === null
                                     ? "—"
-                                    : `${o.runUnits.toFixed(1)}u · ${signedPct(o.forward[15])} / ${signedPct(o.forward[60])}`}
+                                    : `${o.runUnits.toFixed(1)}u · ${signedPercent(o.forward[15])} / ${signedPercent(o.forward[60])}`}
                                 </span>
                                 <Chevron />
                               </button>

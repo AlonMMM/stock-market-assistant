@@ -2589,3 +2589,22 @@ main:has(> .backtest-page) {
     grid-row: 2;
   }
 }
+@media (max-width: 560px) {
+  .results-column .tabs {
+    overflow-x: auto;
+  }
+  .results-column .tabs {
+    gap: 0;
+  }
+  .results-column .tabs button {
+    gap: 5px;
+    padding: 0 6px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .results-column .tab-count {
+    min-width: 0;
+    padding: 1px 6px;
+    font-size: 11px;
+  }
+}

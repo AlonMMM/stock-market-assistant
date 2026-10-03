@@ -24,12 +24,14 @@ import {
   qualityLabel,
   rangeLabel,
   requestKey,
+  isSettingsError,
   ruleChanges,
   ruleLabel,
   ruleSummary,
   selectedPreset,
   sessionCount,
   setupSummary,
+  signedPercent,
   signedPoints,
   sortSymbolRows,
   symbolPresets,
@@ -193,6 +195,9 @@ test("verdict: points vs random coloured by whether they are better (scenario 4)
   assert.equal(weak!.tone, "neutral");
   assert.equal(signedPoints(2), "+2 pts");
   assert.equal(signedPoints(-3), "−3 pts");
+  assert.equal(signedPercent(-0.001), "0.00%");
+  assert.equal(signedPercent(0.123), "+0.12%");
+  assert.equal(signedPercent(-0.4), "−0.40%");
   const worse = verdictRows(
     summary({
       scored: 40,
@@ -347,6 +352,9 @@ test("data quality label and log-scale diagnostics", () => {
   assert.equal(qualityLabel(ok, fail), "1 failed");
   assert.equal(qualityLabel(gap, fail), "2 issues");
   assert.equal(qualityLabel(null, fail), "1 failed");
+  assert.equal(isSettingsError("Invalid threshold"), true);
+  assert.equal(isSettingsError("Choose at most 20 trading sessions"), true);
+  assert.equal(isSettingsError("Timed out"), false);
   const bars = diagnosticBars({
     "small-move": 10,
     "below-threshold": 999999,

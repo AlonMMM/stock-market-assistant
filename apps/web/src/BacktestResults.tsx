@@ -16,10 +16,10 @@ import {
   type FailedBatch,
   type SymbolRow,
   type SymbolSort,
+  signedPercent,
+  shownSign,
 } from "./backtest-model.js";
 
-const signedPct = (n: number | null) =>
-  n === null ? "—" : `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(2)}%`;
 const pctText = (n: number | null) => (n === null ? "—" : `${n}%`);
 
 const verdictText = {
@@ -97,10 +97,14 @@ export function Verdict({
               {m} min{" "}
               <strong
                 className={
-                  v === null ? "" : v >= 0 ? "excess up" : "excess down"
+                  v === null || shownSign(v) === 0
+                    ? ""
+                    : shownSign(v) > 0
+                      ? "excess up"
+                      : "excess down"
                 }
               >
-                {signedPct(v)}
+                {signedPercent(v)}
               </strong>
             </span>
           );

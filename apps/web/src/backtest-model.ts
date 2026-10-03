@@ -400,6 +400,17 @@ export function verdictRows(s: ValidationSummary): VerdictRow[] {
 export const signedPoints = (n: number) =>
   `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n)} pts`;
 
+/** "+0.12%" / "−0.40%" / "0.00%" (no sign when it rounds to zero). */
+export function signedPercent(n: number | null, digits = 2): string {
+  if (n === null) return "—";
+  const r = Number(n.toFixed(digits));
+  return `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r).toFixed(digits)}%`;
+}
+
+/** Sign of a value as displayed: 1, −1 or 0 when it rounds to zero. */
+export const shownSign = (n: number, digits = 2) =>
+  Math.sign(Number(n.toFixed(digits)));
+
 /** Scored alerts below which the verdict warns about noise. */
 export const minTrusted = 50;
 

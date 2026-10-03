@@ -7,6 +7,7 @@ import {
   HistogramSeries,
   LineSeries,
   LineStyle,
+  type AutoscaleInfo,
   type IChartApi,
   type MouseEventParams,
   type SeriesMarker,
@@ -301,6 +302,17 @@ export function DayChart({
 
     // Ticker on the right axis, benchmark on the left, both % from the
     // previous close and each fitted to its own range.
+    // Backtest scoring levels (entry, good, stop) in % from the same
+    // reference; the axis range stretches to keep them visible.
+    const levels =
+      outcome && direction && units
+        ? outcomeLevels(outcome, direction, units)
+        : null;
+    const reference = main.previousClose ?? main.bars[0]?.close ?? 1;
+    const pct = (price: number) => (price / reference - 1) * 100;
+    const levelPcts = levels
+      ? [levels.entry, levels.good, levels.stop].map(pct)
+      : [];
     const tickerLine = chart.addSeries(LineSeries, {
       color: colors.ticker,
       lineWidth: 2,
@@ -308,6 +320,17 @@ export function DayChart({
       priceFormat: percentFormat,
       priceLineVisible: false,
       crosshairMarkerRadius: 4,
+      autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
+        const info = original();
+        if (!info?.priceRange || !levelPcts.length) return info;
+        return {
+          ...info,
+          priceRange: {
+            minValue: Math.min(info.priceRange.minValue, ...levelPcts),
+            maxValue: Math.max(info.priceRange.maxValue, ...levelPcts),
+          },
+        };
+      },
     });
     tickerLine.setData(m.map((p) => ({ time: p.time, value: p.percent })));
     if (b) {
@@ -459,14 +482,7 @@ export function DayChart({
           text: outcome.result === "good" ? "✅ good" : "❌ stop",
         });
     }
-    // Scoring levels as horizontal lines, in % from the same reference.
-    const levels =
-      outcome && direction && units
-        ? outcomeLevels(outcome, direction, units)
-        : null;
     if (levels) {
-      const reference = main.previousClose ?? main.bars[0]?.close ?? 1;
-      const pct = (price: number) => (price / reference - 1) * 100;
       for (const [price, title, color, style] of [
         [levels.entry, "Entry", colors.typical, LineStyle.Dotted],
         [levels.good, "Good", "#15803d", LineStyle.Dashed],
