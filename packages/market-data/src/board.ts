@@ -1,7 +1,8 @@
 import { AlpacaFeed } from "./alpaca.js";
 import { sipDelay, type Credentials } from "./backtest.js";
 import { normalize, type RawBar } from "./bars.js";
-import { benchmark } from "./beta.js";
+import type { D1Like } from "./bar-cache.js";
+import { benchmark, betaReturns } from "./beta.js";
 import {
   coreClose,
   newYork,
@@ -9,11 +10,19 @@ import {
   previousSessions,
 } from "./calendar.js";
 import {
+  excessPercent,
+  rsScore,
+  spyStrength,
+  type SpyStrength,
+} from "./rs-score.js";
+import {
   baselineSessions,
   baselineStep,
+  D1DailyStore,
   typicalAt,
   volumeCurve,
   type BaselineStore,
+  type DailyStore,
   type VolumeCurve,
 } from "./volume-baseline.js";
 
@@ -63,7 +72,18 @@ type MultiHistory = (
   start: string,
   end: string,
   timeframe: "5Min" | "1Day",
+  adjustment?: "raw" | "split",
 ) => Promise<Map<string, RawBar[]>>;
+
+/** β/σ vs SPY per symbol and board date, computed once per day. */
+export type StrengthStore = DailyStore<SpyStrength>;
+
+/** D1 store (the bar-cache database) for β/σ vs SPY. */
+export class D1StrengthStore extends D1DailyStore<SpyStrength> {
+  constructor(db: D1Like) {
+    super(db, "spy_strength", "strength");
+  }
+}
 
 /** Latest US session with (15-minute delayed) data at `now`. */
 export function latestSession(now: number): string {
@@ -132,6 +152,67 @@ async function baselines(
   return curves;
 }
 
+/**
+ * β/σ vs SPY for `tickers` on board date `date` (docs/features/chart-vs-spy.md):
+ * stored values first, then one split-adjusted daily request for the rest and
+ * SPY over the 61 sessions before the date, which is stored. Failures return
+ * no values (score and β null) and are not stored.
+ */
+async function strengths(
+  tickers: string[],
+  date: string,
+  multi: MultiHistory,
+  store?: StrengthStore,
+): Promise<Map<string, SpyStrength>> {
+  let values = new Map<string, SpyStrength>();
+  if (!tickers.length) return values;
+  try {
+    if (store) values = await store.get(date, tickers);
+  } catch {
+    // Degrade to fetching; the result stays correct.
+  }
+  const missing = tickers.filter((t) => !values.has(t));
+  if (!missing.length) return values;
+  try {
+    const sessions = previousSessions(date, betaReturns + 1);
+    const daily = await multi(
+      [...new Set([...missing, benchmark])],
+      `${sessions[0]}T00:00:00Z`,
+      // Ends at the board date's midnight UTC, before its daily bar.
+      `${date}T00:00:00Z`,
+      "1Day",
+      "split",
+    );
+    const spy = daily.get(benchmark) ?? [];
+    // Without SPY history every value would be "assumed": not worth storing.
+    if (!spy.length) return values;
+    const fresh = new Map(
+      missing.map((t) => [t, spyStrength(sessions, daily.get(t) ?? [], spy)]),
+    );
+    for (const [t, value] of fresh) values.set(t, value);
+    try {
+      await store?.put(date, fresh);
+    } catch {
+      // Not stored this time; recomputed on the next poll.
+    }
+  } catch {
+    // History or calendar unavailable: score and β are reported as null.
+  }
+  return values;
+}
+
+/** Close of the newest complete bar of `date` ending by `asOf`. */
+function closeAt(rows: RawBar[], ticker: string, date: string, asOf: number) {
+  let close: number | null = null;
+  for (const row of rows)
+    if (
+      row.start + baselineStep * 60 <= asOf &&
+      normalize(ticker, row, "shares")?.date === date
+    )
+      close = row.close;
+  return close;
+}
+
 function stats(
   ticker: string,
   rows: RawBar[],
@@ -162,6 +243,8 @@ function stats(
     volume,
     typicalVolume,
     relVolume: typicalVolume ? volume / typicalVolume : null,
+    rsScore: null,
+    beta: null,
   };
 }
 
@@ -171,6 +254,7 @@ export async function runBoard(
   now = Date.now(),
   benchmarks: Record<string, string> = {},
   store?: BaselineStore,
+  strengthStore?: StrengthStore,
 ): Promise<Board> {
   const date = latestSession(now);
   const previous = previousSessions(date, 1)[0]!;
@@ -192,11 +276,28 @@ export async function runBoard(
   const step = baselineStep * 60;
   const asOf =
     Math.floor(Math.min(end, newYorkToUtc(date, 1200)) / 1000 / step) * step;
-  const [intraday, daily, curves] = await Promise.all([
+  const [intraday, daily, curves, strength] = await Promise.all([
     multi(symbols, `${date}T00:00:00Z`, new Date(end).toISOString(), "5Min"),
     multi(symbols, `${previous}T00:00:00Z`, `${date}T00:00:00Z`, "1Day"),
     baselines(listed, date, multi, store),
+    strengths(listed, date, multi, strengthStore),
   ]);
+  const previousCloses = new Map(
+    symbols.map((ticker) => [
+      ticker,
+      (daily.get(ticker) ?? []).find(
+        (row) => newYork(row.start * 1000).date === previous,
+      )?.close ?? null,
+    ]),
+  );
+  // Score vs SPY at asOf: % from the previous daily close to the newest
+  // complete 5-minute bar, for the stock and for SPY.
+  const change = (ticker: string) => {
+    const base = previousCloses.get(ticker);
+    const close = closeAt(intraday.get(ticker) ?? [], ticker, date, asOf);
+    return base && close !== null ? (close / base - 1) * 100 : null;
+  };
+  const spyChange = change(benchmark);
   return {
     source: "alpaca",
     feed: "sip",
@@ -215,15 +316,12 @@ export async function runBoard(
         const bar = normalize(ticker, row, "shares");
         if (bar?.date === date) points.push([row.start, row.close]);
       }
-      const close = (daily.get(ticker) ?? []).find(
-        (row) => newYork(row.start * 1000).date === previous,
-      )?.close;
       const series: BoardSeries = {
         ticker,
-        previousClose: close ?? null,
+        previousClose: previousCloses.get(ticker) ?? null,
         points,
       };
-      if (listed.includes(ticker))
+      if (listed.includes(ticker)) {
         series.stats = stats(
           ticker,
           intraday.get(ticker) ?? [],
@@ -231,6 +329,19 @@ export async function runBoard(
           asOf,
           curves.get(ticker),
         );
+        const value = strength.get(ticker);
+        const stock = change(ticker);
+        if (value) {
+          series.stats.beta = value.betaAssumed ? null : value.beta;
+          series.stats.rsScore =
+            stock !== null && spyChange !== null
+              ? rsScore(
+                  excessPercent(stock, spyChange, value.beta),
+                  value.sigma,
+                )
+              : null;
+        }
+      }
       return series;
     }),
   };
@@ -243,6 +354,7 @@ export async function handleBoard(
   fetcher: typeof fetch = fetch,
   now = Date.now(),
   store?: BaselineStore,
+  strengthStore?: StrengthStore,
 ): Promise<{ status: number; body: Board | { error: string } }> {
   if (!credentials.key || !credentials.secret)
     return {
@@ -261,11 +373,12 @@ export async function handleBoard(
       status: 200,
       body: await runBoard(
         tickers,
-        (symbols, start, end, timeframe) =>
-          feed.multiHistory(symbols, start, end, timeframe),
+        (symbols, start, end, timeframe, adjustment) =>
+          feed.multiHistory(symbols, start, end, timeframe, adjustment),
         now,
         benchmarks,
         store,
+        strengthStore,
       ),
     };
   } catch (error) {

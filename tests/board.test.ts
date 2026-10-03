@@ -7,6 +7,7 @@ import {
   latestSession,
   runBoard,
 } from "../packages/market-data/src/board.js";
+import { previousSessions } from "../packages/market-data/src/calendar.js";
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -66,7 +67,8 @@ test("board series follow the watchlist, add SPY and QQQ, and keep the session d
   ]);
   // Rel vol history: watchlist symbols only, each previous session's regular
   // hours as 5-minute bars (09:30–16:00 New York = 13:30–20:00Z in EDT).
-  assert.equal(calls.length, 22);
+  // Plus one split-adjusted daily request for β/σ vs SPY (last).
+  assert.equal(calls.length, 23);
   assert.deepEqual(calls[2], [
     "NVDA,SPY",
     "2026-08-27T13:30:00.000Z",
@@ -74,6 +76,12 @@ test("board series follow the watchlist, add SPY and QQQ, and keep the session d
     "5Min",
   ]);
   assert.deepEqual(calls.at(-1), [
+    "NVDA,SPY",
+    `${previousSessions("2026-09-25", 61)[0]}T00:00:00Z`,
+    "2026-09-25T00:00:00Z",
+    "1Day",
+  ]);
+  assert.deepEqual(calls.at(-2), [
     "NVDA,SPY",
     "2026-09-24T13:30:00.000Z",
     "2026-09-24T20:00:00.000Z",

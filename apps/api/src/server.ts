@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { D1BarCache } from "../../../packages/market-data/src/bar-cache.js";
+import { D1StrengthStore } from "../../../packages/market-data/src/board.js";
 import { D1BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
 import { SqliteD1 } from "./sqlite-d1.js";
 import { buildApp } from "./app.js";
@@ -15,6 +16,7 @@ const app = buildApp(true, {
   secret: process.env.ALPACA_API_SECRET,
   cache: new D1BarCache(db),
   baselines: new D1BaselineStore(db),
+  strengths: new D1StrengthStore(db),
 });
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {

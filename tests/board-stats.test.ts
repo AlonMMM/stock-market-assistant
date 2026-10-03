@@ -1,7 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { RawBar } from "../packages/market-data/src/bars.js";
-import { runBoard } from "../packages/market-data/src/board.js";
+import {
+  D1StrengthStore,
+  runBoard,
+} from "../packages/market-data/src/board.js";
+import {
+  rsScore,
+  type SpyStrength,
+} from "../packages/market-data/src/rs-score.js";
+import { pairedDaily } from "./analysis-fixtures.js";
 import {
   newYorkToUtc,
   previousSessions,
@@ -9,6 +17,7 @@ import {
 import {
   D1BaselineStore,
   MemoryBaselineStore,
+  MemoryDailyStore,
   typicalAt,
   volumeCurve,
   type VolumeCurve,
@@ -51,6 +60,8 @@ function today(cutoff: number): RawBar[] {
   return rows;
 }
 
+type Multi = Parameters<typeof runBoard>[1];
+
 function fake(cutoff: number, counts: Record<string, number> = {}) {
   const calls: string[][] = [];
   const multi = async (
@@ -90,6 +101,9 @@ test("normal case: volume to the cutoff vs the median of 20 sessions", async () 
     volume: 15 * 2100,
     typicalVolume: 15 * 100 * 10.5, // median of 1..20 is 10.5
     relVolume: 2,
+    // One daily bar of history: β cannot be estimated and σ is unavailable.
+    rsScore: null,
+    beta: null,
   });
   // Benchmarks not in the watchlist carry no stats.
   assert.equal(board.series.find((s) => s.ticker === "SPY")!.stats, undefined);
@@ -108,6 +122,8 @@ test("scenario 8: before the regular open Rel vol is null", async () => {
     volume: 0,
     typicalVolume: null,
     relVolume: null,
+    rsScore: null,
+    beta: null,
   });
   // First complete regular bar: 09:30–09:35 NY.
   const first = fake(at(`${date}T13:35:00Z`));
@@ -146,13 +162,38 @@ test("after the close, volume and typical volume cover the whole regular session
 test("stored baselines make later polls skip the history requests", async () => {
   const now = at(`${date}T15:00:00Z`) * 1000;
   const store = new MemoryBaselineStore();
+  const strengths = new MemoryDailyStore<SpyStrength>();
+  // SYNTHETIC daily history so β/σ vs SPY are computed and stored.
+  const daily = pairedDaily(0.02, previousSessions(date, 61));
+  let splitCalls = 0;
+  const withDaily =
+    (base: Multi): Multi =>
+    async (symbols, start, end, timeframe, adjustment) => {
+      if (adjustment !== "split") return base(symbols, start, end, timeframe);
+      splitCalls++;
+      return new Map(
+        symbols.map((s) => [s, s === "SPY" ? daily.benchmark : daily.stock]),
+      );
+    };
   const first = fake(at(`${date}T14:45:00Z`));
-  await runBoard(["NVDA"], first.multi, now, {}, store);
-  assert.equal(first.calls.length, 22); // intraday, daily, 20 sessions
+  await runBoard(["NVDA"], withDaily(first.multi), now, {}, store, strengths);
+  // intraday, daily, 20 sessions; plus one β/σ history request
+  assert.equal(first.calls.length, 22);
+  assert.equal(splitCalls, 1);
+  assert.equal(strengths.rows.size, 1);
   const second = fake(at(`${date}T14:45:00Z`));
-  const board = await runBoard(["NVDA"], second.multi, now, {}, store);
+  const board = await runBoard(
+    ["NVDA"],
+    second.multi,
+    now,
+    {},
+    store,
+    strengths,
+  );
   assert.equal(second.calls.length, 2);
+  assert.equal(splitCalls, 1);
   assert.equal(board.series[0]!.stats!.relVolume, 2);
+  assert.ok(Math.abs(board.series[0]!.stats!.beta! - 1.5) < 1e-9);
 });
 
 test("a failed history request still returns the board without Rel vol", async () => {
@@ -224,4 +265,89 @@ test("local API and hosted Worker share the board contract", async () => {
   } finally {
     await unconfigured.close();
   }
+});
+
+const priced = (start: number, close: number): RawBar => ({
+  ...bar(start, 1, close, close),
+  open: close,
+  close,
+});
+
+// SYNTHETIC: NVDA 100 → 102 (+2%) and SPY 500 → 497 (−0.6%) at the newest
+// complete 5-minute bar; daily history gives β 1.5 and ±2% daily excess.
+function strengthBoard(failDaily = false) {
+  const daily = pairedDaily(0.02, previousSessions(date, 61));
+  const calls: string[] = [];
+  const multi: Multi = async (symbols, start, end, timeframe, adjustment) => {
+    calls.push(`${timeframe}${adjustment ? `:${adjustment}` : ""}`);
+    if (adjustment === "split") {
+      if (failDaily) throw new Error("Alpaca REST request failed (429)");
+      return new Map(
+        symbols.map((s) => [s, s === "SPY" ? daily.benchmark : daily.stock]),
+      );
+    }
+    const base: Record<string, number> = { NVDA: 100, SPY: 500, QQQ: 400 };
+    return new Map(
+      symbols.map((s) => {
+        if (timeframe === "1Day")
+          return [s, [priced(at("2026-09-28T04:00:00Z"), base[s]!)]];
+        if (!start.startsWith(`${date}T00`)) return [s, []];
+        const [done, partial] =
+          s === "NVDA" ? [102, 150] : s === "SPY" ? [497, 600] : [400, 400];
+        return [
+          s,
+          [
+            priced(at(`${date}T14:40:00Z`), done!),
+            // Starts at asOf: incomplete, not used for the score.
+            priced(at(`${date}T14:45:00Z`), partial!),
+          ],
+        ];
+      }),
+    );
+  };
+  return { calls, multi };
+}
+
+test("board stats carry the score and β vs SPY at asOf", async () => {
+  const now = at(`${date}T15:00:00Z`) * 1000;
+  const { multi } = strengthBoard();
+  const board = await runBoard(["NVDA"], multi, now);
+  const stats = board.series[0]!.stats!;
+  assert.equal(stats.asOf, at(`${date}T14:45:00Z`));
+  assert.ok(Math.abs(stats.beta! - 1.5) < 1e-9);
+  // excess = 2 − 1.5 · (−0.6) = 2.9; σ = 2·√(20/19).
+  assert.equal(stats.rsScore, rsScore(2.9, 2 * Math.sqrt(20 / 19)));
+  assert.equal(stats.rsScore, 64);
+});
+
+test("a failed β/σ history request leaves score and β null, not stored", async () => {
+  const now = at(`${date}T15:00:00Z`) * 1000;
+  const { multi } = strengthBoard(true);
+  const strengths = new MemoryDailyStore<SpyStrength>();
+  const board = await runBoard(["NVDA"], multi, now, {}, undefined, strengths);
+  const stats = board.series[0]!.stats!;
+  assert.equal(stats.rsScore, null);
+  assert.equal(stats.beta, null);
+  assert.equal(stats.volume, 1); // the rest of the board is unaffected
+  assert.equal(strengths.rows.size, 0);
+});
+
+test("the D1 strength store round-trips β/σ per board date", async () => {
+  const sqlite = new SqliteD1(":memory:");
+  const store = new D1StrengthStore(sqlite);
+  const value: SpyStrength = {
+    beta: 1.2,
+    betaAssumed: false,
+    betaReturns: 60,
+    sigma: null,
+  };
+  await store.put("2026-09-28", new Map([["OLD", value]]));
+  await store.put(date, new Map([["NVDA", value]]));
+  assert.deepEqual(Object.fromEntries(await store.get(date, ["NVDA", "X"])), {
+    NVDA: value,
+  });
+  assert.equal((await store.get("2026-09-28", ["OLD"])).size, 0);
+  // The Rel vol baselines share the database but not the table.
+  assert.equal((await new D1BaselineStore(sqlite).get(date, ["NVDA"])).size, 0);
+  sqlite.close();
 });
