@@ -15,7 +15,7 @@ const liveRefreshMs = 30000;
 const boardRefreshMs = 5 * 60000;
 
 // Polls `path` while the page is visible.
-function usePolling<T>(
+export function usePolling<T>(
   path: string,
   every: number,
   onError: (m: string) => void,

@@ -28,6 +28,7 @@ import {
   bandKinds,
   episodeSummary,
   isStrongVolume,
+  outcomeLevels,
   stateText,
   strongVolume,
   typicalRatio,
@@ -170,6 +171,8 @@ export function DayChart({
   sector,
   against: initialAgainst = "SPY",
   outcome,
+  direction,
+  units,
   className = "",
 }: {
   ticker: string;
@@ -179,6 +182,8 @@ export function DayChart({
   sector?: string; // the symbol's sector/theme benchmark ETF, if known
   against?: string; // benchmark shown first: "SPY" or `sector`
   outcome?: Outcome; // backtest validation of the alert, if scored
+  direction?: "up" | "down"; // the alert's direction, for outcome levels
+  units?: { goodUnits: number; stopUnits: number }; // backtest scoring
   className?: string;
 }) {
   const alertMs = alertEnd ? Date.parse(alertEnd) : NaN;
@@ -454,6 +459,28 @@ export function DayChart({
           text: outcome.result === "good" ? "✅ good" : "❌ stop",
         });
     }
+    // Scoring levels as horizontal lines, in % from the same reference.
+    const levels =
+      outcome && direction && units
+        ? outcomeLevels(outcome, direction, units)
+        : null;
+    if (levels) {
+      const reference = main.previousClose ?? main.bars[0]?.close ?? 1;
+      const pct = (price: number) => (price / reference - 1) * 100;
+      for (const [price, title, color, style] of [
+        [levels.entry, "Entry", colors.typical, LineStyle.Dotted],
+        [levels.good, "Good", "#15803d", LineStyle.Dashed],
+        [levels.stop, "Stop", "#b91c1c", LineStyle.Dashed],
+      ] as const)
+        tickerLine.createPriceLine({
+          price: pct(price),
+          color,
+          lineWidth: 1,
+          lineStyle: style,
+          axisLabelVisible: true,
+          title: `${title} $${price.toFixed(2)}`,
+        });
+    }
     markers.sort((x, y) => Number(x.time) - Number(y.time));
     if (markers.length) createSeriesMarkers(tickerLine, markers);
     // Applied after the first layout; autoSize would otherwise shift it.
@@ -487,7 +514,7 @@ export function DayChart({
       chartRef.current = null;
     };
     // `opp`, `main`, `bench` and the flags derive from `data`.
-  }, [data, alertMs, window, outcome]);
+  }, [data, alertMs, window, outcome, direction, units]);
 
   useEffect(() => {
     const c = chartRef.current;
@@ -653,8 +680,13 @@ export function DayChart({
             {hasTypical
               ? `Volume: solid bars ≥ ${strongVolume}× typical for that minute, faded below; dashed line = typical volume.`
               : "Typical volume is not available for this chart."}{" "}
-            {!Number.isNaN(alertMs) && "▼ marks the alert. "}Shaded =
-            pre-market. Times in {israelLabel}.
+            {!Number.isNaN(alertMs) && "▼ marks the alert. "}
+            {outcome?.entry !== null &&
+              outcome?.entry !== undefined &&
+              direction &&
+              units &&
+              `Horizontal lines: the simulated entry (dotted), the good level ${units.goodUnits}u in the alert's direction and the stop ${units.stopUnits}u against it (dashed, labelled). `}
+            Shaded = pre-market. Times in {israelLabel}.
           </p>
         </>
       )}
