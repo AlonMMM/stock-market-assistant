@@ -1162,20 +1162,20 @@ button.market-tile[aria-expanded="true"] {
   border-radius: 2px;
 }
 .summary.strong {
+  background: #def2e3;
+  color: #14532d;
+}
+.summary.weak {
   background: #fbe3e1;
   color: #8a1c14;
 }
-.summary.weak {
-  background: #e1ecf9;
-  color: #1a4f8f;
-}
 .summary.strong i,
 .legend-swatch.strong {
-  background: #dc2626;
+  background: #166534;
 }
 .summary.weak i,
 .legend-swatch.weak {
-  background: #2a78d6;
+  background: #991b1b;
 }
 .legend-swatch {
   margin-right: 4px;
@@ -1204,12 +1204,12 @@ button.market-tile[aria-expanded="true"] {
   color: #3f4f4c;
 }
 .state-chip.strong {
-  background: #fbe3e1;
-  color: #8a1c14;
+  background: #def2e3;
+  color: #14532d;
 }
 .state-chip.weak {
-  background: #e1ecf9;
-  color: #1a4f8f;
+  background: #fbe3e1;
+  color: #8a1c14;
 }
 .chart-legend-note {
   margin: 8px 0 0;

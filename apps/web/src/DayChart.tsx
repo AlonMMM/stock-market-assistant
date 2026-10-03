@@ -8,6 +8,9 @@ import {
   LineSeries,
   LineStyle,
   type IChartApi,
+  type IPanePrimitive,
+  type IPanePrimitivePaneView,
+  type IPrimitivePaneRenderer,
   type MouseEventParams,
   type SeriesMarker,
   type Time,
@@ -49,8 +52,10 @@ import { readJson } from "./api.js";
 
 // Categorical slots 1–2 of the validated dataviz palette for the lines. Volume
 // follows the trading convention: green for an up minute, red for a down one,
-// at full strength from 2× typical volume and faded below it. Bands: red =
-// held while the benchmark fell, blue = fell while the benchmark held.
+// at full strength from 2× typical volume and faded below it. Bands: green =
+// held while the benchmark fell (stronger), red = fell while the benchmark
+// held (weaker); light fills behind the lines and a darker strip in its own
+// pane, so they do not read as volume bars.
 const colors = {
   ticker: "#2a78d6",
   tickerText: "#1f5fae",
@@ -62,13 +67,35 @@ const colors = {
   session: "#6b7280",
   pre: "rgba(20, 43, 41, 0.06)",
   open: "rgba(107, 114, 128, 0.55)",
-  band: { strong: "rgba(220, 38, 38, 0.12)", weak: "rgba(42, 120, 214, 0.14)" },
-  strip: { strong: "#dc2626", weak: "#2a78d6" },
+  band: { strong: "rgba(22, 163, 74, 0.13)", weak: "rgba(220, 38, 38, 0.11)" },
+  strip: { strong: "#166534", weak: "#991b1b" },
   clear: "rgba(0, 0, 0, 0)",
   surface: "#fafbf8",
   text: "#52514e",
   grid: "#e7ece6",
 };
+
+// A small "▲▼ vs SPY" tag at the strip's left edge, so the strip does not
+// read as a row of volume bars.
+function stripTag(text: string): IPanePrimitive<Time> {
+  const renderer: IPrimitivePaneRenderer = {
+    draw: (target) =>
+      target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+        context.font = "600 10px Inter, ui-sans-serif, system-ui, sans-serif";
+        const width = context.measureText(text).width + 8;
+        context.fillStyle = colors.surface;
+        context.fillRect(0, 0, width, mediaSize.height);
+        context.fillStyle = colors.text;
+        context.textBaseline = "middle";
+        context.fillText(text, 4, mediaSize.height / 2 + 0.5);
+      }),
+  };
+  const view: IPanePrimitivePaneView = {
+    zOrder: () => "top",
+    renderer: () => renderer,
+  };
+  return { paneViews: () => [view] };
+}
 
 const cache = new Map<string, Promise<DayChartData>>();
 function load(
@@ -413,7 +440,10 @@ export function DayChart({
     }
     const panes = chart.panes();
     panes[0]?.setStretchFactor(3);
-    if (opp) panes[1]?.setStretchFactor(0.12);
+    if (opp) {
+      panes[1]?.setStretchFactor(0.2);
+      panes[1]?.attachPrimitive(stripTag(`▲▼ vs ${bench!.ticker}`));
+    }
     panes[volumePane]?.setStretchFactor(1.6);
 
     const alertBar = m.find((p) => p.instant === alertMs);
@@ -569,7 +599,7 @@ export function DayChart({
           {opp && (
             <div className="chart-summary">
               <span className="summary strong">
-                <i aria-hidden="true" />
+                <i aria-hidden="true" />▲{" "}
                 {episodeSummary(
                   "strong",
                   opp.episodes,
@@ -579,7 +609,7 @@ export function DayChart({
                 )}
               </span>
               <span className="summary weak">
-                <i aria-hidden="true" />
+                <i aria-hidden="true" />▼{" "}
                 {episodeSummary(
                   "weak",
                   opp.episodes,
@@ -659,13 +689,16 @@ export function DayChart({
               <>
                 {" "}
                 <span className="legend-swatch strong" aria-hidden="true" />
-                Red: over the last {o.window} minutes {benchName} fell ≥{" "}
-                {Math.abs(o.benchFall)} % points while {main.ticker} held or
-                rose. <span className="legend-swatch weak" aria-hidden="true" />
-                Blue: {benchName} held or rose (≥ −{Math.abs(o.benchHold)} %
-                points) while {main.ticker} fell ≥ {o.weakMultiple}× its usual{" "}
-                {o.window}-minute move. Regular session only; a display aid, not
-                a signal.
+                Green (▲ stronger): over the last {o.window} minutes {benchName}{" "}
+                fell ≥ {Math.abs(o.benchFall)} % points while {main.ticker} held
+                or rose.{" "}
+                <span className="legend-swatch weak" aria-hidden="true" />
+                Red (▼ weaker): {benchName} held or rose (≥ −
+                {Math.abs(o.benchHold)} % points) while {main.ticker} fell ≥{" "}
+                {o.weakMultiple}× its usual {o.window}-minute move. Light bands
+                behind the lines, and the dark strip just above the volume bars,
+                mark these minutes. Regular session only; a display aid, not a
+                signal.
               </>
             )}{" "}
             {hasTypical
