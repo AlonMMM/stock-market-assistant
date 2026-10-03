@@ -27,9 +27,13 @@ import {
   type ValidationConfig,
   type ValidationSummary,
 } from "../../../packages/market-data/src/outcome.js";
+import {
+  backtestLimits,
+  maxSymbolsPerRequest,
+} from "../../../packages/market-data/src/backtest-limits.js";
 
 export const liveRule = "rvol-v4";
-export const maxSessions = 20;
+export const maxSessions = backtestLimits.sessions;
 
 // ------------------------------------------------------------ rule fields
 
@@ -682,6 +686,10 @@ export const requestKey = (r: RunRequest) =>
     ruleKeys.map((k) => r.config[k]),
     [r.validation.stopUnits, r.validation.goodUnits, r.validation.horizon],
   ]);
+
+/** Symbols per request for a range of `sessions`, within the Worker's memory. */
+export const symbolsPerBatch = (sessions: number) =>
+  Math.max(1, maxSymbolsPerRequest(sessions, defaults.days));
 
 export function batches<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
