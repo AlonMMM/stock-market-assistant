@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import type { Watchlist as WatchlistData } from "../../../packages/market-data/src/watchlist.js";
+import { maxTickers } from "./backtest-model.js";
 import { israelDateTime } from "./time.js";
 
-export const maxTickers = 40;
 const storageKey = "sma.backtest.tickers.v2";
-const symbol = /^[A-Z][A-Z0-9. -]{0,9}$/;
+export const symbolPattern = /^[A-Z][A-Z0-9. -]{0,9}$/;
 
 // The watchlist comes from the server (synced from IBKR); the selection within
 // it is a per-device convenience, and storage can be unavailable.
@@ -27,7 +27,7 @@ export function savedTickers(universe: string[]): string[] {
     const saved = JSON.parse(localStorage.getItem(storageKey) ?? "null");
     if (
       Array.isArray(saved) &&
-      saved.every((t) => typeof t === "string" && symbol.test(t))
+      saved.every((t) => typeof t === "string" && symbolPattern.test(t))
     )
       return saved.filter((t) => universe.includes(t)).slice(0, maxTickers);
   } catch {
@@ -36,7 +36,7 @@ export function savedTickers(universe: string[]): string[] {
   return universe.slice(0, maxTickers);
 }
 
-function save(tickers: string[]) {
+export function saveTickers(tickers: string[]) {
   try {
     localStorage.setItem(storageKey, JSON.stringify(tickers));
   } catch {
@@ -44,7 +44,19 @@ function save(tickers: string[]) {
   }
 }
 
-export function Watchlist({
+/** "IBKR “Main” · 30 symbols · synced 3 Oct, 09:12". */
+export function watchlistSource(list: WatchlistData): string {
+  return list.source === "ibkr"
+    ? `IBKR “${list.name}” · ${list.tickers.length} symbols${
+        list.syncedAt
+          ? ` · synced ${israelDateTime(Date.parse(list.syncedAt))}`
+          : ""
+      }`
+    : "Default list · IBKR watchlist not synced";
+}
+
+/** Chip picker over the watchlist plus any added symbols. */
+export function SymbolPicker({
   list,
   selected,
   onChange,
@@ -55,82 +67,40 @@ export function Watchlist({
   onChange: (tickers: string[]) => void;
   disabled: boolean;
 }) {
-  const [extra, setExtra] = useState("");
   const universe = [
     ...list.tickers,
     ...selected.filter((t) => !list.tickers.includes(t)),
   ];
-  const set = (tickers: string[]) => {
-    save(tickers);
-    onChange(tickers);
-  };
-  const toggle = (t: string) =>
-    set(
-      selected.includes(t)
-        ? selected.filter((x) => x !== t)
-        : selected.length < maxTickers
-          ? [...selected, t]
-          : selected,
-    );
-  const add = () => {
-    const t = extra.trim().toUpperCase();
-    if (symbol.test(t) && !selected.includes(t) && selected.length < maxTickers)
-      set([...selected, t]);
-    setExtra("");
-  };
+  const full = selected.length >= maxTickers;
   return (
-    <fieldset className="watchlist" disabled={disabled}>
-      <legend>
-        Symbols · {selected.length} of max {maxTickers}
-      </legend>
-      <p className="watchlist-source">
-        {list.source === "ibkr"
-          ? `IBKR “${list.name}” · ${list.tickers.length} symbols${
-              list.syncedAt
-                ? ` · synced ${israelDateTime(Date.parse(list.syncedAt))}`
-                : ""
-            }`
-          : "Default list · IBKR watchlist not synced"}
-      </p>
-      <div className="watchlist-actions">
-        <button
-          type="button"
-          onClick={() => set(universe.slice(0, maxTickers))}
-        >
-          First {maxTickers}
-        </button>
-        <button type="button" onClick={() => set([])}>
-          Clear
-        </button>
-        <input
-          aria-label="Add symbol"
-          placeholder="Add symbol"
-          value={extra}
-          autoCapitalize="characters"
-          onChange={(e) => setExtra(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              add();
-            }
-          }}
-        />
-        <button type="button" onClick={add}>
-          Add
-        </button>
-      </div>
+    <fieldset className="symbol-picker" disabled={disabled}>
+      <legend className="sr-only">Selected symbols</legend>
       <div className="chips">
-        {universe.map((t) => (
-          <button
-            type="button"
-            key={t}
-            className="chip"
-            aria-pressed={selected.includes(t)}
-            onClick={() => toggle(t)}
-          >
-            {t}
-          </button>
-        ))}
+        {universe.map((t) => {
+          const on = selected.includes(t);
+          return (
+            <button
+              type="button"
+              key={t}
+              className="chip"
+              aria-pressed={on}
+              disabled={!on && full}
+              onClick={() =>
+                onChange(
+                  on ? selected.filter((x) => x !== t) : [...selected, t],
+                )
+              }
+            >
+              {t}
+            </button>
+          );
+        })}
+      </div>
+      <div className="picker-actions">
+        <button type="button" className="action" onClick={() => onChange([])}>
+          Clear selection
+        </button>
+        {full && <span className="muted">Maximum {maxTickers} reached.</span>}
       </div>
     </fieldset>
   );

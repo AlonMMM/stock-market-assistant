@@ -1,445 +1,821 @@
-import { useState, type ReactNode } from "react";
-import type {
-  BacktestResult,
-  BacktestAlert,
-} from "../../../packages/market-data/src/backtest.js";
-import { number, readJson } from "./api.js";
-import { Notices } from "./Notices.js";
-import { summarize } from "../../../packages/market-data/src/outcome.js";
-import { AlertFeed } from "./AlertFeed.js";
-import { ValidationCard } from "./Validation.js";
-import { savedTickers, useWatchlist, Watchlist } from "./Watchlist.js";
+import { useRef, useState, type ReactNode } from "react";
+import type { BacktestResult } from "../../../packages/market-data/src/backtest.js";
+import type { LiveStatus } from "../../../packages/market-data/src/live.js";
+import { validationDefaults } from "../../../packages/market-data/src/outcome.js";
+import { readJson } from "./api.js";
+import {
+  batches,
+  changeBadge,
+  datePreset,
+  datePresetCounts,
+  isSettingsError,
+  lastSessions,
+  liveSettings,
+  maxSessions,
+  maxTickers,
+  mergeResults,
+  previewTickers,
+  rangeLabel,
+  requestKey,
+  ruleChanges,
+  ruleGroups,
+  ruleLabel,
+  ruleSummary,
+  selectedPreset,
+  sessionCount,
+  setupSummary,
+  symbolPresets,
+  type FailedBatch,
+  type RuleSettings,
+  type RunRequest,
+} from "./backtest-model.js";
+import { ResultTabs, Verdict } from "./BacktestResults.js";
+import { usePolling } from "./Live.js";
+import { pillFor } from "./live-model.js";
+import { StatusPill } from "./StatusPill.js";
+import {
+  saveTickers,
+  savedTickers,
+  SymbolPicker,
+  symbolPattern,
+  useWatchlist,
+  watchlistSource,
+} from "./Watchlist.js";
 
 // Each request stays within Cloudflare's free-plan limit of 50 subrequests
 // (Alpaca calls plus bar-cache statements) and its CPU limit: a symbol needs
 // about four minute-bar pages, one daily page and a few cache statements.
 const batchSize = 3;
+const liveRefreshMs = 30000;
 
-function merge(parts: BacktestResult[]): BacktestResult {
-  const [first] = parts;
-  const alerts = parts.flatMap((p) => p.alerts);
-  // Medians cannot be combined across batches: recompute from all alerts and
-  // add up the baseline counts.
-  const validation = summarize(
-    alerts.map((a) => a.outcome),
-    [],
-    first!.validation.config,
-  );
-  for (const p of parts)
-    for (const k of ["scored", "good", "stopped", "weak"] as const)
-      validation.baseline[k] += p.validation.baseline[k];
-  const diagnostics: Record<string, number> = {};
-  for (const p of parts)
-    for (const [k, n] of Object.entries(p.diagnostics))
-      diagnostics[k] = (diagnostics[k] ?? 0) + n;
-  return {
-    ...first!,
-    tickers: parts.flatMap((p) => p.tickers),
-    evaluated: parts.reduce((n, p) => n + p.evaluated, 0),
-    alerts,
-    diagnostics,
-    validation,
-    cache: parts.some((p) => p.cache)
-      ? {
-          hits: parts.reduce((n, p) => n + (p.cache?.hits ?? 0), 0),
-          misses: parts.reduce((n, p) => n + (p.cache?.misses ?? 0), 0),
-          errors: parts.reduce((n, p) => n + (p.cache?.errors ?? 0), 0),
-          lastError: parts.findLast((p) => p.cache?.lastError)?.cache
-            ?.lastError,
-        }
-      : undefined,
-    coverage: parts.flatMap((p) => p.coverage),
-  };
+type Scoring = RunRequest["validation"];
+const scoringDefaults: Scoring = {
+  stopUnits: validationDefaults.stopUnits,
+  goodUnits: validationDefaults.goodUnits,
+  horizon: validationDefaults.horizon,
+};
+const scoringFields = [
+  ["goodUnits", "Good (u)", "0.1", "50", "0.1"],
+  ["stopUnits", "Stop (u)", "0.1", "20", "0.1"],
+  ["horizon", "Horizon (min)", "1", "390", "1"],
+] as const;
+
+/** Runs one batch; throws with the server's or a transport message. */
+async function runBatch(
+  request: RunRequest,
+  tickers: string[],
+): Promise<BacktestResult> {
+  try {
+    const response = await fetch("/api/backtest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tickers,
+        from: request.from,
+        to: request.to,
+        config: request.config,
+        validation: request.validation,
+      }),
+      signal: AbortSignal.timeout(120000),
+    });
+    return await readJson<BacktestResult>(response);
+  } catch (e) {
+    throw new Error(
+      e instanceof Error && e.name === "TimeoutError"
+        ? "Timed out"
+        : e instanceof Error
+          ? e.message
+          : "Backtest failed",
+    );
+  }
 }
 
-const day = (offset: number) =>
-  new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
+function Chevron({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      className="chevron"
+      width={size}
+      height={size}
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+    >
+      <path
+        d="M3 4.5l3 3 3-3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
+
+function Card({
+  title,
+  aside,
+  children,
+}: {
+  title: string;
+  aside?: ReactNode;
+  children: ReactNode;
+}) {
+  const id = `card-${title.toLowerCase()}`;
+  return (
+    <section className="card setup-card" aria-labelledby={id}>
+      <div className="card-head">
+        <h2 id={id}>{title}</h2>
+        {aside}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+const numberValue = (n: number) => (Number.isNaN(n) ? "" : n);
+const parseNumber = (s: string) => (s === "" ? NaN : Number(s));
 
 export function Backtest({ modes }: { modes: ReactNode }) {
   const watchlist = useWatchlist();
-  const [tickers, setTickers] = useState<string[]>([]);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const warn = (message: string) =>
+    setWarnings((w) => (w.at(-1) === message ? w : [...w, message]));
+  const live = usePolling<LiveStatus>("/api/live", liveRefreshMs, warn);
+  const now = Date.now();
+  const pill = pillFor(live.value, now, live.at);
+
+  const [tickers, setTickersState] = useState<string[]>([]);
   const [loadedList, setLoadedList] = useState(false);
   if (watchlist.list && !loadedList) {
     setLoadedList(true);
-    setTickers(savedTickers(watchlist.list.tickers));
+    setTickersState(savedTickers(watchlist.list.tickers));
   }
-  const [from, setFrom] = useState(day(8));
-  const [to, setTo] = useState(day(1));
-  const [threshold, setThreshold] = useState(3);
-  const [minimum, setMinimum] = useState(10000);
-  const [cooldown, setCooldown] = useState(15);
-  const [priceMultiple, setPriceMultiple] = useState(3);
-  const [minMove, setMinMove] = useState(0.5);
-  const [lastMove, setLastMove] = useState(0);
-  const [directionBars, setDirectionBars] = useState(1);
-  const [pace, setPace] = useState(3);
-  // Rule v4 switches; N1 and N2 are off (0) by default.
-  const [inPlay, setInPlay] = useState(2);
-  const [todayVolume, setTodayVolume] = useState(0);
-  const [todayMove, setTodayMove] = useState(0);
-  const [stopUnits, setStopUnits] = useState(1);
-  const [goodUnits, setGoodUnits] = useState(2);
-  const [horizon, setHorizon] = useState(60);
-  const [result, setResult] = useState<BacktestResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [progress, setProgress] = useState(0);
-  const [failed, setFailed] = useState<{ tickers: string[]; error: string }[]>(
-    [],
+  const setTickers = (t: string[]) => {
+    saveTickers(t);
+    setTickersState(t);
+  };
+  const [extra, setExtra] = useState("");
+  const [extraError, setExtraError] = useState("");
+  const [editList, setEditList] = useState(false);
+
+  const [initialRange] = useState(
+    () => lastSessions(5, Date.now()) ?? { from: "", to: "" },
   );
-  function changed() {
-    setResult(null);
-    setError("");
-  }
-  async function run() {
-    setBusy(true);
-    setError("");
-    setResult(null);
-    setFailed([]);
-    setProgress(0);
-    const parts: BacktestResult[] = [];
-    const failures: { tickers: string[]; error: string }[] = [];
-    for (let i = 0; i < tickers.length; i += batchSize) {
-      const batch = tickers.slice(i, i + batchSize);
+  const [from, setFrom] = useState(initialRange.from);
+  const [to, setTo] = useState(initialRange.to);
+  const fromInput = useRef<HTMLInputElement>(null);
+  const [settings, setSettings] = useState<RuleSettings>(liveSettings);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [scoring, setScoring] = useState<Scoring>(scoringDefaults);
+
+  const [result, setResult] = useState<BacktestResult | null>(null);
+  const [ranWith, setRanWith] = useState<RunRequest | null>(null);
+  const [runId, setRunId] = useState(0);
+  const [busy, setBusy] = useState<"" | "run" | "retry">("");
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [error, setError] = useState("");
+  const [failed, setFailed] = useState<FailedBatch[]>([]);
+  // Phone layout: expanded before the first run, collapsed after a run.
+  const [setupOpen, setSetupOpen] = useState(true);
+  const form = useRef<HTMLFormElement>(null);
+
+  const request: RunRequest = {
+    tickers,
+    from,
+    to,
+    config: settings,
+    validation: scoring,
+  };
+  const changes = ruleChanges(settings);
+  const sessions = sessionCount(from, to);
+  const hasRun = ranWith !== null && (result !== null || failed.length > 0);
+  const stale = hasRun && requestKey(ranWith) !== requestKey(request);
+  const presets = watchlist.list
+    ? symbolPresets(watchlist.list, live.value ? live.value.alerts : null)
+    : [];
+  const activePreset = selectedPreset(presets, tickers);
+  const activeDates = datePreset(from, to, now);
+
+  async function execute(
+    run: RunRequest,
+    groups: string[][],
+    previous: BacktestResult | null,
+  ) {
+    const parts: BacktestResult[] = previous ? [previous] : [];
+    const failures: FailedBatch[] = [];
+    const total = groups.reduce((n, g) => n + g.length, 0);
+    let done = 0;
+    setProgress({ done, total });
+    for (const batch of groups) {
       try {
-        const response = await fetch("/api/backtest", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tickers: batch,
-            from,
-            to,
-            config: {
-              threshold,
-              minVolume: minimum,
-              cooldown,
-              priceMultiple,
-              minMovePercent: minMove,
-              lastBarMinMovePercent: lastMove,
-              directionBars,
-              paceMultiple: pace,
-              inPlayDayRvol: inPlay,
-              todayVolumeMultiple: todayVolume,
-              todayMoveMultiple: todayMove,
-            },
-            validation: { stopUnits, goodUnits, horizon },
-          }),
-          signal: AbortSignal.timeout(120000),
-        });
-        parts.push(await readJson<BacktestResult>(response));
+        parts.push(await runBatch(run, batch));
       } catch (e) {
-        const message =
-          e instanceof Error && e.name === "TimeoutError"
-            ? "Timed out"
-            : e instanceof Error
-              ? e.message
-              : "Backtest failed";
+        const message = (e as Error).message;
         // Invalid settings fail every batch identically: stop and say so.
-        if (e instanceof Error && /^(Choose|Dates|The range)/.test(message)) {
+        if (isSettingsError(message)) {
           setError(message);
-          setBusy(false);
-          return;
+          setSetupOpen(true);
+          return null;
         }
         failures.push({ tickers: batch, error: message });
+        warn(`Backtest batch ${batch.join(", ")}: ${message}`);
       }
-      setProgress(Math.min(i + batchSize, tickers.length));
+      done += batch.length;
+      setProgress({ done, total });
     }
-    setFailed(failures);
-    if (parts.length) setResult(merge(parts));
-    else setError(failures[0]?.error ?? "Backtest failed");
-    setBusy(false);
+    return { merged: parts.length ? mergeResults(parts) : null, failures };
   }
-  function download(alerts: BacktestAlert[]) {
+
+  async function run() {
+    if (!form.current?.checkValidity()) {
+      setSetupOpen(true);
+      setCustomOpen(true);
+      requestAnimationFrame(() => form.current?.reportValidity());
+      setError("Fix the highlighted setting before running.");
+      return;
+    }
+    const dateError =
+      sessions === null
+        ? "Dates must fall within the 2026–2028 exchange calendar."
+        : sessions < 1
+          ? "The range contains no US trading sessions."
+          : sessions > maxSessions
+            ? `Choose at most ${maxSessions} sessions.`
+            : "";
+    if (dateError) {
+      setSetupOpen(true);
+      setError(dateError);
+      return;
+    }
+    const snapshot: RunRequest = {
+      tickers: [...tickers],
+      from,
+      to,
+      config: { ...settings },
+      validation: { ...scoring },
+    };
+    setBusy("run");
+    setError("");
+    setSetupOpen(false);
+    const outcome = await execute(
+      snapshot,
+      batches(snapshot.tickers, batchSize),
+      null,
+    );
+    setBusy("");
+    if (!outcome) return;
+    setRunId((n) => n + 1);
+    setRanWith(snapshot);
+    setResult(outcome.merged);
+    setFailed(outcome.failures);
+    if (!outcome.merged)
+      setError(
+        `Every batch failed (${outcome.failures[0]?.error ?? "unknown error"}). See Data quality.`,
+      );
+  }
+
+  // Reruns only the failed batches with the original run's settings and
+  // merges them into the result.
+  async function retry() {
+    if (!ranWith || !failed.length) return;
+    setBusy("retry");
+    setError("");
+    const outcome = await execute(
+      ranWith,
+      failed.map((f) => f.tickers),
+      result,
+    );
+    setBusy("");
+    if (!outcome) return;
+    setResult(outcome.merged);
+    setFailed(outcome.failures);
+  }
+
+  function download() {
+    if (!result) return;
     const url = URL.createObjectURL(
-      new Blob([JSON.stringify({ ...result, alerts }, null, 2)], {
+      new Blob([JSON.stringify(result, null, 2)], {
         type: "application/json",
       }),
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = `rvol-backtest-${from}-${to}.json`;
+    link.download = `rvol-backtest-${result.from}-${result.to}.json`;
     link.click();
     URL.revokeObjectURL(url);
   }
-  const numberInput = (
-    label: string,
-    value: number,
-    set: (n: number) => void,
-    attrs: { min: string; max?: string; step: string },
-  ) => (
-    <label>
-      {label}
-      <input
-        required
-        disabled={busy}
-        type="number"
-        {...attrs}
-        value={value}
-        onChange={(e) => {
-          set(Number(e.target.value));
-          changed();
-        }}
-      />
-    </label>
-  );
-  const gaps = result?.coverage.filter((c) => c.missingSessions.length) ?? [];
+
+  function add() {
+    const t = extra.trim().toUpperCase();
+    if (!t) return;
+    if (!symbolPattern.test(t)) setExtraError(`“${t}” is not a US symbol.`);
+    else if (tickers.includes(t)) setExtraError(`${t} is already selected.`);
+    else if (tickers.length >= maxTickers)
+      setExtraError(`At most ${maxTickers} symbols.`);
+    else {
+      setTickers([...tickers, t]);
+      setExtraError("");
+      setExtra("");
+    }
+  }
+
+  const disabled = busy !== "";
+  const resultChanges = ranWith ? ruleChanges(ranWith.config).length : 0;
+  const symbolsWithAlerts = result
+    ? new Set(result.alerts.map((a) => a.ticker)).size
+    : 0;
+
   return (
-    <>
+    <div className="backtest-page">
       <header>
-        <span className="brand">
-          SMA<span className="brand-dot">.</span>
-        </span>
+        <div className="brand-status">
+          <span className="brand">
+            SMA<span className="brand-dot">.</span>
+          </span>
+          <StatusPill
+            pill={pill}
+            status={live.value}
+            checkedAt={live.at}
+            refreshSeconds={liveRefreshMs / 1000}
+            warnings={warnings}
+            onClearWarnings={() => setWarnings([])}
+          />
+        </div>
         {modes}
       </header>
-      <Notices
-        items={[
-          ...gaps.map(
-            (c) =>
-              `${c.ticker}: no bars for ${c.missingSessions.join(", ")}; later baselines that need them are marked insufficient.`,
-          ),
-          ...failed.map((f) => `${f.tickers.join(", ")}: ${f.error}`),
-          ...(watchlist.error ? [watchlist.error] : []),
-          ...(error ? [error] : []),
-        ]}
-      />
-      <h2 className="section-title">
-        Backtest{" "}
-        <small>alerts the bot would have sent · Alpaca SIP history</small>
-      </h2>
-      <p className="method">
-        Historical Alpaca minute bars replayed through the live evaluator · up
-        to 40 symbols and 20 sessions
-      </p>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void run();
-        }}
-      >
-        {!watchlist.list && !watchlist.error && (
-          <p className="notice">Loading watchlist…</p>
-        )}
-        {watchlist.list && (
-          <Watchlist
-            list={watchlist.list}
-            selected={tickers}
-            disabled={busy}
-            onChange={(t) => {
-              setTickers(t);
-              changed();
-            }}
-          />
-        )}
-        <div className="volume-controls backtest-range">
-          <label>
-            From
-            <input
-              required
-              disabled={busy}
-              type="date"
-              value={from}
-              max={to}
-              onChange={(e) => {
-                setFrom(e.target.value);
-                changed();
-              }}
-            />
-          </label>
-          <label>
-            To
-            <input
-              required
-              disabled={busy}
-              type="date"
-              value={to}
-              min={from}
-              onChange={(e) => {
-                setTo(e.target.value);
-                changed();
-              }}
-            />
-          </label>
-        </div>
-        <div className="volume-controls">
-          {numberInput("Volume (× typical)", threshold, setThreshold, {
-            min: "1.1",
-            step: "0.1",
-          })}
-          {numberInput("Minimum volume", minimum, setMinimum, {
-            min: "0",
-            step: "1",
-          })}
-          {numberInput("Cooldown (min)", cooldown, setCooldown, {
-            min: "0",
-            max: "1440",
-            step: "1",
-          })}
-          {numberInput(
-            "Price move (× typical)",
-            priceMultiple,
-            setPriceMultiple,
-            {
-              min: "1",
-              step: "0.1",
-            },
-          )}
-          {numberInput("Minimum move (%)", minMove, setMinMove, {
-            min: "0",
-            max: "100",
-            step: "0.05",
-          })}
-          {numberInput("Last minute move (%, 0 = off)", lastMove, setLastMove, {
-            min: "0",
-            max: "100",
-            step: "0.05",
-          })}
-          {numberInput(
-            "Same-direction candles",
-            directionBars,
-            setDirectionBars,
-            {
-              min: "1",
-              max: "3",
-              step: "1",
-            },
-          )}
-          {numberInput(
-            "Validation: stop (u against)",
-            stopUnits,
-            setStopUnits,
-            {
-              min: "0.1",
-              step: "0.1",
-            },
-          )}
-          {numberInput(
-            "Validation: good (u in favour)",
-            goodUnits,
-            setGoodUnits,
-            {
-              min: "0.1",
-              step: "0.1",
-            },
-          )}
-          {numberInput("Validation: horizon (min)", horizon, setHorizon, {
-            min: "1",
-            max: "390",
-            step: "1",
-          })}
-          {numberInput("Today's pace (×, 0 = off)", pace, setPace, {
-            min: "0",
-            step: "0.1",
-          })}
-          {numberInput(
-            "⭐ In play: day volume (×, 0 = off)",
-            inPlay,
-            setInPlay,
-            {
-              min: "0",
-              max: "100",
-              step: "0.1",
-            },
-          )}
-          {numberInput(
-            "Burst vs today's volume (×, 0 = off)",
-            todayVolume,
-            setTodayVolume,
-            { min: "0", max: "100", step: "0.1" },
-          )}
-          {numberInput(
-            "Move vs today's typical (×, 0 = off)",
-            todayMove,
-            setTodayMove,
-            { min: "0", max: "100", step: "0.1" },
-          )}
-        </div>
-        <button
-          className="run"
-          disabled={busy || tickers.length === 0}
-          type="submit"
+
+      <div className="backtest-layout">
+        <form
+          ref={form}
+          className="setup"
+          aria-label="Backtest setup"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run();
+          }}
         >
-          {busy
-            ? `Running… ${progress} / ${tickers.length} symbols`
-            : `Run backtest · ${tickers.length} symbols`}
-        </button>
-      </form>
-      <div aria-live="polite" aria-busy={busy}>
-        {busy && (
-          <p className="notice">
-            Downloading minute bars and 20 warmup sessions from Alpaca ·{" "}
-            {progress} of {tickers.length} symbols done…
-          </p>
-        )}
-        {!result && !busy && !error && (
-          <p className="notice">
-            Choose symbols and dates, then run the backtest.
-          </p>
-        )}
-        {result && (
-          <section className="results">
-            <div className="result-header">
-              <h2>
-                {result.alerts.length}{" "}
-                {result.alerts.length === 1 ? "alert" : "alerts"} ·{" "}
-                {new Set(result.alerts.map((a) => a.ticker)).size} of{" "}
-                {result.tickers.length} symbols
-              </h2>
+          <div className="setup-intro">
+            <h1>Backtest</h1>
+            <p>
+              Replays Alpaca SIP minute bars through the live rule. A signal
+              check, not a profitability test.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="setup-toggle"
+            aria-expanded={setupOpen}
+            aria-controls="setup-cards"
+            onClick={() => setSetupOpen(!setupOpen)}
+          >
+            <span>
+              {setupSummary(tickers.length, sessions, changes.length)}
+            </span>
+            <Chevron />
+          </button>
+          <fieldset
+            id="setup-cards"
+            className={setupOpen ? "setup-cards" : "setup-cards collapsed"}
+            disabled={disabled}
+          >
+            <legend className="sr-only">Setup</legend>
+            <Card
+              title="Symbols"
+              aside={
+                <span className="muted">
+                  {tickers.length}
+                  {watchlist.list && ` of ${watchlist.list.tickers.length}`} ·
+                  max {maxTickers}
+                </span>
+              }
+            >
+              {watchlist.error && (
+                <p className="notice error">{watchlist.error}</p>
+              )}
+              {!watchlist.list && !watchlist.error && (
+                <p className="muted">Loading watchlist…</p>
+              )}
+              {watchlist.list && (
+                <>
+                  <div
+                    className="preset-chips"
+                    role="group"
+                    aria-label="Symbol presets"
+                  >
+                    {presets.map((p) => (
+                      <button
+                        type="button"
+                        key={p.key}
+                        className="chip"
+                        aria-pressed={activePreset === p.key}
+                        disabled={!!p.disabled}
+                        title={
+                          p.disabled ??
+                          (p.key.startsWith("sector:")
+                            ? `Watchlist symbols benchmarked against ${p.label}`
+                            : `${p.tickers.length} symbols`)
+                        }
+                        onClick={() => setTickers(p.tickers)}
+                      >
+                        {p.label}
+                        {p.disabled && (
+                          <span className="chip-reason"> · {p.disabled}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="preview">{previewTickers(tickers)}</p>
+                  <div className="add-row">
+                    <label>
+                      Add a symbol
+                      <input
+                        value={extra}
+                        placeholder="e.g. SHOP"
+                        autoCapitalize="characters"
+                        aria-invalid={!!extraError}
+                        aria-describedby="add-error"
+                        onChange={(e) => {
+                          setExtra(e.target.value);
+                          setExtraError("");
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            add();
+                          }
+                        }}
+                      />
+                    </label>
+                    <button type="button" className="action" onClick={add}>
+                      Add
+                    </button>
+                    <button
+                      type="button"
+                      className="action"
+                      aria-expanded={editList}
+                      aria-controls="symbol-picker"
+                      onClick={() => setEditList(!editList)}
+                    >
+                      Edit list
+                    </button>
+                  </div>
+                  {extraError && (
+                    <p id="add-error" className="field-error" role="alert">
+                      {extraError}
+                    </p>
+                  )}
+                  {editList && (
+                    <div id="symbol-picker">
+                      <SymbolPicker
+                        list={watchlist.list}
+                        selected={tickers}
+                        disabled={disabled}
+                        onChange={setTickers}
+                      />
+                    </div>
+                  )}
+                  <p className="muted small">
+                    {watchlistSource(watchlist.list)} · selection saved on this
+                    device
+                  </p>
+                </>
+              )}
+            </Card>
+
+            <Card
+              title="Dates"
+              aside={
+                <span className="muted">US sessions · max {maxSessions}</span>
+              }
+            >
+              <div
+                className="preset-chips"
+                role="group"
+                aria-label="Date presets"
+              >
+                {datePresetCounts.map((n) => {
+                  const range = lastSessions(n, now);
+                  return (
+                    <button
+                      type="button"
+                      key={n}
+                      className="chip"
+                      aria-pressed={activeDates === n}
+                      disabled={!range}
+                      title={
+                        range
+                          ? `${range.from} to ${range.to} (US session dates)`
+                          : "Outside the exchange calendar"
+                      }
+                      onClick={() => {
+                        if (!range) return;
+                        setFrom(range.from);
+                        setTo(range.to);
+                      }}
+                    >
+                      Last {n} sessions
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  className="chip"
+                  aria-pressed={activeDates === "custom"}
+                  title="Choose From and To below"
+                  onClick={() => fromInput.current?.focus()}
+                >
+                  Custom
+                </button>
+              </div>
+              <div className="date-row">
+                <label>
+                  From
+                  <input
+                    ref={fromInput}
+                    required
+                    type="date"
+                    value={from}
+                    max={to}
+                    onChange={(e) => setFrom(e.target.value)}
+                  />
+                </label>
+                <label>
+                  To
+                  <input
+                    required
+                    type="date"
+                    value={to}
+                    min={from}
+                    onChange={(e) => setTo(e.target.value)}
+                  />
+                </label>
+              </div>
+              <p className="muted small">
+                {sessions === null
+                  ? "Outside the 2026–2028 exchange calendar."
+                  : `${sessions} ${sessions === 1 ? "session" : "sessions"}${sessions > 0 ? ` · ${rangeLabel(from, to)}` : ""}${sessions > maxSessions ? ` — more than ${maxSessions}` : ""}`}
+              </p>
+            </Card>
+
+            <Card
+              title="Rule"
+              aside={
+                <span
+                  className={
+                    changes.length ? "rule-badge changed" : "rule-badge"
+                  }
+                >
+                  {changeBadge(changes.length)}
+                </span>
+              }
+            >
+              <p className="rule-summary">
+                <strong>Live rule (rvol-v4):</strong> {ruleSummary()}
+              </p>
               <button
                 type="button"
-                className="upload"
-                onClick={() => download(result.alerts)}
+                className="disclosure"
+                aria-expanded={customOpen}
+                aria-controls="rule-fields"
+                onClick={() => setCustomOpen(!customOpen)}
               >
-                ↓ Download JSON
+                Customize rule
+                <Chevron size={12} />
               </button>
-            </div>
-            {result.alerts.length === 0 && (
-              <p className="notice">No alerts matched these settings.</p>
+              <div
+                id="rule-fields"
+                hidden={!customOpen}
+                className="rule-fields"
+              >
+                {ruleGroups.map((g) => (
+                  <fieldset key={g.title} className="rule-group">
+                    <legend>{g.title}</legend>
+                    {g.fields.map((f) => {
+                      const changed = settings[f.key] !== liveSettings[f.key];
+                      return (
+                        <label
+                          key={f.key}
+                          className={
+                            changed ? "rule-field changed" : "rule-field"
+                          }
+                        >
+                          <span>
+                            {f.label}
+                            {changed ? (
+                              <em className="live-hint">
+                                {" "}
+                                · live {liveSettings[f.key]}
+                              </em>
+                            ) : (
+                              f.hint && (
+                                <span className="hint"> · {f.hint}</span>
+                              )
+                            )}
+                          </span>
+                          <input
+                            required
+                            type="number"
+                            inputMode="decimal"
+                            min={f.min}
+                            max={f.max}
+                            step={f.step}
+                            value={numberValue(settings[f.key])}
+                            onChange={(e) =>
+                              setSettings({
+                                ...settings,
+                                [f.key]: parseNumber(e.target.value),
+                              })
+                            }
+                          />
+                        </label>
+                      );
+                    })}
+                  </fieldset>
+                ))}
+                <button
+                  type="button"
+                  className="reset"
+                  disabled={changes.length === 0}
+                  onClick={() => setSettings(liveSettings)}
+                >
+                  Reset to live settings
+                </button>
+              </div>
+            </Card>
+
+            <Card title="Scoring">
+              <p className="rule-summary">
+                Enter the next minute. <strong>Good</strong> if it runs{" "}
+                {numberValue(scoring.goodUnits)}u in the alert&apos;s direction
+                first, <strong>stopped</strong> at{" "}
+                {numberValue(scoring.stopUnits)}u against, <strong>weak</strong>{" "}
+                if neither within {numberValue(scoring.horizon)} min. u = the
+                symbol&apos;s typical {validationDefaults.unitMinutes}-min move
+                at that time of day.
+              </p>
+              <div className="scoring-row">
+                {scoringFields.map(([key, label, min, max, step]) => (
+                  <label key={key}>
+                    {label}
+                    <input
+                      required
+                      type="number"
+                      inputMode="decimal"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={numberValue(scoring[key])}
+                      onChange={(e) =>
+                        setScoring({
+                          ...scoring,
+                          [key]: parseNumber(e.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+            </Card>
+          </fieldset>
+
+          <div className="run-block">
+            <button
+              className="run"
+              type="submit"
+              disabled={disabled || tickers.length === 0}
+            >
+              {busy === "run"
+                ? `Running… ${progress.done} / ${progress.total} symbols`
+                : busy === "retry"
+                  ? `Retrying… ${progress.done} / ${progress.total} symbols`
+                  : `Run backtest · ${tickers.length} ${tickers.length === 1 ? "symbol" : "symbols"}${sessions ? ` · ${sessions} ${sessions === 1 ? "session" : "sessions"}` : ""}`}
+            </button>
+            {busy && (
+              <div
+                className="progress"
+                role="progressbar"
+                aria-label={
+                  busy === "retry" ? "Retry progress" : "Backtest progress"
+                }
+                aria-valuemin={0}
+                aria-valuemax={progress.total}
+                aria-valuenow={progress.done}
+                aria-valuetext={`${progress.done} of ${progress.total} symbols`}
+              >
+                <span
+                  style={{
+                    width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%`,
+                  }}
+                />
+              </div>
             )}
-            {result.alerts.length > 0 && (
-              <ValidationCard summary={result.validation} />
+            {error && (
+              <p className="run-error" role="alert">
+                {error}
+              </p>
             )}
-            {result.alerts.length > 0 && (
-              <AlertFeed
-                alerts={result.alerts}
-                benchmarks={watchlist.list?.benchmarks}
-              />
-            )}
-            <details>
-              <summary>Data quality &amp; suppressed signals</summary>
-              <p>{number(result.evaluated)} complete windows evaluated.</p>
-              {result.cache && (
+            <p className="muted small">
+              Runs in batches of {batchSize} symbols; about 10 s per batch on a
+              cold cache.
+            </p>
+          </div>
+        </form>
+
+        <section
+          className="results-column"
+          aria-label="Results"
+          aria-busy={busy !== ""}
+        >
+          {stale && (
+            <p className="stale" role="status">
+              <strong>Settings changed — run again.</strong> These results are
+              for the previous settings.
+            </p>
+          )}
+          {!hasRun && (
+            <div className="card empty-results">
+              {busy ? (
                 <p>
-                  Bar cache: {number(result.cache.hits)} symbol-days from the
-                  cache, {number(result.cache.misses)} fetched from Alpaca.
-                  {(result.cache.errors ?? 0) > 0 &&
-                    ` ${result.cache.errors} cache errors (last: ${result.cache.lastError}); results are unaffected.`}
+                  Downloading minute bars and 20 warmup sessions from Alpaca ·{" "}
+                  {progress.done} of {progress.total} symbols done…
+                </p>
+              ) : (
+                <>
+                  <h2>What a run shows</h2>
+                  <ul>
+                    <li>
+                      <strong>Verdict</strong>: how often alerts ran to the good
+                      level, were stopped or stayed weak, compared with random
+                      entries in the same symbols and days.
+                    </li>
+                    <li>
+                      <strong>Alerts</strong>: every alert the rule would have
+                      sent, grouped by Israel day, with its outcome and day
+                      chart.
+                    </li>
+                    <li>
+                      <strong>By symbol</strong>: which symbols the rule works
+                      on, against each symbol&apos;s own random entries.
+                    </li>
+                    <li>
+                      <strong>Data quality</strong>: why windows did not alert,
+                      missing data and failed batches.
+                    </li>
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+          {hasRun && (
+            <>
+              <div className="result-title">
+                <h2>
+                  {result
+                    ? `${result.alerts.length} ${result.alerts.length === 1 ? "alert" : "alerts"}`
+                    : "No results"}{" "}
+                  <small>
+                    · {symbolsWithAlerts} of {ranWith.tickers.length} symbols ·{" "}
+                    {rangeLabel(ranWith.from, ranWith.to)} ·{" "}
+                    {ruleLabel(resultChanges)}
+                  </small>
+                </h2>
+                {result && (
+                  <button type="button" className="action" onClick={download}>
+                    Download JSON
+                  </button>
+                )}
+              </div>
+              {result && result.alerts.length > 0 && (
+                <Verdict result={result} alertsCount={result.alerts.length} />
+              )}
+              {result && result.alerts.length === 0 && (
+                <p className="card no-alerts">
+                  No alerts matched these settings{" "}
+                  <span
+                    className={
+                      resultChanges ? "rule-badge changed" : "rule-badge"
+                    }
+                  >
+                    {changeBadge(resultChanges)}
+                  </span>
                 </p>
               )}
-              <ul>
-                {gaps.map((c) => (
-                  <li key={c.ticker + "-gaps"}>
-                    {c.ticker}: no bars for {c.missingSessions.join(", ")}
-                  </li>
-                ))}
-                {result.coverage.map((c) => (
-                  <li key={c.ticker}>
-                    {c.ticker}: {number(c.bars)} minute bars in range
-                  </li>
-                ))}
-                {Object.entries(result.diagnostics).map(([s, n]) => (
-                  <li key={s}>
-                    {s.replaceAll("-", " ")}: {number(n)}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          </section>
-        )}
+              <ResultTabs
+                key={runId}
+                result={result}
+                failed={failed}
+                retrying={busy === "retry"}
+                onRetry={() => void retry()}
+                benchmarks={watchlist.list?.benchmarks}
+              />
+            </>
+          )}
+        </section>
       </div>
       <footer>
-        Alpaca SIP historical data. Signal reconstruction, not a profitability
-        backtest.
+        Alpaca SIP historical data replayed through the live evaluator. Signal
+        reconstruction, not a profitability backtest. Times in Israel time;
+        dates in the setup are US session dates.
       </footer>
-    </>
+    </div>
   );
 }
