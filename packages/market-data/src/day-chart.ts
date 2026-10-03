@@ -10,7 +10,7 @@ import type { BarCache } from "./bar-cache.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
 import { normalize, type RawBar } from "./bars.js";
 import { coreClose, previousSessions } from "./calendar.js";
-import type { SpyStrength } from "./rs-score.js";
+import { spyStrength, type SpyStrength } from "./rs-score.js";
 
 export { benchmark, dailyBeta } from "./beta.js";
 
@@ -167,51 +167,81 @@ export async function runDayChart(
   } catch {
     // Outside calendar coverage: beta is reported as unavailable.
   }
-  const [rows, dailyRows] = await Promise.all([
+  // Daily bars are requested once per symbol and shared by the benchmark β
+  // and the vs-SPY β/σ. They end at the chart day's midnight UTC, before its
+  // daily bar: no look-ahead.
+  const dailyRequests = new Map<string, Promise<RawBar[]>>();
+  const dailyOf = (t: string) => {
+    let request = dailyRequests.get(t);
+    if (!request) {
+      request = daily(t, `${betaSessions[0]}T00:00:00Z`, `${date}T00:00:00Z`);
+      dailyRequests.set(t, request);
+    }
+    return request;
+  };
+  const endIso = new Date(end).toISOString();
+  const spyMissing = !tickers.includes(benchmark);
+  const [rows, dailyRows, spyDaily, spyRows] = await Promise.all([
     Promise.all(
       tickers.map((t, index) =>
-        history(t, index ? start : tickerStart, new Date(end).toISOString()),
+        history(t, index ? start : tickerStart, endIso),
       ),
     ),
     tickers.length === 2 && betaSessions.length > 0
-      ? Promise.all(
-          // Ends at the chart day's midnight UTC, before its daily bar: no look-ahead.
-          tickers.map((t) =>
-            daily(t, `${betaSessions[0]}T00:00:00Z`, `${date}T00:00:00Z`),
-          ),
-        )
+      ? Promise.all(tickers.map(dailyOf))
       : null,
+    // vs SPY: failures degrade to β assumed / no σ, never fail the chart.
+    betaSessions.length > 0
+      ? Promise.all([dailyOf(ticker), dailyOf(benchmark)]).catch(() => null)
+      : null,
+    spyMissing ? history(benchmark, start, endIso).catch(() => null) : null,
   ]);
   const beta = dailyRows
     ? dailyBeta(betaSessions, dailyRows[0]!, dailyRows[1]!)
     : { value: null, returns: 0 };
-  return {
+  const toSeries = (t: string, raw: RawBar[]): ChartSeries => {
+    const bars: ChartBar[] = [];
+    let previousClose: number | null = null;
+    for (const row of raw) {
+      const bar = normalize(t, row, "shares");
+      if (!bar) continue;
+      if (bar.date === previous && bar.session === "regular")
+        previousClose = bar.close;
+      else if (bar.date === date)
+        bars.push({
+          start: row.start,
+          session: bar.session,
+          open: bar.open,
+          close: bar.close,
+          volume: bar.volume,
+        });
+    }
+    return { ticker: t, previousClose, bars };
+  };
+  const chart: DayChart = {
     source: "alpaca",
     feed: "sip",
     date,
     beta: { ...beta, lookback: betaReturns },
     series: tickers.map((t, index) => {
-      const bars: ChartBar[] = [];
-      let previousClose: number | null = null;
-      for (const row of rows[index]!) {
-        const bar = normalize(t, row, "shares");
-        if (!bar) continue;
-        if (bar.date === previous && bar.session === "regular")
-          previousClose = bar.close;
-        else if (bar.date === date)
-          bars.push({
-            start: row.start,
-            session: bar.session,
-            open: bar.open,
-            close: bar.close,
-            volume: bar.volume,
-          });
-      }
-      if (index > 0) return { ticker: t, previousClose, bars };
-      const typicalVolume = typicalVolumes(t, rows[0]!, date, baseline);
-      return { ticker: t, previousClose, bars, typicalVolume };
+      const series = toSeries(t, rows[index]!);
+      if (index > 0) return series;
+      return {
+        ...series,
+        typicalVolume: typicalVolumes(t, rows[0]!, date, baseline),
+      };
     }),
   };
+  // Without SPY's minute bars no score can be shown: vsSpy is left out.
+  if (!spyMissing || spyRows) {
+    const strength: SpyStrength = spyDaily
+      ? spyStrength(betaSessions, spyDaily[0], spyDaily[1])
+      : { beta: 1, betaAssumed: true, betaReturns: 0, sigma: null };
+    chart.vsSpy = spyRows
+      ? { ...strength, spy: toSeries(benchmark, spyRows) }
+      : strength;
+  }
+  return chart;
 }
 
 // Shared by the local API and the hosted Worker so both behave identically.
