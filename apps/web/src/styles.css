@@ -1885,3 +1885,33 @@ button.market-tile[aria-expanded="true"] {
   font-weight: 400;
   color: #526461;
 }
+.look-badge {
+  display: inline-block;
+  min-width: 2.2em;
+  border-radius: 6px;
+  padding: 0 4px;
+  background: #e9eedf;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+.look-badge.big {
+  background: #dcf1d8;
+  color: #15603a;
+}
+.look-badge.very-big {
+  background: #15603a;
+  color: #fff;
+}
+.look-badge.none {
+  background: transparent;
+  color: #8c9a93;
+}
+.trade-view {
+  margin: 6px 0;
+}
+.trade-view summary {
+  color: #61736b;
+  font-size: 12px;
+  cursor: pointer;
+}
