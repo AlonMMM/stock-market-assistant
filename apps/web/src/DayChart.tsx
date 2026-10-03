@@ -130,6 +130,7 @@ export function DayChart({
   window = 0,
   date: day,
   sector,
+  against: initialAgainst = "SPY",
   outcome,
   className = "",
 }: {
@@ -138,6 +139,7 @@ export function DayChart({
   window?: number; // alert window length in minutes
   date?: string; // US session date when there is no alert
   sector?: string; // the symbol's sector/theme benchmark ETF, if known
+  against?: string; // benchmark shown first: "SPY" or `sector`
   outcome?: Outcome; // backtest validation of the alert, if scored
   className?: string;
 }) {
@@ -161,7 +163,7 @@ export function DayChart({
   const overlay = mode === "overlay";
   // Compare with SPY or the symbol's sector benchmark.
   const hasSector = !!sector && sector !== ticker && sector !== "SPY";
-  const [against, setAgainst] = useState("SPY");
+  const [against, setAgainst] = useState(initialAgainst);
   const benchmark = hasSector ? against : "SPY";
 
   useEffect(() => {

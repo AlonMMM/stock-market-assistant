@@ -13,7 +13,7 @@ import {
   israelLabel,
   usSessionDate,
 } from "./time.js";
-import { WatchBoard } from "./WatchBoard.js";
+import { WatchTable } from "./WatchTable.js";
 
 const liveRefreshMs = 30000;
 // Board data is 15-minute-delayed SIP in 5-minute bars.
@@ -223,7 +223,14 @@ export function Live({
           className="tab-panel"
         >
           {board.value ? (
-            <WatchBoard board={board.value} symbols={board.value.watchlist} />
+            <WatchTable
+              board={board.value}
+              alerts={alerts}
+              onShowAlerts={(ticker) => {
+                setSymbol(ticker);
+                setTab("alerts");
+              }}
+            />
           ) : (
             <p className="chart-status">Loading watchlist…</p>
           )}
