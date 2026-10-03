@@ -58,3 +58,18 @@ export function israelWallSeconds(unixSeconds: number): number {
 
 /** US trading date (New York) that contains the instant. */
 export const usSessionDate = (ms: number) => usDate.format(ms);
+
+const weekday = new Intl.DateTimeFormat("en-GB", {
+  timeZone: israelZone,
+  weekday: "short",
+});
+const israelDay = new Intl.DateTimeFormat("en-CA", {
+  timeZone: israelZone,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+/** "Mon" in Israel time. */
+export const israelWeekday = (ms: number) => weekday.format(ms);
+/** Israel calendar date "2026-10-03" containing the instant. */
+export const israelDate = (ms: number) => israelDay.format(ms);

@@ -1,10 +1,18 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { Board } from "../../../packages/market-data/src/board.js";
 import type { AlertLink } from "../../../packages/contracts/src/alert-link.js";
 import type { LiveStatus } from "../../../packages/market-data/src/live.js";
 import { AlertFeed } from "./AlertFeed.js";
 import { readJson } from "./api.js";
-import { Notices } from "./Notices.js";
+import { pillFor } from "./live-model.js";
+import { StatusPill } from "./StatusPill.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
 import { WatchBoard } from "./WatchBoard.js";
 
@@ -15,16 +23,6 @@ const DayChart = lazy(() =>
 const liveRefreshMs = 30000;
 // Board data is 15-minute-delayed SIP in 5-minute bars.
 const boardRefreshMs = 5 * 60000;
-
-const stateText: Record<string, string> = {
-  subscribed: "Connected · waiting for bars",
-  "warming-up": "Warming up history…",
-  starting: "Starting…",
-  "awaiting-watchlist": "Waiting for the first IBKR watchlist sync",
-  "awaiting-alpaca-activation": "Alpaca streaming is switched off",
-  disconnected: "Disconnected",
-  unavailable: "Collector unreachable",
-};
 
 // Polls `path` while the page is visible.
 function usePolling<T>(
@@ -74,66 +72,57 @@ export function Live({
     setWarnings((w) => (w.at(-1) === message ? w : [...w, message]));
   const live = usePolling<LiveStatus>("/api/live", liveRefreshMs, warn);
   const board = usePolling<Board>("/api/board", boardRefreshMs, warn);
+  // The collector returns no alerts while unreachable; keep the last ones.
+  const kept = useRef<LiveStatus["alerts"]>([]);
   const status = live.value;
-  useEffect(() => {
-    if (status?.failure) warn(status.failure);
-  }, [status?.failure]);
-
-  // A bar older than 3 minutes while connected usually means the market is
-  // closed (or the feed stalled); the bar time is shown so either is visible.
-  const receiving =
-    status?.state === "subscribed" &&
-    status.lastBarAt !== null &&
-    Date.now() - Date.parse(status.lastBarAt) < 3 * 60000;
-  const statusText = !status
-    ? "Connecting…"
-    : receiving
-      ? "Live · receiving 1-minute bars"
-      : (stateText[status.state] ?? status.state);
+  if (status && status.state !== "unavailable") kept.current = status.alerts;
+  const alerts = status ? kept.current : [];
+  const now = Date.now();
+  const pill = pillFor(status, now, live.at);
+  const newestAlert = alerts.reduce<string | null>(
+    (m, a) => (m === null || a.end > m ? a.end : m),
+    null,
+  );
   const day = board.value?.date;
   const linked =
-    link &&
-    status?.alerts.some((a) => a.ticker === link.ticker && a.end === link.end);
+    link && alerts.some((a) => a.ticker === link.ticker && a.end === link.end);
   const linkNotice =
     !link || !status || linked
       ? null
       : link.synthetic
         ? "This link came from a SYNTHETIC test alert, which is not stored. Links from real alerts open the alert here."
-        : `The linked alert (${link.ticker}, ${israelDateTime(Date.parse(link.end))} ${israelLabel}) is not among the ${status.alerts.length} most recent live alerts.`;
+        : `The linked alert (${link.ticker}, ${israelDateTime(Date.parse(link.end))} ${israelLabel}) is not among the ${alerts.length} most recent live alerts.`;
 
   return (
-    <>
+    <div className="live-page">
       <header>
-        <span className="brand">
-          SMA<span className="brand-dot">.</span>
-        </span>
+        <div className="brand-status">
+          <span className="brand">
+            SMA<span className="brand-dot">.</span>
+          </span>
+          <StatusPill
+            pill={pill}
+            status={status}
+            checkedAt={live.at}
+            refreshSeconds={liveRefreshMs / 1000}
+            warnings={warnings}
+            onClearWarnings={() => setWarnings([])}
+          />
+        </div>
         {modes}
       </header>
-      <Notices items={warnings} />
-      <section className="live-status" aria-live="polite">
-        <p className="live-state">
-          <span
-            className={
-              receiving
-                ? "live-dot on"
-                : status?.state === "subscribed"
-                  ? "live-dot idle"
-                  : "live-dot off"
-            }
-            aria-hidden="true"
-          />
-          <strong>{statusText}</strong>
+      {pill.kind === "offline" && (
+        <p className="offline-banner" role="alert">
+          <strong>
+            Live alerts are paused — the collector is unreachable.
+          </strong>{" "}
+          {newestAlert
+            ? `Showing the last alerts received, up to ${israelClock(Date.parse(newestAlert))}. `
+            : ""}
+          {live.at && `Checked ${israelClock(live.at)} ${israelLabel}.`}
+          {status?.failure && ` (${status.failure})`}
         </p>
-        {status && status.state !== "unavailable" && (
-          <p className="live-meta">
-            {status.feed?.toUpperCase()} · {status.symbols} live symbols ·{" "}
-            {status.lastBarAt
-              ? `last bar ${israelDateTime(Date.parse(status.lastBarAt))}`
-              : "no live bars yet"}
-            {live.at && ` · checked ${israelClock(live.at)} ${israelLabel}`}
-          </p>
-        )}
-      </section>
+      )}
 
       <section className="market">
         <h2 className="section-title">
@@ -155,20 +144,18 @@ export function Live({
       <section>
         <h2 className="section-title">
           Live alerts{" "}
-          {status && status.alerts.length > 0 && (
-            <small>{status.alerts.length} recent</small>
-          )}
+          {alerts.length > 0 && <small>{alerts.length} recent</small>}
         </h2>
         {linkNotice && <p className="notice">{linkNotice}</p>}
-        {status && status.alerts.length === 0 && (
+        {status && alerts.length === 0 && (
           <p className="notice">
             No live alerts yet. US pre-market opens 11:00 {israelLabel}, the
             regular session 16:30.
           </p>
         )}
-        {status && status.alerts.length > 0 && (
+        {alerts.length > 0 && (
           <AlertFeed
-            alerts={status.alerts}
+            alerts={alerts}
             benchmarks={board.value?.benchmarks}
             focus={linked ? link.ticker + link.end : undefined}
           />
@@ -191,11 +178,6 @@ export function Live({
           <p className="chart-status">Loading watchlist charts…</p>
         )}
       </section>
-      <footer>
-        Live alerts: Alpaca{" "}
-        {status?.feed === "iex" ? "IEX (one exchange's volume)" : "stream"},
-        refreshed every 30 s. Charts: Alpaca SIP, 15-minute delayed.
-      </footer>
-    </>
+    </div>
   );
 }
