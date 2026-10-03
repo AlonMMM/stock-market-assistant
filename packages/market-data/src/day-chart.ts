@@ -8,7 +8,7 @@ import {
 } from "./backtest.js";
 import type { BarCache } from "./bar-cache.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
-import { normalize } from "./bars.js";
+import { normalize, type RawBar } from "./bars.js";
 import { coreClose, previousSessions } from "./calendar.js";
 
 export { benchmark, dailyBeta } from "./beta.js";
@@ -27,6 +27,9 @@ export interface ChartSeries {
   // intraday % change; null when that session has no bars.
   previousClose: number | null;
   bars: ChartBar[];
+  // Requested ticker only, aligned with `bars`: median volume at the same New
+  // York minute and session over the previous 20 sessions; null with < 15.
+  typicalVolume?: (number | null)[];
 }
 
 export interface DayChart {
@@ -39,6 +42,52 @@ export interface DayChart {
 }
 
 export class DayChartInputError extends Error {}
+
+// Typical volume baseline: previous sessions examined and the minimum with a
+// bar at the same minute (docs/features/live-page.md).
+export const typicalVolumeSessions = 20;
+export const typicalVolumeMinimum = 15;
+
+export function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2
+    ? sorted[mid]!
+    : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
+/**
+ * Per bar of `date`: the median volume of the bars at the same New York minute
+ * and session over the previous sessions in `baseline`; null with fewer than
+ * `typicalVolumeMinimum` such bars. Only earlier dates contribute.
+ */
+export function typicalVolumes(
+  ticker: string,
+  rows: RawBar[],
+  date: string,
+  baseline: string[],
+): (number | null)[] {
+  const prior = new Set(baseline.filter((d) => d < date));
+  const history = new Map<string, number[]>();
+  const today: string[] = [];
+  for (const row of rows) {
+    const bar = normalize(ticker, row, "shares");
+    if (!bar) continue;
+    const key = `${bar.session}|${bar.minute}`;
+    if (bar.date === date) today.push(key);
+    else if (prior.has(bar.date)) {
+      const list = history.get(key);
+      if (list) list.push(bar.volume);
+      else history.set(key, [bar.volume]);
+    }
+  }
+  return today.map((key) => {
+    const volumes = history.get(key);
+    return volumes && volumes.length >= typicalVolumeMinimum
+      ? median(volumes)
+      : null;
+  });
+}
 
 function parse(input: unknown) {
   if (!input || typeof input !== "object" || Array.isArray(input))
@@ -90,6 +139,15 @@ export async function runDayChart(
   if (Date.parse(start) >= end)
     throw new DayChartInputError("That day has no data yet");
   const tickers = ticker === against ? [ticker] : [ticker, against];
+  // The requested ticker's history reaches back over the typical-volume
+  // baseline; finished days come from the bar cache when one is configured.
+  let baseline: string[] = [];
+  try {
+    baseline = previousSessions(date, typicalVolumeSessions);
+  } catch {
+    // Outside calendar coverage: typical volume is reported as unavailable.
+  }
+  const tickerStart = baseline.length ? `${baseline[0]}T00:00:00Z` : start;
   let betaSessions: string[] = [];
   try {
     betaSessions = previousSessions(date, betaReturns + 1);
@@ -98,7 +156,9 @@ export async function runDayChart(
   }
   const [rows, dailyRows] = await Promise.all([
     Promise.all(
-      tickers.map((t) => history(t, start, new Date(end).toISOString())),
+      tickers.map((t, index) =>
+        history(t, index ? start : tickerStart, new Date(end).toISOString()),
+      ),
     ),
     tickers.length === 2 && betaSessions.length > 0
       ? Promise.all(
@@ -134,7 +194,9 @@ export async function runDayChart(
             volume: bar.volume,
           });
       }
-      return { ticker: t, previousClose, bars };
+      if (index > 0) return { ticker: t, previousClose, bars };
+      const typicalVolume = typicalVolumes(t, rows[0]!, date, baseline);
+      return { ticker: t, previousClose, bars, typicalVolume };
     }),
   };
 }

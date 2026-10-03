@@ -15,11 +15,16 @@ import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
 import type { BarCache } from "../../../packages/market-data/src/bar-cache.js";
 import { handleBoard } from "../../../packages/market-data/src/board.js";
 import { loadLive } from "../../../packages/market-data/src/live.js";
+import type { BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
 import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
 
 export function buildApp(
   logging = false,
-  alpaca: Credentials & { fetcher?: typeof fetch; cache?: BarCache } = {
+  alpaca: Credentials & {
+    fetcher?: typeof fetch;
+    cache?: BarCache;
+    baselines?: BaselineStore; // stored Rel vol baselines for the board
+  } = {
     key: process.env.ALPACA_API_KEY,
     secret: process.env.ALPACA_API_SECRET,
   },
@@ -45,6 +50,8 @@ export function buildApp(
       list.benchmarks,
       alpaca,
       alpaca.fetcher,
+      Date.now(),
+      alpaca.baselines,
     );
     return reply.code(result.status).send(result.body);
   });
