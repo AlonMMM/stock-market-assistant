@@ -239,6 +239,8 @@ export function DayChart({
         borderVisible: false,
         timeVisible: true,
         secondsVisible: false,
+        // Lets "Today" fit a full day of minute bars on a phone.
+        minBarSpacing: 0.05,
       },
       crosshair: { mode: CrosshairMode.Magnet },
       handleScroll: { vertTouchDrag: false },

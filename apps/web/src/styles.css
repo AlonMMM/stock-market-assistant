@@ -1619,3 +1619,11 @@ button.market-tile[aria-expanded="true"] {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.greek {
+  text-transform: none;
+}
+.watch-head > span {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+}

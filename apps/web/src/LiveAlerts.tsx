@@ -155,7 +155,9 @@ export function LiveAlerts({
           <span>Symbol</span>
           <span>Move</span>
           <span>Volume vs expected</span>
-          <span className="right">vs SPY × β</span>
+          <span className="right">
+            vs SPY × <span className="greek">β</span>
+          </span>
           <span />
         </div>
         {groups.map((g) => (
