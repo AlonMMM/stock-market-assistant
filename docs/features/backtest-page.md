@@ -11,7 +11,7 @@ numbers are SAMPLE data.
 
 The trader tuning the relative-volume rule. They pick symbols, dates and (optionally)
 changed rule settings, run the replay, and must answer quickly: did alerts do better
-than random entries, on which symbols, and is the sample large enough to trust?
+than ordinary momentum entries (the baseline), on which symbols, and is the sample large enough to trust?
 
 ## Scope and exclusions
 
@@ -64,12 +64,13 @@ after a run marks results "Settings changed — run again" (instead of clearing 
 
 - Title: "84 alerts · 21 of 30 symbols · Fri 25 Sep – Fri 2 Oct · rvol-v4 + 1 change",
   "Download JSON".
-- **Verdict** card, heading "Did the move follow, compared with random entries?":
-  for Good, Stopped and Weak a pair of horizontal bars (Alerts full colour, Random faded)
-  with percentages and a difference "+2 pts vs random" (green when better: more good /
+- **Verdict** card, heading "Did the move follow, compared with ordinary momentum entries?":
+  for Good, Stopped and Weak a pair of horizontal bars (Alerts full colour, Baseline faded)
+  with percentages and a difference "+2 pts vs baseline" (green when better: more good /
   fewer stopped; red when worse; neutral for weak). Then median move in the alert's
   direction at 5/15/30/60 min and median best run (u). Meta line: scored count, unscored
-  count with reason, baseline description. Under 50 scored alerts: amber note "Only N
+  count with reason, baseline description (momentum entries at every 5th regular minute in
+  the same symbols and days, scored the same way; not random). Under 50 scored alerts: amber note "Only N
   scored alerts: a difference of a few points is within noise…".
 - **Tabs** with counts:
   - **Alerts**: the Live alert feed (Israel-day groups, collapsible, header shows count and
@@ -79,7 +80,7 @@ after a run marks results "Settings changed — run again" (instead of clearing 
     15 / 60 min". Expanded rows keep evidence, analysis and the day chart (opens Around
     alert), and the chart marks entry, good and stop levels.
   - **By symbol**: table sorted by good % (desc), columns Symbol, Alerts, a stacked bar
-    good/weak/stopped (green/grey/red, with text in the accessible label), Good %, vs random
+    good/weak/stopped (green/grey/red, with text in the accessible label), Good %, vs baseline
     (symbol's good % minus that symbol's baseline good %, in pts), Median run (u).
     Sortable headers like the Live watchlist. Rows with fewer than 5 scored alerts are
     faded and sort after the rest. Clicking a row opens the Alerts tab filtered to it.
@@ -111,12 +112,12 @@ good, stopped, weak }>` (same baseline entries as today's `validation.baseline`,
 2. "Last 10 sessions" fills From/To with 10 US sessions ending on the last complete one,
    skipping weekends and holidays.
 3. "Alerted recently" with 0 live alerts → disabled with "No recent live alerts".
-4. 84 scored alerts, 32% good vs 30% baseline → Good shows "+2 pts vs random" in green;
-   stopped 41% vs 44% → "−3 pts vs random" in green; the under-50 note is absent; with 40
+4. 84 scored alerts, 32% good vs 30% baseline → Good shows "+2 pts vs baseline" in green;
+   stopped 41% vs 44% → "−3 pts vs baseline" in green; the under-50 note is absent; with 40
    scored alerts the note shows.
 5. By symbol: a symbol with 4 alerts is faded and below symbols with ≥ 5; clicking NVDA
    opens Alerts filtered to NVDA.
-6. "vs random" for NVDA uses NVDA's own baseline from `baselineBySymbol`; if absent
+6. "vs baseline" for NVDA uses NVDA's own baseline from `baselineBySymbol`; if absent
    (older API), the column shows "—".
 7. One batch times out → Data quality tab count shows the issue; "Retry these" reruns
    only that batch and the totals update.
