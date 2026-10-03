@@ -1,18 +1,21 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import type { Evaluation } from "../../../packages/alerts/src/relative-volume.js";
 import type { AlertContext } from "../../../packages/market-data/src/backtest.js";
+import type { LiveAnalysis } from "../../../packages/market-data/src/live.js";
 import type { Outcome } from "../../../packages/market-data/src/outcome.js";
+import { AnalysisPanel } from "./Analysis.js";
 
 // Backtest alerts carry close and market context; live alerts may lack them.
 export type FeedAlert = Evaluation & {
   close?: number;
   context?: AlertContext | null;
   outcome?: Outcome; // backtest only: what the price did after the alert
+  analysis?: LiveAnalysis; // live only, when the collector analyzes alerts
 };
 
 const outcomeBadge = { good: "✅", stopped: "❌", weak: "⏸", unscored: "·" };
 import { number } from "./api.js";
-import { israelClock, israelDateTime, israelLabel } from "./time.js";
+import { israelClock, israelDay, israelDayLabel, israelLabel } from "./time.js";
 
 const DayChart = lazy(() =>
   import("./DayChart.js").then((m) => ({ default: m.DayChart })),
@@ -37,6 +40,13 @@ export function AlertFeed({
   const [result, setResult] = useState<Outcome["result"] | null>(null);
   const scored = alerts.some((a) => a.outcome);
   const [open, setOpen] = useState<string | null>(focus ?? null);
+  // Days the viewer opened (true) or closed (false); other days follow the
+  // default: the newest day and the linked alert's day are open.
+  const [days, setDays] = useState<Record<string, boolean>>({});
+  const [focusDay] = useState(() => {
+    const linked = alerts.find((a) => a.ticker + a.end === focus);
+    return linked && israelDay(Date.parse(linked.end));
+  });
   useEffect(() => {
     if (focus)
       document
@@ -58,6 +68,16 @@ export function AlertFeed({
         ? (b.ratio ?? 0) - (a.ratio ?? 0)
         : b.end.localeCompare(a.end),
     );
+  // One group per Israel calendar date, newest date first; rows keep the
+  // chosen sort inside their date.
+  const groups = new Map<string, FeedAlert[]>();
+  for (const a of shown) {
+    const day = israelDay(Date.parse(a.end));
+    groups.set(day, [...(groups.get(day) ?? []), a]);
+  }
+  const dates = [...groups.keys()].sort().reverse();
+  const isOpen = (day: string) =>
+    days[day] ?? (day === dates[0] || day === focusDay);
 
   return (
     <div className="feed">
@@ -121,89 +141,136 @@ export function AlertFeed({
         {alerts.some((a) => a.context) &&
           " “vs SPY×β”: the symbol’s move from the previous close minus SPY’s move times the symbol’s 60-day beta."}
       </p>
-      <ul className="feed-list">
-        {shown.map((a) => {
-          const key = a.ticker + a.end;
-          const expanded = open === key;
-          const c = a.context;
-          return (
-            <li
-              key={key}
-              id={`alert-${key}`}
-              className={expanded ? "feed-row open" : "feed-row"}
+      {dates.map((day) => {
+        const rows = groups.get(day)!;
+        const expandedDay = isOpen(day);
+        return (
+          <section className="feed-day" key={day}>
+            <button
+              type="button"
+              className="feed-day-head"
+              aria-expanded={expandedDay}
+              aria-controls={`day-${day}`}
+              onClick={() => setDays({ ...days, [day]: !expandedDay })}
             >
-              <button
-                type="button"
-                className="feed-summary"
-                aria-expanded={expanded}
-                onClick={() => setOpen(expanded ? null : key)}
-              >
-                <strong className="feed-ticker">
-                  {a.outcome && (
-                    <span
-                      className="feed-outcome"
-                      title={a.outcome.reason ?? a.outcome.result}
+              <span className="feed-day-chevron" aria-hidden="true">
+                {expandedDay ? "⌄" : "›"}
+              </span>
+              <strong>{israelDayLabel(Date.parse(rows[0]!.end))}</strong>
+              <span className="feed-day-count">
+                {rows.length} {rows.length === 1 ? "alert" : "alerts"}
+              </span>
+            </button>
+            {expandedDay && (
+              <ul className="feed-list" id={`day-${day}`}>
+                {rows.map((a) => {
+                  const key = a.ticker + a.end;
+                  const expanded = open === key;
+                  const c = a.context;
+                  const spy = a.analysis?.result?.scores.find(
+                    (s) => s.kind === "market",
+                  );
+                  return (
+                    <li
+                      key={key}
+                      id={`alert-${key}`}
+                      className={expanded ? "feed-row open" : "feed-row"}
                     >
-                      {outcomeBadge[a.outcome.result]}{" "}
-                    </span>
-                  )}
-                  {a.ticker}
-                </strong>
-                <span className="feed-time">
-                  {israelDateTime(Date.parse(a.end))}
-                  {sessionTag[a.session] && (
-                    <em className="feed-session">{sessionTag[a.session]}</em>
-                  )}
-                </span>
-                <strong className="feed-ratio">
-                  {a.ratio?.toFixed(1)}×
-                  {a.direction && (
-                    <span
-                      className={
-                        a.direction === "up" ? "feed-move up" : "feed-move down"
-                      }
-                    >
-                      {a.direction === "up" ? "▲" : "▼"}{" "}
-                      {Math.abs(a.move).toFixed(2)}%
-                    </span>
-                  )}
-                </strong>
-                <span className="feed-excess">
-                  {c ? (
-                    <>
-                      <strong>{signed(c.excess)}%</strong> vs SPY×β
-                    </>
-                  ) : (
-                    "—"
-                  )}
-                </span>
-                <span className="feed-chevron" aria-hidden="true">
-                  {expanded ? "⌃" : "⌄"}
-                </span>
-              </button>
-              {expanded && (
-                <div className="feed-detail">
-                  <AlertEvidence alert={a} />
-                  <Suspense
-                    fallback={
-                      <p className="chart-status">Loading day chart…</p>
-                    }
-                  >
-                    {a.outcome && <OutcomeLine outcome={a.outcome} />}
-                    <DayChart
-                      ticker={a.ticker}
-                      alertEnd={a.end}
-                      outcome={a.outcome}
-                      window={a.config.window}
-                      sector={benchmarks[a.ticker]}
-                    />
-                  </Suspense>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                      <button
+                        type="button"
+                        className="feed-summary"
+                        aria-expanded={expanded}
+                        onClick={() => setOpen(expanded ? null : key)}
+                      >
+                        <strong className="feed-ticker">
+                          {a.outcome && (
+                            <span
+                              className="feed-outcome"
+                              title={a.outcome.reason ?? a.outcome.result}
+                            >
+                              {outcomeBadge[a.outcome.result]}{" "}
+                            </span>
+                          )}
+                          {a.ticker}
+                        </strong>
+                        <span className="feed-time">
+                          {israelClock(Date.parse(a.end))}
+                          {sessionTag[a.session] && (
+                            <em className="feed-session">
+                              {sessionTag[a.session]}
+                            </em>
+                          )}
+                        </span>
+                        <strong className="feed-ratio">
+                          {a.ratio?.toFixed(1)}×
+                          {a.direction && (
+                            <span
+                              className={
+                                a.direction === "up"
+                                  ? "feed-move up"
+                                  : "feed-move down"
+                              }
+                            >
+                              {a.direction === "up" ? "▲" : "▼"}{" "}
+                              {Math.abs(a.move).toFixed(2)}%
+                            </span>
+                          )}
+                        </strong>
+                        <span className="feed-excess">
+                          {c ? (
+                            <>
+                              <strong>{signed(c.excess)}%</strong> vs SPY×β
+                            </>
+                          ) : spy?.score !== null &&
+                            spy?.score !== undefined ? (
+                            <>
+                              <strong>{spy.score}</strong>/100 vs SPY
+                            </>
+                          ) : a.analysis && !a.analysis.result ? (
+                            "analyzing…"
+                          ) : (
+                            "—"
+                          )}
+                        </span>
+                        <span className="feed-chevron" aria-hidden="true">
+                          {expanded ? "⌃" : "⌄"}
+                        </span>
+                      </button>
+                      {expanded && (
+                        <div className="feed-detail">
+                          <AlertEvidence alert={a} />
+                          {a.analysis && (
+                            <AnalysisPanel
+                              ticker={a.ticker}
+                              end={a.end}
+                              direction={a.direction}
+                              analysis={a.analysis}
+                            />
+                          )}
+                          <Suspense
+                            fallback={
+                              <p className="chart-status">Loading day chart…</p>
+                            }
+                          >
+                            {a.outcome && <OutcomeLine outcome={a.outcome} />}
+                            <DayChart
+                              ticker={a.ticker}
+                              alertEnd={a.end}
+                              outcome={a.outcome}
+                              window={a.config.window}
+                              sector={benchmarks[a.ticker]}
+                            />
+                          </Suspense>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -232,6 +299,7 @@ function OutcomeLine({ outcome: o }: { outcome: Outcome }) {
 
 /** One line of evidence: window volume vs expected, pace, move, context. */
 export function AlertEvidence({ alert: a }: { alert: FeedAlert }) {
+  const c = a.context;
   return (
     <p className="evidence">
       {number(a.actual)} shares in {a.config.window} min vs{" "}
@@ -251,11 +319,11 @@ export function AlertEvidence({ alert: a }: { alert: FeedAlert }) {
         </>
       )}
       {a.close !== undefined && <> · close ${a.close.toFixed(2)}</>}
-      {a.context && (
+      {c && (
         <>
           {" "}
-          · {a.ticker} {signed(a.context.change)}%, SPY{" "}
-          {signed(a.context.spyChange)}%, β {a.context.beta.toFixed(2)}
+          · {a.ticker} {signed(c.change)}%, SPY {signed(c.spyChange)}%, β{" "}
+          {c.beta.toFixed(2)}
         </>
       )}
     </p>

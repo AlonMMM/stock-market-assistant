@@ -28,6 +28,15 @@ import {
 } from "../../../packages/notifications/src/outbox.js";
 import { TelegramSender } from "../../../packages/notifications/src/telegram.js";
 import { MarketStore } from "../../../packages/market-data/src/store.js";
+import { claudeCreate } from "../../../packages/analysis/src/agents.js";
+import { telegramDelivery } from "../../../packages/analysis/src/format.js";
+import { alpacaNews } from "../../../packages/analysis/src/news.js";
+import {
+  AnalysisQueue,
+  analyzeOnAlerts,
+} from "../../../packages/analysis/src/pipeline.js";
+import { pythonRunner } from "../../../packages/analysis/src/technical.js";
+import { chartNamePattern } from "../../../packages/analysis/src/technical-facts.js";
 import {
   parseWatchlistInput,
   WatchlistInputError,
@@ -77,6 +86,35 @@ const outbox = telegram
   ? new Outbox(dbPath, telegram, { siteUrl: process.env.SITE_URL })
   : null;
 if (outbox) notifyOnAlerts(alertEvents, outbox);
+// Alert analysis (relative strength, technical scan, sentiment and news
+// agents) is opt-in: it calls Alpaca REST and, with a key, the Claude API.
+const analysisEnabled = process.env.ANALYSIS_ENABLED === "true";
+if (analysisEnabled && (!key || !secret))
+  throw new Error(
+    "ANALYSIS_ENABLED needs ALPACA_API_KEY and ALPACA_API_SECRET",
+  );
+const anthropicKey = process.env.ANTHROPIC_API_KEY ?? "";
+const analyses = analysisEnabled
+  ? new AnalysisQueue(
+      dbPath,
+      {
+        feed: new AlpacaFeed(key, secret, feed as AlpacaFeedName, () => {}),
+        bars: (ticker, from) => store.bars(ticker, from),
+        sector: (ticker) => store.watchlist()?.benchmarks?.[ticker],
+        news: (symbol, start, end) =>
+          alpacaNews({ key, secret }, symbol, start, end),
+        claude: anthropicKey ? claudeCreate(anthropicKey) : null,
+        script: pythonRunner(
+          process.env.TECHNICAL_SCAN_PYTHON ?? "python3",
+          process.env.TECHNICAL_SCAN_SCRIPT,
+        ),
+      },
+      telegram && outbox
+        ? telegramDelivery(telegram, outbox, process.env.SITE_URL)
+        : async () => "off",
+    )
+  : null;
+if (analyses) analyzeOnAlerts(alertEvents, analyses);
 const api = Fastify({ logger: false });
 let stopping = false;
 let failure: string | null = null;
@@ -98,8 +136,10 @@ async function stop(code: number) {
   state = "disconnected";
   console.error(JSON.stringify({ state, error: failure, exitCode: code }));
   feedClient?.close();
+  telegram?.stop();
   await api.close();
   outbox?.close();
+  analyses?.close();
   store.close();
   process.exit(code);
 }
@@ -193,6 +233,61 @@ api.post("/notifications/synthetic", async (_request, reply) => {
   return reply
     .code(202)
     .send({ published: true, ticker: alert.ticker, end: alert.end });
+});
+api.get("/analyses", async () => ({
+  enabled: analyses !== null,
+  claude: analyses !== null && anthropicKey !== "",
+  analyses: analyses?.recent() ?? [],
+}));
+// Analyzes a stored alert again (manual check); delivery follows as usual.
+// With `resend: true` the alert message is sent again first (labeled) and
+// the analysis replies under it.
+api.post("/analyses", async (request, reply) => {
+  if (!analyses)
+    return reply.code(409).send({ error: "Analysis is not enabled" });
+  const body = request.body as {
+    ticker?: unknown;
+    end?: unknown;
+    resend?: unknown;
+  } | null;
+  if (
+    typeof body?.ticker !== "string" ||
+    typeof body.end !== "string" ||
+    (body.resend !== undefined && typeof body.resend !== "boolean")
+  )
+    return reply.code(400).send({
+      error: "Body must be { ticker: string, end: string, resend?: boolean }",
+    });
+  const alert = store.findAlert(body.ticker, body.end);
+  if (!alert) return reply.code(404).send({ error: "No such stored alert" });
+  if (body.resend) {
+    if (!outbox)
+      return reply.code(409).send({ error: "Telegram is not configured" });
+    const sent = await outbox.resend(alert);
+    if (!sent.ok) return reply.code(502).send({ error: sent.error });
+  }
+  analyses.requeue(alert);
+  void analyses.drain();
+  return reply
+    .code(202)
+    .send({ queued: true, ticker: alert.ticker, end: alert.end });
+});
+// One stored technical-scan chart of an analysis, for the site.
+api.get("/analyses/chart", async (request, reply) => {
+  const { ticker, end, name } = request.query as Record<string, unknown>;
+  if (
+    typeof ticker !== "string" ||
+    typeof end !== "string" ||
+    typeof name !== "string" ||
+    !chartNamePattern.test(name)
+  )
+    return reply.code(400).send({ error: "Expected ticker, end and name" });
+  const png = analyses?.chart(ticker, end, name);
+  if (!png) return reply.code(404).send({ error: "No such chart" });
+  return reply
+    .type("image/png")
+    .header("Cache-Control", "private, max-age=300")
+    .send(png);
 });
 api.get("/watchlist", async (_request, reply) => {
   const list = store.watchlist();
@@ -332,14 +427,18 @@ try {
     host: process.env.COLLECTOR_HOST ?? "127.0.0.1",
     port: Number(process.env.PORT ?? 3002),
   });
-  const prune = () =>
+  const prune = () => {
     store.prune(
       new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10),
     );
+    // Analyses carry chart images; keep 60 days.
+    analyses?.prune(new Date(Date.now() - 60 * 86400000).toISOString());
+  };
   prune();
   setInterval(prune, 86400000).unref();
   // Picks up retries and rows left pending by a restart.
   if (outbox) setInterval(() => void outbox.drain(), 5000).unref();
+  if (analyses) setInterval(() => void analyses.drain(), 5000).unref();
   const list = store.watchlist();
   if (!enabled) {
     state = "awaiting-alpaca-activation";

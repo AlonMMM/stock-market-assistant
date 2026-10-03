@@ -49,6 +49,17 @@ export class MarketStore {
         (r) => JSON.parse(String(r.payload)) as Evaluation & { close?: number },
       );
   }
+  findAlert(
+    ticker: string,
+    end: string,
+  ): (Evaluation & { close?: number }) | null {
+    const row = this.db
+      .prepare("SELECT payload FROM alerts WHERE ticker=? AND end=?")
+      .get(ticker, end);
+    return row
+      ? (JSON.parse(String(row.payload)) as Evaluation & { close?: number })
+      : null;
+  }
   watchlist(): StoredWatchlist | null {
     const row = this.db
       .prepare("SELECT payload FROM watchlist WHERE id=1")

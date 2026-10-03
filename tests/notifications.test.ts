@@ -9,12 +9,14 @@ import { AlertEvents } from "../packages/alerts/src/events.js";
 import {
   notifyOnAlerts,
   Outbox,
+  topicName,
 } from "../packages/notifications/src/outbox.js";
 import {
   alertLink,
   parseAlertLink,
 } from "../packages/contracts/src/alert-link.js";
 import {
+  automaticCopy,
   formatAlert,
   TelegramSender,
   type Alert,
@@ -242,6 +244,19 @@ test("TelegramSender classifies responses without leaking the token", async () =
     parse_mode: "HTML",
     link_preview_options: { is_disabled: true },
   });
+  const threaded = await new TelegramSender(
+    "SECRET",
+    "42",
+    reply(200, { ok: true, result: { message_id: 7 } }),
+  ).send("hi", { replyTo: 5 });
+  assert.deepEqual(threaded, { ok: true, messageId: 7 });
+  assert.deepEqual(
+    (calls[1]!.body as { reply_parameters: unknown }).reply_parameters,
+    {
+      message_id: 5,
+      allow_sending_without_reply: true,
+    },
+  );
   const limited = await new TelegramSender(
     "SECRET",
     "42",
@@ -311,4 +326,305 @@ test("alert links round-trip and reject incomplete input", () => {
   assert.equal(parseAlertLink("?alert=AAPL"), null);
   assert.equal(parseAlertLink("?alert=AAPL&end=soon"), null);
   assert.equal(parseAlertLink(""), null);
+});
+
+test("records the Telegram message id and upgrades an older database", async () => {
+  const t = setup([{ ok: true, messageId: 99 }]);
+  // A database created before the message_id column existed.
+  const old = new DatabaseSync(t.path);
+  old.exec(`CREATE TABLE notifications (ticker TEXT, end TEXT, payload TEXT NOT NULL,
+    status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL,
+    error TEXT, sent_at TEXT, PRIMARY KEY(ticker,end))`);
+  old.close();
+  const box = t.open();
+  const a = alert("AAPL", "2026-09-28T14:00:00Z");
+  assert.equal(box.messageId(a.ticker, a.end), null);
+  box.enqueue(a);
+  await box.drain();
+  assert.equal(box.messageId(a.ticker, a.end), 99);
+  box.close();
+  t.cleanup();
+});
+
+test("re-sends a stored alert labeled, even while muted, and threads under it", async () => {
+  const t = setup([
+    { ok: true, messageId: 5 },
+    { ok: true, messageId: 8 },
+  ]);
+  const box = t.open();
+  const a = alert("AAPL", "2026-09-28T14:00:00Z");
+  box.enqueue(a);
+  await box.drain();
+  assert.equal(box.messageId(a.ticker, a.end), 5);
+  box.setMuted(true);
+  assert.deepEqual(await box.resend(a), { ok: true, messageId: 8 });
+  assert.match(
+    t.sent[1]!,
+    /^🔁 <b>RE-SENT<\/b> · earlier alert, sent again for a test\n<b>AAPL<\/b>/,
+  );
+  assert.equal(box.messageId(a.ticker, a.end), 8);
+  // An alert that was never sent gets a row on its first re-send.
+  const b = alert("MSFT", "2026-09-28T14:01:00Z");
+  await box.resend(b);
+  assert.equal(box.recent()[0]!.status, "sent");
+  box.close();
+  t.cleanup();
+});
+
+test("TelegramSender sends one photo or an album into a topic", async () => {
+  const calls: { url: string; form: FormData }[] = [];
+  const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), form: init?.body as FormData });
+    return Response.json({
+      ok: true,
+      result: String(url).endsWith("sendMediaGroup")
+        ? [{ message_id: 11 }, { message_id: 12 }]
+        : { message_id: 10 },
+    });
+  }) as typeof fetch;
+  const sender = new TelegramSender("SECRET", "42", fetcher);
+  const png = Buffer.from("PNG");
+  assert.deepEqual(
+    await sender.sendPhotos([{ png, caption: "one" }], { threadId: 7 }),
+    { ok: true, messageId: 10 },
+  );
+  assert.match(calls[0]!.url, /\/sendPhoto$/);
+  assert.equal(calls[0]!.form.get("message_thread_id"), "7");
+  assert.equal(calls[0]!.form.get("caption"), "one");
+  assert.ok(calls[0]!.form.get("photo") instanceof Blob);
+  assert.deepEqual(
+    await sender.sendPhotos([{ png, caption: "a" }, { png }], { replyTo: 3 }),
+    { ok: true, messageId: 11 },
+  );
+  assert.match(calls[1]!.url, /\/sendMediaGroup$/);
+  assert.deepEqual(JSON.parse(String(calls[1]!.form.get("media"))), [
+    {
+      type: "photo",
+      media: "attach://photo0",
+      caption: "a",
+      parse_mode: "HTML",
+    },
+    { type: "photo", media: "attach://photo1" },
+  ]);
+  assert.deepEqual(JSON.parse(String(calls[1]!.form.get("reply_parameters"))), {
+    message_id: 3,
+    allow_sending_without_reply: true,
+  });
+});
+
+function telegramApi(
+  chat: Record<string, unknown>,
+  extra: Record<string, unknown> = {},
+) {
+  const methods: string[] = [];
+  const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
+    const method = String(url).split("/").at(-1)!;
+    methods.push(method);
+    if (method === "getChat") return Response.json({ ok: true, result: chat });
+    if (method === "getMe")
+      return Response.json({
+        ok: true,
+        result: { id: 1, has_topics_enabled: true },
+      });
+    if (method in extra)
+      return Response.json({ ok: true, result: extra[method] });
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.name.length <= 128, true);
+    return Response.json({
+      ok: true,
+      result: { message_thread_id: 99, name: body.name },
+    });
+  }) as typeof fetch;
+  return { methods, fetcher };
+}
+
+test("TelegramSender detects topics per chat type and creates topics", async () => {
+  const priv = telegramApi({ id: 42, type: "private" });
+  const sender = new TelegramSender("SECRET", "42", priv.fetcher);
+  assert.equal(await sender.topicsEnabled(), true);
+  assert.equal(await sender.topicsEnabled(), true);
+  assert.equal(await sender.createTopic("x".repeat(200)), 99);
+  assert.deepEqual(priv.methods, ["getChat", "getMe", "createForumTopic"]);
+  // A supergroup follows its own topics switch; a channel has none.
+  const forum = telegramApi({ id: -100, type: "supergroup", is_forum: true });
+  assert.equal(
+    await new TelegramSender("S", "-100", forum.fetcher).topicsEnabled(),
+    true,
+  );
+  const plain = telegramApi({ id: -100, type: "supergroup" });
+  assert.equal(
+    await new TelegramSender("S", "-100", plain.fetcher).topicsEnabled(),
+    false,
+  );
+  const channel = telegramApi({
+    id: -200,
+    type: "channel",
+    linked_chat_id: -300,
+  });
+  assert.equal(
+    await new TelegramSender("S", "-200", channel.fetcher).topicsEnabled(),
+    false,
+  );
+  assert.equal(channel.methods.includes("getMe"), false);
+});
+
+test("recognizes a channel post's automatic copy in its discussion group", () => {
+  const copy = {
+    message_id: 77,
+    is_automatic_forward: true,
+    chat: { id: -300, type: "supergroup" },
+    forward_origin: { type: "channel", chat: { id: -200 }, message_id: 12 },
+  };
+  assert.deepEqual(automaticCopy(copy, "-300"), { postId: 12, messageId: 77 });
+  assert.equal(automaticCopy(copy, "-999"), null);
+  assert.equal(
+    automaticCopy({ ...copy, is_automatic_forward: false }, "-300"),
+    null,
+  );
+  assert.equal(
+    automaticCopy({ ...copy, forward_origin: { type: "user" } }, "-300"),
+    null,
+  );
+  assert.equal(automaticCopy(null, "-300"), null);
+});
+
+test("finds a post's discussion copy from updates, even one sent before tracking", async () => {
+  let polls = 0;
+  const offsets: number[] = [];
+  const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
+    const method = String(url).split("/").at(-1)!;
+    if (method === "getChat")
+      return Response.json({
+        ok: true,
+        result: { id: -200, type: "channel", linked_chat_id: -300 },
+      });
+    if (method === "getUpdates") {
+      offsets.push(JSON.parse(String(init?.body)).offset);
+      polls++;
+      return Response.json({
+        ok: true,
+        result:
+          polls === 1
+            ? [
+                {
+                  update_id: 5,
+                  message: { message_id: 1, chat: { id: -300 }, text: "hi" },
+                },
+                {
+                  update_id: 6,
+                  message: {
+                    message_id: 77,
+                    is_automatic_forward: true,
+                    chat: { id: -300 },
+                    forward_origin: { type: "channel", message_id: 12 },
+                  },
+                },
+              ]
+            : [],
+      });
+    }
+    throw new Error(`unexpected ${method}`);
+  }) as typeof fetch;
+  const sender = new TelegramSender("S", "-200", fetcher);
+  assert.equal(await sender.discussion(), "-300");
+  assert.equal(await sender.discussionCopy(12, 5000), 77);
+  assert.equal(await sender.discussionCopy(13, 1500), null);
+  sender.stop();
+  assert.equal(offsets[0], 0);
+  assert.equal(offsets[1], 7);
+});
+
+function topicSender(enabled: boolean) {
+  const sent: { html: string; threadId?: number }[] = [];
+  const topics: string[] = [];
+  let next = 500;
+  return {
+    sent,
+    topics,
+    sender: {
+      async send(
+        html: string,
+        options?: { threadId?: number },
+      ): Promise<SendResult> {
+        sent.push({ html, threadId: options?.threadId });
+        return { ok: true, messageId: sent.length };
+      },
+      async topicsEnabled() {
+        return enabled;
+      },
+      async createTopic(name: string) {
+        topics.push(name);
+        return next++;
+      },
+    },
+  };
+}
+
+test("with topics on, each alert opens its own topic and a retry reuses it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "outbox-"));
+  let now = Date.parse("2026-09-28T14:00:00Z");
+  const t = topicSender(true);
+  const box = new Outbox(join(dir, "test.sqlite"), t.sender, {
+    baseDelayMs: 1000,
+    now: () => now,
+  });
+  const a = alert("AAPL", "2026-09-28T14:00:00Z");
+  box.enqueue(a);
+  await box.drain();
+  // 14:00 UTC is 17:00 in Israel.
+  assert.deepEqual(t.topics, ["AAPL ▲ +1.23% · 28/09, 17:00"]);
+  assert.equal(t.sent[0]!.threadId, 500);
+  assert.equal(box.threadId(a.ticker, a.end), 500);
+  // Retry after a failed send: same topic, no second topic.
+  const failing = { ...a, ticker: "MSFT", end: "2026-09-28T14:01:00Z" };
+  const f = topicSender(true);
+  let first = true;
+  f.sender.send = async (html: string, options?: { threadId?: number }) => {
+    f.sent.push({ html, threadId: options?.threadId });
+    if (first) {
+      first = false;
+      return { ok: false, retry: true, error: "Network error" };
+    }
+    return { ok: true, messageId: 9 };
+  };
+  const box2 = new Outbox(join(dir, "test2.sqlite"), f.sender, {
+    baseDelayMs: 1000,
+    now: () => now,
+  });
+  box2.enqueue(failing);
+  await box2.drain();
+  now += 1000;
+  await box2.drain();
+  assert.equal(f.topics.length, 1);
+  assert.deepEqual(
+    f.sent.map((s) => s.threadId),
+    [500, 500],
+  );
+  // A re-send opens a new, labeled topic.
+  await box.resend(a);
+  assert.equal(t.topics[1], "🔁 AAPL ▲ +1.23% · 28/09, 17:00");
+  assert.equal(box.threadId(a.ticker, a.end), 501);
+  box.close();
+  box2.close();
+  rmSync(dir, { recursive: true });
+});
+
+test("with topics off, alerts go to the main chat", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "outbox-"));
+  const t = topicSender(false);
+  const box = new Outbox(join(dir, "test.sqlite"), t.sender, {
+    now: () => Date.parse("2026-09-28T14:00:00Z"),
+  });
+  const a = alert("AAPL", "2026-09-28T14:00:00Z");
+  box.enqueue(a);
+  await box.drain();
+  assert.deepEqual(t.topics, []);
+  assert.equal(t.sent[0]!.threadId, undefined);
+  assert.equal(box.threadId(a.ticker, a.end), null);
+  assert.equal(
+    topicName({ ...a, direction: "down", move: -0.5, synthetic: true }),
+    "🧪 AAPL ▼ -0.50% · 28/09, 17:00",
+  );
+  box.close();
+  rmSync(dir, { recursive: true });
 });
