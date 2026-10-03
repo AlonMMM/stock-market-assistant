@@ -274,12 +274,14 @@ test("day chart compares with a requested sector benchmark instead of SPY", asyn
       return [];
     },
   );
-  assert.deepEqual(minute, ["MSTR", "IBIT"]);
-  assert.deepEqual(daily, ["MSTR", "IBIT"]);
+  // SPY's minute and daily bars are added for the score vs SPY.
+  assert.deepEqual(minute, ["MSTR", "IBIT", "SPY"]);
+  assert.deepEqual(daily, ["MSTR", "IBIT", "SPY"]);
   assert.deepEqual(
     result.series.map((s) => s.ticker),
     ["MSTR", "IBIT"],
   );
+  assert.equal(result.vsSpy?.spy?.ticker, "SPY");
   await assert.rejects(
     runDayChart(
       { ticker: "MSTR", date: "2026-06-02", benchmark: "btc" },
@@ -366,4 +368,95 @@ test("typical volume ignores the chart day and later days", async () => {
     later,
   );
   assert.deepEqual(result.series[0]!.typicalVolume, [1051, 1050, null]);
+});
+
+// SYNTHETIC: ticker returns are 1.5 × SPY's plus ±0.2% noise uncorrelated with
+// SPY over every 4 sessions, so β vs SPY is 1.5 and the daily excess is ±0.2%.
+const noise = [0.002, 0.002, -0.002, -0.002];
+const noisyClose = (i: number) =>
+  spyMoves
+    .slice(1, i + 1)
+    .reduce((c, r, k) => c * (1 + 1.5 * r + noise[k % 4]!), 200);
+// A flat sector ETF: β vs it would be unavailable, β vs SPY is not.
+const flatClose = () => 80;
+const dailyFor = (ticker: string) =>
+  daily(
+    betaSessions,
+    ticker === "SPY" ? spyClose : ticker === "XLK" ? flatClose : noisyClose,
+  );
+
+test("vsSpy carries β and σ against SPY", async () => {
+  const result = await runDayChart(
+    { ticker: "AAPL", date: "2026-06-02" },
+    async (ticker) => bars(ticker === "SPY" ? 500 : 200),
+    later,
+    async (ticker) => dailyFor(ticker),
+  );
+  const vs = result.vsSpy!;
+  assert.ok(Math.abs(vs.beta - 1.5) < 1e-6, String(vs.beta));
+  assert.equal(vs.betaAssumed, false);
+  assert.equal(vs.betaReturns, 60);
+  // ±0.2% excess over the last 20 returns (5 full cycles of the pattern),
+  // sample σ = 0.2 · √(20/19); the β fit is exact only up to rounding.
+  assert.ok(Math.abs(vs.sigma! - 0.2 * Math.sqrt(20 / 19)) < 1e-3);
+  // SPY is already a series: not repeated.
+  assert.equal(vs.spy, undefined);
+});
+
+test("vsSpy is against SPY when the chart's benchmark is a sector ETF", async () => {
+  const result = await runDayChart(
+    { ticker: "AAPL", date: "2026-06-02", benchmark: "XLK" },
+    async (ticker) =>
+      bars(ticker === "SPY" ? 500 : ticker === "XLK" ? 80 : 200),
+    later,
+    async (ticker) => dailyFor(ticker),
+  );
+  // The chart's own β is vs XLK (flat: unavailable); vsSpy's is vs SPY.
+  assert.equal(result.beta.value, null);
+  assert.ok(Math.abs(result.vsSpy!.beta - 1.5) < 1e-6);
+  const spy = result.vsSpy!.spy!;
+  assert.equal(spy.ticker, "SPY");
+  assert.equal(spy.previousClose, 500.5);
+  assert.equal(spy.bars.length, 4);
+  assert.equal(spy.typicalVolume, undefined);
+});
+
+test("vsSpy degrades to β assumed and no σ, never failing the chart", async () => {
+  // SPY daily history fails while the sector benchmark's succeeds.
+  const noSpyDaily = await runDayChart(
+    { ticker: "AAPL", date: "2026-06-02", benchmark: "XLK" },
+    async () => [],
+    later,
+    async (ticker) => {
+      if (ticker === "SPY") throw new Error("Alpaca REST request failed (429)");
+      return dailyFor(ticker);
+    },
+  );
+  assert.deepEqual(
+    { ...noSpyDaily.vsSpy, spy: undefined },
+    { beta: 1, betaAssumed: true, betaReturns: 0, sigma: null, spy: undefined },
+  );
+  // Too little daily history: β assumed, σ null (14 returns < 15).
+  const short = await runDayChart(
+    { ticker: "AAPL", date: "2026-06-02" },
+    async () => [],
+    later,
+    async (ticker) =>
+      daily(betaSessions.slice(-15), ticker === "SPY" ? spyClose : noisyClose),
+  );
+  assert.equal(short.vsSpy!.betaAssumed, true);
+  assert.equal(short.vsSpy!.beta, 1);
+  assert.equal(short.vsSpy!.sigma, null);
+  // SPY's minute bars fail with a sector benchmark: no vsSpy, chart still OK.
+  const noSpyMinutes = await runDayChart(
+    { ticker: "AAPL", date: "2026-06-02", benchmark: "XLK" },
+    async (ticker) => {
+      if (ticker === "SPY") throw new Error("Alpaca REST request failed (500)");
+      return bars(200);
+    },
+    later,
+    async (ticker) => dailyFor(ticker),
+  );
+  assert.equal(noSpyMinutes.vsSpy, undefined);
+  assert.equal(noSpyMinutes.series.length, 2);
 });
