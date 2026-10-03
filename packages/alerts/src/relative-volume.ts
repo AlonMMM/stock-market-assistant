@@ -32,6 +32,17 @@ export interface Config {
   paceMinMinutes: number; // bars of today's pace zone needed before it applies
   paceSkipOpen: number; // minutes after the regular open outside the pace zone
   paceSkipClose: number; // minutes before the regular close outside it
+  // v4 (user-confirmed 2026-10-03). Tag an alert "in play" when the symbol's
+  // volume so far today (all sessions) is ≥ this × its median at the same
+  // minute over `days` sessions. 0 turns the tag off; it never blocks.
+  inPlayDayRvol: number;
+  // N1, optional: the volume ratio ÷ max(1, today's volume level) must be ≥
+  // this, so a busy day needs a bigger burst. 0 = off.
+  todayVolumeMultiple: number;
+  // N2, optional: |move| must be ≥ this × today's typical |move| over the
+  // same window length (median over today's regular minutes before the
+  // window; needs 15). 0 = off.
+  todayMoveMultiple: number;
 }
 export const defaults: Config = {
   window: 3,
@@ -44,11 +55,15 @@ export const defaults: Config = {
   // Off by default: a 0.5% gate cut alerts 6× and made them worse than
   // chance in validation (2026-09-27); kept as an opt-in setting.
   lastBarMinMovePercent: 0,
-  directionBars: 3,
+  // v4: one candle (was 3); the study kept quality with ~25% more alerts.
+  directionBars: 1,
   paceMultiple: 3,
   paceMinMinutes: 15,
   paceSkipOpen: 30,
   paceSkipClose: 30,
+  inPlayDayRvol: 2,
+  todayVolumeMultiple: 0,
+  todayMoveMultiple: 0,
 };
 export interface Evaluation {
   ticker: string;
@@ -67,6 +82,12 @@ export interface Evaluation {
   expectedMove: number | null;
   direction: "up" | "down" | null;
   samples: number;
+  // v4: today's volume so far ÷ its median at this minute (null without ≥ 10
+  // sessions), the in-play tag, and today's typical |move| (N2's yardstick).
+  // Absent in alerts stored before v4.
+  dayRvol?: number | null;
+  inPlay?: boolean;
+  todayMove?: number | null;
   status:
     | "insufficient-history"
     | "weak-last-bar"
@@ -75,9 +96,12 @@ export interface Evaluation {
     | "low-volume"
     | "mixed-direction"
     | "small-move"
+    | "busy-day-volume" // N1
+    | "normal-for-today" // N2
     | "suppressed"
     | "alert";
-  rule: "rvol-v3";
+  // Stored alerts keep the rule that produced them.
+  rule: "rvol-v3" | "rvol-v4";
   config: Config;
 }
 export function validateConfig(c: Config) {
@@ -117,7 +141,10 @@ export function validateConfig(c: Config) {
     !Number.isFinite(c.paceMultiple) ||
     (c.paceMultiple !== 0 && c.paceMultiple <= 1) ||
     c.paceSkipOpen > 390 ||
-    c.paceSkipClose > 390
+    c.paceSkipClose > 390 ||
+    ![c.inPlayDayRvol, c.todayVolumeMultiple, c.todayMoveMultiple].every(
+      (v) => Number.isFinite(v) && v >= 0 && v <= 100,
+    )
   )
     throw new Error("Invalid configuration");
 }
@@ -126,7 +153,9 @@ const median = (values: number[]) =>
     values[Math.floor(values.length / 2)]!) /
   2;
 
-// Relative volume v3 (user-confirmed 2026-09-27). On each closed bar, over the
+// Relative volume v4 (user-confirmed 2026-10-03): v3 with one direction candle
+// by default, an in-play tag, and optional today-normalized checks (N1, N2).
+// v3 (2026-09-27): on each closed bar, over the
 // last `window` bars: the last bar moved ≥ lastBarMinMovePercent from the
 // previous close (else not evaluated); volume ≥ threshold × its time-of-day
 // median OR ≥ paceMultiple × today's average window volume (mid-session only);
@@ -134,8 +163,19 @@ const median = (values: number[]) =>
 // time-of-day median |move| and ≥ minMovePercent; the last directionBars bars
 // each close beyond the previous close with candles of that color. Alerts on a
 // fresh crossing into that state, outside the cooldown.
+// Per-symbol state across sessions, for today-relative measures.
+interface DayState {
+  date: string;
+  cum: number; // volume so far today, all sessions
+  minutes: Float64Array; // cumulative volume by minute today (NaN = no bar)
+  closes: Float64Array; // regular-session closes by minute today
+  // Previous sessions' cumulative volume by minute, forward-filled.
+  past: Map<string, Float64Array>;
+}
+
 export class RelativeVolume {
   private config: Config;
+  private days = new Map<string, DayState>();
   private states = new Map<
     string,
     {
@@ -169,6 +209,7 @@ export class RelativeVolume {
       !(Number.isFinite(bar.close) && bar.close > 0)
     )
       throw new Error("Invalid closed bar");
+    const day = this.today(bar);
     const key = `${bar.ticker}:${bar.session}`;
     const s = this.states.get(key) ?? {
       last: -Infinity,
@@ -267,12 +308,23 @@ export class RelativeVolume {
       expectedMove !== null &&
       Math.abs(move) >= this.config.priceMultiple * expectedMove &&
       Math.abs(move) >= this.config.minMovePercent;
-    const signal =
+    // Today-relative measures, only for bars that pass the cheaper checks.
+    const candidate =
       lastOk &&
       volumeOk &&
       actual >= this.config.minVolume &&
       direction !== null &&
       moveOk;
+    const dayRvol = candidate ? this.dayRvol(day, bar.minute) : null;
+    const busyOk =
+      c.todayVolumeMultiple === 0 ||
+      (ratio ?? 0) / Math.max(1, dayRvol ?? 1) >= c.todayVolumeMultiple;
+    const todayMove = candidate && busyOk ? this.todayMove(day, bar) : null;
+    const todayOk =
+      c.todayMoveMultiple === 0 ||
+      todayMove === null ||
+      Math.abs(move) >= c.todayMoveMultiple * todayMove;
+    const signal = candidate && busyOk && todayOk;
     let status: Evaluation["status"] =
       expected === null
         ? "insufficient-history"
@@ -288,9 +340,14 @@ export class RelativeVolume {
                   ? "mixed-direction"
                   : !moveOk
                     ? "small-move"
-                    : s.above || time - s.alerted < this.config.cooldown * 60000
-                      ? "suppressed"
-                      : "alert";
+                    : !busyOk
+                      ? "busy-day-volume"
+                      : !todayOk
+                        ? "normal-for-today"
+                        : s.above ||
+                            time - s.alerted < this.config.cooldown * 60000
+                          ? "suppressed"
+                          : "alert";
     if (status === "alert") s.alerted = time;
     s.above = signal;
     return {
@@ -312,10 +369,64 @@ export class RelativeVolume {
       expectedMove,
       direction,
       samples: samples.length,
+      dayRvol,
+      inPlay:
+        c.inPlayDayRvol > 0 && dayRvol !== null && dayRvol >= c.inPlayDayRvol,
+      todayMove,
       status,
-      rule: "rvol-v3",
+      rule: "rvol-v4",
       config: { ...this.config },
     };
+  }
+  // Records the bar in its symbol's day; keeps `days` previous sessions.
+  private today(bar: Bar): DayState {
+    let d = this.days.get(bar.ticker);
+    if (!d || d.date !== bar.date) {
+      const past = d?.past ?? new Map<string, Float64Array>();
+      if (d) {
+        // Forward-fill the finished day so any minute reads its level.
+        let level = 0;
+        for (let m = 0; m < 1441; m++) {
+          if (!Number.isNaN(d.minutes[m]!)) level = d.minutes[m]!;
+          d.minutes[m] = level;
+        }
+        past.set(d.date, d.minutes);
+        while (past.size > this.config.days)
+          past.delete(past.keys().next().value!);
+      }
+      d = {
+        date: bar.date,
+        cum: 0,
+        minutes: new Float64Array(1441).fill(NaN),
+        closes: new Float64Array(1441).fill(NaN),
+        past,
+      };
+      this.days.set(bar.ticker, d);
+    }
+    d.cum += bar.volume;
+    d.minutes[bar.minute] = d.cum;
+    if (bar.session === "regular") d.closes[bar.minute] = bar.close;
+    return d;
+  }
+  private dayRvol(d: DayState, minute: number): number | null {
+    const levels = [...d.past.values()].map((v) => v[minute]!);
+    if (levels.length < 10) return null;
+    const typical = median(levels.sort((a, b) => a - b));
+    return typical > 0 ? d.cum / typical : null;
+  }
+  // Median |move| over `window` minutes across today's regular minutes that
+  // end before this window starts; null with fewer than 15.
+  private todayMove(d: DayState, bar: Bar): number | null {
+    if (bar.session !== "regular") return null;
+    const w = this.config.window;
+    const moves: number[] = [];
+    for (let m = 571 + w; m <= bar.minute - w; m++) {
+      const a = d.closes[m]!;
+      const b = d.closes[m - w]!;
+      if (!Number.isNaN(a) && !Number.isNaN(b))
+        moves.push(Math.abs((a / b - 1) * 100));
+    }
+    return moves.length >= 15 ? median(moves.sort((a, b) => a - b)) : null;
   }
 }
 export function replay(bars: Bar[], config: Config = defaults) {

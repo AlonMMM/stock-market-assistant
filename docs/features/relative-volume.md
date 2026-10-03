@@ -2,6 +2,34 @@
 
 Approved: US stocks, extended hours, minute-close evaluation, same-time volume anomaly as the first feature. Opening/closing minutes remain eligible when unusual for their own time of day (implementation assumption from the user's yes).
 
+## Rule v4 (`rvol-v4`, user-confirmed 2026-10-03)
+
+v3 below, with these changes. The alert means "look at this stock now": a big move is
+likely, in either direction. Direction is not predicted.
+
+1. **One direction candle** (`directionBars` 3 → 1): only the last window bar must close
+   beyond the previous close with a candle of the move's colour. Volume and move rules are
+   unchanged.
+2. **⭐ In play tag** (`inPlayDayRvol`, default 2, 0 = off): an alert is tagged when the
+   symbol's volume so far today (all sessions) is ≥ 2× its median at the same minute over
+   the previous `days` sessions (needs ≥ 10). Evaluations report `dayRvol` and `inPlay`. The
+   tag never blocks an alert.
+3. **Optional, off by default:**
+   - N1 `todayVolumeMultiple` (0 = off): window volume ratio ÷ max(1, `dayRvol`) must be ≥
+     this; status `busy-day-volume`.
+   - N2 `todayMoveMultiple` (0 = off): |move| must be ≥ this × today's typical |move| over the
+     same window length (median over today's regular minutes ending before the window; needs
+     15, else the check does not apply); status `normal-for-today`. Evaluations report
+     `todayMove`.
+
+Configure live through the collector's `RVOL_CONFIG` (JSON), and in the site's Backtest form.
+
+Evidence (`research/alert-tuning`, SIP, 47 stocks, holdout 2026-04-01…09-25, run once with
+variants frozen): big-move-within-30-minutes rate v3 32% (33.8 alerts/day), one candle 31%
+(42.2/day), one candle in play 38% (19.2/day) against a 10–11% base; N2 halves alerts with the
+same rate and sharper intraday timing; no variant predicts direction at 5/15/30/60 minutes or
+the close. Live IEX data fires far fewer alerts than these SIP figures.
+
 ## Rule v3 (`rvol-v3`, user-confirmed 2026-09-27)
 
 Evaluated on each closed one-minute bar, per symbol and session, over the last `window` = 3 contiguous bars plus the bar before them. An alert requires all of:

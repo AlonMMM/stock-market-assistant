@@ -188,6 +188,14 @@ export function AlertFeed({
                               {outcomeBadge[a.outcome.result]}{" "}
                             </span>
                           )}
+                          {a.inPlay && (
+                            <span
+                              className="feed-inplay"
+                              title={`In play: day volume ${a.dayRvol?.toFixed(1)}× usual`}
+                            >
+                              ⭐{" "}
+                            </span>
+                          )}
                           {a.ticker}
                         </strong>
                         <span className="feed-time">
@@ -306,6 +314,12 @@ export function AlertEvidence({ alert: a }: { alert: FeedAlert }) {
           · move {a.move >= 0 ? "+" : "−"}
           {Math.abs(a.move).toFixed(2)}% vs typical ±{a.expectedMove.toFixed(2)}
           % at this time
+        </>
+      )}
+      {a.dayRvol !== null && a.dayRvol !== undefined && (
+        <>
+          {" "}
+          · day volume {a.dayRvol.toFixed(1)}× usual{a.inPlay && " ⭐ in play"}
         </>
       )}
       {a.close !== undefined && <> · close ${a.close.toFixed(2)}</>}

@@ -67,12 +67,14 @@ test("demo: volume, meaningful move and one direction alert once; the past is fi
   assert.ok(Math.abs(alert!.move - 1.25) < 1e-9);
   assert.equal(alert!.volumeBasis, "history");
   assert.equal(alert!.samples, 20);
-  assert.equal(alert!.rule, "rvol-v3");
+  assert.equal(alert!.rule, "rvol-v4");
   const cutoff = alert!.end;
   assert.deepEqual(
     replay(bars.filter((b) => b.end <= cutoff)),
     results.filter((r) => r.end <= cutoff),
   );
+  // Each of these settings blocks the 15:11 anomaly. (With one candle, the
+  // demo's 15:20 drop also qualifies; on defaults the cooldown suppresses it.)
   for (const config of [
     { ...defaults, threshold: 6 },
     // The steepest demo window moves 3 × 0.6 ≈ 1.8%.
@@ -80,9 +82,17 @@ test("demo: volume, meaningful move and one direction alert once; the past is fi
     { ...defaults, lastBarMinMovePercent: 0.7 },
   ])
     assert.equal(
-      replay(bars, config).filter((r) => r.status === "alert").length,
+      replay(bars, config).filter(
+        (r) => r.status === "alert" && r.end === cutoff,
+      ).length,
       0,
     );
+  assert.equal(
+    results.find(
+      (r) => r.end === "2026-03-30T15:20:00.000Z" && r.ticker === "NVDA",
+    )?.status,
+    "suppressed",
+  );
 });
 
 test("price move is relative to the symbol's time-of-day median and has a floor", () => {
@@ -109,22 +119,28 @@ test("every close must pass the previous close and every candle must share the c
   assert.equal(today(101.5, 101).status, "mixed-direction");
   // Green candle, but closing below the prior close.
   assert.equal(today(98, 99.5).status, "mixed-direction");
-  // Three-minute window: a middle bar that dips breaks the staircase.
-  const engine = new RelativeVolume({
-    ...defaults,
-    days: 1,
-    minVolume: 0,
-    paceMultiple: 0,
-  });
-  const day = (date: string, closes: number[], volume: number) =>
-    closes.map((c, i) =>
-      engine.push(
-        bar(date, 660 + i, i ? closes[i - 1]! : c, c, i ? volume : 100),
-      ),
-    );
-  day("2026-03-02", [100, 100.1, 100.2, 100.3], 100);
-  const dip = day("2026-03-03", [100, 101, 100.9, 102], 300).at(-1)!;
-  assert.equal(dip.status, "mixed-direction");
+  // Three-minute window with directionBars 3 (v3): a middle bar that dips
+  // breaks the staircase. v4's default (1) needs only the last candle.
+  const run = (directionBars: number) => {
+    const engine = new RelativeVolume({
+      ...defaults,
+      days: 1,
+      minVolume: 0,
+      paceMultiple: 0,
+      directionBars,
+    });
+    const day = (date: string, closes: number[], volume: number) =>
+      closes.map((c, i) =>
+        engine.push(
+          bar(date, 660 + i, i ? closes[i - 1]! : c, c, i ? volume : 100),
+        ),
+      );
+    day("2026-03-02", [100, 100.1, 100.2, 100.3], 100);
+    return day("2026-03-03", [100, 101, 100.9, 102], 300).at(-1)!;
+  };
+  assert.equal(run(3).status, "mixed-direction");
+  assert.equal(defaults.directionBars, 1);
+  assert.equal(run(defaults.directionBars).status, "alert");
 });
 
 test("a low-volume crossing does not suppress the alert once volume arrives", () => {
@@ -344,7 +360,7 @@ test("the last-minute gate and the number of same-direction candles are configur
   // First window minute dips; only the last two must share the direction.
   const dip = [100, 99.5, 100.5, 101.5];
   assert.equal(
-    engine({})("2026-03-03", dip, 300).at(-1)?.status,
+    engine({ directionBars: 3 })("2026-03-03", dip, 300).at(-1)?.status,
     "mixed-direction",
   );
   assert.equal(
@@ -352,4 +368,88 @@ test("the last-minute gate and the number of same-direction candles are configur
     "alert",
   );
   assert.throws(() => new RelativeVolume({ ...defaults, directionBars: 4 }));
+});
+
+// v4: ten quiet past sessions (100 shares and ±0.05% each minute, 09:31–10:41),
+// then today: `todayVolume` shares and `swing`% moves each minute until 10:40,
+// and a 10:41 burst of `burst` shares moving +1%. One-minute window.
+function v4Day(
+  { todayVolume = 100, swing = 0.05, burst = 800 },
+  config: Partial<Config> = {},
+) {
+  const engine = new RelativeVolume({
+    ...defaults,
+    window: 1,
+    days: 10,
+    minVolume: 0,
+    paceMultiple: 0,
+    ...config,
+  });
+  const run = (date: string, volume: number, pct: number, until = 640) => {
+    let close = 100;
+    for (let m = 571; m <= until; m++) {
+      const open = close;
+      close = m % 2 ? 100 * (1 + pct / 100) : 100;
+      engine.push(bar(date, m, open, close, volume));
+    }
+    return close;
+  };
+  for (let d = 1; d <= 10; d++)
+    run(`2026-03-${String(d).padStart(2, "0")}`, 100, 0.05, 641);
+  const last = run("2026-03-11", todayVolume, swing);
+  return engine.push(bar("2026-03-11", 641, last, last * 1.01, burst))!;
+}
+
+test("v4 tags an alert in play when today's volume is ≥ 2× its usual level", () => {
+  const quiet = v4Day({});
+  assert.equal(quiet.status, "alert");
+  assert.equal(quiet.inPlay, false);
+  assert.ok(Math.abs(quiet.dayRvol! - (70 * 100 + 800) / (71 * 100)) < 1e-9);
+  const busy = v4Day({ todayVolume: 300 });
+  assert.equal(busy.status, "alert");
+  assert.equal(busy.inPlay, true);
+  assert.ok(Math.abs(busy.dayRvol! - (70 * 300 + 800) / (71 * 100)) < 1e-9);
+  // The tag never blocks, and 0 turns it off.
+  assert.equal(v4Day({ todayVolume: 300 }, { inPlayDayRvol: 0 }).inPlay, false);
+});
+
+test("N1 (optional) needs a bigger burst on a busy day", () => {
+  // 8× usual volume: on a 3.07× day that is only 2.6× relative to today.
+  assert.equal(
+    v4Day({ todayVolume: 300 }, { todayVolumeMultiple: 3 }).status,
+    "busy-day-volume",
+  );
+  assert.equal(v4Day({}, { todayVolumeMultiple: 3 }).status, "alert");
+  assert.equal(
+    v4Day({ todayVolume: 300, burst: 1200 }, { todayVolumeMultiple: 3 }).status,
+    "alert",
+  );
+});
+
+test("N2 (optional) skips a move that is normal for today", () => {
+  // Today swings 0.5% a minute, so a 1% minute is only 2× today's typical move.
+  const wild = v4Day({ swing: 0.5 }, { todayMoveMultiple: 3 });
+  assert.equal(wild.status, "normal-for-today");
+  // +0.5% up and −0.4975% back: the median is just under 0.5%.
+  assert.ok(Math.abs(wild.todayMove! - 0.5) < 0.01);
+  // Off by default; a calm day passes when on.
+  assert.equal(v4Day({ swing: 0.5 }).status, "alert");
+  assert.equal(v4Day({}, { todayMoveMultiple: 3 }).status, "alert");
+  // Before 15 minutes of today the check does not apply.
+  const engine = new RelativeVolume({ ...unit, todayMoveMultiple: 3 });
+  engine.push(bar("2026-03-02", 600, 100, 100, 100));
+  engine.push(bar("2026-03-02", 601, 100, 100.2, 100));
+  engine.push(bar("2026-03-03", 600, 100, 100, 100));
+  const early = engine.push(bar("2026-03-03", 601, 100, 101, 300))!;
+  assert.equal(early.status, "alert");
+  assert.equal(early.todayMove, null);
+});
+
+test("v4 settings are validated", () => {
+  for (const bad of [
+    { inPlayDayRvol: -1 },
+    { todayVolumeMultiple: Number.NaN },
+    { todayMoveMultiple: 101 },
+  ])
+    assert.throws(() => new RelativeVolume({ ...defaults, ...bad }));
 });

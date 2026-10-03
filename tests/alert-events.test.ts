@@ -22,7 +22,7 @@ const alert: AlertEvent = {
   direction: "up",
   samples: 20,
   status: "alert",
-  rule: "rvol-v3",
+  rule: "rvol-v4",
   config: defaults,
 };
 
