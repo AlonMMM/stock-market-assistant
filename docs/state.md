@@ -1,7 +1,7 @@
 # Current state
 
 Updated: 2026-10-03
-Phase: Alpaca live alerts with Telegram delivery; Live page redesign in review.
+Phase: Alpaca live alerts with Telegram delivery; Backtest page redesign in review.
 
 ## Working product
 
@@ -27,7 +27,15 @@ Telegram alert notifications with deep links to the Live view (#24, #25), per-al
 analysis with Telegram follow-ups and a site panel (#26–#30,
 [spec](features/alert-analysis.md)), and the alert feed grouped by Israel date (#31).
 
-## In review: Live page redesign
+## In review: Backtest page redesign
+
+[Spec](features/backtest-page.md). Grouped setup with presets and rule-change tracking,
+the look-now score as the primary grade ([spec](features/look-now-score.md)) with
+stop/target as a collapsed trade view, and Alerts / By symbol / Data quality tabs.
+`/api/backtest` adds `validation.baselineBySymbol`. Verified with `npm run check` and
+synthetic headless-browser checks only.
+
+## Live page redesign (merged in #32)
 
 [Spec](features/live-page.md). Status pill beside the title, market strip, Alerts and
 Watchlist tabs, a sortable watchlist table with relative volume and day range, and a
