@@ -353,18 +353,8 @@ export function groupAlerts<T extends LiveAlertRow>(
 
 // --------------------------------------------------------------- watchlist
 
-// Optional per-symbol statistics the Backend adds to /api/board (spec
-// "API changes"); absent fields render as "—".
-export interface BoardStats {
-  asOf: number;
-  dayLow: number | null;
-  dayHigh: number | null;
-  volume: number;
-  typicalVolume: number | null;
-  relVolume: number | null;
-}
-export const statsOf = (s: BoardSeries | undefined): BoardStats | undefined =>
-  (s as (BoardSeries & { stats?: BoardStats }) | undefined)?.stats;
+// Board stats are optional (watchlist symbols only); absent fields show "—".
+export const statsOf = (s: BoardSeries | undefined) => s?.stats;
 
 /** % change of the last point from the previous close. */
 export function boardChange(s: BoardSeries | undefined): number | null {
