@@ -29,8 +29,9 @@ import {
 } from "./outcome.js";
 import { coreClose, previousSessions } from "./calendar.js";
 import { LiveEvaluator } from "./evaluator.js";
+import { backtestLimits, maxSymbolsPerRequest } from "./backtest-limits.js";
 
-export const backtestLimits = { tickers: 10, sessions: 20 };
+export { backtestLimits, maxSymbolsPerRequest };
 export const tickerPattern = /^[A-Z][A-Z0-9. -]{0,9}$/;
 // Alpaca's free plan serves SIP history except the most recent 15 minutes.
 export const sipDelay = 15 * 60000;
@@ -150,6 +151,14 @@ function parse(input: unknown, now: number) {
   if (sessions.length > backtestLimits.sessions)
     throw new BacktestInputError(
       `Choose at most ${backtestLimits.sessions} trading sessions`,
+    );
+  // Settings errors start with "Choose" so the page stops instead of retrying.
+  const fit = maxSymbolsPerRequest(sessions.length, config.days);
+  if (tickers.length > fit)
+    throw new BacktestInputError(
+      fit < 1
+        ? `Choose a shorter range: ${sessions.length} sessions plus ${config.days} warmup sessions do not fit one request`
+        : `Choose at most ${fit} symbols per request for ${sessions.length} sessions`,
     );
   let validation: ValidationConfig;
   try {

@@ -25,6 +25,7 @@ import {
   sessionCount,
   setupSummary,
   symbolPresets,
+  symbolsPerBatch,
   type FailedBatch,
   type RuleSettings,
   type RunRequest,
@@ -43,10 +44,6 @@ import {
   watchlistSource,
 } from "./Watchlist.js";
 
-// Each request stays within Cloudflare's free-plan limit of 50 subrequests
-// (Alpaca calls plus bar-cache statements) and its CPU limit: a symbol needs
-// about four minute-bar pages, one daily page and a few cache statements.
-const batchSize = 3;
 const liveRefreshMs = 30000;
 const tradeKey = "sma.backtest.tradeView.v1";
 
@@ -204,6 +201,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   };
   const changes = ruleChanges(settings);
   const sessions = sessionCount(from, to);
+  const batchSize = symbolsPerBatch(sessions ?? 1);
   const hasRun = ranWith !== null && (result !== null || failed.length > 0);
   const stale = hasRun && requestKey(ranWith) !== requestKey(request);
   const presets = watchlist.list
