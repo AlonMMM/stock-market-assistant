@@ -12,6 +12,7 @@ import {
   type D1Like,
 } from "../../../packages/market-data/src/bar-cache.js";
 import { handleBoard } from "../../../packages/market-data/src/board.js";
+import { D1BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
 import { loadLive } from "../../../packages/market-data/src/live.js";
 import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
 import { verifyAccess } from "./access.js";
@@ -22,11 +23,18 @@ declare const __STATIC_ASSETS__: Record<
 >;
 
 // One cache per Worker instance, so the table check runs once, not per request.
-let cache: { db: D1Like; cache: D1BarCache } | undefined;
-function barCache(db: D1Like) {
-  if (cache?.db !== db) cache = { db, cache: new D1BarCache(db) };
-  return cache.cache;
+let cache:
+  { db: D1Like; cache: D1BarCache; baselines: D1BaselineStore } | undefined;
+function stores(db: D1Like) {
+  if (cache?.db !== db)
+    cache = {
+      db,
+      cache: new D1BarCache(db),
+      baselines: new D1BaselineStore(db),
+    };
+  return cache;
 }
+const barCache = (db: D1Like) => stores(db).cache;
 
 export default {
   async fetch(
@@ -37,7 +45,7 @@ export default {
       ACCESS_TEAM_DOMAIN?: string;
       ACCESS_AUD?: string;
       COLLECTOR_URL?: string;
-      BARS_CACHE?: D1Like; // D1 database caching Alpaca minute bars
+      BARS_CACHE?: D1Like; // D1 database caching Alpaca bars and Rel vol baselines
       COLLECTOR_TOKEN?: string;
     } = {},
   ): Promise<Response> {
@@ -96,10 +104,14 @@ export default {
         url: env.COLLECTOR_URL,
         token: env.COLLECTOR_TOKEN,
       });
-      const result = await handleBoard(list.tickers, list.benchmarks, {
-        key: env.ALPACA_API_KEY,
-        secret: env.ALPACA_API_SECRET,
-      });
+      const result = await handleBoard(
+        list.tickers,
+        list.benchmarks,
+        { key: env.ALPACA_API_KEY, secret: env.ALPACA_API_SECRET },
+        fetch,
+        Date.now(),
+        env.BARS_CACHE ? stores(env.BARS_CACHE).baselines : undefined,
+      );
       return Response.json(result.body, {
         status: result.status,
         headers: { "Cache-Control": "no-store" },

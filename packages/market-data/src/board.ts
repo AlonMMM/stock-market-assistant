@@ -8,6 +8,14 @@ import {
   newYorkToUtc,
   previousSessions,
 } from "./calendar.js";
+import {
+  baselineSessions,
+  baselineStep,
+  typicalAt,
+  volumeCurve,
+  type BaselineStore,
+  type VolumeCurve,
+} from "./volume-baseline.js";
 
 // Nasdaq-100 proxy: Alpaca serves stocks and ETFs, not index values.
 export const nasdaq = "QQQ";
@@ -58,11 +66,104 @@ export function latestSession(now: number): string {
   return previousSessions(date, 1)[0]!;
 }
 
+/**
+ * Typical-volume curves for `tickers` on board date `date`: stored curves
+ * first, then one 5-minute request per previous session's regular hours (in
+ * parallel) for the rest, which are stored. Failures return no curve, so the
+ * board still loads with Rel vol unavailable.
+ */
+async function baselines(
+  tickers: string[],
+  date: string,
+  multi: MultiHistory,
+  store?: BaselineStore,
+): Promise<Map<string, VolumeCurve>> {
+  let curves = new Map<string, VolumeCurve>();
+  if (!tickers.length) return curves;
+  try {
+    if (store) curves = await store.get(date, tickers);
+  } catch {
+    // Degrade to fetching; the result stays correct.
+  }
+  const missing = tickers.filter((t) => !curves.has(t));
+  if (!missing.length) return curves;
+  let sessions: string[];
+  try {
+    sessions = previousSessions(date, baselineSessions);
+  } catch {
+    return curves; // outside calendar coverage: Rel vol unavailable
+  }
+  try {
+    const days = await Promise.all(
+      sessions.map((d) =>
+        multi(
+          missing,
+          new Date(newYorkToUtc(d, 570)).toISOString(),
+          new Date(newYorkToUtc(d, coreClose(d)!)).toISOString(),
+          "5Min",
+        ),
+      ),
+    );
+    const fresh = new Map(
+      missing.map((t) => [
+        t,
+        volumeCurve(
+          days.flatMap((day) => day.get(t) ?? []),
+          sessions,
+        ),
+      ]),
+    );
+    for (const [t, curve] of fresh) curves.set(t, curve);
+    try {
+      await store?.put(date, fresh);
+    } catch {
+      // Not stored this time; recomputed on the next poll.
+    }
+  } catch {
+    // History unavailable: today's stats are still reported.
+  }
+  return curves;
+}
+
+function stats(
+  ticker: string,
+  rows: RawBar[],
+  date: string,
+  asOf: number,
+  curve: VolumeCurve | undefined,
+): BoardStats {
+  let dayLow: number | null = null;
+  let dayHigh: number | null = null;
+  let volume = 0;
+  for (const row of rows) {
+    const bar = normalize(ticker, row, "shares");
+    if (bar?.date !== date) continue;
+    dayLow = dayLow === null ? row.low : Math.min(dayLow, row.low);
+    dayHigh = dayHigh === null ? row.high : Math.max(dayHigh, row.high);
+    if (bar.session === "regular" && row.start + baselineStep * 60 <= asOf)
+      volume += row.volume;
+  }
+  const minute = newYork(asOf * 1000).minute;
+  const typicalVolume =
+    curve && minute > 570
+      ? typicalAt(curve, Math.min(minute, coreClose(date)!))
+      : null;
+  return {
+    asOf,
+    dayLow,
+    dayHigh,
+    volume,
+    typicalVolume,
+    relVolume: typicalVolume ? volume / typicalVolume : null,
+  };
+}
+
 export async function runBoard(
   tickers: string[],
   multi: MultiHistory,
   now = Date.now(),
   benchmarks: Record<string, string> = {},
+  store?: BaselineStore,
 ): Promise<Board> {
   const date = latestSession(now);
   const previous = previousSessions(date, 1)[0]!;
@@ -78,9 +179,16 @@ export async function runBoard(
     Date.parse(`${next.toISOString().slice(0, 10)}T06:00:00Z`),
     now - sipDelay,
   );
-  const [intraday, daily] = await Promise.all([
+  const listed = tickers.filter((t) => symbols.includes(t));
+  // Volume stats use only complete 5-minute bars: as of the latest 5-minute
+  // boundary with data, capped at 20:00 New York (the end of after-hours).
+  const step = baselineStep * 60;
+  const asOf =
+    Math.floor(Math.min(end, newYorkToUtc(date, 1200)) / 1000 / step) * step;
+  const [intraday, daily, curves] = await Promise.all([
     multi(symbols, `${date}T00:00:00Z`, new Date(end).toISOString(), "5Min"),
     multi(symbols, `${previous}T00:00:00Z`, `${date}T00:00:00Z`, "1Day"),
+    baselines(listed, date, multi, store),
   ]);
   return {
     source: "alpaca",
@@ -88,7 +196,7 @@ export async function runBoard(
     date,
     open: newYorkToUtc(date, 570) / 1000,
     close: newYorkToUtc(date, coreClose(date)!) / 1000,
-    watchlist: tickers.filter((t) => symbols.includes(t)),
+    watchlist: listed,
     benchmarks: Object.fromEntries(
       Object.entries(benchmarks).filter(
         ([t, etf]) => tickers.includes(t) && symbols.includes(etf),
@@ -103,7 +211,20 @@ export async function runBoard(
       const close = (daily.get(ticker) ?? []).find(
         (row) => newYork(row.start * 1000).date === previous,
       )?.close;
-      return { ticker, previousClose: close ?? null, points };
+      const series: BoardSeries = {
+        ticker,
+        previousClose: close ?? null,
+        points,
+      };
+      if (listed.includes(ticker))
+        series.stats = stats(
+          ticker,
+          intraday.get(ticker) ?? [],
+          date,
+          asOf,
+          curves.get(ticker),
+        );
+      return series;
     }),
   };
 }
@@ -114,6 +235,7 @@ export async function handleBoard(
   credentials: Credentials,
   fetcher: typeof fetch = fetch,
   now = Date.now(),
+  store?: BaselineStore,
 ): Promise<{ status: number; body: Board | { error: string } }> {
   if (!credentials.key || !credentials.secret)
     return {
@@ -136,6 +258,7 @@ export async function handleBoard(
           feed.multiHistory(symbols, start, end, timeframe),
         now,
         benchmarks,
+        store,
       ),
     };
   } catch (error) {
