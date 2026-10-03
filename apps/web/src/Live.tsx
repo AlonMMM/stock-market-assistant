@@ -1,30 +1,18 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Board } from "../../../packages/market-data/src/board.js";
 import type { AlertLink } from "../../../packages/contracts/src/alert-link.js";
 import type { LiveStatus } from "../../../packages/market-data/src/live.js";
-import { AlertFeed } from "./AlertFeed.js";
 import { readJson } from "./api.js";
-import { Notices } from "./Notices.js";
+import { pillFor } from "./live-model.js";
+import { LiveAlerts } from "./LiveAlerts.js";
+import { MarketStrip } from "./MarketStrip.js";
+import { StatusPill } from "./StatusPill.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
-import { WatchBoard } from "./WatchBoard.js";
-
-const DayChart = lazy(() =>
-  import("./DayChart.js").then((m) => ({ default: m.DayChart })),
-);
+import { WatchTable } from "./WatchTable.js";
 
 const liveRefreshMs = 30000;
 // Board data is 15-minute-delayed SIP in 5-minute bars.
 const boardRefreshMs = 5 * 60000;
-
-const stateText: Record<string, string> = {
-  subscribed: "Connected · waiting for bars",
-  "warming-up": "Warming up history…",
-  starting: "Starting…",
-  "awaiting-watchlist": "Waiting for the first IBKR watchlist sync",
-  "awaiting-alpaca-activation": "Alpaca streaming is switched off",
-  disconnected: "Disconnected",
-  unavailable: "Collector unreachable",
-};
 
 // Polls `path` while the page is visible.
 function usePolling<T>(
@@ -34,6 +22,7 @@ function usePolling<T>(
 ) {
   const [value, setValue] = useState<T | null>(null);
   const [at, setAt] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -44,9 +33,13 @@ function usePolling<T>(
         );
         if (!active) return;
         setValue(next);
+        setError(null);
         setAt(Date.now());
       } catch (e) {
-        if (active) onError(e instanceof Error ? e.message : `${path} failed`);
+        if (!active) return;
+        const message = e instanceof Error ? e.message : `${path} failed`;
+        setError(message);
+        onError(message);
       }
     };
     void load();
@@ -59,7 +52,35 @@ function usePolling<T>(
     };
     // onError only records warnings; it need not restart polling.
   }, [path, every]);
-  return { value, at };
+  return { value, at, error };
+}
+
+// Alerts newer than the viewer's previous visit are marked "New". Stored
+// per device; the visit time updates on load and whenever the page is hidden.
+const visitKey = "sma.live.lastVisit.v1";
+function useLastVisit(): number | null {
+  const [since] = useState(() => {
+    try {
+      const v = Number(localStorage.getItem(visitKey));
+      return Number.isFinite(v) && v > 0 ? v : null;
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    const save = () => {
+      try {
+        localStorage.setItem(visitKey, String(Date.now()));
+      } catch {
+        // Without storage nothing is marked new on the next visit.
+      }
+    };
+    const hidden = () => document.visibilityState === "hidden" && save();
+    save();
+    document.addEventListener("visibilitychange", hidden);
+    return () => document.removeEventListener("visibilitychange", hidden);
+  }, []);
+  return since;
 }
 
 export function Live({
@@ -70,132 +91,154 @@ export function Live({
   link?: AlertLink | null;
 }) {
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [tab, setTab] = useState<"alerts" | "watchlist">("alerts");
+  const [symbol, setSymbol] = useState<string | null>(null);
+  const since = useLastVisit();
   const warn = (message: string) =>
     setWarnings((w) => (w.at(-1) === message ? w : [...w, message]));
   const live = usePolling<LiveStatus>("/api/live", liveRefreshMs, warn);
   const board = usePolling<Board>("/api/board", boardRefreshMs, warn);
+  // The collector returns no alerts while unreachable; keep the last ones.
+  const kept = useRef<LiveStatus["alerts"]>([]);
   const status = live.value;
-  useEffect(() => {
-    if (status?.failure) warn(status.failure);
-  }, [status?.failure]);
-
-  // A bar older than 3 minutes while connected usually means the market is
-  // closed (or the feed stalled); the bar time is shown so either is visible.
-  const receiving =
-    status?.state === "subscribed" &&
-    status.lastBarAt !== null &&
-    Date.now() - Date.parse(status.lastBarAt) < 3 * 60000;
-  const statusText = !status
-    ? "Connecting…"
-    : receiving
-      ? "Live · receiving 1-minute bars"
-      : (stateText[status.state] ?? status.state);
-  const day = board.value?.date;
+  if (status && status.state !== "unavailable") kept.current = status.alerts;
+  const alerts = status ? kept.current : [];
+  const now = Date.now();
+  const pill = pillFor(status, now, live.at);
+  const newestAlert = alerts.reduce<string | null>(
+    (m, a) => (m === null || a.end > m ? a.end : m),
+    null,
+  );
+  const emptyText = !status
+    ? "Loading live alerts…"
+    : pill.kind === "warming"
+      ? "The collector is warming up (loading recent history). Live alerts appear once it is done."
+      : pill.kind === "off"
+        ? "Alpaca streaming is switched off, so no live alerts will arrive."
+        : pill.kind === "offline"
+          ? "No alerts to show: the collector is unreachable."
+          : `No live alerts yet. US pre-market opens 11:00 ${israelLabel}, the regular session 16:30.`;
   const linked =
-    link &&
-    status?.alerts.some((a) => a.ticker === link.ticker && a.end === link.end);
+    link && alerts.some((a) => a.ticker === link.ticker && a.end === link.end);
   const linkNotice =
     !link || !status || linked
       ? null
       : link.synthetic
         ? "This link came from a SYNTHETIC test alert, which is not stored. Links from real alerts open the alert here."
-        : `The linked alert (${link.ticker}, ${israelDateTime(Date.parse(link.end))} ${israelLabel}) is not among the ${status.alerts.length} most recent live alerts.`;
+        : `The linked alert (${link.ticker}, ${israelDateTime(Date.parse(link.end))} ${israelLabel}) is not among the ${alerts.length} most recent live alerts.`;
 
   return (
-    <>
+    <div className="live-page">
       <header>
-        <span className="brand">
-          SMA<span className="brand-dot">.</span>
-        </span>
+        <div className="brand-status">
+          <span className="brand">
+            SMA<span className="brand-dot">.</span>
+          </span>
+          <StatusPill
+            pill={pill}
+            status={status}
+            checkedAt={live.at}
+            refreshSeconds={liveRefreshMs / 1000}
+            warnings={warnings}
+            onClearWarnings={() => setWarnings([])}
+          />
+        </div>
         {modes}
       </header>
-      <Notices items={warnings} />
-      <section className="live-status" aria-live="polite">
-        <p className="live-state">
-          <span
-            className={
-              receiving
-                ? "live-dot on"
-                : status?.state === "subscribed"
-                  ? "live-dot idle"
-                  : "live-dot off"
-            }
-            aria-hidden="true"
-          />
-          <strong>{statusText}</strong>
+      {pill.kind === "offline" && (
+        <p className="offline-banner" role="alert">
+          <strong>
+            Live alerts are paused — the collector is unreachable.
+          </strong>{" "}
+          {newestAlert
+            ? `Showing the last alerts received, up to ${israelClock(Date.parse(newestAlert))}. `
+            : ""}
+          {live.at && `Checked ${israelClock(live.at)} ${israelLabel}.`}
+          {status?.failure && ` (${status.failure})`}
         </p>
-        {status && status.state !== "unavailable" && (
-          <p className="live-meta">
-            {status.feed?.toUpperCase()} · {status.symbols} live symbols ·{" "}
-            {status.lastBarAt
-              ? `last bar ${israelDateTime(Date.parse(status.lastBarAt))}`
-              : "no live bars yet"}
-            {live.at && ` · checked ${israelClock(live.at)} ${israelLabel}`}
-          </p>
-        )}
-      </section>
+      )}
 
-      <section className="market">
-        <h2 className="section-title">
-          Market{" "}
-          <small>
-            Nasdaq-100 (QQQ) vs S&P 500 (SPY)
-            {day && ` · session ${day}`}
-          </small>
-        </h2>
-        {day ? (
-          <Suspense fallback={<p className="chart-status">Loading chart…</p>}>
-            <DayChart ticker="QQQ" date={day} />
-          </Suspense>
-        ) : (
-          <p className="chart-status">Loading market…</p>
-        )}
-      </section>
+      <MarketStrip board={board.value} failed={!!board.error} now={now} />
 
-      <section>
-        <h2 className="section-title">
-          Live alerts{" "}
-          {status && status.alerts.length > 0 && (
-            <small>{status.alerts.length} recent</small>
+      <div
+        role="tablist"
+        aria-label="Live sections"
+        className="tabs"
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          const next = tab === "alerts" ? "watchlist" : "alerts";
+          setTab(next);
+          document.getElementById(`tab-${next}`)?.focus();
+        }}
+      >
+        {(
+          [
+            ["alerts", "Alerts", status ? alerts.length : null],
+            ["watchlist", "Watchlist", board.value?.watchlist.length ?? null],
+          ] as const
+        ).map(([key, label, count]) => (
+          <button
+            type="button"
+            role="tab"
+            key={key}
+            id={`tab-${key}`}
+            aria-selected={tab === key}
+            aria-controls={`panel-${key}`}
+            tabIndex={tab === key ? 0 : -1}
+            onClick={() => setTab(key)}
+          >
+            {label}
+            {count !== null && <span className="tab-count">{count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {tab === "alerts" ? (
+        <section
+          role="tabpanel"
+          id="panel-alerts"
+          aria-labelledby="tab-alerts"
+          className="tab-panel"
+        >
+          {linkNotice && <p className="notice">{linkNotice}</p>}
+          {alerts.length > 0 ? (
+            <LiveAlerts
+              alerts={alerts}
+              benchmarks={board.value?.benchmarks}
+              focus={linked ? link.ticker + link.end : undefined}
+              symbol={symbol}
+              onSymbol={setSymbol}
+              since={since}
+            />
+          ) : (
+            <p className="notice">{emptyText}</p>
           )}
-        </h2>
-        {linkNotice && <p className="notice">{linkNotice}</p>}
-        {status && status.alerts.length === 0 && (
-          <p className="notice">
-            No live alerts yet. US pre-market opens 11:00 {israelLabel}, the
-            regular session 16:30.
-          </p>
-        )}
-        {status && status.alerts.length > 0 && (
-          <AlertFeed
-            alerts={status.alerts}
-            benchmarks={board.value?.benchmarks}
-            focus={linked ? link.ticker + link.end : undefined}
-          />
-        )}
-      </section>
-
-      <section>
-        <h2 className="section-title">
-          Watchlist{" "}
-          {board.value && (
-            <small>
-              {board.value.watchlist.length} symbols · benchmark dashed · dotted
-              lines mark the open and close · 15-min delayed
-            </small>
+        </section>
+      ) : (
+        <section
+          role="tabpanel"
+          id="panel-watchlist"
+          aria-labelledby="tab-watchlist"
+          className="tab-panel"
+        >
+          {board.value ? (
+            <WatchTable
+              board={board.value}
+              alerts={alerts}
+              onShowAlerts={(ticker) => {
+                setSymbol(ticker);
+                setTab("alerts");
+              }}
+            />
+          ) : (
+            <p className={board.error ? "notice error" : "chart-status"}>
+              {board.error
+                ? `Watchlist unavailable: ${board.error}`
+                : "Loading watchlist…"}
+            </p>
           )}
-        </h2>
-        {board.value ? (
-          <WatchBoard board={board.value} symbols={board.value.watchlist} />
-        ) : (
-          <p className="chart-status">Loading watchlist charts…</p>
-        )}
-      </section>
-      <footer>
-        Live alerts: Alpaca{" "}
-        {status?.feed === "iex" ? "IEX (one exchange's volume)" : "stream"},
-        refreshed every 30 s. Charts: Alpaca SIP, 15-minute delayed.
-      </footer>
-    </>
+        </section>
+      )}
+    </div>
   );
 }

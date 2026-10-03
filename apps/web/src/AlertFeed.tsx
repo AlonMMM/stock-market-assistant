@@ -167,9 +167,6 @@ export function AlertFeed({
                   const key = a.ticker + a.end;
                   const expanded = open === key;
                   const c = a.context;
-                  const spy = a.analysis?.result?.scores.find(
-                    (s) => s.kind === "market",
-                  );
                   return (
                     <li
                       key={key}
@@ -221,13 +218,6 @@ export function AlertFeed({
                             <>
                               <strong>{signed(c.excess)}%</strong> vs SPY×β
                             </>
-                          ) : spy?.score !== null &&
-                            spy?.score !== undefined ? (
-                            <>
-                              <strong>{spy.score}</strong>/100 vs SPY
-                            </>
-                          ) : a.analysis && !a.analysis.result ? (
-                            "analyzing…"
                           ) : (
                             "—"
                           )}
@@ -238,39 +228,7 @@ export function AlertFeed({
                       </button>
                       {expanded && (
                         <div className="feed-detail">
-                          <p className="evidence">
-                            {number(a.actual)} shares in {a.config.window} min
-                            vs {number(a.expected ?? 0)} expected
-                            {a.paceRatio !== null &&
-                              a.paceRatio !== undefined && (
-                                <>
-                                  {" "}
-                                  · {a.paceRatio.toFixed(1)}× today&apos;s pace
-                                </>
-                              )}
-                            {a.volumeBasis === "pace" && (
-                              <> (volume qualified by today&apos;s pace)</>
-                            )}
-                            {a.expectedMove !== null &&
-                              a.expectedMove !== undefined && (
-                                <>
-                                  {" "}
-                                  · move {a.move >= 0 ? "+" : "−"}
-                                  {Math.abs(a.move).toFixed(2)}% vs typical ±
-                                  {a.expectedMove.toFixed(2)}% at this time
-                                </>
-                              )}
-                            {a.close !== undefined && (
-                              <> · close ${a.close.toFixed(2)}</>
-                            )}
-                            {c && (
-                              <>
-                                {" "}
-                                · {a.ticker} {signed(c.change)}%, SPY{" "}
-                                {signed(c.spyChange)}%, β {c.beta.toFixed(2)}
-                              </>
-                            )}
-                          </p>
+                          <AlertEvidence alert={a} />
                           {a.analysis && (
                             <AnalysisPanel
                               ticker={a.ticker}
@@ -325,6 +283,39 @@ function OutcomeLine({ outcome: o }: { outcome: Outcome }) {
       u = ±{o.unit?.toFixed(2)}% · best {f(o.run)} ({o.runUnits?.toFixed(1)}u) ·
       worst {f(o.pullback)} · after 5/15/30/60 min: {f(o.forward[5])} /{" "}
       {f(o.forward[15])} / {f(o.forward[30])} / {f(o.forward[60])}
+    </p>
+  );
+}
+
+/** One line of evidence: window volume vs expected, pace, move, context. */
+export function AlertEvidence({ alert: a }: { alert: FeedAlert }) {
+  const c = a.context;
+  return (
+    <p className="evidence">
+      {number(a.actual)} shares in {a.config.window} min vs{" "}
+      {number(a.expected ?? 0)} expected
+      {a.paceRatio !== null && a.paceRatio !== undefined && (
+        <> · {a.paceRatio.toFixed(1)}× today&apos;s pace</>
+      )}
+      {a.volumeBasis === "pace" && (
+        <> (volume qualified by today&apos;s pace)</>
+      )}
+      {a.expectedMove !== null && a.expectedMove !== undefined && (
+        <>
+          {" "}
+          · move {a.move >= 0 ? "+" : "−"}
+          {Math.abs(a.move).toFixed(2)}% vs typical ±{a.expectedMove.toFixed(2)}
+          % at this time
+        </>
+      )}
+      {a.close !== undefined && <> · close ${a.close.toFixed(2)}</>}
+      {c && (
+        <>
+          {" "}
+          · {a.ticker} {signed(c.change)}%, SPY {signed(c.spyChange)}%, β{" "}
+          {c.beta.toFixed(2)}
+        </>
+      )}
     </p>
   );
 }

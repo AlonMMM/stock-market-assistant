@@ -47,9 +47,11 @@ test("day chart returns the ticker then SPY with previous regular closes", async
     later,
   );
   assert.deepEqual(requests, [
-    ["AAPL", "2026-06-01T00:00:00Z", "2026-06-03T06:00:00.000Z"],
+    // The ticker reaches back 20 sessions for its typical volume.
+    ["AAPL", "2026-05-04T00:00:00Z", "2026-06-03T06:00:00.000Z"],
     ["SPY", "2026-06-01T00:00:00Z", "2026-06-03T06:00:00.000Z"],
   ]);
+  assert.equal(result.series[1]!.typicalVolume, undefined);
   assert.deepEqual(
     result.series.map((s) => [s.ticker, s.previousClose]),
     [
@@ -286,4 +288,82 @@ test("day chart compares with a requested sector benchmark instead of SPY", asyn
     ),
     /benchmark/,
   );
+});
+
+// SYNTHETIC history: one pre-market (08:00 NY) and one regular (10:00 NY) bar
+// per session; volume = 100 × (session index + 1), so medians are predictable.
+function baselineBars(sessions: string[], date: string): RawBar[] {
+  const rows: RawBar[] = [];
+  sessions.forEach((d, i) => {
+    for (const hour of [12, 14])
+      rows.push({
+        start: Date.parse(`${d}T${hour}:00:00Z`) / 1000,
+        open: 10,
+        high: 10,
+        low: 10,
+        close: 10,
+        volume: 100 * (i + 1) + (hour === 12 ? 1 : 0),
+      });
+  });
+  for (const time of ["12:00", "14:00", "14:01"])
+    rows.push({
+      start: Date.parse(`${date}T${time}:00Z`) / 1000,
+      open: 10,
+      high: 10,
+      low: 10,
+      close: 10,
+      volume: 5,
+    });
+  return rows;
+}
+
+test("typical volume is the same-minute, same-session median over 20 sessions", async () => {
+  const date = "2026-06-02";
+  const sessions = previousSessions(date, 20);
+  const result = await runDayChart(
+    { ticker: "AAPL", date },
+    async (ticker) => (ticker === "AAPL" ? baselineBars(sessions, date) : []),
+    later,
+  );
+  const [aapl, spy] = result.series;
+  // Volumes 100..2000 (+1 pre-market): median of 20 is 1050; 14:01 has none.
+  assert.deepEqual(aapl!.typicalVolume, [1051, 1050, null]);
+  assert.equal(aapl!.typicalVolume!.length, aapl!.bars.length);
+  assert.equal(spy!.typicalVolume, undefined);
+});
+
+test("scenario 9: 10 of 20 prior sessions leaves typical volume null", async () => {
+  const date = "2026-06-02";
+  const sessions = previousSessions(date, 20);
+  for (const [count, expected] of [
+    [10, [null, null, null]],
+    [14, [null, null, null]],
+    // 15 sessions (the last 15, volumes 600..2000): median 1300.
+    [15, [1301, 1300, null]],
+  ] as const) {
+    const rows = baselineBars(sessions, date).filter(
+      (row) =>
+        !sessions.slice(0, 20 - count).includes(newYork(row.start * 1000).date),
+    );
+    const result = await runDayChart(
+      { ticker: "AAPL", date },
+      async (ticker) => (ticker === "AAPL" ? rows : []),
+      later,
+    );
+    assert.deepEqual(result.series[0]!.typicalVolume, expected);
+  }
+});
+
+test("typical volume ignores the chart day and later days", async () => {
+  const date = "2026-06-02";
+  const sessions = previousSessions(date, 20);
+  // Dates after the chart day in the response must not feed the baseline.
+  const future = baselineBars(["2026-06-03", "2026-06-04"], "2026-06-05");
+  const result = await runDayChart(
+    { ticker: "AAPL", date },
+    async (ticker) =>
+      ticker === "AAPL" ? [...baselineBars(sessions, date), ...future] : [],
+    later,
+  );
+  assert.deepEqual(result.series[0]!.typicalVolume, [1051, 1050, null]);
 });

@@ -1,7 +1,7 @@
 # Current state
 
-Updated: 2026-09-25
-Phase: replacing IBKR Gateway with Alpaca Market Data.
+Updated: 2026-10-03
+Phase: Alpaca live alerts with Telegram delivery; Live page redesign in review.
 
 ## Working product
 
@@ -20,6 +20,22 @@ calendar normalization, relative-volume evaluator, durable SQLite store and prot
 health/alert endpoints. IEX is the default feed; SIP is configurable for an entitled plan.
 The implementation never calls account, position or order APIs. See the
 [task](tasks/alpaca-collector.md) and [operations](alpaca-operations.md).
+
+## Since 2026-09-25 (merged to main; deployment state not re-verified here)
+
+Telegram alert notifications with deep links to the Live view (#24, #25), per-alert
+analysis with Telegram follow-ups and a site panel (#26–#30,
+[spec](features/alert-analysis.md)), and the alert feed grouped by Israel date (#31).
+
+## In review: Live page redesign
+
+[Spec](features/live-page.md). Status pill beside the title, market strip, Alerts and
+Watchlist tabs, a sortable watchlist table with relative volume and day range, and a
+two-axis day chart with typical volume per minute and opposite-to-benchmark bands.
+Backend adds board `stats`, day-chart `typicalVolume` and the shared `opposite()`.
+Verified with `npm run check` and synthetic headless-browser checks only; real Alpaca and
+collector data, thresholds and rel vol accuracy are unverified. See the
+[backend](tasks/backend-live-page.md) and [frontend](tasks/frontend-live-page.md) tasks.
 
 ## Verification
 

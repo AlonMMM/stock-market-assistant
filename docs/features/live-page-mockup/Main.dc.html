@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Live page – proposal</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="background: #f4f5ef; color: #142b29; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.4">
+<div style="max-width: 1120px; margin: 0 auto; padding: 20px 40px 48px; display: flex; flex-direction: column; gap: 20px; position: static">
+
+<p style="margin: 0; align-self: flex-start; font-size: 12px; color: #61500f; background: #fbf1d6; border: 1px dashed #c9a23f; border-radius: 999px; padding: 4px 12px">Proposal mockup · SAMPLE data, not market data · times in Israel time</p>
+
+<header style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+  <div style="display: flex; align-items: center; gap: 14px; position: relative">
+    <span style="font-size: 30px; font-weight: 800; letter-spacing: -2px">SMA<span style="color: #9cdc52">.</span></span>
+    <button type="button" onClick="{{ toggleStatus }}" aria-expanded="{{ statusOpen }}" aria-label="Connection status: live, receiving 1-minute bars" style="display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 14px 6px 12px; border: 1px solid #b8d9bf; border-radius: 999px; background: #eaf5ec; color: #14532d; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">
+      <span style="width: 9px; height: 9px; border-radius: 50%; background: #16a34a; box-shadow: 0 0 0 4px rgba(22,163,74,0.18)"></span>
+      Live
+      <span style="font-weight: 400; color: #2d5a3a">· 30/30 symbols · 17:44</span>
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" style="{{ statusChevron }}"><path d="M3 4.5l3 3 3-3"></path></svg>
+    </button>
+    <sc-if value="{{ statusOpen }}" hint-placeholder-val="{{ false }}">
+      <div role="dialog" aria-label="Connection details" style="position: absolute; top: 52px; left: 92px; z-index: 5; width: 340px; padding: 16px; background: #fafbf8; border: 1px solid #cdd7ce; border-radius: 14px; box-shadow: 0 12px 32px rgba(20,43,41,0.14); display: flex; flex-direction: column; gap: 10px">
+        <strong style="font-size: 14px">Live · receiving 1-minute bars</strong>
+        <dl style="margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; font-size: 13px">
+          <dt style="color: #526461">Feed</dt><dd style="margin: 0">Alpaca IEX — one exchange's volume</dd>
+          <dt style="color: #526461">Symbols</dt><dd style="margin: 0">30 subscribed · 30 receiving</dd>
+          <dt style="color: #526461">Last bar</dt><dd style="margin: 0">17:44 Israel time</dd>
+          <dt style="color: #526461">Checked</dt><dd style="margin: 0">17:45 · refreshes every 30 s</dd>
+          <dt style="color: #526461">Charts</dt><dd style="margin: 0">Alpaca SIP, 15-min delayed</dd>
+        </dl>
+        <p style="margin: 0; padding-top: 10px; border-top: 1px solid #e1e8e1; font-size: 12px; color: #526461">No warnings. Non-blocking warnings collect here instead of stacking above the page.</p>
+      </div>
+    </sc-if>
+  </div>
+  <nav aria-label="Data mode" style="display: inline-flex; gap: 2px; padding: 3px; border: 1px solid #cdd7ce; border-radius: 999px">
+    <span aria-current="page" style="padding: 9px 20px; border-radius: 999px; background: #142b29; color: #ffffff; font-weight: 650">Live</span>
+    <button type="button" style="padding: 9px 20px; border: 0; border-radius: 999px; background: transparent; color: #142b29; font: inherit; cursor: pointer">Backtest</button>
+  </nav>
+</header>
+
+<section aria-label="Market" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px">
+  <sc-for list="{{ marketTiles }}" as="m" hint-placeholder-count="2">
+    <button type="button" onClick="{{ toggleChart }}" aria-expanded="{{ chartOpen }}" style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 12px 14px; border: 1px solid #cdd7ce; border-radius: 12px; background: #fafbf8; color: inherit; font: inherit; text-align: left; cursor: pointer">
+      <span style="display: flex; align-items: baseline; gap: 8px"><strong style="font-size: 15px">{{ m.tk }}</strong><span style="font-size: 12px; color: #526461">{{ m.name }}</span></span>
+      <span style="{{ m.chgStyle }}">{{ m.chg }}</span>
+      <svg viewBox="0 0 200 36" preserveAspectRatio="none" style="grid-column: 1 / -1; width: 100%; height: 36px" aria-hidden="true">
+        <polyline points="{{ m.pts }}" fill="none" stroke="#142b29" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline>
+      </svg>
+    </button>
+  </sc-for>
+  <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid #cdd7ce; border-radius: 12px; background: #fafbf8">
+    <span style="display: flex; justify-content: space-between; gap: 8px"><strong style="font-size: 15px">Regular session</strong><span style="font-size: 12px; color: #526461">closes 23:00 · 5 h 15 m</span></span>
+    <div style="position: relative; display: flex; height: 10px; border-radius: 5px; overflow: hidden; gap: 2px" aria-hidden="true">
+      <span style="flex: 5.5; background: #d9e3d6"></span>
+      <span style="flex: 6.5; background: #9fbf8a"></span>
+      <span style="flex: 4; background: #d9e3d6"></span>
+    </div>
+    <div style="position: relative; height: 0" aria-hidden="true"><span style="position: absolute; left: 42%; top: -16px; width: 2px; height: 14px; background: #142b29"></span></div>
+    <span style="display: flex; justify-content: space-between; font-size: 11px; color: #526461; font-variant-numeric: tabular-nums"><span>Pre 11:00</span><span>Open 16:30</span><span>Close 23:00</span><span>03:00</span></span>
+  </div>
+</section>
+<sc-if value="{{ chartOpen }}" hint-placeholder-val="{{ false }}">
+  <section aria-label="Market chart" style="margin-top: -8px; padding: 14px; border: 1px solid #cdd7ce; border-radius: 12px; background: #fafbf8">
+    <p style="margin: 0 0 8px; font-size: 12px; color: #526461">QQQ vs SPY (dashed) · today's session · existing day chart goes here</p>
+    <svg viewBox="0 0 600 160" preserveAspectRatio="none" style="width: 100%; height: 180px" aria-hidden="true">
+      <polyline points="{{ marketBig.a }}" fill="none" stroke="#142b29" stroke-width="1.8" vector-effect="non-scaling-stroke"></polyline>
+      <polyline points="{{ marketBig.b }}" fill="none" stroke="#8fa89a" stroke-width="1.5" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"></polyline>
+    </svg>
+  </section>
+</sc-if>
+
+<div role="tablist" aria-label="Live sections" style="display: flex; gap: 4px; border-bottom: 1px solid #cdd7ce">
+  <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="2">
+    <button type="button" role="tab" aria-selected="{{ t.selected }}" onClick="{{ t.pick }}" style="{{ t.style }}">
+      {{ t.label }}
+      <span style="{{ t.countStyle }}">{{ t.count }}</span>
+    </button>
+  </sc-for>
+</div>
+
+<sc-if value="{{ isAlerts }}" hint-placeholder-val="{{ true }}">
+<section aria-label="Live alerts" style="display: flex; flex-direction: column; gap: 14px">
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+    <div role="group" aria-label="Direction" style="display: inline-flex; gap: 2px; padding: 3px; border: 1px solid #cdd7ce; border-radius: 10px; background: #fafbf8">
+      <sc-for list="{{ dirs }}" as="d" hint-placeholder-count="3">
+        <button type="button" aria-pressed="{{ d.selected }}" onClick="{{ d.pick }}" style="{{ d.style }}">{{ d.label }} <span style="opacity: 0.75">{{ d.count }}</span></button>
+      </sc-for>
+    </div>
+    <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #526461">Symbol
+      <select value="{{ sym }}" onChange="{{ pickSym }}" style="min-height: 38px; padding: 0 10px; border: 1px solid #b9c8bf; border-radius: 10px; background: #fafbf8; color: #142b29; font: inherit; font-size: 14px">
+        <sc-for list="{{ symOptions }}" as="o" hint-placeholder-count="6"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
+      </select>
+    </label>
+    <sc-if value="{{ hasSym }}" hint-placeholder-val="{{ false }}">
+      <button type="button" onClick="{{ clearSym }}" aria-label="Clear symbol filter" style="display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border: 0; border-radius: 999px; background: #142b29; color: #ffffff; font: inherit; font-size: 13px; cursor: pointer">{{ sym }} <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.6"><path d="M2 2l6 6M8 2l-6 6"></path></svg></button>
+    </sc-if>
+    <span style="flex: 1"></span>
+    <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #526461">Sort
+      <select value="{{ sort }}" onChange="{{ pickSort }}" style="min-height: 38px; padding: 0 10px; border: 1px solid #b9c8bf; border-radius: 10px; background: #fafbf8; color: #142b29; font: inherit; font-size: 14px">
+        <option value="time">Newest first</option>
+        <option value="ratio">Highest volume ratio</option>
+      </select>
+    </label>
+  </div>
+
+  <div style="border: 1px solid #cdd7ce; border-radius: 14px; background: #fafbf8; overflow: hidden">
+    <div aria-hidden="true" style="display: grid; grid-template-columns: 56px 120px 112px minmax(0, 1fr) 120px 20px; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #e1e8e1; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #526461">
+      <span>Time</span><span>Symbol</span><span>Move</span><span>Volume vs expected</span><span style="text-align: right">vs SPY × β</span><span></span>
+    </div>
+    <sc-for list="{{ groups }}" as="g" hint-placeholder-count="2">
+      <h3 style="margin: 0; padding: 10px 16px 6px; display: flex; gap: 8px; align-items: baseline; font-size: 12px; font-weight: 600; color: #142b29; background: #f1f4ee; border-bottom: 1px solid #e1e8e1">{{ g.title }} <span style="font-weight: 400; color: #526461">{{ g.sub }}</span></h3>
+      <ul style="list-style: none; margin: 0; padding: 0">
+        <sc-for list="{{ g.rows }}" as="row" hint-placeholder-count="4">
+          <li style="border-bottom: 1px solid #e1e8e1">
+            <button type="button" aria-expanded="{{ row.open }}" onClick="{{ row.toggle }}" style="{{ row.btnStyle }}">
+              <span style="font-variant-numeric: tabular-nums; color: #3f4f4c">{{ row.t }}</span>
+              <span style="display: flex; align-items: center; gap: 8px; min-width: 0">
+                <strong style="font-size: 15px">{{ row.tk }}</strong>
+                <sc-if value="{{ row.isNew }}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; font-weight: 650; color: #1e4f86; background: #e2ecf7; border-radius: 6px; padding: 1px 6px">New</span></sc-if>
+                <sc-if value="{{ row.sessTag }}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; color: #3f4f4c; border: 1px solid #b9c8bf; border-radius: 6px; padding: 0 6px">{{ row.sessTag }}</span></sc-if>
+              </span>
+              <span style="{{ row.dirStyle }}">{{ row.dirText }}</span>
+              <span style="display: flex; align-items: center; gap: 10px; min-width: 0">
+                <strong style="width: 44px; font-variant-numeric: tabular-nums">{{ row.ratioText }}</strong>
+                <span style="flex: 1; max-width: 220px; height: 6px; border-radius: 3px; background: #e1e8e1; overflow: hidden"><span style="{{ row.meterStyle }}"></span></span>
+              </span>
+              <span style="{{ row.exStyle }}">{{ row.exText }}</span>
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="#526461" stroke-width="1.6" style="{{ row.chevStyle }}" aria-hidden="true"><path d="M3 4.5l3 3 3-3"></path></svg>
+            </button>
+            <sc-if value="{{ row.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding: 4px 16px 16px; background: #eef2ea; display: flex; flex-direction: column; gap: 10px">
+                <p style="margin: 0; font-size: 13px; color: #3f4f4c">{{ row.evidence }}</p>
+                <div style="padding: 10px; border: 1px solid #cdd7ce; border-radius: 10px; background: #fafbf8">
+                  <svg viewBox="0 0 600 150" preserveAspectRatio="none" style="width: 100%; height: 170px" aria-hidden="true">
+                    <rect x="{{ row.markX }}" y="0" width="14" height="150" fill="#fbe6b8"></rect>
+                    <polyline points="{{ row.bench }}" fill="none" stroke="#8fa89a" stroke-width="1.5" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"></polyline>
+                    <polyline points="{{ row.price }}" fill="none" stroke="#142b29" stroke-width="1.8" vector-effect="non-scaling-stroke"></polyline>
+                  </svg>
+                  <p style="margin: 6px 0 0; font-size: 12px; color: #526461">Day chart: {{ row.tk }} vs sector (dashed) · shaded = alert window · existing chart component</p>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap">
+                  <button type="button" onClick="{{ row.only }}" style="min-height: 36px; padding: 0 14px; border: 1px solid #b9c8bf; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 13px; cursor: pointer">Only {{ row.tk }} alerts</button>
+                  <button type="button" style="min-height: 36px; padding: 0 14px; border: 1px solid #b9c8bf; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 13px; cursor: pointer">Copy link</button>
+                </div>
+              </div>
+            </sc-if>
+          </li>
+        </sc-for>
+      </ul>
+    </sc-for>
+    <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}">
+      <p style="margin: 0; padding: 24px 16px; color: #526461">No alerts match these filters.</p>
+    </sc-if>
+  </div>
+</section>
+</sc-if>
+
+<sc-if value="{{ isWatch }}" hint-placeholder-val="{{ false }}">
+<section aria-label="Watchlist" style="display: flex; flex-direction: column; gap: 14px">
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+    <div role="group" aria-label="Show" style="display: inline-flex; gap: 2px; padding: 3px; border: 1px solid #cdd7ce; border-radius: 10px; background: #fafbf8">
+      <sc-for list="{{ wfilters }}" as="f" hint-placeholder-count="3">
+        <button type="button" aria-pressed="{{ f.selected }}" onClick="{{ f.pick }}" style="{{ f.style }}">{{ f.label }} <span style="opacity: 0.75">{{ f.count }}</span></button>
+      </sc-for>
+    </div>
+    <div role="group" aria-label="Compare with" style="display: inline-flex; gap: 2px; padding: 3px; border: 1px solid #cdd7ce; border-radius: 10px; background: #fafbf8">
+      <sc-for list="{{ compares }}" as="c" hint-placeholder-count="2">
+        <button type="button" aria-pressed="{{ c.selected }}" onClick="{{ c.pick }}" style="{{ c.style }}">{{ c.label }}</button>
+      </sc-for>
+    </div>
+    <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #526461">Find
+      <input type="search" value="{{ wq }}" onInput="{{ pickWq }}" placeholder="Symbol" style="width: 120px; min-height: 38px; padding: 0 10px; border: 1px solid #b9c8bf; border-radius: 10px; background: #fafbf8; color: #142b29; font: inherit; font-size: 14px">
+    </label>
+    <span style="flex: 1"></span>
+    <span style="font-size: 12px; color: #526461">Prices and charts: SIP, 15-min delayed, 5-min bars</span>
+  </div>
+
+  <div style="border: 1px solid #cdd7ce; border-radius: 14px; background: #fafbf8; overflow-x: auto">
+    <div style="min-width: 940px">
+      <div style="display: grid; grid-template-columns: minmax(120px, 1.2fr) 84px 108px 88px 120px 120px 60px minmax(120px, 1.4fr) 20px; gap: 12px; align-items: center; padding: 6px 16px; border-bottom: 1px solid #cdd7ce; background: #f1f4ee">
+        <sc-for list="{{ wheads }}" as="h" hint-placeholder-count="8">
+          <button type="button" onClick="{{ h.pick }}" aria-label="{{ h.aria }}" style="{{ h.style }}">{{ h.label }}<span style="font-size: 10px">{{ h.ind }}</span></button>
+        </sc-for>
+        <span></span>
+      </div>
+      <ul style="list-style: none; margin: 0; padding: 0">
+        <sc-for list="{{ wrows }}" as="r" hint-placeholder-count="30">
+          <li style="border-bottom: 1px solid #e1e8e1">
+            <button type="button" aria-expanded="{{ r.open }}" onClick="{{ r.toggle }}" style="{{ r.btnStyle }}">
+              <span style="display: flex; align-items: baseline; gap: 8px; min-width: 0"><strong style="font-size: 15px">{{ r.tk }}</strong><span style="font-size: 12px; color: #526461; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ r.sector }}</span></span>
+              <span style="text-align: right; font-variant-numeric: tabular-nums">{{ r.last }}</span>
+              <span style="{{ r.chgStyle }}">{{ r.chg }}</span>
+              <span style="{{ r.exStyle }}">{{ r.ex }}</span>
+              <span style="display: flex; align-items: center; gap: 8px">
+                <span style="{{ r.rvTextStyle }}">{{ r.rv }}</span>
+                <span style="flex: 1; height: 6px; border-radius: 3px; background: #e1e8e1; overflow: hidden"><span style="{{ r.rvBarStyle }}"></span></span>
+              </span>
+              <span title="{{ r.rangeTitle }}" style="position: relative; height: 14px">
+                <span style="position: absolute; left: 0; right: 0; top: 6px; height: 2px; border-radius: 1px; background: #cdd7ce"></span>
+                <span style="{{ r.rangeMark }}"></span>
+              </span>
+              <span style="{{ r.alertStyle }}">{{ r.alertText }}</span>
+              <svg viewBox="0 0 200 30" preserveAspectRatio="none" style="width: 100%; height: 30px" aria-hidden="true">
+                <line x1="44" y1="0" x2="44" y2="30" stroke="#b9c8bf" stroke-dasharray="2 3" vector-effect="non-scaling-stroke"></line>
+                <polyline points="{{ r.bench }}" fill="none" stroke="#8fa89a" stroke-width="1.2" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"></polyline>
+                <polyline points="{{ r.pts }}" fill="none" stroke="#142b29" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline>
+              </svg>
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="#526461" stroke-width="1.6" style="{{ r.chevStyle }}" aria-hidden="true"><path d="M3 4.5l3 3 3-3"></path></svg>
+            </button>
+            <sc-if value="{{ r.open }}" hint-placeholder-val="{{ false }}">
+              <div style="display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 16px; padding: 4px 16px 16px; background: #eef2ea">
+                <div style="padding: 12px 14px; border: 1px solid #cdd7ce; border-radius: 10px; background: #fafbf8; display: flex; flex-direction: column; gap: 8px; min-width: 0">
+                  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+                    <strong style="font-size: 14px">{{ r.tk }} vs {{ r.against }} · today</strong>
+                    <span style="font-size: 12px; color: #526461">1-min bars · each on its own % axis</span>
+                    <span style="flex: 1"></span>
+                    <div role="group" aria-label="Chart range" style="display: inline-flex; gap: 2px; padding: 3px; border: 1px solid #cdd7ce; border-radius: 10px">
+                      <sc-for list="{{ r.ch.ranges }}" as="g" hint-placeholder-count="3">
+                        <button type="button" aria-pressed="{{ g.selected }}" onClick="{{ g.pick }}" style="{{ g.style }}">{{ g.label }}</button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px">
+                    <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: #fbe3e1; color: #8a1c14; font-weight: 600"><span style="width: 10px; height: 10px; border-radius: 2px; background: #dc2626"></span>{{ r.ch.sum.strong }}</span>
+                    <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: #e1ecf9; color: #1a4f8f; font-weight: 600"><span style="width: 10px; height: 10px; border-radius: 2px; background: #2a78d6"></span>{{ r.ch.sum.weak }}</span>
+                  </div>
+                  <div aria-live="polite" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; font-size: 13px; font-variant-numeric: tabular-nums">
+                    <strong style="min-width: 44px">{{ r.ch.ro.time }}</strong>
+                    <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 16px; height: 0; border-top: 2.5px solid #2a78d6"></span>{{ r.tk }} <strong style="color: #1f5fae">{{ r.ch.ro.tk }}</strong> <span style="color: #526461">right axis</span></span>
+                    <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 16px; height: 0; border-top: 2.5px dashed #eb6834"></span>{{ r.against }} <strong style="color: #a8471b">{{ r.ch.ro.bm }}</strong> <span style="color: #526461">left axis</span></span>
+                    <span>Gap <strong>{{ r.ch.ro.gap }}</strong></span>
+                    <span>Volume <strong>{{ r.ch.ro.vol }}</strong> <span style="{{ r.ch.ro.vxStyle }}">{{ r.ch.ro.vx }} typical</span></span>
+                    <span style="{{ r.ch.ro.stateStyle }}">{{ r.ch.ro.state }}</span>
+                  </div>
+                  <svg viewBox="0 0 760 330" style="width: 100%; height: auto; display: block; font-family: Inter, ui-sans-serif, system-ui, sans-serif" role="img" aria-label="{{ r.ch.aria }}">
+                    <sc-if value="{{ r.ch.hasPre }}" hint-placeholder-val="{{ true }}">
+                      <rect x="52" y="14" width="{{ r.ch.preW }}" height="284" fill="#eef1ec"></rect>
+                      <text x="58" y="28" font-size="10" fill="#52514e">Pre-market</text>
+                    </sc-if>
+                    <sc-for list="{{ r.ch.bands }}" as="d" hint-placeholder-count="3">
+                      <rect x="{{ d.x }}" y="36" width="{{ d.w }}" height="150" fill="{{ d.bg }}"></rect>
+                      <rect x="{{ d.x }}" y="192" width="{{ d.w }}" height="10" rx="2" fill="{{ d.solid }}"></rect>
+                    </sc-for>
+                    <text x="46" y="200" font-size="9" text-anchor="end" fill="#52514e">vs SPY</text>
+                    <sc-for list="{{ r.ch.yticks }}" as="t" hint-placeholder-count="5">
+                      <line x1="52" x2="690" y1="{{ t.y }}" y2="{{ t.y }}" stroke="{{ t.stroke }}" stroke-width="1"></line>
+                      <text x="696" y="{{ t.ly }}" font-size="11" fill="#1f5fae">{{ t.label }}</text>
+                    </sc-for>
+                    <sc-for list="{{ r.ch.bticks }}" as="t" hint-placeholder-count="5">
+                      <text x="46" y="{{ t.ly }}" font-size="11" text-anchor="end" fill="#a8471b">{{ t.label }}</text>
+                    </sc-for>
+                    <sc-if value="{{ r.ch.hasOpen }}" hint-placeholder-val="{{ true }}">
+                      <line x1="{{ r.ch.openX }}" x2="{{ r.ch.openX }}" y1="14" y2="298" stroke="#6b7280" stroke-dasharray="3 3"></line>
+                      <text x="{{ r.ch.openLX }}" y="28" font-size="10" fill="#52514e">Open 16:30</text>
+                    </sc-if>
+                    <polyline points="{{ r.ch.bm }}" fill="none" stroke="#eb6834" stroke-width="1.8" stroke-dasharray="6 4"></polyline>
+                    <polyline points="{{ r.ch.tk }}" fill="none" stroke="#2a78d6" stroke-width="2.2"></polyline>
+                    <sc-for list="{{ r.ch.markers }}" as="m" hint-placeholder-count="1">
+                      <polygon points="{{ m.tri }}" fill="#142b29"></polygon>
+                      <text x="{{ m.x }}" y="{{ m.ly }}" font-size="10" font-weight="600" text-anchor="middle" fill="#142b29">{{ m.label }}</text>
+                    </sc-for>
+                    <line x1="52" x2="690" y1="298" y2="298" stroke="#cdd7ce"></line>
+                    <text x="56" y="216" font-size="10" fill="#52514e">Volume · bold bars = 2× typical or more · dashed = typical for that minute</text>
+                    <sc-for list="{{ r.ch.bars }}" as="b" hint-placeholder-count="60">
+                      <rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" fill="{{ b.fill }}"></rect>
+                    </sc-for>
+                    <polyline points="{{ r.ch.typ }}" fill="none" stroke="#142b29" stroke-width="1.2" stroke-dasharray="3 3"></polyline>
+                    <text x="696" y="226" font-size="11" fill="#52514e">{{ r.ch.vmaxLabel }}</text>
+                    <sc-for list="{{ r.ch.xticks }}" as="x" hint-placeholder-count="5">
+                      <text x="{{ x.x }}" y="318" font-size="11" text-anchor="middle" fill="#52514e">{{ x.label }}</text>
+                    </sc-for>
+                    <sc-if value="{{ r.ch.hovering }}" hint-placeholder-val="{{ false }}">
+                      <line x1="{{ r.ch.hx }}" x2="{{ r.ch.hx }}" y1="14" y2="298" stroke="#142b29" stroke-width="1" opacity="0.5"></line>
+                      <circle cx="{{ r.ch.hx }}" cy="{{ r.ch.hyT }}" r="4" fill="#2a78d6" stroke="#ffffff" stroke-width="1.5"></circle>
+                      <circle cx="{{ r.ch.hx }}" cy="{{ r.ch.hyB }}" r="4" fill="#eb6834" stroke="#ffffff" stroke-width="1.5"></circle>
+                    </sc-if>
+                    <rect x="52" y="0" width="638" height="300" fill="transparent" onMouseMove="{{ r.ch.onMove }}" onMouseLeave="{{ r.ch.onLeave }}"></rect>
+                  </svg>
+                  <p style="margin: 0; font-size: 12px; color: #526461">Red: over the last 5 minutes {{ r.against }} fell ≥ 0.05% while {{ r.tk }} held or rose. Blue: {{ r.against }} held or rose (≥ −0.02%) while {{ r.tk }} fell ≥ 2× its usual 5-minute move. Regular session only. ▼ marks an alert. Times in Israel time.</p>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px">
+                  <dl style="margin: 0; display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 4px 10px">
+                    <dt style="color: #526461">Day range</dt><dd style="margin: 0; font-variant-numeric: tabular-nums">{{ r.rangeTitle }}</dd>
+                    <dt style="color: #526461">Rel. volume</dt><dd style="margin: 0">{{ r.rv }} of typical volume by this time</dd>
+                    <dt style="color: #526461">Benchmark</dt><dd style="margin: 0">{{ r.against }} {{ r.benchChg }}</dd>
+                  </dl>
+                  <strong style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #526461">Alerts today</strong>
+                  <sc-if value="{{ r.hasAlerts }}" hint-placeholder-val="{{ false }}">
+                    <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px">
+                      <sc-for list="{{ r.alerts }}" as="a" hint-placeholder-count="2">
+                        <li style="font-variant-numeric: tabular-nums">{{ a.t }} · {{ a.move }} · {{ a.ratio }} volume</li>
+                      </sc-for>
+                    </ul>
+                    <button type="button" onClick="{{ r.goAlerts }}" style="align-self: flex-start; min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: #142b29; color: #ffffff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Show in Alerts →</button>
+                  </sc-if>
+                  <sc-if value="{{ r.noAlerts }}" hint-placeholder-val="{{ true }}">
+                    <span style="color: #526461">None so far.</span>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-if>
+          </li>
+        </sc-for>
+      </ul>
+      <sc-if value="{{ wempty }}" hint-placeholder-val="{{ false }}">
+        <p style="margin: 0; padding: 24px 16px; color: #526461">No symbols match.</p>
+      </sc-if>
+    </div>
+  </div>
+  <p style="margin: 0; font-size: 12px; color: #526461">vs SPY / vs sector: today's change minus the benchmark's change. Rel vol: regular-session volume so far ÷ the median volume by the same New York minute over the previous 20 sessions; “—” before the 16:30 open. Day range: today's low to high; the mark is the last price. Today: dotted line = regular open.</p>
+</section>
+</sc-if>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"startTab":{"editor":"enum","options":["alerts","watchlist"],"default":"alerts"},"$preview":{"width":1280,"height":1240}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: null, dir: 'all', sym: '', sort: 'time', open: 'a1', status: false, chart: false, compare: 'SPY', wsort: 'chg', wdesc: true, wfilter: 'all', wq: '', wopen: 'NVDA', wrange: 'day', whov: null };
+  }
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var tab = s.tab || this.props.startTab || 'alerts';
+
+    function series(seed, n, drift) {
+      var x = seed, v = 0, out = [];
+      for (var i = 0; i < n; i++) { x = (x * 9301 + 49297) % 233280; v += (x / 233280 - 0.5) * 1.2 + drift; out.push(v); }
+      return out;
+    }
+    function seedOf(t) { var n = 0; for (var i = 0; i < t.length; i++) n += t.charCodeAt(i) * (i + 7); return n; }
+    function toPts(vals, w, h, lo, hi) {
+      var span = (hi - lo) || 1;
+      return vals.map(function (v, i) { return (i * w / (vals.length - 1)).toFixed(1) + ',' + (h - 3 - (v - lo) / span * (h - 6)).toFixed(1); }).join(' ');
+    }
+    function pair(a, b, w, h) {
+      var all = a.concat(b), lo = Math.min.apply(null, all), hi = Math.max.apply(null, all);
+      return { a: toPts(a, w, h, lo, hi), b: toPts(b, w, h, lo, hi) };
+    }
+    function pct(n, d) { return (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(d === undefined ? 2 : d) + '%'; }
+    function chgStyle(n) { return 'font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: ' + (n >= 0 ? '#15803d' : '#b91c1c'); }
+    function arrow(n) { return (n >= 0 ? '▲ ' : '▼ ') + pct(n); }
+
+    var ALERTS = [
+      { id: 'a1', t: '17:42', tk: 'NVDA', move: 1.84, ratio: 5.1, ex: 1.20, sess: 'regular', isNew: true, ev: '2.41M shares in 5 min vs 472K expected · 2.3× today’s pace · move +1.84% vs typical ±0.61% at this time · close $131.62' },
+      { id: 'a2', t: '17:38', tk: 'AMD', move: 1.12, ratio: 3.4, ex: 0.71, sess: 'regular', isNew: true, ev: '612K shares in 5 min vs 180K expected · move +1.12% vs typical ±0.48% · close $162.05' },
+      { id: 'a3', t: '17:21', tk: 'TSLA', move: -2.05, ratio: 4.0, ex: -2.62, sess: 'regular', ev: '1.12M shares in 5 min vs 280K expected · move −2.05% vs typical ±0.72% · close $241.30' },
+      { id: 'a4', t: '17:05', tk: 'NVDA', move: 0.92, ratio: 3.1, ex: 0.48, sess: 'regular', ev: '1.46M shares in 5 min vs 471K expected · move +0.92% vs typical ±0.61% · close $129.70' },
+      { id: 'a5', t: '16:41', tk: 'AAPL', move: -0.62, ratio: 3.8, ex: -0.80, sess: 'regular', ev: '940K shares in 5 min vs 247K expected · move −0.62% vs typical ±0.30% · close $226.14' },
+      { id: 'a6', t: '15:12', tk: 'PLTR', move: 2.40, ratio: 6.2, ex: 2.10, sess: 'pre', ev: '310K shares in 5 min vs 50K expected (pre-market) · move +2.40% vs typical ±0.90% · close $41.88' },
+      { id: 'a7', t: '14:03', tk: 'META', move: -1.10, ratio: 3.0, ex: -1.35, sess: 'pre', ev: '88K shares in 5 min vs 29K expected (pre-market) · move −1.10% vs typical ±0.55% · close $574.20' }
+    ];
+    var counts = {};
+    ALERTS.forEach(function (a) { counts[a.tk] = (counts[a.tk] || 0) + 1; });
+
+    var byDir = ALERTS.filter(function (a) { return !s.sym || a.tk === s.sym; });
+    var nUp = byDir.filter(function (a) { return a.move >= 0; }).length;
+    var shown = byDir.filter(function (a) { return s.dir === 'all' || (s.dir === 'up' ? a.move >= 0 : a.move < 0); });
+    if (s.sort === 'ratio') shown = shown.slice().sort(function (a, b) { return b.ratio - a.ratio; });
+
+    function seg(selected) {
+      return 'min-height: 34px; padding: 0 12px; border: 0; border-radius: 7px; font: inherit; font-size: 13px; cursor: pointer; ' +
+        (selected ? 'background: #142b29; color: #ffffff; font-weight: 600' : 'background: transparent; color: #142b29');
+    }
+    function row(a) {
+      var open = s.open === a.id;
+      var seed = seedOf(a.tk);
+      var p = pair(series(seed, 78, a.move > 0 ? 0.06 : -0.06), series(seed + 3, 78, 0.01), 600, 150);
+      return {
+        t: a.t, tk: a.tk, isNew: !!a.isNew, open: open,
+        sessTag: s.sort === 'ratio' ? (a.sess === 'pre' ? 'Pre' : a.sess === 'post' ? 'After' : '') : '',
+        dirText: arrow(a.move),
+        dirStyle: 'justify-self: start; padding: 3px 8px; border-radius: 6px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; ' +
+          (a.move >= 0 ? 'background: #e3f1e6; color: #14642f' : 'background: #f8e4e2; color: #9f1a1a'),
+        ratioText: a.ratio.toFixed(1) + '×',
+        meterStyle: 'display: block; height: 100%; border-radius: 3px; background: #142b29; width: ' + Math.min(100, a.ratio / 8 * 100).toFixed(0) + '%',
+        exText: pct(a.ex),
+        exStyle: 'text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: ' + (a.ex >= 0 ? '#15803d' : '#b91c1c'),
+        btnStyle: 'display: grid; grid-template-columns: 56px 120px 112px minmax(0, 1fr) 120px 20px; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 10px 16px; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; background: ' + (open ? '#eef2ea' : 'transparent'),
+        chevStyle: open ? 'transform: rotate(180deg)' : '',
+        evidence: a.ev,
+        price: p.a, bench: p.b, markX: 410,
+        toggle: function () { self.setState({ open: open ? null : a.id }); },
+        only: function () { self.setState({ sym: a.tk }); }
+      };
+    }
+    var groups;
+    if (s.sort === 'ratio') {
+      groups = shown.length ? [{ title: 'Today', sub: 'all sessions · by volume ratio', rows: shown.map(row) }] : [];
+    } else {
+      groups = [
+        { key: 'regular', title: 'Regular session', sub: 'today · 16:30–23:00' },
+        { key: 'pre', title: 'Pre-market', sub: 'today · 11:00–16:30' }
+      ].map(function (g) {
+        var rows = shown.filter(function (a) { return a.sess === g.key; }).map(row);
+        return { title: g.title, sub: g.sub + ' · ' + rows.length + (rows.length === 1 ? ' alert' : ' alerts'), rows: rows };
+      }).filter(function (g) { return g.rows.length; });
+    }
+
+    var symOptions = [{ value: '', label: 'All symbols' }].concat(
+      Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] || (a < b ? -1 : 1); })
+        .map(function (t) { return { value: t, label: t + ' (' + counts[t] + ')' }; }));
+
+    var dirs = [
+      { key: 'all', label: 'All', count: byDir.length },
+      { key: 'up', label: '▲ Up', count: nUp },
+      { key: 'down', label: '▼ Down', count: byDir.length - nUp }
+    ].map(function (d) { return { label: d.label, count: d.count, selected: s.dir === d.key, style: seg(s.dir === d.key), pick: function () { self.setState({ dir: d.key }); } }; });
+
+    function tabStyle(sel) {
+      return 'display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; margin-bottom: -1px; border: 0; border-bottom: 2px solid ' + (sel ? '#142b29' : 'transparent') +
+        '; border-radius: 0; background: transparent; font: inherit; font-size: 15px; cursor: pointer; ' + (sel ? 'color: #142b29; font-weight: 650' : 'color: #526461; font-weight: 500');
+    }
+    function countStyle(sel) {
+      return 'min-width: 22px; padding: 1px 7px; border-radius: 999px; font-size: 12px; font-weight: 600; text-align: center; ' + (sel ? 'background: #142b29; color: #ffffff' : 'background: #e1e8e1; color: #3f4f4c');
+    }
+    var tabs = [
+      { key: 'alerts', label: 'Alerts', count: ALERTS.length },
+      { key: 'watchlist', label: 'Watchlist', count: 30 }
+    ].map(function (t) { var sel = tab === t.key; return { label: t.label, count: t.count, selected: sel, style: tabStyle(sel), countStyle: countStyle(sel), pick: function () { self.setState({ tab: t.key }); } }; });
+
+    var qqq = series(seedOf('QQQ'), 60, 0.04), spy = series(seedOf('SPY'), 60, 0.03);
+    var mb = pair(qqq, spy, 600, 160);
+    var marketTiles = [
+      { tk: 'QQQ', name: 'Nasdaq-100', chg: arrow(0.42), chgStyle: chgStyle(0.42), pts: toPts(qqq, 200, 36, Math.min.apply(null, qqq), Math.max.apply(null, qqq)) },
+      { tk: 'SPY', name: 'S&P 500', chg: arrow(0.31), chgStyle: chgStyle(0.31), pts: toPts(spy, 200, 36, Math.min.apply(null, spy), Math.max.apply(null, spy)) }
+    ];
+
+    var SECTORS = { SMH: ['Semis', 1.10], XLK: ['Tech', 0.25], IGV: ['Software', 0.40], XLC: ['Comm.', -0.10], XLY: ['Cons. disc.', -0.30], XLF: ['Financials', -0.20] };
+    var SPY_CHG = 0.31;
+    var WATCH = [
+      ['NVDA', 131.62, 2.31, 'SMH', 3.4, 0.92], ['PLTR', 41.88, 3.05, 'IGV', 2.1, 0.97], ['TSLA', 241.30, -2.40, 'XLY', 1.8, 0.06],
+      ['AMD', 162.05, 1.48, 'SMH', 1.6, 0.85], ['AAPL', 226.14, -0.71, 'XLK', 1.2, 0.30], ['META', 574.20, -1.02, 'XLC', 1.1, 0.18],
+      ['COIN', 178.60, -1.85, 'XLF', 1.4, 0.12], ['AVGO', 171.25, 1.12, 'SMH', 1.3, 0.80], ['SMCI', 38.40, 4.12, 'SMH', 2.6, 0.88],
+      ['MSTR', 342.10, -3.20, 'XLF', 1.9, 0.05], ['MU', 98.75, 1.65, 'SMH', 1.5, 0.74], ['INTC', 21.33, -0.42, 'SMH', 0.8, 0.40],
+      ['QCOM', 164.20, 0.88, 'SMH', 1.0, 0.66], ['ARM', 139.50, 2.05, 'SMH', 1.7, 0.90], ['MSFT', 417.90, 0.22, 'XLK', 0.9, 0.55],
+      ['CRM', 289.40, -0.35, 'XLK', 0.7, 0.42], ['ORCL', 168.90, 0.51, 'XLK', 0.9, 0.60], ['ADBE', 512.30, -0.95, 'XLK', 1.1, 0.22],
+      ['SHOP', 79.60, 1.32, 'IGV', 1.2, 0.81], ['UBER', 72.15, -0.28, 'XLY', 0.8, 0.45], ['ABNB', 131.80, 0.15, 'XLY', 0.6, 0.50],
+      ['SNOW', 118.40, -1.48, 'IGV', 1.3, 0.14], ['CRWD', 289.70, 0.96, 'IGV', 1.0, 0.70], ['PANW', 352.60, 0.41, 'IGV', 0.8, 0.58],
+      ['AMZN', 186.44, 0.65, 'XLY', 1.0, 0.63], ['GOOGL', 163.10, -0.18, 'XLC', 0.9, 0.47], ['NFLX', 701.80, 0.37, 'XLC', 0.7, 0.55],
+      ['HOOD', 24.90, 2.80, 'XLF', 2.3, 0.93], ['SOFI', 9.86, -1.12, 'XLF', 1.2, 0.20], ['RIVN', 11.42, -2.65, 'XLY', 1.6, 0.08]
+    ];
+    function isMoving(w) { return Math.abs(w[2]) >= 1 || w[4] >= 2; }
+    var nMoving = WATCH.filter(isMoving).length;
+    var nAlerted = WATCH.filter(function (w) { return counts[w[0]]; }).length;
+    var wfilters = [['all', 'All', WATCH.length], ['moving', 'Moving', nMoving], ['alerts', 'With alerts', nAlerted]].map(function (f) {
+      return { label: f[1], count: f[2], selected: s.wfilter === f[0], style: seg(s.wfilter === f[0]), pick: function () { self.setState({ wfilter: f[0] }); } };
+    });
+    var q = (s.wq || '').trim().toUpperCase();
+    var list = WATCH.map(function (w, i) {
+      var tk = w[0], sec = SECTORS[w[3]], useSector = s.compare === 'sector';
+      var against = useSector ? w[3] : 'SPY', benchChg = useSector ? sec[1] : SPY_CHG;
+      return { w: w, i: i, tk: tk, last: w[1], chg: w[2], ex: w[2] - benchChg, rv: w[4], range: w[5], n: counts[tk] || 0, sector: sec[0], against: against, benchChg: benchChg };
+    }).filter(function (x) {
+      if (q && x.tk.indexOf(q) !== 0) return false;
+      if (s.wfilter === 'moving') return isMoving(x.w);
+      if (s.wfilter === 'alerts') return x.n > 0;
+      return true;
+    });
+    var keyVal = {
+      tk: function (x) { return x.tk; }, last: function (x) { return x.last; }, chg: function (x) { return Math.abs(x.chg); },
+      ex: function (x) { return x.ex; }, rv: function (x) { return x.rv; }, range: function (x) { return x.range; }, alerts: function (x) { return x.n; }
+    }[s.wsort];
+    list.sort(function (a, b) {
+      var va = keyVal(a), vb = keyVal(b), c = va < vb ? -1 : va > vb ? 1 : 0;
+      return (s.wdesc ? -c : c) || a.i - b.i;
+    });
+    var heads = [
+      ['tk', 'Symbol', 'left'], ['last', 'Last', 'right'], ['chg', 'Change', 'left'], ['ex', s.compare === 'sector' ? 'vs sector' : 'vs SPY', 'right'],
+      ['rv', 'Rel vol', 'left'], ['range', 'Day range', 'left'], ['alerts', 'Alerts', 'left'], [null, 'Today', 'left']
+    ];
+    var wheads = heads.map(function (h) {
+      var active = h[0] && s.wsort === h[0];
+      return {
+        label: h[1], ind: active ? (s.wdesc ? ' ▼' : ' ▲') : '',
+        aria: h[0] ? 'Sort by ' + h[1] + (h[0] === 'chg' ? ' (size of move)' : '') : h[1],
+        style: 'display: flex; justify-content: ' + (h[2] === 'right' ? 'flex-end' : 'flex-start') + '; gap: 2px; min-height: 30px; padding: 0; border: 0; background: transparent; font: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; cursor: ' + (h[0] ? 'pointer' : 'default') + '; color: ' + (active ? '#142b29' : '#526461'),
+        pick: function () {
+          if (!h[0]) return;
+          if (s.wsort === h[0]) self.setState({ wdesc: !s.wdesc });
+          else self.setState({ wsort: h[0], wdesc: h[0] !== 'tk' });
+        }
+      };
+    });
+    function minuteOf(t) { var p = t.split(':'); return (+p[0]) * 60 + (+p[1]) - 660; }
+    function clock(m) { var t = m + 660, h = Math.floor(t / 60), mi = t % 60; return h + ':' + (mi < 10 ? '0' : '') + mi; }
+    function rng(seed) { var x = seed % 233280; return function () { x = (x * 9301 + 49297) % 233280; return x / 233280; }; }
+    function compact(v) { return v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : Math.round(v / 1e3) + 'K'; }
+    var OPEN = 330, NOW = 405, WIN = 5;
+    // Synthetic 1-minute day: 11:00–17:44 Israel time, previous-close % basis.
+    // Regular-session steps are offset by a linear ramp so the day still ends at `final`.
+    function dayPath(seed, preEnd, final, amp, jumps) {
+      var r = rng(seed), w = [0], out = [], i;
+      for (i = 1; i < NOW; i++) w.push(w[i - 1] + (r() - 0.5) * amp);
+      for (i = 0; i < NOW; i++) {
+        var v = (i <= OPEN ? preEnd * i / OPEN : preEnd + (final - preEnd) * (i - OPEN) / (NOW - 1 - OPEN)) + w[i] - i / (NOW - 1) * w[NOW - 1];
+        jumps.forEach(function (j) { v += (i >= j.at ? j.size : 0) - j.size * Math.max(0, i - OPEN) / (NOW - 1 - OPEN); });
+        out.push(v);
+      }
+      return out;
+    }
+    function ramp(a, b, size) { var o = []; for (var m = a; m < b; m++) o.push({ at: m, size: size / (b - a) }); return o; }
+    // Sample episodes so the mock shows both cases: SPY rises 17:05–17:15 and dips 17:10–17:20.
+    var SPY_SHAPE = ramp(345, 355, 0.12).concat(ramp(370, 380, -0.2), ramp(384, 394, 0.12));
+    function buildChart(x) {
+      var alerts = ALERTS.filter(function (a) { return a.tk === x.tk; });
+      var own = x.chg >= 0 ? ramp(345, 355, -0.45).concat(ramp(370, 380, 0.3)) : ramp(345, 355, -0.6).concat(ramp(370, 380, -0.1));
+      var tkP = dayPath(seedOf(x.tk), x.chg * 0.35, x.chg, 0.07, own.concat(alerts.map(function (a) { return { at: minuteOf(a.t), size: a.move * 0.6 }; })));
+      var bmP = dayPath(seedOf(x.against) + 11, x.benchChg * 0.3, x.benchChg, 0.025, SPY_SHAPE);
+      var r = rng(seedOf(x.tk) + 5), shares = 1.6e6, typ = [], vol = [], i;
+      for (i = 0; i < NOW; i++) {
+        var t = i < OPEN ? 0.03 : 0.22 + 0.78 * Math.exp(-(i - OPEN) / 14);
+        var v = t * (0.55 + r() * 0.9) * (i < OPEN ? 1.2 : x.rv * 0.8);
+        alerts.forEach(function (a) { var at = minuteOf(a.t); if (i <= at && i > at - 3) v *= 3.5; });
+        typ.push(t * shares); vol.push(v * shares);
+      }
+      // Opposite-to-benchmark state per minute, from 5-minute returns (regular session only).
+      var moves = [];
+      for (i = OPEN + WIN; i < NOW; i++) moves.push(Math.abs(tkP[i] - tkP[i - WIN]));
+      moves.sort(function (a, b) { return a - b; });
+      var usual = moves[Math.floor(moves.length / 2)] || 0.05;
+      var state = [];
+      for (i = 0; i < NOW; i++) {
+        if (i < OPEN + WIN) { state.push(null); continue; }
+        var bR = bmP[i] - bmP[i - WIN], tR = tkP[i] - tkP[i - WIN];
+        state.push(bR <= -0.05 && tR >= 0 ? 'strong' : bR >= -0.02 && tR <= -2 * usual ? 'weak' : null);
+      }
+      var episodes = [];
+      for (i = 0; i < NOW; i++) {
+        if (!state[i]) continue;
+        var last = episodes[episodes.length - 1];
+        if (last && last.kind === state[i] && last.to >= i - 1) last.to = i;
+        else episodes.push({ kind: state[i], from: i - WIN, to: i });
+      }
+      var start = s.wrange === 'open' ? OPEN : s.wrange === 'hour' ? NOW - 60 : 0, n = NOW - start;
+      var X0 = 52, X1 = 690, PY0 = 36, PY1 = 186, VY0 = 222, VY1 = 298;
+      function fit(arr) {
+        var lo = Infinity, hi = -Infinity;
+        for (var k = start; k < NOW; k++) { lo = Math.min(lo, arr[k]); hi = Math.max(hi, arr[k]); }
+        var pad = (hi - lo) * 0.1 || 0.05; return [lo - pad, hi + pad];
+      }
+      var tF = fit(tkP), bF = fit(bmP);
+      function xs(k) { return X0 + (k - start) / (n - 1) * (X1 - X0); }
+      function ysOn(f) { return function (v) { return PY1 - (v - f[0]) / (f[1] - f[0]) * (PY1 - PY0); }; }
+      var ys = ysOn(tF), yb = ysOn(bF);
+      function line(arr, y) { var o = []; for (var k = start; k < NOW; k++) o.push(xs(k).toFixed(1) + ',' + y(arr[k]).toFixed(1)); return o.join(' '); }
+      function ticks(f, y) {
+        var span = f[1] - f[0], step = [0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5].filter(function (st) { return span / st <= 5; })[0] || 5, out = [];
+        for (var v = Math.ceil(f[0] / step) * step; v <= f[1]; v += step) {
+          var rv = Math.round(v * 100) / 100;
+          out.push({ y: y(rv).toFixed(1), ly: (y(rv) + 4).toFixed(1), label: (rv > 0 ? '+' : rv < 0 ? '−' : '') + Math.abs(rv) + '%', stroke: rv === 0 ? '#8a9690' : '#e7ece6' });
+        }
+        return out;
+      }
+      var bands = episodes.filter(function (e) { return e.to >= start; }).map(function (e) {
+        var a = xs(Math.max(start, e.from)), b = xs(e.to);
+        return { x: a.toFixed(1), w: Math.max(2, b - a).toFixed(1), bg: e.kind === 'strong' ? 'rgba(220,38,38,0.12)' : 'rgba(42,120,214,0.14)', solid: e.kind === 'strong' ? '#dc2626' : '#2a78d6' };
+      });
+      function summary(kind, text) {
+        var es = episodes.filter(function (e) { return e.kind === kind; }), mins = es.reduce(function (m, e) { return m + e.to - e.from; }, 0);
+        return es.length ? text + ': ' + es.length + (es.length === 1 ? ' time' : ' times') + ' · ' + mins + ' min' : text + ': none today';
+      }
+      var vmax = 0;
+      for (i = start; i < NOW; i++) vmax = Math.max(vmax, vol[i], typ[i]);
+      vmax *= 1.05;
+      var bw = Math.max(0.8, (X1 - X0) / n * 0.75), bars = [], typPts = [];
+      for (i = start; i < NOW; i++) {
+        var hgt = vol[i] / vmax * (VY1 - VY0), up = i === 0 || tkP[i] >= tkP[i - 1], hot = vol[i] >= 2 * typ[i];
+        bars.push({ x: (xs(i) - bw / 2).toFixed(1), y: (VY1 - hgt).toFixed(1), w: bw.toFixed(2), h: hgt.toFixed(1),
+          fill: up ? (hot ? '#16a34a' : 'rgba(22,163,74,0.35)') : (hot ? '#dc2626' : 'rgba(220,38,38,0.35)') });
+        typPts.push(xs(i).toFixed(1) + ',' + (VY1 - typ[i] / vmax * (VY1 - VY0)).toFixed(1));
+      }
+      var tstep = [10, 15, 30, 60, 120].filter(function (st) { return n / st <= 6; })[0];
+      var xticks = [];
+      for (i = start; i < NOW; i++) if ((i + 660) % tstep === 0 && i !== OPEN) xticks.push({ x: xs(i).toFixed(1), label: clock(i) });
+      var markers = alerts.filter(function (a) { return minuteOf(a.t) >= start; }).map(function (a) {
+        var mx = xs(minuteOf(a.t)), my = ys(tkP[minuteOf(a.t)]) - 8;
+        return { x: mx.toFixed(1), ly: (my - 10).toFixed(1), label: a.t, tri: (mx - 5).toFixed(1) + ',' + (my - 8).toFixed(1) + ' ' + (mx + 5).toFixed(1) + ',' + (my - 8).toFixed(1) + ' ' + mx.toFixed(1) + ',' + my.toFixed(1) };
+      });
+      var hovering = s.whov !== null && s.whov >= start, h = hovering ? s.whov : NOW - 1, gap = tkP[h] - bmP[h], vx = vol[h] / typ[h];
+      var st = state[h], chip = 'padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; ';
+      function rangeBtn(key, label) {
+        return { label: label, selected: s.wrange === key, pick: function () { self.setState({ wrange: key, whov: null }); },
+          style: 'min-height: 30px; padding: 0 10px; border: 0; border-radius: 7px; font: inherit; font-size: 12px; cursor: pointer; ' + (s.wrange === key ? 'background: #142b29; color: #ffffff; font-weight: 600' : 'background: transparent; color: #142b29') };
+      }
+      return {
+        ranges: [rangeBtn('day', 'Today'), rangeBtn('open', 'Since open'), rangeBtn('hour', 'Last hour')],
+        sum: { strong: summary('strong', 'Held while ' + x.against + ' fell'), weak: summary('weak', 'Fell while ' + x.against + ' held') },
+        ro: { time: clock(h), tk: pct(tkP[h]), bm: pct(bmP[h]), gap: (gap >= 0 ? '+' : '−') + Math.abs(gap).toFixed(2) + ' pts',
+          vol: compact(vol[h]), vx: vx.toFixed(1) + '×', vxStyle: vx >= 2 ? 'font-weight: 700; color: #142b29' : 'color: #526461',
+          state: st === 'strong' ? '▲ Holding while ' + x.against + ' falls' : st === 'weak' ? '▼ Falling while ' + x.against + ' holds' : 'With ' + x.against,
+          stateStyle: chip + (st === 'strong' ? 'background: #fbe3e1; color: #8a1c14' : st === 'weak' ? 'background: #e1ecf9; color: #1a4f8f' : 'background: #eef0ec; color: #3f4f4c') },
+        aria: x.tk + ' percent change on the right axis and ' + x.against + ' on the left axis, with periods moving opposite to ' + x.against + ' and one-minute volume against typical volume, today in Israel time',
+        hasPre: start < OPEN, preW: (xs(OPEN) - X0).toFixed(1), hasOpen: start <= OPEN, openX: xs(OPEN).toFixed(1), openLX: (xs(OPEN) + 4).toFixed(1),
+        yticks: ticks(tF, ys), bticks: ticks(bF, yb), bands: bands, tk: line(tkP, ys), bm: line(bmP, yb), markers: markers, bars: bars, typ: typPts.join(' '),
+        vmaxLabel: compact(vmax), xticks: xticks,
+        hovering: hovering, hx: xs(h).toFixed(1), hyT: ys(tkP[h]).toFixed(1), hyB: yb(bmP[h]).toFixed(1),
+        onMove: function (ev) {
+          var b = ev.currentTarget.getBoundingClientRect(), f = (ev.clientX - b.left) / b.width;
+          var idx = Math.max(start, Math.min(NOW - 1, Math.round(start + f * (n - 1))));
+          if (idx !== s.whov) self.setState({ whov: idx });
+        },
+        onLeave: function () { self.setState({ whov: null }); }
+      };
+    }
+    var wrows = list.map(function (x) {
+      var open = s.wopen === x.tk, strong = x.rv >= 2;
+      var p = pair(series(seedOf(x.tk), 70, x.chg / 60), series(seedOf(x.against), 70, x.benchChg / 60), 200, 30);
+      var lo = x.last * (1 - (Math.abs(x.chg) + 0.6) / 100 * x.range), hi = x.last * (1 + (Math.abs(x.chg) + 0.6) / 100 * (1 - x.range));
+      return {
+        tk: x.tk, sector: x.sector, last: '$' + x.last.toFixed(2), open: open, against: x.against, benchChg: pct(x.benchChg),
+        chg: arrow(x.chg),
+        chgStyle: 'justify-self: start; padding: 3px 8px; border-radius: 6px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; ' + (x.chg >= 0 ? 'background: #e3f1e6; color: #14642f' : 'background: #f8e4e2; color: #9f1a1a'),
+        ex: pct(x.ex), exStyle: 'text-align: right; font-variant-numeric: tabular-nums; color: ' + (x.ex >= 0 ? '#15803d' : '#b91c1c'),
+        rv: x.rv.toFixed(1) + '×',
+        rvTextStyle: 'width: 36px; font-variant-numeric: tabular-nums; ' + (strong ? 'font-weight: 700; color: #142b29' : 'color: #3f4f4c'),
+        rvBarStyle: 'display: block; height: 100%; border-radius: 3px; width: ' + Math.min(100, x.rv / 4 * 100).toFixed(0) + '%; background: ' + (strong ? '#142b29' : '#9aa8a2'),
+        rangeTitle: 'Low $' + lo.toFixed(2) + ' · High $' + hi.toFixed(2),
+        rangeMark: 'position: absolute; top: 1px; width: 4px; height: 12px; border-radius: 2px; background: #142b29; left: calc(' + (x.range * 100).toFixed(0) + '% - 2px)',
+        alertText: x.n ? '● ' + x.n : '–',
+        alertStyle: x.n ? 'font-weight: 700; color: #1e4f86' : 'color: #9aa8a2',
+        pts: p.a, bench: p.b, ch: open ? buildChart(x) : null,
+        hasAlerts: x.n > 0, noAlerts: x.n === 0,
+        alerts: ALERTS.filter(function (a) { return a.tk === x.tk; }).map(function (a) { return { t: a.t, move: arrow(a.move), ratio: a.ratio.toFixed(1) + '×' }; }),
+        btnStyle: 'display: grid; grid-template-columns: minmax(120px, 1.2fr) 84px 108px 88px 120px 120px 60px minmax(120px, 1.4fr) 20px; gap: 12px; align-items: center; width: 100%; min-height: 46px; padding: 6px 16px; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; background: ' + (open ? '#eef2ea' : 'transparent'),
+        chevStyle: open ? 'transform: rotate(180deg)' : '',
+        toggle: function () { self.setState({ wopen: open ? null : x.tk }); },
+        goAlerts: function () { self.setState({ tab: 'alerts', sym: x.tk, dir: 'all' }); }
+      };
+    });
+    var compares = [['SPY', 'vs SPY'], ['sector', 'vs sector']].map(function (c) {
+      return { label: c[1], selected: s.compare === c[0], style: seg(s.compare === c[0]), pick: function () { self.setState({ compare: c[0] }); } };
+    });
+
+    return {
+      isAlerts: tab === 'alerts', isWatch: tab === 'watchlist', tabs: tabs,
+      statusOpen: s.status, statusChevron: s.status ? 'transform: rotate(180deg)' : '',
+      toggleStatus: function () { self.setState({ status: !s.status }); },
+      chartOpen: s.chart, toggleChart: function () { self.setState({ chart: !s.chart }); },
+      marketTiles: marketTiles, marketBig: mb,
+      dirs: dirs, sym: s.sym, hasSym: !!s.sym, symOptions: symOptions,
+      pickSym: function (e) { self.setState({ sym: e.target.value }); },
+      clearSym: function () { self.setState({ sym: '' }); },
+      sort: s.sort, pickSort: function (e) { self.setState({ sort: e.target.value }); },
+      groups: groups, empty: groups.length === 0,
+      compares: compares, wfilters: wfilters, wheads: wheads, wrows: wrows, wempty: wrows.length === 0,
+      wq: s.wq, pickWq: function (e) { self.setState({ wq: e.target.value }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

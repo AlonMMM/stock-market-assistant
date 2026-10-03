@@ -55,7 +55,7 @@ test("board series follow the watchlist, add SPY and QQQ, and keep the session d
   // 09:30 and 16:00 New York (EDT) on 2026-09-25.
   assert.equal(board.open, at("2026-09-25T13:30:00Z") / 1000);
   assert.equal(board.close, at("2026-09-25T20:00:00Z") / 1000);
-  assert.deepEqual(calls, [
+  assert.deepEqual(calls.slice(0, 2), [
     [
       "NVDA,SPY,QQQ",
       "2026-09-25T00:00:00Z",
@@ -63,6 +63,21 @@ test("board series follow the watchlist, add SPY and QQQ, and keep the session d
       "5Min",
     ],
     ["NVDA,SPY,QQQ", "2026-09-24T00:00:00Z", "2026-09-25T00:00:00Z", "1Day"],
+  ]);
+  // Rel vol history: watchlist symbols only, each previous session's regular
+  // hours as 5-minute bars (09:30–16:00 New York = 13:30–20:00Z in EDT).
+  assert.equal(calls.length, 22);
+  assert.deepEqual(calls[2], [
+    "NVDA,SPY",
+    "2026-08-27T13:30:00.000Z",
+    "2026-08-27T20:00:00.000Z",
+    "5Min",
+  ]);
+  assert.deepEqual(calls.at(-1), [
+    "NVDA,SPY",
+    "2026-09-24T13:30:00.000Z",
+    "2026-09-24T20:00:00.000Z",
+    "5Min",
   ]);
   assert.deepEqual(
     board.series.map((s) => [s.ticker, s.previousClose, s.points.length]),
@@ -125,7 +140,7 @@ test("board fetches each symbol's sector benchmark and reports the mapping", asy
   const board = await runBoard(
     ["MSTR", "NVDA", "WMT"],
     async (symbols) => {
-      fetched = symbols;
+      if (!fetched.length) fetched = symbols;
       return new Map(symbols.map((s) => [s, []]));
     },
     at("2026-09-27T12:00:00Z"),
