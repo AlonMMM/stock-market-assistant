@@ -30,6 +30,13 @@ export interface BoardStats {
   // previous 20 sessions; null with fewer than 15 such sessions.
   typicalVolume: number | null;
   relVolume: number | null; // volume / typicalVolume; null before the open
+  // Score vs SPY (0–100) at asOf: % from previousClose to the latest bar
+  // closing by asOf, for the stock and SPY (docs/features/chart-vs-spy.md);
+  // null without σ, a base or a bar. Always against SPY.
+  rsScore?: number | null;
+  // 60-session daily β vs SPY; null when it cannot be estimated (the score
+  // then uses β = 1, "β assumed").
+  beta?: number | null;
 }
 
 export interface BoardSeries {

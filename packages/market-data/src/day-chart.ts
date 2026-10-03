@@ -10,6 +10,7 @@ import type { BarCache } from "./bar-cache.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
 import { normalize, type RawBar } from "./bars.js";
 import { coreClose, previousSessions } from "./calendar.js";
+import type { SpyStrength } from "./rs-score.js";
 
 export { benchmark, dailyBeta } from "./beta.js";
 
@@ -37,8 +38,20 @@ export interface DayChart {
   feed: "sip";
   date: string;
   series: ChartSeries[]; // requested ticker first, then the benchmark
-  // Ticker beta vs SPY; null for SPY itself or with too few paired returns.
+  // Ticker beta vs the chart's benchmark (series[1]); null for the benchmark
+  // itself or with too few paired returns.
   beta: { value: number | null; returns: number; lookback: number };
+  // Score vs SPY inputs (docs/features/chart-vs-spy.md), always against SPY
+  // even when the chart's benchmark is a sector ETF. SPY's minute series is
+  // the entry of `series` whose ticker is "SPY"; when no entry is SPY (sector
+  // benchmark), it is carried in `spy` instead. Score per minute: see
+  // `scoreSeries` in rs-score.ts. Absent → show the score as "—".
+  vsSpy?: VsSpy;
+}
+
+export interface VsSpy extends SpyStrength {
+  // SPY's day series (no typicalVolume); only when `series` has no SPY entry.
+  spy?: ChartSeries;
 }
 
 export class DayChartInputError extends Error {}
