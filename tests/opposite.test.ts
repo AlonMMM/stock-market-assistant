@@ -83,7 +83,7 @@ test("a ticker falling while the benchmark falls is not strong", () => {
 // Ticker moves exactly 0.1 pts every 5-minute window (alternating levels), so
 // `usual` is 0.1; at minute 30 it falls `drop` × usual while SPY rises 0.01.
 function weakDay(drop: number) {
-  const ticker = Array.from({ length: 31 }, (_, k) =>
+  const ticker: number[] = Array.from({ length: 31 }, (_, k) =>
     Math.floor(k / 5) % 2 ? 0.1 : 0,
   );
   ticker[30] = ticker[25]! - drop * 0.1;
@@ -103,7 +103,7 @@ test("scenario 12: SPY +0.01 while ticker falls 2.1× usual is weak; 1.9× is no
 
 test("no weak state until 15 moves exist", () => {
   // Minute 18 has only 14 moves (minutes 5..18): a big fall stays unmarked.
-  const ticker = Array.from({ length: 19 }, (_, k) =>
+  const ticker: number[] = Array.from({ length: 19 }, (_, k) =>
     Math.floor(k / 5) % 2 ? 0.1 : 0,
   );
   ticker[18] = ticker[13]! - 1;
