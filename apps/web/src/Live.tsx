@@ -27,6 +27,7 @@ function usePolling<T>(
 ) {
   const [value, setValue] = useState<T | null>(null);
   const [at, setAt] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -37,9 +38,13 @@ function usePolling<T>(
         );
         if (!active) return;
         setValue(next);
+        setError(null);
         setAt(Date.now());
       } catch (e) {
-        if (active) onError(e instanceof Error ? e.message : `${path} failed`);
+        if (!active) return;
+        const message = e instanceof Error ? e.message : `${path} failed`;
+        setError(message);
+        onError(message);
       }
     };
     void load();
@@ -52,7 +57,7 @@ function usePolling<T>(
     };
     // onError only records warnings; it need not restart polling.
   }, [path, every]);
-  return { value, at };
+  return { value, at, error };
 }
 
 // Alerts newer than the viewer's previous visit are marked "New". Stored
@@ -158,7 +163,7 @@ export function Live({
         </p>
       )}
 
-      <MarketStrip board={board.value} now={now} />
+      <MarketStrip board={board.value} failed={!!board.error} now={now} />
 
       <div
         role="tablist"
@@ -232,7 +237,11 @@ export function Live({
               }}
             />
           ) : (
-            <p className="chart-status">Loading watchlist…</p>
+            <p className={board.error ? "notice error" : "chart-status"}>
+              {board.error
+                ? `Watchlist unavailable: ${board.error}`
+                : "Loading watchlist…"}
+            </p>
           )}
         </section>
       )}

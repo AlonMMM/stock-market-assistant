@@ -62,7 +62,7 @@ function SessionTile({ now }: { now: number }) {
               <span
                 key={i}
                 className={i === 1 ? "regular" : ""}
-                style={{ flex: ms }}
+                style={{ flex: ms / 3600000 }}
               />
             ))}
             {mark !== null && (
@@ -88,9 +88,11 @@ function SessionTile({ now }: { now: number }) {
 /** QQQ and SPY tiles plus the session timeline; a tile opens the market chart. */
 export function MarketStrip({
   board,
+  failed = false,
   now,
 }: {
   board: Board | null;
+  failed?: boolean; // the latest board request failed
   now: number;
 }) {
   const [open, setOpen] = useState(false);
@@ -122,7 +124,7 @@ export function MarketStrip({
                 }
               >
                 {change === null
-                  ? board
+                  ? board || failed
                     ? "—"
                     : "Loading…"
                   : `${change >= 0 ? "▲" : "▼"} ${signedPct(change)}`}
