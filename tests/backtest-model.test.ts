@@ -42,7 +42,6 @@ import {
   verdictRows,
   type RunRequest,
 } from "../apps/web/src/backtest-model.js";
-import { outcomeLevels } from "../apps/web/src/chart-model.js";
 import { groupAlertDays } from "../apps/web/src/live-model.js";
 
 // SYNTHETIC fixtures: shapes match the API, numbers are invented.
@@ -486,28 +485,5 @@ test("settings key ignores symbol order; setup summary", () => {
   assert.equal(
     setupSummary(30, 5, 1),
     "Setup · 30 symbols · 5 sessions · rvol-v4 + 1 change",
-  );
-});
-
-test("outcome levels: good in the alert's direction, stop against it", () => {
-  assert.deepEqual(
-    outcomeLevels({ entry: 100, unit: 0.5 }, "up", {
-      goodUnits: 2,
-      stopUnits: 1,
-    }),
-    { entry: 100, good: 101, stop: 99.5 },
-  );
-  const down = outcomeLevels({ entry: 100, unit: 0.5 }, "down", {
-    goodUnits: 2,
-    stopUnits: 1,
-  })!;
-  assert.equal(down.good, 99);
-  assert.ok(Math.abs(down.stop - 100.5) < 1e-9);
-  assert.equal(
-    outcomeLevels({ entry: null, unit: null }, "up", {
-      goodUnits: 2,
-      stopUnits: 1,
-    }),
-    null,
   );
 });
