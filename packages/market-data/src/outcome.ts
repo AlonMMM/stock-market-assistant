@@ -265,11 +265,18 @@ export function summarize(
       30: med(scored.map((o) => o.forward[30])),
       60: med(scored.map((o) => o.forward[60])),
     },
-    baseline: {
-      scored: baseline.length,
-      good: count(baseline, "good"),
-      stopped: count(baseline, "stopped"),
-      weak: count(baseline, "weak"),
-    },
+    baseline: baselineCounts(baseline),
+  };
+}
+
+/** Counts baseline outcomes (`OutcomeScorer.baseline` keeps scored ones only). */
+export function baselineCounts(baseline: Outcome[]): BaselineCounts {
+  const count = (r: OutcomeResult) =>
+    baseline.filter((o) => o.result === r).length;
+  return {
+    scored: baseline.length,
+    good: count("good"),
+    stopped: count("stopped"),
+    weak: count("weak"),
   };
 }
