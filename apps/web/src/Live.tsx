@@ -1,24 +1,14 @@
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Board } from "../../../packages/market-data/src/board.js";
 import type { AlertLink } from "../../../packages/contracts/src/alert-link.js";
 import type { LiveStatus } from "../../../packages/market-data/src/live.js";
 import { AlertFeed } from "./AlertFeed.js";
 import { readJson } from "./api.js";
 import { pillFor } from "./live-model.js";
+import { MarketStrip } from "./MarketStrip.js";
 import { StatusPill } from "./StatusPill.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
 import { WatchBoard } from "./WatchBoard.js";
-
-const DayChart = lazy(() =>
-  import("./DayChart.js").then((m) => ({ default: m.DayChart })),
-);
 
 const liveRefreshMs = 30000;
 // Board data is 15-minute-delayed SIP in 5-minute bars.
@@ -83,7 +73,6 @@ export function Live({
     (m, a) => (m === null || a.end > m ? a.end : m),
     null,
   );
-  const day = board.value?.date;
   const linked =
     link && alerts.some((a) => a.ticker === link.ticker && a.end === link.end);
   const linkNotice =
@@ -124,22 +113,7 @@ export function Live({
         </p>
       )}
 
-      <section className="market">
-        <h2 className="section-title">
-          Market{" "}
-          <small>
-            Nasdaq-100 (QQQ) vs S&P 500 (SPY)
-            {day && ` · session ${day}`}
-          </small>
-        </h2>
-        {day ? (
-          <Suspense fallback={<p className="chart-status">Loading chart…</p>}>
-            <DayChart ticker="QQQ" date={day} />
-          </Suspense>
-        ) : (
-          <p className="chart-status">Loading market…</p>
-        )}
-      </section>
+      <MarketStrip board={board.value} now={now} />
 
       <section>
         <h2 className="section-title">
