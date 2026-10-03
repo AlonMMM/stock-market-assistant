@@ -138,13 +138,13 @@ export function Verdict({
   );
 }
 
-const symbolColumns: [SymbolSort | null, string, string][] = [
-  ["ticker", "Symbol", ""],
-  ["alerts", "Alerts", "right"],
-  [null, "Good / weak / stopped", ""],
-  ["goodPct", "Good", "right"],
-  ["vsBaseline", "vs baseline", "right"],
-  ["medianRun", "Median run", "right"],
+const symbolColumns: [SymbolSort, string, string, boolean][] = [
+  ["ticker", "Symbol", "", false],
+  ["alerts", "Alerts", "right", false],
+  ["avgScore", "Avg score", "right", false],
+  ["bigShare", "Big+ %", "right", false],
+  ["goodPct", "Good %", "right trade", true],
+  ["vsBaseline", "vs baseline", "right trade", true],
 ];
 
 export function SymbolTable({
@@ -154,7 +154,7 @@ export function SymbolTable({
   rows: SymbolRow[];
   onPick: (ticker: string) => void;
 }) {
-  const [sort, setSort] = useState<SymbolSort>("goodPct");
+  const [sort, setSort] = useState<SymbolSort>("avgScore");
   const [descending, setDescending] = useState(true);
   const rows = sortSymbolRows(all, sort, descending);
   const pick = (key: SymbolSort) => {
@@ -168,14 +168,11 @@ export function SymbolTable({
     <>
       <div className="symbol-table">
         <div className="symbol-scroll">
+          <div className="symbol-group" aria-hidden="true">
+            <span>Trade view</span>
+          </div>
           <div className="symbol-head" role="group" aria-label="Sort by">
-            {symbolColumns.map(([key, label, align]) => {
-              if (!key)
-                return (
-                  <span key={label} className={align}>
-                    {label}
-                  </span>
-                );
+            {symbolColumns.map(([key, label, align, trade]) => {
               const active = sort === key;
               return (
                 <button
@@ -183,7 +180,7 @@ export function SymbolTable({
                   key={key}
                   className={`${align}${active ? " active" : ""}`}
                   aria-pressed={active}
-                  aria-label={`Sort by ${label}${active ? (descending ? ", highest first" : ", lowest first") : ""}`}
+                  aria-label={`Sort by ${trade ? "trade view " : ""}${label}${active ? (descending ? ", highest first" : ", lowest first") : ""}`}
                   onClick={() => pick(key)}
                 >
                   {label}
@@ -196,45 +193,31 @@ export function SymbolTable({
           </div>
           <ul>
             {rows.map((r) => {
-              const text = `${r.good} good, ${r.weak} weak, ${r.stopped} stopped`;
+              const avg =
+                r.avgScore === null ? "—" : String(Math.round(r.avgScore));
               return (
                 <li key={r.ticker}>
                   <button
                     type="button"
                     className={r.small ? "symbol-row small" : "symbol-row"}
                     onClick={() => onPick(r.ticker)}
-                    aria-label={`${r.ticker}: ${r.alerts} alerts, ${text}, ${pctText(r.goodPct)} good, ${r.vsBaseline === null ? "no per-symbol baseline" : `${signedPoints(r.vsBaseline)} vs baseline`}${r.small ? ", too few to judge" : ""}. Show its alerts`}
+                    aria-label={`${r.ticker}: ${r.alerts} alerts, average look-now score ${avg}, ${pctText(r.bigShare)} big or very big; trade view ${pctText(r.goodPct)} good, ${r.vsBaseline === null ? "no per-symbol baseline" : `${signedPoints(r.vsBaseline)} vs baseline`}${r.small ? "; too few scored alerts to judge" : ""}. Show its alerts`}
                   >
                     <strong>{r.ticker}</strong>
                     <span className="num right">{r.alerts}</span>
-                    <span className="stack" title={text}>
-                      {r.good > 0 && (
-                        <span className="good" style={{ flexGrow: r.good }} />
-                      )}
-                      {r.weak > 0 && (
-                        <span className="weak" style={{ flexGrow: r.weak }} />
-                      )}
-                      {r.stopped > 0 && (
-                        <span
-                          className="stopped"
-                          style={{ flexGrow: r.stopped }}
-                        />
-                      )}
+                    <strong className="num right">{avg}</strong>
+                    <span className="num right">{pctText(r.bigShare)}</span>
+                    <span className="num right trade">
+                      {pctText(r.goodPct)}
                     </span>
-                    <strong className="num right">{pctText(r.goodPct)}</strong>
                     <span
                       className={
-                        r.vsBaseline === null
-                          ? "num right muted"
-                          : `num right excess ${r.vsBaseline >= 0 ? "up" : "down"}`
+                        r.vsBaseline === null || r.vsBaseline === 0
+                          ? "num right trade"
+                          : `num right trade excess ${r.vsBaseline > 0 ? "up" : "down"}`
                       }
                     >
                       {r.vsBaseline === null ? "—" : signedPoints(r.vsBaseline)}
-                    </span>
-                    <span className="num right">
-                      {r.medianRun === null
-                        ? "—"
-                        : `${r.medianRun.toFixed(1)}u`}
                     </span>
                   </button>
                 </li>
@@ -244,13 +227,13 @@ export function SymbolTable({
         </div>
       </div>
       <p className="table-note">
-        Bars: green = good, grey = weak, red = stopped (counts in each
-        row&apos;s label and on hover). Good %: of the symbol&apos;s scored
-        alerts. vs baseline: the symbol&apos;s good % minus the good % of its
-        own baseline momentum entries, in points; “—” when the API gives no
-        per-symbol baseline. Rows with fewer than {minSymbolAlerts} scored
-        alerts are faded and listed last: too few to judge. Select a row to see
-        its alerts.
+        Avg score: the mean look-now score of the symbol&apos;s scored alerts.
+        Big+ %: share labelled Big (≥ 90) or Very big (≥ 97). Trade view: Good %
+        of the symbol&apos;s stop/target-scored alerts, and vs baseline = that
+        minus the good % of its own baseline momentum entries, in points (“—”
+        when the API gives no per-symbol baseline). Rows with fewer than{" "}
+        {minSymbolAlerts} look-now-scored alerts are faded and listed last: too
+        few to judge. Select a row to see its alerts.
       </p>
     </>
   );

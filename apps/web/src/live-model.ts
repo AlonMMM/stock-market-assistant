@@ -235,10 +235,12 @@ export type LiveAlertRow = Evaluation & {
   close?: number;
   context?: { excess: number } | null;
   outcome?: { runUnits: number | null }; // backtest alerts only
+  lookNow?: { score: number | null }; // backtest alerts only
 };
 export type DirectionFilter = "all" | "up" | "down";
-// "run" (backtest only): best run in units, highest first.
-export type AlertSort = "time" | "ratio" | "run";
+// Backtest only: "score" = look-now score, "run" = best run in units,
+// highest first.
+export type AlertSort = "time" | "ratio" | "run" | "score";
 
 export const alertDirection = (a: {
   direction: string | null;
@@ -315,7 +317,7 @@ function sessionHours(date: string, session: keyof typeof sessionTitle) {
 /**
  * One group per Israel calendar date, newest first. Inside a day, newest
  * first splits into session groups (by US session date and session, so an
- * after-midnight after-hours stays separate); by ratio or run it is one flat list
+ * after-midnight after-hours stays separate); by ratio, score or run it is one flat list
  * (rows then carry a Pre/After tag in the UI).
  */
 export function groupAlertDays<T extends LiveAlertRow>(
@@ -325,10 +327,13 @@ export function groupAlertDays<T extends LiveAlertRow>(
   const rows = [...alerts].sort((a, b) =>
     sort === "ratio"
       ? (b.ratio ?? 0) - (a.ratio ?? 0) || b.end.localeCompare(a.end)
-      : sort === "run"
-        ? (b.outcome?.runUnits ?? -Infinity) -
-            (a.outcome?.runUnits ?? -Infinity) || b.end.localeCompare(a.end)
-        : b.end.localeCompare(a.end),
+      : sort === "score"
+        ? (b.lookNow?.score ?? -Infinity) - (a.lookNow?.score ?? -Infinity) ||
+          b.end.localeCompare(a.end)
+        : sort === "run"
+          ? (b.outcome?.runUnits ?? -Infinity) -
+              (a.outcome?.runUnits ?? -Infinity) || b.end.localeCompare(a.end)
+          : b.end.localeCompare(a.end),
   );
   const days = new Map<string, T[]>();
   for (const a of rows) {

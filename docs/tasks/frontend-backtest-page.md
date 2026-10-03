@@ -38,9 +38,15 @@ score, merged in 488c092).
   Alerts filtered; "—" without a per-symbol baseline), Data quality (log-scale
   diagnostics, coverage, cache, failed batches with Retry these → reruns only those
   batches with the original run's settings and merges).
-- Look-now score (from main): its card sits above the verdict, alert rows show the score
-  badge and detail line, and the batch merge combines look-now summaries (baselines by
-  weighted average). Conflict in `packages/market-data/src/backtest.ts` resolved as the
+- Look-now score primary, stop/target secondary (Product+UX decision after PR #34):
+  look-now card first; the verdict sits in a disclosure "Trade view: stop / target vs
+  baseline", closed by default and remembered for the visit (sessionStorage). Alerts tab:
+  look-now filter (All / Very big / Big / Normal / Unscored), sort Newest / Highest
+  look-now score / Highest volume ratio, columns score badge + label and peak ("Peak 15
+  min · with burst"), day header "N alerts · avg score X"; the trade outcome moved into
+  the expanded row (chart levels kept). By symbol: Avg score (default sort), Big+ %, then
+  a muted "Trade view" group (Good %, vs baseline); fading counts look-now-scored alerts.
+  The batch merge combines look-now summaries (baselines by weighted average). Conflict in `packages/market-data/src/backtest.ts` resolved as the
   union of both sides (`baselineBySymbol` and `lookNow`), no logic change.
 - Wording per Product+UX: "baseline" / "ordinary momentum entries" instead of "random"
   (verdict, bars, differences, By-symbol "vs baseline"; spec updated in 6be9347).
@@ -53,6 +59,12 @@ score, merged in 488c092).
 
 - `npm run check`: pass (178 tests: 177 pass, 1 skipped as before). `git diff --check`:
   clean.
+- After the look-now-primary change: headless check at 1280 and 390 (synthetic mock) of
+  the look-now card first, the trade view closed by default then opened and remembered,
+  the look-now filter counts and Very big filter, the three sort options and Highest
+  look-now score order, the Look-now/Peak columns and day header, the expanded row's
+  look-now line and trade-view outcome, the By-symbol columns, "Trade view" group and
+  fading; no horizontal page scroll.
 - After the main merge: headless re-check (1280 and 390, synthetic mock) of the look-now
   card, verdict heading/"Baseline" labels/"vs baseline" differences, the meta line and the
   By-symbol "vs baseline" header; no horizontal page scroll.
@@ -69,9 +81,6 @@ score, merged in 488c092).
 ## Notes and open questions
 
 - Dates show as "Sept" (ICU en-GB), the same as the Live day labels; the spec writes "Sep".
-- Main now makes the look-now score the main grade and calls stop/target the "trade
-  view"; this page shows both (look-now card first, then the verdict). Whether the verdict
-  should be labelled or collapsed as the trade view is a Product+UX decision.
 - The look-now card is main's existing component (older `.validation` styling, its own
   "random minutes" wording, which is accurate for that score).
 

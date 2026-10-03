@@ -10,14 +10,16 @@ numbers are SAMPLE data.
 ## User and outcome
 
 The trader tuning the relative-volume rule. They pick symbols, dates and (optionally)
-changed rule settings, run the replay, and must answer quickly: did alerts do better
-than ordinary momentum entries (the baseline), on which symbols, and is the sample large enough to trust?
+changed rule settings, run the replay, and must answer quickly: was the move after the
+alerts unusually large (the [look-now score](look-now-score.md), the primary grade), on
+which symbols, and is the sample large enough to trust? The stop/target result against
+ordinary momentum entries stays available as the secondary "trade view".
 
 ## Scope and exclusions
 
 In scope: the Backtest view's layout and visual style (matching the Live redesign,
 [live-page](live-page.md)), setup presets, grouped rule settings with change tracking,
-the verdict block, results tabs (Alerts, By symbol, Data quality), retrying failed
+the look-now card and the trade-view verdict, results tabs (Alerts, By symbol, Data quality), retrying failed
 batches, a per-symbol baseline from the API, and phone layout.
 
 Excluded: new rule parameters or scoring logic, server-side presets, saving named
@@ -64,7 +66,12 @@ after a run marks results "Settings changed — run again" (instead of clearing 
 
 - Title: "84 alerts · 21 of 30 symbols · Fri 25 Sep – Fri 2 Oct · rvol-v4 + 1 change",
   "Download JSON".
-- **Verdict** card, heading "Did the move follow, compared with ordinary momentum entries?":
+- **Look-now** card first, full size: the existing look-now summary (average score vs
+  random minutes, Big and Very big shares with lift, peak with the burst, peak horizons,
+  scored/unscored, under-50 note). Definition in [look-now-score](look-now-score.md).
+- **Trade view** (secondary): a disclosure "Trade view: stop / target vs baseline",
+  closed by default, remembering its open state for the visit. Inside, the verdict card,
+  heading "Did the move follow, compared with ordinary momentum entries?":
   for Good, Stopped and Weak a pair of horizontal bars (Alerts full colour, Baseline faded)
   with percentages and a difference "+2 pts vs baseline" (green when better: more good /
   fewer stopped; red when worse; neutral for weak). Then median move in the alert's
@@ -74,22 +81,24 @@ after a run marks results "Settings changed — run again" (instead of clearing 
   scored alerts: a difference of a few points is within noise…".
 - **Tabs** with counts:
   - **Alerts**: the Live alert feed (Israel-day groups, collapsible, header shows count and
-    "% good"; session sub-groups) plus an outcome filter (All / Good / Stopped / Weak with
-    counts), symbol select and sort (Newest, Highest volume ratio, Best run). Columns:
-    time, symbol (+ "In play" tag), move tag, volume ratio, outcome tag, "best run · after
-    15 / 60 min". Expanded rows keep evidence, analysis and the day chart (opens Around
-    alert), and the chart marks entry, good and stop levels.
-  - **By symbol**: table sorted by good % (desc), columns Symbol, Alerts, a stacked bar
-    good/weak/stopped (green/grey/red, with text in the accessible label), Good %, vs baseline
-    (symbol's good % minus that symbol's baseline good %, in pts), Median run (u).
-    Sortable headers like the Live watchlist. Rows with fewer than 5 scored alerts are
-    faded and sort after the rest. Clicking a row opens the Alerts tab filtered to it.
+    "avg score X"; session sub-groups) plus a look-now filter (All / Very big / Big /
+    Normal / Unscored with counts), symbol select and sort (Newest, Highest look-now score,
+    Highest volume ratio). Columns: time, symbol (+ "In play" tag), move tag, volume ratio,
+    look-now score badge with its label, peak ("Peak 15 min · with burst"). Expanded rows
+    keep evidence, analysis, the look-now detail line, the trade view outcome
+    (good/stopped/weak and its line) and the day chart (opens Around alert), which marks
+    the entry, good and stop levels.
+  - **By symbol**: table sorted by average look-now score (desc), columns Symbol, Alerts,
+    Avg score, Big+ % (share labelled Big or Very big), then a muted "Trade view" group:
+    Good %, vs baseline (symbol's good % minus that symbol's baseline good %, in pts).
+    Sortable headers like the Live watchlist. Rows with fewer than 5 look-now-scored alerts
+    are faded and sort after the rest. Clicking a row opens the Alerts tab filtered to it.
   - **Data quality**: "Why windows did not alert" (diagnostics as log-scale bars with
     counts, plus the evaluated total), "Data coverage" (missing sessions per symbol,
     bar-cache hits/misses/errors), and failed batches with "Retry these" that reruns only
     those symbols and merges the result. Tab count shows issues ("1 gap") or "OK".
-- Empty (before run): results column shows what the run will produce. No alerts: verdict
-  hidden, message "No alerts matched these settings" with the rule badge.
+- Empty (before run): results column shows what the run will produce. No alerts: look-now
+  card and trade view hidden, message "No alerts matched these settings" with the rule badge.
 - Errors: invalid settings stop the run with the message next to the Run button; batch
   failures go to Data quality and to the status pill's warnings, not stacked at the top.
 
@@ -100,8 +109,10 @@ after a run marks results "Settings changed — run again" (instead of clearing 
 good, stopped, weak }>` (same baseline entries as today's `validation.baseline`, split
   by symbol). Additive; existing fields unchanged. The web `merge()` of batches must merge
   it too.
-- Per-symbol good % in the By-symbol tab is computed in the web app from alerts'
-  outcomes; median run per symbol likewise.
+- Per-symbol average score, Big+ % and good % in the By-symbol tab are computed in the
+  web app from the alerts' `lookNow` and `outcome`. The batch merge also combines the
+  `lookNow` summaries (alert statistics recomputed; random-minute baselines by weighted
+  average, per look-now-score.md).
 - Date presets use US session dates (inputs stay US dates, per product display
   conventions); displayed ranges use Israel-style labels ("Fri 25 Sep").
 
@@ -112,10 +123,10 @@ good, stopped, weak }>` (same baseline entries as today's `validation.baseline`,
 2. "Last 10 sessions" fills From/To with 10 US sessions ending on the last complete one,
    skipping weekends and holidays.
 3. "Alerted recently" with 0 live alerts → disabled with "No recent live alerts".
-4. 84 scored alerts, 32% good vs 30% baseline → Good shows "+2 pts vs baseline" in green;
+4. In the trade view: 84 scored alerts, 32% good vs 30% baseline → Good shows "+2 pts vs baseline" in green;
    stopped 41% vs 44% → "−3 pts vs baseline" in green; the under-50 note is absent; with 40
    scored alerts the note shows.
-5. By symbol: a symbol with 4 alerts is faded and below symbols with ≥ 5; clicking NVDA
+5. By symbol: a symbol with 4 look-now-scored alerts is faded and below symbols with ≥ 5; clicking NVDA
    opens Alerts filtered to NVDA.
 6. "vs baseline" for NVDA uses NVDA's own baseline from `baselineBySymbol`; if absent
    (older API), the column shows "—".
@@ -128,7 +139,9 @@ good, stopped, weak }>` (same baseline entries as today's `validation.baseline`,
 
 ## Decisions and handoff
 
-Agreed with the user on 2026-10-03 ("build it" after reviewing the mockup). Product+UX
+Agreed with the user on 2026-10-03 ("build it" after reviewing the mockup). Revised the
+same day after the user confirmed the look-now score as the main grade (PR #34): look-now
+primary everywhere on the page, stop/target the secondary trade view. Product+UX
 defaults: By symbol included with per-symbol baseline; phone setup collapses; "Alerted
 recently" uses current live alerts (no history API).
 

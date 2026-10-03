@@ -48,6 +48,7 @@ import {
 // about four minute-bar pages, one daily page and a few cache statements.
 const batchSize = 3;
 const liveRefreshMs = 30000;
+const tradeKey = "sma.backtest.tradeView.v1";
 
 type Scoring = RunRequest["validation"];
 const scoringDefaults: Scoring = {
@@ -177,6 +178,22 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   // Phone layout: expanded before the first run, collapsed after a run.
   const [setupOpen, setSetupOpen] = useState(true);
   const form = useRef<HTMLFormElement>(null);
+  // The secondary trade view stays as the viewer left it for this visit.
+  const [tradeOpen, setTradeOpenState] = useState(() => {
+    try {
+      return sessionStorage.getItem(tradeKey) === "open";
+    } catch {
+      return false;
+    }
+  });
+  const setTradeOpen = (open: boolean) => {
+    setTradeOpenState(open);
+    try {
+      sessionStorage.setItem(tradeKey, open ? "open" : "closed");
+    } catch {
+      // Remembered while the page stays mounted.
+    }
+  };
 
   const request: RunRequest = {
     tickers,
@@ -744,18 +761,22 @@ export function Backtest({ modes }: { modes: ReactNode }) {
                   <h2>What a run shows</h2>
                   <ul>
                     <li>
-                      <strong>Verdict</strong>: how often alerts ran to the good
-                      level, were stopped or stayed weak, compared with ordinary
-                      momentum entries in the same symbols and days.
+                      <strong>Look-now score</strong>: how unusual the
+                      market-adjusted move after the alerts was for each stock,
+                      against random minutes of the same run.
+                    </li>
+                    <li>
+                      <strong>Trade view</strong> (secondary): how often a
+                      stop/target entry ran to the good level, was stopped or
+                      stayed weak, compared with ordinary momentum entries.
                     </li>
                     <li>
                       <strong>Alerts</strong>: every alert the rule would have
-                      sent, grouped by Israel day, with its outcome and day
-                      chart.
+                      sent, grouped by Israel day, with its score and day chart.
                     </li>
                     <li>
                       <strong>By symbol</strong>: which symbols the rule works
-                      on, against each symbol&apos;s own baseline entries.
+                      on, by average score, with the trade view beside it.
                     </li>
                     <li>
                       <strong>Data quality</strong>: why windows did not alert,
@@ -789,7 +810,17 @@ export function Backtest({ modes }: { modes: ReactNode }) {
                 <LookNowCard summary={result.lookNow} />
               )}
               {result && result.alerts.length > 0 && (
-                <Verdict result={result} alertsCount={result.alerts.length} />
+                <details
+                  className="trade-view"
+                  open={tradeOpen}
+                  onToggle={(e) => setTradeOpen(e.currentTarget.open)}
+                >
+                  <summary>
+                    <Chevron />
+                    Trade view: stop / target vs baseline
+                  </summary>
+                  <Verdict result={result} alertsCount={result.alerts.length} />
+                </details>
               )}
               {result && result.alerts.length === 0 && (
                 <p className="card no-alerts">

@@ -17,6 +17,8 @@ import {
 } from "../../../packages/market-data/src/calendar.js";
 import {
   summarizeLookNow,
+  type LookNow,
+  type LookNowLabel,
   type LookNowSummary,
 } from "../../../packages/market-data/src/look-now.js";
 import {
@@ -434,40 +436,73 @@ export function unscoredReasons(
 
 // ------------------------------------------------------------- alerts tab
 
-export type OutcomeFilter = "all" | "good" | "stopped" | "weak";
+// The look-now score is the primary grade (docs/features/look-now-score.md);
+// older APIs may omit it, which counts as unscored here.
+type Looked = { lookNow?: Pick<LookNow, "score" | "label"> };
 
-export function outcomeCounts(
-  alerts: BacktestAlert[],
+export type LookFilter = "all" | LookNowLabel | "unscored";
+
+const lookKey = (a: Looked): Exclude<LookFilter, "all"> =>
+  a.lookNow?.score === null || a.lookNow?.score === undefined
+    ? "unscored"
+    : (a.lookNow.label ?? "unscored");
+
+export function lookCounts<T extends Looked & { ticker: string }>(
+  alerts: T[],
   symbol: string | null,
-): Record<OutcomeFilter, number> {
+): Record<LookFilter, number> {
   const rows = alerts.filter((a) => !symbol || a.ticker === symbol);
-  const n = (r: string) => rows.filter((a) => a.outcome.result === r).length;
+  const n = (k: LookFilter) => rows.filter((a) => lookKey(a) === k).length;
   return {
     all: rows.length,
-    good: n("good"),
-    stopped: n("stopped"),
-    weak: n("weak"),
+    "very-big": n("very-big"),
+    big: n("big"),
+    normal: n("normal"),
+    unscored: n("unscored"),
   };
 }
 
-export function filterOutcome<T extends { outcome: { result: string } }>(
+export function filterLook<T extends Looked>(
   alerts: T[],
-  filter: OutcomeFilter,
+  filter: LookFilter,
 ): T[] {
   return filter === "all"
     ? alerts
-    : alerts.filter((a) => a.outcome.result === filter);
+    : alerts.filter((a) => lookKey(a) === filter);
 }
 
-/** "14 alerts · 43% good" (good share of the scored alerts). */
-export function dayGoodLabel(rows: { outcome: { result: string } }[]): string {
-  const scored = rows.filter((a) => a.outcome.result !== "unscored");
-  const good = scored.filter((a) => a.outcome.result === "good").length;
+/** Mean look-now score of the scored alerts, or null. */
+export function averageScore(rows: Looked[]): number | null {
+  const scores = rows
+    .map((a) => a.lookNow?.score)
+    .filter((x): x is number => x !== null && x !== undefined);
+  return scores.length
+    ? scores.reduce((n, x) => n + x, 0) / scores.length
+    : null;
+}
+
+/** "14 alerts · avg score 71". */
+export function dayScoreLabel(rows: Looked[]): string {
+  const avg = averageScore(rows);
   return (
     `${rows.length} ${rows.length === 1 ? "alert" : "alerts"}` +
-    (scored.length
-      ? ` · ${Math.round((good / scored.length) * 100)}% good`
-      : "")
+    (avg === null ? "" : ` · avg score ${Math.round(avg)}`)
+  );
+}
+
+/** "Peak 15 min · with burst" / "Peak close · against burst" / "—". */
+export function peakLabel(
+  look: Pick<LookNow, "score" | "peak" | "withBurst"> | undefined,
+): string {
+  if (!look || look.score === null || look.peak === null) return "—";
+  const at = look.peak === "close" ? "close" : `${look.peak} min`;
+  return (
+    `Peak ${at}` +
+    (look.withBurst === null
+      ? ""
+      : look.withBurst
+        ? " · with burst"
+        : " · against burst")
   );
 }
 
@@ -482,21 +517,15 @@ export interface SymbolRow {
   good: number;
   weak: number;
   stopped: number;
-  goodPct: number | null; // rounded
-  vsBaseline: number | null; // points vs the symbol's own baseline
-  medianRun: number | null; // units
-  small: boolean; // fewer than `minSymbolAlerts` scored alerts
+  lookScored: number; // alerts with a look-now score
+  avgScore: number | null; // mean look-now score
+  bigShare: number | null; // rounded % of scored alerts labelled Big or Very big
+  goodPct: number | null; // trade view, rounded
+  vsBaseline: number | null; // trade view: points vs the symbol's own baseline
+  small: boolean; // fewer than `minSymbolAlerts` look-now-scored alerts
 }
 
 export const minSymbolAlerts = 5;
-
-const median = (values: number[]) => {
-  if (!values.length) return null;
-  const v = [...values].sort((a, b) => a - b);
-  return (
-    (v[Math.floor((v.length - 1) / 2)]! + v[Math.floor(v.length / 2)]!) / 2
-  );
-};
 
 /** One row per symbol with alerts, from the alerts' outcomes. */
 export function symbolRows(
@@ -511,6 +540,9 @@ export function symbolRows(
       scored.filter((a) => a.outcome.result === r).length;
     const good = n("good");
     const goodPct = percent(good, scored.length);
+    const lookScored = rows.filter(
+      (a) => a.lookNow?.score !== null && a.lookNow?.score !== undefined,
+    ).length;
     const base = baselines?.[ticker];
     const baseGood = base ? percent(base.good, base.scored) : null;
     return {
@@ -523,18 +555,21 @@ export function symbolRows(
       goodPct,
       vsBaseline:
         goodPct === null || baseGood === null ? null : goodPct - baseGood,
-      medianRun: median(
-        scored
-          .map((a) => a.outcome.runUnits)
-          .filter((x): x is number => x !== null),
+      lookScored,
+      avgScore: averageScore(rows),
+      bigShare: percent(
+        rows.filter(
+          (a) => a.lookNow?.label === "big" || a.lookNow?.label === "very-big",
+        ).length,
+        lookScored,
       ),
-      small: scored.length < minSymbolAlerts,
+      small: lookScored < minSymbolAlerts,
     };
   });
 }
 
 export type SymbolSort =
-  "ticker" | "alerts" | "goodPct" | "vsBaseline" | "medianRun";
+  "ticker" | "alerts" | "avgScore" | "bigShare" | "goodPct" | "vsBaseline";
 
 const symbolValue: Record<
   SymbolSort,
@@ -542,9 +577,10 @@ const symbolValue: Record<
 > = {
   ticker: (r) => r.ticker,
   alerts: (r) => r.alerts,
+  avgScore: (r) => r.avgScore,
+  bigShare: (r) => r.bigShare,
   goodPct: (r) => r.goodPct,
   vsBaseline: (r) => r.vsBaseline,
-  medianRun: (r) => r.medianRun,
 };
 
 /**

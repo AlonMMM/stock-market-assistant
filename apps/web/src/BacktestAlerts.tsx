@@ -5,12 +5,13 @@ import type {
   ValidationConfig,
 } from "../../../packages/market-data/src/outcome.js";
 import { AlertEvidence } from "./AlertFeed.js";
-import { LookNowBadge, LookNowLine } from "./LookNow.js";
+import { LookNowBadge, LookNowLine, lookNowLabelName } from "./LookNow.js";
 import {
-  dayGoodLabel,
-  filterOutcome,
-  outcomeCounts,
-  type OutcomeFilter,
+  dayScoreLabel,
+  filterLook,
+  lookCounts,
+  peakLabel,
+  type LookFilter,
   signedPercent,
   shownSign,
 } from "./backtest-model.js";
@@ -90,15 +91,15 @@ export function BacktestAlerts({
   symbol: string | null;
   onSymbol: (s: string | null) => void;
 }) {
-  const [filter, setFilter] = useState<OutcomeFilter>("all");
+  const [filter, setFilter] = useState<LookFilter>("all");
   const [sort, setSort] = useState<AlertSort>("time");
   const [open, setOpen] = useState<string | null>(null);
   const [dayOpen, setDayOpen] = useState<Record<string, boolean>>({});
 
   const symbols = symbolCounts(alerts);
-  const counts = outcomeCounts(alerts, symbol);
+  const counts = lookCounts(alerts, symbol);
   const days = groupAlertDays(
-    filterOutcome(
+    filterLook(
       alerts.filter((a) => !symbol || a.ticker === symbol),
       filter,
     ),
@@ -109,13 +110,14 @@ export function BacktestAlerts({
   return (
     <>
       <div className="toolbar">
-        <div className="segmented" role="group" aria-label="Outcome">
+        <div className="segmented" role="group" aria-label="Look-now label">
           {(
             [
               ["all", "All"],
-              ["good", "Good"],
-              ["stopped", "Stopped"],
-              ["weak", "Weak"],
+              ["very-big", "🔥 Very big"],
+              ["big", "Big"],
+              ["normal", "Normal"],
+              ["unscored", "Unscored"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -160,8 +162,8 @@ export function BacktestAlerts({
             onChange={(e) => setSort(e.target.value as AlertSort)}
           >
             <option value="time">Newest first</option>
+            <option value="score">Highest look-now score</option>
             <option value="ratio">Highest volume ratio</option>
-            <option value="run">Best run</option>
           </select>
         </label>
       </div>
@@ -172,8 +174,8 @@ export function BacktestAlerts({
           <span>Symbol</span>
           <span>Move</span>
           <span>Vol</span>
-          <span>Outcome</span>
-          <span>Best run · after 15 / 60 min</span>
+          <span>Look-now</span>
+          <span>Peak</span>
           <span />
         </div>
         {days.map((d) => {
@@ -192,7 +194,7 @@ export function BacktestAlerts({
               >
                 <Chevron />
                 <strong>{d.label}</strong>
-                <span>{dayGoodLabel(rows)}</span>
+                <span>{dayScoreLabel(rows)}</span>
               </button>
               {expandedDay && (
                 <div id={`bt-day-${d.day}`}>
@@ -233,9 +235,6 @@ export function BacktestAlerts({
                                   {israelClock(Date.parse(a.end))}
                                 </span>
                                 <span className="alert-symbol">
-                                  {a.lookNow && (
-                                    <LookNowBadge look={a.lookNow} />
-                                  )}
                                   <strong>{a.ticker}</strong>
                                   {a.inPlay && (
                                     <span
@@ -259,16 +258,22 @@ export function BacktestAlerts({
                                     ? "—"
                                     : `${a.ratio.toFixed(1)}×`}
                                 </strong>
-                                <span
-                                  className={`outcome-tag ${o.result}`}
-                                  title={o.reason}
-                                >
-                                  {outcomeName[o.result]}
+                                <span className="look-cell">
+                                  {a.lookNow ? (
+                                    <>
+                                      <LookNowBadge look={a.lookNow} />
+                                      <span className="look-name">
+                                        {a.lookNow.label
+                                          ? lookNowLabelName[a.lookNow.label]
+                                          : "Unscored"}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span className="muted">—</span>
+                                  )}
                                 </span>
                                 <span className="alert-run">
-                                  {o.runUnits === null
-                                    ? "—"
-                                    : `${o.runUnits.toFixed(1)}u · ${signedPercent(o.forward[15])} / ${signedPercent(o.forward[60])}`}
+                                  {peakLabel(a.lookNow)}
                                 </span>
                                 <Chevron />
                               </button>
@@ -278,7 +283,15 @@ export function BacktestAlerts({
                                   {a.lookNow && (
                                     <LookNowLine look={a.lookNow} />
                                   )}
-                                  <OutcomeLine outcome={o} />
+                                  <div className="trade-line">
+                                    <span
+                                      className={`outcome-tag ${o.result}`}
+                                      title={o.reason}
+                                    >
+                                      Trade view: {outcomeName[o.result]}
+                                    </span>
+                                    <OutcomeLine outcome={o} />
+                                  </div>
                                   <Suspense
                                     fallback={
                                       <p className="chart-status">
@@ -326,12 +339,15 @@ export function BacktestAlerts({
       </div>
       <p className="table-note">
         Times in {israelLabel}. Vol: the alert&apos;s volume ratio (window
-        volume ÷ expected volume). Outcome: good = ran {scoring.goodUnits}u in
-        the alert&apos;s direction first, stopped = {scoring.stopUnits}u against
-        first, weak = neither within {scoring.horizon} min. Best run: the best
-        close in the alert&apos;s direction, in u; then the move after 15 and 60
-        min. In play: the symbol&apos;s day volume was well above usual. The
-        number before a symbol is its look-now score (0–100; 🔥 very big).
+        volume ÷ expected volume). Look-now: how unusual the market-adjusted
+        move after the alert was for that stock, 0–100 against random minutes of
+        the same run (Big ≥ 90, Very big ≥ 97). Peak: the horizon with the most
+        unusual move, and whether it went with the burst. In play: the
+        symbol&apos;s day volume was well above usual. Expanded rows add the
+        trade view: good = ran {scoring.goodUnits}u in the alert&apos;s
+        direction first, stopped = {scoring.stopUnits}u against first, weak =
+        neither within {scoring.horizon} min (entry, good and stop lines on the
+        chart).
       </p>
     </>
   );

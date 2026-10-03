@@ -12,14 +12,16 @@ import {
 import {
   changeBadge,
   datePreset,
-  dayGoodLabel,
+  dayScoreLabel,
+  filterLook,
+  lookCounts,
+  peakLabel,
   diagnosticBars,
   lastCompleteSession,
   lastSessions,
   liveSettings,
   mergeResults,
   minTrusted,
-  outcomeCounts,
   previewTickers,
   qualityLabel,
   rangeLabel,
@@ -213,61 +215,112 @@ test("verdict: points vs baseline coloured by whether they are better (scenario 
   assert.equal(verdictRows(summary())[0]!.diff, null);
 });
 
-test("by symbol: per-symbol baseline, faded small symbols sort last (scenarios 5, 6)", () => {
+// SYNTHETIC look-now scores on an alert.
+const scored = (a: BacktestAlert, score: number | null): BacktestAlert => ({
+  ...a,
+  lookNow: {
+    score,
+    label:
+      score === null
+        ? null
+        : score >= 97
+          ? "very-big"
+          : score >= 90
+            ? "big"
+            : "normal",
+    reason: score === null ? "Outside regular hours" : undefined,
+    horizons: [],
+    peak: score === null ? null : 15,
+    withBurst: score === null ? null : score > 50,
+    nearClose: false,
+    beta: 1,
+    betaAssumed: false,
+  },
+});
+
+test("by symbol: average look-now score first, trade view vs its own baseline, small symbols last (scenarios 5, 6)", () => {
   const alerts = [
-    ...["good", "good", "good", "weak", "stopped", "stopped"].map((r) =>
-      alert("NVDA", r as Outcome["result"], 2),
+    ...(["good", "good", "good", "weak", "stopped", "stopped"] as const).map(
+      (r, i) => scored(alert("NVDA", r), [98, 92, 60, 50, 40, 30][i]!),
     ),
-    ...["good", "good", "good", "good"].map((r) =>
-      alert("COIN", r as Outcome["result"], 3),
+    ...(["good", "good", "good", "good"] as const).map((r) =>
+      scored(alert("COIN", r), 99),
     ),
-    alert("AMD", "good"),
-    ...["stopped", "stopped", "weak", "good", "unscored"].map((r) =>
-      alert("AMD", r as Outcome["result"]),
-    ),
+    ...(
+      ["good", "stopped", "stopped", "weak", "good", "unscored"] as const
+    ).map((r, i) => scored(alert("AMD", r), [80, 80, 80, 80, 80, null][i]!)),
   ];
   const rows = symbolRows(alerts, {
     NVDA: { scored: 100, good: 40, stopped: 30, weak: 30 },
     COIN: { scored: 0, good: 0, stopped: 0, weak: 0 },
   });
-  const sorted = sortSymbolRows(rows, "goodPct", true);
+  const sorted = sortSymbolRows(rows, "avgScore", true);
   assert.deepEqual(
-    sorted.map((r) => [r.ticker, r.goodPct, r.vsBaseline, r.small]),
+    sorted.map((r) => [
+      r.ticker,
+      Math.round(r.avgScore!),
+      r.bigShare,
+      r.goodPct,
+      r.vsBaseline,
+      r.small,
+    ]),
     [
-      ["NVDA", 50, 10, false],
-      ["AMD", 40, null, false], // no baseline key: "—"
-      ["COIN", 100, null, true], // 4 alerts: faded and after the rest
+      ["AMD", 80, 0, 40, null, false], // no baseline key: "—"
+      ["NVDA", 62, 33, 50, 10, false],
+      ["COIN", 99, 100, 100, null, true], // 4 scored: faded and last
     ],
   );
   assert.equal(rows.find((r) => r.ticker === "AMD")!.alerts, 6);
-  assert.equal(rows.find((r) => r.ticker === "AMD")!.scored, 5);
-  assert.equal(rows.find((r) => r.ticker === "NVDA")!.medianRun, 2);
+  assert.equal(rows.find((r) => r.ticker === "AMD")!.lookScored, 5);
   // Ascending still keeps the small symbol last.
-  assert.equal(sortSymbolRows(rows, "goodPct", false).at(-1)!.ticker, "COIN");
+  assert.equal(sortSymbolRows(rows, "avgScore", false).at(-1)!.ticker, "COIN");
+  assert.equal(sortSymbolRows(rows, "goodPct", true)[0]!.ticker, "NVDA");
   assert.deepEqual(
     symbolRows(alerts).map((r) => r.vsBaseline),
     [null, null, null],
   );
+  // Older API without look-now: every symbol is faded, scores "—".
+  assert.deepEqual(
+    symbolRows([alert("X", "good")]).map((r) => [r.avgScore, r.small]),
+    [[null, true]],
+  );
 });
 
-test("alerts tab helpers: outcome counts, day header, sort by best run", () => {
+test("alerts tab helpers: look-now counts, day header, peak, sorts", () => {
   const alerts = [
-    alert("NVDA", "good", 2.5),
-    alert("NVDA", "stopped", 0.2),
-    alert("AMD", "weak", 1.1),
-    alert("AMD", "unscored"),
+    scored(alert("NVDA", "good", 2.5), 98),
+    scored(alert("NVDA", "stopped", 0.2), 91),
+    scored(alert("AMD", "weak", 1.1), 40),
+    scored(alert("AMD", "unscored"), null),
   ];
-  assert.deepEqual(outcomeCounts(alerts, null), {
+  assert.deepEqual(lookCounts(alerts, null), {
     all: 4,
-    good: 1,
-    stopped: 1,
-    weak: 1,
+    "very-big": 1,
+    big: 1,
+    normal: 1,
+    unscored: 1,
   });
-  assert.equal(outcomeCounts(alerts, "AMD").all, 2);
-  assert.equal(dayGoodLabel(alerts), "4 alerts · 33% good");
-  const [day] = groupAlertDays(alerts, "run");
+  assert.equal(lookCounts(alerts, "AMD").all, 2);
   assert.deepEqual(
-    day!.groups[0]!.rows.map((a) => a.outcome?.runUnits),
+    filterLook(alerts, "unscored").map((a) => a.ticker),
+    ["AMD"],
+  );
+  assert.equal(dayScoreLabel(alerts), "4 alerts · avg score 76");
+  assert.equal(peakLabel(alerts[0]!.lookNow), "Peak 15 min · with burst");
+  assert.equal(peakLabel(alerts[2]!.lookNow), "Peak 15 min · against burst");
+  assert.equal(peakLabel(alerts[3]!.lookNow), "—");
+  assert.equal(
+    peakLabel({ score: 90, peak: "close", withBurst: null }),
+    "Peak close",
+  );
+  const [byScore] = groupAlertDays(alerts, "score");
+  assert.deepEqual(
+    byScore!.groups[0]!.rows.map((a) => a.lookNow?.score),
+    [98, 91, 40, null],
+  );
+  const [byRun] = groupAlertDays(alerts, "run");
+  assert.deepEqual(
+    byRun!.groups[0]!.rows.map((a) => a.outcome?.runUnits),
     [2.5, 1.1, 0.2, null],
   );
   assert.deepEqual(unscoredReasons(alerts), [
