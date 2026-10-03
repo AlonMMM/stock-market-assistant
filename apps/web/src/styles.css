@@ -1113,3 +1113,57 @@ button.market-tile[aria-expanded="true"] {
     display: none;
   }
 }
+/* Live page: tabs. */
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #cdd7ce;
+}
+.tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  font-size: 15px;
+  color: #526461;
+  font-weight: 500;
+}
+.tabs button[aria-selected="true"] {
+  border-bottom-color: #142b29;
+  color: #142b29;
+  font-weight: 650;
+}
+.tab-count {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  background: #e1e8e1;
+  color: #3f4f4c;
+}
+.tabs button[aria-selected="true"] .tab-count {
+  background: #142b29;
+  color: #fff;
+}
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.tab-panel .notice {
+  margin: 0;
+}
+@media (max-width: 560px) {
+  .tabs button {
+    flex: 1;
+    justify-content: center;
+  }
+}

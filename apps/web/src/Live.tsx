@@ -58,6 +58,7 @@ export function Live({
   link?: AlertLink | null;
 }) {
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [tab, setTab] = useState<"alerts" | "watchlist">("alerts");
   const warn = (message: string) =>
     setWarnings((w) => (w.at(-1) === message ? w : [...w, message]));
   const live = usePolling<LiveStatus>("/api/live", liveRefreshMs, warn);
@@ -115,43 +116,75 @@ export function Live({
 
       <MarketStrip board={board.value} now={now} />
 
-      <section>
-        <h2 className="section-title">
-          Live alerts{" "}
-          {alerts.length > 0 && <small>{alerts.length} recent</small>}
-        </h2>
-        {linkNotice && <p className="notice">{linkNotice}</p>}
-        {status && alerts.length === 0 && (
-          <p className="notice">
-            No live alerts yet. US pre-market opens 11:00 {israelLabel}, the
-            regular session 16:30.
-          </p>
-        )}
-        {alerts.length > 0 && (
-          <AlertFeed
-            alerts={alerts}
-            benchmarks={board.value?.benchmarks}
-            focus={linked ? link.ticker + link.end : undefined}
-          />
-        )}
-      </section>
+      <div
+        role="tablist"
+        aria-label="Live sections"
+        className="tabs"
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          const next = tab === "alerts" ? "watchlist" : "alerts";
+          setTab(next);
+          document.getElementById(`tab-${next}`)?.focus();
+        }}
+      >
+        {(
+          [
+            ["alerts", "Alerts", status ? alerts.length : null],
+            ["watchlist", "Watchlist", board.value?.watchlist.length ?? null],
+          ] as const
+        ).map(([key, label, count]) => (
+          <button
+            type="button"
+            role="tab"
+            key={key}
+            id={`tab-${key}`}
+            aria-selected={tab === key}
+            aria-controls={`panel-${key}`}
+            tabIndex={tab === key ? 0 : -1}
+            onClick={() => setTab(key)}
+          >
+            {label}
+            {count !== null && <span className="tab-count">{count}</span>}
+          </button>
+        ))}
+      </div>
 
-      <section>
-        <h2 className="section-title">
-          Watchlist{" "}
-          {board.value && (
-            <small>
-              {board.value.watchlist.length} symbols · benchmark dashed · dotted
-              lines mark the open and close · 15-min delayed
-            </small>
+      {tab === "alerts" ? (
+        <section
+          role="tabpanel"
+          id="panel-alerts"
+          aria-labelledby="tab-alerts"
+          className="tab-panel"
+        >
+          {linkNotice && <p className="notice">{linkNotice}</p>}
+          {status && alerts.length === 0 && (
+            <p className="notice">
+              No live alerts yet. US pre-market opens 11:00 {israelLabel}, the
+              regular session 16:30.
+            </p>
           )}
-        </h2>
-        {board.value ? (
-          <WatchBoard board={board.value} symbols={board.value.watchlist} />
-        ) : (
-          <p className="chart-status">Loading watchlist charts…</p>
-        )}
-      </section>
+          {alerts.length > 0 && (
+            <AlertFeed
+              alerts={alerts}
+              benchmarks={board.value?.benchmarks}
+              focus={linked ? link.ticker + link.end : undefined}
+            />
+          )}
+        </section>
+      ) : (
+        <section
+          role="tabpanel"
+          id="panel-watchlist"
+          aria-labelledby="tab-watchlist"
+          className="tab-panel"
+        >
+          {board.value ? (
+            <WatchBoard board={board.value} symbols={board.value.watchlist} />
+          ) : (
+            <p className="chart-status">Loading watchlist…</p>
+          )}
+        </section>
+      )}
     </div>
   );
 }
