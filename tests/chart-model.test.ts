@@ -3,8 +3,13 @@ import assert from "node:assert/strict";
 import type { ChartBar } from "../packages/market-data/src/day-chart.js";
 import {
   bandKinds,
+  dollars,
   episodeSummary,
   isStrongVolume,
+  percentAndPrice,
+  percentBase,
+  priceAt,
+  signedPercent,
   stateText,
   typicalRatio,
 } from "../apps/web/src/chart-model.js";
@@ -76,4 +81,14 @@ test("state chip text", () => {
   assert.equal(stateText("strong", "SPY"), "▲ Holding while SPY falls");
   assert.equal(stateText("weak", "SPY"), "▼ Falling while SPY holds");
   assert.equal(stateText(null, "SPY"), "With SPY");
+});
+
+test("percent and price labels (chart-vs-spy scenario 2)", () => {
+  assert.equal(percentAndPrice(1.92, 131.05), "+1.92% · $131.05");
+  assert.equal(percentAndPrice(-0.4, 572.4), "−0.40% · $572.40");
+  assert.equal(signedPercent(0), "+0.00%");
+  assert.equal(dollars(573.1), "$573.10");
+  assert.equal(percentBase({ previousClose: 100, bars: [{ close: 90 }] }), 100);
+  assert.equal(percentBase({ previousClose: null, bars: [{ close: 90 }] }), 90);
+  assert.ok(Math.abs(priceAt(2.31, 128.66) - 131.632) < 0.001);
 });

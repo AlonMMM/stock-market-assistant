@@ -68,3 +68,33 @@ export function bandKinds(
       kinds[i] = kinds[i] === "strong" ? "strong" : e.kind;
   return kinds;
 }
+
+/** "+2.31" / "−0.40" (true minus sign). */
+export const signed = (n: number) =>
+  `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(2)}`;
+
+/** "+2.31%" / "−0.40%". */
+export const signedPercent = (n: number) => `${signed(n)}%`;
+
+/** "$131.62". */
+export const dollars = (n: number) => `$${n.toFixed(2)}`;
+
+/** The base for intraday %: previous regular close, else the first trade. */
+export const percentBase = (series: {
+  previousClose: number | null;
+  bars: { close: number }[];
+}) => series.previousClose ?? series.bars[0]?.close ?? 1;
+
+/** Price at `percent` from `base`. */
+export const priceAt = (percent: number, base: number) =>
+  base * (1 + percent / 100);
+
+/** "+2.31% · $131.62": a percentage with the price behind it. */
+export const percentAndPrice = (percent: number, price: number) =>
+  `${signedPercent(percent)} · ${dollars(price)}`;
+
+/**
+ * Axis last-value labels carry the price only where both axes still leave
+ * room for the plot; narrower charts keep % only (the readout has prices).
+ */
+export const axisPriceMinWidth = 600;

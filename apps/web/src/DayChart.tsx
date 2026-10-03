@@ -25,9 +25,16 @@ import {
 } from "../../../packages/market-data/src/opposite.js";
 import type { Outcome } from "../../../packages/market-data/src/outcome.js";
 import {
+  axisPriceMinWidth,
   bandKinds,
+  dollars,
   episodeSummary,
   isStrongVolume,
+  percentAndPrice,
+  percentBase,
+  priceAt,
+  signed,
+  signedPercent,
   stateText,
   strongVolume,
   typicalRatio,
@@ -84,7 +91,6 @@ function load(
   return request;
 }
 
-const signed = (n: number) => (n >= 0 ? "+" : "−") + Math.abs(n).toFixed(2);
 const compact = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 1,
@@ -110,7 +116,7 @@ interface Point {
 // % change against the previous regular close, or the day's first trade
 // when the previous session has no bars.
 function points(series: ChartSeries): Point[] {
-  const reference = series.previousClose ?? series.bars[0]?.close ?? 1;
+  const reference = percentBase(series);
   return series.bars.map((b, index) => ({
     index,
     time: israelWallSeconds(b.start + 60) as UTCTimestamp,
@@ -132,6 +138,7 @@ interface Readout {
   ticker: number;
   close: number;
   bench: number | null;
+  benchClose: number | null;
   volume: number;
   typical: number | null;
   state: OppositeKind | null;
@@ -259,10 +266,18 @@ export function DayChart({
       crosshair: { mode: CrosshairMode.Magnet },
       handleScroll: { vertTouchDrag: false },
     });
-    const percentFormat = {
-      type: "custom" as const,
-      formatter: (p: number) => `${signed(p)}%`,
-      minMove: 0.01,
+    // Tick marks show % only; each line's last-value (and crosshair) label
+    // adds the price behind it where the chart is wide enough for both.
+    const withPrice = (host.current.clientWidth || 0) >= axisPriceMinWidth;
+    const percentFormat = (series: ChartSeries) => {
+      const base = percentBase(series);
+      return {
+        type: "custom" as const,
+        formatter: (p: number) =>
+          withPrice ? percentAndPrice(p, priceAt(p, base)) : signedPercent(p),
+        tickmarksFormatter: (ps: number[]) => ps.map(signedPercent),
+        minMove: 0.01,
+      };
     };
     const m = points(main);
     const b = bench ? points(bench) : null;
@@ -300,7 +315,7 @@ export function DayChart({
       color: colors.ticker,
       lineWidth: 2,
       priceScaleId: "right",
-      priceFormat: percentFormat,
+      priceFormat: percentFormat(main),
       priceLineVisible: false,
       crosshairMarkerRadius: 4,
     });
@@ -311,7 +326,7 @@ export function DayChart({
         lineWidth: 2,
         lineStyle: LineStyle.Dashed,
         priceScaleId: "left",
-        priceFormat: percentFormat,
+        priceFormat: percentFormat(bench!),
         priceLineVisible: false,
         crosshairMarkerRadius: 4,
       });
@@ -469,6 +484,7 @@ export function DayChart({
       ticker: p.percent,
       close: p.close,
       bench: benchByTime.get(p.time)?.percent ?? null,
+      benchClose: benchByTime.get(p.time)?.close ?? null,
       volume: p.volume,
       typical: p.typical,
       state: opp?.states[p.index] ?? null,
@@ -581,11 +597,10 @@ export function DayChart({
                 <i className="key" style={{ borderColor: colors.ticker }} />
                 {main.ticker}{" "}
                 <strong style={{ color: colors.tickerText }}>
-                  {signed(shown.ticker)}%
+                  {signedPercent(shown.ticker)}
                 </strong>{" "}
-                <span className="muted">
-                  ${shown.close.toFixed(2)} · right axis
-                </span>
+                · {dollars(shown.close)}{" "}
+                <span className="muted">right axis</span>
               </span>
               {bench && shown.bench !== null && (
                 <>
@@ -596,8 +611,10 @@ export function DayChart({
                     />
                     {bench.ticker}{" "}
                     <strong style={{ color: colors.benchmarkText }}>
-                      {signed(shown.bench)}%
-                    </strong>{" "}
+                      {signedPercent(shown.bench)}
+                    </strong>
+                    {shown.benchClose !== null &&
+                      ` · ${dollars(shown.benchClose)}`}{" "}
                     <span className="muted">left axis</span>
                   </span>
                   <span>
@@ -636,7 +653,8 @@ export function DayChart({
           />
           <p className="chart-legend-note">
             Lines: % from the {base}, each axis fitted to its own range (
-            {main.ticker} right, {benchName} left).
+            {main.ticker} right, {benchName} left); the price next to a % is
+            that minute&apos;s close.
             {opp && (
               <>
                 {" "}
