@@ -101,8 +101,8 @@ A dense table of all watchlist symbols, default sort biggest move (|change|) fir
   (orange, dashed), both as % from the previous regular close, each auto-fitted to its own
   range so a flat SPY still shows its shape. The previous "beta" mode is not offered here.
 - Opposite-to-benchmark bands: a light band behind the lines and a solid strip between
-  price and volume panes. Red = held while the benchmark fell; blue = fell while the
-  benchmark held. Summary chips above the chart: "Held while SPY fell: 1 time · 10 min",
+  price and volume panes. Green = held while the benchmark fell; red = fell while the
+  benchmark held (changed from red/blue on 2026-10-03, see [chart-vs-spy](chart-vs-spy.md)). Summary chips above the chart: "Held while SPY fell: 1 time · 10 min",
   "Fell while SPY held: none today".
 - Volume pane: 1-minute bars green up / red down, full strength when ≥ 2× typical,
   faded otherwise; a dashed line shows typical volume for each minute.
@@ -134,8 +134,8 @@ Evaluated each regular-session minute i ≥ open + 5, on % from previous close:
 - `bR = bench[i] − bench[i−5]`, `tR = ticker[i] − ticker[i−5]`
 - `usual` = median of |ticker[k] − ticker[k−5]| over today's regular-session minutes up
   to i (no future data). Until 15 such moves exist, no weak state is assigned.
-- **strong (red)**: `bR ≤ −0.05` and `tR ≥ 0`.
-- **weak (blue)**: `bR ≥ −0.02` and `tR ≤ −2 × usual`.
+- **strong (green)**: `bR ≤ −0.05` and `tR ≥ 0`.
+- **weak (red)**: `bR ≥ −0.02` and `tR ≤ −2 × usual`.
 - otherwise none. Consecutive minutes of the same kind form an episode, drawn from
   i−5 of its first minute to its last minute.
 
@@ -204,13 +204,13 @@ app; no API change.
 Agreed with the user on 2026-10-03: status beside the title, market strip, tabs, alert
 filters/grouping, dense watchlist table with sortable Rel vol, rel vol definition
 (regular session only), two-axis day chart, opposite-to-benchmark bands with
-red = strong, blue = weak.
+red = strong, blue = weak (superseded 2026-10-03: green = strong, red = weak).
 
 Proposed defaults (change without re-design): thresholds above, "Moving" thresholds,
 ratio bar scale 8×, rel-vol bold at 2×, 3-minute delayed threshold.
 
-Open: colours overlap (red also marks down-volume bars, blue is the ticker line) — the user
-chose red/blue; revisit after real use. Divergence thresholds need checking on real days.
+Open: band colours (green/red since 2026-10-03) overlap the volume bars' up/down colours;
+the strip is darker and labelled — revisit after real use. Divergence thresholds need checking on real days.
 
 Handoff:
 

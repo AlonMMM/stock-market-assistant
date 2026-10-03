@@ -1,7 +1,7 @@
 # Current state
 
 Updated: 2026-10-03
-Phase: Alpaca live alerts with Telegram delivery; Backtest page redesign in review.
+Phase: Alpaca live alerts with Telegram delivery; day chart vs SPY in review.
 
 ## Working product
 
@@ -27,7 +27,14 @@ Telegram alert notifications with deep links to the Live view (#24, #25), per-al
 analysis with Telegram follow-ups and a site panel (#26–#30,
 [spec](features/alert-analysis.md)), and the alert feed grouped by Israel date (#31).
 
-## In review: Backtest page redesign
+## In review: day chart vs SPY
+
+[Spec](features/chart-vs-spy.md). All day charts: no entry/stop marks, price next to
+each %, green = stronger / red = weaker than SPY, and a 0–100 score vs SPY (shared with the
+alert analysis) in the chart and as a watchlist column. Board and day-chart APIs add
+`rsScore`/`beta` and `vsSpy`; β/σ daily history is cached per day.
+
+## Backtest page redesign (merged in #35)
 
 [Spec](features/backtest-page.md). Grouped setup with presets and rule-change tracking,
 the look-now score as the primary grade ([spec](features/look-now-score.md)) with
