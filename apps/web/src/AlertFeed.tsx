@@ -167,9 +167,6 @@ export function AlertFeed({
                   const key = a.ticker + a.end;
                   const expanded = open === key;
                   const c = a.context;
-                  const spy = a.analysis?.result?.scores.find(
-                    (s) => s.kind === "market",
-                  );
                   return (
                     <li
                       key={key}
@@ -221,13 +218,6 @@ export function AlertFeed({
                             <>
                               <strong>{signed(c.excess)}%</strong> vs SPY×β
                             </>
-                          ) : spy?.score !== null &&
-                            spy?.score !== undefined ? (
-                            <>
-                              <strong>{spy.score}</strong>/100 vs SPY
-                            </>
-                          ) : a.analysis && !a.analysis.result ? (
-                            "analyzing…"
                           ) : (
                             "—"
                           )}

@@ -116,11 +116,12 @@ remembering the watchlist sort, and a phone-specific watchlist layout.
 - **Warnings:** the collector `failure` text shows in the popover's Failure row and is
   no longer added to the warnings list. A "Clear warnings" button was added to the
   popover.
-- **vs SPY column** (after the merge): #28 showed the analysis's relative-strength score
-  in this column, so the column is now headed "vs SPY". It shows the β-adjusted excess
-  ("+1.2% ×β") when the alert has market context, else the analysis RS score vs SPY
-  ("66/100"), else "analyzing…", else "—". The table note explains each value.
-  Product should confirm or move the score elsewhere.
+- **Rel. strength column** (Product+UX decision after the merge, replacing the spec's
+  "vs SPY×β" column on the Live feed; one unit per column): the Live alerts table shows
+  the analysis's relative-strength score vs SPY ("66/100"), "analyzing…" while it runs,
+  "—" otherwise. Live alerts carry no β context, so no % appears there. The Backtest feed
+  keeps "vs SPY×β" with the β-adjusted excess % ("—" when absent); its RS score (from
+  #28) appears only in the expanded analysis panel.
 - **Pill on phones:** below 560 px the pill shows only its label (no detail and no
   warning count), as in the phone mockup.
 
@@ -162,7 +163,7 @@ remembering the watchlist sort, and a phone-specific watchlist layout.
   - Ratio sort: no sub-headers, Pre tags, and the day stays open.
   - Expanded row order: evidence → analysis (score cards; agents shown as unavailable) →
     chart → actions. A running analysis reads "Analyzing…".
-  - vs SPY cells read "66/100", "analyzing…" and "—".
+  - Rel. strength cells read "66/100", "analyzing…" and "—".
   - The alert-row chart opens with "Around alert" selected, showing 16:42–18:42.
   - No console errors.
 - **Not verified:**
@@ -180,7 +181,6 @@ remembering the watchlist sort, and a phone-specific watchlist layout.
   84bd5ae, so the Frontend merge brings it in too). Update `docs/state.md`: the Live
   page redesign, Telegram notifications and alert deep links.
 - **Open questions:**
-  - The vs SPY column wording and content (see Deviations).
   - Is "Moving" (|change| ≥ 1% or rel vol ≥ 2×) right on real days?
   - Do the opposite thresholds need tuning? With noisy symbols the weak state may fire
     often.

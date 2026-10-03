@@ -51,17 +51,8 @@ function CopyLink({ alert }: { alert: FeedAlert }) {
   );
 }
 
-/** vs SPY column: β-adjusted excess, else the analysis RS score vs SPY. */
-function Versus({ alert: a }: { alert: FeedAlert }) {
-  if (a.context)
-    return (
-      <span
-        className={`alert-excess ${a.context.excess >= 0 ? "up" : "down"}`}
-        title="Move minus SPY's move × β"
-      >
-        {signedPct(a.context.excess, 1)} <small>×β</small>
-      </span>
-    );
+/** Rel. strength column: the analysis's relative-strength score vs SPY. */
+function Strength({ alert: a }: { alert: FeedAlert }) {
   const spy = a.analysis?.result?.scores.find((s) => s.kind === "market");
   if (spy?.score !== null && spy?.score !== undefined)
     return (
@@ -76,7 +67,7 @@ function Versus({ alert: a }: { alert: FeedAlert }) {
   if (a.analysis && !a.analysis.result)
     return <span className="alert-excess muted">analyzing…</span>;
   return (
-    <span className="alert-excess" aria-label="vs SPY not available">
+    <span className="alert-excess" aria-label="Relative strength not available">
       —
     </span>
   );
@@ -190,7 +181,7 @@ export function LiveAlerts({
           <span>Symbol</span>
           <span>Move</span>
           <span>Volume vs expected</span>
-          <span className="right">vs SPY</span>
+          <span className="right">Rel. strength</span>
           <span />
         </div>
         {days.map((d) => {
@@ -291,7 +282,7 @@ export function LiveAlerts({
                                     />
                                   </span>
                                 </span>
-                                <Versus alert={a} />
+                                <Strength alert={a} />
                                 <svg
                                   className="chevron"
                                   width="14"
@@ -364,9 +355,8 @@ export function LiveAlerts({
       <p className="table-note">
         Times in {israelLabel}. Volume vs expected: the alert&apos;s volume
         ratio (window volume ÷ expected volume); the bar is full at {ratioScale}
-        ×. vs SPY: the move minus SPY&apos;s move × β when the alert carries
-        market context, otherwise the analysis&apos;s relative-strength score vs
-        SPY (0–100, above 50 = stronger than SPY); “—” when neither exists.
+        ×. Rel. strength: the alert analysis&apos;s relative-strength score vs
+        SPY (0–100, above 50 = stronger than SPY); “—” without an analysis.
       </p>
     </>
   );
