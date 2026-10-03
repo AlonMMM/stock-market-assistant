@@ -27,6 +27,9 @@ export interface ChartSeries {
   // intraday % change; null when that session has no bars.
   previousClose: number | null;
   bars: ChartBar[];
+  // Requested ticker only, aligned with `bars`: median volume at the same New
+  // York minute and session over the previous 20 sessions; null with < 15.
+  typicalVolume?: (number | null)[];
 }
 
 export interface DayChart {

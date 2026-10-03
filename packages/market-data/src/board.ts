@@ -13,10 +13,22 @@ import {
 export const nasdaq = "QQQ";
 export const maxBoardSymbols = 200;
 
+export interface BoardStats {
+  asOf: number; // Unix s, end of the newest bar used
+  dayLow: number | null; // today's low/high, pre-market included
+  dayHigh: number | null;
+  volume: number; // regular-session cumulative volume to asOf
+  // Median of the same cumulative volume to the same New York minute over the
+  // previous 20 sessions; null with fewer than 15 such sessions.
+  typicalVolume: number | null;
+  relVolume: number | null; // volume / typicalVolume; null before the open
+}
+
 export interface BoardSeries {
   ticker: string;
   previousClose: number | null; // previous session's daily close
   points: [number, number][]; // [bar start (Unix s), close], 5-minute bars
+  stats?: BoardStats; // watchlist symbols only
 }
 
 export interface Board {
