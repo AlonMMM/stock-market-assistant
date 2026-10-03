@@ -51,7 +51,8 @@ const later = Date.parse("2026-07-01T00:00:00Z");
 test("backtest reconstructs the alerts the live collector would have sent", async () => {
   const requests: string[][] = [];
   const result = await runBacktest(
-    { tickers: ["AAPL"], from, to },
+    // v3 candles keep this fixture's timing; v4 is checked below.
+    { tickers: ["AAPL"], from, to, config: { directionBars: 3 } },
     async (ticker, start, end) => {
       requests.push([ticker, start, end]);
       return syntheticBars();
@@ -70,6 +71,14 @@ test("backtest reconstructs the alerts the live collector would have sent", asyn
   // Bars 14:00–14:02 (window ending 14:03Z) rise 100 → 103 in green candles.
   assert.equal(alert?.end, "2026-06-03T14:03:00.000Z");
   assert.equal(alert?.actual, 60000);
+  // v4's single candle fires on the first burst window, two minutes earlier.
+  const v4 = await runBacktest(
+    { tickers: ["AAPL"], from, to },
+    async () => syntheticBars(),
+    later,
+  );
+  assert.equal(v4.alerts[0]?.end, "2026-06-03T14:01:00.000Z");
+  assert.equal(v4.alerts[0]?.rule, "rvol-v4");
   assert.equal(alert?.expected, 3000);
   assert.equal(alert?.direction, "up");
   assert.equal(alert?.close, 103);
@@ -226,7 +235,8 @@ test("alerts carry the move against SPY scaled by the ticker's beta", async () =
     });
   };
   const result = await runBacktest(
-    { tickers: ["AAPL"], from, to },
+    // v3 candles keep this fixture's timing; v4 is checked below.
+    { tickers: ["AAPL"], from, to, config: { directionBars: 3 } },
     async (ticker) => (ticker === "SPY" ? spyMinutes : syntheticBars()),
     later,
     async (ticker, _start, end) => {

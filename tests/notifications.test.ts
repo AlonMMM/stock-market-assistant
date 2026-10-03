@@ -38,7 +38,7 @@ const alert = (ticker: string, end: string): Alert => ({
   direction: "up",
   samples: 20,
   status: "alert",
-  rule: "rvol-v3",
+  rule: "rvol-v4",
   config: defaults,
   close: 187.5,
 });
@@ -77,8 +77,8 @@ test("formats an alert in Israel time with the evaluator's values", () => {
   assert.equal(
     text,
     [
-      "<b>AAPL</b> ▲ +1.23% in 3 min",
-      "17:00 Israel time · regular",
+      "<b>AAPL</b> · big move likely",
+      "Burst ▲ +1.23% in 3 min · 17:00 Israel time · regular",
       "Volume 123,456 · 4.1× usual",
       "Last 187.5",
       '<a href="https://x.test/?alert=AAPL&amp;end=2026-09-28T14%3A00%3A00Z">Open in site</a>',
@@ -96,6 +96,21 @@ test("formats an alert in Israel time with the evaluator's values", () => {
   // Winter: Israel is UTC+2.
   assert.match(down, /16:31 Israel time · pre-market/);
   assert.match(down, /Volume 123,456 · 3.5× today's pace\n/);
+  // v4: in-play alerts carry a star and the day's volume level.
+  const busy = formatAlert({
+    ...alert("AAPL", "2026-09-28T14:00:00Z"),
+    dayRvol: 2.43,
+    inPlay: true,
+  });
+  assert.match(busy, /^⭐ <b>AAPL<\/b> · big move likely\n/);
+  assert.match(busy, /\nDay volume 2\.4× usual · in play\n/);
+  const calm = formatAlert({
+    ...alert("AAPL", "2026-09-28T14:00:00Z"),
+    dayRvol: 1.2,
+    inPlay: false,
+  });
+  assert.match(calm, /^<b>AAPL<\/b>/);
+  assert.match(calm, /\nDay volume 1\.2× usual\n/);
 });
 
 test("labels a synthetic alert on its first line", () => {

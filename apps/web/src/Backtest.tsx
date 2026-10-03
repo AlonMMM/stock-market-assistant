@@ -71,8 +71,12 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   const [priceMultiple, setPriceMultiple] = useState(3);
   const [minMove, setMinMove] = useState(0.5);
   const [lastMove, setLastMove] = useState(0);
-  const [directionBars, setDirectionBars] = useState(3);
+  const [directionBars, setDirectionBars] = useState(1);
   const [pace, setPace] = useState(3);
+  // Rule v4 switches; N1 and N2 are off (0) by default.
+  const [inPlay, setInPlay] = useState(2);
+  const [todayVolume, setTodayVolume] = useState(0);
+  const [todayMove, setTodayMove] = useState(0);
   const [stopUnits, setStopUnits] = useState(1);
   const [goodUnits, setGoodUnits] = useState(2);
   const [horizon, setHorizon] = useState(60);
@@ -114,6 +118,9 @@ export function Backtest({ modes }: { modes: ReactNode }) {
               lastBarMinMovePercent: lastMove,
               directionBars,
               paceMultiple: pace,
+              inPlayDayRvol: inPlay,
+              todayVolumeMultiple: todayVolume,
+              todayMoveMultiple: todayMove,
             },
             validation: { stopUnits, goodUnits, horizon },
           }),
@@ -323,6 +330,28 @@ export function Backtest({ modes }: { modes: ReactNode }) {
             min: "0",
             step: "0.1",
           })}
+          {numberInput(
+            "⭐ In play: day volume (×, 0 = off)",
+            inPlay,
+            setInPlay,
+            {
+              min: "0",
+              max: "100",
+              step: "0.1",
+            },
+          )}
+          {numberInput(
+            "Burst vs today's volume (×, 0 = off)",
+            todayVolume,
+            setTodayVolume,
+            { min: "0", max: "100", step: "0.1" },
+          )}
+          {numberInput(
+            "Move vs today's typical (×, 0 = off)",
+            todayMove,
+            setTodayMove,
+            { min: "0", max: "100", step: "0.1" },
+          )}
         </div>
         <button
           className="run"

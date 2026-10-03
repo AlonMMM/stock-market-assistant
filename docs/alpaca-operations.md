@@ -70,6 +70,13 @@ Delivery: one message at a time, up to 5 attempts with 5 s × 3ⁿ backoff (or T
 `expired` instead of sent. A send interrupted by a crash is marked `unknown` and never
 repeated, so an alert may be missed but is not sent twice.
 
+## Alert rule settings
+
+`RVOL_CONFIG` (JSON) overrides the rule's defaults, e.g.
+`{"todayMoveMultiple": 3}` to turn N2 on, `{"directionBars": 3}` for v3's candles, or
+`{"inPlayDayRvol": 0}` to drop the ⭐ tag. Unknown or out-of-range values stop startup.
+See [relative volume](features/relative-volume.md#rule-v4-rvol-v4-user-confirmed-2026-10-03).
+
 ## Alert analysis
 
 Off unless `ANALYSIS_ENABLED=true`, which needs `ALPACA_API_KEY`/`ALPACA_API_SECRET` (it

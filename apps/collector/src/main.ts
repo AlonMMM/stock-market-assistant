@@ -224,7 +224,7 @@ api.post("/notifications/synthetic", async (_request, reply) => {
     direction: "up",
     samples: config.days,
     status: "alert",
-    rule: "rvol-v3",
+    rule: "rvol-v4",
     config,
     close: 100,
     synthetic: true,

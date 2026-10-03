@@ -34,13 +34,20 @@ export function formatAlert(
     ...(resent
       ? ["🔁 <b>RE-SENT</b> · earlier alert, sent again for a test"]
       : []),
-    `<b>${escape(alert.ticker)}</b> ${arrow} ${move} in ${alert.config.window} min`,
-    `${israelTime.format(new Date(alert.end))} Israel time · ${sessionName[alert.session]}`,
+    // The alert says "look now": a big move is likely, in either direction
+    // (study 2026-10-03); the arrow is the burst that just happened.
+    `${alert.inPlay ? "⭐ " : ""}<b>${escape(alert.ticker)}</b> · big move likely`,
+    `Burst ${arrow} ${move} in ${alert.config.window} min · ${israelTime.format(new Date(alert.end))} Israel time · ${sessionName[alert.session]}`,
     `Volume ${shares.format(alert.actual)}` +
       (alert.ratio !== null ? ` · ${alert.ratio.toFixed(1)}× usual` : "") +
       (alert.paceRatio !== null
         ? ` · ${alert.paceRatio.toFixed(1)}× today's pace`
         : ""),
+    ...(alert.dayRvol !== null && alert.dayRvol !== undefined
+      ? [
+          `Day volume ${alert.dayRvol.toFixed(1)}× usual${alert.inPlay ? " · in play" : ""}`,
+        ]
+      : []),
   ];
   if (alert.close !== undefined) lines.push(`Last ${alert.close}`);
   if (siteUrl)
