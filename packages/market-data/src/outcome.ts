@@ -209,6 +209,14 @@ export class OutcomeScorer {
   }
 }
 
+/** Baseline (random-entry) outcome counts; `scored` = good + stopped + weak. */
+export interface BaselineCounts {
+  scored: number;
+  good: number;
+  stopped: number;
+  weak: number;
+}
+
 export interface ValidationSummary {
   config: ValidationConfig;
   scored: number;
@@ -219,7 +227,13 @@ export interface ValidationSummary {
   medianRunUnits: number | null;
   medianMinutesToGood: number | null;
   medianForward: Record<(typeof forwardMinutes)[number], number | null>;
-  baseline: { scored: number; good: number; stopped: number; weak: number };
+  baseline: BaselineCounts;
+  // The same baseline entries split by symbol: one key per requested ticker
+  // (zeros when it had no scored baseline entries), summing to `baseline`.
+  // Set by POST /api/backtest since the Backtest page redesign; absent from
+  // older API responses and from `summarize()` itself, so treat a missing
+  // map or ticker as "unknown", not as zero.
+  baselineBySymbol?: Record<string, BaselineCounts>;
 }
 
 export function summarize(
