@@ -13,7 +13,10 @@ import {
 } from "../../../packages/market-data/src/backtest.js";
 import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
 import type { BarCache } from "../../../packages/market-data/src/bar-cache.js";
-import { handleBoard } from "../../../packages/market-data/src/board.js";
+import {
+  handleBoard,
+  type StrengthStore,
+} from "../../../packages/market-data/src/board.js";
 import type { BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
 import {
   loadAnalysisChart,
@@ -27,6 +30,7 @@ export function buildApp(
     fetcher?: typeof fetch;
     cache?: BarCache;
     baselines?: BaselineStore; // stored Rel vol baselines for the board
+    strengths?: StrengthStore; // stored β/σ vs SPY for the board's score
   } = {
     key: process.env.ALPACA_API_KEY,
     secret: process.env.ALPACA_API_SECRET,
@@ -55,6 +59,7 @@ export function buildApp(
       alpaca.fetcher,
       Date.now(),
       alpaca.baselines,
+      alpaca.strengths,
     );
     return reply.code(result.status).send(result.body);
   });
