@@ -73,75 +73,88 @@ export function typicalAt(curve: VolumeCurve, minute: number): number | null {
     : null;
 }
 
-/** Stored curves per board date; reads and writes are one round trip each. */
-export interface BaselineStore {
-  get(date: string, tickers: string[]): Promise<Map<string, VolumeCurve>>;
-  put(date: string, curves: Map<string, VolumeCurve>): Promise<void>;
+/** Small per-symbol values stored per board date; one round trip each. */
+export interface DailyStore<T> {
+  get(date: string, tickers: string[]): Promise<Map<string, T>>;
+  put(date: string, values: Map<string, T>): Promise<void>;
 }
 
+/** Stored curves per board date; reads and writes are one round trip each. */
+export type BaselineStore = DailyStore<VolumeCurve>;
+
 /** In-memory store, for tests. */
-export class MemoryBaselineStore implements BaselineStore {
-  readonly rows = new Map<string, VolumeCurve>();
+export class MemoryDailyStore<T> implements DailyStore<T> {
+  readonly rows = new Map<string, T>();
   async get(date: string, tickers: string[]) {
-    const result = new Map<string, VolumeCurve>();
+    const result = new Map<string, T>();
     for (const t of tickers) {
-      const curve = this.rows.get(`${date}|${t}`);
-      if (curve) result.set(t, curve);
+      const value = this.rows.get(`${date}|${t}`);
+      if (value !== undefined) result.set(t, value);
     }
     return result;
   }
-  async put(date: string, curves: Map<string, VolumeCurve>) {
-    for (const [t, curve] of curves) this.rows.set(`${date}|${t}`, curve);
+  async put(date: string, values: Map<string, T>) {
+    for (const [t, value] of values) this.rows.set(`${date}|${t}`, value);
   }
 }
+export class MemoryBaselineStore extends MemoryDailyStore<VolumeCurve> {}
 
 // Rows per INSERT: 4 bound values each stays under D1's 100-parameter limit.
 const rowsPerInsert = 20;
 
-/** D1 store (the bar-cache database): one query per board poll. */
-export class D1BaselineStore implements BaselineStore {
+/**
+ * D1 table of JSON values per (date, ticker), in the bar-cache database: one
+ * query per board poll. Older dates are dropped on write.
+ */
+export class D1DailyStore<T> implements DailyStore<T> {
   private ready?: Promise<unknown>;
-  constructor(private db: D1Like) {}
+  constructor(
+    private db: D1Like,
+    private table: string,
+    private column: string,
+  ) {}
   private init() {
     return (this.ready ??= this.db
       .prepare(
-        "CREATE TABLE IF NOT EXISTS volume_baselines (date TEXT NOT NULL, ticker TEXT NOT NULL, curve TEXT NOT NULL, stored_at INTEGER NOT NULL, PRIMARY KEY (date, ticker))",
+        `CREATE TABLE IF NOT EXISTS ${this.table} (date TEXT NOT NULL, ticker TEXT NOT NULL, ${this.column} TEXT NOT NULL, stored_at INTEGER NOT NULL, PRIMARY KEY (date, ticker))`,
       )
       .run());
   }
   async get(date: string, tickers: string[]) {
-    const result = new Map<string, VolumeCurve>();
+    const result = new Map<string, T>();
     if (!tickers.length) return result;
     await this.init();
     const wanted = new Set(tickers);
     const { results } = await this.db
-      .prepare("SELECT ticker, curve FROM volume_baselines WHERE date = ?")
+      .prepare(
+        `SELECT ticker, ${this.column} AS value FROM ${this.table} WHERE date = ?`,
+      )
       .bind(date)
-      .all<{ ticker: string; curve: string }>();
+      .all<{ ticker: string; value: string }>();
     for (const row of results)
       if (wanted.has(row.ticker))
-        result.set(row.ticker, JSON.parse(row.curve) as VolumeCurve);
+        result.set(row.ticker, JSON.parse(row.value) as T);
     return result;
   }
-  async put(date: string, curves: Map<string, VolumeCurve>) {
-    if (!curves.size) return;
+  async put(date: string, values: Map<string, T>) {
+    if (!values.size) return;
     await this.init();
-    const rows = [...curves].map(([t, curve]) => [
+    const rows = [...values].map(([t, value]) => [
       date,
       t,
-      JSON.stringify(curve),
+      JSON.stringify(value),
       Date.now(),
     ]);
     // Older board dates are never read again; drop them in the same batch.
     const statements = [
-      this.db.prepare("DELETE FROM volume_baselines WHERE date < ?").bind(date),
+      this.db.prepare(`DELETE FROM ${this.table} WHERE date < ?`).bind(date),
     ];
     for (let i = 0; i < rows.length; i += rowsPerInsert) {
       const chunk = rows.slice(i, i + rowsPerInsert);
       statements.push(
         this.db
           .prepare(
-            `INSERT OR REPLACE INTO volume_baselines (date, ticker, curve, stored_at) VALUES ${chunk
+            `INSERT OR REPLACE INTO ${this.table} (date, ticker, ${this.column}, stored_at) VALUES ${chunk
               .map(() => "(?, ?, ?, ?)")
               .join(", ")}`,
           )
@@ -149,5 +162,12 @@ export class D1BaselineStore implements BaselineStore {
       );
     }
     await this.db.batch(statements);
+  }
+}
+
+/** Rel vol curves (the bar-cache database's volume_baselines table). */
+export class D1BaselineStore extends D1DailyStore<VolumeCurve> {
+  constructor(db: D1Like) {
+    super(db, "volume_baselines", "curve");
   }
 }

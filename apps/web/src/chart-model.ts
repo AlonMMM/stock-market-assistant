@@ -1,6 +1,10 @@
 // Pure helpers for the day chart: volume strength, opposite-to-benchmark
 // summaries and readout state text. No DOM access, so Node tests import it.
-import type { ChartBar } from "../../../packages/market-data/src/day-chart.js";
+import type {
+  ChartBar,
+  DayChart,
+} from "../../../packages/market-data/src/day-chart.js";
+import { scoreSeries } from "../../../packages/market-data/src/rs-score.js";
 import type {
   OppositeEpisode,
   OppositeKind,
@@ -69,29 +73,68 @@ export function bandKinds(
   return kinds;
 }
 
-/** Backtest scoring levels for an alert's simulated entry, as prices. */
-export interface OutcomeLevels {
-  entry: number;
-  good: number;
-  stop: number;
+/** "+2.31" / "−0.40" (true minus sign). */
+export const signed = (n: number) =>
+  `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(2)}`;
+
+/** "+2.31%" / "−0.40%". */
+export const signedPercent = (n: number) => `${signed(n)}%`;
+
+/** "$131.62". */
+export const dollars = (n: number) => `$${n.toFixed(2)}`;
+
+/** The base for intraday %: previous regular close, else the first trade. */
+export const percentBase = (series: {
+  previousClose: number | null;
+  bars: { close: number }[];
+}) => series.previousClose ?? series.bars[0]?.close ?? 1;
+
+/** Price at `percent` from `base`. */
+export const priceAt = (percent: number, base: number) =>
+  base * (1 + percent / 100);
+
+/** "+2.31% · $131.62": a percentage with the price behind it. */
+export const percentAndPrice = (percent: number, price: number) =>
+  `${signedPercent(percent)} · ${dollars(price)}`;
+
+/**
+ * Axis last-value labels carry the price only where both axes still leave
+ * room for the plot; narrower charts keep % only (the readout has prices).
+ */
+export const axisPriceMinWidth = 600;
+
+/** The score vs SPY is always against this symbol. */
+export const scoreBenchmark = "SPY";
+
+export interface ChartScores {
+  scores: (number | null)[]; // aligned with the requested ticker's bars
+  latest: number | null; // at the last bar
+  beta: number;
+  betaAssumed: boolean;
 }
 
 /**
- * Entry, good and stop prices: good is `goodUnits` u in the alert's
- * direction from the entry, stop `stopUnits` u against it (u = the outcome's
- * unit, a percent). Null when the alert was not scored.
+ * Score vs SPY per minute of the requested ticker (the shared formula in
+ * rs-score.ts), using SPY's series from `series` or, for a sector chart,
+ * `vsSpy.spy`. Null when the response has no `vsSpy`, SPY's minutes are
+ * missing, or the ticker is SPY itself.
  */
-export function outcomeLevels(
-  outcome: { entry: number | null; unit: number | null },
-  direction: "up" | "down",
-  units: { goodUnits: number; stopUnits: number },
-): OutcomeLevels | null {
-  const { entry, unit } = outcome;
-  if (entry === null || unit === null) return null;
-  const sign = direction === "up" ? 1 : -1;
+export function chartScores(data: DayChart): ChartScores | null {
+  const main = data.series[0];
+  const vs = data.vsSpy;
+  if (!main || !vs || main.ticker === scoreBenchmark) return null;
+  const spy =
+    data.series.find((s, i) => i > 0 && s.ticker === scoreBenchmark) ?? vs.spy;
+  if (!spy) return null;
+  const scores = scoreSeries(main, spy, vs);
   return {
-    entry,
-    good: entry * (1 + (sign * units.goodUnits * unit) / 100),
-    stop: entry * (1 - (sign * units.stopUnits * unit) / 100),
+    scores,
+    latest: scores.at(-1) ?? null,
+    beta: vs.beta,
+    betaAssumed: vs.betaAssumed,
   };
 }
+
+/** "72 / 100", or "—" without a score. */
+export const scoreText = (score: number | null | undefined) =>
+  score === null || score === undefined ? "—" : `${score} / 100`;

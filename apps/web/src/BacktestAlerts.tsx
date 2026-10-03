@@ -304,9 +304,6 @@ export function BacktestAlerts({
                                       alertEnd={a.end}
                                       window={a.config.window}
                                       sector={benchmarks[a.ticker]}
-                                      outcome={o}
-                                      direction={direction}
-                                      units={scoring}
                                     />
                                   </Suspense>
                                   {symbol !== a.ticker && (
@@ -346,8 +343,7 @@ export function BacktestAlerts({
         symbol&apos;s day volume was well above usual. Expanded rows add the
         trade view: good = ran {scoring.goodUnits}u in the alert&apos;s
         direction first, stopped = {scoring.stopUnits}u against first, weak =
-        neither within {scoring.horizon} min (entry, good and stop lines on the
-        chart).
+        neither within {scoring.horizon} min.
       </p>
     </>
   );

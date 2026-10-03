@@ -11,7 +11,10 @@ import {
   D1BarCache,
   type D1Like,
 } from "../../../packages/market-data/src/bar-cache.js";
-import { handleBoard } from "../../../packages/market-data/src/board.js";
+import {
+  D1StrengthStore,
+  handleBoard,
+} from "../../../packages/market-data/src/board.js";
 import { D1BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
 import {
   loadAnalysisChart,
@@ -27,13 +30,20 @@ declare const __STATIC_ASSETS__: Record<
 
 // One cache per Worker instance, so the table check runs once, not per request.
 let cache:
-  { db: D1Like; cache: D1BarCache; baselines: D1BaselineStore } | undefined;
+  | {
+      db: D1Like;
+      cache: D1BarCache;
+      baselines: D1BaselineStore;
+      strengths: D1StrengthStore;
+    }
+  | undefined;
 function stores(db: D1Like) {
   if (cache?.db !== db)
     cache = {
       db,
       cache: new D1BarCache(db),
       baselines: new D1BaselineStore(db),
+      strengths: new D1StrengthStore(db),
     };
   return cache;
 }
@@ -48,7 +58,7 @@ export default {
       ACCESS_TEAM_DOMAIN?: string;
       ACCESS_AUD?: string;
       COLLECTOR_URL?: string;
-      BARS_CACHE?: D1Like; // D1 database caching Alpaca bars and Rel vol baselines
+      BARS_CACHE?: D1Like; // D1 database caching Alpaca bars, Rel vol baselines and β/σ vs SPY
       COLLECTOR_TOKEN?: string;
     } = {},
   ): Promise<Response> {
@@ -114,6 +124,7 @@ export default {
         fetch,
         Date.now(),
         env.BARS_CACHE ? stores(env.BARS_CACHE).baselines : undefined,
+        env.BARS_CACHE ? stores(env.BARS_CACHE).strengths : undefined,
       );
       return Response.json(result.body, {
         status: result.status,

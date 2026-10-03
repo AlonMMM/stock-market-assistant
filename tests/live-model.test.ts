@@ -10,6 +10,7 @@ import {
   marketPhase,
   pillFor,
   sortRows,
+  sortsDescending,
   symbolCounts,
   watchRows,
   type LiveAlertRow,
@@ -184,15 +185,20 @@ const board = {
       ticker: "NVDA",
       previousClose: 100,
       points: [[0, 102]],
-      stats: { relVolume: 3.4, dayLow: 99, dayHigh: 103 },
+      stats: { relVolume: 3.4, dayLow: 99, dayHigh: 103, rsScore: 64 },
     },
     {
       ticker: "AAPL",
       previousClose: 100,
       points: [[0, 99.5]],
-      stats: { relVolume: null },
+      stats: { relVolume: null, rsScore: 31 },
     },
-    { ticker: "TSLA", previousClose: 100, points: [[0, 97]] },
+    {
+      ticker: "TSLA",
+      previousClose: 100,
+      points: [[0, 97]],
+      stats: { relVolume: null, rsScore: null },
+    },
     { ticker: "MSFT", previousClose: 100, points: [] },
     { ticker: "SPY", previousClose: 100, points: [[0, 100.5]] },
     { ticker: "SMH", previousClose: 100, points: [[0, 101]] },
@@ -206,12 +212,37 @@ test("watch rows: change, excess against SPY or sector, stats when present", () 
   assert.ok(Math.abs(nvda.excess! - 1.5) < 1e-9);
   assert.equal(nvda.relVolume, 3.4);
   assert.equal(nvda.alerts, 2);
-  assert.equal(rows[2]!.relVolume, null); // TSLA: no stats yet
+  assert.equal(rows[2]!.relVolume, null); // TSLA: no rel vol yet
+  assert.equal(nvda.rsScore, 64);
+  assert.equal(rows[2]!.rsScore, null);
+  assert.equal(rows[3]!.rsScore, null);
   assert.equal(rows[3]!.change, null); // MSFT: no bars
   const sector = watchRows(board, new Map(), "sector");
   assert.equal(sector[0]!.against, "SMH");
   assert.ok(Math.abs(sector[0]!.excess! - 1) < 1e-9);
   assert.equal(sector[1]!.against, "SPY"); // no sector benchmark
+  // The score stays against SPY when the table compares vs sector.
+  assert.equal(sector[0]!.rsScore, 64);
+});
+
+test("watch sort by vs SPY score: highest first, then lowest; missing last (chart-vs-spy scenario 6)", () => {
+  const order = (r: WatchRow[]) => r.map((x) => x.ticker);
+  for (const compare of ["SPY", "sector"] as const) {
+    const rows = watchRows(board, new Map(), compare);
+    assert.deepEqual(order(sortRows(rows, "rsScore", true)), [
+      "NVDA",
+      "AAPL",
+      "TSLA",
+      "MSFT",
+    ]);
+    assert.deepEqual(order(sortRows(rows, "rsScore", false)), [
+      "AAPL",
+      "NVDA",
+      "TSLA",
+      "MSFT",
+    ]);
+  }
+  assert.equal(sortsDescending("rsScore"), true);
 });
 
 test("watch sort: |change| first, rel vol toggles, missing values last (scenarios 7, 8)", () => {

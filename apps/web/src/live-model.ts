@@ -398,6 +398,7 @@ export interface WatchRow {
   benchChange: number | null;
   excess: number | null; // change − benchmark change, % points
   relVolume: number | null;
+  rsScore: number | null; // score vs SPY 0–100, always against SPY
   dayLow: number | null;
   dayHigh: number | null;
   alerts: number;
@@ -428,6 +429,7 @@ export function watchRows(
       excess:
         change !== null && benchChange !== null ? change - benchChange : null,
       relVolume: stats?.relVolume ?? null,
+      rsScore: stats?.rsScore ?? null,
       dayLow: stats?.dayLow ?? null,
       dayHigh: stats?.dayHigh ?? null,
       alerts: alertCounts.get(ticker) ?? 0,
@@ -456,7 +458,14 @@ export function filterRows(
 }
 
 export type WatchSort =
-  "ticker" | "last" | "change" | "excess" | "relVolume" | "range" | "alerts";
+  | "ticker"
+  | "last"
+  | "change"
+  | "excess"
+  | "rsScore"
+  | "relVolume"
+  | "range"
+  | "alerts";
 
 /** Position of the last price within the day's range, 0 (low) to 1 (high). */
 export function rangePosition(r: WatchRow): number | null {
@@ -470,6 +479,7 @@ const sortValue: Record<WatchSort, (r: WatchRow) => number | string | null> = {
   last: (r) => r.last,
   change: (r) => (r.change === null ? null : Math.abs(r.change)),
   excess: (r) => r.excess,
+  rsScore: (r) => r.rsScore,
   relVolume: (r) => r.relVolume,
   range: rangePosition,
   alerts: (r) => r.alerts,

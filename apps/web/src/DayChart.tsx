@@ -7,8 +7,10 @@ import {
   HistogramSeries,
   LineSeries,
   LineStyle,
-  type AutoscaleInfo,
   type IChartApi,
+  type IPanePrimitive,
+  type IPanePrimitivePaneView,
+  type IPrimitivePaneRenderer,
   type MouseEventParams,
   type SeriesMarker,
   type Time,
@@ -24,12 +26,20 @@ import {
   type Opposite,
   type OppositeKind,
 } from "../../../packages/market-data/src/opposite.js";
-import type { Outcome } from "../../../packages/market-data/src/outcome.js";
 import {
+  axisPriceMinWidth,
   bandKinds,
+  chartScores,
+  dollars,
   episodeSummary,
   isStrongVolume,
-  outcomeLevels,
+  percentAndPrice,
+  percentBase,
+  priceAt,
+  scoreBenchmark,
+  scoreText,
+  signed,
+  signedPercent,
   stateText,
   strongVolume,
   typicalRatio,
@@ -44,8 +54,10 @@ import { readJson } from "./api.js";
 
 // Categorical slots 1–2 of the validated dataviz palette for the lines. Volume
 // follows the trading convention: green for an up minute, red for a down one,
-// at full strength from 2× typical volume and faded below it. Bands: red =
-// held while the benchmark fell, blue = fell while the benchmark held.
+// at full strength from 2× typical volume and faded below it. Bands: green =
+// held while the benchmark fell (stronger), red = fell while the benchmark
+// held (weaker); light fills behind the lines and a darker strip in its own
+// pane, so they do not read as volume bars.
 const colors = {
   ticker: "#2a78d6",
   tickerText: "#1f5fae",
@@ -57,13 +69,35 @@ const colors = {
   session: "#6b7280",
   pre: "rgba(20, 43, 41, 0.06)",
   open: "rgba(107, 114, 128, 0.55)",
-  band: { strong: "rgba(220, 38, 38, 0.12)", weak: "rgba(42, 120, 214, 0.14)" },
-  strip: { strong: "#dc2626", weak: "#2a78d6" },
+  band: { strong: "rgba(22, 163, 74, 0.13)", weak: "rgba(220, 38, 38, 0.11)" },
+  strip: { strong: "#166534", weak: "#991b1b" },
   clear: "rgba(0, 0, 0, 0)",
   surface: "#fafbf8",
   text: "#52514e",
   grid: "#e7ece6",
 };
+
+// A small "▲▼ vs SPY" tag at the strip's left edge, so the strip does not
+// read as a row of volume bars.
+function stripTag(text: string): IPanePrimitive<Time> {
+  const renderer: IPrimitivePaneRenderer = {
+    draw: (target) =>
+      target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+        context.font = "600 10px Inter, ui-sans-serif, system-ui, sans-serif";
+        const width = context.measureText(text).width + 8;
+        context.fillStyle = colors.surface;
+        context.fillRect(0, 0, width, mediaSize.height);
+        context.fillStyle = colors.text;
+        context.textBaseline = "middle";
+        context.fillText(text, 4, mediaSize.height / 2 + 0.5);
+      }),
+  };
+  const view: IPanePrimitivePaneView = {
+    zOrder: () => "top",
+    renderer: () => renderer,
+  };
+  return { paneViews: () => [view] };
+}
 
 const cache = new Map<string, Promise<DayChartData>>();
 function load(
@@ -86,7 +120,6 @@ function load(
   return request;
 }
 
-const signed = (n: number) => (n >= 0 ? "+" : "−") + Math.abs(n).toFixed(2);
 const compact = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 1,
@@ -112,7 +145,7 @@ interface Point {
 // % change against the previous regular close, or the day's first trade
 // when the previous session has no bars.
 function points(series: ChartSeries): Point[] {
-  const reference = series.previousClose ?? series.bars[0]?.close ?? 1;
+  const reference = percentBase(series);
   return series.bars.map((b, index) => ({
     index,
     time: israelWallSeconds(b.start + 60) as UTCTimestamp,
@@ -134,9 +167,11 @@ interface Readout {
   ticker: number;
   close: number;
   bench: number | null;
+  benchClose: number | null;
   volume: number;
   typical: number | null;
   state: OppositeKind | null;
+  score: number | null; // vs SPY, 0–100
 }
 
 // `alertMs`: the alert's bar close, for the "Around alert" range.
@@ -171,9 +206,6 @@ export function DayChart({
   date: day,
   sector,
   against: initialAgainst = "SPY",
-  outcome,
-  direction,
-  units,
   className = "",
 }: {
   ticker: string;
@@ -182,9 +214,6 @@ export function DayChart({
   date?: string; // US session date when there is no alert
   sector?: string; // the symbol's sector/theme benchmark ETF, if known
   against?: string; // benchmark shown first: "SPY" or `sector`
-  outcome?: Outcome; // backtest validation of the alert, if scored
-  direction?: "up" | "down"; // the alert's direction, for outcome levels
-  units?: { goodUnits: number; stopUnits: number }; // backtest scoring
   className?: string;
 }) {
   const alertMs = alertEnd ? Date.parse(alertEnd) : NaN;
@@ -232,6 +261,9 @@ export function DayChart({
         : null,
     [data],
   );
+  // Score vs SPY per minute; null when the response has no inputs for it.
+  const vs = useMemo(() => (data ? chartScores(data) : null), [data]);
+  const showScore = !!main && main.ticker !== scoreBenchmark;
 
   useEffect(() => {
     if (!data || !main || !host.current || main.bars.length === 0) return;
@@ -265,10 +297,18 @@ export function DayChart({
       crosshair: { mode: CrosshairMode.Magnet },
       handleScroll: { vertTouchDrag: false },
     });
-    const percentFormat = {
-      type: "custom" as const,
-      formatter: (p: number) => `${signed(p)}%`,
-      minMove: 0.01,
+    // Tick marks show % only; each line's last-value (and crosshair) label
+    // adds the price behind it where the chart is wide enough for both.
+    const withPrice = (host.current.clientWidth || 0) >= axisPriceMinWidth;
+    const percentFormat = (series: ChartSeries) => {
+      const base = percentBase(series);
+      return {
+        type: "custom" as const,
+        formatter: (p: number) =>
+          withPrice ? percentAndPrice(p, priceAt(p, base)) : signedPercent(p),
+        tickmarksFormatter: (ps: number[]) => ps.map(signedPercent),
+        minMove: 0.01,
+      };
     };
     const m = points(main);
     const b = bench ? points(bench) : null;
@@ -302,35 +342,13 @@ export function DayChart({
 
     // Ticker on the right axis, benchmark on the left, both % from the
     // previous close and each fitted to its own range.
-    // Backtest scoring levels (entry, good, stop) in % from the same
-    // reference; the axis range stretches to keep them visible.
-    const levels =
-      outcome && direction && units
-        ? outcomeLevels(outcome, direction, units)
-        : null;
-    const reference = main.previousClose ?? main.bars[0]?.close ?? 1;
-    const pct = (price: number) => (price / reference - 1) * 100;
-    const levelPcts = levels
-      ? [levels.entry, levels.good, levels.stop].map(pct)
-      : [];
     const tickerLine = chart.addSeries(LineSeries, {
       color: colors.ticker,
       lineWidth: 2,
       priceScaleId: "right",
-      priceFormat: percentFormat,
+      priceFormat: percentFormat(main),
       priceLineVisible: false,
       crosshairMarkerRadius: 4,
-      autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
-        const info = original();
-        if (!info?.priceRange || !levelPcts.length) return info;
-        return {
-          ...info,
-          priceRange: {
-            minValue: Math.min(info.priceRange.minValue, ...levelPcts),
-            maxValue: Math.max(info.priceRange.maxValue, ...levelPcts),
-          },
-        };
-      },
     });
     tickerLine.setData(m.map((p) => ({ time: p.time, value: p.percent })));
     if (b) {
@@ -339,7 +357,7 @@ export function DayChart({
         lineWidth: 2,
         lineStyle: LineStyle.Dashed,
         priceScaleId: "left",
-        priceFormat: percentFormat,
+        priceFormat: percentFormat(bench!),
         priceLineVisible: false,
         crosshairMarkerRadius: 4,
       });
@@ -426,7 +444,10 @@ export function DayChart({
     }
     const panes = chart.panes();
     panes[0]?.setStretchFactor(3);
-    if (opp) panes[1]?.setStretchFactor(0.12);
+    if (opp) {
+      panes[1]?.setStretchFactor(0.2);
+      panes[1]?.attachPrimitive(stripTag(`▲▼ vs ${bench!.ticker}`));
+    }
     panes[volumePane]?.setStretchFactor(1.6);
 
     const alertBar = m.find((p) => p.instant === alertMs);
@@ -458,45 +479,6 @@ export function DayChart({
         color: "#142b29",
         text: `Alert ${israelClock(alertMs)}`,
       });
-    // Validation: the simulated entry and where it turned good or was stopped.
-    if (outcome?.entryAt) {
-      const entryMs = Date.parse(outcome.entryAt);
-      const at = (ms: number) => m.find((p) => p.instant === ms);
-      const entryBar = at(entryMs + 60000);
-      if (entryBar)
-        markers.push({
-          time: entryBar.time,
-          position: "belowBar",
-          shape: "circle",
-          color: colors.ticker,
-          text: `Entry $${outcome.entry?.toFixed(2)}`,
-        });
-      const done =
-        outcome.minutes !== null ? at(entryMs + outcome.minutes * 60000) : null;
-      if (done)
-        markers.push({
-          time: done.time,
-          position: outcome.result === "good" ? "aboveBar" : "belowBar",
-          shape: "circle",
-          color: outcome.result === "good" ? "#15803d" : "#b91c1c",
-          text: outcome.result === "good" ? "✅ good" : "❌ stop",
-        });
-    }
-    if (levels) {
-      for (const [price, title, color, style] of [
-        [levels.entry, "Entry", colors.typical, LineStyle.Dotted],
-        [levels.good, "Good", "#15803d", LineStyle.Dashed],
-        [levels.stop, "Stop", "#b91c1c", LineStyle.Dashed],
-      ] as const)
-        tickerLine.createPriceLine({
-          price: pct(price),
-          color,
-          lineWidth: 1,
-          lineStyle: style,
-          axisLabelVisible: true,
-          title: `${title} $${price.toFixed(2)}`,
-        });
-    }
     markers.sort((x, y) => Number(x.time) - Number(y.time));
     if (markers.length) createSeriesMarkers(tickerLine, markers);
     // Applied after the first layout; autoSize would otherwise shift it.
@@ -512,9 +494,11 @@ export function DayChart({
       ticker: p.percent,
       close: p.close,
       bench: benchByTime.get(p.time)?.percent ?? null,
+      benchClose: benchByTime.get(p.time)?.close ?? null,
       volume: p.volume,
       typical: p.typical,
       state: opp?.states[p.index] ?? null,
+      score: vs?.scores[p.index] ?? null,
     });
     const byTime = new Map(m.map((p) => [p.time, p]));
     setLatest(readoutAt((alertBar ?? m[m.length - 1])!));
@@ -530,7 +514,7 @@ export function DayChart({
       chartRef.current = null;
     };
     // `opp`, `main`, `bench` and the flags derive from `data`.
-  }, [data, alertMs, window, outcome, direction, units]);
+  }, [data, alertMs, window]);
 
   useEffect(() => {
     const c = chartRef.current;
@@ -546,6 +530,16 @@ export function DayChart({
   return (
     <figure className={`day-chart ${className}`} aria-busy={!data && !error}>
       <div className="chart-controls">
+        {data && showScore && (
+          <p
+            className="chart-score"
+            title="0–100 against SPY: 50 = moving like SPY × β; above 50 stronger, below weaker"
+          >
+            vs {scoreBenchmark} score <strong>{vs?.latest ?? "—"}</strong>
+            {vs?.latest != null && <span className="muted"> / 100</span>}
+            {vs?.betaAssumed && <span className="muted"> · β assumed</span>}
+          </p>
+        )}
         {hasSector && (
           <div
             className="segmented small"
@@ -596,7 +590,7 @@ export function DayChart({
           {opp && (
             <div className="chart-summary">
               <span className="summary strong">
-                <i aria-hidden="true" />
+                <i aria-hidden="true" />▲{" "}
                 {episodeSummary(
                   "strong",
                   opp.episodes,
@@ -606,7 +600,7 @@ export function DayChart({
                 )}
               </span>
               <span className="summary weak">
-                <i aria-hidden="true" />
+                <i aria-hidden="true" />▼{" "}
                 {episodeSummary(
                   "weak",
                   opp.episodes,
@@ -624,11 +618,10 @@ export function DayChart({
                 <i className="key" style={{ borderColor: colors.ticker }} />
                 {main.ticker}{" "}
                 <strong style={{ color: colors.tickerText }}>
-                  {signed(shown.ticker)}%
+                  {signedPercent(shown.ticker)}
                 </strong>{" "}
-                <span className="muted">
-                  ${shown.close.toFixed(2)} · right axis
-                </span>
+                · {dollars(shown.close)}{" "}
+                <span className="muted">right axis</span>
               </span>
               {bench && shown.bench !== null && (
                 <>
@@ -639,8 +632,10 @@ export function DayChart({
                     />
                     {bench.ticker}{" "}
                     <strong style={{ color: colors.benchmarkText }}>
-                      {signed(shown.bench)}%
-                    </strong>{" "}
+                      {signedPercent(shown.bench)}
+                    </strong>
+                    {shown.benchClose !== null &&
+                      ` · ${dollars(shown.benchClose)}`}{" "}
                     <span className="muted">left axis</span>
                   </span>
                   <span>
@@ -648,6 +643,11 @@ export function DayChart({
                     <strong>{signed(shown.ticker - shown.bench)} pts</strong>
                   </span>
                 </>
+              )}
+              {showScore && (
+                <span>
+                  Score <strong>{scoreText(shown.score)}</strong>
+                </span>
               )}
               <span>
                 Volume <strong>{compact.format(shown.volume)}</strong>
@@ -679,29 +679,32 @@ export function DayChart({
           />
           <p className="chart-legend-note">
             Lines: % from the {base}, each axis fitted to its own range (
-            {main.ticker} right, {benchName} left).
+            {main.ticker} right, {benchName} left); the price next to a % is
+            that minute&apos;s close.
             {opp && (
               <>
                 {" "}
                 <span className="legend-swatch strong" aria-hidden="true" />
-                Red: over the last {o.window} minutes {benchName} fell ≥{" "}
-                {Math.abs(o.benchFall)} % points while {main.ticker} held or
-                rose. <span className="legend-swatch weak" aria-hidden="true" />
-                Blue: {benchName} held or rose (≥ −{Math.abs(o.benchHold)} %
-                points) while {main.ticker} fell ≥ {o.weakMultiple}× its usual{" "}
-                {o.window}-minute move. Regular session only; a display aid, not
-                a signal.
+                Green (▲ stronger): over the last {o.window} minutes {benchName}{" "}
+                fell ≥ {Math.abs(o.benchFall)} % points while {main.ticker} held
+                or rose.{" "}
+                <span className="legend-swatch weak" aria-hidden="true" />
+                Red (▼ weaker): {benchName} held or rose (≥ −
+                {Math.abs(o.benchHold)} % points) while {main.ticker} fell ≥{" "}
+                {o.weakMultiple}× its usual {o.window}-minute move. Light bands
+                behind the lines, and the dark strip just above the volume bars,
+                mark these minutes. Regular session only; a display aid, not a
+                signal.
               </>
             )}{" "}
             {hasTypical
               ? `Volume: solid bars ≥ ${strongVolume}× typical for that minute, faded below; dashed line = typical volume.`
               : "Typical volume is not available for this chart."}{" "}
             {!Number.isNaN(alertMs) && "▼ marks the alert. "}
-            {outcome?.entry !== null &&
-              outcome?.entry !== undefined &&
-              direction &&
-              units &&
-              `Horizontal lines: the simulated entry (dotted), the good level ${units.goodUnits}u in the alert's direction and the stop ${units.stopUnits}u against it (dashed, labelled). `}
+            {showScore &&
+              (vs
+                ? `vs ${scoreBenchmark} score 0–100: 50 = moving like ${scoreBenchmark} × β (β ${vs.betaAssumed ? "assumed 1" : vs.beta.toFixed(2)}); above 50 stronger, below weaker; 10 points = one usual daily spread of ${main.ticker}'s move beyond ${scoreBenchmark} × β. Header: latest minute; readout: the pointed minute. `
+                : `vs ${scoreBenchmark} score: not available for this chart. `)}
             Shaded = pre-market. Times in {israelLabel}.
           </p>
         </>

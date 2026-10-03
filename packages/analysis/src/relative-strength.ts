@@ -1,11 +1,12 @@
 import type { AlertEvent } from "../../alerts/src/events.js";
 import type { PriceBar, RawBar } from "../../market-data/src/bars.js";
-import {
-  betaReturns,
-  dailyBeta,
-  dailyCloses,
-} from "../../market-data/src/beta.js";
+import { betaReturns, dailyBeta } from "../../market-data/src/beta.js";
 import { newYork } from "../../market-data/src/calendar.js";
+import {
+  excessPercent,
+  excessSigma,
+  rsScore,
+} from "../../market-data/src/rs-score.js";
 
 // Relative strength of an alerted stock against SPY and its sector benchmark
 // (user-confirmed 2026-09-28). All returns are percent.
@@ -13,10 +14,11 @@ import { newYork } from "../../market-data/src/calendar.js";
 //   relation (day horizon): against | independent | with | outperform
 //   score = clamp(50 + 10 · excess_day / σ, 0, 100), σ = stdev of the
 //   stock's daily excess over the 20 sessions before the alert day.
+// The score and σ come from the shared rs-score module (also used by the day
+// chart and the board), so both always agree for the same inputs.
+export { sigmaReturns } from "../../market-data/src/rs-score.js";
 export const flatBenchmarkPercent = 0.3;
 export const explainedShare = 0.5;
-export const sigmaReturns = 20;
-const sigmaMinimumReturns = 15;
 
 export type Relation = "against" | "independent" | "with" | "outperform";
 
@@ -88,29 +90,6 @@ export function relation(
     : "outperform";
 }
 
-function sampleDeviation(values: number[]) {
-  const mean = values.reduce((s, v) => s + v, 0) / values.length;
-  const variance =
-    values.reduce((s, v) => s + (v - mean) ** 2, 0) / (values.length - 1);
-  return Math.sqrt(variance);
-}
-
-function excessDeviation(input: ScoreInput, beta: number): number | null {
-  const a = dailyCloses(input.stockDaily);
-  const m = dailyCloses(input.benchmarkDaily);
-  const sessions = input.sessions.slice(-(sigmaReturns + 1));
-  const excess: number[] = [];
-  for (let i = 1; i < sessions.length; i++) {
-    const [p, d] = [sessions[i - 1]!, sessions[i]!];
-    const [a0, a1, m0, m1] = [a.get(p), a.get(d), m.get(p), m.get(d)];
-    if (a0 && a1 && m0 && m1)
-      excess.push(change(a0, a1) - beta * change(m0, m1));
-  }
-  if (excess.length < sigmaMinimumReturns) return null;
-  const sigma = sampleDeviation(excess);
-  return sigma > 0 ? sigma : null;
-}
-
 /** Scores one alert against one benchmark; missing data yields nulls. */
 export function scoreAgainst(input: ScoreInput): BenchmarkScore {
   const { alert, benchmarkBars } = input;
@@ -134,7 +113,7 @@ export function scoreAgainst(input: ScoreInput): BenchmarkScore {
     return {
       stock,
       benchmark,
-      excess: stock - beta * benchmark,
+      excess: excessPercent(stock, benchmark, beta),
       benchmarkFrom: from.end,
       benchmarkTo: to.end,
     };
@@ -155,7 +134,12 @@ export function scoreAgainst(input: ScoreInput): BenchmarkScore {
     previousClose(benchmarkBars, input.previous),
     benchmarkNow,
   );
-  const sigma = excessDeviation(input, beta);
+  const sigma = excessSigma(
+    input.sessions,
+    input.stockDaily,
+    input.benchmarkDaily,
+    beta,
+  );
   return {
     benchmark: input.benchmark,
     kind: input.kind,
@@ -166,9 +150,6 @@ export function scoreAgainst(input: ScoreInput): BenchmarkScore {
     day,
     relation: day ? relation(day.stock, day.benchmark, beta) : null,
     sigma,
-    score:
-      day && sigma !== null
-        ? Math.round(Math.min(100, Math.max(0, 50 + (10 * day.excess) / sigma)))
-        : null,
+    score: rsScore(day?.excess, sigma),
   };
 }
