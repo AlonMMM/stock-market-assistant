@@ -5,7 +5,8 @@ Owner: frontend
 Branch: session/frontend-live-page
 Spec/contract revision: [live-page spec](../features/live-page.md) at 6c82de2
 (formatted in 22ca1a8); Backend contract merged from `session/backend-live-page`
-at 84bd5ae (`opposite()`, `BoardSeries.stats`, `ChartSeries.typicalVolume`).
+at 84bd5ae (`opposite()`, `BoardSeries.stats`, `ChartSeries.typicalVolume`);
+`origin/main` merged at ede89ac (alert analysis #26–#30, day-grouped feed #31).
 
 ## Outcome
 
@@ -62,6 +63,25 @@ Built (commits on this branch):
    "Loading…". β stays lower-case in the uppercase header. The Today header is aligned.
    A full day of minute bars now fits on a phone.
 
+8. `e1923cd` Merge of `origin/main` (ede89ac). Conflicts were resolved as follows:
+   - API imports keep both `loadAnalysisChart` and the volume-baseline stores.
+   - Styles keep both sides.
+   - `AlertFeed.tsx` (Backtest) takes main's collapsible days and analysis panel, and
+     reuses the shared `AlertEvidence`.
+9. `6776e20` Product+UX decisions from the review of the merge:
+   - **Alerts tab grouping:** collapsible Israel-date day headers are the outer level.
+     The newest day and a deep-linked alert's day open by default, and the viewer's
+     choices are kept across polls. Inside a day, newest first splits into session
+     groups (keyed by US session date + session, so an after-midnight after-hours group
+     stays separate). Ratio sort is a flat list with Pre/After tags. Rows show the time
+     only.
+   - **Analysis panel:** `AnalysisPanel` (#28) sits in the expanded row after the
+     evidence line and before the chart.
+   - **Alert-row chart range:** alert rows (Live and Backtest) open on a new "Around
+     alert" range, one hour either side of the alert. Watchlist and market charts still
+     open on Today.
+   - **Day range:** keeps after-hours (no change).
+
 Pure logic is in `apps/web/src/live-model.ts` (pill state, session phase, alert
 filter/group, watchlist rows/filter/sort) and `apps/web/src/chart-model.ts` (volume
 strength, episode summaries, band coverage, state text). Node tests are in
@@ -96,6 +116,11 @@ remembering the watchlist sort, and a phone-specific watchlist layout.
 - **Warnings:** the collector `failure` text shows in the popover's Failure row and is
   no longer added to the warnings list. A "Clear warnings" button was added to the
   popover.
+- **vs SPY column** (after the merge): #28 showed the analysis's relative-strength score
+  in this column, so the column is now headed "vs SPY". It shows the β-adjusted excess
+  ("+1.2% ×β") when the alert has market context, else the analysis RS score vs SPY
+  ("66/100"), else "analyzing…", else "—". The table note explains each value.
+  Product should confirm or move the score elsewhere.
 - **Pill on phones:** below 560 px the pill shows only its label (no detail and no
   warning count), as in the phone mockup.
 
@@ -123,6 +148,23 @@ remembering the watchlist sort, and a phone-specific watchlist layout.
   - Phone: no horizontal page overflow at 390 px.
   - Backtest view: renders.
   - No console errors.
+- **After the `origin/main` merge** (6776e20): `npm run check` passes (154 tests: 153
+  pass, 1 skipped; the skip is main's technical-scan Python test). `git diff --check` is
+  clean. The new `groupAlertDays` test covers Israel days, session sub-groups, an
+  after-midnight after-hours alert and the flat ratio list.
+- **SYNTHETIC headless re-check** (mock in the scratchpad: 9 alerts over three Israel
+  days, one finished and one running analysis):
+  - Day headers: "Sat 3 Oct · 1 alert" (newest, open), "Fri 2 Oct · 7 alerts" (closed),
+    "Thu 1 Oct · 1 alert" (open because it holds the deep-linked MU alert, which is
+    expanded).
+  - Session sub-groups: Fri shows "Regular session 16:30–23:00 · 5 alerts" and
+    "Pre-market 11:00–16:30 · 2 alerts"; Sat shows "After-hours 23:00–03:00 · 1 alert".
+  - Ratio sort: no sub-headers, Pre tags, and the day stays open.
+  - Expanded row order: evidence → analysis (score cards; agents shown as unavailable) →
+    chart → actions. A running analysis reads "Analyzing…".
+  - vs SPY cells read "66/100", "analyzing…" and "—".
+  - The alert-row chart opens with "Around alert" selected, showing 16:42–18:42.
+  - No console errors.
 - **Not verified:**
   - Live data from the real collector and Alpaca; Live, Delayed, Reconnecting and
     Warming-up pills in a browser (unit-tested only).
@@ -138,9 +180,7 @@ remembering the watchlist sort, and a phone-specific watchlist layout.
   84bd5ae, so the Frontend merge brings it in too). Update `docs/state.md`: the Live
   page redesign, Telegram notifications and alert deep links.
 - **Open questions:**
-  - Should the alert row's day chart open on the full day (spec: Today default) or on
-    the previous ±1 h around the alert? It now opens on Today, which makes minute bars
-    dense.
+  - The vs SPY column wording and content (see Deviations).
   - Is "Moving" (|change| ≥ 1% or rel vol ≥ 2×) right on real days?
   - Do the opposite thresholds need tuning? With noisy symbols the weak state may fire
     often.
