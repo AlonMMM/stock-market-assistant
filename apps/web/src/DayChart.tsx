@@ -30,12 +30,15 @@ import type { Outcome } from "../../../packages/market-data/src/outcome.js";
 import {
   axisPriceMinWidth,
   bandKinds,
+  chartScores,
   dollars,
   episodeSummary,
   isStrongVolume,
   percentAndPrice,
   percentBase,
   priceAt,
+  scoreBenchmark,
+  scoreText,
   signed,
   signedPercent,
   stateText,
@@ -169,6 +172,7 @@ interface Readout {
   volume: number;
   typical: number | null;
   state: OppositeKind | null;
+  score: number | null; // vs SPY, 0–100
 }
 
 // `alertMs`: the alert's bar close, for the "Around alert" range.
@@ -260,6 +264,9 @@ export function DayChart({
         : null,
     [data],
   );
+  // Score vs SPY per minute; null when the response has no inputs for it.
+  const vs = useMemo(() => (data ? chartScores(data) : null), [data]);
+  const showScore = !!main && main.ticker !== scoreBenchmark;
 
   useEffect(() => {
     if (!data || !main || !host.current || main.bars.length === 0) return;
@@ -518,6 +525,7 @@ export function DayChart({
       volume: p.volume,
       typical: p.typical,
       state: opp?.states[p.index] ?? null,
+      score: vs?.scores[p.index] ?? null,
     });
     const byTime = new Map(m.map((p) => [p.time, p]));
     setLatest(readoutAt((alertBar ?? m[m.length - 1])!));
@@ -549,6 +557,16 @@ export function DayChart({
   return (
     <figure className={`day-chart ${className}`} aria-busy={!data && !error}>
       <div className="chart-controls">
+        {data && showScore && (
+          <p
+            className="chart-score"
+            title="0–100 against SPY: 50 = moving like SPY × β; above 50 stronger, below weaker"
+          >
+            vs {scoreBenchmark} score <strong>{vs?.latest ?? "—"}</strong>
+            {vs?.latest != null && <span className="muted"> / 100</span>}
+            {vs?.betaAssumed && <span className="muted"> · β assumed</span>}
+          </p>
+        )}
         {hasSector && (
           <div
             className="segmented small"
@@ -653,6 +671,11 @@ export function DayChart({
                   </span>
                 </>
               )}
+              {showScore && (
+                <span>
+                  Score <strong>{scoreText(shown.score)}</strong>
+                </span>
+              )}
               <span>
                 Volume <strong>{compact.format(shown.volume)}</strong>
                 {ratio !== null && (
@@ -705,6 +728,10 @@ export function DayChart({
               ? `Volume: solid bars ≥ ${strongVolume}× typical for that minute, faded below; dashed line = typical volume.`
               : "Typical volume is not available for this chart."}{" "}
             {!Number.isNaN(alertMs) && "▼ marks the alert. "}
+            {showScore &&
+              (vs
+                ? `vs ${scoreBenchmark} score 0–100: 50 = moving like ${scoreBenchmark} × β (β ${vs.betaAssumed ? "assumed 1" : vs.beta.toFixed(2)}); above 50 stronger, below weaker; 10 points = one usual daily spread of ${main.ticker}'s move beyond ${scoreBenchmark} × β. Header: latest minute; readout: the pointed minute. `
+                : `vs ${scoreBenchmark} score: not available for this chart. `)}
             Shaded = pre-market. Times in {israelLabel}.
           </p>
         </>

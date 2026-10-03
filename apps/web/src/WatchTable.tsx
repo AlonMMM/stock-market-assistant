@@ -35,6 +35,7 @@ const columns: [WatchSort | null, string, "left" | "right"][] = [
   ["last", "Last", "right"],
   ["change", "Change", "left"],
   ["excess", "", "right"], // vs SPY | vs sector
+  ["rsScore", "vs SPY score", "right"], // always against SPY
   ["relVolume", "Rel vol", "left"],
   ["range", "Day range", "left"],
   ["alerts", "Alerts", "left"],
@@ -52,6 +53,7 @@ function RowDetail({
   alerts: FeedAlert[];
   onShowAlerts: () => void;
 }) {
+  const beta = statsOf(board.series.find((s) => s.ticker === row.ticker))?.beta;
   return (
     <div className="watch-detail">
       <Suspense fallback={<p className="chart-status">Loading day chart…</p>}>
@@ -76,6 +78,12 @@ function RowDetail({
             {row.relVolume === null
               ? "— (before the regular open, or too little history)"
               : `${row.relVolume.toFixed(1)}× of typical volume by this time`}
+          </dd>
+          <dt>vs SPY score</dt>
+          <dd>
+            {row.rsScore === null ? "—" : `${row.rsScore} / 100`}
+            {beta !== undefined &&
+              (beta === null ? " · β assumed 1" : ` · β ${beta.toFixed(2)}`)}
           </dd>
           <dt>Benchmark</dt>
           <dd>
@@ -227,6 +235,11 @@ export function WatchTable({
                 <button
                   type="button"
                   key={key}
+                  title={
+                    key === "rsScore"
+                      ? "0–100 against SPY: 50 = moving like SPY × β, above 50 stronger, below weaker"
+                      : undefined
+                  }
                   className={`${align}${active ? " active" : ""}`}
                   aria-pressed={active}
                   aria-label={`Sort by ${text}${key === "change" ? " (size of move)" : ""}${active ? (descending ? ", highest first" : ", lowest first") : ""}`}
@@ -284,6 +297,16 @@ export function WatchTable({
                       }
                     >
                       {r.excess === null ? "—" : `${pts(r.excess)} pts`}
+                    </span>
+                    <span
+                      className={
+                        r.rsScore === null ? "num right muted" : "num right"
+                      }
+                    >
+                      {r.rsScore ?? "—"}
+                      {r.rsScore !== null && (
+                        <span className="sr-only"> out of 100 vs SPY</span>
+                      )}
                     </span>
                     <span className="relvol">
                       <span className={strong ? "num strong" : "num"}>
@@ -368,9 +391,12 @@ export function WatchTable({
       </div>
       <p className="table-note">
         Change: since the previous close. vs SPY / vs sector: today&apos;s
-        change minus the benchmark&apos;s change, in % points. Rel vol:
-        regular-session volume so far ÷ the median volume by the same New York
-        minute over the previous 20 sessions; “—” before the{" "}
+        change minus the benchmark&apos;s change, in % points. vs SPY score:
+        0–100, always against SPY; 50 = moving like SPY × β (the stock&apos;s
+        60-session beta), above 50 stronger, below weaker, scaled by how much
+        the stock usually beats or lags SPY in a day; “—” without enough
+        history. Rel vol: regular-session volume so far ÷ the median volume by
+        the same New York minute over the previous 20 sessions; “—” before the{" "}
         {israelClock(board.open * 1000)} open or with too little history.
         Moving: |change| ≥ {moving.change}% or rel vol ≥ {moving.relVolume}×.
         Day range: today&apos;s low to high, the mark is the last price. Today:

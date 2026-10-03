@@ -1,6 +1,10 @@
 // Pure helpers for the day chart: volume strength, opposite-to-benchmark
 // summaries and readout state text. No DOM access, so Node tests import it.
-import type { ChartBar } from "../../../packages/market-data/src/day-chart.js";
+import type {
+  ChartBar,
+  DayChart,
+} from "../../../packages/market-data/src/day-chart.js";
+import { scoreSeries } from "../../../packages/market-data/src/rs-score.js";
 import type {
   OppositeEpisode,
   OppositeKind,
@@ -98,3 +102,39 @@ export const percentAndPrice = (percent: number, price: number) =>
  * room for the plot; narrower charts keep % only (the readout has prices).
  */
 export const axisPriceMinWidth = 600;
+
+/** The score vs SPY is always against this symbol. */
+export const scoreBenchmark = "SPY";
+
+export interface ChartScores {
+  scores: (number | null)[]; // aligned with the requested ticker's bars
+  latest: number | null; // at the last bar
+  beta: number;
+  betaAssumed: boolean;
+}
+
+/**
+ * Score vs SPY per minute of the requested ticker (the shared formula in
+ * rs-score.ts), using SPY's series from `series` or, for a sector chart,
+ * `vsSpy.spy`. Null when the response has no `vsSpy`, SPY's minutes are
+ * missing, or the ticker is SPY itself.
+ */
+export function chartScores(data: DayChart): ChartScores | null {
+  const main = data.series[0];
+  const vs = data.vsSpy;
+  if (!main || !vs || main.ticker === scoreBenchmark) return null;
+  const spy =
+    data.series.find((s, i) => i > 0 && s.ticker === scoreBenchmark) ?? vs.spy;
+  if (!spy) return null;
+  const scores = scoreSeries(main, spy, vs);
+  return {
+    scores,
+    latest: scores.at(-1) ?? null,
+    beta: vs.beta,
+    betaAssumed: vs.betaAssumed,
+  };
+}
+
+/** "72 / 100", or "—" without a score. */
+export const scoreText = (score: number | null | undefined) =>
+  score === null || score === undefined ? "—" : `${score} / 100`;

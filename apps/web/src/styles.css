@@ -968,16 +968,19 @@ button.market-tile[aria-expanded="true"] {
   color: #526461;
 }
 .watch-table {
+  /* Contains the rows' absolutely positioned screen-reader text, which
+     otherwise widens the page on phones. */
+  position: relative;
   overflow-x: auto;
 }
 .watch-scroll {
-  min-width: 940px;
+  min-width: 1044px;
 }
 .watch-head,
 .watch-row {
   display: grid;
   grid-template-columns:
-    minmax(120px, 1.2fr) 84px 108px 96px 120px 120px 60px
+    minmax(120px, 1.2fr) 84px 108px 96px 92px 120px 120px 60px
     minmax(120px, 1.4fr) 20px;
   gap: 12px;
   align-items: center;
@@ -2296,4 +2299,10 @@ main:has(> .backtest-page) {
   .results-column .segmented button {
     white-space: nowrap;
   }
+}
+.chart-score {
+  margin: 0 auto 0 0;
+  align-self: center;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
