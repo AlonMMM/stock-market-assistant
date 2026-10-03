@@ -8,6 +8,8 @@ import { Notices } from "./Notices.js";
 import { summarize } from "../../../packages/market-data/src/outcome.js";
 import { AlertFeed } from "./AlertFeed.js";
 import { ValidationCard } from "./Validation.js";
+import { LookNowCard } from "./LookNow.js";
+import type { LookNowSummary } from "../../../packages/market-data/src/look-now.js";
 import { savedTickers, useWatchlist, Watchlist } from "./Watchlist.js";
 
 // Each request stays within Cloudflare's free-plan limit of 50 subrequests
@@ -28,6 +30,40 @@ function merge(parts: BacktestResult[]): BacktestResult {
   for (const p of parts)
     for (const k of ["scored", "good", "stopped", "weak"] as const)
       validation.baseline[k] += p.validation.baseline[k];
+  // Look-now: alert stats from all alerts; the random-minute baseline adds up
+  // (each batch ranks against its own random minutes).
+  const looks = alerts.map((a) => a.lookNow).filter(Boolean);
+  const scoredLooks = looks.filter((l) => l.score !== null);
+  const reasons: Record<string, number> = {};
+  const peaks: Record<string, number> = {};
+  for (const l of looks) {
+    if (l.reason) reasons[l.reason] = (reasons[l.reason] ?? 0) + 1;
+    if (l.peak !== null)
+      peaks[String(l.peak)] = (peaks[String(l.peak)] ?? 0) + 1;
+  }
+  const base = parts.map((p) => p.lookNow?.baseline).filter(Boolean);
+  const baseScored = base.reduce((n, b) => n + b.scored, 0);
+  const lookNow: LookNowSummary = {
+    scored: scoredLooks.length,
+    unscored: looks.length - scoredLooks.length,
+    reasons,
+    averageScore: scoredLooks.length
+      ? scoredLooks.reduce((n, l) => n + l.score!, 0) / scoredLooks.length
+      : null,
+    big: scoredLooks.filter((l) => l.label !== "normal").length,
+    veryBig: scoredLooks.filter((l) => l.label === "very-big").length,
+    withBurst: scoredLooks.filter((l) => l.withBurst === true).length,
+    peaks,
+    baseline: {
+      scored: baseScored,
+      averageScore: baseScored
+        ? base.reduce((n, b) => n + (b.averageScore ?? 0) * b.scored, 0) /
+          baseScored
+        : null,
+      big: base.reduce((n, b) => n + b.big, 0),
+      veryBig: base.reduce((n, b) => n + b.veryBig, 0),
+    },
+  };
   const diagnostics: Record<string, number> = {};
   for (const p of parts)
     for (const [k, n] of Object.entries(p.diagnostics))
@@ -39,6 +75,7 @@ function merge(parts: BacktestResult[]): BacktestResult {
     alerts,
     diagnostics,
     validation,
+    lookNow,
     cache: parts.some((p) => p.cache)
       ? {
           hits: parts.reduce((n, p) => n + (p.cache?.hits ?? 0), 0),
@@ -395,8 +432,16 @@ export function Backtest({ modes }: { modes: ReactNode }) {
             {result.alerts.length === 0 && (
               <p className="notice">No alerts matched these settings.</p>
             )}
+            {result.alerts.length > 0 && result.lookNow && (
+              <LookNowCard summary={result.lookNow} />
+            )}
             {result.alerts.length > 0 && (
-              <ValidationCard summary={result.validation} />
+              <details className="trade-view">
+                <summary>
+                  Trade view: stop/target in the burst&apos;s direction
+                </summary>
+                <ValidationCard summary={result.validation} />
+              </details>
             )}
             {result.alerts.length > 0 && (
               <AlertFeed

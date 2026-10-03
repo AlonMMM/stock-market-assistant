@@ -3,13 +3,19 @@ import type { Evaluation } from "../../../packages/alerts/src/relative-volume.js
 import type { AlertContext } from "../../../packages/market-data/src/backtest.js";
 import type { LiveAnalysis } from "../../../packages/market-data/src/live.js";
 import type { Outcome } from "../../../packages/market-data/src/outcome.js";
+import type {
+  LookNow,
+  LookNowLabel,
+} from "../../../packages/market-data/src/look-now.js";
+import { LookNowBadge, LookNowLine } from "./LookNow.js";
 import { AnalysisPanel } from "./Analysis.js";
 
 // Backtest alerts carry close and market context; live alerts may lack them.
 export type FeedAlert = Evaluation & {
   close?: number;
   context?: AlertContext | null;
-  outcome?: Outcome; // backtest only: what the price did after the alert
+  outcome?: Outcome; // backtest only: trade view (stop/target)
+  lookNow?: LookNow; // backtest only: how unusual the move after it was
   analysis?: LiveAnalysis; // live only, when the collector analyzes alerts
 };
 
@@ -38,7 +44,9 @@ export function AlertFeed({
   const [ticker, setTicker] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("time");
   const [result, setResult] = useState<Outcome["result"] | null>(null);
-  const scored = alerts.some((a) => a.outcome);
+  const looked = alerts.some((a) => a.lookNow);
+  const scored = !looked && alerts.some((a) => a.outcome);
+  const [label, setLabel] = useState<LookNowLabel | null>(null);
   const [open, setOpen] = useState<string | null>(focus ?? null);
   // Days the viewer opened (true) or closed (false); other days follow the
   // default: the newest day and the linked alert's day are open.
@@ -63,6 +71,7 @@ export function AlertFeed({
   const shown = alerts
     .filter((a) => !ticker || a.ticker === ticker)
     .filter((a) => !result || a.outcome?.result === result)
+    .filter((a) => !label || a.lookNow?.label === label)
     .sort((a, b) =>
       sort === "ratio"
         ? (b.ratio ?? 0) - (a.ratio ?? 0)
@@ -82,6 +91,32 @@ export function AlertFeed({
   return (
     <div className="feed">
       <div className="feed-filters">
+        {looked && (
+          <div
+            className="chips"
+            role="group"
+            aria-label="Filter by look-now label"
+          >
+            {(
+              [
+                [null, "Any move"],
+                ["very-big", "🔥 Very big"],
+                ["big", "Big"],
+                ["normal", "Normal"],
+              ] as const
+            ).map(([value, text]) => (
+              <button
+                type="button"
+                key={text}
+                className="chip"
+                aria-pressed={label === value}
+                onClick={() => setLabel(value)}
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+        )}
         {scored && (
           <div className="chips" role="group" aria-label="Filter by outcome">
             {(
@@ -180,13 +215,19 @@ export function AlertFeed({
                         onClick={() => setOpen(expanded ? null : key)}
                       >
                         <strong className="feed-ticker">
-                          {a.outcome && (
-                            <span
-                              className="feed-outcome"
-                              title={a.outcome.reason ?? a.outcome.result}
-                            >
-                              {outcomeBadge[a.outcome.result]}{" "}
-                            </span>
+                          {a.lookNow ? (
+                            <>
+                              <LookNowBadge look={a.lookNow} />{" "}
+                            </>
+                          ) : (
+                            a.outcome && (
+                              <span
+                                className="feed-outcome"
+                                title={a.outcome.reason ?? a.outcome.result}
+                              >
+                                {outcomeBadge[a.outcome.result]}{" "}
+                              </span>
+                            )
                           )}
                           {a.inPlay && (
                             <span
@@ -250,7 +291,19 @@ export function AlertFeed({
                               <p className="chart-status">Loading day chart…</p>
                             }
                           >
-                            {a.outcome && <OutcomeLine outcome={a.outcome} />}
+                            {a.lookNow && <LookNowLine look={a.lookNow} />}
+                            {a.outcome &&
+                              (a.lookNow ? (
+                                <details className="trade-view">
+                                  <summary>
+                                    Trade view (stop/target in the burst&apos;s
+                                    direction)
+                                  </summary>
+                                  <OutcomeLine outcome={a.outcome} />
+                                </details>
+                              ) : (
+                                <OutcomeLine outcome={a.outcome} />
+                              ))}
                             <DayChart
                               ticker={a.ticker}
                               alertEnd={a.end}
