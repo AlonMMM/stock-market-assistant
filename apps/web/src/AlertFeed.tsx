@@ -183,35 +183,7 @@ export function AlertFeed({
               </button>
               {expanded && (
                 <div className="feed-detail">
-                  <p className="evidence">
-                    {number(a.actual)} shares in {a.config.window} min vs{" "}
-                    {number(a.expected ?? 0)} expected
-                    {a.paceRatio !== null && a.paceRatio !== undefined && (
-                      <> · {a.paceRatio.toFixed(1)}× today&apos;s pace</>
-                    )}
-                    {a.volumeBasis === "pace" && (
-                      <> (volume qualified by today&apos;s pace)</>
-                    )}
-                    {a.expectedMove !== null &&
-                      a.expectedMove !== undefined && (
-                        <>
-                          {" "}
-                          · move {a.move >= 0 ? "+" : "−"}
-                          {Math.abs(a.move).toFixed(2)}% vs typical ±
-                          {a.expectedMove.toFixed(2)}% at this time
-                        </>
-                      )}
-                    {a.close !== undefined && (
-                      <> · close ${a.close.toFixed(2)}</>
-                    )}
-                    {c && (
-                      <>
-                        {" "}
-                        · {a.ticker} {signed(c.change)}%, SPY{" "}
-                        {signed(c.spyChange)}%, β {c.beta.toFixed(2)}
-                      </>
-                    )}
-                  </p>
+                  <AlertEvidence alert={a} />
                   <Suspense
                     fallback={
                       <p className="chart-status">Loading day chart…</p>
@@ -254,6 +226,38 @@ function OutcomeLine({ outcome: o }: { outcome: Outcome }) {
       u = ±{o.unit?.toFixed(2)}% · best {f(o.run)} ({o.runUnits?.toFixed(1)}u) ·
       worst {f(o.pullback)} · after 5/15/30/60 min: {f(o.forward[5])} /{" "}
       {f(o.forward[15])} / {f(o.forward[30])} / {f(o.forward[60])}
+    </p>
+  );
+}
+
+/** One line of evidence: window volume vs expected, pace, move, context. */
+export function AlertEvidence({ alert: a }: { alert: FeedAlert }) {
+  return (
+    <p className="evidence">
+      {number(a.actual)} shares in {a.config.window} min vs{" "}
+      {number(a.expected ?? 0)} expected
+      {a.paceRatio !== null && a.paceRatio !== undefined && (
+        <> · {a.paceRatio.toFixed(1)}× today&apos;s pace</>
+      )}
+      {a.volumeBasis === "pace" && (
+        <> (volume qualified by today&apos;s pace)</>
+      )}
+      {a.expectedMove !== null && a.expectedMove !== undefined && (
+        <>
+          {" "}
+          · move {a.move >= 0 ? "+" : "−"}
+          {Math.abs(a.move).toFixed(2)}% vs typical ±{a.expectedMove.toFixed(2)}
+          % at this time
+        </>
+      )}
+      {a.close !== undefined && <> · close ${a.close.toFixed(2)}</>}
+      {a.context && (
+        <>
+          {" "}
+          · {a.ticker} {signed(a.context.change)}%, SPY{" "}
+          {signed(a.context.spyChange)}%, β {a.context.beta.toFixed(2)}
+        </>
+      )}
     </p>
   );
 }

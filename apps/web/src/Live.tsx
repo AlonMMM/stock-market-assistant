@@ -2,12 +2,17 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Board } from "../../../packages/market-data/src/board.js";
 import type { AlertLink } from "../../../packages/contracts/src/alert-link.js";
 import type { LiveStatus } from "../../../packages/market-data/src/live.js";
-import { AlertFeed } from "./AlertFeed.js";
 import { readJson } from "./api.js";
 import { pillFor } from "./live-model.js";
+import { LiveAlerts } from "./LiveAlerts.js";
 import { MarketStrip } from "./MarketStrip.js";
 import { StatusPill } from "./StatusPill.js";
-import { israelClock, israelDateTime, israelLabel } from "./time.js";
+import {
+  israelClock,
+  israelDateTime,
+  israelLabel,
+  usSessionDate,
+} from "./time.js";
 import { WatchBoard } from "./WatchBoard.js";
 
 const liveRefreshMs = 30000;
@@ -50,6 +55,34 @@ function usePolling<T>(
   return { value, at };
 }
 
+// Alerts newer than the viewer's previous visit are marked "New". Stored
+// per device; the visit time updates on load and whenever the page is hidden.
+const visitKey = "sma.live.lastVisit.v1";
+function useLastVisit(): number | null {
+  const [since] = useState(() => {
+    try {
+      const v = Number(localStorage.getItem(visitKey));
+      return Number.isFinite(v) && v > 0 ? v : null;
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    const save = () => {
+      try {
+        localStorage.setItem(visitKey, String(Date.now()));
+      } catch {
+        // Without storage nothing is marked new on the next visit.
+      }
+    };
+    const hidden = () => document.visibilityState === "hidden" && save();
+    save();
+    document.addEventListener("visibilitychange", hidden);
+    return () => document.removeEventListener("visibilitychange", hidden);
+  }, []);
+  return since;
+}
+
 export function Live({
   modes,
   link = null,
@@ -59,6 +92,8 @@ export function Live({
 }) {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [tab, setTab] = useState<"alerts" | "watchlist">("alerts");
+  const [symbol, setSymbol] = useState<string | null>(null);
+  const since = useLastVisit();
   const warn = (message: string) =>
     setWarnings((w) => (w.at(-1) === message ? w : [...w, message]));
   const live = usePolling<LiveStatus>("/api/live", liveRefreshMs, warn);
@@ -74,6 +109,15 @@ export function Live({
     (m, a) => (m === null || a.end > m ? a.end : m),
     null,
   );
+  const emptyText = !status
+    ? "Loading live alerts…"
+    : pill.kind === "warming"
+      ? "The collector is warming up (loading recent history). Live alerts appear once it is done."
+      : pill.kind === "off"
+        ? "Alpaca streaming is switched off, so no live alerts will arrive."
+        : pill.kind === "offline"
+          ? "No alerts to show: the collector is unreachable."
+          : `No live alerts yet. US pre-market opens 11:00 ${israelLabel}, the regular session 16:30.`;
   const linked =
     link && alerts.some((a) => a.ticker === link.ticker && a.end === link.end);
   const linkNotice =
@@ -157,18 +201,18 @@ export function Live({
           className="tab-panel"
         >
           {linkNotice && <p className="notice">{linkNotice}</p>}
-          {status && alerts.length === 0 && (
-            <p className="notice">
-              No live alerts yet. US pre-market opens 11:00 {israelLabel}, the
-              regular session 16:30.
-            </p>
-          )}
-          {alerts.length > 0 && (
-            <AlertFeed
+          {alerts.length > 0 ? (
+            <LiveAlerts
               alerts={alerts}
               benchmarks={board.value?.benchmarks}
               focus={linked ? link.ticker + link.end : undefined}
+              symbol={symbol}
+              onSymbol={setSymbol}
+              today={usSessionDate(now)}
+              since={since}
             />
+          ) : (
+            <p className="notice">{emptyText}</p>
           )}
         </section>
       ) : (
