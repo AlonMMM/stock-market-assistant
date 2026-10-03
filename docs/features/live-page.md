@@ -36,15 +36,15 @@ Live/Backtest switch stays on the right. Tapping the pill opens a details popove
 refresh interval, chart source (SIP, 15-min delayed), and the non-blocking warnings that
 today stack at the top of the page. The old footer text moves here.
 
-| Pill | When | Page |
-|---|---|---|
-| ● Live · 30/30 · 17:44 (green, filled dot) | `subscribed` and newest bar < 3 min old | normal |
-| ○ Market closed · pre-market Mon 11:00 (grey ring) | `subscribed`, outside every US session per the exchange calendar | normal |
-| Warming up (grey dashed ring) | `warming-up` / `starting` | alerts list loading state |
-| Streaming off (grey square) | `awaiting-alpaca-activation` | alerts list says no live alerts will arrive |
-| ⚠ Delayed · last bar N min ago (amber) | `subscribed`, inside a session, newest bar ≥ 3 min old | normal; popover explains |
-| ⚠ Reconnecting (amber) | `disconnected` | normal; popover shows the failure text |
-| ⊗ Offline (red) | `unavailable` | blocking banner under the header, last alerts stay visible |
+| Pill                                               | When                                                             | Page                                                       |
+| -------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------- |
+| ● Live · 30/30 · 17:44 (green, filled dot)         | `subscribed` and newest bar < 3 min old                          | normal                                                     |
+| ○ Market closed · pre-market Mon 11:00 (grey ring) | `subscribed`, outside every US session per the exchange calendar | normal                                                     |
+| Warming up (grey dashed ring)                      | `warming-up` / `starting`                                        | alerts list loading state                                  |
+| Streaming off (grey square)                        | `awaiting-alpaca-activation`                                     | alerts list says no live alerts will arrive                |
+| ⚠ Delayed · last bar N min ago (amber)             | `subscribed`, inside a session, newest bar ≥ 3 min old           | normal; popover explains                                   |
+| ⚠ Reconnecting (amber)                             | `disconnected`                                                   | normal; popover shows the failure text                     |
+| ⊗ Offline (red)                                    | `unavailable`                                                    | blocking banner under the header, last alerts stay visible |
 
 Shape and wording carry the state, not colour alone. A pill showing a warning count
 ("· 1 warning") replaces the stacked notices.
