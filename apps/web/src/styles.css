@@ -1853,3 +1853,35 @@ button.market-tile[aria-expanded="true"] {
 .analysis-text .analysis-brief {
   font-weight: 650;
 }
+/* Live alerts: collapsible Israel-date days around the session groups. */
+.alert-day + .alert-day {
+  border-top: 1px solid #cdd7ce;
+}
+.alert-day-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 0;
+  background: #e8ede3;
+  text-align: left;
+  font-size: 14px;
+}
+.alert-day-head .chevron {
+  align-self: center;
+  transform: rotate(-90deg);
+}
+.alert-day-head[aria-expanded="true"] .chevron {
+  transform: none;
+}
+.alert-day-head span {
+  color: #526461;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.alert-excess small {
+  font-weight: 400;
+  color: #526461;
+}

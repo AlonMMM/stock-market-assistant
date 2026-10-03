@@ -7,12 +7,7 @@ import { pillFor } from "./live-model.js";
 import { LiveAlerts } from "./LiveAlerts.js";
 import { MarketStrip } from "./MarketStrip.js";
 import { StatusPill } from "./StatusPill.js";
-import {
-  israelClock,
-  israelDateTime,
-  israelLabel,
-  usSessionDate,
-} from "./time.js";
+import { israelClock, israelDateTime, israelLabel } from "./time.js";
 import { WatchTable } from "./WatchTable.js";
 
 const liveRefreshMs = 30000;
@@ -213,7 +208,6 @@ export function Live({
               focus={linked ? link.ticker + link.end : undefined}
               symbol={symbol}
               onSymbol={setSymbol}
-              today={usSessionDate(now)}
               since={since}
             />
           ) : (

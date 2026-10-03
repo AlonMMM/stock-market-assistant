@@ -6,7 +6,7 @@ import {
   directionCounts,
   filterAlerts,
   filterRows,
-  groupAlerts,
+  groupAlertDays,
   marketPhase,
   pillFor,
   sortRows,
@@ -139,25 +139,40 @@ test("alert filters: direction counts and symbol filter (scenario 5)", () => {
   assert.deepEqual(symbolCounts(seven)[1], ["AAPL", 1]);
 });
 
-test("alert grouping: newest first by session, ratio sort flattens (scenario 6)", () => {
-  const groups = groupAlerts(seven, "time", "2026-10-06");
+test("alert grouping: Israel days outside, session groups inside (scenario 6)", () => {
+  // An after-hours alert after midnight Israel time lands on the next day.
+  const late = alert("SMCI", "2026-10-06T21:30:00Z", 1.2, 4.5, "post");
+  const earlier = alert("MU", "2026-10-05T15:00:00Z", -1, 3.3);
+  const days = groupAlertDays([...seven, late, earlier], "time");
   assert.deepEqual(
-    groups.map((g) => [g.title, g.rows.length]),
+    days.map((d) => [d.day, d.label, d.count]),
     [
-      ["Regular session", 5],
-      ["Pre-market", 2],
+      ["2026-10-07", "Wed 7 Oct", 1],
+      ["2026-10-06", "Tue 6 Oct", 7],
+      ["2026-10-05", "Mon 5 Oct", 1],
     ],
   );
-  assert.equal(groups[0]!.sub, "today · 16:30–23:00");
-  assert.equal(groups[1]!.sub, "today · 11:00–16:30");
-  assert.equal(groups[0]!.rows[0]!.ticker, "NVDA");
-  const flat = groupAlerts(seven, "ratio", "2026-10-06");
+  assert.deepEqual(
+    days[0]!.groups.map((g) => [g.title, g.sub, g.rows.length]),
+    [["After-hours", "23:00–03:00", 1]],
+  );
+  assert.deepEqual(
+    days[1]!.groups.map((g) => [g.title, g.sub, g.rows.length]),
+    [
+      ["Regular session", "16:30–23:00", 5],
+      ["Pre-market", "11:00–16:30", 2],
+    ],
+  );
+  assert.equal(days[1]!.groups[0]!.rows[0]!.ticker, "NVDA");
+  const flat = groupAlertDays(seven, "ratio");
   assert.equal(flat.length, 1);
-  assert.deepEqual(flat[0]!.rows.map((a) => a.ticker).slice(0, 2), [
+  assert.equal(flat[0]!.groups.length, 1);
+  assert.equal(flat[0]!.groups[0]!.title, "");
+  assert.deepEqual(flat[0]!.groups[0]!.rows.map((a) => a.ticker).slice(0, 2), [
     "PLTR",
     "NVDA",
   ]);
-  assert.deepEqual(groupAlerts([], "ratio", "2026-10-06"), []);
+  assert.deepEqual(groupAlertDays([], "ratio"), []);
 });
 
 const board = {

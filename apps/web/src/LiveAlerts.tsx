@@ -2,16 +2,16 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { alertLink } from "../../../packages/contracts/src/alert-link.js";
 import { AlertEvidence, type FeedAlert } from "./AlertFeed.js";
 import {
-  alertDate,
   alertDirection,
   directionCounts,
   filterAlerts,
-  groupAlerts,
+  groupAlertDays,
   symbolCounts,
   type AlertSort,
   type DirectionFilter,
 } from "./live-model.js";
-import { israelClock, israelDateTime, israelLabel } from "./time.js";
+import { AnalysisPanel } from "./Analysis.js";
+import { israelClock, israelDay, israelLabel } from "./time.js";
 
 const DayChart = lazy(() =>
   import("./DayChart.js").then((m) => ({ default: m.DayChart })),
@@ -51,6 +51,37 @@ function CopyLink({ alert }: { alert: FeedAlert }) {
   );
 }
 
+/** vs SPY column: β-adjusted excess, else the analysis RS score vs SPY. */
+function Versus({ alert: a }: { alert: FeedAlert }) {
+  if (a.context)
+    return (
+      <span
+        className={`alert-excess ${a.context.excess >= 0 ? "up" : "down"}`}
+        title="Move minus SPY's move × β"
+      >
+        {signedPct(a.context.excess, 1)} <small>×β</small>
+      </span>
+    );
+  const spy = a.analysis?.result?.scores.find((s) => s.kind === "market");
+  if (spy?.score !== null && spy?.score !== undefined)
+    return (
+      <span
+        className="alert-excess"
+        title="Relative-strength score vs SPY, 0–100; above 50 = stronger"
+      >
+        {spy.score}
+        <small>/100</small>
+      </span>
+    );
+  if (a.analysis && !a.analysis.result)
+    return <span className="alert-excess muted">analyzing…</span>;
+  return (
+    <span className="alert-excess" aria-label="vs SPY not available">
+      —
+    </span>
+  );
+}
+
 /** Live alerts: direction and symbol filters, session groups, expandable rows. */
 export function LiveAlerts({
   alerts,
@@ -58,7 +89,6 @@ export function LiveAlerts({
   focus,
   symbol,
   onSymbol,
-  today,
   since,
 }: {
   alerts: FeedAlert[];
@@ -66,7 +96,6 @@ export function LiveAlerts({
   focus?: string; // ticker + end of a row to open and scroll to on mount
   symbol: string | null;
   onSymbol: (s: string | null) => void;
-  today: string; // current US session date
   since: number | null; // previous visit (ms); later alerts are "New"
 }) {
   const [direction, setDirection] = useState<DirectionFilter>("all");
@@ -82,11 +111,17 @@ export function LiveAlerts({
 
   const symbols = symbolCounts(alerts);
   const counts = directionCounts(alerts, symbol);
-  const groups = groupAlerts(
-    filterAlerts(alerts, direction, symbol),
-    sort,
-    today,
-  );
+  const days = groupAlertDays(filterAlerts(alerts, direction, symbol), sort);
+  // Days the viewer opened (true) or closed (false); other days follow the
+  // default: the newest day and the linked alert's day are open. Kept
+  // across polls while the tab is mounted.
+  const [dayOpen, setDayOpen] = useState<Record<string, boolean>>({});
+  const [focusDay] = useState(() => {
+    const linked = alerts.find((a) => a.ticker + a.end === focus);
+    return linked && israelDay(Date.parse(linked.end));
+  });
+  const isDayOpen = (day: string) =>
+    dayOpen[day] ?? (day === days[0]?.day || day === focusDay);
 
   return (
     <>
@@ -155,134 +190,183 @@ export function LiveAlerts({
           <span>Symbol</span>
           <span>Move</span>
           <span>Volume vs expected</span>
-          <span className="right">
-            vs SPY × <span className="greek">β</span>
-          </span>
+          <span className="right">vs SPY</span>
           <span />
         </div>
-        {groups.map((g) => (
-          <section key={g.key} aria-label={`${g.title} ${g.sub}`}>
-            <h3 className="alert-group">
-              {g.title}{" "}
-              <span>
-                {g.sub} · {g.rows.length}{" "}
-                {g.rows.length === 1 ? "alert" : "alerts"}
-              </span>
-            </h3>
-            <ul>
-              {g.rows.map((a) => {
-                const key = a.ticker + a.end;
-                const expanded = open === key;
-                const up = alertDirection(a) === "up";
-                const end = Date.parse(a.end);
-                const isNew = since !== null && end > since;
-                const tag = sort === "ratio" ? sessionTag[a.session] : "";
-                return (
-                  <li key={key} id={`alert-${key}`}>
-                    <button
-                      type="button"
-                      className={expanded ? "alert-row open" : "alert-row"}
-                      aria-expanded={expanded}
-                      onClick={() => setOpen(expanded ? null : key)}
+        {days.map((d) => {
+          const expandedDay = isDayOpen(d.day);
+          return (
+            <section className="alert-day" key={d.day}>
+              <button
+                type="button"
+                className="alert-day-head"
+                aria-expanded={expandedDay}
+                aria-controls={`day-${d.day}`}
+                onClick={() =>
+                  setDayOpen({ ...dayOpen, [d.day]: !expandedDay })
+                }
+              >
+                <svg
+                  className="chevron"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 12 12"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M3 4.5l3 3 3-3"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                  />
+                </svg>
+                <strong>{d.label}</strong>
+                <span>
+                  {d.count} {d.count === 1 ? "alert" : "alerts"}
+                </span>
+              </button>
+              {expandedDay && (
+                <div id={`day-${d.day}`}>
+                  {d.groups.map((g) => (
+                    <section
+                      key={g.key}
+                      aria-label={g.title ? `${g.title} ${g.sub}` : undefined}
                     >
-                      <span className="alert-time">
-                        {sort === "ratio" && alertDate(a) !== today
-                          ? israelDateTime(end)
-                          : israelClock(end)}
-                      </span>
-                      <span className="alert-symbol">
-                        <strong>{a.ticker}</strong>
-                        {isNew && <span className="tag new">New</span>}
-                        {tag && <span className="tag">{tag}</span>}
-                      </span>
-                      <span className={up ? "move-tag up" : "move-tag down"}>
-                        {up ? "▲" : "▼"} {signedPct(a.move)}
-                      </span>
-                      <span className="alert-ratio">
-                        <strong>
-                          {a.ratio === null ? "—" : `${a.ratio.toFixed(1)}×`}
-                        </strong>
-                        <span className="meter" aria-hidden="true">
-                          <span
-                            style={{
-                              width: `${Math.min(100, ((a.ratio ?? 0) / ratioScale) * 100)}%`,
-                            }}
-                          />
-                        </span>
-                      </span>
-                      <span
-                        className={
-                          a.context
-                            ? `alert-excess ${a.context.excess >= 0 ? "up" : "down"}`
-                            : "alert-excess"
-                        }
-                      >
-                        {a.context ? (
-                          signedPct(a.context.excess, 1)
-                        ) : (
-                          <span aria-label="vs SPY times beta not available">
-                            —
+                      {g.title && (
+                        <h4 className="alert-group">
+                          {g.title}{" "}
+                          <span>
+                            {g.sub} · {g.rows.length}{" "}
+                            {g.rows.length === 1 ? "alert" : "alerts"}
                           </span>
-                        )}
-                      </span>
-                      <svg
-                        className="chevron"
-                        width="14"
-                        height="14"
-                        viewBox="0 0 12 12"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M3 4.5l3 3 3-3"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                        />
-                      </svg>
-                    </button>
-                    {expanded && (
-                      <div className="alert-detail">
-                        <AlertEvidence alert={a} />
-                        <Suspense
-                          fallback={
-                            <p className="chart-status">Loading day chart…</p>
-                          }
-                        >
-                          <DayChart
-                            ticker={a.ticker}
-                            alertEnd={a.end}
-                            window={a.config.window}
-                            sector={benchmarks[a.ticker]}
-                          />
-                        </Suspense>
-                        <div className="actions">
-                          {symbol !== a.ticker && (
-                            <button
-                              type="button"
-                              className="action"
-                              onClick={() => onSymbol(a.ticker)}
-                            >
-                              Only {a.ticker} alerts
-                            </button>
-                          )}
-                          <CopyLink alert={a} />
-                        </div>
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ))}
-        {groups.length === 0 && (
+                        </h4>
+                      )}
+                      <ul>
+                        {g.rows.map((a) => {
+                          const key = a.ticker + a.end;
+                          const expanded = open === key;
+                          const up = alertDirection(a) === "up";
+                          const end = Date.parse(a.end);
+                          const isNew = since !== null && end > since;
+                          const tag =
+                            sort === "ratio" ? sessionTag[a.session] : "";
+                          return (
+                            <li key={key} id={`alert-${key}`}>
+                              <button
+                                type="button"
+                                className={
+                                  expanded ? "alert-row open" : "alert-row"
+                                }
+                                aria-expanded={expanded}
+                                onClick={() => setOpen(expanded ? null : key)}
+                              >
+                                <span className="alert-time">
+                                  {israelClock(end)}
+                                </span>
+                                <span className="alert-symbol">
+                                  <strong>{a.ticker}</strong>
+                                  {isNew && (
+                                    <span className="tag new">New</span>
+                                  )}
+                                  {tag && <span className="tag">{tag}</span>}
+                                </span>
+                                <span
+                                  className={
+                                    up ? "move-tag up" : "move-tag down"
+                                  }
+                                >
+                                  {up ? "▲" : "▼"} {signedPct(a.move)}
+                                </span>
+                                <span className="alert-ratio">
+                                  <strong>
+                                    {a.ratio === null
+                                      ? "—"
+                                      : `${a.ratio.toFixed(1)}×`}
+                                  </strong>
+                                  <span className="meter" aria-hidden="true">
+                                    <span
+                                      style={{
+                                        width: `${Math.min(100, ((a.ratio ?? 0) / ratioScale) * 100)}%`,
+                                      }}
+                                    />
+                                  </span>
+                                </span>
+                                <Versus alert={a} />
+                                <svg
+                                  className="chevron"
+                                  width="14"
+                                  height="14"
+                                  viewBox="0 0 12 12"
+                                  aria-hidden="true"
+                                >
+                                  <path
+                                    d="M3 4.5l3 3 3-3"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.6"
+                                  />
+                                </svg>
+                              </button>
+                              {expanded && (
+                                <div className="alert-detail">
+                                  <AlertEvidence alert={a} />
+                                  {a.analysis && (
+                                    <AnalysisPanel
+                                      ticker={a.ticker}
+                                      end={a.end}
+                                      direction={a.direction}
+                                      analysis={a.analysis}
+                                    />
+                                  )}
+                                  <Suspense
+                                    fallback={
+                                      <p className="chart-status">
+                                        Loading day chart…
+                                      </p>
+                                    }
+                                  >
+                                    <DayChart
+                                      ticker={a.ticker}
+                                      alertEnd={a.end}
+                                      window={a.config.window}
+                                      sector={benchmarks[a.ticker]}
+                                    />
+                                  </Suspense>
+                                  <div className="actions">
+                                    {symbol !== a.ticker && (
+                                      <button
+                                        type="button"
+                                        className="action"
+                                        onClick={() => onSymbol(a.ticker)}
+                                      >
+                                        Only {a.ticker} alerts
+                                      </button>
+                                    )}
+                                    <CopyLink alert={a} />
+                                  </div>
+                                </div>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </section>
+                  ))}
+                </div>
+              )}
+            </section>
+          );
+        })}
+        {days.length === 0 && (
           <p className="table-empty">No alerts match these filters.</p>
         )}
       </div>
       <p className="table-note">
         Times in {israelLabel}. Volume vs expected: the alert&apos;s volume
         ratio (window volume ÷ expected volume); the bar is full at {ratioScale}
-        ×. “vs SPY × β” shows “—” until live alerts carry market context.
+        ×. vs SPY: the move minus SPY&apos;s move × β when the alert carries
+        market context, otherwise the analysis&apos;s relative-strength score vs
+        SPY (0–100, above 50 = stronger than SPY); “—” when neither exists.
       </p>
     </>
   );

@@ -14,7 +14,7 @@ import type { LiveStatus } from "../../../packages/market-data/src/live.js";
 import {
   israelClock,
   israelDate,
-  israelDateTime,
+  israelDayLabel,
   israelWeekday,
 } from "./time.js";
 
@@ -282,9 +282,16 @@ const sessionTitle = {
 
 export interface AlertGroup<T> {
   key: string;
-  title: string;
-  sub: string; // date and Israel-time hours
+  title: string; // session name; empty for the flat ratio list
+  sub: string; // the session's Israel-time hours
   rows: T[];
+}
+
+export interface AlertDay<T> {
+  day: string; // Israel calendar date, "2026-10-02"
+  label: string; // "Fri 2 Oct"
+  count: number;
+  groups: AlertGroup<T>[];
 }
 
 /** US session date of an alert's window (the bar before its end). */
@@ -304,51 +311,56 @@ function sessionHours(date: string, session: keyof typeof sessionTitle) {
 }
 
 /**
- * Newest first: groups by US session date and session, with headers. By
- * ratio: one flat group (rows then carry a Pre/After tag in the UI).
+ * One group per Israel calendar date, newest first. Inside a day, newest
+ * first splits into session groups (by US session date and session, so an
+ * after-midnight after-hours stays separate); by ratio it is one flat list
+ * (rows then carry a Pre/After tag in the UI).
  */
-export function groupAlerts<T extends LiveAlertRow>(
+export function groupAlertDays<T extends LiveAlertRow>(
   alerts: T[],
   sort: AlertSort,
-  today: string, // current US session date
-): AlertGroup<T>[] {
-  if (sort === "ratio") {
-    const rows = [...alerts].sort(
-      (a, b) => (b.ratio ?? 0) - (a.ratio ?? 0) || b.end.localeCompare(a.end),
-    );
-    return rows.length
-      ? [
-          {
-            key: "ratio",
-            title: "All sessions",
-            sub: "by volume ratio",
-            rows,
-          },
-        ]
-      : [];
+): AlertDay<T>[] {
+  const rows = [...alerts].sort((a, b) =>
+    sort === "ratio"
+      ? (b.ratio ?? 0) - (a.ratio ?? 0) || b.end.localeCompare(a.end)
+      : b.end.localeCompare(a.end),
+  );
+  const days = new Map<string, T[]>();
+  for (const a of rows) {
+    const day = israelDate(Date.parse(a.end));
+    days.set(day, [...(days.get(day) ?? []), a]);
   }
-  const groups: AlertGroup<T>[] = [];
-  for (const a of [...alerts].sort((x, y) => y.end.localeCompare(x.end))) {
-    const date = alertDate(a);
-    const key = `${date}/${a.session}`;
-    let group = groups.find((g) => g.key === key);
-    if (!group) {
-      const hours = sessionHours(date, a.session);
-      const day =
-        date === today
-          ? "today"
-          : israelDateTime(Date.parse(a.end)).split(",")[0]!;
-      group = {
-        key,
-        title: sessionTitle[a.session],
-        sub: hours ? `${day} · ${hours}` : day,
-        rows: [],
+  return [...days.keys()]
+    .sort()
+    .reverse()
+    .map((day) => {
+      const inDay = days.get(day)!;
+      const groups: AlertGroup<T>[] = [];
+      if (sort === "ratio")
+        groups.push({ key: `${day}/all`, title: "", sub: "", rows: inDay });
+      else
+        for (const a of inDay) {
+          const date = alertDate(a);
+          const key = `${day}/${date}/${a.session}`;
+          let group = groups.find((g) => g.key === key);
+          if (!group) {
+            group = {
+              key,
+              title: sessionTitle[a.session],
+              sub: sessionHours(date, a.session),
+              rows: [],
+            };
+            groups.push(group);
+          }
+          group.rows.push(a);
+        }
+      return {
+        day,
+        label: israelDayLabel(Date.parse(inDay[0]!.end)),
+        count: inDay.length,
+        groups,
       };
-      groups.push(group);
-    }
-    group.rows.push(a);
-  }
-  return groups;
+    });
 }
 
 // --------------------------------------------------------------- watchlist

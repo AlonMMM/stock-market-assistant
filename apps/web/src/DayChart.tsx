@@ -124,7 +124,7 @@ function points(series: ChartSeries): Point[] {
   }));
 }
 
-type Range = "day" | "open" | "hour";
+type Range = "alert" | "day" | "open" | "hour";
 
 interface Readout {
   time: number;
@@ -137,11 +137,24 @@ interface Readout {
   state: OppositeKind | null;
 }
 
-function applyRange(chart: IChartApi, range: Range, m: Point[]) {
+// `alertMs`: the alert's bar close, for the "Around alert" range.
+function applyRange(
+  chart: IChartApi,
+  range: Range,
+  m: Point[],
+  alertMs: number,
+) {
   const last = m.at(-1);
   const open = m.find((p) => p.session === "regular");
   if (!last) return;
-  if (range === "hour" || (range === "open" && open))
+  if (range === "alert" && !Number.isNaN(alertMs)) {
+    // One hour either side of the alert, so minute bars stay legible.
+    const at = israelWallSeconds(alertMs / 1000);
+    chart.timeScale().setVisibleRange({
+      from: (at - 3600) as UTCTimestamp,
+      to: (at + 3600) as UTCTimestamp,
+    });
+  } else if (range === "hour" || (range === "open" && open))
     chart.timeScale().setVisibleRange({
       from: (range === "hour" ? last.time - 3600 : open!.time) as UTCTimestamp,
       to: last.time,
@@ -176,7 +189,8 @@ export function DayChart({
   const [error, setError] = useState("");
   const [readout, setReadout] = useState<Readout | null>(null);
   const [latest, setLatest] = useState<Readout | null>(null);
-  const [range, setRange] = useState<Range>("day");
+  // Alert rows open around the alert; other charts on the whole day.
+  const [range, setRange] = useState<Range>(alertEnd ? "alert" : "day");
   const rangeRef = useRef(range);
   rangeRef.current = range;
   // Compare with SPY or the symbol's sector benchmark.
@@ -444,7 +458,7 @@ export function DayChart({
     if (markers.length) createSeriesMarkers(tickerLine, markers);
     // Applied after the first layout; autoSize would otherwise shift it.
     const frame = requestAnimationFrame(() =>
-      applyRange(chart, rangeRef.current, m),
+      applyRange(chart, rangeRef.current, m, alertMs),
     );
     chartRef.current = { chart, m };
 
@@ -477,7 +491,7 @@ export function DayChart({
 
   useEffect(() => {
     const c = chartRef.current;
-    if (c) applyRange(c.chart, range, c.m);
+    if (c) applyRange(c.chart, range, c.m, alertMs);
   }, [range]);
 
   const shown = readout ?? latest;
@@ -510,6 +524,7 @@ export function DayChart({
         <div className="segmented small" role="group" aria-label="Chart range">
           {(
             [
+              ...(alertEnd ? ([["alert", "Around alert"]] as const) : []),
               ["day", "Today"],
               ["open", "Since open"],
               ["hour", "Last hour"],
