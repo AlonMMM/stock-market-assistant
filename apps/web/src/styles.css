@@ -1522,3 +1522,99 @@ button.market-tile[aria-expanded="true"] {
 .watch-table .watch-side li {
   border: 0;
 }
+/* Day chart controls, summary chips, readout and legend. */
+.chart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.segmented.small button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.chart-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.summary i,
+.legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.summary.strong {
+  background: #fbe3e1;
+  color: #8a1c14;
+}
+.summary.weak {
+  background: #e1ecf9;
+  color: #1a4f8f;
+}
+.summary.strong i,
+.legend-swatch.strong {
+  background: #dc2626;
+}
+.summary.weak i,
+.legend-swatch.weak {
+  background: #2a78d6;
+}
+.legend-swatch {
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+.day-chart .chart-readout {
+  margin: 0 0 8px;
+  gap: 4px 18px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.day-chart .chart-readout .chart-time {
+  flex-basis: auto;
+  min-width: 44px;
+}
+.strong-ratio {
+  font-weight: 700;
+  color: #142b29;
+}
+.state-chip {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #eef0ec;
+  color: #3f4f4c;
+}
+.state-chip.strong {
+  background: #fbe3e1;
+  color: #8a1c14;
+}
+.state-chip.weak {
+  background: #e1ecf9;
+  color: #1a4f8f;
+}
+.chart-legend-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #526461;
+  line-height: 1.5;
+}
+@media (max-width: 760px) {
+  .watch-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
