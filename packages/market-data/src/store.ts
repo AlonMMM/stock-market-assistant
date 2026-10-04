@@ -1,6 +1,9 @@
 import { DatabaseSync } from "node:sqlite";
-import type { Evaluation } from "../../alerts/src/relative-volume.js";
+import type { AlertEvent } from "../../alerts/src/events.js";
 import type { PriceBar } from "./bars.js";
+
+// A stored live alert (never synthetic), with its score vs SPY when known.
+export type StoredAlert = Omit<AlertEvent, "synthetic">;
 
 export interface StoredWatchlist {
   name: string;
@@ -34,31 +37,24 @@ export class MarketStore {
       .map((r) => JSON.parse(String(r.payload)) as PriceBar);
   }
   // True when the alert is new; a repeated (ticker, end) is ignored.
-  alert(result: Evaluation & { close?: number }): boolean {
+  alert(result: StoredAlert): boolean {
     return (
       this.db
         .prepare("INSERT OR IGNORE INTO alerts VALUES (?,?,?)")
         .run(result.ticker, result.end, JSON.stringify(result)).changes > 0
     );
   }
-  alerts(): (Evaluation & { close?: number })[] {
+  alerts(): StoredAlert[] {
     return this.db
       .prepare("SELECT payload FROM alerts ORDER BY end DESC LIMIT 100")
       .all()
-      .map(
-        (r) => JSON.parse(String(r.payload)) as Evaluation & { close?: number },
-      );
+      .map((r) => JSON.parse(String(r.payload)) as StoredAlert);
   }
-  findAlert(
-    ticker: string,
-    end: string,
-  ): (Evaluation & { close?: number }) | null {
+  findAlert(ticker: string, end: string): StoredAlert | null {
     const row = this.db
       .prepare("SELECT payload FROM alerts WHERE ticker=? AND end=?")
       .get(ticker, end);
-    return row
-      ? (JSON.parse(String(row.payload)) as Evaluation & { close?: number })
-      : null;
+    return row ? (JSON.parse(String(row.payload)) as StoredAlert) : null;
   }
   watchlist(): StoredWatchlist | null {
     const row = this.db

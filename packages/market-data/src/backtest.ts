@@ -12,6 +12,7 @@ import {
   type Config,
   type Evaluation,
 } from "../../alerts/src/relative-volume.js";
+import type { AlertVsSpy } from "../../contracts/src/vs-spy.js";
 import { AlpacaFeed } from "./alpaca.js";
 import { cachedHistory, type BarCache, type CacheStats } from "./bar-cache.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
@@ -55,6 +56,9 @@ export interface AlertContext {
 export interface BacktestAlert extends Evaluation {
   close: number;
   context: AlertContext | null; // null for SPY or without enough data
+  // Score vs SPY at the alert minute, as the live alert computes it
+  // (docs/features/alert-vs-spy.md). Absent in results stored before it.
+  vsSpy?: AlertVsSpy;
   outcome: Outcome; // trade view: stop/target in the alert's direction
   lookNow: LookNow; // main grade: how unusual the move after the alert was
 }

@@ -25,6 +25,7 @@ const status = (over: Partial<LiveStatus>): LiveStatus => ({
   receiving: 30,
   lastBarAt: null,
   alerts: [],
+  strengthNow: {},
   ...over,
 });
 
