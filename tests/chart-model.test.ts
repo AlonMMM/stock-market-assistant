@@ -9,7 +9,6 @@ import type { AreaVsSpySeries } from "../packages/contracts/src/vs-spy.js";
 import {
   bandKinds,
   chartScores,
-  type DayChartWithArea,
   gapPoints,
   headerIndex,
   dollars,
@@ -138,7 +137,7 @@ const area = (over: Partial<AreaVsSpySeries> = {}): AreaVsSpySeries => ({
 const withArea = (
   series: ChartSeries[],
   areaVsSpy?: AreaVsSpySeries,
-): DayChartWithArea => ({ ...chart(series), areaVsSpy });
+): DayChart => ({ ...chart(series), areaVsSpy });
 
 test("area score and gap per minute come from the backend's series", () => {
   const nvda = series("NVDA", 100, [100, 101, 102]);

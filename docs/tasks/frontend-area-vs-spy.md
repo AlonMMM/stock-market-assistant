@@ -1,7 +1,7 @@
 # Task: area-vs-spy
 
 Owner: frontend
-Status: implemented, awaiting the backend's day-chart/board data and Integration
+Status: implemented; ready for Integration
 Branch: session/frontend-area-vs-spy
 
 ## Outcome
@@ -35,12 +35,8 @@ watchlist column.
 - Contract: `packages/contracts/src/vs-spy.ts` at c2ca70a (`session/backend-area-vs-spy`):
   `AlertVsSpy` (label deprecated/optional), `AreaVsSpySeries`, `vsSpyTone`,
   `vsSpyStrong`/`vsSpyWeak`. The web uses the shared tone and thresholds.
-- Day chart: the web reads `DayChart.areaVsSpy` (the field named in the contract
-  comment). At c2ca70a `day-chart.ts` does not yet declare or send it, so the web types
-  the response locally as `DayChart & { areaVsSpy?: AreaVsSpySeries }`
-  (`DayChartWithArea` in `chart-model.ts`); until the backend sends it the header and
-  readout show "—" and the gap pane is not drawn. Once Backend adds the field to
-  `DayChart`, the local intersection can be dropped.
+- Day chart: the web reads `DayChart.areaVsSpy` (served since 7321e91): `score`, `gap`
+  and `windows` per bar; the deprecated day-based `vsSpy` is no longer read.
 - Board: unchanged field `stats.rsScore`; the backend switches its meaning to the area
   score.
 - Not touched: the analysis follow-up's own relative-strength panel (`Analysis.tsx`,
@@ -80,8 +76,11 @@ watchlist column.
     inside its card as before.
   - Scenario 8: page text and the built bundle contain no "confirmed", "against SPY",
     "moving with market", "Long ·" or "Short ·".
+- Merged `session/backend-area-vs-spy` up to 7321e91 (contract, collector/backtest,
+  day chart and board); check re-run after the last merge.
 - Not verified: Backtest page in the browser (same `VsSpyTag` component; its large
-  response was not mocked); real API data (backend day-chart/board data not on the
-  branch yet); dark mode is not supported by this site.
-- Next: merge Backend's day-chart `areaVsSpy` and board commits, re-run the check and
-  screenshots against the real API, then hand to Integration.
+  response was not mocked); the real API with live Alpaca data (the mock follows the
+  merged `areaVsSpy` shape); dark mode is not supported by this site.
+- Next: Integration checks scenario 7 end to end (Telegram line, site tag and chart
+  header for the same alert minute) on real data. Backend may drop the deprecated
+  `DayChart.vsSpy` now that the web no longer reads it.

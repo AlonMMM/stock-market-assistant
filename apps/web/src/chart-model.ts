@@ -106,13 +106,6 @@ export const axisPriceMinWidth = 600;
 /** The score vs SPY is always against this symbol. */
 export const scoreBenchmark = "SPY";
 
-/**
- * The day chart response with the area series (`areaVsSpy`, the shared
- * contract in packages/contracts/src/vs-spy.ts), aligned with the requested
- * ticker's bars. The web never re-derives the formula.
- */
-export type DayChartWithArea = DayChart & { areaVsSpy?: AreaVsSpySeries };
-
 export interface ChartScores {
   scores: (number | null)[]; // aligned with the requested ticker's bars
   gap: (number | null)[]; // % points, aligned likewise
@@ -130,7 +123,7 @@ const finiteOrNull = (v: unknown): number | null =>
  * backend's `areaVsSpy`. Null when the response has none or the ticker is
  * SPY itself; minutes the series do not cover are null ("—", no gap drawn).
  */
-export function chartScores(data: DayChartWithArea): ChartScores | null {
+export function chartScores(data: DayChart): ChartScores | null {
   const main = data.series[0];
   const area = data.areaVsSpy;
   if (!main || !area || main.ticker === scoreBenchmark) return null;

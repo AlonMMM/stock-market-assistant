@@ -19,7 +19,10 @@ import {
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
-import type { ChartSeries } from "../../../packages/market-data/src/day-chart.js";
+import type {
+  ChartSeries,
+  DayChart as DayChartData,
+} from "../../../packages/market-data/src/day-chart.js";
 import {
   opposite,
   oppositeDefaults,
@@ -32,7 +35,6 @@ import {
   chartScores,
   dollars,
   type ChartScores,
-  type DayChartWithArea,
   episodeSummary,
   gapPoints,
   headerIndex,
@@ -116,9 +118,6 @@ function stripTag(text: string, corner = false): IPanePrimitive<Time> {
   };
   return { paneViews: () => [view] };
 }
-
-// The day chart response, with the area series vs SPY when the API sends it.
-type DayChartData = DayChartWithArea;
 
 const cache = new Map<string, Promise<DayChartData>>();
 function load(
