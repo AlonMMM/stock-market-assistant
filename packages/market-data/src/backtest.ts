@@ -14,6 +14,9 @@ import {
 } from "../../alerts/src/relative-volume.js";
 import type { AlertVsSpy } from "../../contracts/src/vs-spy.js";
 import { AlpacaFeed } from "./alpaca.js";
+import { sipDelayMs } from "./sip-delay.js";
+import { alertVsSpy } from "./alert-vs-spy.js";
+import { spyStrength, type SpyStrength } from "./rs-score.js";
 import { cachedHistory, type BarCache, type CacheStats } from "./bar-cache.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
 import { normalize, type PriceBar, type RawBar } from "./bars.js";
@@ -35,8 +38,7 @@ import type { ResultCache } from "./result-cache.js";
 
 export { backtestLimits, maxSymbolsPerRequest };
 export const tickerPattern = /^[A-Z][A-Z0-9. -]{0,9}$/;
-// Alpaca's free plan serves SIP history except the most recent 15 minutes.
-export const sipDelay = 15 * 60000;
+export { parseSipDelay, sipDelayMs } from "./sip-delay.js";
 
 export type History = (
   ticker: string,
@@ -233,16 +235,51 @@ function context(
   return { change, spyChange, beta, excess: change - beta * spyChange };
 }
 
+/**
+ * Score vs SPY at the alert minute, as the live collector computes it
+ * (docs/features/alert-vs-spy.md): SPY's bar of the same minute, else its
+ * newest earlier bar of the day (`spyLagged`); β/σ from daily bars before
+ * the alert date. Uses only data already loaded for the run.
+ */
+function vsSpyAt(
+  alert: Evaluation,
+  date: string,
+  close: number,
+  lastRegular: Map<string, number>,
+  spy: MarketTrack,
+  strength: SpyStrength | null,
+): AlertVsSpy {
+  const end = Date.parse(alert.end);
+  const previous = previousSessions(date, 1)[0]!;
+  const spyBar = spy.byDate.get(date)?.findLast((b) => b.end <= end);
+  return alertVsSpy({
+    direction: alert.direction,
+    close,
+    previousClose: lastRegular.get(previous),
+    spyClose: spyBar?.close,
+    spyPreviousClose: spy.lastRegular.get(previous),
+    strength,
+    spyLagged: spyBar?.end !== end,
+  });
+}
+
 export type BacktestRequest = ReturnType<typeof parseBacktest>;
 
-/** Bars after `end` are not final yet; context needs β from `betaStart`. */
-export function backtestWindow(request: BacktestRequest, now: number) {
+/**
+ * Bars after `end` are not final yet (`delayMinutes`: see sip-delay.ts);
+ * context needs β from `betaStart`.
+ */
+export function backtestWindow(
+  request: BacktestRequest,
+  now: number,
+  delayMinutes?: number,
+) {
   const next = new Date(`${request.to}T12:00:00Z`);
   next.setUTCDate(next.getUTCDate() + 1);
   // 06:00Z is after the latest post-market close (01:00Z in winter) and
   // before the next pre-market; later bars are filtered by date anyway.
   const final = Date.parse(`${next.toISOString().slice(0, 10)}T06:00:00Z`);
-  const end = Math.min(final, now - sipDelay);
+  const end = Math.min(final, now - sipDelayMs(delayMinutes));
   let betaStart: string | null = null;
   try {
     betaStart = previousSessions(request.from, betaReturns + 1)[0]!;
@@ -343,6 +380,25 @@ export class BacktestRun {
     const normalized: PriceBar[] = [];
     const tickerAlerts: BacktestAlert[] = [];
     const diagnostics: Record<string, number> = {};
+    // β/σ vs SPY per alert date, from the daily bars already loaded.
+    const strengths = new Map<string, SpyStrength | null>();
+    const strengthOf = (date: string) => {
+      if (!betaStart) return null;
+      if (!strengths.has(date)) {
+        let value: SpyStrength | null = null;
+        try {
+          value = spyStrength(
+            previousSessions(date, betaReturns + 1),
+            daily,
+            this.spyDaily,
+          );
+        } catch {
+          // Outside calendar coverage: no score.
+        }
+        strengths.set(date, value);
+      }
+      return strengths.get(date)!;
+    };
     let evaluated = 0;
     let count = 0;
     for (const row of rows) {
@@ -365,6 +421,14 @@ export class BacktestRun {
           close: bar.close,
           outcome: undefined as unknown as Outcome, // scored below
           lookNow: undefined as unknown as LookNow, // scored in finish()
+          vsSpy: vsSpyAt(
+            result,
+            bar.date,
+            bar.close,
+            lastRegular,
+            this.spy,
+            strengthOf(bar.date),
+          ),
           context:
             ticker === benchmark || !betaStart
               ? null
@@ -501,9 +565,10 @@ export async function runBacktest(
   now = Date.now(),
   daily: History = async () => [],
   results?: ResultCache,
+  delayMinutes?: number,
 ): Promise<BacktestResult> {
   const request = parseBacktest(input, now);
-  const window = backtestWindow(request, now);
+  const window = backtestWindow(request, now, delayMinutes);
   const { tickers, to } = request;
   const { start, until, betaStart } = window;
   const cache = results && window.complete ? results : undefined;
@@ -567,6 +632,8 @@ export async function runBacktest(
 export interface Credentials {
   key?: string;
   secret?: string;
+  // ALPACA_SIP_DELAY_MINUTES (sip-delay.ts); unset → the default.
+  sipDelayMinutes?: number;
 }
 
 // Shared by the local API and the hosted Worker so both behave identically.
@@ -576,6 +643,7 @@ export function minuteHistory(
   cache: BarCache | undefined,
   now: number,
   stats?: CacheStats,
+  delayMinutes?: number,
 ): History {
   return (ticker, start, end) =>
     cache
@@ -585,7 +653,7 @@ export function minuteHistory(
           end,
           (s, e) => feed.history(ticker, s, e),
           cache,
-          now - sipDelay,
+          now - sipDelayMs(delayMinutes),
           stats,
         )
       : feed.history(ticker, start, end);
@@ -615,10 +683,11 @@ export async function handleBacktest(
     const stats: CacheStats = { hits: 0, misses: 0 };
     const result = await runBacktest(
       body,
-      minuteHistory(feed, cache, now, stats),
+      minuteHistory(feed, cache, now, stats, credentials.sipDelayMinutes),
       now,
       (ticker, start, end) => feed.history(ticker, start, end, "1Day", "split"),
       results,
+      credentials.sipDelayMinutes,
     );
     return { status: 200, body: cache ? { ...result, cache: stats } : result };
   } catch (error) {

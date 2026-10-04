@@ -17,7 +17,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { AlpacaFeed } from "../packages/market-data/src/alpaca.js";
-import { sipDelay } from "../packages/market-data/src/backtest.js";
+import {
+  parseSipDelay,
+  sipDelayMs,
+} from "../packages/market-data/src/sip-delay.js";
 import {
   cachedHistory,
   D1BarCache,
@@ -86,7 +89,9 @@ const symbols = args.get("symbols")
 if (!args.get("symbols") && list.source !== "ibkr")
   console.warn("Collector watchlist unavailable; using the default list.");
 
-const readyBefore = Date.now() - sipDelay;
+// Only data past the SIP delay (ALPACA_SIP_DELAY_MINUTES) is final.
+const readyBefore =
+  Date.now() - sipDelayMs(parseSipDelay(process.env.ALPACA_SIP_DELAY_MINUTES));
 const start = new Date(readyBefore);
 start.setUTCMonth(start.getUTCMonth() - months);
 const range = [

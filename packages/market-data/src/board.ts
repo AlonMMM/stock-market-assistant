@@ -1,5 +1,6 @@
 import { AlpacaFeed } from "./alpaca.js";
-import { sipDelay, type Credentials } from "./backtest.js";
+import type { Credentials } from "./backtest.js";
+import { defaultSipDelayMinutes, sipDelayMs } from "./sip-delay.js";
 import { normalize, type RawBar } from "./bars.js";
 import type { D1Like } from "./bar-cache.js";
 import { benchmark, betaReturns } from "./beta.js";
@@ -65,9 +66,11 @@ export interface Board {
   watchlist: string[]; // symbols to show as the board, in watchlist order
   benchmarks: Record<string, string>; // sector benchmark per listed symbol
   series: BoardSeries[]; // watchlist order, then SPY and QQQ if not listed
+  // Minutes the data may lag real time (ALPACA_SIP_DELAY_MINUTES); 0 = live.
+  delayMinutes?: number;
 }
 
-type MultiHistory = (
+export type MultiHistory = (
   tickers: string[],
   start: string,
   end: string,
@@ -85,9 +88,9 @@ export class D1StrengthStore extends D1DailyStore<SpyStrength> {
   }
 }
 
-/** Latest US session with (15-minute delayed) data at `now`. */
-export function latestSession(now: number): string {
-  const { date, minute } = newYork(now - sipDelay);
+/** Latest US session with data at `now`, allowing for the SIP delay. */
+export function latestSession(now: number, delayMinutes?: number): string {
+  const { date, minute } = newYork(now - sipDelayMs(delayMinutes));
   // Pre-market data starts 04:00 New York time.
   if (coreClose(date) !== null && minute >= 240) return date;
   return previousSessions(date, 1)[0]!;
@@ -158,7 +161,7 @@ async function baselines(
  * SPY over the 61 sessions before the date, which is stored. Failures return
  * no values (score and β null) and are not stored.
  */
-async function strengths(
+export async function strengths(
   tickers: string[],
   date: string,
   multi: MultiHistory,
@@ -255,8 +258,9 @@ export async function runBoard(
   benchmarks: Record<string, string> = {},
   store?: BaselineStore,
   strengthStore?: StrengthStore,
+  delayMinutes = defaultSipDelayMinutes,
 ): Promise<Board> {
-  const date = latestSession(now);
+  const date = latestSession(now, delayMinutes);
   const previous = previousSessions(date, 1)[0]!;
   const sectors = tickers.flatMap((t) =>
     benchmarks[t] ? [benchmarks[t]] : [],
@@ -268,7 +272,7 @@ export async function runBoard(
   next.setUTCDate(next.getUTCDate() + 1);
   const end = Math.min(
     Date.parse(`${next.toISOString().slice(0, 10)}T06:00:00Z`),
-    now - sipDelay,
+    now - sipDelayMs(delayMinutes),
   );
   const listed = tickers.filter((t) => symbols.includes(t));
   // Volume stats use only complete 5-minute bars: as of the latest 5-minute
@@ -301,6 +305,7 @@ export async function runBoard(
   return {
     source: "alpaca",
     feed: "sip",
+    delayMinutes,
     date,
     open: newYorkToUtc(date, 570) / 1000,
     close: newYorkToUtc(date, coreClose(date)!) / 1000,
@@ -379,6 +384,7 @@ export async function handleBoard(
         benchmarks,
         store,
         strengthStore,
+        credentials.sipDelayMinutes,
       ),
     };
   } catch (error) {

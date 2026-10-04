@@ -24,6 +24,7 @@ import {
   loadLive,
 } from "../../../packages/market-data/src/live.js";
 import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
+import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
 
 export function buildApp(
   logging = false,
@@ -38,6 +39,13 @@ export function buildApp(
     secret: process.env.ALPACA_API_SECRET,
   },
 ) {
+  // ALPACA_SIP_DELAY_MINUTES (default 0); an invalid value stops startup.
+  alpaca = {
+    ...alpaca,
+    sipDelayMinutes:
+      alpaca.sipDelayMinutes ??
+      parseSipDelay(process.env.ALPACA_SIP_DELAY_MINUTES),
+  };
   const app = Fastify({ logger: logging });
   app.post("/api/backtest", async (request, reply) => {
     const result = await handleBacktest(

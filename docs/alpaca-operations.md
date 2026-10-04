@@ -6,8 +6,8 @@ or submit orders.
 ## Backtest API
 
 `POST /api/backtest` reads `ALPACA_API_KEY` and `ALPACA_API_SECRET` from the server
-environment and requests SIP history (the most recent 15 minutes are excluded). Without
-them it returns 503.
+environment and requests SIP history up to `ALPACA_SIP_DELAY_MINUTES` before now (see
+[SIP delay](#sip-delay)). Without the keys it returns 503.
 
 - Local: put both variables in an ignored `.env` file at the repository root; `npm run dev`
   loads it for the API.
@@ -21,7 +21,13 @@ Example body: `{ "tickers": ["AAPL"], "from": "2026-09-14", "to": "2026-09-25",
 Set these on the existing collector service; never put real values in Git or chat:
 
 - `ALPACA_API_KEY` and `ALPACA_API_SECRET`: Alpaca API credentials.
-- `ALPACA_FEED=iex`: safe initial default. Use `sip` only when the account has live SIP.
+- `ALPACA_FEED=iex`: safe initial default. Use `sip` only when the account has live SIP
+  (this account has Algo Trader Plus since 2026-10-04; see
+  [real-time SIP rollout](#real-time-sip-rollout)).
+- `ALPACA_MAX_SYMBOLS` (default 30, the free IEX stream limit): symbols on the stream.
+  SPY is always streamed for the score vs SPY and takes one slot unless it is on the
+  watchlist, so the default streams 29 watchlist symbols. With SIP, raise it to cover
+  the watchlist plus SPY.
 - `ALPACA_SYMBOLS=AAPL`: initial one-symbol validation.
 - `ALPACA_ENABLED=false`: deploy and verify startup before switching to `true`.
 - `COLLECTOR_TOKEN`: keep the existing random value of at least 32 characters.
@@ -69,6 +75,46 @@ Delivery: one message at a time, up to 5 attempts with 5 s × 3ⁿ backoff (or T
 `retry_after`); wrong token or chat fails at once. An alert older than 15 minutes is marked
 `expired` instead of sent. A send interrupted by a crash is marked `unknown` and never
 repeated, so an alert may be missed but is not sent twice.
+
+## Score vs SPY
+
+Each live alert carries `vsSpy` (score 0–100, β, label), computed before it is stored and
+sent ([spec](features/alert-vs-spy.md)). The collector streams SPY with the watchlist and
+evaluates no alerts for it unless SPY is on the watchlist. β/σ per watchlist symbol are
+computed from SIP split-adjusted daily bars (whatever `ALPACA_FEED` is) once per US
+session date: at startup, on each watchlist change, and every 5 minutes for any missing
+symbol, so a new date is ready shortly after New York midnight, before the pre-market.
+They are stored in the `spy_strength` table of the collector's SQLite file (pruned with
+the bars). A failed daily request is logged as `spy-strength-failed` or
+`spy-strength-incomplete` and retried; until then alerts go out with no score
+(`vs SPY —`). At alert time the collector waits at most 3 s for SPY's bar of the same
+minute, then uses SPY's newest earlier bar (`spyLagged: true`). `GET /alerts` adds
+`strengthNow` (score now for symbols with an alert today, Israel day), and `GET /health`
+adds `benchmark: { ticker: "SPY", lastBar }`.
+
+## SIP delay
+
+`ALPACA_SIP_DELAY_MINUTES` (integer 0–60, default 0) is how far behind real time the
+website requests SIP data: the board, day chart, backtest and bar cache (Worker and local
+API), and `scripts/backtest.ts` / `scripts/backfill-bars.ts`. 0 needs real-time SIP
+(Algo Trader Plus). Alpaca's free plan excludes the most recent 15 minutes: set `15` for a
+deployment without real-time SIP, or requests for recent data fail. An invalid value
+stops the local API at startup and makes the Worker's API answer 500. `/api/board` and
+`/api/day-chart` report the value as `delayMinutes`.
+
+## Real-time SIP rollout
+
+Production changes for the user to make (approved per the spec; nothing here changes them):
+
+1. Railway collector: set `ALPACA_FEED=sip` and raise `ALPACA_MAX_SYMBOLS` to the
+   watchlist size plus one (SPY), then redeploy. Confirm `/health` shows `feed: "sip"`,
+   state `subscribed`, a fresh `benchmark.lastBar`, and no 406/entitlement error in logs.
+2. Cloudflare Worker: `wrangler.jsonc` sets `ALPACA_SIP_DELAY_MINUTES = "0"`; deploying
+   applies it. Check `/api/board` returns `delayMinutes: 0` and minutes up to now during a
+   session.
+3. Local API (optional): add `ALPACA_SIP_DELAY_MINUTES=0` to `.env` (0 is also the default).
+4. To go back to the free plan: `ALPACA_FEED=iex`, `ALPACA_MAX_SYMBOLS=30` on Railway and
+   `ALPACA_SIP_DELAY_MINUTES = "15"` in `wrangler.jsonc` (and `.env`), then redeploy both.
 
 ## Alert rule settings
 
