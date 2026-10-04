@@ -19,10 +19,7 @@ import {
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
-import type {
-  ChartSeries,
-  DayChart as DayChartData,
-} from "../../../packages/market-data/src/day-chart.js";
+import type { ChartSeries } from "../../../packages/market-data/src/day-chart.js";
 import {
   opposite,
   oppositeDefaults,
@@ -34,6 +31,8 @@ import {
   bandKinds,
   chartScores,
   dollars,
+  type ChartScores,
+  type DayChartWithArea,
   episodeSummary,
   gapPoints,
   headerIndex,
@@ -117,6 +116,9 @@ function stripTag(text: string, corner = false): IPanePrimitive<Time> {
   };
   return { paneViews: () => [view] };
 }
+
+// The day chart response, with the area series vs SPY when the API sends it.
+type DayChartData = DayChartWithArea;
 
 const cache = new Map<string, Promise<DayChartData>>();
 function load(
@@ -287,6 +289,8 @@ export function DayChart({
   );
   // Score vs SPY per minute; null when the response has no inputs for it.
   const vs = useMemo(() => (data ? chartScores(data) : null), [data]);
+  const vsRef = useRef(vs);
+  vsRef.current = vs;
   const showScore = !!main && main.ticker !== scoreBenchmark;
 
   useEffect(() => {
@@ -580,7 +584,7 @@ export function DayChart({
       applyRange(chart, rangeRef.current, m, alertMs),
     );
     const alertIndex = alertBar?.index ?? -1;
-    ramp?.setData(rampData(m, rangeRef.current, alertIndex));
+    ramp?.setData(rampData(m, rangeRef.current, alertIndex, vs));
     chartRef.current = { chart, m, ramp, alertIndex };
 
     const benchByTime = new Map(b?.map((p) => [p.time, p]));
@@ -616,7 +620,7 @@ export function DayChart({
     const c = chartRef.current;
     if (!c) return;
     applyRange(c.chart, range, c.m, alertMs);
-    c.ramp?.setData(rampData(c.m, range, c.alertIndex));
+    c.ramp?.setData(rampData(c.m, range, c.alertIndex, vsRef.current));
   }, [range]);
 
   const shown = readout ?? latest;
@@ -841,11 +845,17 @@ function ReadoutScore({ score }: { score: number | null }) {
 }
 
 // The weight ramp ends where the header score ends.
-function rampData(m: Point[], range: Range, alertIndex: number) {
+function rampData(
+  m: Point[],
+  range: Range,
+  alertIndex: number,
+  vs: ChartScores | null,
+) {
   const end = headerIndex(m.length, alertIndex, range === "alert");
   const w = weightRamp(
-    m.map((p) => ({ start: p.instant / 1000, session: p.session })),
+    m.map((p) => ({ start: p.instant / 1000 - 60 })),
     end,
+    vs?.windows ?? [],
   );
   return m.map((p, i) =>
     w[i] === null ? { time: p.time } : { time: p.time, value: w[i]! },

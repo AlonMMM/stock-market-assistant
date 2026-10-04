@@ -100,6 +100,7 @@ test("formats an alert in Israel time with the evaluator's values", () => {
     ...alert("AAPL", "2026-09-28T14:00:00Z"),
     vsSpy: {
       score: 78,
+      area: 0.8,
       beta: 1.4,
       betaAssumed: false,
       label: "confirmed",

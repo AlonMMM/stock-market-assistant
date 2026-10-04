@@ -2,42 +2,35 @@
 // the score cell on Live and Backtest alert rows, the watchlist column and
 // the expanded "at alert → now" line. No direction labels: a cell shows only
 // the score and its colour. No DOM access, so Node tests import it.
-import type {
-  AlertVsSpy,
-  StrengthNow,
+import {
+  vsSpyStrong,
+  vsSpyTone,
+  vsSpyWeak,
+  type AlertVsSpy,
+  type StrengthNow,
+  type VsSpyTone,
 } from "../../../packages/contracts/src/vs-spy.js";
 import { israelDay } from "./time.js";
 
-export type { StrengthNow };
-// Old stored alerts may still carry a direction `label`; it is ignored.
-export type VsSpy = Pick<
-  AlertVsSpy,
-  "score" | "beta" | "betaAssumed" | "spyLagged"
-> & {
+export type { StrengthNow, VsSpyTone };
+// Old stored alerts may lack `area` and still carry a direction `label`;
+// the label is ignored.
+export type VsSpy = Omit<AlertVsSpy, "area" | "label"> & {
   area?: number | null;
   label?: string;
 };
 
-/** Colour of a score: green ≥ 60, red ≤ 40, grey between, none without. */
-export type VsSpyTone = "strong" | "weak" | "normal" | "none";
+/** Colour thresholds from the shared contract: green ≥ 60, red ≤ 40. */
+export const scoreStrong = vsSpyStrong;
+export const scoreWeak = vsSpyWeak;
 
-export const scoreStrong = 60;
-export const scoreWeak = 40;
-
-export function scoreTone(score: number | null | undefined): VsSpyTone {
-  if (score === null || score === undefined || !Number.isFinite(score))
-    return "none";
-  return score >= scoreStrong
-    ? "strong"
-    : score <= scoreWeak
-      ? "weak"
-      : "normal";
-}
+/** Colour of a score (the shared `vsSpyTone`); also the CSS class. */
+export const scoreTone = vsSpyTone;
 
 /** Words for the accessible label and tooltip; never shown as a tag. */
 export const toneWords: Record<VsSpyTone, string> = {
-  strong: "stronger vs SPY",
-  weak: "weaker vs SPY",
+  stronger: "stronger vs SPY",
+  weaker: "weaker vs SPY",
   normal: "normal vs SPY",
   none: "no score vs SPY",
 };

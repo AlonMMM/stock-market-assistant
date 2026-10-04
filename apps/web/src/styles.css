@@ -901,14 +901,14 @@ button.market-tile[aria-expanded="true"] {
   border-radius: 6px;
   text-align: center;
 }
-.vs-spy-score.strong,
-.score-chip.strong {
+.vs-spy-score.stronger,
+.score-chip.stronger {
   background: #e3f1e6;
   border-color: #b8d9bf;
   color: #14642f;
 }
-.vs-spy-score.weak,
-.score-chip.weak {
+.vs-spy-score.weaker,
+.score-chip.weaker {
   background: #f8e4e2;
   border-color: #e3b4ae;
   color: #9f1a1a;

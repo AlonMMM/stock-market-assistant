@@ -24,11 +24,11 @@ const labels = /confirmed|against|with market|moving with|\bLong\b|\bShort\b/i;
 
 test("cell shows only the score, coloured by 60 / 40 (area-vs-spy)", () => {
   const c = vsSpyCell(vs({}));
-  assert.equal(c.tone, "strong");
+  assert.equal(c.tone, "stronger");
   assert.equal(c.text, "72");
   assert.equal(c.score, 72);
   assert.match(c.title, /^vs SPY 72 \/ 100 at the alert: stronger vs SPY/);
-  assert.equal(vsSpyCell(vs({ score: 38 })).tone, "weak");
+  assert.equal(vsSpyCell(vs({ score: 38 })).tone, "weaker");
   assert.match(vsSpyCell(vs({ score: 38 })).title, /weaker vs SPY/);
   assert.equal(vsSpyCell(vs({ score: 50 })).tone, "normal");
   assert.match(vsSpyCell(vs({ score: 50 })).title, /normal vs SPY/);
@@ -37,12 +37,12 @@ test("cell shows only the score, coloured by 60 / 40 (area-vs-spy)", () => {
 test("tone boundaries: ≥ 60 green, ≤ 40 red, grey between", () => {
   const tones = [0, 40, 41, 59, 60, 100].map(scoreTone);
   assert.deepEqual(tones, [
-    "weak",
-    "weak",
+    "weaker",
+    "weaker",
     "normal",
     "normal",
-    "strong",
-    "strong",
+    "stronger",
+    "stronger",
   ]);
   assert.equal(scoreTone(null), "none");
   assert.equal(scoreTone(undefined), "none");

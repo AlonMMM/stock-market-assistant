@@ -4,6 +4,7 @@ import type {
   ChartBar,
   DayChart,
 } from "../../../packages/market-data/src/day-chart.js";
+import type { AreaVsSpySeries } from "../../../packages/contracts/src/vs-spy.js";
 import type {
   OppositeEpisode,
   OppositeKind,
@@ -106,20 +107,16 @@ export const axisPriceMinWidth = 600;
 export const scoreBenchmark = "SPY";
 
 /**
- * Per-minute area-score series of the requested ticker as the backend sends
- * them in `vsSpy` (docs/features/area-vs-spy.md), aligned with its bars:
- * gap(t) = s(t) − β·m(t) in % points since the session's first bar, and the
- * area score ending at that minute. Precomputed; the web never re-derives
- * the formula.
+ * The day chart response with the area series (`areaVsSpy`, the shared
+ * contract in packages/contracts/src/vs-spy.ts), aligned with the requested
+ * ticker's bars. The web never re-derives the formula.
  */
-export interface AreaSeries {
-  gap?: (number | null)[];
-  scores?: (number | null)[];
-}
+export type DayChartWithArea = DayChart & { areaVsSpy?: AreaVsSpySeries };
 
 export interface ChartScores {
   scores: (number | null)[]; // aligned with the requested ticker's bars
   gap: (number | null)[]; // % points, aligned likewise
+  windows: AreaVsSpySeries["windows"];
   latest: number | null; // at the last bar
   beta: number;
   betaAssumed: boolean;
@@ -129,23 +126,24 @@ const finiteOrNull = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
 
 /**
- * Area score vs SPY per minute of the requested ticker, from the backend's
- * series. Null when the response has no `vsSpy` or the ticker is SPY itself;
- * minutes the series do not cover are null ("—", no gap drawn).
+ * Area score vs SPY and gap per minute of the requested ticker, from the
+ * backend's `areaVsSpy`. Null when the response has none or the ticker is
+ * SPY itself; minutes the series do not cover are null ("—", no gap drawn).
  */
-export function chartScores(data: DayChart): ChartScores | null {
+export function chartScores(data: DayChartWithArea): ChartScores | null {
   const main = data.series[0];
-  const vs = data.vsSpy as (DayChart["vsSpy"] & AreaSeries) | undefined;
-  if (!main || !vs || main.ticker === scoreBenchmark) return null;
+  const area = data.areaVsSpy;
+  if (!main || !area || main.ticker === scoreBenchmark) return null;
   const align = (xs: unknown[] | undefined) =>
     main.bars.map((_, i) => finiteOrNull(xs?.[i]));
-  const scores = align(vs.scores);
+  const scores = align(area.score);
   return {
     scores,
-    gap: align(vs.gap),
+    gap: align(area.gap),
+    windows: Array.isArray(area.windows) ? area.windows : [],
     latest: scores.at(-1) ?? null,
-    beta: vs.beta,
-    betaAssumed: vs.betaAssumed,
+    beta: area.beta,
+    betaAssumed: area.betaAssumed,
   };
 }
 
@@ -164,23 +162,27 @@ export function headerIndex(
 
 /**
  * Display hint for the gap pane: the linear weight w(t) = (t − t0 + 1) /
- * (T − t0 + 1) by minute, from the first bar of the session that contains
- * bar `end` (consecutive bars with the same session label) through `end`;
- * null outside that window.
+ * (T − t0 + 1) in minutes, T = bar `end`'s minute and t0 = the start of the
+ * backend's session window containing it (the latest window start ≤ T);
+ * null outside that window or without one.
  */
 export function weightRamp(
-  bars: { start: number; session: string }[],
+  bars: { start: number }[],
   end: number,
+  windows: { start: number }[],
 ): (number | null)[] {
   const ramp: (number | null)[] = bars.map(() => null);
   const last = bars[end];
   if (!last) return ramp;
-  let first = end;
-  while (first > 0 && bars[first - 1]!.session === last.session) first--;
-  const t0 = bars[first]!.start;
+  const t0 = Math.max(
+    ...windows.map((w) => w.start).filter((t) => t <= last.start),
+  );
+  if (!Number.isFinite(t0)) return ramp;
   const span = (last.start - t0) / 60 + 1;
-  for (let i = first; i <= end; i++)
-    ramp[i] = ((bars[i]!.start - t0) / 60 + 1) / span;
+  for (let i = 0; i <= end; i++) {
+    const t = bars[i]!.start;
+    if (t >= t0) ramp[i] = ((t - t0) / 60 + 1) / span;
+  }
   return ramp;
 }
 

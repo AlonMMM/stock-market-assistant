@@ -52,6 +52,7 @@ export function alertVsSpy(input: AlertVsSpyInput): AlertVsSpy {
   );
   return {
     score,
+    area: null,
     beta,
     betaAssumed: input.strength?.betaAssumed ?? true,
     label: vsSpyLabel(input.direction, score),

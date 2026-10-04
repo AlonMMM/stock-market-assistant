@@ -164,6 +164,7 @@ export class LiveStrength {
   }): Promise<AlertVsSpy> {
     const failed = (): AlertVsSpy => ({
       score: null,
+      area: null,
       beta: 1,
       betaAssumed: true,
       label: "none",
