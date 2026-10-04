@@ -245,86 +245,68 @@ export function parseSymbols(text: string): {
   };
 }
 
-export interface SymbolPreset {
-  key: string;
-  label: string;
-  tickers: string[];
-  disabled: string | null; // reason when it cannot be used
-}
+// ------------------------------------------------- stocks and ETFs
 
 /**
- * The backtest symbol list (when given), the whole watchlist, symbols alerted
- * in the current live feed, and one preset per sector benchmark ETF used in
- * the watchlist; each capped at maxTickers.
+ * US ETFs recognised when a symbol is added without a kind, so "SPY, QQQ" is
+ * offered as ETFs; anything else defaults to a stock (the user can switch).
  */
-export function symbolPresets(
+export const knownEtfs = new Set(
+  (
+    "SPY QQQ DIA IWM VOO VTI IVV RSP MDY EFA EEM FXI KWEB VNQ GLD SLV USO UNG " +
+    "TLT IEF SHY AGG HYG LQD UUP VIXY UVXY SOXX SMH IGV XLK XLF XLE XLV XLI " +
+    "XLP XLY XLC XLU XLB XLRE XBI IBB ITA CIBR QTUM UFO URA URNM ARKK IBIT " +
+    "FBTC ETHA BITO TQQQ SQQQ SOXL SOXS SPXL SPXS TNA TZA"
+  ).split(" "),
+);
+
+/**
+ * Selectable symbols split into stocks and ETFs, each sorted: the backtest
+ * list (as marked) plus watchlist symbols not on it (ETF when a known ETF or
+ * a sector benchmark).
+ */
+export function symbolGroups(
+  list: { tickers: string[]; etfs: string[] } | null,
   watchlist: { tickers: string[]; benchmarks: Record<string, string> },
-  liveAlerts: { ticker: string }[] | null,
-  backtestList?: string[] | null,
-): SymbolPreset[] {
-  const alerted = [...new Set((liveAlerts ?? []).map((a) => a.ticker))];
-  const presets: SymbolPreset[] = [];
-  if (backtestList !== undefined)
-    presets.push({
-      key: "list",
-      label: "Backtest list",
-      tickers: (backtestList ?? []).slice(0, maxTickers),
-      disabled:
-        backtestList === null
-          ? "Loading the list"
-          : backtestList.length
-            ? null
-            : "The list is empty",
-    });
-  presets.push(
-    {
-      key: "all",
-      label: "Whole watchlist",
-      tickers: watchlist.tickers.slice(0, maxTickers),
-      disabled: watchlist.tickers.length ? null : "The watchlist is empty",
-    },
-    {
-      key: "alerted",
-      label: "Alerted recently",
-      tickers: alerted.slice(0, maxTickers),
-      disabled:
-        liveAlerts === null
-          ? "Loading live alerts"
-          : alerted.length
-            ? null
-            : "No recent live alerts",
-    },
-  );
+): { stocks: string[]; etfs: string[] } {
+  const benchmarks = new Set(Object.values(watchlist.benchmarks));
+  const listed = new Set(list?.tickers ?? []);
+  const etf = (t: string) =>
+    listed.has(t)
+      ? list!.etfs.includes(t)
+      : knownEtfs.has(t) || benchmarks.has(t);
+  const all = [...new Set([...(list?.tickers ?? []), ...watchlist.tickers])];
+  all.sort();
+  return {
+    stocks: all.filter((t) => !etf(t)),
+    etfs: all.filter(etf),
+  };
+}
+
+/** Symbols matching any typed word by prefix ("am ts" → AMD, AMZN, TSM…). */
+export function filterSymbols(symbols: string[], query: string): string[] {
+  const words = query
+    .toUpperCase()
+    .split(/[\s,;]+/)
+    .filter(Boolean);
+  return words.length
+    ? symbols.filter((t) => words.some((w) => t.startsWith(w)))
+    : symbols;
+}
+
+/** Sector benchmark ETF → watchlist symbols compared with it, by ETF. */
+export function sectorGroups(watchlist: {
+  tickers: string[];
+  benchmarks: Record<string, string>;
+}): { etf: string; tickers: string[] }[] {
   const sectors = new Map<string, string[]>();
   for (const t of watchlist.tickers) {
     const etf = watchlist.benchmarks[t];
     if (etf && etf !== t) sectors.set(etf, [...(sectors.get(etf) ?? []), t]);
   }
-  for (const [etf, tickers] of [...sectors].sort((a, b) =>
-    a[0] < b[0] ? -1 : 1,
-  ))
-    presets.push({
-      key: `sector:${etf}`,
-      label: etf,
-      tickers: tickers.slice(0, maxTickers),
-      disabled: null,
-    });
-  return presets;
-}
-
-const sameSet = (a: string[], b: string[]) =>
-  a.length === b.length && a.every((t) => b.includes(t));
-
-/** The preset whose symbols equal the selection, if any. */
-export function selectedPreset(
-  presets: SymbolPreset[],
-  selected: string[],
-): string | null {
-  return (
-    presets.find(
-      (p) => !p.disabled && p.tickers.length && sameSet(p.tickers, selected),
-    )?.key ?? null
-  );
+  return [...sectors]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([etf, tickers]) => ({ etf, tickers }));
 }
 
 /** "NVDA, AMD, TSLA +22 more". */

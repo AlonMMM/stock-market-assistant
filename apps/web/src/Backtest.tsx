@@ -14,18 +14,14 @@ import {
   maxSessions,
   maxTickers,
   mergeResults,
-  parseSymbols,
-  previewTickers,
   rangeLabel,
   requestKey,
   ruleChanges,
   ruleGroups,
   ruleLabel,
   ruleSummary,
-  selectedPreset,
   sessionCount,
   setupSummary,
-  symbolPresets,
   symbolsPerBatch,
   type FailedBatch,
   type RuleSettings,
@@ -36,13 +32,12 @@ import { LookNowCard } from "./LookNow.js";
 import { usePolling } from "./Live.js";
 import { pillFor } from "./live-model.js";
 import { StatusPill } from "./StatusPill.js";
+import { SymbolSelector } from "./SymbolSelector.js";
 import {
   saveTickers,
   savedTickers,
-  SymbolPicker,
   useBacktestList,
   useWatchlist,
-  watchlistSource,
 } from "./Watchlist.js";
 
 const liveRefreshMs = 30000;
@@ -145,21 +140,24 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   // Symbols on offer: the shared backtest list plus the live watchlist.
   const backtestList = useBacktestList();
   const universe = watchlist.list
-    ? [...new Set([...(backtestList.tickers ?? []), ...watchlist.list.tickers])]
+    ? [
+        ...new Set([
+          ...(backtestList.list?.tickers ?? []),
+          ...watchlist.list.tickers,
+        ]),
+      ]
     : [];
   const [tickers, setTickersState] = useState<string[]>([]);
   const [loadedList, setLoadedList] = useState(false);
-  if (watchlist.list && backtestList.tickers !== null && !loadedList) {
+  if (watchlist.list && backtestList.list !== null && !loadedList) {
     setLoadedList(true);
-    setTickersState(savedTickers(universe));
+    // Nothing saved on this device: start with the live watchlist.
+    setTickersState(savedTickers(universe, watchlist.list.tickers));
   }
   const setTickers = (t: string[]) => {
     saveTickers(t);
     setTickersState(t);
   };
-  const [extra, setExtra] = useState("");
-  const [extraError, setExtraError] = useState("");
-  const [editList, setEditList] = useState(false);
 
   const [initialRange] = useState(
     () => lastSessions(5, Date.now()) ?? { from: "", to: "" },
@@ -210,14 +208,9 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   const batchSize = symbolsPerBatch(sessions ?? 1);
   const hasRun = ranWith !== null && (result !== null || failed.length > 0);
   const stale = hasRun && requestKey(ranWith) !== requestKey(request);
-  const presets = watchlist.list
-    ? symbolPresets(
-        watchlist.list,
-        live.value ? live.value.alerts : null,
-        backtestList.tickers,
-      )
-    : [];
-  const activePreset = selectedPreset(presets, tickers);
+  const alerted = live.value
+    ? [...new Set(live.value.alerts.map((a) => a.ticker))]
+    : null;
   const activeDates = datePreset(from, to, now);
 
   async function execute(
@@ -329,36 +322,6 @@ export function Backtest({ modes }: { modes: ReactNode }) {
     URL.revokeObjectURL(url);
   }
 
-  // Adds the typed symbols (one or many: "AMD, ARM TSM") to the shared
-  // backtest list and selects them; remove() takes them off both.
-  async function changeList(mode: "add" | "remove") {
-    const { valid, invalid } = parseSymbols(extra);
-    if (!valid.length && !invalid.length) return;
-    if (invalid.length) {
-      setExtraError(`Not US symbols: ${invalid.join(", ")}.`);
-      return;
-    }
-    try {
-      if (mode === "add") {
-        await backtestList.change(valid, []);
-        const next = [...new Set([...tickers, ...valid])];
-        setTickers(next.slice(0, maxTickers));
-        setExtraError(
-          next.length > maxTickers
-            ? `Added to the list; at most ${maxTickers} can be selected.`
-            : "",
-        );
-      } else {
-        await backtestList.change([], valid);
-        setTickers(tickers.filter((t) => !valid.includes(t)));
-        setExtraError("");
-      }
-      setExtra("");
-    } catch (error) {
-      setExtraError((error as Error).message);
-    }
-  }
-
   const disabled = busy !== "";
   const resultChanges = ranWith ? ruleChanges(ranWith.config).length : 0;
   const symbolsWithAlerts = result
@@ -424,9 +387,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
               title="Symbols"
               aside={
                 <span className="muted">
-                  {tickers.length}
-                  {watchlist.list && ` of ${universe.length}`} · max{" "}
-                  {maxTickers}
+                  {tickers.length} selected · max {maxTickers}
                 </span>
               }
             >
@@ -440,104 +401,15 @@ export function Backtest({ modes }: { modes: ReactNode }) {
                 <p className="muted">Loading watchlist…</p>
               )}
               {watchlist.list && (
-                <>
-                  <div
-                    className="preset-chips"
-                    role="group"
-                    aria-label="Symbol presets"
-                  >
-                    {presets.map((p) => (
-                      <button
-                        type="button"
-                        key={p.key}
-                        className="chip"
-                        aria-pressed={activePreset === p.key}
-                        disabled={!!p.disabled}
-                        title={
-                          p.disabled ??
-                          (p.key.startsWith("sector:")
-                            ? `Watchlist symbols benchmarked against ${p.label}`
-                            : `${p.tickers.length} symbols`)
-                        }
-                        onClick={() => setTickers(p.tickers)}
-                      >
-                        {p.label}
-                        {p.disabled && (
-                          <span className="chip-reason"> · {p.disabled}</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="preview">{previewTickers(tickers)}</p>
-                  <div className="add-row">
-                    <label>
-                      Symbols for the backtest list
-                      <input
-                        value={extra}
-                        placeholder="e.g. SHOP, ARM TSM"
-                        autoCapitalize="characters"
-                        aria-invalid={!!extraError}
-                        aria-describedby="add-error"
-                        onChange={(e) => {
-                          setExtra(e.target.value);
-                          setExtraError("");
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            void changeList("add");
-                          }
-                        }}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="action"
-                      title="Add to the backtest list and select"
-                      onClick={() => void changeList("add")}
-                    >
-                      Add
-                    </button>
-                    <button
-                      type="button"
-                      className="action"
-                      title="Remove from the backtest list"
-                      onClick={() => void changeList("remove")}
-                    >
-                      Remove
-                    </button>
-                    <button
-                      type="button"
-                      className="action"
-                      aria-expanded={editList}
-                      aria-controls="symbol-picker"
-                      onClick={() => setEditList(!editList)}
-                    >
-                      Edit list
-                    </button>
-                  </div>
-                  {extraError && (
-                    <p id="add-error" className="field-error" role="alert">
-                      {extraError}
-                    </p>
-                  )}
-                  {editList && (
-                    <div id="symbol-picker">
-                      <SymbolPicker
-                        list={{ ...watchlist.list, tickers: universe }}
-                        selected={tickers}
-                        disabled={disabled}
-                        onChange={setTickers}
-                      />
-                    </div>
-                  )}
-                  <p className="muted small">
-                    Backtest list · {backtestList.tickers?.length ?? "…"}{" "}
-                    symbols, shared · live watchlist:{" "}
-                    {watchlistSource(watchlist.list)} · selection saved on this
-                    device
-                  </p>
-                </>
+                <SymbolSelector
+                  list={backtestList.list}
+                  watchlist={watchlist.list}
+                  alerted={alerted}
+                  selected={tickers}
+                  onChange={setTickers}
+                  onChangeList={backtestList.change}
+                  disabled={disabled}
+                />
               )}
             </Card>
 

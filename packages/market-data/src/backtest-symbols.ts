@@ -1,32 +1,54 @@
 // The Backtest page's symbol list: every symbol the user wants available for
-// backtests, kept in D1 (a local SQLite file when run locally). Separate from
-// the collector's watchlist, which is also the live-alert list.
+// backtests, each marked as a stock or an ETF, kept in D1 (a local SQLite file
+// when run locally). Separate from the collector's watchlist, which is also
+// the live-alert list.
 import type { D1Like } from "./bar-cache.js";
 import { tickerPattern } from "./backtest.js";
 
 export const maxListSymbols = 500;
+export type SymbolKind = "stock" | "etf";
+export interface SymbolList {
+  tickers: string[]; // every symbol, sorted
+  etfs: string[]; // the ETFs among them; the rest are stocks
+}
 
 export class D1SymbolList {
   private ready?: Promise<unknown>;
   constructor(private readonly db: D1Like) {}
 
   private init() {
-    return (this.ready ??= this.db
-      .prepare(
-        "CREATE TABLE IF NOT EXISTS backtest_symbols (ticker TEXT PRIMARY KEY, added_at INTEGER NOT NULL)",
-      )
-      .run());
+    return (this.ready ??= (async () => {
+      await this.db
+        .prepare(
+          "CREATE TABLE IF NOT EXISTS backtest_symbols (ticker TEXT PRIMARY KEY, added_at INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'stock')",
+        )
+        .run();
+      // Lists created before kinds existed get the column (stocks by default).
+      const { results } = await this.db
+        .prepare("PRAGMA table_info(backtest_symbols)")
+        .all<{ name: string }>();
+      if (!results.some((c) => c.name === "kind"))
+        await this.db
+          .prepare(
+            "ALTER TABLE backtest_symbols ADD COLUMN kind TEXT NOT NULL DEFAULT 'stock'",
+          )
+          .run();
+    })());
   }
 
-  async list(): Promise<string[]> {
+  async list(): Promise<SymbolList> {
     await this.init();
     const { results } = await this.db
-      .prepare("SELECT ticker FROM backtest_symbols ORDER BY ticker")
-      .all<{ ticker: string }>();
-    return results.map((r) => r.ticker);
+      .prepare("SELECT ticker, kind FROM backtest_symbols ORDER BY ticker")
+      .all<{ ticker: string; kind: string }>();
+    return {
+      tickers: results.map((r) => r.ticker),
+      etfs: results.filter((r) => r.kind === "etf").map((r) => r.ticker),
+    };
   }
 
-  async change(add: string[], remove: string[]) {
+  /** Adds (or re-marks) `add` as `kind` and removes `remove`. */
+  async change(add: string[], remove: string[], kind: SymbolKind) {
     if (!add.length && !remove.length) return;
     await this.init();
     const now = Date.now();
@@ -34,9 +56,10 @@ export class D1SymbolList {
       ...add.map((t) =>
         this.db
           .prepare(
-            "INSERT OR IGNORE INTO backtest_symbols (ticker, added_at) VALUES (?, ?)",
+            "INSERT INTO backtest_symbols (ticker, added_at, kind) VALUES (?, ?, ?) " +
+              "ON CONFLICT (ticker) DO UPDATE SET kind = excluded.kind",
           )
-          .bind(t, now),
+          .bind(t, now, kind),
       ),
       ...remove.map((t) =>
         this.db
@@ -47,22 +70,26 @@ export class D1SymbolList {
   }
 }
 
-/** GET returns the list; POST `{ add?, remove? }` changes it and returns it. */
+/**
+ * GET returns the list; POST `{ add?, remove?, kind? }` adds `add` as `kind`
+ * (default "stock"; an existing symbol is re-marked), removes `remove`, and
+ * returns the updated list.
+ */
 export async function handleBacktestSymbols(
   method: string,
   body: unknown,
   store?: D1SymbolList,
-): Promise<{
-  status: number;
-  body: { tickers: string[] } | { error: string };
-}> {
+): Promise<{ status: number; body: SymbolList | { error: string } }> {
   if (!store)
     return { status: 503, body: { error: "No database is configured" } };
-  if (method === "GET")
-    return { status: 200, body: { tickers: await store.list() } };
+  if (method === "GET") return { status: 200, body: await store.list() };
   if (method !== "POST")
     return { status: 405, body: { error: "Use GET or POST" } };
-  const input = (body ?? {}) as { add?: unknown; remove?: unknown };
+  const input = (body ?? {}) as {
+    add?: unknown;
+    remove?: unknown;
+    kind?: unknown;
+  };
   const parse = (value: unknown) => {
     if (value === undefined) return [];
     if (!Array.isArray(value) || !value.every((t) => typeof t === "string"))
@@ -71,10 +98,13 @@ export async function handleBacktestSymbols(
   };
   const add = parse(input.add);
   const remove = parse(input.remove);
-  if (!add || !remove)
+  const kind = input.kind ?? "stock";
+  if (!add || !remove || (kind !== "stock" && kind !== "etf"))
     return {
       status: 400,
-      body: { error: "Expected { add?: [], remove?: [] }" },
+      body: {
+        error: 'Expected { add?: [], remove?: [], kind?: "stock" | "etf" }',
+      },
     };
   const invalid = [...add, ...remove].filter((t) => !tickerPattern.test(t));
   if (invalid.length)
@@ -82,7 +112,7 @@ export async function handleBacktestSymbols(
       status: 400,
       body: { error: `Not US symbols: ${invalid.join(", ")}` },
     };
-  const current = await store.list();
+  const current = (await store.list()).tickers;
   const size = new Set([...current, ...add].filter((t) => !remove.includes(t)))
     .size;
   if (size > maxListSymbols)
@@ -90,6 +120,6 @@ export async function handleBacktestSymbols(
       status: 400,
       body: { error: `The list holds at most ${maxListSymbols} symbols` },
     };
-  await store.change(add, remove);
-  return { status: 200, body: { tickers: await store.list() } };
+  await store.change(add, remove, kind);
+  return { status: 200, body: await store.list() };
 }
