@@ -30,6 +30,7 @@ import {
 import { coreClose, previousSessions } from "./calendar.js";
 import { LiveEvaluator } from "./evaluator.js";
 import { backtestLimits, maxSymbolsPerRequest } from "./backtest-limits.js";
+import type { ResultCache } from "./result-cache.js";
 
 export { backtestLimits, maxSymbolsPerRequest };
 export const tickerPattern = /^[A-Z][A-Z0-9. -]{0,9}$/;
@@ -77,6 +78,8 @@ export interface BacktestResult {
   validation: ValidationSummary;
   lookNow: LookNowSummary;
   cache?: CacheStats; // symbol-days served from the bar cache vs fetched
+  // Symbols whose computed part came from the result cache vs were computed.
+  results?: { hits: number; misses: number };
 }
 
 export class BacktestInputError extends Error {}
@@ -226,8 +229,6 @@ function context(
   return { change, spyChange, beta, excess: change - beta * spyChange };
 }
 
-// Replays Alpaca minute bars through the live evaluator, as if each bar had
-// been received the moment it closed. Warmup bars build the baseline only.
 export type BacktestRequest = ReturnType<typeof parseBacktest>;
 
 /** Bars after `end` are not final yet; context needs β from `betaStart`. */
@@ -236,10 +237,8 @@ export function backtestWindow(request: BacktestRequest, now: number) {
   next.setUTCDate(next.getUTCDate() + 1);
   // 06:00Z is after the latest post-market close (01:00Z in winter) and
   // before the next pre-market; later bars are filtered by date anyway.
-  const end = Math.min(
-    Date.parse(`${next.toISOString().slice(0, 10)}T06:00:00Z`),
-    now - sipDelay,
-  );
+  const final = Date.parse(`${next.toISOString().slice(0, 10)}T06:00:00Z`);
+  const end = Math.min(final, now - sipDelay);
   let betaStart: string | null = null;
   try {
     betaStart = previousSessions(request.from, betaReturns + 1)[0]!;
@@ -248,6 +247,8 @@ export function backtestWindow(request: BacktestRequest, now: number) {
   }
   return {
     end,
+    // Every bar of the range is final, so its results may be cached.
+    complete: end === final,
     // Minute bars from the first warmup session: the look-now score's normal
     // moves are market-adjusted on past days too.
     start: `${request.warmup[0]}T00:00:00Z`,
@@ -488,25 +489,41 @@ export class BacktestRun {
 
 // Replays Alpaca minute bars through the live evaluator, as if each bar had
 // been received the moment it closed. Warmup bars build the baseline only.
+// With `results`, symbols already computed for the same rule, code, dates and
+// settings are loaded instead of replayed (only when the range is final).
 export async function runBacktest(
   input: unknown,
   history: History,
   now = Date.now(),
   daily: History = async () => [],
+  results?: ResultCache,
 ): Promise<BacktestResult> {
   const request = parseBacktest(input, now);
   const window = backtestWindow(request, now);
   const { tickers, to } = request;
   const { start, until, betaStart } = window;
+  const cache = results && window.complete ? results : undefined;
+  const keys = cache
+    ? await Promise.all(tickers.map((t) => cache.partKey(request, window, t)))
+    : [];
+  let cached = new Map<string, SymbolPart>();
+  try {
+    if (cache) cached = await cache.getParts(keys);
+  } catch {
+    // An unreadable cache only costs time: compute everything.
+  }
+  const missing = tickers.filter((_, i) => !cached.has(keys[i]!));
   const others = tickers.filter((t) => t !== benchmark);
-  const market = others.length > 0 && betaStart !== null;
+  const market = missing.length > 0 && others.length > 0 && betaStart !== null;
   const [rows, spyRows, dailyRows] = await Promise.all([
-    Promise.all(tickers.map((ticker) => history(ticker, start, until))),
+    Promise.all(missing.map((ticker) => history(ticker, start, until))),
     market ? history(benchmark, start, until) : [],
     market
       ? Promise.all(
           [...others, benchmark].map((t) =>
-            daily(t, `${betaStart}T00:00:00Z`, `${to}T00:00:00Z`),
+            missing.includes(t) || t === benchmark
+              ? daily(t, `${betaStart}T00:00:00Z`, `${to}T00:00:00Z`)
+              : [],
           ),
         )
       : [],
@@ -520,10 +537,27 @@ export async function runBacktest(
     spyRows,
     dailyBy.get(benchmark)!,
   );
-  tickers.forEach((ticker, i) =>
-    run.add(ticker, rows[i]!, dailyBy.get(ticker)!),
-  );
-  return run.finish();
+  const computed: { key: string; part: SymbolPart }[] = [];
+  tickers.forEach((ticker, i) => {
+    const hit = cached.get(keys[i]!);
+    if (hit) return run.merge(hit);
+    const part = run.compute(
+      ticker,
+      rows[missing.indexOf(ticker)]!,
+      dailyBy.get(ticker)!,
+    );
+    if (cache) computed.push({ key: keys[i]!, part });
+    run.merge(part);
+  });
+  try {
+    if (cache) await cache.putParts(computed);
+  } catch {
+    // Not cached this time; the result is still correct.
+  }
+  const result = run.finish();
+  return cache
+    ? { ...result, results: { hits: cached.size, misses: missing.length } }
+    : result;
 }
 
 export interface Credentials {
@@ -559,6 +593,7 @@ export async function handleBacktest(
   fetcher: typeof fetch = fetch,
   now = Date.now(),
   cache?: BarCache,
+  results?: ResultCache,
 ): Promise<{ status: number; body: BacktestResult | { error: string } }> {
   if (!credentials.key || !credentials.secret)
     return {
@@ -579,6 +614,7 @@ export async function handleBacktest(
       minuteHistory(feed, cache, now, stats),
       now,
       (ticker, start, end) => feed.history(ticker, start, end, "1Day", "split"),
+      results,
     );
     return { status: 200, body: cache ? { ...result, cache: stats } : result };
   } catch (error) {

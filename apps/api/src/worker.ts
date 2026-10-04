@@ -16,6 +16,7 @@ import {
   handleBoard,
 } from "../../../packages/market-data/src/board.js";
 import { D1BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
+import { ResultCache } from "../../../packages/market-data/src/result-cache.js";
 import {
   loadAnalysisChart,
   loadLive,
@@ -27,6 +28,8 @@ declare const __STATIC_ASSETS__: Record<
   string,
   { content: string; type: string }
 >;
+// Backtest evaluation code version, set at build time (code-version.ts).
+declare const __EVALUATION_CODE__: string;
 
 // One cache per Worker instance, so the table check runs once, not per request.
 let cache:
@@ -35,6 +38,7 @@ let cache:
       cache: D1BarCache;
       baselines: D1BaselineStore;
       strengths: D1StrengthStore;
+      results: ResultCache;
     }
   | undefined;
 function stores(db: D1Like) {
@@ -44,6 +48,13 @@ function stores(db: D1Like) {
       cache: new D1BarCache(db),
       baselines: new D1BaselineStore(db),
       strengths: new D1StrengthStore(db),
+      // Unbuilt (tests import this module directly): a key no build shares.
+      results: new ResultCache(
+        db,
+        typeof __EVALUATION_CODE__ === "string"
+          ? __EVALUATION_CODE__
+          : "unbuilt",
+      ),
     };
   return cache;
 }
@@ -104,6 +115,8 @@ export default {
         fetch,
         Date.now(),
         env.BARS_CACHE ? barCache(env.BARS_CACHE) : undefined,
+        // Day charts ignore it.
+        env.BARS_CACHE ? stores(env.BARS_CACHE).results : undefined,
       );
       return Response.json(result.body, { status: result.status });
     }

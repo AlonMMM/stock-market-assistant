@@ -71,6 +71,17 @@ Fix intermittent HTTP 503 from backtests and prepare for the Workers Paid plan.
   42,907 alerts in 12.5 min; look-now big 17.6% vs 3.8% baseline, very big 5.3% vs
   0.7%; trade view good 34.9% vs 30.7%, stopped 61.5% vs 59.3%.
 
+- Cloud result cache (`packages/market-data/src/result-cache.ts`), shared by the site,
+  the local API and `npm run backtest`: `backtest_parts` (each symbol's computed part)
+  and `backtest_runs` (complete offline runs) in the D1 database next to the bar cache;
+  the local SQLite file stands in locally and keeps a copy for the script. Keys:
+  SHA-256 over `ruleVersion`, the evaluation code version (hash of the sources in
+  `code-version.ts`, baked into the Worker at build), dates and data window, rule and
+  scoring settings, and the symbol (or sorted symbol list). Values: gzipped JSON in
+  base64, split into rows below D1's 100 KB statement limit. Ranges whose last day is
+  not final are never cached. `/api/backtest` reports `results: { hits, misses }`.
+  Replaces the earlier local-only `backtest_parts`/`backtest_runs` tables (dropped).
+
 ## Verification and handoff
 
 - `npm run check` and `git diff --check` pass (191 pass, 1 skipped).

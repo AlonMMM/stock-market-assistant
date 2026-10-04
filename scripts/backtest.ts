@@ -17,32 +17,31 @@
 //   --wrangler <path>       wrangler binary (default: wrangler on PATH)
 //   --no-cache 1            recompute every symbol
 //
-// Each symbol's computed part is cached in the backtest_parts table of
-// data/local/bars-cache.sqlite. Its key hashes everything the part depends on:
-// the rule version (ruleVersion, e.g. rvol-v4), the evaluation sources (so a
-// fix within a version never reuses stale parts), the dates, rule and scoring
-// settings, and the symbol. A rerun recomputes only uncached symbols, then
-// ranks look-now scores across all. rule and ticker are kept as plain columns
-// for listing and cleanup, e.g. DELETE FROM backtest_parts WHERE rule = 'rvol-v3'.
-//
-// Each complete run is stored in backtest_runs: the same hash over the sorted
-// symbol list instead of one symbol, readable columns (rule, dates, symbols,
-// settings, summary) and the full gzipped result. An identical rerun is served
-// from it; a run with failed symbols is not stored.
+// Results are cached in the cloud (D1, shared with the site) through
+// ResultCache (packages/market-data/src/result-cache.ts): each symbol's computed
+// part in backtest_parts and each complete run in backtest_runs, keyed by a
+// SHA-256 over the rule version, the evaluation code version, the dates,
+// settings and symbols. data/local/bars-cache.sqlite keeps a local copy, so
+// reruns do not download them again. A rerun computes only uncached symbols,
+// then ranks look-now scores across all. Ranges whose last day is not final and
+// runs with failed symbols are not cached.
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
-import { gunzipSync, gzipSync } from "node:zlib";
-import { ruleVersion } from "../packages/alerts/src/relative-volume.js";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ruleVersion } from "../packages/alerts/src/relative-volume.js";
 import { AlpacaFeed } from "../packages/market-data/src/alpaca.js";
 import {
   backtestWindow,
   BacktestInputError,
   BacktestRun,
-  decodePart,
-  encodePart,
   minuteHistory,
   parseBacktest,
   type BacktestRequest,
@@ -61,6 +60,11 @@ import {
   newYork,
   previousSessions,
 } from "../packages/market-data/src/calendar.js";
+import { codeVersion } from "../packages/market-data/src/code-version.js";
+import {
+  ResultCache,
+  runKey,
+} from "../packages/market-data/src/result-cache.js";
 import { SqliteD1 } from "../apps/api/src/sqlite-d1.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -100,38 +104,65 @@ try {
   process.exit(2);
 }
 
-// Read-only D1 through wrangler: bound values are inlined as SQL literals.
+// D1 through wrangler: bound values are inlined as SQL literals. Reads and
+// single statements run at once; batches are buffered and applied as SQL files
+// (flushRemote), since each wrangler call takes seconds.
 const quote = (v: unknown) =>
   typeof v === "number" ? String(v) : `'${String(v).replaceAll("'", "''")}'`;
+const d1 = (...args: string[]) =>
+  execFileSync(
+    wrangler,
+    ["d1", "execute", "sma-bars-cache", "--remote", "--json", ...args],
+    { cwd: root, encoding: "utf8", maxBuffer: 512 * 1024 * 1024 },
+  );
+let pending: string[] = [];
+let pendingChars = 0;
+function flushRemote() {
+  if (!pending.length) return;
+  const dir = mkdtempSync(join(tmpdir(), "sma-results-"));
+  try {
+    writeFileSync(join(dir, "results.sql"), pending.join("\n"));
+    for (let attempt = 1; ; attempt++)
+      try {
+        d1("--yes", "--file", join(dir, "results.sql"));
+        break;
+      } catch (error) {
+        // Rows are content-addressed, so a retry rewrites the same values.
+        if (attempt === 3) throw error;
+        console.error(`D1 result upload attempt ${attempt} failed; retrying`);
+      }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  pending = [];
+  pendingChars = 0;
+}
 const remoteD1: D1Like = {
   prepare(sql: string) {
-    const statement = (params: unknown[]): D1Statement => ({
+    const inline = (params: unknown[]) => {
+      let i = 0;
+      return sql.replace(/\?/g, () => quote(params[i++]));
+    };
+    const statement = (params: unknown[]): D1Statement & { sql: string } => ({
+      sql: inline(params),
       bind: (...values) => statement(values),
       all: async <T>() => {
-        let i = 0;
-        const command = sql.replace(/\?/g, () => quote(params[i++]));
-        const text = execFileSync(
-          wrangler,
-          [
-            "d1",
-            "execute",
-            "sma-bars-cache",
-            "--remote",
-            "--json",
-            "--command",
-            command,
-          ],
-          { cwd: root, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
-        );
+        const text = d1("--command", inline(params));
         return {
           results: JSON.parse(text.slice(text.indexOf("[")))[0].results as T[],
         };
       },
-      run: async () => ({}), // only the cache's CREATE TABLE; nothing is written to D1
+      run: async () => d1("--command", inline(params)),
     });
     return statement([]);
   },
-  async batch() {},
+  async batch(statements) {
+    for (const s of statements as (D1Statement & { sql: string })[]) {
+      pending.push(`${s.sql};`);
+      pendingChars += s.sql.length;
+    }
+    if (pendingChars > 50_000_000) flushRemote();
+  },
 };
 mkdirSync(`${root}data/local`, { recursive: true });
 const local = new D1BarCache(
@@ -182,126 +213,91 @@ console.log(
   `Backtesting ${request.tickers.length} symbols, ${request.sessions.length} sessions ` +
     `(${from} → ${to}), ${request.config.days} warmup sessions`,
 );
-// Per-symbol cache of computed parts (see the header).
-const sha = (text: string) => createHash("sha256").update(text).digest("hex");
-const code = sha(
-  [
-    "packages/alerts/src/relative-volume.ts",
-    "packages/market-data/src/backtest.ts",
-    "packages/market-data/src/bars.ts",
-    "packages/market-data/src/beta.ts",
-    "packages/market-data/src/calendar.ts",
-    "packages/market-data/src/evaluator.ts",
-    "packages/market-data/src/look-now.ts",
-    "packages/market-data/src/outcome.ts",
-  ]
-    .map((f) => readFileSync(`${root}${f}`, "utf8"))
-    .join("\0"),
+// Result caches: the local copy first, then D1 (see the header).
+const code = codeVersion(root);
+const localResults = new ResultCache(
+  new SqliteD1(`${root}data/local/bars-cache.sqlite`),
+  code,
 );
-const partKey = (ticker: string) =>
-  sha(
-    JSON.stringify({
-      rule: ruleVersion,
-      code,
-      from,
-      to,
-      window,
-      config: request.config,
-      validation: request.validation,
-      ticker,
-    }),
-  );
-const runKey = sha(
-  JSON.stringify({
-    rule: ruleVersion,
-    code,
-    from,
-    to,
-    window,
-    config: request.config,
-    validation: request.validation,
-    tickers: [...request.tickers].sort(),
-  }),
-);
-const db = new DatabaseSync(`${root}data/local/bars-cache.sqlite`);
-db.exec(`PRAGMA busy_timeout=5000;
-  CREATE TABLE IF NOT EXISTS backtest_parts (key TEXT PRIMARY KEY, rule TEXT NOT NULL,
-    ticker TEXT NOT NULL, part BLOB NOT NULL, stored_at INTEGER NOT NULL);
-  CREATE TABLE IF NOT EXISTS backtest_runs (key TEXT PRIMARY KEY, rule TEXT NOT NULL,
-    from_date TEXT NOT NULL, to_date TEXT NOT NULL, symbols TEXT NOT NULL,
-    settings TEXT NOT NULL, summary TEXT NOT NULL, result BLOB NOT NULL,
-    created_at INTEGER NOT NULL);`);
-const savePart = (part: SymbolPart) =>
-  db
-    .prepare(
-      "INSERT OR REPLACE INTO backtest_parts (key, rule, ticker, part, stored_at) VALUES (?, ?, ?, ?, ?)",
-    )
-    .run(
-      partKey(part.ticker),
-      ruleVersion,
-      part.ticker,
-      gzipSync(encodePart(part)),
-      Date.now(),
-    );
-const loadPart = (ticker: string) => {
-  const row = db
-    .prepare("SELECT part FROM backtest_parts WHERE key = ?")
-    .get(partKey(ticker)) as { part: Uint8Array } | undefined;
-  // Listed as cached at start; SPY was not loaded for it, so it must exist.
-  if (!row) throw new Error("cached part removed during the run; rerun");
-  return decodePart(gunzipSync(row.part).toString());
-};
-const useCache = args.get("no-cache") === undefined;
-const storedRun = useCache
-  ? (db
-      .prepare("SELECT result FROM backtest_runs WHERE key = ?")
-      .get(runKey) as { result: Uint8Array } | undefined)
-  : undefined;
+const cloudResults = new ResultCache(remoteD1, code);
+const useCache = args.get("no-cache") === undefined && window.complete;
+if (!window.complete) console.warn("The last day is not final: not cached.");
+const thisRun = await runKey(code, request, window);
 const failed: string[] = [];
-let result: BacktestResult;
-if (storedRun) {
-  console.log(`Rule ${ruleVersion}: identical run found in backtest_runs`);
-  result = JSON.parse(gunzipSync(storedRun.result).toString());
-} else {
+let result: BacktestResult | undefined;
+if (useCache) {
+  let text = (await localResults.runs.get([thisRun])).get(thisRun);
+  text ??= (await cloudResults.runs.get([thisRun])).get(thisRun);
+  if (text) {
+    console.log(`Rule ${ruleVersion}: identical run found in backtest_runs`);
+    result = JSON.parse(text) as BacktestResult;
+  }
+}
+if (!result) {
   result = await computeRun();
   // A run with failed symbols is incomplete: never served as cached.
-  if (!failed.length)
-    db.prepare(
-      `INSERT OR REPLACE INTO backtest_runs (key, rule, from_date, to_date, symbols,
-        settings, summary, result, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      runKey,
-      ruleVersion,
-      from,
-      to,
-      JSON.stringify(request.tickers),
-      JSON.stringify({
-        config: request.config,
-        validation: request.validation,
-      }),
-      JSON.stringify({
-        alerts: result.alerts.length,
-        evaluated: result.evaluated,
-        lookNow: result.lookNow,
-        validation: { ...result.validation, baselineBySymbol: undefined },
-        diagnostics: result.diagnostics,
-      }),
-      gzipSync(JSON.stringify(result)),
-      Date.now(),
-    );
+  if (useCache && !failed.length) {
+    const entry = {
+      key: thisRun,
+      meta: {
+        rule: ruleVersion,
+        from_date: from,
+        to_date: to,
+        symbols: JSON.stringify(request.tickers),
+        settings: JSON.stringify({
+          config: request.config,
+          validation: request.validation,
+        }),
+        summary: JSON.stringify({
+          alerts: result.alerts.length,
+          evaluated: result.evaluated,
+          lookNow: result.lookNow,
+          validation: { ...result.validation, baselineBySymbol: undefined },
+          diagnostics: result.diagnostics,
+        }),
+      },
+      text: JSON.stringify(result),
+    };
+    await localResults.runs.put([entry]);
+    await cloudResults.runs.put([entry]);
+  }
 }
+flushRemote();
 writeFileSync(out, JSON.stringify(result));
 
 async function computeRun() {
-  const has = db.prepare("SELECT 1 FROM backtest_parts WHERE key = ?");
-  const cached = new Set(
-    useCache ? request.tickers.filter((t) => has.get(partKey(t))) : [],
-  );
+  const keys = new Map<string, string>();
+  for (const t of request.tickers)
+    keys.set(t, await localResults.partKey(request, window, t));
+  // Cached parts, read in groups to keep memory and wrangler output small.
+  const groups: string[][] = [];
+  for (let i = 0; i < request.tickers.length; i += 10)
+    groups.push(request.tickers.slice(i, i + 10));
+  const hits = new Set<string>();
+  if (useCache)
+    for (const group of groups) {
+      const wanted = group.map((t) => keys.get(t)!);
+      const local = await localResults.parts.get(wanted);
+      for (const k of wanted) if (local.has(k)) hits.add(k);
+      const missing = wanted.filter((k) => !local.has(k));
+      if (!missing.length) continue;
+      // Copy cloud parts into the local file; they are merged below.
+      const cloud = await cloudResults.parts.get(missing);
+      const tickerOf = new Map(group.map((t) => [keys.get(t)!, t]));
+      await localResults.parts.put(
+        [...cloud].map(([key, text]) => ({
+          key,
+          meta: { rule: ruleVersion, ticker: tickerOf.get(key)! },
+          text,
+        })),
+      );
+      for (const k of cloud.keys()) hits.add(k);
+    }
   console.log(
-    `Rule ${ruleVersion}: ${cached.size} of ${request.tickers.length} symbols cached`,
+    `Rule ${ruleVersion}, code ${code}: ${hits.size} of ${request.tickers.length} symbols cached`,
   );
   // SPY's bars are only needed to compute uncached symbols.
-  const needed = cached.size < request.tickers.length;
+  const needed = hits.size < request.tickers.length;
   const spyRows = needed
     ? await history(benchmark, window.start, window.until)
     : [];
@@ -312,22 +308,29 @@ async function computeRun() {
     needed ? await daily(benchmark) : [],
   );
   for (const [i, ticker] of request.tickers.entries()) {
+    const key = keys.get(ticker)!;
     try {
-      if (cached.has(ticker)) {
-        run.merge(loadPart(ticker));
+      if (hits.has(key)) {
+        const part = (await localResults.getParts([key])).get(key);
+        // Listed as cached above; SPY was not loaded for it, so it must exist.
+        if (!part) throw new Error("cached part removed during the run; rerun");
+        run.merge(part);
         continue;
       }
       const rows =
         ticker === benchmark
           ? spyRows
           : await history(ticker, window.start, window.until);
-      const computed = run.compute(
+      const part = run.compute(
         ticker,
         rows,
         ticker === benchmark ? [] : await daily(ticker),
       );
-      savePart(computed);
-      run.merge(computed);
+      if (useCache) {
+        await localResults.putParts([{ key, part }]);
+        await cloudResults.putParts([{ key, part }]);
+      }
+      run.merge(part);
     } catch (error) {
       failed.push(ticker);
       console.error(
