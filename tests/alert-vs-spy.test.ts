@@ -73,6 +73,7 @@ test("scenario 1: confirmed long, 65/100, in the Telegram line", async () => {
   // excess = 2.31 − 1.5 × 0.31 = 1.845; 50 + 10 × 1.845 / 1.2 = 65.4 → 65.
   assert.deepEqual(vsSpy, {
     score: 65,
+    area: null,
     beta: 1.5,
     betaAssumed: false,
     label: "confirmed",
@@ -130,6 +131,7 @@ test("scenario 4: without σ the score is null and the alert still goes out", as
   missing.strength.bar(spyAt(629, 501.55));
   assert.deepEqual(await missing.strength.atAlert(nvdaAlert()), {
     score: null,
+    area: null,
     beta: 1,
     betaAssumed: true,
     label: "none",

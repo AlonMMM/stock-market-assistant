@@ -2,6 +2,7 @@
 // the label cell on Live and Backtest alert rows and the expanded
 // "at alert → now" line. No DOM access, so Node tests import it.
 import {
+  vsSpyLabel,
   vsSpyText,
   type AlertVsSpy,
   type StrengthNow,
@@ -45,7 +46,10 @@ export function vsSpyCell(
   direction: "up" | "down",
   v: VsSpy | null | undefined,
 ): VsSpyCell {
-  if (!v || v.label === "none" || v.score === null)
+  // Compatibility until the labels are removed here (area-vs-spy): alerts
+  // stored after the area score carry no label.
+  const label = v ? (v.label ?? vsSpyLabel(direction, v.score)) : "none";
+  if (!v || label === "none" || v.score === null)
     return {
       tone: "none",
       text: "—",
@@ -53,8 +57,8 @@ export function vsSpyCell(
       title: "No score vs SPY for this alert",
     };
   return {
-    tone: v.label,
-    text: words[direction][v.label],
+    tone: label,
+    text: words[direction][label],
     score: v.score,
     // The shared one-line text, as in the Telegram alert.
     title: `${vsSpyText(direction, v)} at the alert`,

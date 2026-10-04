@@ -346,6 +346,7 @@ test("backtest alerts carry the score vs SPY at the alert minute", async () => {
   // AAPL +3%, SPY +0.2%, β 1.5: excess 2.7 → 50 + 27 / 1.026 = 76.
   assert.deepEqual(alert.vsSpy, {
     score: Math.round(50 + 27 / Math.sqrt(20 / 19)),
+    area: null,
     beta: alert.vsSpy!.beta,
     betaAssumed: false,
     label: "confirmed",
@@ -361,6 +362,7 @@ test("backtest alerts carry the score vs SPY at the alert minute", async () => {
   );
   assert.deepEqual(bare.alerts[0]!.vsSpy, {
     score: null,
+    area: null,
     beta: 1,
     betaAssumed: true,
     label: "none",
