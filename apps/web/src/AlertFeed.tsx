@@ -60,28 +60,25 @@ export function AlertEvidence({ alert: a }: { alert: FeedAlert }) {
   );
 }
 
-/** Row cell: label tag (arrow + words + colour) and the alert-time score. */
-export function VsSpyTag({
-  direction,
-  vsSpy,
-}: {
-  direction: "up" | "down";
-  vsSpy: VsSpy | null | undefined;
-}) {
-  const c = vsSpyCell(direction, vsSpy);
-  if (c.score === null)
-    return (
-      <span className="vs-spy none" title={c.title}>
-        <small className="vs-spy-prefix">vs SPY</small>
-        <span aria-hidden="true">—</span>
-        <span className="sr-only">{c.title}</span>
-      </span>
-    );
+/**
+ * Row cell: the alert-time score coloured green ≥ 60 / red ≤ 40 / grey
+ * between; "stronger / weaker / normal vs SPY" only in the accessible label
+ * and tooltip. "—" without a score. Old alerts' labels are ignored.
+ */
+export function VsSpyTag({ vsSpy }: { vsSpy: VsSpy | null | undefined }) {
+  const c = vsSpyCell(vsSpy);
   return (
-    <span className="vs-spy" title={c.title}>
-      <small className="vs-spy-prefix">vs SPY</small>
-      <span className={`vs-spy-tag ${c.tone}`}>{c.text}</span>
-      <strong className="vs-spy-score">{c.score}</strong>
+    <span
+      className={c.score === null ? "vs-spy none" : "vs-spy"}
+      title={c.title}
+    >
+      <small className="vs-spy-prefix" aria-hidden="true">
+        vs SPY
+      </small>
+      <strong className={`vs-spy-score ${c.tone}`} aria-hidden="true">
+        {c.text}
+      </strong>
+      <span className="sr-only">{c.title}</span>
     </span>
   );
 }

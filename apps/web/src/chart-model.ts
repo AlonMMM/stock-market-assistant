@@ -4,7 +4,6 @@ import type {
   ChartBar,
   DayChart,
 } from "../../../packages/market-data/src/day-chart.js";
-import { scoreSeries } from "../../../packages/market-data/src/rs-score.js";
 import type {
   OppositeEpisode,
   OppositeKind,
@@ -106,34 +105,87 @@ export const axisPriceMinWidth = 600;
 /** The score vs SPY is always against this symbol. */
 export const scoreBenchmark = "SPY";
 
+/**
+ * Per-minute area-score series of the requested ticker as the backend sends
+ * them in `vsSpy` (docs/features/area-vs-spy.md), aligned with its bars:
+ * gap(t) = s(t) − β·m(t) in % points since the session's first bar, and the
+ * area score ending at that minute. Precomputed; the web never re-derives
+ * the formula.
+ */
+export interface AreaSeries {
+  gap?: (number | null)[];
+  scores?: (number | null)[];
+}
+
 export interface ChartScores {
   scores: (number | null)[]; // aligned with the requested ticker's bars
+  gap: (number | null)[]; // % points, aligned likewise
   latest: number | null; // at the last bar
   beta: number;
   betaAssumed: boolean;
 }
 
+const finiteOrNull = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) ? v : null;
+
 /**
- * Score vs SPY per minute of the requested ticker (the shared formula in
- * rs-score.ts), using SPY's series from `series` or, for a sector chart,
- * `vsSpy.spy`. Null when the response has no `vsSpy`, SPY's minutes are
- * missing, or the ticker is SPY itself.
+ * Area score vs SPY per minute of the requested ticker, from the backend's
+ * series. Null when the response has no `vsSpy` or the ticker is SPY itself;
+ * minutes the series do not cover are null ("—", no gap drawn).
  */
 export function chartScores(data: DayChart): ChartScores | null {
   const main = data.series[0];
-  const vs = data.vsSpy;
+  const vs = data.vsSpy as (DayChart["vsSpy"] & AreaSeries) | undefined;
   if (!main || !vs || main.ticker === scoreBenchmark) return null;
-  const spy =
-    data.series.find((s, i) => i > 0 && s.ticker === scoreBenchmark) ?? vs.spy;
-  if (!spy) return null;
-  const scores = scoreSeries(main, spy, vs);
+  const align = (xs: unknown[] | undefined) =>
+    main.bars.map((_, i) => finiteOrNull(xs?.[i]));
+  const scores = align(vs.scores);
   return {
     scores,
+    gap: align(vs.gap),
     latest: scores.at(-1) ?? null,
     beta: vs.beta,
     betaAssumed: vs.betaAssumed,
   };
 }
+
+/**
+ * Bar index the header score ends at: the alert's bar in the "Around alert"
+ * view of an alert chart, else the latest bar. -1 without bars.
+ */
+export function headerIndex(
+  count: number,
+  alertIndex: number,
+  aroundAlert: boolean,
+): number {
+  if (aroundAlert && alertIndex >= 0 && alertIndex < count) return alertIndex;
+  return count - 1;
+}
+
+/**
+ * Display hint for the gap pane: the linear weight w(t) = (t − t0 + 1) /
+ * (T − t0 + 1) by minute, from the first bar of the session that contains
+ * bar `end` (consecutive bars with the same session label) through `end`;
+ * null outside that window.
+ */
+export function weightRamp(
+  bars: { start: number; session: string }[],
+  end: number,
+): (number | null)[] {
+  const ramp: (number | null)[] = bars.map(() => null);
+  const last = bars[end];
+  if (!last) return ramp;
+  let first = end;
+  while (first > 0 && bars[first - 1]!.session === last.session) first--;
+  const t0 = bars[first]!.start;
+  const span = (last.start - t0) / 60 + 1;
+  for (let i = first; i <= end; i++)
+    ramp[i] = ((bars[i]!.start - t0) / 60 + 1) / span;
+  return ramp;
+}
+
+/** "+0.42 pts" / "−1.10 pts" for the gap pane. */
+export const gapPoints = (n: number) => `${signed(n)} pts`;
 
 /** "72 / 100", or "—" without a score. */
 export const scoreText = (score: number | null | undefined) =>

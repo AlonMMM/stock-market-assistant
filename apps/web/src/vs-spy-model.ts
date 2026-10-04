@@ -1,65 +1,78 @@
-// Pure view logic for the alert-time score vs SPY (docs/features/alert-vs-spy.md):
-// the label cell on Live and Backtest alert rows and the expanded
-// "at alert → now" line. No DOM access, so Node tests import it.
-import {
-  vsSpyText,
-  type AlertVsSpy,
-  type StrengthNow,
-  type VsSpyLabel,
+// Pure view logic for the area score vs SPY (docs/features/area-vs-spy.md):
+// the score cell on Live and Backtest alert rows, the watchlist column and
+// the expanded "at alert → now" line. No direction labels: a cell shows only
+// the score and its colour. No DOM access, so Node tests import it.
+import type {
+  AlertVsSpy,
+  StrengthNow,
 } from "../../../packages/contracts/src/vs-spy.js";
 import { israelDay } from "./time.js";
 
 export type { StrengthNow };
-export type VsSpy = AlertVsSpy;
-
-export type VsSpyTone = VsSpyLabel;
-
-export interface VsSpyCell {
-  tone: VsSpyTone; // colour: confirmed green, against red, market grey
-  text: string; // arrow and words, always present beside the colour
-  score: number | null;
-  title: string; // accessible description of the whole cell
-}
-
-const words: Record<
-  "up" | "down",
-  Record<Exclude<VsSpyTone, "none">, string>
-> = {
-  up: {
-    confirmed: "▲ Long · confirmed",
-    against: "▲ Up · against",
-    market: "▲ · moving with market",
-  },
-  down: {
-    confirmed: "▼ Short · confirmed",
-    against: "▼ Down · against",
-    market: "▼ · moving with market",
-  },
+// Old stored alerts may still carry a direction `label`; it is ignored.
+export type VsSpy = Pick<
+  AlertVsSpy,
+  "score" | "beta" | "betaAssumed" | "spyLagged"
+> & {
+  area?: number | null;
+  label?: string;
 };
 
-/**
- * The row cell: the label stored with the alert (from the shared
- * `vsSpyLabel`; thresholds are not re-derived here) and the score. "—" without a score or a `vsSpy`.
- */
-export function vsSpyCell(
-  direction: "up" | "down",
-  v: VsSpy | null | undefined,
+/** Colour of a score: green ≥ 60, red ≤ 40, grey between, none without. */
+export type VsSpyTone = "strong" | "weak" | "normal" | "none";
+
+export const scoreStrong = 60;
+export const scoreWeak = 40;
+
+export function scoreTone(score: number | null | undefined): VsSpyTone {
+  if (score === null || score === undefined || !Number.isFinite(score))
+    return "none";
+  return score >= scoreStrong
+    ? "strong"
+    : score <= scoreWeak
+      ? "weak"
+      : "normal";
+}
+
+/** Words for the accessible label and tooltip; never shown as a tag. */
+export const toneWords: Record<VsSpyTone, string> = {
+  strong: "stronger vs SPY",
+  weak: "weaker vs SPY",
+  normal: "normal vs SPY",
+  none: "no score vs SPY",
+};
+
+/** Explains the area score in tooltips, legends and table notes. */
+export const areaScoreNote =
+  "area between the stock and β×SPY since the session open, recent minutes weigh more; 50 = normal";
+
+export interface VsSpyCell {
+  tone: VsSpyTone;
+  text: string; // the score, or "—"
+  score: number | null;
+  title: string; // accessible description and tooltip
+}
+
+/** A score with its colour and words; `when` names the moment, if any. */
+export function scoreCell(
+  score: number | null | undefined,
+  when = "",
 ): VsSpyCell {
-  if (!v || v.label === "none" || v.score === null)
-    return {
-      tone: "none",
-      text: "—",
-      score: null,
-      title: "No score vs SPY for this alert",
-    };
+  const tone = scoreTone(score);
+  const at = when ? ` ${when}` : "";
+  if (tone === "none")
+    return { tone, text: "—", score: null, title: `No score vs SPY${at}` };
   return {
-    tone: v.label,
-    text: words[direction][v.label],
-    score: v.score,
-    // The shared one-line text, as in the Telegram alert.
-    title: `${vsSpyText(direction, v)} at the alert`,
+    tone,
+    text: String(score),
+    score: score!,
+    title: `vs SPY ${score} / 100${at}: ${toneWords[tone]} (${areaScoreNote})`,
   };
 }
+
+/** Alert row cell: the alert-time score only; a stored label is ignored. */
+export const vsSpyCell = (v: VsSpy | null | undefined): VsSpyCell =>
+  scoreCell(v?.score, "at the alert");
 
 /** Minimum change in score for the trend arrow to point up or down. */
 export const trendStep = 5;
@@ -90,7 +103,7 @@ const beta = (v: VsSpy) =>
   `β ${v.beta.toFixed(1)}${v.betaAssumed ? " (assumed)" : ""}`;
 
 /**
- * Expanded-row line, e.g. "vs SPY at alert 78 → now 84 ↑ · β 1.4".
+ * Expanded-row line, e.g. "vs SPY at alert 72 → now 64 ↓ · β 2.0".
  * `now` is omitted when unknown (Backtest, older alerts, no live data).
  */
 export function vsSpyDetail(
@@ -98,11 +111,14 @@ export function vsSpyDetail(
   now: StrengthNow | null = null,
 ): string {
   if (!v) return "vs SPY at alert — (not available for this alert)";
-  const at = v.score === null ? "— (no score)" : String(v.score);
+  const at =
+    v.score === null || v.score === undefined
+      ? "— (no score)"
+      : String(v.score);
   let line = `vs SPY at alert ${at}`;
   if (now && now.score !== null)
     line +=
-      v.score === null
+      v.score === null || v.score === undefined
         ? ` · now ${now.score}`
         : ` → now ${now.score} ${strengthTrend(v.score, now.score)}`;
   return `${line} · ${beta(v)}`;
