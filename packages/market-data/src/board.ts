@@ -340,10 +340,11 @@ export async function runBoard(
       scored ? areaMinutes(listed, date, scoredAt.minute, asOf, multi) : null,
       scored
         ? strengthRequest.then((values) =>
+            // Only with the date's β: a stored curve is kept all day.
             areaSigmas(
-              listed,
+              listed.filter((t) => values.has(t)),
               date,
-              (t) => values.get(t)?.beta ?? 1,
+              (t) => values.get(t)!.beta,
               area.history,
               area.store,
               area.perPoll ?? sigmasPerPoll,

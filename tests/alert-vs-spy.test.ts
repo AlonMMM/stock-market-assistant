@@ -155,12 +155,13 @@ test("without σ the score is null and the alert still goes out", async () => {
     formatAlert({ ...nvdaAlert(), vsSpy }).split("\n")[1],
     "vs SPY —",
   );
-  // β never prepared (daily request failed): β 1 assumed, still scored.
-  const missing = setup({ strength: null });
-  await missing.strength.prepareSigma(day, ["NVDA"]);
+  // β never prepared (daily request failed): no σ curve is computed (it
+  // must use the date's β); β 1 assumed, area still reported.
+  const missing = setup({ strength: null, sigma: null });
+  assert.equal(await missing.strength.prepareSigma(day, ["NVDA"]), 1);
   missing.strength.bar(missing.stored.at(-1)!);
   assert.deepEqual(await missing.strength.atAlert(nvdaAlert()), {
-    score: 84,
+    score: null,
     area: 1,
     beta: 1,
     betaAssumed: true,
@@ -282,10 +283,12 @@ test("σ curves come from 20 stored sessions, are stored, and need 15", async ()
     ]);
   const make = (stored: PriceBar[]) => {
     const sigmas = new MemoryDailyStore<SigmaCurve>();
+    const strengths = new MemoryDailyStore<SpyStrength>();
+    strengths.rows.set(`${day}|NVDA`, unit);
     let reads = 0;
     const s = new LiveStrength({
       multi: async () => new Map(),
-      store: new MemoryDailyStore<SpyStrength>(),
+      store: strengths,
       sigmas,
       bars: (ticker, from) => {
         reads++;
@@ -295,6 +298,7 @@ test("σ curves come from 20 stored sessions, are stored, and need 15", async ()
     return { s, sigmas, reads: () => reads };
   };
   const full = make(history(prior));
+  await full.s.prepare(day, ["NVDA"]);
   assert.equal(await full.s.prepareSigma(day, ["NVDA", "SPY"]), 0);
   const curve = full.sigmas.rows.get(`${day}|NVDA`)!;
   // RMS of +1 and −2 alternating: √2.5.
@@ -313,10 +317,12 @@ test("σ curves come from 20 stored sessions, are stored, and need 15", async ()
   assert.equal(again.sigma(day, "NVDA"), curve);
   // 14 of 20 sessions: no σ.
   const sparse = make(history(prior.slice(6)));
+  await sparse.s.prepare(day, ["NVDA"]);
   await sparse.s.prepareSigma(day, ["NVDA"]);
   assert.equal(sparse.s.sigma(day, "NVDA")!.regular[80], null);
   // Without SPY's history nothing is computed (retried later).
   const noSpy = make(history(prior).filter((b) => b.ticker !== "SPY"));
+  await noSpy.s.prepare(day, ["NVDA"]);
   assert.equal(await noSpy.s.prepareSigma(day, ["NVDA"]), 1);
   assert.equal(noSpy.sigmas.rows.size, 0);
 });

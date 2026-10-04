@@ -269,7 +269,8 @@ export async function runDayChart(
                 ),
               )
             : history(t, from, to),
-        sigmas,
+        // Stored only with the date's β (a curve is kept all day).
+        spyDaily ? sigmas : undefined,
       );
       const stock = fromRawBars(ticker, loaded).filter((b) => b.date === date);
       const spy = fromRawBars(
