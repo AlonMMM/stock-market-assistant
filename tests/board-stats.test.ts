@@ -5,10 +5,8 @@ import {
   D1StrengthStore,
   runBoard as runLiveBoard,
 } from "../packages/market-data/src/board.js";
-import {
-  rsScore,
-  type SpyStrength,
-} from "../packages/market-data/src/rs-score.js";
+import type { SpyStrength } from "../packages/market-data/src/rs-score.js";
+import type { SigmaCurve } from "../packages/market-data/src/area-vs-spy.js";
 import { pairedDaily } from "./analysis-fixtures.js";
 import {
   newYorkToUtc,
@@ -62,10 +60,10 @@ function today(cutoff: number): RawBar[] {
 
 // These fixtures were built for the free plan's 15-minute SIP delay.
 const runBoard = (
-  ...[tickers, multi, now, benchmarks, store, strengths]: Parameters<
+  ...[tickers, multi, now, benchmarks, store, strengths, , area]: Parameters<
     typeof runLiveBoard
   >
-) => runLiveBoard(tickers, multi, now, benchmarks, store, strengths, 15);
+) => runLiveBoard(tickers, multi, now, benchmarks, store, strengths, 15, area);
 
 type Multi = Parameters<typeof runBoard>[1];
 
@@ -75,7 +73,7 @@ function fake(cutoff: number, counts: Record<string, number> = {}) {
     symbols: string[],
     start: string,
     end: string,
-    timeframe: "5Min" | "1Day",
+    timeframe: "1Min" | "5Min" | "1Day",
   ) => {
     calls.push([symbols.join(), start, end, timeframe]);
     const day = new Date(Date.parse(start) - 4 * 3600000)
@@ -315,16 +313,113 @@ function strengthBoard(failDaily = false) {
   return { calls, multi };
 }
 
-test("board stats carry the score and β vs SPY at asOf", async () => {
+// Minute bars for the area score: NVDA opens 100 at 09:30 and closes 101
+// (+1%) every minute, SPY flat at 500. Past sessions: NVDA +1% / −1% on
+// alternate days, so σ = 1 at every minute.
+const minutes = (ticker: string, d: string, level: number, to = 960) =>
+  Array.from({ length: to - 570 }, (_, i) => ({
+    start: newYorkToUtc(d, 570 + i) / 1000,
+    open: i ? level : ticker === "SPY" ? 500 : 100,
+    high: Math.max(level, 100),
+    low: Math.min(level, 100),
+    close: level,
+    volume: 1,
+  }));
+function areaHistory() {
+  const calls: string[] = [];
+  const history = async (ticker: string, start: string, end: string) => {
+    calls.push(ticker);
+    assert.equal(end, new Date(newYorkToUtc(date, 0)).toISOString());
+    assert.equal(start, new Date(newYorkToUtc(sessions[0]!, 0)).toISOString());
+    return sessions.flatMap((d, i) =>
+      ticker === "SPY"
+        ? minutes("SPY", d, 500)
+        : minutes(ticker, d, i % 2 ? 99 : 101),
+    );
+  };
+  return { calls, history };
+}
+
+test("board stats carry the area score and β vs SPY at asOf", async () => {
   const now = at(`${date}T15:00:00Z`) * 1000;
-  const { multi } = strengthBoard();
-  const board = await runBoard(["NVDA"], multi, now);
+  const { multi: base } = strengthBoard();
+  const requested: string[][] = [];
+  const multi: Multi = async (symbols, start, end, timeframe, adjustment) => {
+    if (timeframe !== "1Min")
+      return base(symbols, start, end, timeframe, adjustment);
+    requested.push([symbols.join(), start, end]);
+    return new Map(
+      symbols.map((s) => [
+        s,
+        // Through 10:45 NY: the bar starting at asOf must be ignored.
+        minutes(s, date, s === "SPY" ? 500 : 101, 646).map((r, i, all) =>
+          i === all.length - 1 ? { ...r, close: 50, low: 50 } : r,
+        ),
+      ]),
+    );
+  };
+  const sigmas = new MemoryDailyStore<SigmaCurve>();
+  const first = areaHistory();
+  const board = await runBoard(
+    ["NVDA"],
+    multi,
+    now,
+    {},
+    undefined,
+    undefined,
+    undefined,
+    {
+      history: first.history,
+      store: sigmas,
+    },
+  );
   const stats = board.series[0]!.stats!;
   assert.equal(stats.asOf, at(`${date}T14:45:00Z`));
   assert.ok(Math.abs(stats.beta! - 1.5) < 1e-9);
-  // excess = 2 − 1.5 · (−0.6) = 2.9; σ = 2·√(20/19).
-  assert.equal(stats.rsScore, rsScore(2.9, 2 * Math.sqrt(20 / 19)));
-  assert.equal(stats.rsScore, 64);
+  // Area 1 (SPY flat, so β does not matter), σ 1 → round(100 · Φ(1)).
+  assert.equal(stats.rsScore, 84);
+  // One minute request from 09:30 NY to asOf; σ from 20 sessions, stored.
+  assert.deepEqual(requested, [
+    ["NVDA,SPY", `${date}T13:30:00.000Z`, `${date}T14:45:00.000Z`],
+  ]);
+  assert.deepEqual(first.calls, ["SPY", "NVDA"]);
+  assert.equal(sigmas.rows.size, 1);
+  // A later poll reads the stored curve: no history.
+  const second = areaHistory();
+  const again = await runBoard(
+    ["NVDA"],
+    multi,
+    now,
+    {},
+    undefined,
+    undefined,
+    undefined,
+    {
+      history: second.history,
+      store: sigmas,
+    },
+  );
+  assert.equal(again.series[0]!.stats!.rsScore, 84);
+  assert.deepEqual(second.calls, []);
+  // At most `perPoll` curves per poll; the rest stay null until later.
+  const limited = await runBoard(
+    ["NVDA", "AMD"],
+    multi,
+    now,
+    {},
+    undefined,
+    undefined,
+    undefined,
+    {
+      history: areaHistory().history,
+      store: new MemoryDailyStore(),
+      perPoll: 1,
+    },
+  );
+  assert.deepEqual(
+    limited.series.slice(0, 2).map((x) => x.stats!.rsScore),
+    [84, null],
+  );
 });
 
 test("a failed β/σ history request leaves score and β null, not stored", async () => {

@@ -12,6 +12,9 @@ import {
   previousSessions,
 } from "../packages/market-data/src/calendar.js";
 import type { RawBar } from "../packages/market-data/src/bars.js";
+import { newYorkToUtc } from "../packages/market-data/src/calendar.js";
+import { MemoryDailyStore } from "../packages/market-data/src/volume-baseline.js";
+import type { SigmaCurve } from "../packages/market-data/src/area-vs-spy.js";
 
 // Synthetic bars on Tue 2026-06-02 (EDT) and the previous session, Mon 06-01:
 // one pre-market, two regular and one after-hours minute per day.
@@ -50,6 +53,8 @@ test("day chart returns the ticker then SPY with previous regular closes", async
     // The ticker reaches back 20 sessions for its typical volume.
     ["AAPL", "2026-05-04T00:00:00Z", "2026-06-03T06:00:00.000Z"],
     ["SPY", "2026-06-01T00:00:00Z", "2026-06-03T06:00:00.000Z"],
+    // SPY's previous 20 sessions (New York midnights) for the area σ.
+    ["SPY", "2026-05-04T04:00:00.000Z", "2026-06-02T04:00:00.000Z"],
   ]);
   assert.equal(result.series[1]!.typicalVolume, undefined);
   assert.deepEqual(
@@ -109,7 +114,7 @@ test("day chart requests up to now, or up to the configured SIP delay", async ()
     const chart = await runDayChart(
       { ticker: "AAPL", date: "2026-06-02" },
       async (_ticker, _start, end) => {
-        requestedEnd = end;
+        requestedEnd ||= end; // the chart's own request comes first
         return [];
       },
       now,
@@ -282,8 +287,9 @@ test("day chart compares with a requested sector benchmark instead of SPY", asyn
       return [];
     },
   );
-  // SPY's minute and daily bars are added for the score vs SPY.
-  assert.deepEqual(minute, ["MSTR", "IBIT", "SPY"]);
+  // SPY's minute and daily bars are added for the score vs SPY; the second
+  // SPY minute request is its previous 20 sessions for the area σ.
+  assert.deepEqual(minute, ["MSTR", "IBIT", "SPY", "SPY"]);
   assert.deepEqual(daily, ["MSTR", "IBIT", "SPY"]);
   assert.deepEqual(
     result.series.map((s) => s.ticker),
@@ -467,4 +473,77 @@ test("vsSpy degrades to β assumed and no σ, never failing the chart", async ()
   );
   assert.equal(noSpyMinutes.vsSpy, undefined);
   assert.equal(noSpyMinutes.series.length, 2);
+});
+
+// SYNTHETIC minute bars for the area score: 09:30–10:40 NY each day; the
+// stock opens 100 and holds +1% / −1% on alternate past days and +1% on the
+// chart day; SPY is flat at 500. σ = 1 and the area is 1 → 84.
+function areaRows(ticker: string, start: string, end: string): RawBar[] {
+  const chartDay = "2026-06-02";
+  const days = [...previousSessions(chartDay, 20), chartDay];
+  return days.flatMap((d, index) =>
+    Array.from({ length: 71 }, (_, i) => {
+      const level =
+        ticker === "SPY" ? 500 : d === chartDay ? 101 : index % 2 ? 99 : 101;
+      const open = i ? level : ticker === "SPY" ? 500 : 100;
+      return {
+        start: newYorkToUtc(d, 570 + i) / 1000,
+        open,
+        high: Math.max(open, level),
+        low: Math.min(open, level),
+        close: level,
+        volume: 100,
+      };
+    }).filter(
+      (r) =>
+        r.start * 1000 >= Date.parse(start) && r.start * 1000 < Date.parse(end),
+    ),
+  );
+}
+
+test("areaVsSpy: gap, area score and σ per bar, with the σ curve stored", async () => {
+  const sigmas = new MemoryDailyStore<SigmaCurve>();
+  const requests: string[] = [];
+  const chart = () =>
+    runDayChart(
+      { ticker: "AAPL", date: "2026-06-02" },
+      async (ticker, start, end) => {
+        requests.push(ticker);
+        return areaRows(ticker, start, end);
+      },
+      later,
+      undefined,
+      undefined,
+      sigmas,
+    );
+  const result = await chart();
+  const area = result.areaVsSpy!;
+  const bars = result.series[0]!.bars;
+  assert.equal(bars.length, 71);
+  for (const key of ["gap", "area", "score", "sigma"] as const)
+    assert.equal(area[key].length, bars.length, key);
+  assert.deepEqual(area.score.slice(0, 6), [null, null, null, null, null, 84]);
+  assert.equal(area.score.at(-1), 84);
+  assert.ok(Math.abs(area.gap.at(-1)! - 1) < 1e-9);
+  assert.ok(Math.abs(area.area.at(-1)! - 1) < 1e-9);
+  assert.equal(area.sigma.at(-1), 1);
+  assert.deepEqual(area.windows, [
+    { session: "regular", start: Date.parse("2026-06-02T13:30:00Z") / 1000 },
+  ]);
+  // No daily bars: β 1 assumed, flagged.
+  assert.equal(area.beta, 1);
+  assert.equal(area.betaAssumed, true);
+  assert.deepEqual(requests, ["AAPL", "SPY", "SPY"]);
+  assert.equal(sigmas.rows.size, 1);
+  // The stored curve is reused: no 20-session SPY request.
+  requests.length = 0;
+  assert.deepEqual((await chart()).areaVsSpy, area);
+  assert.deepEqual(requests, ["AAPL", "SPY"]);
+  // SPY itself has no area series.
+  const spy = await runDayChart(
+    { ticker: "SPY", date: "2026-06-02" },
+    async (ticker, start, end) => areaRows(ticker, start, end),
+    later,
+  );
+  assert.equal(spy.areaVsSpy, undefined);
 });
