@@ -17,15 +17,17 @@
 //   --wrangler <path>       wrangler binary (default: wrangler on PATH)
 //   --no-cache 1            recompute every symbol
 //
-// Each symbol's computed part is cached under data/local/backtest-cache/
-// <rule version>/<code hash>-<settings hash>/<SYMBOL>.json.gz. The rule version
-// (ruleVersion, e.g. rvol-v4) names the algorithm; the code hash covers the
-// evaluation sources, so a fix within a version never reuses stale parts; the
-// settings hash covers the dates, rule settings and scoring settings. A rerun
-// recomputes only uncached symbols, then ranks look-now scores across all.
+// Each symbol's computed part is cached in the backtest_parts table of
+// data/local/bars-cache.sqlite. Its key hashes everything the part depends on:
+// the rule version (ruleVersion, e.g. rvol-v4), the evaluation sources (so a
+// fix within a version never reuses stale parts), the dates, rule and scoring
+// settings, and the symbol. A rerun recomputes only uncached symbols, then
+// ranks look-now scores across all. rule and ticker are kept as plain columns
+// for listing and cleanup, e.g. DELETE FROM backtest_parts WHERE rule = 'rvol-v3'.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { ruleVersion } from "../packages/alerts/src/relative-volume.js";
 import { fileURLToPath } from "node:url";
@@ -175,7 +177,7 @@ console.log(
 );
 // Per-symbol cache of computed parts (see the header).
 const sha = (text: string) => createHash("sha256").update(text).digest("hex");
-const codeHash = sha(
+const code = sha(
   [
     "packages/alerts/src/relative-volume.ts",
     "packages/market-data/src/backtest.ts",
@@ -188,30 +190,51 @@ const codeHash = sha(
   ]
     .map((f) => readFileSync(`${root}${f}`, "utf8"))
     .join("\0"),
-).slice(0, 10);
-const settingsHash = sha(
-  JSON.stringify({
-    from,
-    to,
-    window,
-    config: request.config,
-    validation: request.validation,
-  }),
-).slice(0, 12);
-const partsDir = `${root}data/local/backtest-cache/${ruleVersion}/${codeHash}-${settingsHash}`;
-const partPath = (ticker: string) => `${partsDir}/${ticker}.json.gz`;
+);
+const partKey = (ticker: string) =>
+  sha(
+    JSON.stringify({
+      rule: ruleVersion,
+      code,
+      from,
+      to,
+      window,
+      config: request.config,
+      validation: request.validation,
+      ticker,
+    }),
+  );
+const db = new DatabaseSync(`${root}data/local/bars-cache.sqlite`);
+db.exec(
+  "PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS backtest_parts (key TEXT PRIMARY KEY, rule TEXT NOT NULL, ticker TEXT NOT NULL, part BLOB NOT NULL, stored_at INTEGER NOT NULL)",
+);
 const savePart = (part: SymbolPart) =>
-  writeFileSync(partPath(part.ticker), gzipSync(encodePart(part)));
-const loadPart = (ticker: string) =>
-  decodePart(gunzipSync(readFileSync(partPath(ticker))).toString());
+  db
+    .prepare(
+      "INSERT OR REPLACE INTO backtest_parts (key, rule, ticker, part, stored_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .run(
+      partKey(part.ticker),
+      ruleVersion,
+      part.ticker,
+      gzipSync(encodePart(part)),
+      Date.now(),
+    );
+const loadPart = (ticker: string) => {
+  const row = db
+    .prepare("SELECT part FROM backtest_parts WHERE key = ?")
+    .get(partKey(ticker)) as { part: Uint8Array } | undefined;
+  // Listed as cached at start; SPY was not loaded for it, so it must exist.
+  if (!row) throw new Error("cached part removed during the run; rerun");
+  return decodePart(gunzipSync(row.part).toString());
+};
 const useCache = args.get("no-cache") === undefined;
-mkdirSync(partsDir, { recursive: true });
+const has = db.prepare("SELECT 1 FROM backtest_parts WHERE key = ?");
 const cached = new Set(
-  useCache ? request.tickers.filter((t) => existsSync(partPath(t))) : [],
+  useCache ? request.tickers.filter((t) => has.get(partKey(t))) : [],
 );
 console.log(
-  `Rule ${ruleVersion}, cache ${partsDir.slice(root.length)}: ` +
-    `${cached.size} of ${request.tickers.length} symbols cached`,
+  `Rule ${ruleVersion}: ${cached.size} of ${request.tickers.length} symbols cached`,
 );
 
 // SPY's bars are only needed to compute uncached symbols.
@@ -236,13 +259,13 @@ for (const [i, ticker] of request.tickers.entries()) {
       ticker === benchmark
         ? spyRows
         : await history(ticker, window.start, window.until);
-    const part = run.compute(
+    const computed = run.compute(
       ticker,
       rows,
       ticker === benchmark ? [] : await daily(ticker),
     );
-    savePart(part);
-    run.merge(part);
+    savePart(computed);
+    run.merge(computed);
   } catch (error) {
     failed.push(ticker);
     console.error(

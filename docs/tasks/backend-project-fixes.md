@@ -56,12 +56,12 @@ Fix intermittent HTTP 503 from backtests and prepare for the Workers Paid plan.
   13 months of SIP bars for them.
 
 - Per-symbol result cache for `npm run backtest`: `BacktestRun.compute` (one symbol,
-  plain data) + `merge`; parts saved as
-  `data/local/backtest-cache/<ruleVersion>/<code hash>-<settings hash>/<SYMBOL>.json.gz`.
-  `ruleVersion` (`rvol-v4`, exported from the evaluator) names the algorithm; the code
-  hash covers the evaluation sources; the settings hash covers dates, rule and scoring
-  settings. Cold, cached and `--no-cache` runs give deep-equal results (3 symbols:
-  1.4 s → 0.2 s). Alpaca daily bars (β) are not part of the key; a later split
+  plain data) + `merge`; parts stored gzipped in the `backtest_parts` table of
+  `data/local/bars-cache.sqlite`. Key = SHA-256 of rule version (`ruleVersion`,
+  `rvol-v4`, exported from the evaluator), the evaluation sources, dates, rule and
+  scoring settings, and the symbol; `rule` and `ticker` are plain columns for listing
+  and cleanup. Cold, cached and `--no-cache` runs give deep-equal results (3 symbols:
+  1.5 s → 0.2 s). Alpaca daily bars (β) are not part of the key; a later split
   adjustment would not invalidate a part.
 - First full run (2026-10-04, before the cache existed): 196 symbols × 252 sessions,
   42,907 alerts in 12.5 min; look-now big 17.6% vs 3.8% baseline, very big 5.3% vs
