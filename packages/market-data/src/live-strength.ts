@@ -5,7 +5,7 @@
 // bars of the stock and SPY for the session being scored.
 import type { AlertEvent } from "../../alerts/src/events.js";
 import type { StrengthNow, AlertVsSpy } from "../../contracts/src/vs-spy.js";
-import { alertVsSpy } from "./alert-vs-spy.js";
+import { alertAreaVsSpy } from "./alert-vs-spy.js";
 import {
   areaSigmaSessions,
   byDate,
@@ -183,7 +183,7 @@ export class LiveStrength {
     spy: AreaBar[],
   ): AlertVsSpy {
     const strength = this.strength(date, ticker);
-    return alertVsSpy({
+    return alertAreaVsSpy({
       ticker,
       date,
       minute,

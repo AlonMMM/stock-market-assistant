@@ -1,23 +1,32 @@
-// Area score vs SPY on alerts, the live "now" score and the day chart
-// (docs/features/area-vs-spy.md). Pure and dependency-free: the collector,
-// the backtest, Telegram and the web app share it.
+// Marked-sections score vs SPY on alerts, the live "now" score, the board
+// and the day chart (docs/features/marks-vs-spy.md). Pure and
+// dependency-free: the collector, the backtest, Telegram and the web app
+// share it.
 
 /** `vsSpy` on an alert record (live store, /api/live, backtest alerts). */
 export interface AlertVsSpy {
-  // Area score (0–100) ending at the alert bar: round(100 · Φ(area / σ)).
-  // Null without σ (fewer than 15 of the previous 20 sessions), without SPY
-  // data, for SPY itself, or in a window's first 5 minutes.
+  // Marked-sections score (0–100) at the alert's end minute E (the last
+  // minute before the alert's own `config.window` minutes):
+  // round(100 · Φ(sum / σ)). Null without σ (fewer than 15 of the previous
+  // 20 sessions, or σ = 0 before marks can exist), without SPY data, for
+  // SPY itself, or when the alert bar or E is outside the regular session.
+  // Alerts stored before it carry an older score (area or day-based).
   score: number | null;
-  // Weighted area between the stock and β × SPY over the alert's session
-  // window to the alert bar, % points. Alerts stored before the area score
-  // lack it (read as null); their `score` is the old day-based score.
-  area: number | null;
+  // I = Σ w(i) · c(i) over the marked minutes of the 60 up to E, % points
+  // (4 decimals). Null when the score is null for a reason other than σ.
+  // Always present on new alerts; alerts stored before the marked-sections
+  // score lack it (read as null).
+  sum?: number | null;
   beta: number; // 60-session daily β vs SPY; 1 when assumed
   betaAssumed: boolean;
-  // True when SPY's bar for the alert's own minute was not used (it had not
-  // arrived within the wait, or SPY had no bar that minute): SPY's last close
-  // was carried forward. Evidence only.
+  // True when SPY had no bar of its own at E (the collector waited at most
+  // 3 s for it, then SPY's last close was carried forward). Evidence only.
   spyLagged: boolean;
+  /**
+   * @deprecated Area of the replaced area score; present only on alerts
+   * stored before the marked-sections score. Never shown.
+   */
+  area?: number | null;
   /**
    * @deprecated Direction label of the replaced day-based score; present only
    * on alerts stored before the area score. Never shown.
@@ -27,24 +36,86 @@ export interface AlertVsSpy {
 
 /** Score "now" per symbol with an alert today (Israel day), in /api/live. */
 export interface StrengthNow {
-  score: number | null; // area score ending at the symbol's latest bar
+  // Marked-sections score ending at the symbol's latest bar (E = that bar);
+  // null when that bar is outside the regular session.
+  score: number | null;
   at: string; // UTC end of the symbol's latest bar behind the score
 }
 
+/** Minutes in the weight window: w(i) = (60 − (E − i)) / 60. */
+export const marksWeightMinutes = 60;
+
 /**
- * Day chart's area series (`DayChart.areaVsSpy`), aligned with the requested
- * ticker's bars (`series[0].bars`); each value ends at that bar's minute.
- * Absent for SPY itself or without SPY's minute bars.
+ * Day chart's marked-sections series (`DayChart.marksVsSpy`), one entry per
+ * regular-session minute of the chart date: index k is the minute bar that
+ * starts at `start + 60·k` (09:30 New York is k = 0), through the requested
+ * ticker's last regular bar. Absent for SPY itself or without SPY's minute
+ * bars; empty arrays when the ticker has no regular bar yet.
+ *
+ * Contributions do not depend on the end minute; `score[k]`, `sum[k]` and
+ * `sigma[k]` are the values with E = minute k. The web draws a bar's weight
+ * relative to its chosen end minute with `marksWeight`.
+ */
+export interface MarksVsSpySeries {
+  start: number; // Unix s of 09:30 New York (k = 0)
+  // c(k) = tR − β·bR of a marked minute (5-minute moves, % points from the
+  // previous close); null when minute k is unmarked. The sign can differ from
+  // the mark's colour with β ≠ 1; bars are coloured by sign.
+  contribution: (number | null)[];
+  // Mark of minute k from opposite(): "strong" (green, held while SPY fell),
+  // "weak" (red, fell while SPY held), null unmarked.
+  mark: ("strong" | "weak" | null)[];
+  sum: (number | null)[]; // I with E = k, % points
+  sigma: (number | null)[]; // σ at minute k (same minute, 20 sessions)
+  score: (number | null)[]; // 0–100 with E = k ("Score N" readout); null → "—"
+  beta: number; // 60-session daily β vs SPY; 1 when assumed
+  betaAssumed: boolean;
+}
+
+/** Weight of minute `minute` for end minute `end` (both Unix s of bar starts). */
+export function marksWeight(end: number, minute: number): number {
+  const age = Math.round((end - minute) / 60);
+  return age >= 0 && age < marksWeightMinutes
+    ? (marksWeightMinutes - age) / marksWeightMinutes
+    : 0;
+}
+
+/**
+ * End minute E of an alert (Unix s of E's bar start): the last minute before
+ * the alert's own window, i.e. the alert bar's end (`alert.end`) minus
+ * `window + 1` minutes. E.g. an alert bar ending 15:50 with window 3 → E is
+ * the 15:46 bar; the 15:47–15:49 bars are excluded.
+ */
+export function marksAlertEnd(alertEnd: string, window: number): number {
+  return Date.parse(alertEnd) / 1000 - 60 * (window + 1);
+}
+
+/**
+ * Score of a chart series at end minute `end` (Unix s of a bar start); null
+ * outside the series (before 09:30, after the ticker's last regular bar or
+ * outside the regular session). Matches the alert's score at its E.
+ */
+export function marksScoreAt(
+  series: Pick<MarksVsSpySeries, "start" | "score"> | null | undefined,
+  end: number,
+): number | null {
+  if (!series) return null;
+  const k = (end - series.start) / 60;
+  if (!Number.isInteger(k) || k < 0) return null;
+  return series.score[k] ?? null;
+}
+
+/**
+ * @deprecated Area series of the replaced area score; never sent any more.
+ * Kept only until the web reads `marksVsSpy`.
  */
 export interface AreaVsSpySeries {
-  gap: (number | null)[]; // s − β·m at the minute, % points (the gap pane)
-  area: (number | null)[]; // weighted area of the window to the minute
-  score: (number | null)[]; // 0–100 ("Score N" readout); null → "—"
-  sigma: (number | null)[]; // σ at the minute (same minute, 20 sessions)
-  // Start (t0, Unix s) of each session window present, for the weight ramp:
-  // w(t) = (t − t0 + 1) / (T − t0 + 1), t and T in minutes.
+  gap: (number | null)[];
+  area: (number | null)[];
+  score: (number | null)[];
+  sigma: (number | null)[];
   windows: { session: "pre" | "regular" | "post"; start: number }[];
-  beta: number; // 60-session daily β vs SPY; 1 when assumed
+  beta: number;
   betaAssumed: boolean;
 }
 
