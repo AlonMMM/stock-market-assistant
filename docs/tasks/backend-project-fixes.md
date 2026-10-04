@@ -90,6 +90,11 @@ Fix intermittent HTTP 503 from backtests and prepare for the Workers Paid plan.
   live-alert list (47 IBKR "Favorites" symbols). Seeded 2026-10-04 with the 196 symbols
   of all IBKR watchlists (the 47 Favorites are among them).
 
+- Symbols card redesign (`SymbolSelector.tsx`): stocks and ETFs separated (`kind` column
+  in `backtest_symbols`, added in D1 on 2026-10-04 with the 19 list ETFs marked), quick
+  picks, sector menu, one search/add box, Edit list mode. Checked at 390 px with headless
+  Chrome against the local API.
+
 ## Verification and handoff
 
 - `npm run check` and `git diff --check` pass (191 pass, 1 skipped).

@@ -12,20 +12,38 @@ import {
 test("the backtest symbol list adds, removes and validates symbols", async () => {
   const store = new D1SymbolList(new SqliteD1(":memory:"));
   const get = () => handleBacktestSymbols("GET", undefined, store);
-  assert.deepEqual((await get()).body, { tickers: [] });
+  assert.deepEqual((await get()).body, { tickers: [], etfs: [] });
   const added = await handleBacktestSymbols(
     "POST",
     { add: [" amd", "ARM", "AMD", "BRK.B"] },
     store,
   );
   assert.equal(added.status, 200);
-  assert.deepEqual(added.body, { tickers: ["AMD", "ARM", "BRK.B"] });
+  assert.deepEqual(added.body, {
+    tickers: ["AMD", "ARM", "BRK.B"],
+    etfs: [],
+  });
   const removed = await handleBacktestSymbols(
     "POST",
     { add: ["TSM"], remove: ["ARM", "NOPE"] },
     store,
   );
-  assert.deepEqual(removed.body, { tickers: ["AMD", "BRK.B", "TSM"] });
+  assert.deepEqual(removed.body, {
+    tickers: ["AMD", "BRK.B", "TSM"],
+    etfs: [],
+  });
+  // ETFs: added as such, and an existing symbol can be re-marked.
+  const etfs = await handleBacktestSymbols(
+    "POST",
+    { add: ["SPY", "TSM"], kind: "etf" },
+    store,
+  );
+  assert.deepEqual(etfs.body, {
+    tickers: ["AMD", "BRK.B", "SPY", "TSM"],
+    etfs: ["SPY", "TSM"],
+  });
+  await handleBacktestSymbols("POST", { add: ["TSM"], kind: "stock" }, store);
+  await handleBacktestSymbols("POST", { remove: ["SPY"] }, store);
   for (const body of [
     { add: "AMD" },
     { add: [1] },
@@ -39,7 +57,15 @@ test("the backtest symbol list adds, removes and validates symbols", async () =>
     (await handleBacktestSymbols("POST", { add: tooMany }, store)).status,
     400,
   );
-  assert.deepEqual((await get()).body, { tickers: ["AMD", "BRK.B", "TSM"] });
+  assert.deepEqual((await get()).body, {
+    tickers: ["AMD", "BRK.B", "TSM"],
+    etfs: [],
+  });
+  assert.equal(
+    (await handleBacktestSymbols("POST", { add: ["X"], kind: "fund" }, store))
+      .status,
+    400,
+  );
   assert.equal((await handleBacktestSymbols("PUT", {}, store)).status, 405);
   assert.equal((await handleBacktestSymbols("GET", undefined)).status, 503);
 });
@@ -69,7 +95,10 @@ test("local API and hosted Worker serve the same backtest symbol list", async ()
       new Request("https://example.test/api/backtest/symbols"),
       env,
     );
-    assert.deepEqual(await listed.json(), { tickers: ["AMD", "NVDA"] });
+    assert.deepEqual(await listed.json(), {
+      tickers: ["AMD", "NVDA"],
+      etfs: [],
+    });
     const bad = await worker.fetch(
       new Request("https://example.test/api/backtest/symbols", {
         method: "POST",
@@ -81,4 +110,21 @@ test("local API and hosted Worker serve the same backtest symbol list", async ()
   } finally {
     await app.close();
   }
+});
+
+test("a list made before kinds existed gains the column", async () => {
+  const db = new SqliteD1(":memory:");
+  await db
+    .prepare(
+      "CREATE TABLE backtest_symbols (ticker TEXT PRIMARY KEY, added_at INTEGER NOT NULL)",
+    )
+    .run();
+  await db.prepare("INSERT INTO backtest_symbols VALUES ('AAPL', 1)").run();
+  const store = new D1SymbolList(db);
+  assert.deepEqual(await store.list(), { tickers: ["AAPL"], etfs: [] });
+  await store.change(["QQQ"], [], "etf");
+  assert.deepEqual(await store.list(), {
+    tickers: ["AAPL", "QQQ"],
+    etfs: ["QQQ"],
+  });
 });

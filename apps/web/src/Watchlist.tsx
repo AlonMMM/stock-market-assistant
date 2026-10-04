@@ -7,34 +7,41 @@ import { israelDateTime } from "./time.js";
 const storageKey = "sma.backtest.tickers.v2";
 export { symbolPattern };
 
+export interface BacktestList {
+  tickers: string[];
+  etfs: string[]; // the ETFs among tickers
+}
+
 /**
- * The backtest symbol list, shared on the server (not per device). `tickers`
- * is null while loading; `change` adds and removes symbols and returns the
- * updated list.
+ * The backtest symbol list, shared on the server (not per device). `list` is
+ * null while loading; `change` adds `add` as `kind` and removes `remove`.
  */
 export function useBacktestList() {
-  const [tickers, setTickers] = useState<string[] | null>(null);
+  const [list, setList] = useState<BacktestList | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
     fetch("/api/backtest/symbols", { signal: AbortSignal.timeout(15000) })
-      .then((r) => readJson<{ tickers: string[] }>(r))
-      .then((body) => setTickers(body.tickers))
+      .then((r) => readJson<BacktestList>(r))
+      .then((body) => setList({ tickers: body.tickers, etfs: body.etfs ?? [] }))
       .catch((e: Error) => {
         setError(`Backtest list unavailable: ${e.message}`);
-        setTickers([]);
+        setList({ tickers: [], etfs: [] });
       });
   }, []);
-  async function change(add: string[], remove: string[]) {
+  async function change(
+    add: string[],
+    remove: string[],
+    kind: "stock" | "etf" = "stock",
+  ) {
     const response = await fetch("/api/backtest/symbols", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ add, remove }),
+      body: JSON.stringify({ add, remove, kind }),
     });
-    const body = await readJson<{ tickers: string[] }>(response);
-    setTickers(body.tickers);
-    return body.tickers;
+    const body = await readJson<BacktestList>(response);
+    setList({ tickers: body.tickers, etfs: body.etfs ?? [] });
   }
-  return { tickers, error, change };
+  return { list, error, change };
 }
 
 // The watchlist comes from the server (synced from IBKR); the selection within
@@ -53,7 +60,11 @@ export function useWatchlist() {
   return { list, error };
 }
 
-export function savedTickers(universe: string[]): string[] {
+/** The saved selection within `universe`, else `fallback` (first maxTickers). */
+export function savedTickers(
+  universe: string[],
+  fallback: string[] = universe,
+): string[] {
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey) ?? "null");
     if (
@@ -64,7 +75,7 @@ export function savedTickers(universe: string[]): string[] {
   } catch {
     // Fall through to the default selection.
   }
-  return universe.slice(0, maxTickers);
+  return fallback.slice(0, maxTickers);
 }
 
 export function saveTickers(tickers: string[]) {
@@ -84,55 +95,4 @@ export function watchlistSource(list: WatchlistData): string {
           : ""
       }`
     : "Default list · IBKR watchlist not synced";
-}
-
-/** Chip picker over the watchlist plus any added symbols. */
-export function SymbolPicker({
-  list,
-  selected,
-  onChange,
-  disabled,
-}: {
-  list: WatchlistData;
-  selected: string[];
-  onChange: (tickers: string[]) => void;
-  disabled: boolean;
-}) {
-  const universe = [
-    ...list.tickers,
-    ...selected.filter((t) => !list.tickers.includes(t)),
-  ];
-  const full = selected.length >= maxTickers;
-  return (
-    <fieldset className="symbol-picker" disabled={disabled}>
-      <legend className="sr-only">Selected symbols</legend>
-      <div className="chips">
-        {universe.map((t) => {
-          const on = selected.includes(t);
-          return (
-            <button
-              type="button"
-              key={t}
-              className="chip"
-              aria-pressed={on}
-              disabled={!on && full}
-              onClick={() =>
-                onChange(
-                  on ? selected.filter((x) => x !== t) : [...selected, t],
-                )
-              }
-            >
-              {t}
-            </button>
-          );
-        })}
-      </div>
-      <div className="picker-actions">
-        <button type="button" className="action" onClick={() => onChange([])}>
-          Clear selection
-        </button>
-        {full && <span className="muted">Maximum {maxTickers} reached.</span>}
-      </div>
-    </fieldset>
-  );
 }

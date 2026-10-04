@@ -1685,6 +1685,138 @@ main:has(> .backtest-page) {
 .symbol-picker .chip {
   min-height: 32px;
 }
+/* Symbols card: quick picks, search/add, Stocks and ETFs sections. */
+.symbol-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.quick-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.quick-picks .chip {
+  min-height: 32px;
+}
+.chip .count {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  margin-left: 2px;
+}
+.sector-pick {
+  min-height: 32px;
+  border: 1px solid #b9c8bf;
+  border-radius: 999px;
+  background: transparent;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  max-width: 100%;
+}
+.symbol-search {
+  display: block;
+}
+.symbol-search input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.add-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px dashed #b9c8bf;
+  border-radius: 10px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.add-new .action {
+  min-height: 32px;
+}
+.sym-kind {
+  border: 1px solid #e1e8e1;
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 10px 10px;
+}
+.sym-kind-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+}
+.sym-kind-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.sym-kind-title .muted {
+  font-weight: 400;
+  font-size: 12px;
+}
+.sym-kind .chips {
+  max-height: 200px;
+  overflow-y: auto;
+}
+.sym-kind .chip {
+  min-height: 30px;
+  padding: 4px 10px;
+}
+.group-actions {
+  display: flex;
+  gap: 12px;
+}
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: #1d5c4f;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.link:disabled {
+  color: #8a9a94;
+  text-decoration: none;
+  cursor: default;
+}
+.chip.removable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+  border-style: dashed;
+}
+.chip.removable button {
+  border: 0;
+  background: #e1e8e1;
+  border-radius: 999px;
+  width: 20px;
+  height: 20px;
+  line-height: 18px;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.symbol-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.symbol-footer .action {
+  min-height: 32px;
+}
+.action[aria-pressed="true"] {
+  background: #e1e8e1;
+}
 .picker-actions {
   display: flex;
   align-items: center;

@@ -36,17 +36,22 @@ first run and collapsed after a run.
 
 ### Setup (four cards, then the Run button)
 
-1. **Symbols**: "N of M · max 250", M = the backtest list plus the live watchlist.
-   Presets: Backtest list (the shared list in D1, `/api/backtest/symbols`; seeded
-   2026-10-04 with the 196 symbols of all IBKR watchlists), Whole watchlist, Alerted
-   recently (symbols in the current `/api/live` alerts; disabled with a reason when
-   there are none), and one preset per sector benchmark present in the watchlist (label
-   = the ETF, e.g. "SMH"). A one-line preview of the selection ("NVDA, AMD, … +22
-   more"), a "Symbols for the backtest list" input taking one or many symbols ("SHOP,
-   ARM TSM") with Add (saves to the list and selects) and Remove (takes them off the
-   list and the selection), and "Edit list" opening the chip picker. The list is shared
-   on the server and separate from the live watchlist (the live-alert symbols); the
-   selection stays saved per device.
+1. **Symbols** ("N selected · max 250"), redesigned 2026-10-04 (`SymbolSelector.tsx`):
+   - Quick picks: All stocks, All ETFs, Watchlist (the live-alert list), Alerted (symbols
+     in the current `/api/live` alerts; disabled with a reason when there are none), a
+     "By sector…" menu (watchlist symbols per sector benchmark ETF), and Clear.
+   - A one-line preview of the selection ("NVDA, AMD, … +22 more").
+   - One search box: typed words filter the chips by prefix; words matching no symbol are
+     offered for adding to the shared backtest list as Stock or ETF (ETF preselected for
+     known ETFs); Enter adds them, or selects exact matches. A word that only prefixes
+     existing symbols can still be added with "add … as a new symbol".
+   - Separate **Stocks** and **ETFs** sections ("12 of 177 selected", Select all/matches,
+     None), each scrolling within a fixed height.
+   - "Edit list": list symbols get × to remove them from the shared list (watchlist
+     symbols come from IBKR and are not removable).
+   - The shared list (`/api/backtest/symbols`: `{ tickers, etfs }`; POST `{ add?,
+remove?, kind? }`) is separate from the live watchlist. Selection is saved per
+     device; with nothing saved it starts as the watchlist.
 2. **Dates**: presets Last 5 / 10 / 20 sessions (US session dates ending on the last
    complete session, via the exchange calendar) and Custom (shows From/To inputs; the
    inputs are always visible but presets fill them). Note "US sessions · max 50".

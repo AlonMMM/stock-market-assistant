@@ -30,14 +30,15 @@ import {
   ruleChanges,
   ruleLabel,
   ruleSummary,
-  selectedPreset,
   sessionCount,
   setupSummary,
   signedPercent,
   signedPoints,
   sortSymbolRows,
   parseSymbols,
-  symbolPresets,
+  filterSymbols,
+  sectorGroups,
+  symbolGroups,
   symbolRows,
   unscoredReasons,
   verdictRows,
@@ -150,40 +151,37 @@ test("dates: last N sessions end on the last complete session, skipping weekends
   );
 });
 
-test("symbol presets: alerted recently is disabled without live alerts (scenario 3)", () => {
-  const list = {
-    tickers: ["NVDA", "AMD", "TSLA", "MSTR"],
+test("symbols split into stocks and ETFs, searchable, with sector groups (scenario 3)", () => {
+  const watchlist = {
+    tickers: ["NVDA", "AMD", "TSLA", "MSTR", "IBIT", "XLK"],
     benchmarks: { NVDA: "SMH", AMD: "SMH", MSTR: "IBIT" },
   };
-  const presets = symbolPresets(list, []);
+  // The list's own marks win; watchlist symbols off the list are ETFs when
+  // they are known ETFs or sector benchmarks.
   assert.deepEqual(
-    presets.map((p) => [p.label, p.tickers, p.disabled]),
-    [
-      ["Whole watchlist", ["NVDA", "AMD", "TSLA", "MSTR"], null],
-      ["Alerted recently", [], "No recent live alerts"],
-      ["IBIT", ["MSTR"], null],
-      ["SMH", ["NVDA", "AMD"], null],
-    ],
+    symbolGroups(
+      { tickers: ["AMD", "ARM", "SPY", "XLK"], etfs: ["SPY"] },
+      watchlist,
+    ),
+    {
+      stocks: ["AMD", "ARM", "MSTR", "NVDA", "TSLA", "XLK"],
+      etfs: ["IBIT", "SPY"],
+    },
   );
-  // With the backtest list, its preset comes first.
-  const withList = symbolPresets(list, [], ["AMD", "ARM", "NVDA"]);
-  assert.deepEqual(withList[0], {
-    key: "list",
-    label: "Backtest list",
-    tickers: ["AMD", "ARM", "NVDA"],
-    disabled: null,
-  });
-  assert.equal(symbolPresets(list, [], null)[0]!.disabled, "Loading the list");
-  assert.equal(symbolPresets(list, [], [])[0]!.disabled, "The list is empty");
+  assert.deepEqual(symbolGroups(null, watchlist).etfs, ["IBIT", "XLK"]);
+  assert.deepEqual(
+    filterSymbols(["AMD", "AMZN", "ARM", "TSM", "TSLA"], "am ts"),
+    ["AMD", "AMZN", "TSM", "TSLA"],
+  );
+  assert.deepEqual(filterSymbols(["AMD"], "  "), ["AMD"]);
+  assert.deepEqual(sectorGroups(watchlist), [
+    { etf: "IBIT", tickers: ["MSTR"] },
+    { etf: "SMH", tickers: ["NVDA", "AMD"] },
+  ]);
   assert.deepEqual(parseSymbols(" amd, ARM;tsm  amd brk.b x?y"), {
     valid: ["AMD", "ARM", "TSM", "BRK.B"],
     invalid: ["X?Y"],
   });
-  const live = symbolPresets(list, [{ ticker: "TSLA" }, { ticker: "TSLA" }]);
-  assert.deepEqual(live[1]!.tickers, ["TSLA"]);
-  assert.equal(live[1]!.disabled, null);
-  assert.equal(selectedPreset(live, ["AMD", "NVDA"]), "sector:SMH");
-  assert.equal(selectedPreset(live, ["AMD"]), null);
   assert.equal(
     previewTickers(Array.from({ length: 30 }, (_, i) => `S${i}`)),
     "S0, S1, S2, S3, S4, S5, S6, S7 +22 more",
