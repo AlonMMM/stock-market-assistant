@@ -63,6 +63,10 @@ Fix intermittent HTTP 503 from backtests and prepare for the Workers Paid plan.
   and cleanup. Cold, cached and `--no-cache` runs give deep-equal results (3 symbols:
   1.5 s → 0.2 s). Alpaca daily bars (β) are not part of the key; a later split
   adjustment would not invalidate a part.
+- Complete runs stored in `backtest_runs` (same hash over the sorted symbol list;
+  readable `rule`, `from_date`, `to_date`, `symbols`, `settings`, `summary`; gzipped
+  full result). An identical rerun is served from it (full year: 0.8 s; from parts:
+  20 s; computed: 10.5 min). Runs with failed symbols are not stored.
 - First full run (2026-10-04, before the cache existed): 196 symbols × 252 sessions,
   42,907 alerts in 12.5 min; look-now big 17.6% vs 3.8% baseline, very big 5.3% vs
   0.7%; trade view good 34.9% vs 30.7%, stopped 61.5% vs 59.3%.

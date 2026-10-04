@@ -24,6 +24,11 @@
 // settings, and the symbol. A rerun recomputes only uncached symbols, then
 // ranks look-now scores across all. rule and ticker are kept as plain columns
 // for listing and cleanup, e.g. DELETE FROM backtest_parts WHERE rule = 'rvol-v3'.
+//
+// Each complete run is stored in backtest_runs: the same hash over the sorted
+// symbol list instead of one symbol, readable columns (rule, dates, symbols,
+// settings, summary) and the full gzipped result. An identical rerun is served
+// from it; a run with failed symbols is not stored.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -40,6 +45,8 @@ import {
   encodePart,
   minuteHistory,
   parseBacktest,
+  type BacktestRequest,
+  type BacktestResult,
   type SymbolPart,
 } from "../packages/market-data/src/backtest.js";
 import {
@@ -75,7 +82,7 @@ const from = args.get("from") ?? previousSessions(to, 251)[0]!;
 const out = args.get("out") ?? `${root}data/local/backtest-${from}_${to}.json`;
 const wrangler = args.get("wrangler") ?? "wrangler";
 
-let request;
+let request: BacktestRequest;
 try {
   request = parseBacktest(
     {
@@ -204,10 +211,26 @@ const partKey = (ticker: string) =>
       ticker,
     }),
   );
-const db = new DatabaseSync(`${root}data/local/bars-cache.sqlite`);
-db.exec(
-  "PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS backtest_parts (key TEXT PRIMARY KEY, rule TEXT NOT NULL, ticker TEXT NOT NULL, part BLOB NOT NULL, stored_at INTEGER NOT NULL)",
+const runKey = sha(
+  JSON.stringify({
+    rule: ruleVersion,
+    code,
+    from,
+    to,
+    window,
+    config: request.config,
+    validation: request.validation,
+    tickers: [...request.tickers].sort(),
+  }),
 );
+const db = new DatabaseSync(`${root}data/local/bars-cache.sqlite`);
+db.exec(`PRAGMA busy_timeout=5000;
+  CREATE TABLE IF NOT EXISTS backtest_parts (key TEXT PRIMARY KEY, rule TEXT NOT NULL,
+    ticker TEXT NOT NULL, part BLOB NOT NULL, stored_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS backtest_runs (key TEXT PRIMARY KEY, rule TEXT NOT NULL,
+    from_date TEXT NOT NULL, to_date TEXT NOT NULL, symbols TEXT NOT NULL,
+    settings TEXT NOT NULL, summary TEXT NOT NULL, result BLOB NOT NULL,
+    created_at INTEGER NOT NULL);`);
 const savePart = (part: SymbolPart) =>
   db
     .prepare(
@@ -229,56 +252,95 @@ const loadPart = (ticker: string) => {
   return decodePart(gunzipSync(row.part).toString());
 };
 const useCache = args.get("no-cache") === undefined;
-const has = db.prepare("SELECT 1 FROM backtest_parts WHERE key = ?");
-const cached = new Set(
-  useCache ? request.tickers.filter((t) => has.get(partKey(t))) : [],
-);
-console.log(
-  `Rule ${ruleVersion}: ${cached.size} of ${request.tickers.length} symbols cached`,
-);
-
-// SPY's bars are only needed to compute uncached symbols.
-const needed = cached.size < request.tickers.length;
-const spyRows = needed
-  ? await history(benchmark, window.start, window.until)
-  : [];
-const run = new BacktestRun(
-  request,
-  window,
-  spyRows,
-  needed ? await daily(benchmark) : [],
-);
+const storedRun = useCache
+  ? (db
+      .prepare("SELECT result FROM backtest_runs WHERE key = ?")
+      .get(runKey) as { result: Uint8Array } | undefined)
+  : undefined;
 const failed: string[] = [];
-for (const [i, ticker] of request.tickers.entries()) {
-  try {
-    if (cached.has(ticker)) {
-      run.merge(loadPart(ticker));
+let result: BacktestResult;
+if (storedRun) {
+  console.log(`Rule ${ruleVersion}: identical run found in backtest_runs`);
+  result = JSON.parse(gunzipSync(storedRun.result).toString());
+} else {
+  result = await computeRun();
+  // A run with failed symbols is incomplete: never served as cached.
+  if (!failed.length)
+    db.prepare(
+      `INSERT OR REPLACE INTO backtest_runs (key, rule, from_date, to_date, symbols,
+        settings, summary, result, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      runKey,
+      ruleVersion,
+      from,
+      to,
+      JSON.stringify(request.tickers),
+      JSON.stringify({
+        config: request.config,
+        validation: request.validation,
+      }),
+      JSON.stringify({
+        alerts: result.alerts.length,
+        evaluated: result.evaluated,
+        lookNow: result.lookNow,
+        validation: { ...result.validation, baselineBySymbol: undefined },
+        diagnostics: result.diagnostics,
+      }),
+      gzipSync(JSON.stringify(result)),
+      Date.now(),
+    );
+}
+writeFileSync(out, JSON.stringify(result));
+
+async function computeRun() {
+  const has = db.prepare("SELECT 1 FROM backtest_parts WHERE key = ?");
+  const cached = new Set(
+    useCache ? request.tickers.filter((t) => has.get(partKey(t))) : [],
+  );
+  console.log(
+    `Rule ${ruleVersion}: ${cached.size} of ${request.tickers.length} symbols cached`,
+  );
+  // SPY's bars are only needed to compute uncached symbols.
+  const needed = cached.size < request.tickers.length;
+  const spyRows = needed
+    ? await history(benchmark, window.start, window.until)
+    : [];
+  const run = new BacktestRun(
+    request,
+    window,
+    spyRows,
+    needed ? await daily(benchmark) : [],
+  );
+  for (const [i, ticker] of request.tickers.entries()) {
+    try {
+      if (cached.has(ticker)) {
+        run.merge(loadPart(ticker));
+        continue;
+      }
+      const rows =
+        ticker === benchmark
+          ? spyRows
+          : await history(ticker, window.start, window.until);
+      const computed = run.compute(
+        ticker,
+        rows,
+        ticker === benchmark ? [] : await daily(ticker),
+      );
+      savePart(computed);
+      run.merge(computed);
+    } catch (error) {
+      failed.push(ticker);
+      console.error(
+        `${ticker}: ${error instanceof Error ? error.message : error}`,
+      );
       continue;
     }
-    const rows =
-      ticker === benchmark
-        ? spyRows
-        : await history(ticker, window.start, window.until);
-    const computed = run.compute(
-      ticker,
-      rows,
-      ticker === benchmark ? [] : await daily(ticker),
+    console.log(
+      `[${i + 1}/${request.tickers.length}] ${ticker} · ${Math.round((Date.now() - began) / 1000)} s`,
     );
-    savePart(computed);
-    run.merge(computed);
-  } catch (error) {
-    failed.push(ticker);
-    console.error(
-      `${ticker}: ${error instanceof Error ? error.message : error}`,
-    );
-    continue;
   }
-  console.log(
-    `[${i + 1}/${request.tickers.length}] ${ticker} · ${Math.round((Date.now() - began) / 1000)} s`,
-  );
+  return run.finish();
 }
-const result = run.finish();
-writeFileSync(out, JSON.stringify(result));
 
 const pct = (n: number, d: number) =>
   d ? `${((n / d) * 100).toFixed(1)}%` : "—";
