@@ -4,6 +4,8 @@ import { D1BarCache } from "../../../packages/market-data/src/bar-cache.js";
 import { D1StrengthStore } from "../../../packages/market-data/src/board.js";
 import { D1BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
 import { SqliteD1 } from "./sqlite-d1.js";
+import { codeVersion } from "../../../packages/market-data/src/code-version.js";
+import { ResultCache } from "../../../packages/market-data/src/result-cache.js";
 import { buildApp } from "./app.js";
 import { getPorts } from "../../../packages/config/src/ports.js";
 
@@ -17,6 +19,8 @@ const app = buildApp(true, {
   cache: new D1BarCache(db),
   baselines: new D1BaselineStore(db),
   strengths: new D1StrengthStore(db),
+  // Run from the repository root, like the cache path above.
+  results: new ResultCache(db, codeVersion(`${process.cwd()}/`)),
 });
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {

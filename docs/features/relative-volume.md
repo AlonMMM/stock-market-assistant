@@ -59,7 +59,7 @@ end is the UTC close timestamp, date and minute are the New York session date an
 
 ## Alpaca backtest
 
-POST /api/backtest with `{ "tickers": ["AAPL"], "from": "YYYY-MM-DD", "to": "YYYY-MM-DD", "config": {...} }` fetches Alpaca SIP minute bars, including the 20 warmup sessions, and replays them through the live evaluator. The response lists the alerts the collector would have sent (each with its bar close price), diagnostic counts and per-symbol missing sessions. Limits: at most 50 sessions, and as many symbols as fit the Worker's memory for the range and warmup (`maxSymbolsPerRequest` in `packages/market-data/src/backtest-limits.ts`: 4 at 20 sessions, 1 at 40–50); larger requests get HTTP 400. See the [task](../tasks/backend-alpaca-backtest.md).
+POST /api/backtest with `{ "tickers": ["AAPL"], "from": "YYYY-MM-DD", "to": "YYYY-MM-DD", "config": {...} }` fetches Alpaca SIP minute bars, including the 20 warmup sessions, and replays them through the live evaluator. The response lists the alerts the collector would have sent (each with its bar close price), diagnostic counts and per-symbol missing sessions. Limits: at most 50 sessions, and as many symbols as fit the Worker's memory for the range and warmup (`maxSymbolsPerRequest` in `packages/market-data/src/backtest-limits.ts`: 4 at 20 sessions, 1 at 40–50); larger requests get HTTP 400. Computed symbols are cached in D1 (`result-cache.ts`) for the same rule version, code, dates and settings; the response's `results` field counts cache hits and misses. See the [task](../tasks/backend-alpaca-backtest.md).
 
 ## Current delivery
 

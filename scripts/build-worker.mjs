@@ -1,6 +1,7 @@
 import { build } from "esbuild";
 import { readdirSync, readFileSync, mkdirSync, copyFileSync } from "node:fs";
 import { join, extname } from "node:path";
+import { codeVersion } from "../packages/market-data/src/code-version.ts";
 const assets = {};
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -28,7 +29,11 @@ await build({
   format: "esm",
   platform: "browser",
   target: "es2022",
-  define: { __STATIC_ASSETS__: JSON.stringify(assets) },
+  define: {
+    __STATIC_ASSETS__: JSON.stringify(assets),
+    // Keys the backtest result cache (see code-version.ts).
+    __EVALUATION_CODE__: JSON.stringify(codeVersion(`${process.cwd()}/`)),
+  },
   minify: true,
 });
 mkdirSync("dist/.openai", { recursive: true });
