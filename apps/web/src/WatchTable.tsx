@@ -21,7 +21,7 @@ import {
 import { Sparkline } from "./Sparkline.js";
 import { israelClock, israelLabel } from "./time.js";
 import {
-  areaScoreNote,
+  scoreNote,
   scoreCell,
   scoreStrong,
   scoreTone,
@@ -248,7 +248,7 @@ export function WatchTable({
                   key={key}
                   title={
                     key === "rsScore"
-                      ? `0–100 vs SPY: ${areaScoreNote}; green ≥ ${scoreStrong} stronger, red ≤ ${scoreWeak} weaker`
+                      ? `0–100 vs SPY: ${scoreNote}; green ≥ ${scoreStrong} stronger, red ≤ ${scoreWeak} weaker`
                       : undefined
                   }
                   className={`${align}${active ? " active" : ""}`}
@@ -394,8 +394,7 @@ export function WatchTable({
       <p className="table-note">
         Change: since the previous close. vs SPY / vs sector: today&apos;s
         change minus the benchmark&apos;s change, in % points. vs SPY score:
-        0–100, always vs SPY: the {areaScoreNote}, scaled by how large that area
-        usually is for the stock at this minute; green ≥ {scoreStrong} stronger,
+        0–100, always vs SPY ({scoreNote}), scaled by how large that weighted sum usually is for the stock at this minute over the previous 20 sessions; green ≥ {scoreStrong} stronger,
         red ≤ {scoreWeak} weaker, grey between; “—” without enough history. Rel
         vol: regular-session volume so far ÷ the median volume by the same New
         York minute over the previous 20 sessions; “—” before the{" "}

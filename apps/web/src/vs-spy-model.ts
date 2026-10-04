@@ -1,4 +1,4 @@
-// Pure view logic for the area score vs SPY (docs/features/area-vs-spy.md):
+// Pure view logic for the score vs SPY (docs/features/marks-vs-spy.md):
 // the score cell on Live and Backtest alert rows, the watchlist column and
 // the expanded "at alert → now" line. No direction labels: a cell shows only
 // the score and its colour. No DOM access, so Node tests import it.
@@ -35,9 +35,9 @@ export const toneWords: Record<VsSpyTone, string> = {
   none: "no score vs SPY",
 };
 
-/** Explains the area score in tooltips, legends and table notes. */
-export const areaScoreNote =
-  "area between the stock and β×SPY since the session open, recent minutes weigh more; 50 = normal";
+/** Explains the score in tooltips, legends and table notes. */
+export const scoreNote =
+  "marked minutes only, each sized by the stock's 5-min move minus β × SPY's; recent minutes weigh more; the alert's own minutes are excluded; 50 = normal";
 
 export interface VsSpyCell {
   tone: VsSpyTone;
@@ -59,7 +59,7 @@ export function scoreCell(
     tone,
     text: String(score),
     score: score!,
-    title: `vs SPY ${score} / 100${at}: ${toneWords[tone]} (${areaScoreNote})`,
+    title: `vs SPY ${score} / 100${at}: ${toneWords[tone]} (${scoreNote})`,
   };
 }
 

@@ -140,46 +140,111 @@ export function chartScores(data: DayChart): ChartScores | null {
   };
 }
 
+/** The score's weight window: the last 60 minutes up to the end minute E. */
+export const weightMinutes = 60;
+
 /**
- * Bar index the header score ends at: the alert's bar in the "Around alert"
- * view of an alert chart, else the latest bar. -1 without bars.
+ * Bar index of the end minute E the header score ends at. In the "Around
+ * alert" view of an alert chart: the last bar closing at or before the
+ * alert's window start (alert bar close − `windowMinutes`), so the alert's
+ * own minutes are excluded, the same E as the alert's tag and Telegram line;
+ * -1 when no bar closes that early. Otherwise the latest bar (-1 without
+ * bars). `alertMs` is the alert bar's close (ms); NaN without an alert.
  */
-export function headerIndex(
-  count: number,
-  alertIndex: number,
+export function endIndex(
+  bars: { start: number }[],
+  alertMs: number,
+  windowMinutes: number,
   aroundAlert: boolean,
 ): number {
-  if (aroundAlert && alertIndex >= 0 && alertIndex < count) return alertIndex;
-  return count - 1;
+  if (!aroundAlert || Number.isNaN(alertMs)) return bars.length - 1;
+  const cutoff = alertMs - windowMinutes * 60000;
+  for (let i = bars.length - 1; i >= 0; i--)
+    if ((bars[i]!.start + 60) * 1000 <= cutoff) return i;
+  return -1;
 }
 
 /**
- * Display hint for the gap pane: the linear weight w(t) = (t − t0 + 1) /
- * (T − t0 + 1) in minutes, T = bar `end`'s minute and t0 = the start of the
- * backend's session window containing it (the latest window start ≤ T);
- * null outside that window or without one.
+ * Weight of the minute starting at `start` (Unix s) for the end minute
+ * starting at `endStart`: w = (60 − (E − i)) / 60 for 0 ≤ E − i < 60 clock
+ * minutes, else 0 (older, or after E).
  */
-export function weightRamp(
-  bars: { start: number }[],
-  end: number,
-  windows: { start: number }[],
-): (number | null)[] {
-  const ramp: (number | null)[] = bars.map(() => null);
-  const last = bars[end];
-  if (!last) return ramp;
-  const t0 = Math.max(
-    ...windows.map((w) => w.start).filter((t) => t <= last.start),
-  );
-  if (!Number.isFinite(t0)) return ramp;
-  const span = (last.start - t0) / 60 + 1;
-  for (let i = 0; i <= end; i++) {
-    const t = bars[i]!.start;
-    if (t >= t0) ramp[i] = ((t - t0) / 60 + 1) / span;
-  }
-  return ramp;
+export function minuteWeight(start: number, endStart: number): number {
+  const age = Math.round((endStart - start) / 60);
+  return age >= 0 && age < weightMinutes
+    ? (weightMinutes - age) / weightMinutes
+    : 0;
 }
 
-/** "+0.42 pts" / "−1.10 pts" for the gap pane. */
+/** Bar opacity at weight 1 (the end minute) and just above 0 (60 min old). */
+export const opacityRange = { newest: 1, oldest: 0.22 } as const;
+/** Opacity of a bar outside the weight window (older, or after E). */
+export const outsideOpacity = 0.07;
+
+/**
+ * Opacity of a contribution bar: linear in its weight from `oldest` (weight
+ * → 0) to `newest` (weight 1); bars that do not count get `outsideOpacity`.
+ */
+export function barOpacity(weight: number): number {
+  if (!(weight > 0)) return outsideOpacity;
+  const { newest, oldest } = opacityRange;
+  return oldest + (newest - oldest) * Math.min(1, weight);
+}
+
+export interface ContributionBar {
+  value: number | null; // c(i), % points; null when the minute is unmarked
+  weight: number; // w(i) for the end minute, 0 outside its 60 minutes
+  opacity: number;
+  up: boolean; // c ≥ 0 → green
+  inWindow: boolean; // inside the shaded 60-minute weight window
+}
+
+/**
+ * Contributions pane bars relative to end bar `end` (the header's E):
+ * value from the backend's per-minute contribution, weight and opacity by
+ * clock-minute age. Without an end bar every weight is 0.
+ */
+export function contributionBars(
+  bars: { start: number }[],
+  contribution: (number | null)[],
+  end: number,
+): ContributionBar[] {
+  const endStart = bars[end]?.start;
+  return bars.map((b, i) => {
+    const c = contribution[i];
+    const value = typeof c === "number" && Number.isFinite(c) ? c : null;
+    const weight = endStart === undefined ? 0 : minuteWeight(b.start, endStart);
+    return {
+      value,
+      weight,
+      opacity: barOpacity(weight),
+      up: (value ?? 0) >= 0,
+      inWindow: weight > 0,
+    };
+  });
+}
+
+/**
+ * Bars of the alert's own window (closing after alert close − window and at
+ * or before the alert close): excluded from the alert's score. Empty without
+ * an alert or a window.
+ */
+export function alertWindowBars(
+  bars: { start: number }[],
+  alertMs: number,
+  windowMinutes: number,
+): number[] {
+  if (Number.isNaN(alertMs) || windowMinutes <= 0) return [];
+  const from = alertMs - windowMinutes * 60000;
+  const out: number[] = [];
+  bars.forEach((b, i) => {
+    const close = (b.start + 60) * 1000;
+    if (close > from && close <= alertMs) out.push(i);
+  });
+  return out;
+}
+
+/** "+0.42 pts" / "−1.10 pts" for the contributions pane. */
 export const gapPoints = (n: number) => `${signed(n)} pts`;
 
 /** "72 / 100", or "—" without a score. */
