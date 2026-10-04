@@ -15,6 +15,7 @@ import {
 import type { RawBar } from "../packages/market-data/src/bars.js";
 import { previousSessions } from "../packages/market-data/src/calendar.js";
 import type { BaselineCounts } from "../packages/market-data/src/outcome.js";
+import { pairedDaily } from "./analysis-fixtures.js";
 
 // Synthetic regular-session bars (EDT: 13:30Z–20:00Z), flat at 100 on 1,000
 // shares a minute, with a rising 20,000-share burst on 2026-06-03 14:00Z–14:04Z.
@@ -316,6 +317,47 @@ test("alerts carry the move against SPY scaled by the ticker's beta", async () =
   assert.ok(Math.abs(context.change - 3) < 1e-9);
   assert.ok(Math.abs(context.spyChange - 0.2) < 1e-9);
   assert.ok(Math.abs(context.excess - 2.7) < 1e-9);
+});
+
+test("backtest alerts carry the score vs SPY at the alert minute", async () => {
+  // SYNTHETIC: as above, with daily excess of ±1% so σ = √(20/19).
+  const spyMinutes = syntheticBars().map((b) => {
+    const close =
+      b.start === Date.parse("2026-06-03T14:02:00Z") / 1000 ? 501 : 500;
+    return { ...b, open: close, high: close, low: close, close };
+  });
+  const daily = pairedDaily(0.01, previousSessions("2026-06-05", 70));
+  const result = await runBacktest(
+    { tickers: ["AAPL"], from, to, config: { directionBars: 3 } },
+    async (ticker) => (ticker === "SPY" ? spyMinutes : syntheticBars()),
+    later,
+    async (ticker) => (ticker === "SPY" ? daily.benchmark : daily.stock),
+  );
+  const alert = result.alerts[0]!;
+  assert.equal(alert.end, "2026-06-03T14:03:00.000Z");
+  // AAPL +3%, SPY +0.2%, β 1.5: excess 2.7 → 50 + 27 / 1.026 = 76.
+  assert.deepEqual(alert.vsSpy, {
+    score: Math.round(50 + 27 / Math.sqrt(20 / 19)),
+    beta: alert.vsSpy!.beta,
+    betaAssumed: false,
+    label: "confirmed",
+    spyLagged: false,
+  });
+  assert.equal(alert.vsSpy!.score, 76);
+  assert.ok(Math.abs(alert.vsSpy!.beta - 1.5) < 1e-9);
+  // Without daily bars: β assumed, no σ, no score.
+  const bare = await runBacktest(
+    { tickers: ["AAPL"], from, to, config: { directionBars: 3 } },
+    async (ticker) => (ticker === "SPY" ? spyMinutes : syntheticBars()),
+    later,
+  );
+  assert.deepEqual(bare.alerts[0]!.vsSpy, {
+    score: null,
+    beta: 1,
+    betaAssumed: true,
+    label: "none",
+    spyLagged: false,
+  });
 });
 
 // Synthetic zigzag bars: every minute's close differs from three minutes

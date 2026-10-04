@@ -187,6 +187,8 @@ const sha = (text: string) => createHash("sha256").update(text).digest("hex");
 const code = sha(
   [
     "packages/alerts/src/relative-volume.ts",
+    "packages/contracts/src/vs-spy.ts",
+    "packages/market-data/src/alert-vs-spy.ts",
     "packages/market-data/src/backtest.ts",
     "packages/market-data/src/bars.ts",
     "packages/market-data/src/beta.ts",
@@ -194,6 +196,7 @@ const code = sha(
     "packages/market-data/src/evaluator.ts",
     "packages/market-data/src/look-now.ts",
     "packages/market-data/src/outcome.ts",
+    "packages/market-data/src/rs-score.ts",
   ]
     .map((f) => readFileSync(`${root}${f}`, "utf8"))
     .join("\0"),

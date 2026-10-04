@@ -14,6 +14,8 @@ import {
 } from "../../alerts/src/relative-volume.js";
 import type { AlertVsSpy } from "../../contracts/src/vs-spy.js";
 import { AlpacaFeed } from "./alpaca.js";
+import { alertVsSpy } from "./alert-vs-spy.js";
+import { spyStrength, type SpyStrength } from "./rs-score.js";
 import { cachedHistory, type BarCache, type CacheStats } from "./bar-cache.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
 import { normalize, type PriceBar, type RawBar } from "./bars.js";
@@ -230,6 +232,34 @@ function context(
   return { change, spyChange, beta, excess: change - beta * spyChange };
 }
 
+/**
+ * Score vs SPY at the alert minute, as the live collector computes it
+ * (docs/features/alert-vs-spy.md): SPY's bar of the same minute, else its
+ * newest earlier bar of the day (`spyLagged`); β/σ from daily bars before
+ * the alert date. Uses only data already loaded for the run.
+ */
+function vsSpyAt(
+  alert: Evaluation,
+  date: string,
+  close: number,
+  lastRegular: Map<string, number>,
+  spy: MarketTrack,
+  strength: SpyStrength | null,
+): AlertVsSpy {
+  const end = Date.parse(alert.end);
+  const previous = previousSessions(date, 1)[0]!;
+  const spyBar = spy.byDate.get(date)?.findLast((b) => b.end <= end);
+  return alertVsSpy({
+    direction: alert.direction,
+    close,
+    previousClose: lastRegular.get(previous),
+    spyClose: spyBar?.close,
+    spyPreviousClose: spy.lastRegular.get(previous),
+    strength,
+    spyLagged: spyBar?.end !== end,
+  });
+}
+
 // Replays Alpaca minute bars through the live evaluator, as if each bar had
 // been received the moment it closed. Warmup bars build the baseline only.
 export type BacktestRequest = ReturnType<typeof parseBacktest>;
@@ -342,6 +372,25 @@ export class BacktestRun {
     const normalized: PriceBar[] = [];
     const tickerAlerts: BacktestAlert[] = [];
     const diagnostics: Record<string, number> = {};
+    // β/σ vs SPY per alert date, from the daily bars already loaded.
+    const strengths = new Map<string, SpyStrength | null>();
+    const strengthOf = (date: string) => {
+      if (!betaStart) return null;
+      if (!strengths.has(date)) {
+        let value: SpyStrength | null = null;
+        try {
+          value = spyStrength(
+            previousSessions(date, betaReturns + 1),
+            daily,
+            this.spyDaily,
+          );
+        } catch {
+          // Outside calendar coverage: no score.
+        }
+        strengths.set(date, value);
+      }
+      return strengths.get(date)!;
+    };
     let evaluated = 0;
     let count = 0;
     for (const row of rows) {
@@ -364,6 +413,14 @@ export class BacktestRun {
           close: bar.close,
           outcome: undefined as unknown as Outcome, // scored below
           lookNow: undefined as unknown as LookNow, // scored in finish()
+          vsSpy: vsSpyAt(
+            result,
+            bar.date,
+            bar.close,
+            lastRegular,
+            this.spy,
+            strengthOf(bar.date),
+          ),
           context:
             ticker === benchmark || !betaStart
               ? null
