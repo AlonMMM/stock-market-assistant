@@ -67,7 +67,7 @@ export interface Board {
   series: BoardSeries[]; // watchlist order, then SPY and QQQ if not listed
 }
 
-type MultiHistory = (
+export type MultiHistory = (
   tickers: string[],
   start: string,
   end: string,
@@ -158,7 +158,7 @@ async function baselines(
  * SPY over the 61 sessions before the date, which is stored. Failures return
  * no values (score and β null) and are not stored.
  */
-async function strengths(
+export async function strengths(
   tickers: string[],
   date: string,
   multi: MultiHistory,

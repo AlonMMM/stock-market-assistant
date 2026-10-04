@@ -114,12 +114,13 @@ test(
       assert.equal(synced.status, 200);
       const body = await synced.json();
       assert.deepEqual(body.tickers, ["NVDA", "AAPL", "MSFT"]);
-      assert.deepEqual(body.live, ["NVDA", "AAPL"]);
+      // SPY is streamed too (score vs SPY) and takes one of the 2 slots.
+      assert.deepEqual(body.live, ["NVDA"]);
       assert.equal(body.restarting, false);
 
       const list = await (await fetch(`${url}/watchlist`, { headers })).json();
       assert.equal(list.name, "Favorites");
-      assert.deepEqual(list.live, ["NVDA", "AAPL"]);
+      assert.deepEqual(list.live, ["NVDA"]);
       // A symbol cannot be its own benchmark; that entry is dropped.
       assert.deepEqual(list.benchmarks, { NVDA: "SOXX" });
       // The sync token may only replace the watchlist.
