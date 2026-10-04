@@ -42,6 +42,19 @@ Fix intermittent HTTP 503 from backtests and prepare for the Workers Paid plan.
 - Requires Workers Paid (active since 2026-10-03); on the free plan any batch exceeds
   the 10 ms CPU limit.
 
+- `BacktestRun` (`packages/market-data/src/backtest.ts`): `runBacktest` split into a
+  per-symbol step and a final ranking step; output byte-identical to before on a
+  3-symbol × 20-session AAPL replay. Random minutes for look-now ranking are kept as
+  one z per horizon (`RandomMinutes`), so millions of them fit in memory.
+- `npm run backtest` (`scripts/backtest.ts`): offline backtest with no Worker limits,
+  one symbol at a time, all symbols ranked together. Bars from
+  `data/local/bars-cache.sqlite`, then D1 (copied locally), then Alpaca.
+- Calendar extended to 2024–2025 (the user's earlier uncommitted change).
+- 2026-10-04: 196 tickers from all IBKR watchlists (stocks plus equity ETFs; bond,
+  volatility, commodity and currency funds dropped) saved to
+  `data/local/backtest-tickers.txt` (git-ignored, account data); D1 backfilled with
+  13 months of SIP bars for them.
+
 ## Verification and handoff
 
 - `npm run check` and `git diff --check` pass (191 pass, 1 skipped).

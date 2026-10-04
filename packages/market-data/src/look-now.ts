@@ -271,6 +271,57 @@ export function ranks(samples: Measured[]): Ranks {
   return out;
 }
 
+/**
+ * Random-minute measurements kept as one z per horizon, so a long offline run
+ * (millions of minutes) fits in memory. Ranks and scores match `ranks` and
+ * `lookNow` on the full measurements.
+ */
+export class RandomMinutes {
+  private readonly z = lookNowHorizons.map(() => [] as number[]); // NaN = none
+  private count = 0;
+
+  add(measured: Measured) {
+    if (!measured.ok) return;
+    lookNowHorizons.forEach((h, i) =>
+      this.z[i]!.push(measured.moves.find((m) => m.horizon === h)?.z ?? NaN),
+    );
+    this.count++;
+  }
+
+  ranks(): Ranks {
+    const out: Ranks = new Map();
+    lookNowHorizons.forEach((h, i) => {
+      const list = this.z[i]!.filter((v) => !Number.isNaN(v));
+      if (list.length >= minBaseline)
+        out.set(h, Float64Array.from(list).sort());
+    });
+    return out;
+  }
+
+  /** Each random minute's look-now score against `rank`. */
+  scores(rank: Ranks): { score: number | null }[] {
+    const out: { score: number | null }[] = [];
+    for (let k = 0; k < this.count; k++) {
+      const moves: Omit<HorizonMove, "percentile">[] = [];
+      lookNowHorizons.forEach((horizon, i) => {
+        const z = this.z[i]![k]!;
+        if (!Number.isNaN(z))
+          moves.push({ horizon, z, move: 0, sigma: 0, marketAdjusted: false });
+      });
+      const { score } = lookNow(
+        { ok: true, entry: 0, moves },
+        null,
+        rank,
+        null,
+        null,
+        null,
+      );
+      out.push({ score });
+    }
+    return out;
+  }
+}
+
 // Share of random minutes with z at or below this one, 0–100.
 function percentileOf(sorted: Float64Array, z: number) {
   let lo = 0;
@@ -353,9 +404,9 @@ export interface LookNowSummary {
 
 export function summarizeLookNow(
   alerts: LookNow[],
-  randoms: LookNow[],
+  randoms: Pick<LookNow, "score">[],
 ): LookNowSummary {
-  const stats = (list: LookNow[]) => {
+  const stats = (list: Pick<LookNow, "score">[]) => {
     const scored = list.filter((l) => l.score !== null);
     return {
       scored: scored.length,

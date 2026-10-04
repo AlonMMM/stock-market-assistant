@@ -18,15 +18,16 @@ No environment file, cloud account, API key, or Python installation is needed fo
 
 ## Commands
 
-| Command             | Purpose                                                             |
-| ------------------- | ------------------------------------------------------------------- |
-| `npm run dev`       | Start API and web with reload; stops the other process if one exits |
-| `npm run doctor`    | Check Node/Git, installed dependencies, and context links           |
-| `npm run check`     | Formatting, TypeScript, API tests, and builds                       |
-| `npm run format`    | Apply formatting                                                    |
-| `npm test`          | API/client contract tests without opening a network port            |
-| `npm run build`     | Compile API to `dist/` and web to `dist/web/`                       |
-| `npm run start:api` | Run the compiled API after building                                 |
+| Command             | Purpose                                                                  |
+| ------------------- | ------------------------------------------------------------------------ |
+| `npm run dev`       | Start API and web with reload; stops the other process if one exits      |
+| `npm run doctor`    | Check Node/Git, installed dependencies, and context links                |
+| `npm run check`     | Formatting, TypeScript, API tests, and builds                            |
+| `npm run format`    | Apply formatting                                                         |
+| `npm test`          | API/client contract tests without opening a network port                 |
+| `npm run build`     | Compile API to `dist/` and web to `dist/web/`                            |
+| `npm run start:api` | Run the compiled API after building                                      |
+| `npm run backtest`  | Offline backtest for many symbols/long ranges; see `scripts/backtest.ts` |
 
 ## Runtime boundaries
 
