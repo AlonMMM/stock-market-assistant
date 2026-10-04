@@ -1,6 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { alertLink } from "../../../packages/contracts/src/alert-link.js";
-import { AlertEvidence, type FeedAlert } from "./AlertFeed.js";
+import {
+  AlertEvidence,
+  VsSpyLine,
+  VsSpyTag,
+  type FeedAlert,
+} from "./AlertFeed.js";
 import {
   alertDirection,
   directionCounts,
@@ -12,6 +17,7 @@ import {
 } from "./live-model.js";
 import { AnalysisPanel } from "./Analysis.js";
 import { israelClock, israelDay, israelLabel } from "./time.js";
+import { nowForAlert, type StrengthNow } from "./vs-spy-model.js";
 
 const DayChart = lazy(() =>
   import("./DayChart.js").then((m) => ({ default: m.DayChart })),
@@ -51,28 +57,6 @@ function CopyLink({ alert }: { alert: FeedAlert }) {
   );
 }
 
-/** Rel. strength column: the analysis's relative-strength score vs SPY. */
-function Strength({ alert: a }: { alert: FeedAlert }) {
-  const spy = a.analysis?.result?.scores.find((s) => s.kind === "market");
-  if (spy?.score !== null && spy?.score !== undefined)
-    return (
-      <span
-        className="alert-excess"
-        title="Relative-strength score vs SPY, 0–100; above 50 = stronger"
-      >
-        {spy.score}
-        <small>/100</small>
-      </span>
-    );
-  if (a.analysis && !a.analysis.result)
-    return <span className="alert-excess muted">analyzing…</span>;
-  return (
-    <span className="alert-excess" aria-label="Relative strength not available">
-      —
-    </span>
-  );
-}
-
 /** Live alerts: direction and symbol filters, session groups, expandable rows. */
 export function LiveAlerts({
   alerts,
@@ -81,9 +65,11 @@ export function LiveAlerts({
   symbol,
   onSymbol,
   since,
+  strengthNow = {},
 }: {
   alerts: FeedAlert[];
   benchmarks?: Record<string, string>;
+  strengthNow?: Record<string, StrengthNow>; // latest score vs SPY by ticker
   focus?: string; // ticker + end of a row to open and scroll to on mount
   symbol: string | null;
   onSymbol: (s: string | null) => void;
@@ -181,7 +167,7 @@ export function LiveAlerts({
           <span>Symbol</span>
           <span>Move</span>
           <span>Volume vs expected</span>
-          <span className="right">Rel. strength</span>
+          <span>vs SPY at alert</span>
           <span />
         </div>
         {days.map((d) => {
@@ -282,7 +268,10 @@ export function LiveAlerts({
                                     />
                                   </span>
                                 </span>
-                                <Strength alert={a} />
+                                <VsSpyTag
+                                  direction={up ? "up" : "down"}
+                                  vsSpy={a.vsSpy}
+                                />
                                 <svg
                                   className="chevron"
                                   width="14"
@@ -300,6 +289,13 @@ export function LiveAlerts({
                               </button>
                               {expanded && (
                                 <div className="alert-detail">
+                                  <VsSpyLine
+                                    vsSpy={a.vsSpy}
+                                    now={nowForAlert(
+                                      a.end,
+                                      strengthNow[a.ticker],
+                                    )}
+                                  />
                                   <AlertEvidence alert={a} />
                                   {a.analysis && (
                                     <AnalysisPanel
@@ -355,8 +351,13 @@ export function LiveAlerts({
       <p className="table-note">
         Times in {israelLabel}. Volume vs expected: the alert&apos;s volume
         ratio (window volume ÷ expected volume); the bar is full at {ratioScale}
-        ×. Rel. strength: the alert analysis&apos;s relative-strength score vs
-        SPY (0–100, above 50 = stronger than SPY); “—” without an analysis.
+        ×. vs SPY at alert: the stock&apos;s beta-adjusted move against SPY when
+        the alert fired, 0–100 (50 = in line with SPY, above = stronger).
+        Long/Short · confirmed means that score backs the alert&apos;s
+        direction, against means it opposes it, moving with market means
+        neither; “—” without a score. It describes the move, it is not a trade
+        recommendation. Expanded rows add today&apos;s current score (updated
+        every 30 s) with ↑/↓ when it moved 5 or more points.
       </p>
     </>
   );

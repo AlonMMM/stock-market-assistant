@@ -22,6 +22,7 @@ import {
   loadLive,
 } from "../../../packages/market-data/src/live.js";
 import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
+import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
 import { verifyAccess } from "./access.js";
 
 declare const __STATIC_ASSETS__: Record<
@@ -71,6 +72,8 @@ export default {
       COLLECTOR_URL?: string;
       BARS_CACHE?: D1Like; // D1 database caching Alpaca bars, Rel vol baselines and β/σ vs SPY
       COLLECTOR_TOKEN?: string;
+      // Minutes SIP data may lag real time; default 0 (see sip-delay.ts).
+      ALPACA_SIP_DELAY_MINUTES?: string;
     } = {},
   ): Promise<Response> {
     // Access protection is enabled by configuration; without both values the
@@ -86,6 +89,20 @@ export default {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
     const path = new URL(request.url).pathname;
+    let sipDelayMinutes: number;
+    try {
+      sipDelayMinutes = parseSipDelay(env.ALPACA_SIP_DELAY_MINUTES);
+    } catch (error) {
+      return Response.json(
+        { error: (error as Error).message },
+        { status: 500 },
+      );
+    }
+    const credentials = {
+      key: env.ALPACA_API_KEY,
+      secret: env.ALPACA_API_SECRET,
+      sipDelayMinutes,
+    };
     const alpacaRoutes = {
       "/api/backtest": handleBacktest,
       "/api/day-chart": handleDayChart,
@@ -111,7 +128,7 @@ export default {
       }
       const result = await alpacaRoute(
         body,
-        { key: env.ALPACA_API_KEY, secret: env.ALPACA_API_SECRET },
+        credentials,
         fetch,
         Date.now(),
         env.BARS_CACHE ? barCache(env.BARS_CACHE) : undefined,
@@ -133,7 +150,7 @@ export default {
       const result = await handleBoard(
         list.tickers,
         list.benchmarks,
-        { key: env.ALPACA_API_KEY, secret: env.ALPACA_API_SECRET },
+        credentials,
         fetch,
         Date.now(),
         env.BARS_CACHE ? stores(env.BARS_CACHE).baselines : undefined,

@@ -1,4 +1,5 @@
 import type { Evaluation } from "../../alerts/src/relative-volume.js";
+import type { AlertVsSpy, StrengthNow } from "../../contracts/src/vs-spy.js";
 import type {
   AnalysisResult,
   AnalysisStatus,
@@ -15,6 +16,9 @@ export interface LiveAnalysis {
 
 export interface LiveAlert extends Evaluation {
   close?: number;
+  // Score vs SPY at alert time (docs/features/alert-vs-spy.md); absent on
+  // alerts stored before it existed → show "—".
+  vsSpy?: AlertVsSpy;
   analysis?: LiveAnalysis;
 }
 
@@ -27,6 +31,9 @@ export interface LiveStatus {
   receiving: number; // symbols that have delivered at least one live bar
   lastBarAt: string | null; // newest live bar across symbols (UTC ISO)
   alerts: LiveAlert[];
+  // Score vs SPY now, per symbol with an alert today (Israel day), from each
+  // symbol's and SPY's latest bars; {} when the collector does not send it.
+  strengthNow: Record<string, StrengthNow>;
 }
 
 const unavailable = (failure: string): LiveStatus => ({
@@ -37,7 +44,24 @@ const unavailable = (failure: string): LiveStatus => ({
   receiving: 0,
   lastBarAt: null,
   alerts: [],
+  strengthNow: {},
 });
+
+// Keeps well-formed entries only; an older collector sends none.
+function strengthNow(value: unknown): Record<string, StrengthNow> {
+  const result: Record<string, StrengthNow> = {};
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return result;
+  for (const [ticker, entry] of Object.entries(value)) {
+    const { score, at } = (entry ?? {}) as Partial<StrengthNow>;
+    if (
+      typeof at === "string" &&
+      (score === null || (typeof score === "number" && Number.isFinite(score)))
+    )
+      result[ticker] = { score, at };
+  }
+  return result;
+}
 
 /** Collector health and recent live alerts, for the site's Live view. */
 export async function loadLive(
@@ -72,7 +96,7 @@ export async function loadLive(
         failure?: string | null;
         symbols?: Record<string, { lastBar?: string | null }>;
       },
-      { alerts?: LiveAlert[] },
+      { alerts?: LiveAlert[]; strengthNow?: unknown },
       Awaited<typeof analyses>,
     ];
     const byAlert = new Map(
@@ -97,6 +121,7 @@ export async function loadLive(
         const analysis = byAlert.get(a.ticker + a.end);
         return analysis ? { ...a, analysis } : a;
       }),
+      strengthNow: strengthNow(alerts.strengthNow),
     };
   } catch (error) {
     return unavailable(

@@ -8,6 +8,7 @@ import {
   isMoving,
   moving,
   rangePosition,
+  sipDelayText,
   sortRows,
   sortsDescending,
   statsOf,
@@ -208,7 +209,7 @@ export function WatchTable({
         </label>
         <span className="toolbar-gap" />
         <span className="source-note">
-          Prices and charts: SIP, 15-min delayed, 5-min bars
+          Prices and charts: {sipDelayText(board.delayMinutes)}, 5-min bars
           {asOf > 0 &&
             ` · rel vol as of ${israelClock(asOf * 1000)} ${israelLabel}`}
         </span>

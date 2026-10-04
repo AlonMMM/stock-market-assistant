@@ -14,9 +14,16 @@ import {
 } from "../../../packages/market-data/src/alpaca.js";
 import { normalize } from "../../../packages/market-data/src/bars.js";
 import {
+  coreClose,
   newYork,
   previousSessions,
 } from "../../../packages/market-data/src/calendar.js";
+import { benchmark } from "../../../packages/market-data/src/beta.js";
+import {
+  alertedToday,
+  LiveStrength,
+  raiseScored,
+} from "../../../packages/market-data/src/live-strength.js";
 import { LiveEvaluator } from "../../../packages/market-data/src/evaluator.js";
 import {
   AlertEvents,
@@ -46,7 +53,8 @@ const enabled = process.env.ALPACA_ENABLED === "true";
 const feed = process.env.ALPACA_FEED ?? "iex";
 if (!(["iex", "sip", "delayed_sip"] as string[]).includes(feed))
   throw new Error("ALPACA_FEED must be iex, sip, or delayed_sip");
-// Alpaca's free plan allows 30 symbols on one IEX stream subscription.
+// Alpaca's free plan allows 30 symbols on one IEX stream subscription. SPY
+// (streamed for the score vs SPY) counts toward this limit.
 const maxLive = Number(process.env.ALPACA_MAX_SYMBOLS ?? 30);
 if (!Number.isInteger(maxLive) || maxLive < 1 || maxLive > 1000)
   throw new Error("ALPACA_MAX_SYMBOLS must be an integer from 1 to 1000");
@@ -128,7 +136,59 @@ const symbols = new Map<
 let session = 0;
 let feedClient: AlpacaFeed | null = null;
 
-const live = (tickers: string[]) => tickers.slice(0, maxLive);
+// Watchlist symbols on the stream. SPY is streamed as well (for the score vs
+// SPY) and takes one of the `maxLive` slots unless it is on the watchlist.
+const live = (tickers: string[]) => {
+  const first = tickers.slice(0, maxLive);
+  return first.includes(benchmark) || maxLive < 2
+    ? first
+    : tickers.slice(0, maxLive - 1);
+};
+const streamed = (tickers: string[]) =>
+  tickers.includes(benchmark) ? tickers : [...tickers, benchmark];
+
+// Score vs SPY at alert time and now (docs/features/alert-vs-spy.md). Daily
+// bars come from Alpaca's SIP history whatever the stream feed: final daily
+// closes are available on every plan.
+const dailyFeed = new AlpacaFeed(key, secret, "sip", () => {});
+const strength = new LiveStrength({
+  multi: (tickers, start, end, timeframe, adjustment) =>
+    dailyFeed.multiHistory(tickers, start, end, timeframe, adjustment),
+  store: store.strengths,
+  bars: (ticker, from) => store.bars(ticker, from),
+});
+let watched: string[] = [];
+let spyLastBar: string | null = null; // newest streamed SPY bar end
+// β/σ for today's US session date, for the streamed watchlist; runs at
+// startup, on each watchlist change and every 5 minutes, so a new date is
+// prepared shortly after New York midnight, before the pre-market. Only
+// missing symbols are fetched; failures are retried on the next run.
+async function prepareStrength() {
+  if (!enabled || !watched.length) return;
+  const date = newYork(Date.now()).date;
+  try {
+    if (coreClose(date) === null) return;
+    const missing = await strength.prepare(date, watched);
+    if (missing)
+      console.error(
+        JSON.stringify({ event: "spy-strength-incomplete", date, missing }),
+      );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "spy-strength-failed",
+        date,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+}
+
+// Attaches the score vs SPY (waiting ≤ 3 s for SPY's bar of the same minute),
+// then stores and publishes the alert. A failure yields a null score; the
+// alert is still stored and published.
+const raise = (alert: AlertEvent) =>
+  raiseScored(alert, strength, store, alertEvents);
 
 async function stop(code: number) {
   if (stopping) return;
@@ -179,8 +239,17 @@ api.get("/health", async () => ({
       },
     ]),
   ),
+  // Streamed for the score vs SPY even when it is not on the watchlist.
+  benchmark: { ticker: benchmark, lastBar: spyLastBar },
 }));
-api.get("/alerts", async () => ({ source: "alpaca", alerts: store.alerts() }));
+api.get("/alerts", async () => {
+  const alerts = store.alerts();
+  return {
+    source: "alpaca",
+    alerts,
+    strengthNow: strength.current(alertedToday(alerts, Date.now())),
+  };
+});
 api.get("/notifications", async () => ({
   channel: outbox ? "telegram" : null,
   muted: outbox?.muted() ?? null,
@@ -344,14 +413,20 @@ async function collect(tickers: string[], id: number) {
   const end = new Date();
   end.setUTCDate(end.getUTCDate() + 1);
   const evaluators = new Map<string, LiveEvaluator>();
+  watched = tickers;
+  void prepareStrength();
 
-  for (const ticker of tickers) {
+  // SPY is warmed up and streamed for the score vs SPY; it is evaluated
+  // (and listed in /health) only when it is on the watchlist.
+  for (const ticker of streamed(tickers)) {
     if (id !== session) return;
-    symbols.set(ticker, {
-      state: "warming-up",
-      lastBar: null,
-      evaluation: null,
-    });
+    const evaluated = tickers.includes(ticker);
+    if (evaluated)
+      symbols.set(ticker, {
+        state: "warming-up",
+        lastBar: null,
+        evaluation: null,
+      });
     const cached = store.bars(ticker, from);
     const cachedDates = new Set(cached.map((bar) => bar.date));
     const firstMissing = dates.find((date) => !cachedDates.has(date));
@@ -364,36 +439,49 @@ async function collect(tickers: string[], id: number) {
       const bar = normalize(ticker, row, "shares");
       if (bar && Date.parse(bar.end) <= Date.now()) store.put(bar);
     }
-    const evaluator = new LiveEvaluator(config);
-    for (const bar of store.bars(ticker, from))
-      evaluator.push(bar, Date.now(), false);
-    evaluators.set(ticker, evaluator);
-    symbols.get(ticker)!.state = "subscribing";
+    if (evaluated) {
+      const evaluator = new LiveEvaluator(config);
+      for (const bar of store.bars(ticker, from))
+        evaluator.push(bar, Date.now(), false);
+      evaluators.set(ticker, evaluator);
+      symbols.get(ticker)!.state = "subscribing";
+    }
     // A cold 20-session warmup usually paginates twice. This keeps the
     // rollout below common REST request-per-minute limits.
     await delay(800);
   }
   if (id !== session) return;
 
-  await client.stream(tickers, (ticker, raw) => {
+  const spyStreamed = streamed(tickers);
+  await client.stream(spyStreamed, (ticker, raw) => {
     if (id !== session) return;
     try {
-      const evaluator = evaluators.get(ticker);
-      const symbol = symbols.get(ticker);
-      if (!evaluator || !symbol) return;
+      if (!spyStreamed.includes(ticker)) return;
       const bar = normalize(ticker, raw, "shares");
       if (!bar || Date.parse(bar.end) > Date.now()) return;
       store.put(bar);
+      strength.bar(bar);
+      if (ticker === benchmark) spyLastBar = bar.end;
+      const evaluator = evaluators.get(ticker);
+      const symbol = symbols.get(ticker);
+      if (!evaluator || !symbol) return;
       const result = evaluator.push(bar, Date.now(), true);
       symbols.set(ticker, {
         state: "receiving",
         lastBar: bar.end,
         evaluation: result?.status ?? null,
       });
-      if (result?.status === "alert") {
-        const alert = { ...result, close: bar.close };
-        if (store.alert(alert)) alertEvents.publish(alert);
-      }
+      if (result?.status === "alert")
+        raise({ ...result, close: bar.close }).catch((error) =>
+          console.error(
+            JSON.stringify({
+              event: "alert-failed",
+              ticker,
+              end: result.end,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          ),
+        );
     } catch {
       failure = `Invalid market data for ${ticker}`;
       void stop(1);
@@ -402,7 +490,9 @@ async function collect(tickers: string[], id: number) {
   if (id !== session) return;
   state = "subscribed";
   for (const symbol of symbols.values()) symbol.state = "subscribed";
-  console.log(JSON.stringify({ state, symbols: tickers.length }));
+  console.log(
+    JSON.stringify({ state, symbols: tickers.length, streamed: spyStreamed }),
+  );
 }
 
 // Replaces the live subscription. Alpaca allows one stream connection per
@@ -439,6 +529,7 @@ try {
   // Picks up retries and rows left pending by a restart.
   if (outbox) setInterval(() => void outbox.drain(), 5000).unref();
   if (analyses) setInterval(() => void analyses.drain(), 5000).unref();
+  setInterval(() => void prepareStrength(), 5 * 60000).unref();
   const list = store.watchlist();
   if (!enabled) {
     state = "awaiting-alpaca-activation";

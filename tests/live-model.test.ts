@@ -9,6 +9,7 @@ import {
   groupAlertDays,
   marketPhase,
   pillFor,
+  sipDelayText,
   sortRows,
   sortsDescending,
   symbolCounts,
@@ -25,6 +26,7 @@ const status = (over: Partial<LiveStatus>): LiveStatus => ({
   receiving: 30,
   lastBarAt: null,
   alerts: [],
+  strengthNow: {},
   ...over,
 });
 
@@ -288,4 +290,11 @@ test("watch filters: moving, with alerts, find by prefix (scenario 10)", () => {
     filterRows(rows, "all", " a").map((r) => r.ticker),
     ["AAPL"],
   );
+});
+
+test("source note follows the API's SIP delay; an older API means 15 min", () => {
+  assert.equal(sipDelayText(0), "SIP, real time");
+  assert.equal(sipDelayText(15), "SIP, 15-min delayed");
+  assert.equal(sipDelayText(5), "SIP, 5-min delayed");
+  assert.equal(sipDelayText(undefined), "SIP, 15-min delayed");
 });

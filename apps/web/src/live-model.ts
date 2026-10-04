@@ -18,6 +18,18 @@ import {
   israelWeekday,
 } from "./time.js";
 
+// ---------------------------------------------------------------- data delay
+
+/**
+ * Source note for board and chart data from `delayMinutes`
+ * (ALPACA_SIP_DELAY_MINUTES): 0 → real time. An older API sends none and
+ * served 15-minute-delayed SIP.
+ */
+export function sipDelayText(delayMinutes: number | undefined): string {
+  const minutes = delayMinutes ?? 15;
+  return minutes === 0 ? "SIP, real time" : `SIP, ${minutes}-min delayed`;
+}
+
 // ---------------------------------------------------------------- sessions
 
 /** One US trading day's extended and regular session bounds (UTC ms). */

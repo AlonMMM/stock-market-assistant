@@ -12,9 +12,13 @@ import { previousSessions } from "../packages/market-data/src/calendar.js";
 const at = (iso: string) => Date.parse(iso);
 
 test("the board shows today once pre-market data exists, else the last session", () => {
-  // Monday 2026-09-28 (EDT): 04:15 New York is 08:15Z; data lags 15 minutes.
-  assert.equal(latestSession(at("2026-09-28T08:14:00Z")), "2026-09-25");
-  assert.equal(latestSession(at("2026-09-28T08:15:00Z")), "2026-09-28");
+  // Monday 2026-09-28 (EDT): 04:00 New York is 08:00Z. Real-time SIP (the
+  // default, ALPACA_SIP_DELAY_MINUTES=0) shows today from 08:00Z.
+  assert.equal(latestSession(at("2026-09-28T07:59:00Z")), "2026-09-25");
+  assert.equal(latestSession(at("2026-09-28T08:00:00Z")), "2026-09-28");
+  // With the free plan's 15-minute delay, from 08:15Z.
+  assert.equal(latestSession(at("2026-09-28T08:14:00Z"), 15), "2026-09-25");
+  assert.equal(latestSession(at("2026-09-28T08:15:00Z"), 15), "2026-09-28");
   assert.equal(latestSession(at("2026-09-28T23:00:00Z")), "2026-09-28");
   // Weekend and holiday fall back to the previous trading day.
   assert.equal(latestSession(at("2026-09-27T12:00:00Z")), "2026-09-25");
@@ -173,4 +177,26 @@ test("New York wall time converts to UTC across DST and early closes", async () 
   assert.equal(newYorkToUtc("2026-01-05", 570), at("2026-01-05T14:30:00Z"));
   assert.equal(newYorkToUtc("2026-07-06", 570), at("2026-07-06T13:30:00Z"));
   assert.equal(newYorkToUtc("2026-11-27", 780), at("2026-11-27T18:00:00Z"));
+});
+
+test("scenario 8: with ALPACA_SIP_DELAY_MINUTES=0 the board requests up to now", async () => {
+  const now = at("2026-09-28T15:00:00Z");
+  const ends = async (delayMinutes?: number) => {
+    let intraday = "";
+    const board = await runBoard(
+      ["NVDA"],
+      async (symbols, _start, end, timeframe) => {
+        if (timeframe === "5Min" && symbols.length > 1) intraday = end;
+        return new Map(symbols.map((s) => [s, []]));
+      },
+      now,
+      {},
+      undefined,
+      undefined,
+      delayMinutes,
+    );
+    return [intraday, board.delayMinutes];
+  };
+  assert.deepEqual(await ends(), ["2026-09-28T15:00:00.000Z", 0]);
+  assert.deepEqual(await ends(15), ["2026-09-28T14:45:00.000Z", 15]);
 });

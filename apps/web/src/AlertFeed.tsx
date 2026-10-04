@@ -3,6 +3,12 @@ import type { AlertContext } from "../../../packages/market-data/src/backtest.js
 import type { LiveAnalysis } from "../../../packages/market-data/src/live.js";
 import type { Outcome } from "../../../packages/market-data/src/outcome.js";
 import { number } from "./api.js";
+import {
+  vsSpyCell,
+  vsSpyDetail,
+  type StrengthNow,
+  type VsSpy,
+} from "./vs-spy-model.js";
 
 // Backtest alerts carry close and market context; live alerts may lack them.
 export type FeedAlert = Evaluation & {
@@ -10,6 +16,7 @@ export type FeedAlert = Evaluation & {
   context?: AlertContext | null;
   outcome?: Outcome; // backtest only: what the price did after the alert
   analysis?: LiveAnalysis; // live only, when the collector analyzes alerts
+  vsSpy?: VsSpy; // score vs SPY at alert time; absent from older data
 };
 
 const signed = (n: number) => (n >= 0 ? "+" : "−") + Math.abs(n).toFixed(1);
@@ -48,6 +55,56 @@ export function AlertEvidence({ alert: a }: { alert: FeedAlert }) {
           · {a.ticker} {signed(c.change)}%, SPY {signed(c.spyChange)}%, β{" "}
           {c.beta.toFixed(2)}
         </>
+      )}
+    </p>
+  );
+}
+
+/** Row cell: label tag (arrow + words + colour) and the alert-time score. */
+export function VsSpyTag({
+  direction,
+  vsSpy,
+}: {
+  direction: "up" | "down";
+  vsSpy: VsSpy | null | undefined;
+}) {
+  const c = vsSpyCell(direction, vsSpy);
+  if (c.score === null)
+    return (
+      <span className="vs-spy none" title={c.title}>
+        <small className="vs-spy-prefix">vs SPY</small>
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">{c.title}</span>
+      </span>
+    );
+  return (
+    <span className="vs-spy" title={c.title}>
+      <small className="vs-spy-prefix">vs SPY</small>
+      <span className={`vs-spy-tag ${c.tone}`}>{c.text}</span>
+      <strong className="vs-spy-score">{c.score}</strong>
+    </span>
+  );
+}
+
+/** Expanded-row line: alert-time score, current score and trend, beta. */
+export function VsSpyLine({
+  vsSpy,
+  now = null,
+}: {
+  vsSpy: VsSpy | null | undefined;
+  now?: StrengthNow | null;
+}) {
+  return (
+    <p className="evidence vs-spy-line">
+      {vsSpyDetail(vsSpy, now)}
+      {vsSpy?.spyLagged && (
+        <small
+          className="vs-spy-lagged"
+          title="SPY's bar for the alert minute had not arrived; SPY's latest bar was used"
+        >
+          {" "}
+          · SPY bar lagged
+        </small>
       )}
     </p>
   );

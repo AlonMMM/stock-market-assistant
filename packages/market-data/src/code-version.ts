@@ -7,6 +7,8 @@ import { readFileSync } from "node:fs";
 
 export const evaluationSources = [
   "packages/alerts/src/relative-volume.ts",
+  "packages/contracts/src/vs-spy.ts",
+  "packages/market-data/src/alert-vs-spy.ts",
   "packages/market-data/src/backtest.ts",
   "packages/market-data/src/bars.ts",
   "packages/market-data/src/beta.ts",
@@ -14,6 +16,7 @@ export const evaluationSources = [
   "packages/market-data/src/evaluator.ts",
   "packages/market-data/src/look-now.ts",
   "packages/market-data/src/outcome.ts",
+  "packages/market-data/src/rs-score.ts",
 ];
 
 /** `root` is the repository directory, ending with a slash. */

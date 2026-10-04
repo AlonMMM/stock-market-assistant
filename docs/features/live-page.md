@@ -33,7 +33,7 @@ All times are Israel time (`Asia/Jerusalem`, 24 h) and labelled as such once per
 The full-width status card is removed. A pill sits beside the "SMA." brand; the
 Live/Backtest switch stays on the right. Tapping the pill opens a details popover: feed
 (IEX = one exchange's volume), symbols subscribed/receiving, last bar, checked time and
-refresh interval, chart source (SIP, 15-min delayed), and the non-blocking warnings that
+refresh interval, chart source (SIP with its delay, from the board's `delayMinutes`), and the non-blocking warnings that
 today stack at the top of the page. The old footer text moves here.
 
 | Pill                                               | When                                                             | Page                                                       |
@@ -81,7 +81,7 @@ Alerts tab above the list.
 A dense table of all watchlist symbols, default sort biggest move (|change|) first.
 
 - Toolbar: Show (All / Moving / With alerts, with counts), Compare (vs SPY / vs sector),
-  Find (prefix match on symbol), source note (SIP, 15-min delayed).
+  Find (prefix match on symbol), source note ("SIP, real time" or "SIP, N-min delayed").
 - Columns, each header sortable (click toggles direction; ▲/▼ shows the active one):
   Symbol + sector name, Last, Change (▲/▼ tag; sorts by size of move), vs SPY | vs
   sector (change minus benchmark change, in % points), Rel vol (value + bar; bold at
@@ -118,8 +118,10 @@ A dense table of all watchlist symbols, default sort biggest move (|change|) fir
 Regular-session volume from 09:30 New York to the as-of minute ÷ the median of the same
 cumulative volume up to the same New York minute over the previous 20 sessions. Null
 ("—") before the regular open, and when fewer than 15 of those sessions have data for
-that minute. The as-of minute is the board's newest bar (board data is SIP, 15-minute
-delayed), so rel vol is equally delayed; the UI says so in the source note.
+that minute. The as-of minute is the board's newest bar (board data is SIP, delayed by
+`ALPACA_SIP_DELAY_MINUTES`: 0 on Algo Trader Plus, 15 without real-time SIP), so rel vol
+has the same delay; the UI says so in the source note, from `delayMinutes` on
+`/api/board` (an older API without it means 15 minutes).
 
 ### Typical volume per minute
 

@@ -111,6 +111,36 @@ test("live alerts carry their analysis; a collector without analyses still works
   const old = await loadLive(collector, respond(false));
   assert.equal(old.state, "subscribed");
   assert.deepEqual(old.alerts[0], alert);
+  assert.deepEqual(old.strengthNow, {}, "an older collector sends none");
+});
+
+test("live passes vsSpy on alerts and strengthNow through", async () => {
+  const vsSpy = {
+    score: 65,
+    beta: 1.5,
+    betaAssumed: false,
+    label: "confirmed",
+    spyLagged: false,
+  };
+  const live = await loadLive(collector, (async (input: URL | RequestInfo) => {
+    const url = String(input);
+    if (url.endsWith("/health"))
+      return Response.json({ state: "subscribed", symbols: {} });
+    if (url.endsWith("/analyses")) return Response.json({ analyses: [] });
+    return Response.json({
+      alerts: [{ ...alert, vsSpy }],
+      strengthNow: {
+        NVDA: { score: 72, at: "2026-09-28T14:25:00.000Z" },
+        AAPL: { score: null, at: "2026-09-28T14:25:00.000Z" },
+        BAD: { score: "x", at: 1 },
+      },
+    });
+  }) as typeof fetch);
+  assert.deepEqual(live.alerts[0]!.vsSpy, vsSpy);
+  assert.deepEqual(live.strengthNow, {
+    NVDA: { score: 72, at: "2026-09-28T14:25:00.000Z" },
+    AAPL: { score: null, at: "2026-09-28T14:25:00.000Z" },
+  });
 });
 
 test("proxies analysis charts with the collector token and validates names", async () => {

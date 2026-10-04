@@ -1,9 +1,16 @@
+import type { AlertVsSpy } from "../../contracts/src/vs-spy.js";
 import type { Evaluation } from "./relative-volume.js";
 
 // A new live alert, after it is stored. Each (ticker, end) is published once.
 // `synthetic` marks a made-up alert for checking consumers end to end; it is
 // never stored as an alert and consumers that act on markets must ignore it.
-export type AlertEvent = Evaluation & { close?: number; synthetic?: true };
+// `vsSpy` is the score vs SPY at alert time, attached before it is stored and
+// published (absent on alerts stored before docs/features/alert-vs-spy.md).
+export type AlertEvent = Evaluation & {
+  close?: number;
+  synthetic?: true;
+  vsSpy?: AlertVsSpy;
+};
 
 export type AlertListener = (alert: AlertEvent) => void | Promise<void>;
 

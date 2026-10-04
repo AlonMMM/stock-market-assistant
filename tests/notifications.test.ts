@@ -78,6 +78,8 @@ test("formats an alert in Israel time with the evaluator's values", () => {
     text,
     [
       "<b>AAPL</b> · big move likely",
+      // No score stored (older alert or no σ): placeholder line.
+      "vs SPY —",
       "Burst ▲ +1.23% in 3 min · 17:00 Israel time · regular",
       "Volume 123,456 · 4.1× usual",
       "Last 187.5",
@@ -93,6 +95,22 @@ test("formats an alert in Israel time with the evaluator's values", () => {
     session: "pre",
   });
   assert.match(down, /▼ -0.80%/);
+  // The score vs SPY sits directly under the headline.
+  const scored = formatAlert({
+    ...alert("AAPL", "2026-09-28T14:00:00Z"),
+    vsSpy: {
+      score: 78,
+      beta: 1.4,
+      betaAssumed: false,
+      label: "confirmed",
+      spyLagged: true,
+    },
+  }).split("\n");
+  assert.deepEqual(scored.slice(0, 3), [
+    "<b>AAPL</b> · big move likely",
+    "▲ Long · confirmed vs SPY · 78/100",
+    "Burst ▲ +1.23% in 3 min · 17:00 Israel time · regular",
+  ]);
   // Winter: Israel is UTC+2.
   assert.match(down, /16:31 Israel time · pre-market/);
   assert.match(down, /Volume 123,456 · 3.5× today's pace\n/);
