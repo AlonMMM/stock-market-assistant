@@ -95,7 +95,8 @@ test("formats an alert in Israel time with the evaluator's values", () => {
     session: "pre",
   });
   assert.match(down, /▼ -0.80%/);
-  // The score vs SPY sits directly under the headline.
+  // The area score vs SPY sits directly under the headline; an older record
+  // with a label still shows the score only.
   const scored = formatAlert({
     ...alert("AAPL", "2026-09-28T14:00:00Z"),
     vsSpy: {
@@ -109,7 +110,7 @@ test("formats an alert in Israel time with the evaluator's values", () => {
   }).split("\n");
   assert.deepEqual(scored.slice(0, 3), [
     "<b>AAPL</b> · big move likely",
-    "▲ Long · confirmed vs SPY · 78/100",
+    "vs SPY 78/100",
     "Burst ▲ +1.23% in 3 min · 17:00 Israel time · regular",
   ]);
   // Winter: Israel is UTC+2.

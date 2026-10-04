@@ -147,22 +147,27 @@ const live = (tickers: string[]) => {
 const streamed = (tickers: string[]) =>
   tickers.includes(benchmark) ? tickers : [...tickers, benchmark];
 
-// Score vs SPY at alert time and now (docs/features/alert-vs-spy.md). Daily
-// bars come from Alpaca's SIP history whatever the stream feed: final daily
-// closes are available on every plan.
+// Area score vs SPY at alert time and now (docs/features/area-vs-spy.md).
+// Daily bars (β) come from Alpaca's SIP history whatever the stream feed:
+// final daily closes are available on every plan. σ curves come from the
+// stored minute bars of the previous 20 sessions (the warmup history).
 const dailyFeed = new AlpacaFeed(key, secret, "sip", () => {});
 const strength = new LiveStrength({
   multi: (tickers, start, end, timeframe, adjustment) =>
     dailyFeed.multiHistory(tickers, start, end, timeframe, adjustment),
   store: store.strengths,
+  sigmas: store.sigmas,
   bars: (ticker, from) => store.bars(ticker, from),
 });
 let watched: string[] = [];
+// Session whose warmup history is stored: σ curves need it.
+let warmed = -1;
 let spyLastBar: string | null = null; // newest streamed SPY bar end
-// β/σ for today's US session date, for the streamed watchlist; runs at
-// startup, on each watchlist change and every 5 minutes, so a new date is
-// prepared shortly after New York midnight, before the pre-market. Only
-// missing symbols are fetched; failures are retried on the next run.
+// β and σ curves for today's US session date, for the streamed watchlist;
+// runs at startup, after the warmup, on each watchlist change and every 5
+// minutes, so a new date is prepared shortly after New York midnight, before
+// the pre-market. Only missing symbols are computed; failures are retried on
+// the next run. σ curves wait for the warmup history to be stored.
 async function prepareStrength() {
   if (!enabled || !watched.length) return;
   const date = newYork(Date.now()).date;
@@ -172,6 +177,12 @@ async function prepareStrength() {
     if (missing)
       console.error(
         JSON.stringify({ event: "spy-strength-incomplete", date, missing }),
+      );
+    if (warmed !== session) return;
+    const noSigma = await strength.prepareSigma(date, watched);
+    if (noSigma)
+      console.error(
+        JSON.stringify({ event: "area-sigma-incomplete", date, noSigma }),
       );
   } catch (error) {
     console.error(
@@ -184,7 +195,7 @@ async function prepareStrength() {
   }
 }
 
-// Attaches the score vs SPY (waiting ≤ 3 s for SPY's bar of the same minute),
+// Attaches the area score vs SPY (waiting ≤ 3 s for SPY's bar of the same minute),
 // then stores and publishes the alert. A failure yields a null score; the
 // alert is still stored and published.
 const raise = (alert: AlertEvent) =>
@@ -450,6 +461,10 @@ async function collect(tickers: string[], id: number) {
     // rollout below common REST request-per-minute limits.
     await delay(800);
   }
+  if (id !== session) return;
+  // Warmup stored: σ curves (and β, if still missing) before streaming.
+  warmed = id;
+  await prepareStrength();
   if (id !== session) return;
 
   const spyStreamed = streamed(tickers);
