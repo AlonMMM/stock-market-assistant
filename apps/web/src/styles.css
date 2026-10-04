@@ -737,7 +737,7 @@ button.market-tile[aria-expanded="true"] {
 .alert-head,
 .alert-row {
   display: grid;
-  grid-template-columns: 56px 120px 112px minmax(0, 1fr) 100px 20px;
+  grid-template-columns: 56px 120px 104px minmax(0, 1fr) 216px 20px;
   gap: 12px;
   align-items: center;
   padding: 10px 16px;
@@ -858,19 +858,75 @@ button.market-tile[aria-expanded="true"] {
 .meter.faint span {
   background: #9aa8a2;
 }
-.alert-excess {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  color: #526461;
-}
-.alert-excess.up,
 .excess.up {
   color: #15803d;
 }
-.alert-excess.down,
 .excess.down {
   color: #b91c1c;
+}
+/* Score vs SPY at alert time: label tag (arrow + words + colour) and score. */
+.vs-spy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.vs-spy.none {
+  color: #526461;
+  font-weight: 600;
+}
+.vs-spy-prefix {
+  font-size: 11px;
+  font-weight: 400;
+  color: #526461;
+  white-space: nowrap;
+}
+/* The Live table's header names the column; Backtest rows put the cell on a
+   second line without a header, so they keep the "vs SPY" prefix. */
+.alert-table:not(.backtest-alerts) .vs-spy-prefix {
+  display: none;
+}
+@media (min-width: 641px) {
+  .alert-table:not(.backtest-alerts) .vs-spy-score,
+  .alert-table:not(.backtest-alerts) .vs-spy.none > span {
+    margin-left: auto;
+  }
+}
+.vs-spy-tag {
+  padding: 2px 7px;
+  border: 1px solid;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.vs-spy-tag.confirmed {
+  background: #e3f1e6;
+  border-color: #b8d9bf;
+  color: #14642f;
+}
+.vs-spy-tag.against {
+  background: #f8e4e2;
+  border-color: #e3b4ae;
+  color: #9f1a1a;
+}
+.vs-spy-tag.market {
+  background: #eef0ec;
+  border-color: #c9d0c9;
+  color: #3f4f4c;
+}
+.vs-spy-score {
+  min-width: 2ch;
+  text-align: right;
+}
+.alert-detail .vs-spy-line {
+  font-weight: 600;
+  color: #142b29;
+}
+.vs-spy-lagged {
+  font-weight: 400;
+  color: #526461;
 }
 .alert-detail {
   padding: 4px 16px 16px;
@@ -929,7 +985,7 @@ button.market-tile[aria-expanded="true"] {
     grid-template-columns: 48px minmax(0, 1fr) auto 16px;
     grid-template-areas:
       "time symbol move chevron"
-      "time ratio excess chevron";
+      "time ratio vsspy chevron";
     row-gap: 6px;
     padding: 10px 12px;
   }
@@ -947,9 +1003,9 @@ button.market-tile[aria-expanded="true"] {
   .alert-ratio {
     grid-area: ratio;
   }
-  .alert-excess {
-    grid-area: excess;
-    font-size: 12px;
+  .vs-spy {
+    grid-area: vsspy;
+    justify-self: end;
   }
   .chevron {
     grid-area: chevron;
@@ -1457,10 +1513,6 @@ button.market-tile[aria-expanded="true"] {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
-.alert-excess small {
-  font-weight: 400;
-  color: #526461;
-}
 /* Backtest page: two columns (setup, results) that stack on narrow screens. */
 main:has(> .backtest-page) {
   max-width: 1200px;
@@ -1926,6 +1978,37 @@ main:has(> .backtest-page) {
 .backtest-alerts .alert-row {
   grid-template-columns: 52px 120px 104px 56px 124px minmax(0, 1fr) 20px;
 }
+/* The vs-SPY cell takes a second line under symbol, move and volume. */
+.backtest-alerts .alert-row {
+  grid-template-areas:
+    "time symbol move vol look run chevron"
+    "time vsspy vsspy vsspy look run chevron";
+  row-gap: 4px;
+}
+.backtest-alerts .alert-time {
+  grid-area: time;
+}
+.backtest-alerts .alert-symbol {
+  grid-area: symbol;
+}
+.backtest-alerts .move-tag {
+  grid-area: move;
+}
+.backtest-alerts .alert-vol {
+  grid-area: vol;
+}
+.backtest-alerts .vs-spy {
+  grid-area: vsspy;
+}
+.backtest-alerts .look-cell {
+  grid-area: look;
+}
+.backtest-alerts .alert-run {
+  grid-area: run;
+}
+.backtest-alerts .alert-row > .chevron {
+  grid-area: chevron;
+}
 .alert-vol {
   font-variant-numeric: tabular-nums;
 }
@@ -2139,10 +2222,14 @@ main:has(> .backtest-page) {
     grid-template-areas:
       "time symbol move chevron"
       "time vol outcome chevron"
+      "time vsspy vsspy chevron"
       "time run run chevron";
   }
   .backtest-alerts .alert-vol {
     grid-area: vol;
+  }
+  .backtest-alerts .vs-spy {
+    justify-self: start;
   }
   .backtest-alerts .alert-run {
     grid-area: run;

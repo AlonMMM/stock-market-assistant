@@ -209,6 +209,7 @@ export function Live({
               symbol={symbol}
               onSymbol={setSymbol}
               since={since}
+              strengthNow={status?.strengthNow}
             />
           ) : (
             <p className="notice">{emptyText}</p>
