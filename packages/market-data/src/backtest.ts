@@ -15,7 +15,7 @@ import {
 import type { AlertVsSpy } from "../../contracts/src/vs-spy.js";
 import { AlpacaFeed } from "./alpaca.js";
 import { sipDelayMs } from "./sip-delay.js";
-import { alertVsSpy } from "./alert-vs-spy.js";
+import { alertAreaVsSpy } from "./alert-vs-spy.js";
 import {
   areaSigmaSessions,
   dayAreas,
@@ -433,7 +433,7 @@ export class BacktestRun {
     const vsSpyAt = (bar: PriceBar) => {
       const strength = strengthOf(bar.date);
       const beta = strength?.beta ?? 1;
-      return alertVsSpy({
+      return alertAreaVsSpy({
         ticker,
         date: bar.date,
         minute: bar.minute - 1,
