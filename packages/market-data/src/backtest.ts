@@ -16,6 +16,15 @@ import type { AlertVsSpy } from "../../contracts/src/vs-spy.js";
 import { AlpacaFeed } from "./alpaca.js";
 import { sipDelayMs } from "./sip-delay.js";
 import { alertVsSpy } from "./alert-vs-spy.js";
+import {
+  areaSigmaSessions,
+  dayAreas,
+  fromPriceBar,
+  sigmaCurve,
+  type AreaBar,
+  type AreaWindow,
+  type SigmaCurve,
+} from "./area-vs-spy.js";
 import { spyStrength, type SpyStrength } from "./rs-score.js";
 import { cachedHistory, type BarCache, type CacheStats } from "./bar-cache.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
@@ -59,8 +68,8 @@ export interface AlertContext {
 export interface BacktestAlert extends Evaluation {
   close: number;
   context: AlertContext | null; // null for SPY or without enough data
-  // Score vs SPY at the alert minute, as the live alert computes it
-  // (docs/features/alert-vs-spy.md). Absent in results stored before it.
+  // Area score vs SPY at the alert minute, as the live alert computes it
+  // (docs/features/area-vs-spy.md). Absent in results stored before it.
   vsSpy?: AlertVsSpy;
   outcome: Outcome; // trade view: stop/target in the alert's direction
   lookNow: LookNow; // main grade: how unusual the move after the alert was
@@ -235,34 +244,6 @@ function context(
   return { change, spyChange, beta, excess: change - beta * spyChange };
 }
 
-/**
- * Score vs SPY at the alert minute, as the live collector computes it
- * (docs/features/alert-vs-spy.md): SPY's bar of the same minute, else its
- * newest earlier bar of the day (`spyLagged`); β/σ from daily bars before
- * the alert date. Uses only data already loaded for the run.
- */
-function vsSpyAt(
-  alert: Evaluation,
-  date: string,
-  close: number,
-  lastRegular: Map<string, number>,
-  spy: MarketTrack,
-  strength: SpyStrength | null,
-): AlertVsSpy {
-  const end = Date.parse(alert.end);
-  const previous = previousSessions(date, 1)[0]!;
-  const spyBar = spy.byDate.get(date)?.findLast((b) => b.end <= end);
-  return alertVsSpy({
-    direction: alert.direction,
-    close,
-    previousClose: lastRegular.get(previous),
-    spyClose: spyBar?.close,
-    spyPreviousClose: spy.lastRegular.get(previous),
-    strength,
-    spyLagged: spyBar?.end !== end,
-  });
-}
-
 export type BacktestRequest = ReturnType<typeof parseBacktest>;
 
 /**
@@ -360,7 +341,14 @@ export class BacktestRun {
     this.spyBars = spyRows
       .map((row) => normalize(benchmark, row, "shares"))
       .filter((b): b is PriceBar => b !== null);
+    for (const bar of this.spyBars) {
+      const day = this.spyDays.get(bar.date);
+      if (day) day.push(fromPriceBar(bar));
+      else this.spyDays.set(bar.date, [fromPriceBar(bar)]);
+    }
   }
+  // SPY's bars per New York date, for the area score.
+  private readonly spyDays = new Map<string, AreaBar[]>();
 
   /** Replays one symbol's minute bars (from `window.start`) and daily bars. */
   add(ticker: string, rows: RawBar[], daily: RawBar[]) {
@@ -399,11 +387,69 @@ export class BacktestRun {
       }
       return strengths.get(date)!;
     };
+    // Area score vs SPY: the stock's bars per date as index ranges into
+    // `normalized` (bars so far: no look-ahead), β-free session windows of
+    // completed past dates (memoized), and a σ curve per alert date.
+    const dayStart = new Map<string, number>();
+    const barsOf = (date: string) => {
+      const from = dayStart.get(date);
+      if (from === undefined) return [];
+      const result: AreaBar[] = [];
+      for (let i = from; i < normalized.length; i++) {
+        if (normalized[i]!.date !== date) break;
+        result.push(fromPriceBar(normalized[i]!));
+      }
+      return result;
+    };
+    const windows = new Map<string, AreaWindow[]>();
+    const pastAreas = (date: string) => {
+      let value = windows.get(date);
+      if (!value)
+        windows.set(
+          date,
+          (value = dayAreas(barsOf(date), this.spyDays.get(date) ?? [], date)),
+        );
+      return value;
+    };
+    const sigmas = new Map<string, SigmaCurve | null>();
+    const sigmaOf = (date: string, beta: number) => {
+      if (!sigmas.has(date)) {
+        let value: SigmaCurve | null = null;
+        try {
+          value = sigmaCurve(
+            [],
+            this.spyDays,
+            previousSessions(date, areaSigmaSessions),
+            beta,
+            pastAreas,
+          );
+        } catch {
+          // Outside calendar coverage: no σ.
+        }
+        sigmas.set(date, value);
+      }
+      return sigmas.get(date)!;
+    };
+    const vsSpyAt = (bar: PriceBar) => {
+      const strength = strengthOf(bar.date);
+      const beta = strength?.beta ?? 1;
+      return alertVsSpy({
+        ticker,
+        date: bar.date,
+        minute: bar.minute - 1,
+        stock: barsOf(bar.date),
+        spy: this.spyDays.get(bar.date) ?? [],
+        beta,
+        betaAssumed: strength?.betaAssumed ?? true,
+        sigma: ticker === benchmark ? null : sigmaOf(bar.date, beta),
+      });
+    };
     let evaluated = 0;
     let count = 0;
     for (const row of rows) {
       const bar = normalize(ticker, row, "shares");
       if (!bar || bar.date > to || Date.parse(bar.end) > end) continue;
+      if (!dayStart.has(bar.date)) dayStart.set(bar.date, normalized.length);
       normalized.push(bar);
       if (bar.session === "regular") lastRegular.set(bar.date, bar.close);
       const inRange = bar.date >= from;
@@ -421,14 +467,7 @@ export class BacktestRun {
           close: bar.close,
           outcome: undefined as unknown as Outcome, // scored below
           lookNow: undefined as unknown as LookNow, // scored in finish()
-          vsSpy: vsSpyAt(
-            result,
-            bar.date,
-            bar.close,
-            lastRegular,
-            this.spy,
-            strengthOf(bar.date),
-          ),
+          vsSpy: vsSpyAt(bar),
           context:
             ticker === benchmark || !betaStart
               ? null
