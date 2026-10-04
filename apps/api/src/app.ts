@@ -18,6 +18,7 @@ import {
   type StrengthStore,
 } from "../../../packages/market-data/src/board.js";
 import type { BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
+import type { ResultCache } from "../../../packages/market-data/src/result-cache.js";
 import {
   loadAnalysisChart,
   loadLive,
@@ -31,6 +32,7 @@ export function buildApp(
     cache?: BarCache;
     baselines?: BaselineStore; // stored Rel vol baselines for the board
     strengths?: StrengthStore; // stored β/σ vs SPY for the board's score
+    results?: ResultCache; // computed backtest parts
   } = {
     key: process.env.ALPACA_API_KEY,
     secret: process.env.ALPACA_API_SECRET,
@@ -44,6 +46,7 @@ export function buildApp(
       alpaca.fetcher,
       Date.now(),
       alpaca.cache,
+      alpaca.results,
     );
     return reply.code(result.status).send(result.body);
   });

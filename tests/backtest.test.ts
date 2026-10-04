@@ -13,6 +13,11 @@ import {
   runBacktest,
 } from "../packages/market-data/src/backtest.js";
 import type { RawBar } from "../packages/market-data/src/bars.js";
+import {
+  D1Blobs,
+  ResultCache,
+} from "../packages/market-data/src/result-cache.js";
+import { SqliteD1 } from "../apps/api/src/sqlite-d1.js";
 import { previousSessions } from "../packages/market-data/src/calendar.js";
 import type { BaselineCounts } from "../packages/market-data/src/outcome.js";
 
@@ -441,4 +446,80 @@ test("local API and hosted Worker return the same per-symbol baseline", async ()
     globalThis.fetch = realFetch;
     await app.close();
   }
+});
+
+test("the result cache serves computed symbols on the next run", async () => {
+  const requests: string[] = [];
+  const history = async (ticker: string) => {
+    requests.push(ticker);
+    return ticker === "SPY" ? [] : syntheticBars();
+  };
+  const input = {
+    tickers: ["AAPL", "MSFT"],
+    from,
+    to,
+    config: { directionBars: 3 },
+  };
+  const plain = await runBacktest(input, history, later);
+  const results = new ResultCache(new SqliteD1(":memory:"), "code-1");
+  requests.length = 0;
+  const first = await runBacktest(input, history, later, undefined, results);
+  assert.deepEqual(first.results, { hits: 0, misses: 2 });
+  assert.deepEqual(requests, ["AAPL", "MSFT", "SPY"]);
+  requests.length = 0;
+  const second = await runBacktest(input, history, later, undefined, results);
+  assert.deepEqual(second.results, { hits: 2, misses: 0 });
+  assert.deepEqual(requests, [], "no bars are read for cached symbols");
+  const { results: _a, ...firstResult } = first;
+  const { results: _b, ...secondResult } = second;
+  assert.deepEqual(firstResult, plain);
+  assert.deepEqual(secondResult, plain);
+  // Another code version, setting or symbol is a different key.
+  const other = new ResultCache(new SqliteD1(":memory:"), "code-2");
+  const third = await runBacktest(input, history, later, undefined, other);
+  assert.deepEqual(third.results, { hits: 0, misses: 2 });
+  const changed = await runBacktest(
+    { ...input, config: { directionBars: 2 } },
+    history,
+    later,
+    undefined,
+    results,
+  );
+  assert.deepEqual(changed.results, { hits: 0, misses: 2 });
+});
+
+test("a range whose last day is not final is never cached", async () => {
+  const results = new ResultCache(new SqliteD1(":memory:"), "code-1");
+  const history = async (ticker: string) =>
+    ticker === "SPY" ? [] : syntheticBars();
+  // 2026-06-05 18:00Z: the range's last session is still trading.
+  const during = Date.parse("2026-06-05T18:00:00Z");
+  const input = { tickers: ["AAPL"], from, to };
+  const result = await runBacktest(input, history, during, undefined, results);
+  assert.equal(result.results, undefined);
+  const after = await runBacktest(input, history, later, undefined, results);
+  assert.deepEqual(after.results, { hits: 0, misses: 1 });
+});
+
+test("values larger than one D1 statement are split into rows", async () => {
+  const db = new SqliteD1(":memory:");
+  const blobs = new D1Blobs(db, "blobs", ["label"]);
+  // Incompressible text: about 3 rows of base64 after gzip.
+  let text = "";
+  let x = 7;
+  for (let i = 0; i < 200_000; i++) {
+    x = (x * 48271) % 2147483647;
+    text += String.fromCharCode(33 + (x % 90));
+  }
+  await blobs.put([{ key: "k", meta: { label: "big" }, text }]);
+  const { results: rows } = await db
+    .prepare("SELECT chunk, chunks, label FROM blobs ORDER BY chunk")
+    .all<{ chunk: number; chunks: number; label: string }>();
+  assert.ok(rows.length >= 2, `${rows.length} rows`);
+  assert.ok(rows.every((r) => r.chunks === rows.length && r.label === "big"));
+  assert.equal((await blobs.get(["k", "missing"])).get("k"), text);
+  assert.equal((await blobs.get(["k", "missing"])).has("missing"), false);
+  // A partly written value counts as missing.
+  await db.prepare("DELETE FROM blobs WHERE chunk = 1").run();
+  assert.equal((await blobs.get(["k"])).has("k"), false);
 });

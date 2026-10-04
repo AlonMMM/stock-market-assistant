@@ -12,7 +12,7 @@
     "dev:web": "vite --config apps/web/vite.config.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p apps/web/tsconfig.json",
     "test": "node --import tsx --test tests/*.test.ts tests/*.test.mjs",
-    "build": "tsc -p apps/api/tsconfig.json && vite build --config apps/web/vite.config.ts && node scripts/build-worker.mjs",
+    "build": "tsc -p apps/api/tsconfig.json && vite build --config apps/web/vite.config.ts && node --import tsx scripts/build-worker.mjs",
     "start:api": "node dist/apps/api/src/server.js",
     "deploy": "npx wrangler@4 deploy",
     "backfill:bars": "node --import tsx scripts/backfill-bars.ts",
