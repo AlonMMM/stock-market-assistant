@@ -250,7 +250,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
     }
     const dateError =
       sessions === null
-        ? "Dates must fall within the 2026–2028 exchange calendar."
+        ? "Dates must fall within the 2024–2028 exchange calendar."
         : sessions < 1
           ? "The range contains no US trading sessions."
           : sessions > maxSessions
@@ -567,7 +567,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
               </div>
               <p className="muted small">
                 {sessions === null
-                  ? "Outside the 2026–2028 exchange calendar."
+                  ? "Outside the 2024–2028 exchange calendar."
                   : `${sessions} ${sessions === 1 ? "session" : "sessions"}${sessions > 0 ? ` · ${rangeLabel(from, to)}` : ""}${sessions > maxSessions ? ` — more than ${maxSessions}` : ""}`}
               </p>
             </Card>

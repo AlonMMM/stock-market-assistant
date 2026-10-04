@@ -143,7 +143,7 @@ function parse(input: unknown, now: number) {
     warmup = previousSessions(from, config.days);
   } catch {
     throw new BacktestInputError(
-      `Dates, including ${config.days} warmup sessions before the start, must fall within 2026–2028`,
+      `Dates, including ${config.days} warmup sessions before the start, must fall within 2024–2028`,
     );
   }
   if (sessions.length < 1)

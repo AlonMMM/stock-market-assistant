@@ -134,7 +134,8 @@ test("backtest rejects invalid tickers, ranges and configuration", async () => {
     { tickers: ["AAPL", "AAPL"], from, to },
     { tickers: Array.from({ length: 11 }, (_, i) => `T${i}`), from, to },
     { tickers: ["AAPL"], from: to, to: from },
-    { tickers: ["AAPL"], from: "2026-01-05", to: "2026-01-06" },
+    // Warmup before early 2024 falls outside calendar coverage (2024–2028).
+    { tickers: ["AAPL"], from: "2024-01-08", to: "2024-01-09" },
     // Over 50 sessions.
     { tickers: ["AAPL"], from: "2026-03-02", to: "2026-07-15" },
     // Over the memory budget: 19 sessions fit 4 symbols per request.

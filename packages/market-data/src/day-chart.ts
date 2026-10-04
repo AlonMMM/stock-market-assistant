@@ -123,7 +123,7 @@ function parse(input: unknown) {
   } catch {
     open = false;
   }
-  if (!open) throw new DayChartInputError("Choose a 2026–2028 US trading day");
+  if (!open) throw new DayChartInputError("Choose a 2024–2028 US trading day");
   return { ticker, date: date as string, against };
 }
 
@@ -140,7 +140,7 @@ export async function runDayChart(
   try {
     previous = previousSessions(date, 1)[0]!;
   } catch {
-    throw new DayChartInputError("Choose a 2026–2028 US trading day");
+    throw new DayChartInputError("Choose a 2024–2028 US trading day");
   }
   const next = new Date(`${date}T12:00:00Z`);
   next.setUTCDate(next.getUTCDate() + 1);
