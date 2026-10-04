@@ -1,6 +1,12 @@
 import { lazy, Suspense, useState } from "react";
 import type { Board } from "../../../packages/market-data/src/board.js";
-import { boardChange, duration, marketPhase, whenLabel } from "./live-model.js";
+import {
+  boardChange,
+  duration,
+  marketPhase,
+  sipDelayText,
+  whenLabel,
+} from "./live-model.js";
 import { Sparkline } from "./Sparkline.js";
 import { israelClock, israelLabel } from "./time.js";
 
@@ -148,7 +154,8 @@ export function MarketStrip({
         >
           <p className="chart-status">
             Nasdaq-100 (QQQ) vs S&amp;P 500 (SPY)
-            {board && ` · session ${board.date}`} · SIP, 15-min delayed
+            {board && ` · session ${board.date}`} ·{" "}
+            {board ? sipDelayText(board.delayMinutes) : "SIP"}
           </p>
           {board ? (
             <Suspense fallback={<p className="chart-status">Loading chart…</p>}>

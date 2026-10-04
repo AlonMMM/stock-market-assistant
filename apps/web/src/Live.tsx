@@ -11,7 +11,7 @@ import { israelClock, israelDateTime, israelLabel } from "./time.js";
 import { WatchTable } from "./WatchTable.js";
 
 const liveRefreshMs = 30000;
-// Board data is 15-minute-delayed SIP in 5-minute bars.
+// Board data is SIP in 5-minute bars, delayed by the API's `delayMinutes`.
 const boardRefreshMs = 5 * 60000;
 
 // Polls `path` while the page is visible.
@@ -141,6 +141,9 @@ export function Live({
             refreshSeconds={liveRefreshMs / 1000}
             warnings={warnings}
             onClearWarnings={() => setWarnings([])}
+            chartDelay={
+              board.value ? { minutes: board.value.delayMinutes } : undefined
+            }
           />
         </div>
         {modes}

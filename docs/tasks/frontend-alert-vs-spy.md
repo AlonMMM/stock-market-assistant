@@ -35,13 +35,26 @@ From [alert-vs-spy](../features/alert-vs-spy.md) "UI" and scenarios 1–3, 6:
 - Spec: docs/features/alert-vs-spy.md at cda29e7.
 - Contract: `packages/contracts/src/vs-spy.ts` (`AlertVsSpy`, `StrengthNow`,
   `vsSpyLabel`, `vsSpyText`), `LiveStatus.strengthNow`, `BacktestAlert.vsSpy` from
-  backend commit 8ff06ee (merged; no later backend commits at finish).
+  backend commit 8ff06ee; later the whole backend branch (through cd0ab53) and
+  origin/main 6c4189e were merged. The merge resolved backend conflicts in
+  `packages/market-data/src/backtest.ts` (`runBacktest(…, results, delayMinutes)`,
+  window end uses `sipDelayMs` and keeps `complete`) and `scripts/backtest.ts` (main's
+  `codeVersion`). `evaluationSources` now also lists `contracts/src/vs-spy.ts`,
+  `market-data/src/alert-vs-spy.ts` and `rs-score.ts`, so cached backtest results
+  are not reused after vsSpy code changes. Backend should review these.
 - Code: `apps/web/src/vs-spy-model.ts` (cell text/tone, trend, same-day "now",
   detail line), `AlertFeed.tsx` (`VsSpyTag`, `VsSpyLine`), `LiveAlerts.tsx`,
   `Live.tsx`, `BacktestAlerts.tsx`, `styles.css`; tests in
   `tests/vs-spy-model.test.ts`.
 - The cell uses the label stored with the alert; thresholds are not re-derived in the
   web app (a test checks the tone follows `vsSpyLabel` at 0/40/41/59/60/100).
+
+- Follow-up (Product+UX): SIP source notes (watchlist toolbar, market chart,
+  status popover "Charts") come from `delayMinutes` on `/api/board` via
+  `sipDelayText`: 0 → "SIP, real time", N → "SIP, N-min delayed", absent (older
+  API) → "SIP, 15-min delayed". The Backtest page loads no board, so its popover
+  says only "Alpaca SIP". docs/features/live-page.md updated. "now" score only for
+  today's Israel-day alerts: confirmed by Product+UX.
 
 ## Verification and handoff
 
@@ -52,8 +65,11 @@ From [alert-vs-spy](../features/alert-vs-spy.md) "UI" and scenarios 1–3, 6:
   ▼ 70), market (▼ 50), none (`label: "none"`) and missing `vsSpy` → "—"; expanded
   "vs SPY at alert 78 → now 84 ↑ · β 1.4" and "38 → now 31 ↓ · β 1.9 · SPY bar
   lagged"; no horizontal scroll at either width. Screenshots inspected.
+- Follow-up headless check (SYNTHETIC mock, 1280 px) with `delayMinutes` 0, 5 and
+  absent: all three notes read "SIP, real time" / "SIP, 5-min delayed" / "SIP,
+  15-min delayed" respectively.
 - Not verified: the real collector/API path (`vsSpy` and `strengthNow` from the
   backend's implementation), the 30 s update of "now" in a live session, and
   screen-reader output.
 - Open: Backtest's "Direction label" breakdown in the look-now card is a later step
-  per spec. Live shows no "now" for alerts from previous Israel days, by design.
+  per spec. The day chart itself shows no delay note (none existed before).

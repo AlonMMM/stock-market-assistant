@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { LiveStatus } from "../../../packages/market-data/src/live.js";
-import type { Pill } from "./live-model.js";
+import { sipDelayText, type Pill } from "./live-model.js";
 import {
   israelClock,
   israelDate,
@@ -43,6 +43,7 @@ export function StatusPill({
   refreshSeconds,
   warnings,
   onClearWarnings,
+  chartDelay,
 }: {
   pill: Pill;
   status: LiveStatus | null;
@@ -50,6 +51,8 @@ export function StatusPill({
   refreshSeconds: number;
   warnings: string[];
   onClearWarnings: () => void;
+  // Board data's delay, on pages that load the board; omitted elsewhere.
+  chartDelay?: { minutes: number | undefined };
 }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -138,7 +141,11 @@ export function StatusPill({
               {refreshSeconds} s
             </dd>
             <dt>Charts</dt>
-            <dd>Alpaca SIP, 15-min delayed</dd>
+            <dd>
+              {chartDelay
+                ? `Alpaca ${sipDelayText(chartDelay.minutes)}`
+                : "Alpaca SIP"}
+            </dd>
             {status?.failure && (
               <>
                 <dt>Failure</dt>
