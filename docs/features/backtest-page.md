@@ -43,7 +43,7 @@ first run and collapsed after a run.
    and "Edit list" opening today's chip picker. Selection stays saved per device.
 2. **Dates**: presets Last 5 / 10 / 20 sessions (US session dates ending on the last
    complete session, via the exchange calendar) and Custom (shows From/To inputs; the
-   inputs are always visible but presets fill them). Note "US sessions · max 20".
+   inputs are always visible but presets fill them). Note "US sessions · max 50".
 3. **Rule**: one-sentence summary of the live rule (rvol-v4) generated from the live
    defaults. A badge "Live settings" or "N changes from live". "Customize rule" discloses
    the fields in four labelled groups:
@@ -59,7 +59,8 @@ first run and collapsed after a run.
    Stop (u), Horizon (min).
 
 Run button: "Run backtest · N symbols · K sessions"; while running "Running… 9 / 30
-symbols" with a progress bar; a "Runs in batches of 3 symbols" note. Changing any input
+symbols" with a progress bar; a "Runs in batches of N symbols" note, N from the range (4 at 20 sessions, 1 at 40–50;
+see `packages/market-data/src/backtest-limits.ts`). Changing any input
 after a run marks results "Settings changed — run again" (instead of clearing them).
 
 ### Results

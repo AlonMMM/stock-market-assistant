@@ -65,6 +65,14 @@ test("holidays and shortened sessions fail closed outside calendar coverage", ()
   ]);
   assert.equal(normalize("NVDA", raw("2026-11-27T18:00:00Z"), "shares"), null);
   assert.throws(() => coreClose("2029-01-02"));
+  assert.throws(() => coreClose("2023-12-29"));
+  // 2024–2025: holidays (incl. the 2025-01-09 national day of mourning) and
+  // early closes.
+  assert.equal(coreClose("2025-01-09"), null);
+  assert.equal(coreClose("2024-03-29"), null);
+  assert.equal(coreClose("2024-11-29"), 780);
+  assert.equal(coreClose("2025-07-03"), 780);
+  assert.equal(coreClose("2025-07-02"), 960);
 });
 test("live alert requires actual prior trading dates and never publishes warmup or stale crossings", () => {
   const config = {

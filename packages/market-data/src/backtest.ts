@@ -1,7 +1,7 @@
 import {
   lookNow,
   LookNowScorer,
-  ranks,
+  RandomMinutes,
   summarizeLookNow,
   type LookNow,
   type LookNowSummary,
@@ -29,8 +29,9 @@ import {
 } from "./outcome.js";
 import { coreClose, previousSessions } from "./calendar.js";
 import { LiveEvaluator } from "./evaluator.js";
+import { backtestLimits, maxSymbolsPerRequest } from "./backtest-limits.js";
 
-export const backtestLimits = { tickers: 10, sessions: 20 };
+export { backtestLimits, maxSymbolsPerRequest };
 export const tickerPattern = /^[A-Z][A-Z0-9. -]{0,9}$/;
 // Alpaca's free plan serves SIP history except the most recent 15 minutes.
 export const sipDelay = 15 * 60000;
@@ -91,7 +92,9 @@ function sessionsBetween(from: string, to: string): string[] {
   return result;
 }
 
-function parse(input: unknown, now: number) {
+// `limited` applies the Worker's request limits; the offline backtest script
+// (no memory or CPU cap) turns them off.
+export function parseBacktest(input: unknown, now: number, limited = true) {
   if (!input || typeof input !== "object" || Array.isArray(input))
     throw new BacktestInputError("Expected JSON object");
   const body = input as {
@@ -104,7 +107,7 @@ function parse(input: unknown, now: number) {
   if (
     !Array.isArray(tickers) ||
     tickers.length < 1 ||
-    tickers.length > backtestLimits.tickers ||
+    (limited && tickers.length > backtestLimits.tickers) ||
     !tickers.every((t) => typeof t === "string" && tickerPattern.test(t)) ||
     new Set(tickers).size !== tickers.length
   )
@@ -142,14 +145,22 @@ function parse(input: unknown, now: number) {
     warmup = previousSessions(from, config.days);
   } catch {
     throw new BacktestInputError(
-      `Dates, including ${config.days} warmup sessions before the start, must fall within 2026–2028`,
+      `Dates, including ${config.days} warmup sessions before the start, must fall within 2024–2028`,
     );
   }
   if (sessions.length < 1)
     throw new BacktestInputError("The range contains no trading sessions");
-  if (sessions.length > backtestLimits.sessions)
+  if (limited && sessions.length > backtestLimits.sessions)
     throw new BacktestInputError(
       `Choose at most ${backtestLimits.sessions} trading sessions`,
+    );
+  // Settings errors start with "Choose" so the page stops instead of retrying.
+  const fit = maxSymbolsPerRequest(sessions.length, config.days);
+  if (limited && tickers.length > fit)
+    throw new BacktestInputError(
+      fit < 1
+        ? `Choose a shorter range: ${sessions.length} sessions plus ${config.days} warmup sessions do not fit one request`
+        : `Choose at most ${fit} symbols per request for ${sessions.length} sessions`,
     );
   let validation: ValidationConfig;
   try {
@@ -217,20 +228,11 @@ function context(
 
 // Replays Alpaca minute bars through the live evaluator, as if each bar had
 // been received the moment it closed. Warmup bars build the baseline only.
-export async function runBacktest(
-  input: unknown,
-  history: History,
-  now = Date.now(),
-  daily: History = async () => [],
-): Promise<BacktestResult> {
-  const { tickers, from, to, config, sessions, warmup, validation } = parse(
-    input,
-    now,
-  );
-  const outcomes: Outcome[] = [];
-  const baseline: Outcome[] = [];
-  const baselineBySymbol: Record<string, BaselineCounts> = {};
-  const next = new Date(`${to}T12:00:00Z`);
+export type BacktestRequest = ReturnType<typeof parseBacktest>;
+
+/** Bars after `end` are not final yet; context needs β from `betaStart`. */
+export function backtestWindow(request: BacktestRequest, now: number) {
+  const next = new Date(`${request.to}T12:00:00Z`);
   next.setUTCDate(next.getUTCDate() + 1);
   // 06:00Z is after the latest post-market close (01:00Z in winter) and
   // before the next pre-market; later bars are filtered by date anyway.
@@ -238,63 +240,107 @@ export async function runBacktest(
     Date.parse(`${next.toISOString().slice(0, 10)}T06:00:00Z`),
     now - sipDelay,
   );
-  const until = new Date(end).toISOString();
-  const others = tickers.filter((t) => t !== benchmark);
   let betaStart: string | null = null;
   try {
-    betaStart = previousSessions(from, betaReturns + 1)[0]!;
+    betaStart = previousSessions(request.from, betaReturns + 1)[0]!;
   } catch {
     // Outside calendar coverage: alerts carry no market context.
   }
-  const [rows, spyRows, dailyRows] = await Promise.all([
-    Promise.all(
-      tickers.map((ticker) => history(ticker, `${warmup[0]}T00:00:00Z`, until)),
-    ),
-    // From the first warmup session: the look-now score's normal moves are
-    // market-adjusted on past days too.
-    others.length && betaStart
-      ? history(benchmark, `${warmup[0]}T00:00:00Z`, until)
-      : [],
-    others.length && betaStart
-      ? Promise.all(
-          [...others, benchmark].map((t) =>
-            daily(t, `${betaStart}T00:00:00Z`, `${to}T00:00:00Z`),
-          ),
-        )
-      : [],
-  ]);
-  const dailyBy = new Map(
-    [...others, benchmark].map((t, i) => [t, dailyRows[i] ?? []]),
-  );
-  const spy = marketTrack(benchmark, spyRows);
-  const spyBars = spyRows
-    .map((row) => normalize(benchmark, row, "shares"))
-    .filter((b): b is PriceBar => b !== null);
-  // Look-now: per-ticker measurements, ranked against all random minutes of
-  // this run once every ticker is read.
-  const pending: {
-    alert: BacktestAlert;
+  return {
+    end,
+    // Minute bars from the first warmup session: the look-now score's normal
+    // moves are market-adjusted on past days too.
+    start: `${request.warmup[0]}T00:00:00Z`,
+    until: new Date(end).toISOString(),
+    betaStart,
+  };
+}
+export type BacktestWindow = ReturnType<typeof backtestWindow>;
+
+/** One symbol's computed share of a run; plain data, so it can be cached. */
+export interface SymbolPart {
+  ticker: string;
+  evaluated: number;
+  diagnostics: Record<string, number>;
+  alerts: {
+    alert: BacktestAlert; // lookNow is filled in by finish()
     measured: ReturnType<LookNowScorer["measure"]>;
     beta: { beta: number; assumed: boolean };
     closeMinute: number;
     minute: number;
-  }[] = [];
-  const randoms: {
-    measured: ReturnType<LookNowScorer["measure"]>;
-    direction: "up" | "down";
-  }[] = [];
-  const alerts: BacktestAlert[] = [];
-  const diagnostics: Record<string, number> = {};
-  const coverage: BacktestResult["coverage"] = [];
-  let evaluated = 0;
-  tickers.forEach((ticker, index) => {
+  }[];
+  baseline: BaselineCounts;
+  randoms: number[][]; // RandomMinutes columns
+  coverage: BacktestResult["coverage"][number];
+}
+
+// JSON for a cached SymbolPart. JSON has no NaN/Infinity (random-minute
+// columns use NaN), so non-finite numbers are tagged.
+export const encodePart = (part: SymbolPart) =>
+  JSON.stringify(part, (_k, v) =>
+    typeof v === "number" && !Number.isFinite(v) ? { $num: String(v) } : v,
+  );
+export const decodePart = (text: string): SymbolPart =>
+  JSON.parse(text, (_k, v) =>
+    v && typeof v === "object" && "$num" in v ? Number(v.$num) : v,
+  );
+
+/**
+ * One backtest fed a symbol at a time, so a long run never holds every
+ * symbol's bars at once. Look-now scores are ranked against the random minutes
+ * of all symbols in `finish`.
+ */
+export class BacktestRun {
+  private readonly spy: MarketTrack;
+  private readonly spyBars: PriceBar[];
+  private readonly outcomes: Outcome[] = [];
+  private readonly baseline: BaselineCounts = {
+    scored: 0,
+    good: 0,
+    stopped: 0,
+    weak: 0,
+  };
+  private readonly baselineBySymbol: Record<string, BaselineCounts> = {};
+  private readonly pending: SymbolPart["alerts"] = [];
+  private readonly randoms = new RandomMinutes();
+  private readonly alerts: BacktestAlert[] = [];
+  private readonly diagnostics: Record<string, number> = {};
+  private readonly coverage: BacktestResult["coverage"] = [];
+  private evaluated = 0;
+
+  constructor(
+    private readonly request: BacktestRequest,
+    private readonly window: BacktestWindow,
+    spyRows: RawBar[],
+    private readonly spyDaily: RawBar[],
+  ) {
+    this.spy = marketTrack(benchmark, spyRows);
+    this.spyBars = spyRows
+      .map((row) => normalize(benchmark, row, "shares"))
+      .filter((b): b is PriceBar => b !== null);
+  }
+
+  /** Replays one symbol's minute bars (from `window.start`) and daily bars. */
+  add(ticker: string, rows: RawBar[], daily: RawBar[]) {
+    this.merge(this.compute(ticker, rows, daily));
+  }
+
+  /**
+   * One symbol's share of the run, independent of the other symbols, so it can
+   * be cached. Look-now scores are left for `finish`.
+   */
+  compute(ticker: string, rows: RawBar[], daily: RawBar[]): SymbolPart {
+    const { from, to, config, sessions, validation } = this.request;
+    const { end, betaStart } = this.window;
     const evaluator = new LiveEvaluator(config);
     const seen = new Set<string>();
     const lastRegular = new Map<string, number>();
     const normalized: PriceBar[] = [];
     const tickerAlerts: BacktestAlert[] = [];
+    const diagnostics: Record<string, number> = {};
+    let evaluated = 0;
     let count = 0;
-    for (const row of rows[index]!) {
+    for (const row of rows) {
       const bar = normalize(ticker, row, "shares");
       if (!bar || bar.date > to || Date.parse(bar.end) > end) continue;
       normalized.push(bar);
@@ -313,7 +359,7 @@ export async function runBacktest(
           ...result,
           close: bar.close,
           outcome: undefined as unknown as Outcome, // scored below
-          lookNow: undefined as unknown as LookNow, // scored below
+          lookNow: undefined as unknown as LookNow, // scored in finish()
           context:
             ticker === benchmark || !betaStart
               ? null
@@ -322,9 +368,9 @@ export async function runBacktest(
                   Date.parse(bar.end),
                   bar.close,
                   lastRegular,
-                  spy,
-                  dailyBy.get(ticker)!,
-                  dailyBy.get(benchmark)!,
+                  this.spy,
+                  daily,
+                  this.spyDaily,
                 ),
         });
     }
@@ -339,8 +385,8 @@ export async function runBacktest(
         try {
           value = dailyBeta(
             previousSessions(date, betaReturns + 1),
-            dailyBy.get(ticker)!,
-            dailyBy.get(benchmark)!,
+            daily,
+            this.spyDaily,
           ).value;
         } catch {
           // Outside calendar coverage: β is assumed.
@@ -352,71 +398,132 @@ export async function runBacktest(
     const byEnd = new Map(normalized.map((b) => [b.end, b]));
     const look = new LookNowScorer(
       normalized,
-      ticker === benchmark ? null : spyBars,
+      ticker === benchmark ? null : this.spyBars,
       betaOf,
     );
-    for (const alert of tickerAlerts) {
+    const alerts = tickerAlerts.map((alert) => {
       alert.outcome = scorer.score(alert.end, alert.direction ?? "up");
-      outcomes.push(alert.outcome);
-      alerts.push(alert);
       const minute = byEnd.get(alert.end)!;
-      pending.push({
+      return {
         alert,
         measured: look.measure(minute.date, minute.minute, minute.session),
         beta: look.betaInfo(minute.date),
         closeMinute: minute.regularClose ?? 960,
         minute: minute.minute,
-      });
-    }
-    const tickerBaseline = scorer.baseline(from, to);
-    baseline.push(...tickerBaseline);
-    baselineBySymbol[ticker] = baselineCounts(tickerBaseline);
-    for (const r of look.baseline(from, to))
-      randoms.push({ measured: r.measured, direction: r.direction });
-    coverage.push({
-      ticker,
-      bars: count,
-      missingSessions: sessions.filter(
-        (date) => !seen.has(date) && Date.parse(`${date}T13:30:00Z`) < end,
-      ),
+      };
     });
-  });
-  const rank = ranks(randoms.map((r) => r.measured));
-  for (const p of pending)
-    p.alert.lookNow = lookNow(
-      p.measured,
-      p.alert.direction,
-      rank,
-      p.beta,
-      p.closeMinute,
-      p.minute,
+    const randoms = new RandomMinutes();
+    for (const r of look.baseline(from, to)) randoms.add(r.measured);
+    return {
+      ticker,
+      evaluated,
+      diagnostics,
+      alerts,
+      baseline: baselineCounts(scorer.baseline(from, to)),
+      randoms: randoms.columns(),
+      coverage: {
+        ticker,
+        bars: count,
+        missingSessions: sessions.filter(
+          (date) => !seen.has(date) && Date.parse(`${date}T13:30:00Z`) < end,
+        ),
+      },
+    };
+  }
+
+  merge(part: SymbolPart) {
+    this.evaluated += part.evaluated;
+    for (const [status, n] of Object.entries(part.diagnostics))
+      this.diagnostics[status] = (this.diagnostics[status] ?? 0) + n;
+    for (const p of part.alerts) {
+      this.outcomes.push(p.alert.outcome);
+      this.alerts.push(p.alert);
+      this.pending.push(p);
+    }
+    this.baselineBySymbol[part.ticker] = part.baseline;
+    for (const k of ["scored", "good", "stopped", "weak"] as const)
+      this.baseline[k] += part.baseline[k];
+    this.randoms.addColumns(part.randoms);
+    this.coverage.push(part.coverage);
+  }
+
+  finish(): BacktestResult {
+    const { tickers, from, to, config, validation } = this.request;
+    const rank = this.randoms.ranks();
+    for (const p of this.pending)
+      p.alert.lookNow = lookNow(
+        p.measured,
+        p.alert.direction,
+        rank,
+        p.beta,
+        p.closeMinute,
+        p.minute,
+      );
+    const alerts = [...this.alerts].sort(
+      (a, b) => a.end.localeCompare(b.end) || a.ticker.localeCompare(b.ticker),
     );
-  const randomScores = randoms.map((r) =>
-    lookNow(r.measured, r.direction, rank, null, null, null),
+    return {
+      source: "alpaca",
+      feed: "sip",
+      tickers,
+      from,
+      to,
+      config,
+      evaluated: this.evaluated,
+      alerts,
+      diagnostics: this.diagnostics,
+      coverage: this.coverage,
+      validation: {
+        ...summarize(this.outcomes, [], validation),
+        baseline: { ...this.baseline },
+        baselineBySymbol: this.baselineBySymbol,
+      },
+      lookNow: summarizeLookNow(
+        alerts.map((a) => a.lookNow),
+        this.randoms.scores(rank),
+      ),
+    };
+  }
+}
+
+// Replays Alpaca minute bars through the live evaluator, as if each bar had
+// been received the moment it closed. Warmup bars build the baseline only.
+export async function runBacktest(
+  input: unknown,
+  history: History,
+  now = Date.now(),
+  daily: History = async () => [],
+): Promise<BacktestResult> {
+  const request = parseBacktest(input, now);
+  const window = backtestWindow(request, now);
+  const { tickers, to } = request;
+  const { start, until, betaStart } = window;
+  const others = tickers.filter((t) => t !== benchmark);
+  const market = others.length > 0 && betaStart !== null;
+  const [rows, spyRows, dailyRows] = await Promise.all([
+    Promise.all(tickers.map((ticker) => history(ticker, start, until))),
+    market ? history(benchmark, start, until) : [],
+    market
+      ? Promise.all(
+          [...others, benchmark].map((t) =>
+            daily(t, `${betaStart}T00:00:00Z`, `${to}T00:00:00Z`),
+          ),
+        )
+      : [],
+  ]);
+  const dailyBy = new Map(
+    [...others, benchmark].map((t, i) => [t, dailyRows[i] ?? []]),
   );
-  alerts.sort(
-    (a, b) => a.end.localeCompare(b.end) || a.ticker.localeCompare(b.ticker),
+  const run = new BacktestRun(
+    request,
+    window,
+    spyRows,
+    dailyBy.get(benchmark)!,
   );
-  return {
-    source: "alpaca",
-    feed: "sip",
-    tickers,
-    from,
-    to,
-    config,
-    evaluated,
-    alerts,
-    diagnostics,
-    coverage,
-    validation: {
-      ...summarize(outcomes, baseline, validation),
-      baselineBySymbol,
-    },
-    lookNow: summarizeLookNow(
-      alerts.map((a) => a.lookNow),
-      randomScores,
-    ),
-  };
+  tickers.forEach((ticker, i) =>
+    run.add(ticker, rows[i]!, dailyBy.get(ticker)!),
+  );
+  return run.finish();
 }
 
 export interface Credentials {

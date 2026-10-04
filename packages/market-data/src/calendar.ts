@@ -1,6 +1,29 @@
 // Published US equity core-session calendar. Unknown years fail closed.
-// Source: https://www.nyse.com/trade/hours-calendars (2026-09-19).
+// Source: https://www.nyse.com/trade/hours-calendars (2026-09-19); 2024–2025
+// added 2026-09-27 for historical backtests, including the 2025-01-09 closure
+// for the national day of mourning for President Carter.
 const holidays = new Set([
+  "2024-01-01",
+  "2024-01-15",
+  "2024-02-19",
+  "2024-03-29",
+  "2024-05-27",
+  "2024-06-19",
+  "2024-07-04",
+  "2024-09-02",
+  "2024-11-28",
+  "2024-12-25",
+  "2025-01-01",
+  "2025-01-09",
+  "2025-01-20",
+  "2025-02-17",
+  "2025-04-18",
+  "2025-05-26",
+  "2025-06-19",
+  "2025-07-04",
+  "2025-09-01",
+  "2025-11-27",
+  "2025-12-25",
   "2026-01-01",
   "2026-01-19",
   "2026-02-16",
@@ -32,6 +55,12 @@ const holidays = new Set([
   "2028-12-25",
 ]);
 const early = new Set([
+  "2024-07-03",
+  "2024-11-29",
+  "2024-12-24",
+  "2025-07-03",
+  "2025-11-28",
+  "2025-12-24",
   "2026-11-27",
   "2026-12-24",
   "2027-11-26",
@@ -39,8 +68,8 @@ const early = new Set([
   "2028-11-24",
 ]);
 export function coreClose(date: string): number | null {
-  if (!/^202[678]-\d{2}-\d{2}$/.test(date))
-    throw new Error("Calendar coverage is 2026–2028");
+  if (!/^202[4-8]-\d{2}-\d{2}$/.test(date))
+    throw new Error("Calendar coverage is 2024–2028");
   const day = new Date(`${date}T12:00:00Z`).getUTCDay();
   return day === 0 || day === 6 || holidays.has(date)
     ? null

@@ -138,7 +138,7 @@ test("dates: last N sessions end on the last complete session, skipping weekends
     to: "2026-09-09",
   });
   assert.equal(sessionCount("2026-09-02", "2026-09-09"), 5);
-  assert.equal(sessionCount("2025-12-01", "2026-01-05"), null);
+  assert.equal(sessionCount("2023-12-01", "2024-01-05"), null);
   assert.equal(datePreset("2026-09-21", "2026-10-02", saturday), 10);
   assert.equal(datePreset("2026-09-22", "2026-10-02", saturday), "custom");
   assert.equal(lastSessions(5, Date.parse("2030-01-10T12:00:00Z")), null);

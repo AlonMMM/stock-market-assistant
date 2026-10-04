@@ -25,6 +25,7 @@ import {
   sessionCount,
   setupSummary,
   symbolPresets,
+  symbolsPerBatch,
   type FailedBatch,
   type RuleSettings,
   type RunRequest,
@@ -43,10 +44,6 @@ import {
   watchlistSource,
 } from "./Watchlist.js";
 
-// Each request stays within Cloudflare's free-plan limit of 50 subrequests
-// (Alpaca calls plus bar-cache statements) and its CPU limit: a symbol needs
-// about four minute-bar pages, one daily page and a few cache statements.
-const batchSize = 3;
 const liveRefreshMs = 30000;
 const tradeKey = "sma.backtest.tradeView.v1";
 
@@ -204,6 +201,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   };
   const changes = ruleChanges(settings);
   const sessions = sessionCount(from, to);
+  const batchSize = symbolsPerBatch(sessions ?? 1);
   const hasRun = ranWith !== null && (result !== null || failed.length > 0);
   const stale = hasRun && requestKey(ranWith) !== requestKey(request);
   const presets = watchlist.list
@@ -252,7 +250,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
     }
     const dateError =
       sessions === null
-        ? "Dates must fall within the 2026–2028 exchange calendar."
+        ? "Dates must fall within the 2024–2028 exchange calendar."
         : sessions < 1
           ? "The range contains no US trading sessions."
           : sessions > maxSessions
@@ -569,7 +567,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
               </div>
               <p className="muted small">
                 {sessions === null
-                  ? "Outside the 2026–2028 exchange calendar."
+                  ? "Outside the 2024–2028 exchange calendar."
                   : `${sessions} ${sessions === 1 ? "session" : "sessions"}${sessions > 0 ? ` · ${rangeLabel(from, to)}` : ""}${sessions > maxSessions ? ` — more than ${maxSessions}` : ""}`}
               </p>
             </Card>

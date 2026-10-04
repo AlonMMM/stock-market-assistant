@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import { buildApp } from "../apps/api/src/app.js";
 import worker from "../apps/api/src/worker.js";
 import {
+  backtestWindow,
+  BacktestRun,
+  decodePart,
+  encodePart,
   handleBacktest,
+  parseBacktest,
+  maxSymbolsPerRequest,
   runBacktest,
 } from "../packages/market-data/src/backtest.js";
 import type { RawBar } from "../packages/market-data/src/bars.js";
@@ -133,8 +139,23 @@ test("backtest rejects invalid tickers, ranges and configuration", async () => {
     { tickers: ["AAPL", "AAPL"], from, to },
     { tickers: Array.from({ length: 11 }, (_, i) => `T${i}`), from, to },
     { tickers: ["AAPL"], from: to, to: from },
-    { tickers: ["AAPL"], from: "2026-01-05", to: "2026-01-06" },
-    { tickers: ["AAPL"], from: "2026-06-01", to: "2026-07-15" },
+    // Warmup before early 2024 falls outside calendar coverage (2024–2028).
+    { tickers: ["AAPL"], from: "2024-01-08", to: "2024-01-09" },
+    // Over 50 sessions.
+    { tickers: ["AAPL"], from: "2026-03-02", to: "2026-07-15" },
+    // Over the memory budget: 19 sessions fit 4 symbols per request.
+    {
+      tickers: ["AAPL", "MSFT", "NVDA", "AMZN", "META"],
+      from: "2026-05-04",
+      to: "2026-05-29",
+    },
+    // A long warmup leaves no room for even one symbol.
+    {
+      tickers: ["AAPL"],
+      from: "2026-06-01",
+      to: "2026-07-31",
+      config: { days: 60 },
+    },
     { tickers: ["AAPL"], from: "2026-06-06", to: "2026-06-07" },
     { tickers: ["AAPL"], from, to, config: { threshold: 1 } },
   ]) {
@@ -151,6 +172,45 @@ test("backtest rejects invalid tickers, ranges and configuration", async () => {
   await assert.rejects(
     runBacktest({ tickers: ["AAPL"], from: "2026-12-01", to }, history, later),
   );
+});
+
+test("cached per-symbol parts rebuild the same result as runBacktest", async () => {
+  const history = async (ticker: string) =>
+    ticker === "SPY" ? [] : syntheticBars();
+  // v3 candles keep this fixture's timing (see above).
+  const input = {
+    tickers: ["AAPL", "MSFT"],
+    from,
+    to,
+    config: { directionBars: 3 },
+  };
+  const direct = await runBacktest(input, history, later);
+  const request = parseBacktest(input, later, false);
+  const window = backtestWindow(request, later);
+  const run = new BacktestRun(request, window, [], []);
+  for (const ticker of request.tickers)
+    run.merge(
+      decodePart(encodePart(run.compute(ticker, await history(ticker), []))),
+    );
+  assert.ok(direct.alerts.length > 0);
+  assert.deepEqual(run.finish(), direct);
+  // NaN (a horizon a random minute could not measure) survives the round trip.
+  const part = run.compute("AAPL", await history("AAPL"), []);
+  part.randoms[0]![0] = NaN;
+  assert.ok(Number.isNaN(decodePart(encodePart(part)).randoms[0]![0]));
+});
+
+test("backtest symbols per request shrink as the range grows", () => {
+  // Calibrated so 4 symbols × 20 sessions is the largest 20-session request.
+  assert.equal(maxSymbolsPerRequest(1, 20), 10);
+  assert.equal(maxSymbolsPerRequest(20, 20), 4);
+  assert.equal(maxSymbolsPerRequest(23, 20), 3);
+  assert.equal(maxSymbolsPerRequest(30, 20), 2);
+  assert.equal(maxSymbolsPerRequest(40, 20), 1);
+  assert.equal(maxSymbolsPerRequest(50, 20), 1);
+  assert.equal(maxSymbolsPerRequest(51, 20), 0);
+  // A longer warmup costs like a longer range.
+  assert.equal(maxSymbolsPerRequest(20, 60), 0);
 });
 
 test("local API and hosted Worker share the backtest contract", async () => {

@@ -4,6 +4,7 @@ import {
   lookNow,
   LookNowScorer,
   lookNowWeights,
+  RandomMinutes,
   ranks,
   summarizeLookNow,
   type LookNowHorizon,
@@ -292,4 +293,13 @@ test("ranks, labels and summary against random minutes", () => {
   assert.ok(summary.baseline.averageScore! < alert.score!);
   // Too few random minutes for a horizon: it is left unranked.
   assert.equal(ranks(randoms.slice(0, 5).map((r) => r.measured)).size, 0);
+  // The compact store used by long runs ranks and scores identically.
+  const compact = new RandomMinutes();
+  for (const r of randoms) compact.add(r.measured);
+  compact.add({ ok: false, reason: "Outside regular hours" });
+  assert.deepEqual(compact.ranks(), rank);
+  assert.deepEqual(
+    compact.scores(rank).map((r) => r.score),
+    randomScores.map((r) => r.score),
+  );
 });

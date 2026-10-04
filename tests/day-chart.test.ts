@@ -121,9 +121,9 @@ test("day chart rejects invalid symbols and non-trading days", async () => {
     null,
     { ticker: "aapl", date: "2026-06-02" },
     { ticker: "AAPL", date: "2026-06-06" },
-    { ticker: "AAPL", date: "2025-06-02" },
+    { ticker: "AAPL", date: "2023-06-02" },
     { ticker: "AAPL", date: "2026-06-02T00:00" },
-    { ticker: "AAPL", date: "2026-01-02" },
+    { ticker: "AAPL", date: "2024-01-02" },
   ]) {
     const response = await handleDayChart(
       input,
@@ -242,10 +242,11 @@ test("day chart beta uses only sessions before the chart day", async () => {
   ]);
   assert.ok(Math.abs(result.beta.value! - 1.5) < 1e-9);
   assert.equal(result.beta.lookback, 60);
-  // SPY has no beta against itself; early 2026 lacks calendar coverage.
+  // SPY has no beta against itself; the 60 sessions before early 2024 lack
+  // calendar coverage.
   for (const input of [
     { ticker: "SPY", date: "2026-06-02" },
-    { ticker: "AAPL", date: "2026-01-05" },
+    { ticker: "AAPL", date: "2024-01-05" },
   ]) {
     const r = await runDayChart(
       input,
