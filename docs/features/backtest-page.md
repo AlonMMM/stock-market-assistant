@@ -36,11 +36,17 @@ first run and collapsed after a run.
 
 ### Setup (four cards, then the Run button)
 
-1. **Symbols**: "N of M · max 40". Presets: Whole watchlist, Alerted recently (symbols in
-   the current `/api/live` alerts; disabled with a reason when there are none), and one
-   preset per sector benchmark present in the watchlist (label = the ETF, e.g. "SMH").
-   A one-line preview of the selection ("NVDA, AMD, … +22 more"), "Add a symbol" input,
-   and "Edit list" opening today's chip picker. Selection stays saved per device.
+1. **Symbols**: "N of M · max 250", M = the backtest list plus the live watchlist.
+   Presets: Backtest list (the shared list in D1, `/api/backtest/symbols`; seeded
+   2026-10-04 with the 196 symbols of all IBKR watchlists), Whole watchlist, Alerted
+   recently (symbols in the current `/api/live` alerts; disabled with a reason when
+   there are none), and one preset per sector benchmark present in the watchlist (label
+   = the ETF, e.g. "SMH"). A one-line preview of the selection ("NVDA, AMD, … +22
+   more"), a "Symbols for the backtest list" input taking one or many symbols ("SHOP,
+   ARM TSM") with Add (saves to the list and selects) and Remove (takes them off the
+   list and the selection), and "Edit list" opening the chip picker. The list is shared
+   on the server and separate from the live watchlist (the live-alert symbols); the
+   selection stays saved per device.
 2. **Dates**: presets Last 5 / 10 / 20 sessions (US session dates ending on the last
    complete session, via the exchange calendar) and Custom (shows From/To inputs; the
    inputs are always visible but presets fill them). Note "US sessions · max 50".

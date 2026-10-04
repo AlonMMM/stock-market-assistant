@@ -36,6 +36,7 @@ import {
   signedPercent,
   signedPoints,
   sortSymbolRows,
+  parseSymbols,
   symbolPresets,
   symbolRows,
   unscoredReasons,
@@ -164,6 +165,20 @@ test("symbol presets: alerted recently is disabled without live alerts (scenario
       ["SMH", ["NVDA", "AMD"], null],
     ],
   );
+  // With the backtest list, its preset comes first.
+  const withList = symbolPresets(list, [], ["AMD", "ARM", "NVDA"]);
+  assert.deepEqual(withList[0], {
+    key: "list",
+    label: "Backtest list",
+    tickers: ["AMD", "ARM", "NVDA"],
+    disabled: null,
+  });
+  assert.equal(symbolPresets(list, [], null)[0]!.disabled, "Loading the list");
+  assert.equal(symbolPresets(list, [], [])[0]!.disabled, "The list is empty");
+  assert.deepEqual(parseSymbols(" amd, ARM;tsm  amd brk.b x?y"), {
+    valid: ["AMD", "ARM", "TSM", "BRK.B"],
+    invalid: ["X?Y"],
+  });
   const live = symbolPresets(list, [{ ticker: "TSLA" }, { ticker: "TSLA" }]);
   assert.deepEqual(live[1]!.tickers, ["TSLA"]);
   assert.equal(live[1]!.disabled, null);

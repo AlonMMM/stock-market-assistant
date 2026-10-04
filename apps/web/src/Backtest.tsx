@@ -14,6 +14,7 @@ import {
   maxSessions,
   maxTickers,
   mergeResults,
+  parseSymbols,
   previewTickers,
   rangeLabel,
   requestKey,
@@ -39,7 +40,7 @@ import {
   saveTickers,
   savedTickers,
   SymbolPicker,
-  symbolPattern,
+  useBacktestList,
   useWatchlist,
   watchlistSource,
 } from "./Watchlist.js";
@@ -141,11 +142,16 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   const now = Date.now();
   const pill = pillFor(live.value, now, live.at);
 
+  // Symbols on offer: the shared backtest list plus the live watchlist.
+  const backtestList = useBacktestList();
+  const universe = watchlist.list
+    ? [...new Set([...(backtestList.tickers ?? []), ...watchlist.list.tickers])]
+    : [];
   const [tickers, setTickersState] = useState<string[]>([]);
   const [loadedList, setLoadedList] = useState(false);
-  if (watchlist.list && !loadedList) {
+  if (watchlist.list && backtestList.tickers !== null && !loadedList) {
     setLoadedList(true);
-    setTickersState(savedTickers(watchlist.list.tickers));
+    setTickersState(savedTickers(universe));
   }
   const setTickers = (t: string[]) => {
     saveTickers(t);
@@ -205,7 +211,11 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   const hasRun = ranWith !== null && (result !== null || failed.length > 0);
   const stale = hasRun && requestKey(ranWith) !== requestKey(request);
   const presets = watchlist.list
-    ? symbolPresets(watchlist.list, live.value ? live.value.alerts : null)
+    ? symbolPresets(
+        watchlist.list,
+        live.value ? live.value.alerts : null,
+        backtestList.tickers,
+      )
     : [];
   const activePreset = selectedPreset(presets, tickers);
   const activeDates = datePreset(from, to, now);
@@ -319,17 +329,33 @@ export function Backtest({ modes }: { modes: ReactNode }) {
     URL.revokeObjectURL(url);
   }
 
-  function add() {
-    const t = extra.trim().toUpperCase();
-    if (!t) return;
-    if (!symbolPattern.test(t)) setExtraError(`“${t}” is not a US symbol.`);
-    else if (tickers.includes(t)) setExtraError(`${t} is already selected.`);
-    else if (tickers.length >= maxTickers)
-      setExtraError(`At most ${maxTickers} symbols.`);
-    else {
-      setTickers([...tickers, t]);
-      setExtraError("");
+  // Adds the typed symbols (one or many: "AMD, ARM TSM") to the shared
+  // backtest list and selects them; remove() takes them off both.
+  async function changeList(mode: "add" | "remove") {
+    const { valid, invalid } = parseSymbols(extra);
+    if (!valid.length && !invalid.length) return;
+    if (invalid.length) {
+      setExtraError(`Not US symbols: ${invalid.join(", ")}.`);
+      return;
+    }
+    try {
+      if (mode === "add") {
+        await backtestList.change(valid, []);
+        const next = [...new Set([...tickers, ...valid])];
+        setTickers(next.slice(0, maxTickers));
+        setExtraError(
+          next.length > maxTickers
+            ? `Added to the list; at most ${maxTickers} can be selected.`
+            : "",
+        );
+      } else {
+        await backtestList.change([], valid);
+        setTickers(tickers.filter((t) => !valid.includes(t)));
+        setExtraError("");
+      }
       setExtra("");
+    } catch (error) {
+      setExtraError((error as Error).message);
     }
   }
 
@@ -399,13 +425,16 @@ export function Backtest({ modes }: { modes: ReactNode }) {
               aside={
                 <span className="muted">
                   {tickers.length}
-                  {watchlist.list && ` of ${watchlist.list.tickers.length}`} ·
-                  max {maxTickers}
+                  {watchlist.list && ` of ${universe.length}`} · max{" "}
+                  {maxTickers}
                 </span>
               }
             >
               {watchlist.error && (
                 <p className="notice error">{watchlist.error}</p>
+              )}
+              {backtestList.error && (
+                <p className="notice error">{backtestList.error}</p>
               )}
               {!watchlist.list && !watchlist.error && (
                 <p className="muted">Loading watchlist…</p>
@@ -442,10 +471,10 @@ export function Backtest({ modes }: { modes: ReactNode }) {
                   <p className="preview">{previewTickers(tickers)}</p>
                   <div className="add-row">
                     <label>
-                      Add a symbol
+                      Symbols for the backtest list
                       <input
                         value={extra}
-                        placeholder="e.g. SHOP"
+                        placeholder="e.g. SHOP, ARM TSM"
                         autoCapitalize="characters"
                         aria-invalid={!!extraError}
                         aria-describedby="add-error"
@@ -456,13 +485,26 @@ export function Backtest({ modes }: { modes: ReactNode }) {
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
-                            add();
+                            void changeList("add");
                           }
                         }}
                       />
                     </label>
-                    <button type="button" className="action" onClick={add}>
+                    <button
+                      type="button"
+                      className="action"
+                      title="Add to the backtest list and select"
+                      onClick={() => void changeList("add")}
+                    >
                       Add
+                    </button>
+                    <button
+                      type="button"
+                      className="action"
+                      title="Remove from the backtest list"
+                      onClick={() => void changeList("remove")}
+                    >
+                      Remove
                     </button>
                     <button
                       type="button"
@@ -482,7 +524,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
                   {editList && (
                     <div id="symbol-picker">
                       <SymbolPicker
-                        list={watchlist.list}
+                        list={{ ...watchlist.list, tickers: universe }}
                         selected={tickers}
                         disabled={disabled}
                         onChange={setTickers}
@@ -490,6 +532,8 @@ export function Backtest({ modes }: { modes: ReactNode }) {
                     </div>
                   )}
                   <p className="muted small">
+                    Backtest list · {backtestList.tickers?.length ?? "…"}{" "}
+                    symbols, shared · live watchlist:{" "}
                     {watchlistSource(watchlist.list)} · selection saved on this
                     device
                   </p>

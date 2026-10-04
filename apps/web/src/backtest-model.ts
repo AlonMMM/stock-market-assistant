@@ -222,7 +222,28 @@ export function ruleSummary(s: RuleSettings = liveSettings): string {
 
 // ---------------------------------------------------------- symbol presets
 
-export const maxTickers = 40;
+// Symbols per run (the page batches them; see symbolsPerBatch).
+export const maxTickers = 250;
+export const symbolPattern = /^[A-Z][A-Z0-9. -]{0,9}$/;
+
+/** "amd, ARM tsm" → valid symbols (upper case, de-duplicated) and invalid ones. */
+export function parseSymbols(text: string): {
+  valid: string[];
+  invalid: string[];
+} {
+  const words = [
+    ...new Set(
+      text
+        .split(/[\s,;]+/)
+        .map((w) => w.trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  ];
+  return {
+    valid: words.filter((w) => symbolPattern.test(w)),
+    invalid: words.filter((w) => !symbolPattern.test(w)),
+  };
+}
 
 export interface SymbolPreset {
   key: string;
@@ -232,15 +253,30 @@ export interface SymbolPreset {
 }
 
 /**
- * Whole watchlist (first 40), symbols alerted in the current live feed, and
- * one preset per sector benchmark ETF used in the watchlist.
+ * The backtest symbol list (when given), the whole watchlist, symbols alerted
+ * in the current live feed, and one preset per sector benchmark ETF used in
+ * the watchlist; each capped at maxTickers.
  */
 export function symbolPresets(
   watchlist: { tickers: string[]; benchmarks: Record<string, string> },
   liveAlerts: { ticker: string }[] | null,
+  backtestList?: string[] | null,
 ): SymbolPreset[] {
   const alerted = [...new Set((liveAlerts ?? []).map((a) => a.ticker))];
-  const presets: SymbolPreset[] = [
+  const presets: SymbolPreset[] = [];
+  if (backtestList !== undefined)
+    presets.push({
+      key: "list",
+      label: "Backtest list",
+      tickers: (backtestList ?? []).slice(0, maxTickers),
+      disabled:
+        backtestList === null
+          ? "Loading the list"
+          : backtestList.length
+            ? null
+            : "The list is empty",
+    });
+  presets.push(
     {
       key: "all",
       label: "Whole watchlist",
@@ -258,7 +294,7 @@ export function symbolPresets(
             ? null
             : "No recent live alerts",
     },
-  ];
+  );
   const sectors = new Map<string, string[]>();
   for (const t of watchlist.tickers) {
     const etf = watchlist.benchmarks[t];
