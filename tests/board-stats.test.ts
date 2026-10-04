@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { RawBar } from "../packages/market-data/src/bars.js";
 import {
   D1StrengthStore,
-  runBoard,
+  runBoard as runLiveBoard,
 } from "../packages/market-data/src/board.js";
 import {
   rsScore,
@@ -59,6 +59,13 @@ function today(cutoff: number): RawBar[] {
   rows.push(bar(cutoff, 999_999, 10, 12));
   return rows;
 }
+
+// These fixtures were built for the free plan's 15-minute SIP delay.
+const runBoard = (
+  ...[tickers, multi, now, benchmarks, store, strengths]: Parameters<
+    typeof runLiveBoard
+  >
+) => runLiveBoard(tickers, multi, now, benchmarks, store, strengths, 15);
 
 type Multi = Parameters<typeof runBoard>[1];
 

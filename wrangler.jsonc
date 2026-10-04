@@ -15,6 +15,9 @@
     "ACCESS_AUD": "ee019b5ddf9a5fc866f8105dde682c0374984712fa029b47361642d5c0967586",
     // Railway collector; requests carry the COLLECTOR_TOKEN secret.
     "COLLECTOR_URL": "https://market-collector-production-b05d.up.railway.app",
+    // Minutes SIP data lags real time: 0 with real-time SIP (Algo Trader
+    // Plus); "15" on Alpaca's free plan. See docs/alpaca-operations.md.
+    "ALPACA_SIP_DELAY_MINUTES": "0",
   },
   // Cache of Alpaca minute bars per symbol and day (backtests, day charts).
   "d1_databases": [

@@ -102,18 +102,25 @@ test("day chart for SPY itself has one series; missing previous day is null", as
   assert.equal(result.series[0]!.bars.length, 4);
 });
 
-test("day chart never requests the most recent 15 minutes", async () => {
+test("day chart requests up to now, or up to the configured SIP delay", async () => {
   const now = Date.parse("2026-06-02T15:00:00Z");
-  let requestedEnd = "";
-  await runDayChart(
-    { ticker: "AAPL", date: "2026-06-02" },
-    async (_ticker, _start, end) => {
-      requestedEnd = end;
-      return [];
-    },
-    now,
-  );
-  assert.equal(requestedEnd, "2026-06-02T14:45:00.000Z");
+  const requested = async (delayMinutes?: number) => {
+    let requestedEnd = "";
+    const chart = await runDayChart(
+      { ticker: "AAPL", date: "2026-06-02" },
+      async (_ticker, _start, end) => {
+        requestedEnd = end;
+        return [];
+      },
+      now,
+      undefined,
+      delayMinutes,
+    );
+    return [requestedEnd, chart.delayMinutes];
+  };
+  // Scenario 8: real-time SIP (default 0) includes the latest minute.
+  assert.deepEqual(await requested(), ["2026-06-02T15:00:00.000Z", 0]);
+  assert.deepEqual(await requested(15), ["2026-06-02T14:45:00.000Z", 15]);
 });
 
 test("day chart rejects invalid symbols and non-trading days", async () => {

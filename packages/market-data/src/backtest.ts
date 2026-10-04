@@ -14,6 +14,7 @@ import {
 } from "../../alerts/src/relative-volume.js";
 import type { AlertVsSpy } from "../../contracts/src/vs-spy.js";
 import { AlpacaFeed } from "./alpaca.js";
+import { sipDelayMs } from "./sip-delay.js";
 import { alertVsSpy } from "./alert-vs-spy.js";
 import { spyStrength, type SpyStrength } from "./rs-score.js";
 import { cachedHistory, type BarCache, type CacheStats } from "./bar-cache.js";
@@ -36,8 +37,7 @@ import { backtestLimits, maxSymbolsPerRequest } from "./backtest-limits.js";
 
 export { backtestLimits, maxSymbolsPerRequest };
 export const tickerPattern = /^[A-Z][A-Z0-9. -]{0,9}$/;
-// Alpaca's free plan serves SIP history except the most recent 15 minutes.
-export const sipDelay = 15 * 60000;
+export { parseSipDelay, sipDelayMs } from "./sip-delay.js";
 
 export type History = (
   ticker: string,
@@ -264,15 +264,22 @@ function vsSpyAt(
 // been received the moment it closed. Warmup bars build the baseline only.
 export type BacktestRequest = ReturnType<typeof parseBacktest>;
 
-/** Bars after `end` are not final yet; context needs β from `betaStart`. */
-export function backtestWindow(request: BacktestRequest, now: number) {
+/**
+ * Bars after `end` are not final yet (`delayMinutes`: see sip-delay.ts);
+ * context needs β from `betaStart`.
+ */
+export function backtestWindow(
+  request: BacktestRequest,
+  now: number,
+  delayMinutes?: number,
+) {
   const next = new Date(`${request.to}T12:00:00Z`);
   next.setUTCDate(next.getUTCDate() + 1);
   // 06:00Z is after the latest post-market close (01:00Z in winter) and
   // before the next pre-market; later bars are filtered by date anyway.
   const end = Math.min(
     Date.parse(`${next.toISOString().slice(0, 10)}T06:00:00Z`),
-    now - sipDelay,
+    now - sipDelayMs(delayMinutes),
   );
   let betaStart: string | null = null;
   try {
@@ -554,9 +561,10 @@ export async function runBacktest(
   history: History,
   now = Date.now(),
   daily: History = async () => [],
+  delayMinutes?: number,
 ): Promise<BacktestResult> {
   const request = parseBacktest(input, now);
-  const window = backtestWindow(request, now);
+  const window = backtestWindow(request, now, delayMinutes);
   const { tickers, to } = request;
   const { start, until, betaStart } = window;
   const others = tickers.filter((t) => t !== benchmark);
@@ -590,6 +598,8 @@ export async function runBacktest(
 export interface Credentials {
   key?: string;
   secret?: string;
+  // ALPACA_SIP_DELAY_MINUTES (sip-delay.ts); unset → the default.
+  sipDelayMinutes?: number;
 }
 
 // Shared by the local API and the hosted Worker so both behave identically.
@@ -599,6 +609,7 @@ export function minuteHistory(
   cache: BarCache | undefined,
   now: number,
   stats?: CacheStats,
+  delayMinutes?: number,
 ): History {
   return (ticker, start, end) =>
     cache
@@ -608,7 +619,7 @@ export function minuteHistory(
           end,
           (s, e) => feed.history(ticker, s, e),
           cache,
-          now - sipDelay,
+          now - sipDelayMs(delayMinutes),
           stats,
         )
       : feed.history(ticker, start, end);
@@ -637,9 +648,10 @@ export async function handleBacktest(
     const stats: CacheStats = { hits: 0, misses: 0 };
     const result = await runBacktest(
       body,
-      minuteHistory(feed, cache, now, stats),
+      minuteHistory(feed, cache, now, stats, credentials.sipDelayMinutes),
       now,
       (ticker, start, end) => feed.history(ticker, start, end, "1Day", "split"),
+      credentials.sipDelayMinutes,
     );
     return { status: 200, body: cache ? { ...result, cache: stats } : result };
   } catch (error) {

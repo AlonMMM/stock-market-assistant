@@ -115,7 +115,7 @@ test("a missing session is reported and blocks baselines that need it", async ()
   assert.equal(result.diagnostics["insufficient-history"], 3 * 387);
 });
 
-test("the most recent 15 minutes of SIP data are never requested or used", async () => {
+test("with a 15-minute SIP delay the most recent 15 minutes are never requested or used", async () => {
   const now = Date.parse("2026-06-03T14:10:00Z");
   let requestedEnd = "";
   const result = await runBacktest(
@@ -125,6 +125,8 @@ test("the most recent 15 minutes of SIP data are never requested or used", async
       return syntheticBars();
     },
     now,
+    undefined,
+    15,
   );
   assert.equal(requestedEnd, "2026-06-03T13:55:00.000Z");
   assert.equal(result.alerts.length, 0);

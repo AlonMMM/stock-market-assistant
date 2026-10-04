@@ -1,7 +1,6 @@
 import { AlpacaFeed } from "./alpaca.js";
 import {
   minuteHistory,
-  sipDelay,
   tickerPattern,
   type Credentials,
   type History,
@@ -11,6 +10,7 @@ import { benchmark, betaReturns, dailyBeta } from "./beta.js";
 import { normalize, type RawBar } from "./bars.js";
 import { coreClose, previousSessions } from "./calendar.js";
 import { spyStrength, type SpyStrength } from "./rs-score.js";
+import { defaultSipDelayMinutes, sipDelayMs } from "./sip-delay.js";
 
 export { benchmark, dailyBeta } from "./beta.js";
 
@@ -36,6 +36,8 @@ export interface ChartSeries {
 export interface DayChart {
   source: "alpaca";
   feed: "sip";
+  // Minutes the data may lag real time (ALPACA_SIP_DELAY_MINUTES); 0 = live.
+  delayMinutes?: number;
   date: string;
   series: ChartSeries[]; // requested ticker first, then the benchmark
   // Ticker beta vs the chart's benchmark (series[1]); null for the benchmark
@@ -134,6 +136,7 @@ export async function runDayChart(
   history: History,
   now = Date.now(),
   daily: History = async () => [],
+  delayMinutes = defaultSipDelayMinutes,
 ): Promise<DayChart> {
   const { ticker, date, against } = parse(input);
   let previous: string;
@@ -146,7 +149,7 @@ export async function runDayChart(
   next.setUTCDate(next.getUTCDate() + 1);
   const end = Math.min(
     Date.parse(`${next.toISOString().slice(0, 10)}T06:00:00Z`),
-    now - sipDelay,
+    now - sipDelayMs(delayMinutes),
   );
   const start = `${previous}T00:00:00Z`;
   if (Date.parse(start) >= end)
@@ -221,6 +224,7 @@ export async function runDayChart(
   const chart: DayChart = {
     source: "alpaca",
     feed: "sip",
+    delayMinutes,
     date,
     beta: { ...beta, lookback: betaReturns },
     series: tickers.map((t, index) => {
@@ -269,10 +273,11 @@ export async function handleDayChart(
       status: 200,
       body: await runDayChart(
         body,
-        minuteHistory(feed, cache, now),
+        minuteHistory(feed, cache, now, undefined, credentials.sipDelayMinutes),
         now,
         (ticker, start, end) =>
           feed.history(ticker, start, end, "1Day", "split"),
+        credentials.sipDelayMinutes,
       ),
     };
   } catch (error) {

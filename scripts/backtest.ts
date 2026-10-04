@@ -49,6 +49,7 @@ import {
   type BacktestResult,
   type SymbolPart,
 } from "../packages/market-data/src/backtest.js";
+import { parseSipDelay } from "../packages/market-data/src/sip-delay.js";
 import {
   D1BarCache,
   type BarCache,
@@ -163,8 +164,16 @@ const offline: Pick<AlpacaFeed, "history"> = {
     );
   },
 };
-const history = minuteHistory((feed ?? offline) as AlpacaFeed, cache, now);
-const window = backtestWindow(request, now);
+// ALPACA_SIP_DELAY_MINUTES (default 0): see packages/market-data/src/sip-delay.ts.
+const delayMinutes = parseSipDelay(process.env.ALPACA_SIP_DELAY_MINUTES);
+const history = minuteHistory(
+  (feed ?? offline) as AlpacaFeed,
+  cache,
+  now,
+  undefined,
+  delayMinutes,
+);
+const window = backtestWindow(request, now, delayMinutes);
 const daily = async (ticker: string): Promise<RawBar[]> =>
   feed && window.betaStart
     ? feed.history(
