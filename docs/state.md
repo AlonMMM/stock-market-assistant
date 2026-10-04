@@ -1,7 +1,7 @@
 # Current state
 
 Updated: 2026-10-03
-Phase: Alpaca live alerts with Telegram delivery; day chart vs SPY in review.
+Phase: Alpaca live alerts with Telegram delivery; alert score vs SPY and real-time SIP in review.
 
 ## Working product
 
@@ -27,7 +27,15 @@ Telegram alert notifications with deep links to the Live view (#24, #25), per-al
 analysis with Telegram follow-ups and a site panel (#26–#30,
 [spec](features/alert-analysis.md)), and the alert feed grouped by Israel date (#31).
 
-## In review: day chart vs SPY
+## In review: alert score vs SPY and real-time SIP
+
+[Spec](features/alert-vs-spy.md). Each live alert carries its vs-SPY score and a
+direction label (confirmed / against / with market) in Telegram and on the site, with a
+live "now" score for today's alerts; Backtest alerts carry the alert-time score. The SIP
+delay is configurable (`ALPACA_SIP_DELAY_MINUTES`, 0 on Algo Trader Plus). Rollout:
+[real-time SIP](alpaca-operations.md#real-time-sip-rollout).
+
+## Merged: day chart vs SPY
 
 [Spec](features/chart-vs-spy.md). All day charts: no entry/stop marks, price next to
 each %, green = stronger / red = weaker than SPY, and a 0–100 score vs SPY (shared with the
