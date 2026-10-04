@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AreaSeries,
+  BaselineSeries,
   ColorType,
   createChart,
   createSeriesMarkers,
@@ -8,6 +10,7 @@ import {
   LineSeries,
   LineStyle,
   type IChartApi,
+  type ISeriesApi,
   type IPanePrimitive,
   type IPanePrimitivePaneView,
   type IPrimitivePaneRenderer,
@@ -31,19 +34,23 @@ import {
   bandKinds,
   chartScores,
   dollars,
+  type ChartScores,
   episodeSummary,
+  gapPoints,
+  headerIndex,
   isStrongVolume,
   percentAndPrice,
   percentBase,
   priceAt,
   scoreBenchmark,
-  scoreText,
   signed,
   signedPercent,
   stateText,
   strongVolume,
   typicalRatio,
+  weightRamp,
 } from "./chart-model.js";
+import { areaScoreNote, scoreCell } from "./vs-spy-model.js";
 import {
   israelClock,
   israelLabel,
@@ -71,6 +78,16 @@ const colors = {
   open: "rgba(107, 114, 128, 0.55)",
   band: { strong: "rgba(22, 163, 74, 0.13)", weak: "rgba(220, 38, 38, 0.11)" },
   strip: { strong: "#166534", weak: "#991b1b" },
+  // Gap pane: stock minus β×SPY, green above 0, red below; a faint ramp
+  // behind it shows how much each minute weighs in the score.
+  gap: {
+    upLine: "#15803d",
+    upFill: ["rgba(22, 163, 74, 0.32)", "rgba(22, 163, 74, 0.06)"],
+    downLine: "#b91c1c",
+    downFill: ["rgba(220, 38, 38, 0.06)", "rgba(220, 38, 38, 0.32)"],
+    zero: "#6b7280",
+    ramp: "rgba(20, 43, 41, 0.05)",
+  },
   clear: "rgba(0, 0, 0, 0)",
   surface: "#fafbf8",
   text: "#52514e",
@@ -79,17 +96,20 @@ const colors = {
 
 // A small "▲▼ vs SPY" tag at the strip's left edge, so the strip does not
 // read as a row of volume bars.
-function stripTag(text: string): IPanePrimitive<Time> {
+// `corner`: a compact label at the pane's top-left (the gap pane) instead
+// of a full-height tag.
+function stripTag(text: string, corner = false): IPanePrimitive<Time> {
   const renderer: IPrimitivePaneRenderer = {
     draw: (target) =>
       target.useMediaCoordinateSpace(({ context, mediaSize }) => {
         context.font = "600 10px Inter, ui-sans-serif, system-ui, sans-serif";
         const width = context.measureText(text).width + 8;
+        const height = corner ? 14 : mediaSize.height;
         context.fillStyle = colors.surface;
-        context.fillRect(0, 0, width, mediaSize.height);
+        context.fillRect(0, 0, width, height);
         context.fillStyle = colors.text;
         context.textBaseline = "middle";
-        context.fillText(text, 4, mediaSize.height / 2 + 0.5);
+        context.fillText(text, 4, height / 2 + 0.5);
       }),
   };
   const view: IPanePrimitivePaneView = {
@@ -219,7 +239,12 @@ export function DayChart({
   const alertMs = alertEnd ? Date.parse(alertEnd) : NaN;
   const date = alertEnd ? usSessionDate(alertMs - 60000) : day!;
   const host = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<{ chart: IChartApi; m: Point[] } | null>(null);
+  const chartRef = useRef<{
+    chart: IChartApi;
+    m: Point[];
+    ramp: ISeriesApi<"Area"> | null;
+    alertIndex: number;
+  } | null>(null);
   const [data, setData] = useState<DayChartData | null>(null);
   const [error, setError] = useState("");
   const [readout, setReadout] = useState<Readout | null>(null);
@@ -263,6 +288,8 @@ export function DayChart({
   );
   // Score vs SPY per minute; null when the response has no inputs for it.
   const vs = useMemo(() => (data ? chartScores(data) : null), [data]);
+  const vsRef = useRef(vs);
+  vsRef.current = vs;
   const showScore = !!main && main.ticker !== scoreBenchmark;
 
   useEffect(() => {
@@ -364,10 +391,74 @@ export function DayChart({
       benchLine.setData(b.map((p) => ({ time: p.time, value: p.percent })));
     }
 
+    // Gap pane under the price pane: gap(t) = stock − β×SPY in % points
+    // (the backend's series), a zero line, and the score's weight ramp.
+    let nextPane = 1;
+    let gapPane = -1;
+    let ramp: ISeriesApi<"Area"> | null = null;
+    if (vs && vs.gap.some((g) => g !== null)) {
+      gapPane = nextPane++;
+      ramp = chart.addSeries(
+        AreaSeries,
+        {
+          priceScaleId: "ramp",
+          lineVisible: false,
+          topColor: colors.gap.ramp,
+          bottomColor: colors.gap.ramp,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        },
+        gapPane,
+      );
+      chart
+        .priceScale("ramp", gapPane)
+        .applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
+      const gapSeries = chart.addSeries(
+        BaselineSeries,
+        {
+          baseValue: { type: "price", price: 0 },
+          topLineColor: colors.gap.upLine,
+          topFillColor1: colors.gap.upFill[0],
+          topFillColor2: colors.gap.upFill[1],
+          bottomLineColor: colors.gap.downLine,
+          bottomFillColor1: colors.gap.downFill[0],
+          bottomFillColor2: colors.gap.downFill[1],
+          lineWidth: 1,
+          priceScaleId: "right",
+          priceFormat: {
+            type: "custom",
+            formatter: gapPoints,
+            minMove: 0.01,
+          },
+          priceLineVisible: false,
+          crosshairMarkerRadius: 3,
+        },
+        gapPane,
+      );
+      gapSeries.setData(
+        m.map((p) => {
+          const g = vs.gap[p.index];
+          return g === null || g === undefined
+            ? { time: p.time }
+            : { time: p.time, value: g };
+        }),
+      );
+      gapSeries.createPriceLine({
+        price: 0,
+        color: colors.gap.zero,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dotted,
+        axisLabelVisible: false,
+        title: "",
+      });
+    }
+
     // Strip between the price and volume panes: solid opposite-to-benchmark
     // episodes.
-    let volumePane = 1;
+    let stripPane = -1;
     if (opp) {
+      stripPane = nextPane++;
       const strip = chart.addSeries(
         HistogramSeries,
         {
@@ -376,10 +467,10 @@ export function DayChart({
           lastValueVisible: false,
           base: 0,
         },
-        1,
+        stripPane,
       );
       chart
-        .priceScale("strip", 1)
+        .priceScale("strip", stripPane)
         .applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
       strip.setData(
         m.map((p, i) => ({
@@ -388,8 +479,8 @@ export function DayChart({
           color: kinds[i] ? colors.strip[kinds[i]!] : colors.clear,
         })),
       );
-      volumePane = 2;
     }
+    const volumePane = nextPane;
 
     const windowStart = alertMs - window * 60000;
     const volume = chart.addSeries(
@@ -444,9 +535,15 @@ export function DayChart({
     }
     const panes = chart.panes();
     panes[0]?.setStretchFactor(3);
+    if (gapPane >= 0) {
+      panes[gapPane]?.setStretchFactor(0.9);
+      panes[gapPane]?.attachPrimitive(
+        stripTag(`Gap vs β×${scoreBenchmark}`, true),
+      );
+    }
     if (opp) {
-      panes[1]?.setStretchFactor(0.2);
-      panes[1]?.attachPrimitive(stripTag(`▲▼ vs ${bench!.ticker}`));
+      panes[stripPane]?.setStretchFactor(0.2);
+      panes[stripPane]?.attachPrimitive(stripTag(`▲▼ vs ${bench!.ticker}`));
     }
     panes[volumePane]?.setStretchFactor(1.6);
 
@@ -485,7 +582,9 @@ export function DayChart({
     const frame = requestAnimationFrame(() =>
       applyRange(chart, rangeRef.current, m, alertMs),
     );
-    chartRef.current = { chart, m };
+    const alertIndex = alertBar?.index ?? -1;
+    ramp?.setData(rampData(m, rangeRef.current, alertIndex, vs));
+    chartRef.current = { chart, m, ramp, alertIndex };
 
     const benchByTime = new Map(b?.map((p) => [p.time, p]));
     const readoutAt = (p: Point): Readout => ({
@@ -518,10 +617,25 @@ export function DayChart({
 
   useEffect(() => {
     const c = chartRef.current;
-    if (c) applyRange(c.chart, range, c.m, alertMs);
+    if (!c) return;
+    applyRange(c.chart, range, c.m, alertMs);
+    c.ramp?.setData(rampData(c.m, range, c.alertIndex, vsRef.current));
   }, [range]);
 
   const shown = readout ?? latest;
+  // Header: the area score at the alert minute in "Around alert", else at
+  // the latest bar (the same number as the alert's tag and Telegram line).
+  const headerAt = main
+    ? headerIndex(
+        main.bars.length,
+        main.bars.findIndex((b) => (b.start + 60) * 1000 === alertMs),
+        range === "alert",
+      )
+    : -1;
+  const header = scoreCell(
+    vs?.scores[headerAt],
+    range === "alert" && alertEnd ? "at the alert" : "at the latest minute",
+  );
   const benchName = bench?.ticker ?? benchmark;
   const base = main?.previousClose === null ? "first trade" : "previous close";
   const isToday = date === usSessionDate(Date.now());
@@ -531,12 +645,18 @@ export function DayChart({
     <figure className={`day-chart ${className}`} aria-busy={!data && !error}>
       <div className="chart-controls">
         {data && showScore && (
-          <p
-            className="chart-score"
-            title="0–100 against SPY: 50 = moving like SPY × β; above 50 stronger, below weaker"
-          >
-            vs {scoreBenchmark} score <strong>{vs?.latest ?? "—"}</strong>
-            {vs?.latest != null && <span className="muted"> / 100</span>}
+          <p className="chart-score" title={header.title}>
+            vs {scoreBenchmark}{" "}
+            <strong className={`score-chip ${header.tone}`} aria-hidden="true">
+              {header.text}
+            </strong>
+            {header.score !== null && (
+              <span className="muted" aria-hidden="true">
+                {" "}
+                / 100
+              </span>
+            )}
+            <span className="sr-only">{header.title}</span>
             {vs?.betaAssumed && <span className="muted"> · β assumed</span>}
           </p>
         )}
@@ -644,11 +764,7 @@ export function DayChart({
                   </span>
                 </>
               )}
-              {showScore && (
-                <span>
-                  Score <strong>{scoreText(shown.score)}</strong>
-                </span>
-              )}
+              {showScore && <ReadoutScore score={shown.score} />}
               <span>
                 Volume <strong>{compact.format(shown.volume)}</strong>
                 {ratio !== null && (
@@ -703,12 +819,44 @@ export function DayChart({
             {!Number.isNaN(alertMs) && "▼ marks the alert. "}
             {showScore &&
               (vs
-                ? `vs ${scoreBenchmark} score 0–100: 50 = moving like ${scoreBenchmark} × β (β ${vs.betaAssumed ? "assumed 1" : vs.beta.toFixed(2)}); above 50 stronger, below weaker; 10 points = one usual daily spread of ${main.ticker}'s move beyond ${scoreBenchmark} × β. Header: latest minute; readout: the pointed minute. `
+                ? `vs ${scoreBenchmark} score 0–100: the ${areaScoreNote} (β ${vs.betaAssumed ? "assumed 1" : vs.beta.toFixed(2)}); green ≥ 60 stronger, red ≤ 40 weaker. Header: ${alertEnd ? "the alert minute in Around alert, else " : ""}the latest minute; readout: the area ending at the pointed minute. Gap pane: ${main.ticker} minus β×${scoreBenchmark} in % points since the session's first bar, green above 0, red below; the faint ramp behind it is each minute's weight. `
                 : `vs ${scoreBenchmark} score: not available for this chart. `)}
             Shaded = pre-market. Times in {israelLabel}.
           </p>
         </>
       )}
     </figure>
+  );
+}
+
+/** Readout "Score N" for the pointed minute, coloured like the tags. */
+function ReadoutScore({ score }: { score: number | null }) {
+  const c = scoreCell(score, "at this minute");
+  return (
+    <span title={c.title}>
+      Score{" "}
+      <strong className={`score-chip ${c.tone}`} aria-hidden="true">
+        {c.text}
+      </strong>
+      <span className="sr-only">{c.title}</span>
+    </span>
+  );
+}
+
+// The weight ramp ends where the header score ends.
+function rampData(
+  m: Point[],
+  range: Range,
+  alertIndex: number,
+  vs: ChartScores | null,
+) {
+  const end = headerIndex(m.length, alertIndex, range === "alert");
+  const w = weightRamp(
+    m.map((p) => ({ start: p.instant / 1000 - 60 })),
+    end,
+    vs?.windows ?? [],
+  );
+  return m.map((p, i) =>
+    w[i] === null ? { time: p.time } : { time: p.time, value: w[i]! },
   );
 }

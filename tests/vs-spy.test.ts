@@ -40,6 +40,7 @@ test("direction label follows the spec table, boundaries included", () => {
 test("one-line text for Telegram and the site", () => {
   const v = (score: number | null, direction: "up" | "down"): AlertVsSpy => ({
     score,
+    area: null,
     beta: 1.4,
     betaAssumed: false,
     label: vsSpyLabel(direction, score),

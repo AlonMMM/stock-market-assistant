@@ -100,7 +100,7 @@ export class MemoryDailyStore<T> implements DailyStore<T> {
 export class MemoryBaselineStore extends MemoryDailyStore<VolumeCurve> {}
 
 // Rows per INSERT: 4 bound values each stays under D1's 100-parameter limit.
-const rowsPerInsert = 20;
+const defaultRowsPerInsert = 20;
 
 /**
  * D1 table of JSON values per (date, ticker), in the bar-cache database: one
@@ -112,6 +112,8 @@ export class D1DailyStore<T> implements DailyStore<T> {
     private db: D1Like,
     private table: string,
     private column: string,
+    // Fewer for large values: a D1 statement is limited to 100 KB.
+    private rowsPerInsert = defaultRowsPerInsert,
   ) {}
   private init() {
     return (this.ready ??= this.db
@@ -149,8 +151,8 @@ export class D1DailyStore<T> implements DailyStore<T> {
     const statements = [
       this.db.prepare(`DELETE FROM ${this.table} WHERE date < ?`).bind(date),
     ];
-    for (let i = 0; i < rows.length; i += rowsPerInsert) {
-      const chunk = rows.slice(i, i + rowsPerInsert);
+    for (let i = 0; i < rows.length; i += this.rowsPerInsert) {
+      const chunk = rows.slice(i, i + this.rowsPerInsert);
       statements.push(
         this.db
           .prepare(

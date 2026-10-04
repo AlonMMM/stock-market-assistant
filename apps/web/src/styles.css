@@ -888,37 +888,49 @@ button.market-tile[aria-expanded="true"] {
   display: none;
 }
 @media (min-width: 641px) {
-  .alert-table:not(.backtest-alerts) .vs-spy-score,
-  .alert-table:not(.backtest-alerts) .vs-spy.none > span {
+  .alert-table:not(.backtest-alerts) .vs-spy-score {
     margin-left: auto;
   }
 }
-.vs-spy-tag {
-  padding: 2px 7px;
+/* Area score vs SPY: green ≥ 60 (stronger), red ≤ 40 (weaker), grey
+   between; the words are in the tooltip and accessible label. */
+.vs-spy-score {
+  min-width: 3.2ch;
+  padding: 1px 6px;
   border: 1px solid;
   border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
+  text-align: center;
 }
-.vs-spy-tag.confirmed {
+.vs-spy-score.stronger,
+.score-chip.stronger {
   background: #e3f1e6;
   border-color: #b8d9bf;
   color: #14642f;
 }
-.vs-spy-tag.against {
+.vs-spy-score.weaker,
+.score-chip.weaker {
   background: #f8e4e2;
   border-color: #e3b4ae;
   color: #9f1a1a;
 }
-.vs-spy-tag.market {
+.vs-spy-score.normal,
+.score-chip.normal {
   background: #eef0ec;
   border-color: #c9d0c9;
   color: #3f4f4c;
 }
-.vs-spy-score {
-  min-width: 2ch;
-  text-align: right;
+.vs-spy-score.none {
+  border-color: transparent;
+  background: none;
+}
+.score-chip {
+  display: inline-block;
+  min-width: 3.2ch;
+  padding: 0 5px;
+  border: 1px solid;
+  border-radius: 6px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 .alert-detail .vs-spy-line {
   font-weight: 600;

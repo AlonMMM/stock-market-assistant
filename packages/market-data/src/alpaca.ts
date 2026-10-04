@@ -119,7 +119,7 @@ export class AlpacaFeed {
     tickers: string[],
     start: string,
     end: string,
-    timeframe: "5Min" | "1Day",
+    timeframe: "1Min" | "5Min" | "1Day",
     adjustment: "raw" | "split" = "raw",
   ): Promise<Map<string, RawBar[]>> {
     const result = new Map<string, RawBar[]>(tickers.map((t) => [t, []]));

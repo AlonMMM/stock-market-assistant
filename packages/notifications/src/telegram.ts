@@ -1,6 +1,6 @@
 import type { AlertEvent } from "../../alerts/src/events.js";
 import { alertLink } from "../../contracts/src/alert-link.js";
-import { vsSpyText } from "../../contracts/src/vs-spy.js";
+import { vsSpyLine } from "../../contracts/src/vs-spy.js";
 
 export type Alert = AlertEvent;
 
@@ -38,9 +38,10 @@ export function formatAlert(
     // The alert says "look now": a big move is likely, in either direction
     // (study 2026-10-03); the arrow is the burst that just happened.
     `${alert.inPlay ? "⭐ " : ""}<b>${escape(alert.ticker)}</b> · big move likely`,
-    // Score vs SPY at alert time (docs/features/alert-vs-spy.md); "vs SPY —"
-    // without one. Evidence such as a lagged SPY bar is not shown here.
-    escape(vsSpyText(alert.direction, alert.vsSpy)),
+    // Area score vs SPY at alert time (docs/features/area-vs-spy.md), e.g.
+    // "vs SPY 72/100", or "vs SPY —" without one; no labels. Evidence such as
+    // a lagged SPY bar is not shown here.
+    escape(vsSpyLine(alert.vsSpy)),
     `Burst ${arrow} ${move} in ${alert.config.window} min · ${israelTime.format(new Date(alert.end))} Israel time · ${sessionName[alert.session]}`,
     `Volume ${shares.format(alert.actual)}` +
       (alert.ratio !== null ? ` · ${alert.ratio.toFixed(1)}× usual` : "") +

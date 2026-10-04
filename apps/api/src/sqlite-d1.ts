@@ -23,15 +23,22 @@ export class SqliteD1 implements D1Like {
     });
     return statement([]);
   }
+  // Batches run one at a time: two concurrent batches (e.g. the board's
+  // stores writing in parallel) would otherwise nest BEGIN and fail.
+  private queue: Promise<unknown> = Promise.resolve();
   async batch(statements: D1Statement[]) {
-    this.db.exec("BEGIN");
-    try {
-      for (const s of statements) await s.run();
-      this.db.exec("COMMIT");
-    } catch (error) {
-      this.db.exec("ROLLBACK");
-      throw error;
-    }
+    const run = this.queue.then(async () => {
+      this.db.exec("BEGIN");
+      try {
+        for (const s of statements) await s.run();
+        this.db.exec("COMMIT");
+      } catch (error) {
+        this.db.exec("ROLLBACK");
+        throw error;
+      }
+    });
+    this.queue = run.catch(() => {});
+    return run;
   }
   close() {
     this.db.close();

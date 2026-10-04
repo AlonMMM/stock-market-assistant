@@ -21,6 +21,7 @@ import { SqliteD1 } from "../apps/api/src/sqlite-d1.js";
 import { previousSessions } from "../packages/market-data/src/calendar.js";
 import type { BaselineCounts } from "../packages/market-data/src/outcome.js";
 import { pairedDaily } from "./analysis-fixtures.js";
+import { areaScore } from "../packages/market-data/src/area-vs-spy.js";
 
 // Synthetic regular-session bars (EDT: 13:30Z–20:00Z), flat at 100 on 1,000
 // shares a minute, with a rising 20,000-share burst on 2026-06-03 14:00Z–14:04Z.
@@ -327,12 +328,31 @@ test("alerts carry the move against SPY scaled by the ticker's beta", async () =
   assert.ok(Math.abs(context.excess - 2.7) < 1e-9);
 });
 
-test("backtest alerts carry the score vs SPY at the alert minute", async () => {
-  // SYNTHETIC: as above, with daily excess of ±1% so σ = √(20/19).
+test("backtest alerts carry the area score vs SPY at the alert minute", async () => {
+  // SYNTHETIC: SPY opens each day at 500 and holds +1% / −1% on alternate
+  // past days (σ = 1.5 with β 1.5, 1 with β 1); on 2026-06-03 it is flat
+  // except 501 in the 14:02Z minute. AAPL is flat at 100 apart from its burst.
+  const alertDay = "2026-06-03";
   const spyMinutes = syntheticBars().map((b) => {
-    const close =
-      b.start === Date.parse("2026-06-03T14:02:00Z") / 1000 ? 501 : 500;
-    return { ...b, open: close, high: close, low: close, close };
+    const date = new Date(b.start * 1000).toISOString().slice(0, 10);
+    const index = sessions.indexOf(date);
+    const level =
+      date === alertDay
+        ? b.start === Date.parse("2026-06-03T14:02:00Z") / 1000
+          ? 501
+          : 500
+        : index % 2
+          ? 505
+          : 495;
+    const first = b.start === Date.parse(`${date}T13:30:00Z`) / 1000;
+    const open = first ? 500 : level;
+    return {
+      ...b,
+      open,
+      high: Math.max(open, level),
+      low: Math.min(open, level),
+      close: level,
+    };
   });
   const daily = pairedDaily(0.01, previousSessions("2026-06-05", 70));
   const result = await runBacktest(
@@ -343,29 +363,37 @@ test("backtest alerts carry the score vs SPY at the alert minute", async () => {
   );
   const alert = result.alerts[0]!;
   assert.equal(alert.end, "2026-06-03T14:03:00.000Z");
-  // AAPL +3%, SPY +0.2%, β 1.5: excess 2.7 → 50 + 27 / 1.026 = 76.
-  assert.deepEqual(alert.vsSpy, {
-    score: Math.round(50 + 27 / Math.sqrt(20 / 19)),
-    beta: alert.vsSpy!.beta,
-    betaAssumed: false,
-    label: "confirmed",
-    spyLagged: false,
-  });
-  assert.equal(alert.vsSpy!.score, 76);
-  assert.ok(Math.abs(alert.vsSpy!.beta - 1.5) < 1e-9);
-  // Without daily bars: β assumed, no σ, no score.
+  // Window 09:30–10:02 (33 minutes, weights 1…33): AAPL +1/+2/+3% in the
+  // last three minutes, SPY +0.2% in the last one.
+  const stock = (31 * 1 + 32 * 2 + 33 * 3) / 561;
+  const spy = (33 * 0.2) / 561;
+  const area = stock - 1.5 * spy;
+  const vs = alert.vsSpy!;
+  assert.ok(Math.abs(vs.area! - area) < 1e-4);
+  assert.ok(Math.abs(vs.beta - 1.5) < 1e-9);
+  assert.equal(vs.betaAssumed, false);
+  assert.equal(vs.spyLagged, false);
+  assert.equal(vs.score, areaScore(area, 1.5));
+  assert.equal(vs.score, 59);
+  assert.equal(vs.label, undefined);
+  // Without daily bars: β 1 assumed; σ still comes from minute bars.
   const bare = await runBacktest(
     { tickers: ["AAPL"], from, to, config: { directionBars: 3 } },
     async (ticker) => (ticker === "SPY" ? spyMinutes : syntheticBars()),
     later,
   );
-  assert.deepEqual(bare.alerts[0]!.vsSpy, {
-    score: null,
-    beta: 1,
-    betaAssumed: true,
-    label: "none",
-    spyLagged: false,
-  });
+  const plain = bare.alerts[0]!.vsSpy!;
+  assert.equal(plain.betaAssumed, true);
+  assert.equal(plain.beta, 1);
+  assert.equal(plain.score, areaScore(stock - spy, 1));
+  assert.equal(plain.score, 63);
+  // SPY's own alerts are never scored against SPY.
+  const spyRun = await runBacktest(
+    { tickers: ["SPY"], from, to, config: { directionBars: 3 } },
+    async () => syntheticBars(),
+    later,
+  );
+  assert.equal(spyRun.alerts[0]!.vsSpy!.score, null);
 });
 
 // Synthetic zigzag bars: every minute's close differs from three minutes

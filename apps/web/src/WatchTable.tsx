@@ -20,6 +20,14 @@ import {
 } from "./live-model.js";
 import { Sparkline } from "./Sparkline.js";
 import { israelClock, israelLabel } from "./time.js";
+import {
+  areaScoreNote,
+  scoreCell,
+  scoreStrong,
+  scoreTone,
+  scoreWeak,
+  toneWords,
+} from "./vs-spy-model.js";
 
 const DayChart = lazy(() =>
   import("./DayChart.js").then((m) => ({ default: m.DayChart })),
@@ -82,7 +90,9 @@ function RowDetail({
           </dd>
           <dt>vs SPY score</dt>
           <dd>
-            {row.rsScore === null ? "—" : `${row.rsScore} / 100`}
+            {row.rsScore === null
+              ? "—"
+              : `${row.rsScore} / 100 · ${toneWords[scoreTone(row.rsScore)]}`}
             {beta !== undefined &&
               (beta === null ? " · β assumed 1" : ` · β ${beta.toFixed(2)}`)}
           </dd>
@@ -238,7 +248,7 @@ export function WatchTable({
                   key={key}
                   title={
                     key === "rsScore"
-                      ? "0–100 against SPY: 50 = moving like SPY × β, above 50 stronger, below weaker"
+                      ? `0–100 vs SPY: ${areaScoreNote}; green ≥ ${scoreStrong} stronger, red ≤ ${scoreWeak} weaker`
                       : undefined
                   }
                   className={`${align}${active ? " active" : ""}`}
@@ -299,16 +309,7 @@ export function WatchTable({
                     >
                       {r.excess === null ? "—" : `${pts(r.excess)} pts`}
                     </span>
-                    <span
-                      className={
-                        r.rsScore === null ? "num right muted" : "num right"
-                      }
-                    >
-                      {r.rsScore ?? "—"}
-                      {r.rsScore !== null && (
-                        <span className="sr-only"> out of 100 vs SPY</span>
-                      )}
-                    </span>
+                    <ScoreCell score={r.rsScore} />
                     <span className="relvol">
                       <span className={strong ? "num strong" : "num"}>
                         {r.relVolume === null
@@ -393,11 +394,11 @@ export function WatchTable({
       <p className="table-note">
         Change: since the previous close. vs SPY / vs sector: today&apos;s
         change minus the benchmark&apos;s change, in % points. vs SPY score:
-        0–100, always against SPY; 50 = moving like SPY × β (the stock&apos;s
-        60-session beta), above 50 stronger, below weaker, scaled by how much
-        the stock usually beats or lags SPY in a day; “—” without enough
-        history. Rel vol: regular-session volume so far ÷ the median volume by
-        the same New York minute over the previous 20 sessions; “—” before the{" "}
+        0–100, always vs SPY: the {areaScoreNote}, scaled by how large that area
+        usually is for the stock at this minute; green ≥ {scoreStrong} stronger,
+        red ≤ {scoreWeak} weaker, grey between; “—” without enough history. Rel
+        vol: regular-session volume so far ÷ the median volume by the same New
+        York minute over the previous 20 sessions; “—” before the{" "}
         {israelClock(board.open * 1000)} open or with too little history.
         Moving: |change| ≥ {moving.change}% or rel vol ≥ {moving.relVolume}×.
         Day range: today&apos;s low to high, the mark is the last price. Today:
@@ -405,5 +406,24 @@ export function WatchTable({
         Times in {israelLabel}.
       </p>
     </>
+  );
+}
+
+/** Watchlist "vs SPY score" cell: coloured score, words for screen readers. */
+function ScoreCell({ score }: { score: number | null }) {
+  const c = scoreCell(score);
+  if (c.score === null)
+    return (
+      <span className="num right muted" title={c.title}>
+        —<span className="sr-only"> {c.title}</span>
+      </span>
+    );
+  return (
+    <span className="num right" title={c.title}>
+      <span className={`score-chip ${c.tone}`} aria-hidden="true">
+        {c.text}
+      </span>
+      <span className="sr-only">{c.title}</span>
+    </span>
   );
 }

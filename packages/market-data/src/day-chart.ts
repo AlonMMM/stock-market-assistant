@@ -6,6 +6,9 @@ import {
   type History,
 } from "./backtest.js";
 import type { BarCache } from "./bar-cache.js";
+import type { AreaVsSpySeries } from "../../contracts/src/vs-spy.js";
+import { areaSeries, fromRawBars } from "./area-vs-spy.js";
+import { areaSigmas, type AreaSigmaStore } from "./area-sigma.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
 import { normalize, type RawBar } from "./bars.js";
 import { coreClose, previousSessions } from "./calendar.js";
@@ -43,12 +46,15 @@ export interface DayChart {
   // Ticker beta vs the chart's benchmark (series[1]); null for the benchmark
   // itself or with too few paired returns.
   beta: { value: number | null; returns: number; lookback: number };
-  // Score vs SPY inputs (docs/features/chart-vs-spy.md), always against SPY
-  // even when the chart's benchmark is a sector ETF. SPY's minute series is
-  // the entry of `series` whose ticker is "SPY"; when no entry is SPY (sector
-  // benchmark), it is carried in `spy` instead. Score per minute: see
-  // `scoreSeries` in rs-score.ts. Absent → show the score as "—".
+  // Day-based score inputs (docs/features/chart-vs-spy.md), always against
+  // SPY. SPY's minute series is the entry of `series` whose ticker is "SPY";
+  // when no entry is SPY (sector benchmark), it is carried in `spy` instead.
+  // Deprecated by `areaVsSpy`; kept until the web reads the area series.
   vsSpy?: VsSpy;
+  // Area score vs SPY per bar of the requested ticker
+  // (docs/features/area-vs-spy.md): gap pane, per-minute score, σ, window
+  // starts and β. Absent for SPY itself or without SPY's minute bars.
+  areaVsSpy?: AreaVsSpySeries;
 }
 
 export interface VsSpy extends SpyStrength {
@@ -137,6 +143,10 @@ export async function runDayChart(
   now = Date.now(),
   daily: History = async () => [],
   delayMinutes = defaultSipDelayMinutes,
+  sigmas?: AreaSigmaStore,
+  // SPY's 20-session minute history for a σ curve; the Worker passes Alpaca
+  // directly (≤ 2 pages, no D1 statements) to bound the request's cost.
+  sigmaHistory: History = history,
 ): Promise<DayChart> {
   const { ticker, date, against } = parse(input);
   let previous: string;
@@ -244,6 +254,48 @@ export async function runDayChart(
     chart.vsSpy = spyRows
       ? { ...strength, spy: toSeries(benchmark, spyRows) }
       : strength;
+    if (ticker !== benchmark) {
+      // σ curve: stored per (date, ticker), else from the ticker's history
+      // already loaded and SPY's previous 20 sessions (bar cache).
+      const loaded = rows[0]!;
+      const curves = await areaSigmas(
+        [ticker],
+        date,
+        () => strength.beta,
+        (t, from, to) =>
+          t === ticker
+            ? Promise.resolve(
+                loaded.filter(
+                  (r) =>
+                    r.start * 1000 >= Date.parse(from) &&
+                    r.start * 1000 < Date.parse(to),
+                ),
+              )
+            : sigmaHistory(t, from, to),
+        // Stored only with the date's β (a curve is kept all day).
+        spyDaily ? sigmas : undefined,
+      );
+      const stock = fromRawBars(ticker, loaded).filter((b) => b.date === date);
+      const spy = fromRawBars(
+        benchmark,
+        spyRows ?? rows[tickers.indexOf(benchmark)]!,
+      ).filter((b) => b.date === date);
+      chart.areaVsSpy = {
+        ...areaSeries(
+          {
+            ticker,
+            stock,
+            spy,
+            date,
+            beta: strength.beta,
+            sigma: curves.get(ticker) ?? null,
+          },
+          stock,
+        ),
+        beta: strength.beta,
+        betaAssumed: strength.betaAssumed,
+      };
+    }
   }
   return chart;
 }
@@ -255,6 +307,7 @@ export async function handleDayChart(
   fetcher: typeof fetch = fetch,
   now = Date.now(),
   cache?: BarCache,
+  sigmas?: AreaSigmaStore,
 ): Promise<{ status: number; body: DayChart | { error: string } }> {
   if (!credentials.key || !credentials.secret)
     return {
@@ -278,6 +331,8 @@ export async function handleDayChart(
         (ticker, start, end) =>
           feed.history(ticker, start, end, "1Day", "split"),
         credentials.sipDelayMinutes,
+        sigmas,
+        (ticker, start, end) => feed.history(ticker, start, end),
       ),
     };
   } catch (error) {

@@ -5,9 +5,12 @@ import type {
   ChartSeries,
   DayChart,
 } from "../packages/market-data/src/day-chart.js";
+import type { AreaVsSpySeries } from "../packages/contracts/src/vs-spy.js";
 import {
   bandKinds,
   chartScores,
+  gapPoints,
+  headerIndex,
   dollars,
   episodeSummary,
   isStrongVolume,
@@ -15,6 +18,7 @@ import {
   percentBase,
   priceAt,
   scoreText,
+  weightRamp,
   signedPercent,
   stateText,
   typicalRatio,
@@ -120,38 +124,94 @@ const chart = (series: ChartSeries[], vsSpy?: DayChart["vsSpy"]): DayChart => ({
   beta: { value: null, returns: 0, lookback: 60 },
   vsSpy,
 });
-const strength = { beta: 1.5, betaAssumed: false, betaReturns: 60, sigma: 1.2 };
+const area = (over: Partial<AreaVsSpySeries> = {}): AreaVsSpySeries => ({
+  gap: [],
+  area: [],
+  score: [],
+  sigma: [],
+  windows: [],
+  beta: 2,
+  betaAssumed: false,
+  ...over,
+});
+const withArea = (
+  series: ChartSeries[],
+  areaVsSpy?: AreaVsSpySeries,
+): DayChart => ({ ...chart(series), areaVsSpy });
 
-test("score vs SPY per minute (chart-vs-spy scenarios 4, 5)", () => {
-  // Minute 2: NVDA +2.31%, SPY +0.31%, β 1.5, σ 1.2 → 65.
-  const nvda = series("NVDA", 100, [100, 101, 102.31]);
-  const spy = series("SPY", 500, [500, 500, 501.55]);
-  const s = chartScores(chart([nvda, spy], strength))!;
-  assert.deepEqual(s.scores, [50, 58, 65]);
-  assert.equal(s.latest, 65);
-  assert.equal(s.betaAssumed, false);
-  // Sector chart: SPY comes from vsSpy.spy, the sector series is ignored.
-  const smh = series("SMH", 200, [200, 210, 220]);
-  assert.deepEqual(
-    chartScores(chart([nvda, smh], { ...strength, spy }))!.scores,
-    [50, 58, 65],
-  );
-  // Clamped at 100; no σ → every minute "—".
-  const jump = series("NVDA", 100, [108]);
-  const flat = series("SPY", 500, [500]);
-  const sigmaOne = { ...strength, beta: 1, sigma: 1 };
-  assert.deepEqual(chartScores(chart([jump, flat], sigmaOne))!.scores, [100]);
-  const none = chartScores(chart([nvda, spy], { ...strength, sigma: null }))!;
+test("area score and gap per minute come from the backend's series", () => {
+  const nvda = series("NVDA", 100, [100, 101, 102]);
+  const spy = series("SPY", 500, [500, 500, 501]);
+  const s = chartScores(
+    withArea([nvda, spy], area({ gap: [0, 0.4, 1.2], score: [null, 61, 72] })),
+  )!;
+  assert.deepEqual(s.scores, [null, 61, 72]);
+  assert.deepEqual(s.gap, [0, 0.4, 1.2]);
+  assert.equal(s.latest, 72);
+  assert.equal(scoreText(s.latest), "72 / 100");
+  // Empty or short series → "—" per minute, nothing invented.
+  const none = chartScores(withArea([nvda, spy], area()))!;
   assert.deepEqual(none.scores, [null, null, null]);
+  assert.deepEqual(none.gap, [null, null, null]);
   assert.equal(scoreText(none.latest), "—");
-  assert.equal(scoreText(72), "72 / 100");
+  const short = chartScores(withArea([nvda, spy], area({ score: [50] })))!;
+  assert.deepEqual(short.scores, [50, null, null]);
 });
 
-test("no score without vsSpy, SPY's minutes, or for SPY itself", () => {
+test("no score without areaVsSpy or for SPY itself", () => {
   const nvda = series("NVDA", 100, [101]);
   const spy = series("SPY", 500, [501]);
-  const smh = series("SMH", 200, [201]);
-  assert.equal(chartScores(chart([nvda, spy])), null);
-  assert.equal(chartScores(chart([nvda, smh], strength)), null);
-  assert.equal(chartScores(chart([spy], strength)), null);
+  assert.equal(chartScores(withArea([nvda, spy])), null);
+  assert.equal(chartScores(withArea([spy], area())), null);
+});
+
+test("header ends at the alert minute only in Around alert", () => {
+  assert.equal(headerIndex(10, 4, true), 4);
+  assert.equal(headerIndex(10, 4, false), 9);
+  assert.equal(headerIndex(10, -1, true), 9);
+  assert.equal(headerIndex(0, -1, false), -1);
+});
+
+test("weight ramp: linear by minute from the window containing T", () => {
+  const t = (min: number) => 1_000_000 + min * 60;
+  const bars = [0, 1, 10, 11, 13, 14].map((m) => ({ start: t(m) }));
+  const windows = [
+    { session: "pre" as const, start: t(0) },
+    { session: "regular" as const, start: t(10) },
+  ];
+  // Minute 12 is missing: weights still follow the clock minute.
+  assert.deepEqual(weightRamp(bars, 5, windows), [
+    null,
+    null,
+    0.2,
+    0.4,
+    0.8,
+    1,
+  ]);
+  assert.deepEqual(weightRamp(bars, 3, windows), [
+    null,
+    null,
+    0.5,
+    1,
+    null,
+    null,
+  ]);
+  assert.deepEqual(weightRamp(bars, 1, windows), [
+    0.5,
+    1,
+    null,
+    null,
+    null,
+    null,
+  ]);
+  assert.deepEqual(
+    weightRamp(bars, 5, []),
+    bars.map(() => null),
+  );
+  assert.deepEqual(
+    weightRamp(bars, 9, windows),
+    bars.map(() => null),
+  );
+  assert.equal(gapPoints(0.42), "+0.42 pts");
+  assert.equal(gapPoints(-1.1), "−1.10 pts");
 });

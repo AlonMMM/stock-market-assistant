@@ -17,7 +17,13 @@ import {
 } from "./live-model.js";
 import { AnalysisPanel } from "./Analysis.js";
 import { israelClock, israelDay, israelLabel } from "./time.js";
-import { nowForAlert, type StrengthNow } from "./vs-spy-model.js";
+import {
+  areaScoreNote,
+  nowForAlert,
+  scoreStrong,
+  scoreWeak,
+  type StrengthNow,
+} from "./vs-spy-model.js";
 
 const DayChart = lazy(() =>
   import("./DayChart.js").then((m) => ({ default: m.DayChart })),
@@ -268,10 +274,7 @@ export function LiveAlerts({
                                     />
                                   </span>
                                 </span>
-                                <VsSpyTag
-                                  direction={up ? "up" : "down"}
-                                  vsSpy={a.vsSpy}
-                                />
+                                <VsSpyTag vsSpy={a.vsSpy} />
                                 <svg
                                   className="chevron"
                                   width="14"
@@ -351,13 +354,11 @@ export function LiveAlerts({
       <p className="table-note">
         Times in {israelLabel}. Volume vs expected: the alert&apos;s volume
         ratio (window volume ÷ expected volume); the bar is full at {ratioScale}
-        ×. vs SPY at alert: the stock&apos;s beta-adjusted move against SPY when
-        the alert fired, 0–100 (50 = in line with SPY, above = stronger).
-        Long/Short · confirmed means that score backs the alert&apos;s
-        direction, against means it opposes it, moving with market means
-        neither; “—” without a score. It describes the move, it is not a trade
-        recommendation. Expanded rows add today&apos;s current score (updated
-        every 30 s) with ↑/↓ when it moved 5 or more points.
+        ×. vs SPY at alert: 0–100 score at the alert, from the {areaScoreNote};
+        green ≥ {scoreStrong}, red ≤ {scoreWeak}, grey between; “—” without a
+        score. It describes the move, it is not a trade recommendation. Expanded
+        rows add today&apos;s current score (updated every 30 s) with ↑/↓ when
+        it moved 5 or more points.
       </p>
     </>
   );

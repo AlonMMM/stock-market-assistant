@@ -9,6 +9,7 @@ export const evaluationSources = [
   "packages/alerts/src/relative-volume.ts",
   "packages/contracts/src/vs-spy.ts",
   "packages/market-data/src/alert-vs-spy.ts",
+  "packages/market-data/src/area-vs-spy.ts",
   "packages/market-data/src/backtest.ts",
   "packages/market-data/src/bars.ts",
   "packages/market-data/src/beta.ts",

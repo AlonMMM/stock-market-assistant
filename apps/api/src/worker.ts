@@ -16,6 +16,7 @@ import {
   handleBoard,
 } from "../../../packages/market-data/src/board.js";
 import { D1BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
+import { D1AreaSigmaStore } from "../../../packages/market-data/src/area-sigma.js";
 import { ResultCache } from "../../../packages/market-data/src/result-cache.js";
 import {
   D1SymbolList,
@@ -43,6 +44,7 @@ let cache:
       cache: D1BarCache;
       baselines: D1BaselineStore;
       strengths: D1StrengthStore;
+      sigmas: D1AreaSigmaStore;
       results: ResultCache;
       symbols: D1SymbolList;
     }
@@ -54,6 +56,7 @@ function stores(db: D1Like) {
       cache: new D1BarCache(db),
       baselines: new D1BaselineStore(db),
       strengths: new D1StrengthStore(db),
+      sigmas: new D1AreaSigmaStore(db),
       // Unbuilt (tests import this module directly): a key no build shares.
       results: new ResultCache(
         db,
@@ -65,7 +68,6 @@ function stores(db: D1Like) {
     };
   return cache;
 }
-const barCache = (db: D1Like) => stores(db).cache;
 
 export default {
   async fetch(
@@ -76,7 +78,9 @@ export default {
       ACCESS_TEAM_DOMAIN?: string;
       ACCESS_AUD?: string;
       COLLECTOR_URL?: string;
-      BARS_CACHE?: D1Like; // D1 database caching Alpaca bars, Rel vol baselines and β/σ vs SPY
+      // D1 database caching Alpaca bars, Rel vol baselines, β/σ vs SPY and
+      // the area score's σ curves.
+      BARS_CACHE?: D1Like;
       COLLECTOR_TOKEN?: string;
       // Minutes SIP data may lag real time; default 0 (see sip-delay.ts).
       ALPACA_SIP_DELAY_MINUTES?: string;
@@ -133,12 +137,7 @@ export default {
       secret: env.ALPACA_API_SECRET,
       sipDelayMinutes,
     };
-    const alpacaRoutes = {
-      "/api/backtest": handleBacktest,
-      "/api/day-chart": handleDayChart,
-    };
-    const alpacaRoute = alpacaRoutes[path as keyof typeof alpacaRoutes];
-    if (alpacaRoute) {
+    if (path === "/api/backtest" || path === "/api/day-chart") {
       if (request.method !== "POST")
         return new Response("Method not allowed", {
           status: 405,
@@ -156,15 +155,25 @@ export default {
           { status: 400 },
         );
       }
-      const result = await alpacaRoute(
-        body,
-        credentials,
-        fetch,
-        Date.now(),
-        env.BARS_CACHE ? barCache(env.BARS_CACHE) : undefined,
-        // Day charts ignore it.
-        env.BARS_CACHE ? stores(env.BARS_CACHE).results : undefined,
-      );
+      const db = env.BARS_CACHE ? stores(env.BARS_CACHE) : undefined;
+      const result =
+        path === "/api/backtest"
+          ? await handleBacktest(
+              body,
+              credentials,
+              fetch,
+              Date.now(),
+              db?.cache,
+              db?.results,
+            )
+          : await handleDayChart(
+              body,
+              credentials,
+              fetch,
+              Date.now(),
+              db?.cache,
+              db?.sigmas,
+            );
       return Response.json(result.body, { status: result.status });
     }
     if (path === "/api/board") {
@@ -185,6 +194,7 @@ export default {
         Date.now(),
         env.BARS_CACHE ? stores(env.BARS_CACHE).baselines : undefined,
         env.BARS_CACHE ? stores(env.BARS_CACHE).strengths : undefined,
+        env.BARS_CACHE ? stores(env.BARS_CACHE).sigmas : undefined,
       );
       return Response.json(result.body, {
         status: result.status,

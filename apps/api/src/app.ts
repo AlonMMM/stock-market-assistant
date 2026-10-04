@@ -18,6 +18,7 @@ import {
   type StrengthStore,
 } from "../../../packages/market-data/src/board.js";
 import type { BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
+import type { AreaSigmaStore } from "../../../packages/market-data/src/area-sigma.js";
 import type { ResultCache } from "../../../packages/market-data/src/result-cache.js";
 import {
   handleBacktestSymbols,
@@ -37,6 +38,7 @@ export function buildApp(
     cache?: BarCache;
     baselines?: BaselineStore; // stored Rel vol baselines for the board
     strengths?: StrengthStore; // stored β/σ vs SPY for the board's score
+    sigmas?: AreaSigmaStore; // stored σ curves of the area score vs SPY
     results?: ResultCache; // computed backtest parts
     symbols?: D1SymbolList; // the Backtest page's symbol list
   } = {
@@ -92,6 +94,7 @@ export function buildApp(
       Date.now(),
       alpaca.baselines,
       alpaca.strengths,
+      alpaca.sigmas,
     );
     return reply.code(result.status).send(result.body);
   });
@@ -126,6 +129,7 @@ export function buildApp(
       alpaca.fetcher,
       Date.now(),
       alpaca.cache,
+      alpaca.sigmas,
     );
     return reply.code(result.status).send(result.body);
   });

@@ -22,6 +22,7 @@ import {
   type AlertSort,
 } from "./live-model.js";
 import { israelClock, israelLabel } from "./time.js";
+import { areaScoreNote, scoreStrong, scoreWeak } from "./vs-spy-model.js";
 
 const DayChart = lazy(() =>
   import("./DayChart.js").then((m) => ({ default: m.DayChart })),
@@ -258,10 +259,7 @@ export function BacktestAlerts({
                                     ? "—"
                                     : `${a.ratio.toFixed(1)}×`}
                                 </strong>
-                                <VsSpyTag
-                                  direction={direction}
-                                  vsSpy={a.vsSpy}
-                                />
+                                <VsSpyTag vsSpy={a.vsSpy} />
                                 <span className="look-cell">
                                   {a.lookNow ? (
                                     <>
@@ -341,15 +339,13 @@ export function BacktestAlerts({
       </div>
       <p className="table-note">
         Times in {israelLabel}. Vol: the alert&apos;s volume ratio (window
-        volume ÷ expected volume). vs SPY at alert: the stock&apos;s
-        beta-adjusted move against SPY when the alert fired, 0–100 (50 = in line
-        with SPY), with the label: confirmed = the score backs the alert&apos;s
-        direction, against = it opposes it, moving with market = neither; it
-        describes the move, not a trade recommendation. Look-now: how unusual
-        the market-adjusted move after the alert was for that stock, 0–100
-        against random minutes of the same run (Big ≥ 90, Very big ≥ 97). Peak:
-        the horizon with the most unusual move, and whether it went with the
-        burst. In play: the symbol&apos;s day volume was well above usual.
+        volume ÷ expected volume). vs SPY at alert: 0–100 score at the alert,
+        from the {areaScoreNote}; green ≥ {scoreStrong}, red ≤ {scoreWeak}, grey
+        between; it describes the move, not a trade recommendation. Look-now:
+        how unusual the market-adjusted move after the alert was for that stock,
+        0–100 against random minutes of the same run (Big ≥ 90, Very big ≥ 97).
+        Peak: the horizon with the most unusual move, and whether it went with
+        the burst. In play: the symbol&apos;s day volume was well above usual.
         Expanded rows add the trade view: good = ran {scoring.goodUnits}u in the
         alert&apos;s direction first, stopped = {scoring.stopUnits}u against
         first, weak = neither within {scoring.horizon} min.
