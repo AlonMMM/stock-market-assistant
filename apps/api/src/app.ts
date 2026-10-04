@@ -73,7 +73,6 @@ export function buildApp(
       Date.now(),
       alpaca.baselines,
       alpaca.strengths,
-      alpaca.cache,
       alpaca.sigmas,
     );
     return reply.code(result.status).send(result.body);

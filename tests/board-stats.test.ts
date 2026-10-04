@@ -359,20 +359,28 @@ test("board stats carry the area score and β vs SPY at asOf", async () => {
     );
   };
   const sigmas = new MemoryDailyStore<SigmaCurve>();
+  const baselineStore = new MemoryBaselineStore();
+  const strengthStore = new MemoryDailyStore<SpyStrength>();
+  const poll = (
+    tickers: string[],
+    history: ReturnType<typeof areaHistory>["history"],
+    store = sigmas,
+    perPoll?: number,
+    at = now,
+  ) =>
+    runBoard(tickers, multi, at, {}, baselineStore, strengthStore, undefined, {
+      history,
+      store,
+      perPoll,
+    });
+  // The first poll of the date fetches Rel vol and β history: no σ work.
+  const cold = areaHistory();
+  const firstBoard = await poll(["NVDA", "AMD"], cold.history);
+  assert.equal(firstBoard.series[0]!.stats!.rsScore, null);
+  assert.deepEqual(cold.calls, []);
+  requested.length = 0;
   const first = areaHistory();
-  const board = await runBoard(
-    ["NVDA"],
-    multi,
-    now,
-    {},
-    undefined,
-    undefined,
-    undefined,
-    {
-      history: first.history,
-      store: sigmas,
-    },
-  );
+  const board = await poll(["NVDA"], first.history);
   const stats = board.series[0]!.stats!;
   assert.equal(stats.asOf, at(`${date}T14:45:00Z`));
   assert.ok(Math.abs(stats.beta! - 1.5) < 1e-9);
@@ -386,39 +394,25 @@ test("board stats carry the area score and β vs SPY at asOf", async () => {
   assert.equal(sigmas.rows.size, 1);
   // A later poll reads the stored curve: no history.
   const second = areaHistory();
-  const again = await runBoard(
-    ["NVDA"],
-    multi,
-    now,
-    {},
-    undefined,
-    undefined,
-    undefined,
-    {
-      history: second.history,
-      store: sigmas,
-    },
-  );
+  const again = await poll(["NVDA"], second.history);
   assert.equal(again.series[0]!.stats!.rsScore, 84);
   assert.deepEqual(second.calls, []);
-  // At most `perPoll` curves per poll; the rest stay null until later.
-  const limited = await runBoard(
+  // At most `perPoll` curves per poll, in a rotating order; the rest stay
+  // null until a later poll.
+  const fresh = new MemoryDailyStore<SigmaCurve>();
+  const one = await poll(["NVDA", "AMD"], areaHistory().history, fresh, 1);
+  const scores = one.series.slice(0, 2).map((x) => x.stats!.rsScore);
+  assert.deepEqual([...scores].sort(), [84, null]);
+  const next = await poll(
     ["NVDA", "AMD"],
-    multi,
-    now,
-    {},
-    undefined,
-    undefined,
-    undefined,
-    {
-      history: areaHistory().history,
-      store: new MemoryDailyStore(),
-      perPoll: 1,
-    },
+    areaHistory().history,
+    fresh,
+    1,
+    now + 60000,
   );
   assert.deepEqual(
-    limited.series.slice(0, 2).map((x) => x.stats!.rsScore),
-    [84, null],
+    next.series.slice(0, 2).map((x) => x.stats!.rsScore),
+    [84, 84],
   );
 });
 

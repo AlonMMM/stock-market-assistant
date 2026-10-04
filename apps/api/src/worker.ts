@@ -62,7 +62,6 @@ function stores(db: D1Like) {
     };
   return cache;
 }
-const barCache = (db: D1Like) => stores(db).cache;
 
 export default {
   async fetch(
@@ -165,7 +164,6 @@ export default {
         Date.now(),
         env.BARS_CACHE ? stores(env.BARS_CACHE).baselines : undefined,
         env.BARS_CACHE ? stores(env.BARS_CACHE).strengths : undefined,
-        env.BARS_CACHE ? barCache(env.BARS_CACHE) : undefined,
         env.BARS_CACHE ? stores(env.BARS_CACHE).sigmas : undefined,
       );
       return Response.json(result.body, {

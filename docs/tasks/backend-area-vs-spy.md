@@ -59,8 +59,17 @@ backend side). Scenarios 7–8 on the site are Frontend's.
 - Day chart: `areaVsSpy`; σ from the ticker's already-loaded 20-session history and SPY's
   previous 20 sessions (bar cache), stored per (date, ticker).
 - Board: one extra 1-minute multi-symbol request per poll from the session start to
-  `asOf`; σ curves for at most 20 symbols per poll (`sigmasPerPoll`).
-- Worker and local API pass the bar cache and the σ store to board and day chart.
+  `asOf`. σ curves are bounded by a 40-subrequest budget per request (Workers Free
+  allows 50): none on a poll that fetches Rel vol or β history, otherwise
+  `sigmaSymbolsPerPoll(symbols, listed)` (k = 12 for 30 symbols), in a rotating order
+  (start = poll minute) so a failing symbol never blocks the rest. Their 20-session
+  history comes straight from Alpaca (≤ 2 pages a symbol, no D1 statements).
+- Day chart: SPY's 20-session σ history also comes straight from Alpaca (≤ 2 pages).
+- Worker and local API pass the σ store to board and day chart (the bar cache to the
+  day chart only).
+- `apps/api/src/sqlite-d1.ts`: batches now run one at a time. Concurrent batches (Rel
+  vol and β/σ stores written in the same poll) nested `BEGIN` and failed locally, so a
+  store write was silently lost; D1 itself was unaffected.
 
 ## Decisions and deviations
 
@@ -86,14 +95,18 @@ backend side). Scenarios 7–8 on the site are Frontend's.
   per day (startup after warmup, after New York midnight; not measured on real data).
   Per alert and `/alerts` poll: reads the session's stored bars of the symbol and SPY;
   compute < 0.1 ms. Storage ~7 KB per symbol per day.
-- Day chart: warm +1 D1 query; first chart of a (date, ticker): + SPY's 20-session minute
-  history via the bar cache (1 D1 range read; ~2 Alpaca pages on a cache miss) + 1 D1
-  batch.
-- Board: every poll +1 Alpaca 1-minute request (pages = symbols × minutes since the
-  session start / 10,000; 30 symbols at the close ≈ 2) + 1 D1 query. First polls of a
-  date: per missing symbol (≤ 20/poll) 1 D1 range read (+ ~2 Alpaca pages and bar-cache
-  writes on a cold cache), SPY once, and ⌈n/8⌉ + 1 D1 statements to store; one symbol's
-  history in memory at a time. Worst cold poll ≈ 170 subrequests (Workers Paid).
+- Day chart: warm +1 D1 query; the first chart of a (date, ticker) adds SPY's 20-session
+  minute history (≤ 2 Alpaca pages) and one σ write. Measured (synthetic worst-case
+  density, cold cache, all statements counted): 23 subrequests cold, 7 warm.
+- Board (budget 40 per request, every Alpaca page and D1 statement counted, plus the
+  watchlist request): every poll +1 Alpaca 1-minute request (pages = symbols × minutes
+  since the session start / 10,000) + 1 D1 read. A poll that fetches Rel vol or β
+  history computes no σ; later polls compute k σ curves (2 Alpaca pages each, SPY 2,
+  one write of 1 + ⌈k/8⌉ statements). `tests/subrequest-budget.test.ts`, 30 symbols,
+  cold cache, measured per poll: 37 (Rel vol and β), 36, 36, 23 — all 30 scores filled
+  by the 4th poll. Watchlists far above 30 symbols get a smaller k; the existing cold
+  Rel vol poll grows past the budget above ~128 symbols (unchanged, see
+  backend-live-page).
 - Backtest: no extra requests; per symbol ~0.1 ms per day of windows plus ~2.4 ms per
   alert date, small next to the replay (~630 ms per symbol). Memo of past windows ≈ 30 KB
   per day per symbol while that symbol is computed; backtest memory limits were not
@@ -101,8 +114,8 @@ backend side). Scenarios 7–8 on the site are Frontend's.
 
 ## Verification
 
-- `npm run check`: pass (format, both typechecks, 232 tests: 231 pass, 0 fail, 1 skipped,
-  builds).
+- `npm run check`: pass (format, both typechecks, 234 tests: 233 pass, 0 fail, 1
+  skipped; builds).
 - `npm run build:collector`: pass.
 - `git diff --check`: clean.
 - Synthetic data only; no real Alpaca, collector, D1 or Worker run.
