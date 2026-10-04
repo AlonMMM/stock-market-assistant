@@ -1,10 +1,41 @@
 import { useEffect, useState } from "react";
 import type { Watchlist as WatchlistData } from "../../../packages/market-data/src/watchlist.js";
-import { maxTickers } from "./backtest-model.js";
+import { maxTickers, symbolPattern } from "./backtest-model.js";
+import { readJson } from "./api.js";
 import { israelDateTime } from "./time.js";
 
 const storageKey = "sma.backtest.tickers.v2";
-export const symbolPattern = /^[A-Z][A-Z0-9. -]{0,9}$/;
+export { symbolPattern };
+
+/**
+ * The backtest symbol list, shared on the server (not per device). `tickers`
+ * is null while loading; `change` adds and removes symbols and returns the
+ * updated list.
+ */
+export function useBacktestList() {
+  const [tickers, setTickers] = useState<string[] | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    fetch("/api/backtest/symbols", { signal: AbortSignal.timeout(15000) })
+      .then((r) => readJson<{ tickers: string[] }>(r))
+      .then((body) => setTickers(body.tickers))
+      .catch((e: Error) => {
+        setError(`Backtest list unavailable: ${e.message}`);
+        setTickers([]);
+      });
+  }, []);
+  async function change(add: string[], remove: string[]) {
+    const response = await fetch("/api/backtest/symbols", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ add, remove }),
+    });
+    const body = await readJson<{ tickers: string[] }>(response);
+    setTickers(body.tickers);
+    return body.tickers;
+  }
+  return { tickers, error, change };
+}
 
 // The watchlist comes from the server (synced from IBKR); the selection within
 // it is a per-device convenience, and storage can be unavailable.

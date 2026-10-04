@@ -19,6 +19,10 @@ import { D1BaselineStore } from "../../../packages/market-data/src/volume-baseli
 import { D1AreaSigmaStore } from "../../../packages/market-data/src/area-sigma.js";
 import { ResultCache } from "../../../packages/market-data/src/result-cache.js";
 import {
+  D1SymbolList,
+  handleBacktestSymbols,
+} from "../../../packages/market-data/src/backtest-symbols.js";
+import {
   loadAnalysisChart,
   loadLive,
 } from "../../../packages/market-data/src/live.js";
@@ -42,6 +46,7 @@ let cache:
       strengths: D1StrengthStore;
       sigmas: D1AreaSigmaStore;
       results: ResultCache;
+      symbols: D1SymbolList;
     }
   | undefined;
 function stores(db: D1Like) {
@@ -59,6 +64,7 @@ function stores(db: D1Like) {
           ? __EVALUATION_CODE__
           : "unbuilt",
       ),
+      symbols: new D1SymbolList(db),
     };
   return cache;
 }
@@ -93,6 +99,30 @@ export default {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
     const path = new URL(request.url).pathname;
+    if (path === "/api/backtest/symbols") {
+      let body: unknown;
+      if (request.method === "POST")
+        try {
+          const text = await request.text();
+          if (text.length > 65536)
+            return Response.json(
+              { error: "Request too large" },
+              { status: 413 },
+            );
+          body = JSON.parse(text);
+        } catch {
+          return Response.json(
+            { error: "Expected JSON object" },
+            { status: 400 },
+          );
+        }
+      const result = await handleBacktestSymbols(
+        request.method,
+        body,
+        env.BARS_CACHE ? stores(env.BARS_CACHE).symbols : undefined,
+      );
+      return Response.json(result.body, { status: result.status });
+    }
     let sipDelayMinutes: number;
     try {
       sipDelayMinutes = parseSipDelay(env.ALPACA_SIP_DELAY_MINUTES);

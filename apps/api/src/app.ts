@@ -21,6 +21,10 @@ import type { BaselineStore } from "../../../packages/market-data/src/volume-bas
 import type { AreaSigmaStore } from "../../../packages/market-data/src/area-sigma.js";
 import type { ResultCache } from "../../../packages/market-data/src/result-cache.js";
 import {
+  handleBacktestSymbols,
+  type D1SymbolList,
+} from "../../../packages/market-data/src/backtest-symbols.js";
+import {
   loadAnalysisChart,
   loadLive,
 } from "../../../packages/market-data/src/live.js";
@@ -36,6 +40,7 @@ export function buildApp(
     strengths?: StrengthStore; // stored β/σ vs SPY for the board's score
     sigmas?: AreaSigmaStore; // stored σ curves of the area score vs SPY
     results?: ResultCache; // computed backtest parts
+    symbols?: D1SymbolList; // the Backtest page's symbol list
   } = {
     key: process.env.ALPACA_API_KEY,
     secret: process.env.ALPACA_API_SECRET,
@@ -57,6 +62,22 @@ export function buildApp(
       Date.now(),
       alpaca.cache,
       alpaca.results,
+    );
+    return reply.code(result.status).send(result.body);
+  });
+  app.get("/api/backtest/symbols", async (_request, reply) => {
+    const result = await handleBacktestSymbols(
+      "GET",
+      undefined,
+      alpaca.symbols,
+    );
+    return reply.code(result.status).send(result.body);
+  });
+  app.post("/api/backtest/symbols", async (request, reply) => {
+    const result = await handleBacktestSymbols(
+      "POST",
+      request.body,
+      alpaca.symbols,
     );
     return reply.code(result.status).send(result.body);
   });

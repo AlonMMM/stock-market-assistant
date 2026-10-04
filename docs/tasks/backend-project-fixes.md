@@ -82,6 +82,14 @@ Fix intermittent HTTP 503 from backtests and prepare for the Workers Paid plan.
   not final are never cached. `/api/backtest` reports `results: { hits, misses }`.
   Replaces the earlier local-only `backtest_parts`/`backtest_runs` tables (dropped).
 
+- Backtest symbol list (`packages/market-data/src/backtest-symbols.ts`): D1 table
+  `backtest_symbols`, `GET`/`POST /api/backtest/symbols` (`{ add?, remove? }`, US
+  symbols only, at most 500) on the Worker and local API. The Backtest page offers it as
+  the first preset, adds and removes typed symbols (one or many) through it, and selects
+  up to 250 symbols (was 40). Separate from the collector watchlist, which stays the
+  live-alert list (47 IBKR "Favorites" symbols). Seeded 2026-10-04 with the 196 symbols
+  of all IBKR watchlists (the 47 Favorites are among them).
+
 ## Verification and handoff
 
 - `npm run check` and `git diff --check` pass (191 pass, 1 skipped).
