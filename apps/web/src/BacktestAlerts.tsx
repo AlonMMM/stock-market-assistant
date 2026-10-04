@@ -339,17 +339,16 @@ export function BacktestAlerts({
       </div>
       <p className="table-note">
         Times in {israelLabel}. Vol: the alert&apos;s volume ratio (window
-        volume ÷ expected volume). vs SPY at alert: score 0–100 from the{" "}
-        {areaScoreNote}, ending at the alert; green ≥ {scoreStrong}, red ≤{" "}
-        {scoreWeak}, grey between; it describes the move, not a trade
-        recommendation. Look-now: how unusual the market-adjusted move after the
-        alert was for that stock, 0–100 against random minutes of the same run
-        (Big ≥ 90, Very big ≥ 97). Peak: the horizon with the most unusual move,
-        and whether it went with the burst. In play: the symbol&apos;s day
-        volume was well above usual. Expanded rows add the trade view: good =
-        ran {scoring.goodUnits}u in the alert&apos;s direction first, stopped ={" "}
-        {scoring.stopUnits}u against first, weak = neither within{" "}
-        {scoring.horizon} min.
+        volume ÷ expected volume). vs SPY at alert: 0–100 score at the alert,
+        from the {areaScoreNote}; green ≥ {scoreStrong}, red ≤ {scoreWeak}, grey
+        between; it describes the move, not a trade recommendation. Look-now:
+        how unusual the market-adjusted move after the alert was for that stock,
+        0–100 against random minutes of the same run (Big ≥ 90, Very big ≥ 97).
+        Peak: the horizon with the most unusual move, and whether it went with
+        the burst. In play: the symbol&apos;s day volume was well above usual.
+        Expanded rows add the trade view: good = ran {scoring.goodUnits}u in the
+        alert&apos;s direction first, stopped = {scoring.stopUnits}u against
+        first, weak = neither within {scoring.horizon} min.
       </p>
     </>
   );

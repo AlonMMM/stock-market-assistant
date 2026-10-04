@@ -354,11 +354,11 @@ export function LiveAlerts({
       <p className="table-note">
         Times in {israelLabel}. Volume vs expected: the alert&apos;s volume
         ratio (window volume ÷ expected volume); the bar is full at {ratioScale}
-        ×. vs SPY at alert: score 0–100 from the {areaScoreNote}, ending at the
-        alert; green ≥ {scoreStrong}, red ≤ {scoreWeak}, grey between; “—”
-        without a score. It describes the move, it is not a trade
-        recommendation. Expanded rows add today&apos;s current score (updated
-        every 30 s) with ↑/↓ when it moved 5 or more points.
+        ×. vs SPY at alert: 0–100 score at the alert, from the {areaScoreNote};
+        green ≥ {scoreStrong}, red ≤ {scoreWeak}, grey between; “—” without a
+        score. It describes the move, it is not a trade recommendation. Expanded
+        rows add today&apos;s current score (updated every 30 s) with ↑/↓ when
+        it moved 5 or more points.
       </p>
     </>
   );

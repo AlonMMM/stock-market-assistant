@@ -85,7 +85,7 @@ const colors = {
     downLine: "#b91c1c",
     downFill: ["rgba(220, 38, 38, 0.06)", "rgba(220, 38, 38, 0.32)"],
     zero: "#6b7280",
-    ramp: "rgba(20, 43, 41, 0.07)",
+    ramp: "rgba(20, 43, 41, 0.05)",
   },
   clear: "rgba(0, 0, 0, 0)",
   surface: "#fafbf8",
@@ -95,17 +95,20 @@ const colors = {
 
 // A small "▲▼ vs SPY" tag at the strip's left edge, so the strip does not
 // read as a row of volume bars.
-function stripTag(text: string): IPanePrimitive<Time> {
+// `corner`: a compact label at the pane's top-left (the gap pane) instead
+// of a full-height tag.
+function stripTag(text: string, corner = false): IPanePrimitive<Time> {
   const renderer: IPrimitivePaneRenderer = {
     draw: (target) =>
       target.useMediaCoordinateSpace(({ context, mediaSize }) => {
         context.font = "600 10px Inter, ui-sans-serif, system-ui, sans-serif";
         const width = context.measureText(text).width + 8;
+        const height = corner ? 14 : mediaSize.height;
         context.fillStyle = colors.surface;
-        context.fillRect(0, 0, width, mediaSize.height);
+        context.fillRect(0, 0, width, height);
         context.fillStyle = colors.text;
         context.textBaseline = "middle";
-        context.fillText(text, 4, mediaSize.height / 2 + 0.5);
+        context.fillText(text, 4, height / 2 + 0.5);
       }),
   };
   const view: IPanePrimitivePaneView = {
@@ -531,7 +534,9 @@ export function DayChart({
     panes[0]?.setStretchFactor(3);
     if (gapPane >= 0) {
       panes[gapPane]?.setStretchFactor(0.9);
-      panes[gapPane]?.attachPrimitive(stripTag(`Gap vs β×${scoreBenchmark}`));
+      panes[gapPane]?.attachPrimitive(
+        stripTag(`Gap vs β×${scoreBenchmark}`, true),
+      );
     }
     if (opp) {
       panes[stripPane]?.setStretchFactor(0.2);
