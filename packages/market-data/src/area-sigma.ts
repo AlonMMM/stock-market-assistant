@@ -48,7 +48,7 @@ export function sigmaRange(date: string) {
  * σ curves for `tickers` (not SPY) on `date`: stored curves first, then, for
  * at most `limit` missing symbols, their minute history and SPY's over the
  * previous 20 sessions, one symbol at a time (bounded memory). Computed
- * curves are stored. Failures leave a symbol without a curve (score null),
+ * curves are stored (one write). Failures leave a symbol without a curve (score null),
  * to retry on a later request. `betaOf` is the date's β vs SPY (1 assumed).
  */
 export async function areaSigmas(
@@ -58,6 +58,7 @@ export async function areaSigmas(
   history: MinuteHistory,
   store?: AreaSigmaStore,
   limit = Infinity,
+  offset = 0, // rotates which missing symbols are computed first
 ): Promise<Map<string, SigmaCurve>> {
   const wanted = tickers.filter((t) => t !== benchmark);
   let curves = new Map<string, SigmaCurve>();
@@ -67,7 +68,9 @@ export async function areaSigmas(
   } catch {
     // Degrade to computing; the result stays correct.
   }
-  const missing = wanted.filter((t) => !curves.has(t)).slice(0, limit);
+  const all = wanted.filter((t) => !curves.has(t));
+  const start = all.length ? offset % all.length : 0;
+  const missing = [...all.slice(start), ...all.slice(0, start)].slice(0, limit);
   if (!missing.length) return curves;
   let range: ReturnType<typeof sigmaRange>;
   try {

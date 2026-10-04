@@ -80,9 +80,10 @@ export class LiveStrength {
 
   /**
    * σ curves for `tickers` (not SPY) on `date` from the stored minute bars of
-   * the previous 20 sessions, with the date's β (prepare first; 1 when
-   * unknown). Call once the warmup history is stored: stored curves are
-   * reused for the rest of the day. Returns how many have no curve.
+   * the previous 20 sessions, with the date's β (symbols whose β is not
+   * prepared yet are skipped and counted). Call once the warmup history is
+   * stored: stored curves are reused for the rest of the day. Returns how
+   * many have no curve.
    */
   async prepareSigma(date: string, tickers: string[]): Promise<number> {
     let known = this.curves.get(date);
@@ -98,14 +99,21 @@ export class LiveStrength {
     } catch {
       // Recomputed below.
     }
-    const missing = wanted.filter((t) => !known.has(t));
-    if (!missing.length) return 0;
+    // Computed only with the date's β (a curve is kept for the whole day);
+    // symbols whose β is not prepared yet are retried on a later run.
+    const unprepared = wanted.filter(
+      (t) => !known.has(t) && !this.strength(date, t),
+    ).length;
+    const missing = wanted.filter(
+      (t) => !known.has(t) && this.strength(date, t),
+    );
+    if (!missing.length) return unprepared;
     const dates = previousSessions(date, areaSigmaSessions);
     const inRange = (bars: PriceBar[]) =>
       bars.filter((b) => b.date < date).map(fromPriceBar);
     const spy = byDate(inRange(this.deps.bars(benchmark, dates[0]!)));
     // Without SPY's history every curve would be empty: retry later.
-    if (!spy.size) return missing.length;
+    if (!spy.size) return missing.length + unprepared;
     const fresh = new Map<string, SigmaCurve>();
     for (const ticker of missing)
       fresh.set(
@@ -114,12 +122,12 @@ export class LiveStrength {
           inRange(this.deps.bars(ticker, dates[0]!)),
           spy,
           dates,
-          this.strength(date, ticker)?.beta ?? 1,
+          this.strength(date, ticker)!.beta,
         ),
       );
     for (const [t, c] of fresh) known.set(t, c);
     await this.deps.sigmas?.put(date, fresh);
-    return 0;
+    return unprepared;
   }
 
   strength(date: string, ticker: string): SpyStrength | undefined {

@@ -144,6 +144,9 @@ export async function runDayChart(
   daily: History = async () => [],
   delayMinutes = defaultSipDelayMinutes,
   sigmas?: AreaSigmaStore,
+  // SPY's 20-session minute history for a σ curve; the Worker passes Alpaca
+  // directly (≤ 2 pages, no D1 statements) to bound the request's cost.
+  sigmaHistory: History = history,
 ): Promise<DayChart> {
   const { ticker, date, against } = parse(input);
   let previous: string;
@@ -268,8 +271,9 @@ export async function runDayChart(
                     r.start * 1000 < Date.parse(to),
                 ),
               )
-            : history(t, from, to),
-        sigmas,
+            : sigmaHistory(t, from, to),
+        // Stored only with the date's β (a curve is kept all day).
+        spyDaily ? sigmas : undefined,
       );
       const stock = fromRawBars(ticker, loaded).filter((b) => b.date === date);
       const spy = fromRawBars(
@@ -328,6 +332,7 @@ export async function handleDayChart(
           feed.history(ticker, start, end, "1Day", "split"),
         credentials.sipDelayMinutes,
         sigmas,
+        (ticker, start, end) => feed.history(ticker, start, end),
       ),
     };
   } catch (error) {

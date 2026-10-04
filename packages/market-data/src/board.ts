@@ -1,12 +1,11 @@
 import { AlpacaFeed } from "./alpaca.js";
-import { minuteHistory, type Credentials } from "./backtest.js";
+import type { Credentials } from "./backtest.js";
 import { areaAt, fromRawBars, sessionOf } from "./area-vs-spy.js";
 import {
   areaSigmas,
   type AreaSigmaStore,
   type MinuteHistory,
 } from "./area-sigma.js";
-import type { BarCache } from "./bar-cache.js";
 import { defaultSipDelayMinutes, sipDelayMs } from "./sip-delay.js";
 import { normalize, type RawBar } from "./bars.js";
 import type { D1Like } from "./bar-cache.js";
@@ -83,12 +82,40 @@ export type MultiHistory = (
 
 /** Area score inputs for the board: minute history and stored σ curves. */
 export interface BoardArea {
-  history: MinuteHistory; // one symbol's minute bars (bar cache when set)
+  // One symbol's minute bars, straight from Alpaca: at most 2 pages for 20
+  // sessions (≤ 960 bars a day, 10,000 per page), no D1 statements.
+  history: MinuteHistory;
   store?: AreaSigmaStore;
-  // Most σ curves computed per poll; the rest follow on later polls.
+  // Most σ curves computed per poll (default: sigmaSymbolsPerPoll).
   perPoll?: number;
 }
-export const sigmasPerPoll = 20;
+
+/**
+ * Subrequests one board request may use (Workers Free allows 50; Alpaca
+ * pages, D1 statements and the collector's watchlist all count).
+ */
+export const boardSubrequestBudget = 40;
+const pages = (bars: number) => Math.max(1, Math.ceil(bars / 10000));
+
+/**
+ * σ curves one warm board poll can compute within the budget, worst case:
+ * fixed = watchlist 1 + 5-minute intraday pages (192 bars a symbol) + daily
+ * 1 + 3 stored-value reads + 3 table checks (first request of an isolate) +
+ * 1-minute pages (≤ 390 bars a symbol, listed and SPY); then SPY's σ history
+ * 2, the σ write 1 + ⌈k/8⌉, and 2 Alpaca pages per symbol. Polls that fetch
+ * Rel vol or β history compute none.
+ */
+export function sigmaSymbolsPerPoll(symbols: number, listed: number): number {
+  const fixed =
+    1 + pages(symbols * 192) + 1 + 3 + 3 + pages((listed + 1) * 390);
+  let k = listed;
+  while (
+    k > 0 &&
+    fixed + 2 + 1 + Math.ceil(k / 8) + 2 * k > boardSubrequestBudget
+  )
+    k--;
+  return k;
+}
 
 /** β/σ vs SPY per symbol and board date, computed once per day. */
 export type StrengthStore = DailyStore<SpyStrength>;
@@ -119,6 +146,7 @@ async function baselines(
   date: string,
   multi: MultiHistory,
   store?: BaselineStore,
+  cold?: { value: boolean },
 ): Promise<Map<string, VolumeCurve>> {
   let curves = new Map<string, VolumeCurve>();
   if (!tickers.length) return curves;
@@ -129,6 +157,7 @@ async function baselines(
   }
   const missing = tickers.filter((t) => !curves.has(t));
   if (!missing.length) return curves;
+  if (cold) cold.value = true;
   let sessions: string[];
   try {
     sessions = previousSessions(date, baselineSessions);
@@ -178,6 +207,7 @@ export async function strengths(
   date: string,
   multi: MultiHistory,
   store?: StrengthStore,
+  cold?: { value: boolean },
 ): Promise<Map<string, SpyStrength>> {
   let values = new Map<string, SpyStrength>();
   if (!tickers.length) return values;
@@ -188,6 +218,7 @@ export async function strengths(
   }
   const missing = tickers.filter((t) => !values.has(t));
   if (!missing.length) return values;
+  if (cold) cold.value = true;
   try {
     const sessions = previousSessions(date, betaReturns + 1);
     const daily = await multi(
@@ -329,8 +360,11 @@ export async function runBoard(
     `${date}T00:00:00Z`,
     "1Day",
   );
-  const curveRequest = baselines(listed, date, multi, store);
-  const strengthRequest = strengths(listed, date, multi, strengthStore);
+  // A poll that fetches Rel vol or β history computes no σ curve: together
+  // they would exceed the Worker's subrequest budget.
+  const cold = { value: false };
+  const curveRequest = baselines(listed, date, multi, store, cold);
+  const strengthRequest = strengths(listed, date, multi, strengthStore, cold);
   const [intraday, daily, curves, strength, minutes, sigmas] =
     await Promise.all([
       intradayRequest,
@@ -339,14 +373,20 @@ export async function runBoard(
       strengthRequest,
       scored ? areaMinutes(listed, date, scoredAt.minute, asOf, multi) : null,
       scored
-        ? strengthRequest.then((values) =>
+        ? Promise.all([strengthRequest, curveRequest]).then(([values]) =>
+            // Only with the date's β: a stored curve is kept all day.
             areaSigmas(
-              listed,
+              listed.filter((t) => values.has(t)),
               date,
-              (t) => values.get(t)?.beta ?? 1,
+              (t) => values.get(t)!.beta,
               area.history,
               area.store,
-              area.perPoll ?? sigmasPerPoll,
+              cold.value
+                ? 0
+                : (area.perPoll ??
+                    sigmaSymbolsPerPoll(symbols.length, listed.length)),
+              // Rotating start: a symbol that keeps failing never blocks the rest.
+              Math.floor(now / 60000),
             ),
           )
         : null,
@@ -420,7 +460,6 @@ export async function handleBoard(
   now = Date.now(),
   store?: BaselineStore,
   strengthStore?: StrengthStore,
-  cache?: BarCache,
   sigmas?: AreaSigmaStore,
 ): Promise<{ status: number; body: Board | { error: string } }> {
   if (!credentials.key || !credentials.secret)
@@ -448,13 +487,8 @@ export async function handleBoard(
         strengthStore,
         credentials.sipDelayMinutes,
         {
-          history: minuteHistory(
-            feed,
-            cache,
-            now,
-            undefined,
-            credentials.sipDelayMinutes,
-          ),
+          // Direct, not through the bar cache: a bounded cost per symbol.
+          history: (ticker, start, end) => feed.history(ticker, start, end),
           store: sigmas,
         },
       ),
