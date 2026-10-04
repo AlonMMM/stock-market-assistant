@@ -44,6 +44,10 @@ export interface Config {
   // window; needs 15). 0 = off.
   todayMoveMultiple: number;
 }
+// The rule this evaluator implements. Bump it with any change to the alert
+// conditions; stored alerts and cached backtests are keyed by it.
+export const ruleVersion = "rvol-v4";
+
 export const defaults: Config = {
   window: 3,
   days: 20,
@@ -374,7 +378,7 @@ export class RelativeVolume {
         c.inPlayDayRvol > 0 && dayRvol !== null && dayRvol >= c.inPlayDayRvol,
       todayMove,
       status,
-      rule: "rvol-v4",
+      rule: ruleVersion,
       config: { ...this.config },
     };
   }

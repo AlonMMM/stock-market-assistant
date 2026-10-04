@@ -15,16 +15,30 @@
 //   --config '{"threshold":3}'   rule overrides, as on the Backtest page
 //   --out path              default: data/local/backtest-<from>_<to>.json
 //   --wrangler <path>       wrangler binary (default: wrangler on PATH)
+//   --no-cache 1            recompute every symbol
+//
+// Each symbol's computed part is cached under data/local/backtest-cache/
+// <rule version>/<code hash>-<settings hash>/<SYMBOL>.json.gz. The rule version
+// (ruleVersion, e.g. rvol-v4) names the algorithm; the code hash covers the
+// evaluation sources, so a fix within a version never reuses stale parts; the
+// settings hash covers the dates, rule settings and scoring settings. A rerun
+// recomputes only uncached symbols, then ranks look-now scores across all.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { gunzipSync, gzipSync } from "node:zlib";
+import { ruleVersion } from "../packages/alerts/src/relative-volume.js";
 import { fileURLToPath } from "node:url";
 import { AlpacaFeed } from "../packages/market-data/src/alpaca.js";
 import {
   backtestWindow,
   BacktestInputError,
   BacktestRun,
+  decodePart,
+  encodePart,
   minuteHistory,
   parseBacktest,
+  type SymbolPart,
 } from "../packages/market-data/src/backtest.js";
 import {
   D1BarCache,
@@ -159,16 +173,76 @@ console.log(
   `Backtesting ${request.tickers.length} symbols, ${request.sessions.length} sessions ` +
     `(${from} → ${to}), ${request.config.days} warmup sessions`,
 );
-const spyRows = await history(benchmark, window.start, window.until);
-const run = new BacktestRun(request, window, spyRows, await daily(benchmark));
+// Per-symbol cache of computed parts (see the header).
+const sha = (text: string) => createHash("sha256").update(text).digest("hex");
+const codeHash = sha(
+  [
+    "packages/alerts/src/relative-volume.ts",
+    "packages/market-data/src/backtest.ts",
+    "packages/market-data/src/bars.ts",
+    "packages/market-data/src/beta.ts",
+    "packages/market-data/src/calendar.ts",
+    "packages/market-data/src/evaluator.ts",
+    "packages/market-data/src/look-now.ts",
+    "packages/market-data/src/outcome.ts",
+  ]
+    .map((f) => readFileSync(`${root}${f}`, "utf8"))
+    .join("\0"),
+).slice(0, 10);
+const settingsHash = sha(
+  JSON.stringify({
+    from,
+    to,
+    window,
+    config: request.config,
+    validation: request.validation,
+  }),
+).slice(0, 12);
+const partsDir = `${root}data/local/backtest-cache/${ruleVersion}/${codeHash}-${settingsHash}`;
+const partPath = (ticker: string) => `${partsDir}/${ticker}.json.gz`;
+const savePart = (part: SymbolPart) =>
+  writeFileSync(partPath(part.ticker), gzipSync(encodePart(part)));
+const loadPart = (ticker: string) =>
+  decodePart(gunzipSync(readFileSync(partPath(ticker))).toString());
+const useCache = args.get("no-cache") === undefined;
+mkdirSync(partsDir, { recursive: true });
+const cached = new Set(
+  useCache ? request.tickers.filter((t) => existsSync(partPath(t))) : [],
+);
+console.log(
+  `Rule ${ruleVersion}, cache ${partsDir.slice(root.length)}: ` +
+    `${cached.size} of ${request.tickers.length} symbols cached`,
+);
+
+// SPY's bars are only needed to compute uncached symbols.
+const needed = cached.size < request.tickers.length;
+const spyRows = needed
+  ? await history(benchmark, window.start, window.until)
+  : [];
+const run = new BacktestRun(
+  request,
+  window,
+  spyRows,
+  needed ? await daily(benchmark) : [],
+);
 const failed: string[] = [];
 for (const [i, ticker] of request.tickers.entries()) {
   try {
+    if (cached.has(ticker)) {
+      run.merge(loadPart(ticker));
+      continue;
+    }
     const rows =
       ticker === benchmark
         ? spyRows
         : await history(ticker, window.start, window.until);
-    run.add(ticker, rows, ticker === benchmark ? [] : await daily(ticker));
+    const part = run.compute(
+      ticker,
+      rows,
+      ticker === benchmark ? [] : await daily(ticker),
+    );
+    savePart(part);
+    run.merge(part);
   } catch (error) {
     failed.push(ticker);
     console.error(

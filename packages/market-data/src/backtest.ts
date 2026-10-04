@@ -257,6 +257,34 @@ export function backtestWindow(request: BacktestRequest, now: number) {
 }
 export type BacktestWindow = ReturnType<typeof backtestWindow>;
 
+/** One symbol's computed share of a run; plain data, so it can be cached. */
+export interface SymbolPart {
+  ticker: string;
+  evaluated: number;
+  diagnostics: Record<string, number>;
+  alerts: {
+    alert: BacktestAlert; // lookNow is filled in by finish()
+    measured: ReturnType<LookNowScorer["measure"]>;
+    beta: { beta: number; assumed: boolean };
+    closeMinute: number;
+    minute: number;
+  }[];
+  baseline: BaselineCounts;
+  randoms: number[][]; // RandomMinutes columns
+  coverage: BacktestResult["coverage"][number];
+}
+
+// JSON for a cached SymbolPart. JSON has no NaN/Infinity (random-minute
+// columns use NaN), so non-finite numbers are tagged.
+export const encodePart = (part: SymbolPart) =>
+  JSON.stringify(part, (_k, v) =>
+    typeof v === "number" && !Number.isFinite(v) ? { $num: String(v) } : v,
+  );
+export const decodePart = (text: string): SymbolPart =>
+  JSON.parse(text, (_k, v) =>
+    v && typeof v === "object" && "$num" in v ? Number(v.$num) : v,
+  );
+
 /**
  * One backtest fed a symbol at a time, so a long run never holds every
  * symbol's bars at once. Look-now scores are ranked against the random minutes
@@ -273,13 +301,7 @@ export class BacktestRun {
     weak: 0,
   };
   private readonly baselineBySymbol: Record<string, BaselineCounts> = {};
-  private readonly pending: {
-    alert: BacktestAlert;
-    measured: ReturnType<LookNowScorer["measure"]>;
-    beta: { beta: number; assumed: boolean };
-    closeMinute: number;
-    minute: number;
-  }[] = [];
+  private readonly pending: SymbolPart["alerts"] = [];
   private readonly randoms = new RandomMinutes();
   private readonly alerts: BacktestAlert[] = [];
   private readonly diagnostics: Record<string, number> = {};
@@ -300,6 +322,14 @@ export class BacktestRun {
 
   /** Replays one symbol's minute bars (from `window.start`) and daily bars. */
   add(ticker: string, rows: RawBar[], daily: RawBar[]) {
+    this.merge(this.compute(ticker, rows, daily));
+  }
+
+  /**
+   * One symbol's share of the run, independent of the other symbols, so it can
+   * be cached. Look-now scores are left for `finish`.
+   */
+  compute(ticker: string, rows: RawBar[], daily: RawBar[]): SymbolPart {
     const { from, to, config, sessions, validation } = this.request;
     const { end, betaStart } = this.window;
     const evaluator = new LiveEvaluator(config);
@@ -307,6 +337,8 @@ export class BacktestRun {
     const lastRegular = new Map<string, number>();
     const normalized: PriceBar[] = [];
     const tickerAlerts: BacktestAlert[] = [];
+    const diagnostics: Record<string, number> = {};
+    let evaluated = 0;
     let count = 0;
     for (const row of rows) {
       const bar = normalize(ticker, row, "shares");
@@ -320,9 +352,8 @@ export class BacktestRun {
       }
       const result = evaluator.push(bar, Date.parse(bar.end), inRange);
       if (!result) continue;
-      this.evaluated++;
-      this.diagnostics[result.status] =
-        (this.diagnostics[result.status] ?? 0) + 1;
+      evaluated++;
+      diagnostics[result.status] = (diagnostics[result.status] ?? 0) + 1;
       if (result.status === "alert")
         tickerAlerts.push({
           ...result,
@@ -370,31 +401,50 @@ export class BacktestRun {
       ticker === benchmark ? null : this.spyBars,
       betaOf,
     );
-    for (const alert of tickerAlerts) {
+    const alerts = tickerAlerts.map((alert) => {
       alert.outcome = scorer.score(alert.end, alert.direction ?? "up");
-      this.outcomes.push(alert.outcome);
-      this.alerts.push(alert);
       const minute = byEnd.get(alert.end)!;
-      this.pending.push({
+      return {
         alert,
         measured: look.measure(minute.date, minute.minute, minute.session),
         beta: look.betaInfo(minute.date),
         closeMinute: minute.regularClose ?? 960,
         minute: minute.minute,
-      });
-    }
-    const counts = baselineCounts(scorer.baseline(from, to));
-    this.baselineBySymbol[ticker] = counts;
-    for (const k of ["scored", "good", "stopped", "weak"] as const)
-      this.baseline[k] += counts[k];
-    for (const r of look.baseline(from, to)) this.randoms.add(r.measured);
-    this.coverage.push({
-      ticker,
-      bars: count,
-      missingSessions: sessions.filter(
-        (date) => !seen.has(date) && Date.parse(`${date}T13:30:00Z`) < end,
-      ),
+      };
     });
+    const randoms = new RandomMinutes();
+    for (const r of look.baseline(from, to)) randoms.add(r.measured);
+    return {
+      ticker,
+      evaluated,
+      diagnostics,
+      alerts,
+      baseline: baselineCounts(scorer.baseline(from, to)),
+      randoms: randoms.columns(),
+      coverage: {
+        ticker,
+        bars: count,
+        missingSessions: sessions.filter(
+          (date) => !seen.has(date) && Date.parse(`${date}T13:30:00Z`) < end,
+        ),
+      },
+    };
+  }
+
+  merge(part: SymbolPart) {
+    this.evaluated += part.evaluated;
+    for (const [status, n] of Object.entries(part.diagnostics))
+      this.diagnostics[status] = (this.diagnostics[status] ?? 0) + n;
+    for (const p of part.alerts) {
+      this.outcomes.push(p.alert.outcome);
+      this.alerts.push(p.alert);
+      this.pending.push(p);
+    }
+    this.baselineBySymbol[part.ticker] = part.baseline;
+    for (const k of ["scored", "good", "stopped", "weak"] as const)
+      this.baseline[k] += part.baseline[k];
+    this.randoms.addColumns(part.randoms);
+    this.coverage.push(part.coverage);
   }
 
   finish(): BacktestResult {

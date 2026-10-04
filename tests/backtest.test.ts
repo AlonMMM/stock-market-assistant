@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import { buildApp } from "../apps/api/src/app.js";
 import worker from "../apps/api/src/worker.js";
 import {
+  backtestWindow,
+  BacktestRun,
+  decodePart,
+  encodePart,
   handleBacktest,
+  parseBacktest,
   maxSymbolsPerRequest,
   runBacktest,
 } from "../packages/market-data/src/backtest.js";
@@ -167,6 +172,32 @@ test("backtest rejects invalid tickers, ranges and configuration", async () => {
   await assert.rejects(
     runBacktest({ tickers: ["AAPL"], from: "2026-12-01", to }, history, later),
   );
+});
+
+test("cached per-symbol parts rebuild the same result as runBacktest", async () => {
+  const history = async (ticker: string) =>
+    ticker === "SPY" ? [] : syntheticBars();
+  // v3 candles keep this fixture's timing (see above).
+  const input = {
+    tickers: ["AAPL", "MSFT"],
+    from,
+    to,
+    config: { directionBars: 3 },
+  };
+  const direct = await runBacktest(input, history, later);
+  const request = parseBacktest(input, later, false);
+  const window = backtestWindow(request, later);
+  const run = new BacktestRun(request, window, [], []);
+  for (const ticker of request.tickers)
+    run.merge(
+      decodePart(encodePart(run.compute(ticker, await history(ticker), []))),
+    );
+  assert.ok(direct.alerts.length > 0);
+  assert.deepEqual(run.finish(), direct);
+  // NaN (a horizon a random minute could not measure) survives the round trip.
+  const part = run.compute("AAPL", await history("AAPL"), []);
+  part.randoms[0]![0] = NaN;
+  assert.ok(Number.isNaN(decodePart(encodePart(part)).randoms[0]![0]));
 });
 
 test("backtest symbols per request shrink as the range grows", () => {

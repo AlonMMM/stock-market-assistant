@@ -288,6 +288,24 @@ export class RandomMinutes {
     this.count++;
   }
 
+  /** z per horizon, aligned by sample (NaN = none); see `addColumns`. */
+  columns(): number[][] {
+    return this.z.map((column) => [...column]);
+  }
+
+  addColumns(columns: number[][]) {
+    if (
+      columns.length !== this.z.length ||
+      new Set(columns.map((c) => c.length)).size > 1
+    )
+      throw new Error("Random-minute columns must align with the horizons");
+    columns.forEach((column, i) => {
+      const target = this.z[i]!;
+      for (const z of column) target.push(z);
+    });
+    this.count += columns[0]?.length ?? 0;
+  }
+
   ranks(): Ranks {
     const out: Ranks = new Map();
     lookNowHorizons.forEach((h, i) => {
