@@ -36,10 +36,11 @@ export interface AlertVsSpy {
 
 /** Score "now" per symbol with an alert today (Israel day), in /api/live. */
 export interface StrengthNow {
-  // Marked-sections score ending at the symbol's latest bar (E = that bar);
-  // null when that bar is outside the regular session.
+  // Marked-sections score with E = the symbol's latest bar; once that bar
+  // is after-hours, E = its last regular bar of that date (the day's closing
+  // score); null while the latest bar is pre-market.
   score: number | null;
-  at: string; // UTC end of the symbol's latest bar behind the score
+  at: string; // UTC end of the bar at E
 }
 
 /** Minutes in the weight window: w(i) = (60 − (E − i)) / 60. */

@@ -228,9 +228,11 @@ export class LiveStrength {
   }
 
   /**
-   * Score now per ticker, with E = its latest bar (SPY's later bars are
-   * ignored; null outside the regular session). Tickers without a bar are
-   * left out.
+   * Score now per ticker, with E = its latest bar, or its last regular bar
+   * of that date once the latest is after-hours (the day's closing score);
+   * null while the latest is pre-market (Product + UX, 2026-10-05). SPY's
+   * later bars are ignored. `at` is the end of the bar behind E. Tickers
+   * without a bar are left out.
    */
   current(tickers: string[]): Record<string, StrengthNow> {
     const result: Record<string, StrengthNow> = {};
@@ -246,19 +248,33 @@ export class LiveStrength {
             (spyDays = byDate(this.session(benchmark, bar.date))),
           );
         const strength = this.strength(bar.date, ticker);
+        const stockDays = byDate(this.session(ticker, bar.date));
         const marks = dayMarks(
-          daySeries(ticker, byDate(this.session(ticker, bar.date)), bar.date),
+          daySeries(ticker, stockDays, bar.date),
           daySeries(benchmark, spyDays, bar.date),
           bar.date,
         );
+        // After the close: the last regular bar of that date.
+        const lastRegular =
+          bar.session === "post"
+            ? stockDays.get(bar.date)?.findLast((b) => b.session === "regular")
+            : undefined;
+        const end = lastRegular
+          ? newYork(lastRegular.start * 1000).minute
+          : bar.minute - 1;
         const value = marksAt(
           ticker,
           marks,
-          bar.minute - 1,
+          end,
           strength?.beta ?? 1,
           this.sigma(bar.date, ticker),
         );
-        result[ticker] = { score: value.score, at: bar.end };
+        result[ticker] = {
+          score: value.score,
+          at: lastRegular
+            ? new Date((lastRegular.start + 60) * 1000).toISOString()
+            : bar.end,
+        };
       } catch {
         // Calendar or store failure: no entry for this ticker.
       }
