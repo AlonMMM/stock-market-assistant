@@ -37,7 +37,7 @@ window)` (the last minute before the alert window), read with `marksScoreAt`. It
 
 - Spec: `docs/features/marks-vs-spy.md` at 9f29b46.
 - Contract: `packages/contracts/src/vs-spy.ts` at 48082bb, day chart, board and the rest
-  at e485181 (`session/backend-marks-vs-spy`, both merged): `MarksVsSpySeries` (minute-indexed from 09:30 via `start`), `marksWeight`,
+  at e485181 and bda4d53 (`session/backend-marks-vs-spy`, all merged): `MarksVsSpySeries` (minute-indexed from 09:30 via `start`), `marksWeight`,
   `marksAlertEnd`, `marksScoreAt`, `marksWeightMinutes`; `AlertVsSpy.sum`.
 - The web reads `DayChart.marksVsSpy` (declared and served since e485181).
 - The web has no formula of its own: contributions, scores and weights come from the
@@ -63,7 +63,7 @@ window)` (the last minute before the alert window), read with `marksScoreAt`. It
 
 ## Verification and handoff
 
-- `npm run check` after merging e485181: passed (243 tests: 242 pass, 1 skipped,
+- `npm run check` after merging bda4d53: passed (244 tests: 243 pass, 1 skipped,
   0 fail; build OK). The count dropped because Backend replaced the area tests.
 - `git diff --check`: clean.
 - Headless Chrome (CDP) against a SYNTHETIC mock API (scratchpad, not committed), at 1280
@@ -80,6 +80,5 @@ window)` (the last minute before the alert window), read with `marksScoreAt`. It
   only (the mock has no post-market bars).
 - Known, pre-existing: at 1280 px in "Around alert", strip bars at the left edge can
   cover the strip's "▲▼ vs SPY" tag.
-- Next: merge Backend's final commits (board rsScore clamp and task doc were still
-  uncommitted at e485181) and re-run the check. Integration checks scenario 7 on real
+- Next: merge Backend's task-doc commit when it lands (still uncommitted at bda4d53). Integration checks scenario 7 on real
   data.
