@@ -9,6 +9,7 @@ import type { MarksVsSpySeries } from "../packages/contracts/src/vs-spy.js";
 import {
   bandKinds,
   alertWindowBars,
+  barAtOrBefore,
   barOpacity,
   chartScores,
   contributionBars,
@@ -178,20 +179,45 @@ test("no score without marksVsSpy or for SPY itself", () => {
 
 // SYNTHETIC minute starts (Unix s) for the end-minute and weight tests.
 const t0 = 1_790_000_000 - (1_790_000_000 % 60);
-const at = (min: number) => ({ start: t0 + min * 60 });
+const at = (min: number, session = "regular") => ({
+  start: t0 + min * 60,
+  session,
+});
 const closeIso = (min: number) =>
   new Date((t0 + (min + 1) * 60) * 1000).toISOString();
 
 test("end minute: before the alert's window in Around alert, else the latest bar", () => {
-  const bars = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(at);
+  const bars = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => at(k));
   // Alert bar = minute 7, 3-minute window 5–7 → E = minute 4.
   assert.equal(endMinute(bars, closeIso(7), 3, true), at(4).start);
   assert.equal(endMinute(bars, closeIso(7), 3, false), at(9).start);
   assert.equal(endMinute(bars, undefined, 3, true), at(9).start);
   // E is a clock minute even when its bar is missing.
-  const gappy = [0, 1, 2, 3, 5, 6, 7].map(at);
+  const gappy = [0, 1, 2, 3, 5, 6, 7].map((k) => at(k));
   assert.equal(endMinute(gappy, closeIso(7), 3, true), at(4).start);
   assert.equal(endMinute([], undefined, 3, false), null);
+  // The readout's default bar: E's own bar, else the last one before it.
+  assert.equal(barAtOrBefore(gappy, at(4).start), 3);
+  assert.equal(barAtOrBefore(gappy, at(5).start), 4);
+  assert.equal(barAtOrBefore(gappy, at(-1).start), -1);
+});
+
+test("end minute without an alert is clamped to the regular session", () => {
+  const day = [
+    at(-2, "pre"),
+    at(-1, "pre"),
+    at(0),
+    at(1),
+    at(2),
+    at(3, "post"),
+    at(4, "post"),
+  ];
+  // After hours: the day's last regular bar (its closing score).
+  assert.equal(endMinute(day, undefined, 3, false), at(2).start);
+  // Before 09:30: no end minute → "—".
+  assert.equal(endMinute(day.slice(0, 2), undefined, 3, false), null);
+  // "Around alert" keeps the alert's own E (window 1 → minute 3), unclamped.
+  assert.equal(endMinute(day, closeIso(4), 1, true), at(3).start);
 });
 
 test("header = the series' score at E, the alert's own value (scenario 7)", () => {
@@ -221,7 +247,7 @@ test("bar opacity: newest full, 60-minute-old faint, outside very faint", () => 
 });
 
 test("contribution bars: value, sign and fade relative to the end bar", () => {
-  const bars = [0, 1, 10, 58, 59, 60, 61].map(at);
+  const bars = [0, 1, 10, 58, 59, 60, 61].map((k) => at(k));
   const c = contributionBars(
     bars,
     [0.4, null, -0.2, 0.1, 0, Number.NaN, 0.3],
@@ -252,7 +278,7 @@ test("contribution bars: value, sign and fade relative to the end bar", () => {
 });
 
 test("alert window bars: the alert's own minutes, excluded from its score", () => {
-  const bars = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(at);
+  const bars = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((k) => at(k));
   assert.deepEqual(
     alertWindowBars(bars, Date.parse(closeIso(7)), 3),
     [5, 6, 7],

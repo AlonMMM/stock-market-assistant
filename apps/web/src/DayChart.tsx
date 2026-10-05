@@ -36,6 +36,7 @@ import {
   contributionBars,
   dollars,
   type ChartScores,
+  barAtOrBefore,
   endMinute,
   episodeSummary,
   gapPoints,
@@ -295,6 +296,7 @@ export function DayChart({
     chart: IChartApi;
     m: Point[];
     marks: MarksPane | null;
+    readoutAt: (p: Point) => Readout;
   } | null>(null);
   const [data, setData] = useState<DayChartData | null>(null);
   const [error, setError] = useState("");
@@ -620,7 +622,6 @@ export function DayChart({
       applyRange(chart, rangeRef.current, m, alertMs),
     );
     drawMarks(marks, m, main.bars, rangeRef.current, alertMs, window, vs);
-    chartRef.current = { chart, m, marks };
 
     const benchByTime = new Map(b?.map((p) => [p.time, p]));
     const readoutAt = (p: Point): Readout => ({
@@ -636,7 +637,10 @@ export function DayChart({
       score: vs?.scores[p.index] ?? null,
     });
     const byTime = new Map(m.map((p) => [p.time, p]));
-    setLatest(readoutAt((alertBar ?? m[m.length - 1])!));
+    chartRef.current = { chart, m, marks, readoutAt };
+    setLatest(
+      endReadout(m, main.bars, rangeRef.current, alertEnd, window, readoutAt),
+    );
     const onMove = (param: MouseEventParams) => {
       const p = param.time ? byTime.get(param.time as UTCTimestamp) : undefined;
       setReadout(p ? readoutAt(p) : null);
@@ -655,21 +659,26 @@ export function DayChart({
     const c = chartRef.current;
     if (!c) return;
     applyRange(c.chart, range, c.m, alertMs);
-    if (main)
+    if (main) {
       drawMarks(c.marks, c.m, main.bars, range, alertMs, window, vsRef.current);
+      setLatest(
+        endReadout(c.m, main.bars, range, alertEnd, window, c.readoutAt),
+      );
+    }
   }, [range]);
 
   const shown = readout ?? latest;
   // Header: the score at the alert's end minute E (the last minute before
   // its window) in "Around alert", the same number as the alert's tag and
-  // Telegram line; else at the latest bar.
+  // Telegram line; else at the latest regular-session bar. The readout
+  // shows the same minute when nothing is pointed at.
   const aroundAlert = range === "alert" && !!alertEnd;
   const headerEnd = main
     ? endMinute(main.bars, alertEnd, window, aroundAlert)
     : null;
   const header = scoreCell(
     scoreAt(vs, headerEnd),
-    aroundAlert ? "at the alert" : "at the latest minute",
+    aroundAlert ? "at the alert" : "at the latest regular-session minute",
   );
   const benchName = bench?.ticker ?? benchmark;
   const base = main?.previousClose === null ? "first trade" : "previous close";
@@ -854,7 +863,7 @@ export function DayChart({
             {!Number.isNaN(alertMs) && "▼ marks the alert. "}
             {showScore &&
               (vs
-                ? `vs ${scoreBenchmark} score 0–100: ${scoreNote} (β ${vs.betaAssumed ? "assumed 1" : vs.beta.toFixed(2)}); green ≥ 60 stronger, red ≤ 40 weaker. Header: ${alertEnd ? "in Around alert, the last minute before the alert's window (as on the alert's tag); else " : ""}the latest minute; readout: the score ending at the pointed minute. Marks pane: one bar per marked minute, its ${main.ticker} 5-min move minus β×${scoreBenchmark}'s in % points, green above 0, red below; the shaded ${weightMinutes} minutes up to the header's minute count, newer bars stronger, older ones faded${alertEnd ? "; hatched = the alert's own minutes, excluded" : ""}. `
+                ? `vs ${scoreBenchmark} score 0–100: ${scoreNote} (β ${vs.betaAssumed ? "assumed 1" : vs.beta.toFixed(2)}); green ≥ 60 stronger, red ≤ 40 weaker. Header: ${alertEnd ? "in Around alert, the last minute before the alert's window (as on the alert's tag); else " : ""}the latest regular-session minute (the close after hours); readout: that minute, or the score ending at the pointed minute. Marks pane: one bar per marked minute, its ${main.ticker} 5-min move minus β×${scoreBenchmark}'s in % points, green above 0, red below; the shaded ${weightMinutes} minutes up to the header's minute count, newer bars stronger, older ones faded${alertEnd ? "; hatched = the alert's own minutes, excluded" : ""}. `
                 : `vs ${scoreBenchmark} score: not available for this chart. `)}
             Shaded = pre-market. Times in {israelLabel}.
           </p>
@@ -878,6 +887,22 @@ function ReadoutScore({ score }: { score: number | null }) {
   );
 }
 
+// Readout when nothing is pointed at: the bar at the header's end minute
+// (or the last bar before it); the latest bar when there is no end minute.
+function endReadout(
+  m: Point[],
+  bars: { start: number; session: string }[],
+  range: Range,
+  alertEnd: string | undefined,
+  windowMinutes: number,
+  readoutAt: (p: Point) => Readout,
+): Readout | null {
+  const end = endMinute(bars, alertEnd, windowMinutes, range === "alert");
+  const i = end === null ? -1 : barAtOrBefore(bars, end);
+  const p = m[i >= 0 ? i : m.length - 1];
+  return p ? readoutAt(p) : null;
+}
+
 interface MarksPane {
   shade: ISeriesApi<"Histogram">;
   bars: ISeriesApi<"Histogram">;
@@ -891,7 +916,7 @@ interface MarksPane {
 function drawMarks(
   pane: MarksPane | null,
   m: Point[],
-  bars: { start: number }[],
+  bars: { start: number; session: string }[],
   range: Range,
   alertMs: number,
   windowMinutes: number,

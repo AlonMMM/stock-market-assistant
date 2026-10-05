@@ -162,17 +162,24 @@ export const weightMinutes = marksWeightMinutes;
  * End minute E (Unix s of its bar start) the header score ends at. In the
  * "Around alert" view of an alert chart: the last minute before the alert's
  * own window (the shared `marksAlertEnd`), the same E as the alert's tag and
- * Telegram line. Otherwise the latest bar; null without bars.
+ * Telegram line. Otherwise the latest bar clamped to the regular session:
+ * the last regular bar (the day's close after hours); null before the open
+ * or without bars ("—").
  */
 export function endMinute(
-  bars: { start: number }[],
+  bars: { start: number; session: string }[],
   alertEnd: string | undefined,
   windowMinutes: number,
   aroundAlert: boolean,
 ): number | null {
   if (aroundAlert && alertEnd && !Number.isNaN(Date.parse(alertEnd)))
     return marksAlertEnd(alertEnd, windowMinutes);
-  return bars.at(-1)?.start ?? null;
+  return bars.findLast((b) => b.session === "regular")?.start ?? null;
+}
+
+/** Index of the bar starting at `minute`, else the last one before it; -1. */
+export function barAtOrBefore(bars: { start: number }[], minute: number) {
+  return bars.findLastIndex((b) => b.start <= minute);
 }
 
 /** Header score at end minute E; null ("—") without a series or E. */
