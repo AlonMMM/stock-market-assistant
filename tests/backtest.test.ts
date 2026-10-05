@@ -21,7 +21,7 @@ import { SqliteD1 } from "../apps/api/src/sqlite-d1.js";
 import { previousSessions } from "../packages/market-data/src/calendar.js";
 import type { BaselineCounts } from "../packages/market-data/src/outcome.js";
 import { pairedDaily } from "./analysis-fixtures.js";
-import { areaScore } from "../packages/market-data/src/area-vs-spy.js";
+import { marksScore } from "../packages/market-data/src/marks-vs-spy.js";
 
 // Synthetic regular-session bars (EDT: 13:30Z–20:00Z), flat at 100 on 1,000
 // shares a minute, with a rising 20,000-share burst on 2026-06-03 14:00Z–14:04Z.
@@ -328,31 +328,18 @@ test("alerts carry the move against SPY scaled by the ticker's beta", async () =
   assert.ok(Math.abs(context.excess - 2.7) < 1e-9);
 });
 
-test("backtest alerts carry the area score vs SPY at the alert minute", async () => {
-  // SYNTHETIC: SPY opens each day at 500 and holds +1% / −1% on alternate
-  // past days (σ = 1.5 with β 1.5, 1 with β 1); on 2026-06-03 it is flat
-  // except 501 in the 14:02Z minute. AAPL is flat at 100 apart from its burst.
-  const alertDay = "2026-06-03";
+test("backtest alerts carry the marked-sections score vs SPY at the alert's E", async () => {
+  // SYNTHETIC: SPY flat at 500 with a one-minute dip to 497.5 (−0.5 %) at
+  // 09:50 New York on every other session (even index), the alert day
+  // 2026-06-03 included; AAPL is flat at 100 apart from its burst. The alert
+  // bar starts 10:02 (window 3) → E = 09:59: the green mark at 09:50 has
+  // age 9, w = 51/60, c = 0.5 β.
+  const dipAt = (date: string) => Date.parse(`${date}T13:50:00Z`) / 1000;
   const spyMinutes = syntheticBars().map((b) => {
     const date = new Date(b.start * 1000).toISOString().slice(0, 10);
-    const index = sessions.indexOf(date);
     const level =
-      date === alertDay
-        ? b.start === Date.parse("2026-06-03T14:02:00Z") / 1000
-          ? 501
-          : 500
-        : index % 2
-          ? 505
-          : 495;
-    const first = b.start === Date.parse(`${date}T13:30:00Z`) / 1000;
-    const open = first ? 500 : level;
-    return {
-      ...b,
-      open,
-      high: Math.max(open, level),
-      low: Math.min(open, level),
-      close: level,
-    };
+      sessions.indexOf(date) % 2 === 0 && b.start === dipAt(date) ? 497.5 : 500;
+    return { ...b, open: level, high: level, low: level, close: level };
   });
   const daily = pairedDaily(0.01, previousSessions("2026-06-05", 70));
   const result = await runBacktest(
@@ -363,19 +350,22 @@ test("backtest alerts carry the area score vs SPY at the alert minute", async ()
   );
   const alert = result.alerts[0]!;
   assert.equal(alert.end, "2026-06-03T14:03:00.000Z");
-  // Window 09:30–10:02 (33 minutes, weights 1…33): AAPL +1/+2/+3% in the
-  // last three minutes, SPY +0.2% in the last one.
-  const stock = (31 * 1 + 32 * 2 + 33 * 3) / 561;
-  const spy = (33 * 0.2) / 561;
-  const area = stock - 1.5 * spy;
+  // σ at 09:59: I is the same on the 10 dip sessions of the previous 20 and
+  // 0 on the others → σ = I / √2.
+  const expected = (beta: number) => {
+    const sum = (0.5 * beta * 51) / 60;
+    const sigma = Number((sum / Math.SQRT2).toPrecision(4));
+    return { sum, score: marksScore(sum, sigma) };
+  };
   const vs = alert.vsSpy!;
-  assert.ok(Math.abs(vs.area! - area) < 1e-4);
+  assert.ok(Math.abs(vs.sum! - expected(1.5).sum) < 1e-4);
   assert.ok(Math.abs(vs.beta - 1.5) < 1e-9);
   assert.equal(vs.betaAssumed, false);
   assert.equal(vs.spyLagged, false);
-  assert.equal(vs.score, areaScore(area, 1.5));
-  assert.equal(vs.score, 59);
+  assert.equal(vs.score, expected(1.5).score);
+  assert.equal(vs.score, 92); // round(100 · Φ(√2))
   assert.equal(vs.label, undefined);
+  assert.equal(vs.area, undefined);
   // Without daily bars: β 1 assumed; σ still comes from minute bars.
   const bare = await runBacktest(
     { tickers: ["AAPL"], from, to, config: { directionBars: 3 } },
@@ -385,8 +375,8 @@ test("backtest alerts carry the area score vs SPY at the alert minute", async ()
   const plain = bare.alerts[0]!.vsSpy!;
   assert.equal(plain.betaAssumed, true);
   assert.equal(plain.beta, 1);
-  assert.equal(plain.score, areaScore(stock - spy, 1));
-  assert.equal(plain.score, 63);
+  assert.ok(Math.abs(plain.sum! - expected(1).sum) < 1e-4);
+  assert.equal(plain.score, 92);
   // SPY's own alerts are never scored against SPY.
   const spyRun = await runBacktest(
     { tickers: ["SPY"], from, to, config: { directionBars: 3 } },

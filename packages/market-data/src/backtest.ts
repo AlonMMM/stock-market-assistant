@@ -15,16 +15,16 @@ import {
 import type { AlertVsSpy } from "../../contracts/src/vs-spy.js";
 import { AlpacaFeed } from "./alpaca.js";
 import { sipDelayMs } from "./sip-delay.js";
-import { alertAreaVsSpy } from "./alert-vs-spy.js";
+import { alertVsSpy } from "./alert-vs-spy.js";
 import {
-  areaSigmaSessions,
-  dayAreas,
   fromPriceBar,
+  historyMarks,
+  marksSigmaSessions,
   sigmaCurve,
-  type AreaBar,
-  type AreaWindow,
-  type SigmaCurve,
-} from "./area-vs-spy.js";
+  type DayMarks,
+  type MarkBar,
+  type MarksSigma,
+} from "./marks-vs-spy.js";
 import { spyStrength, type SpyStrength } from "./rs-score.js";
 import { cachedHistory, type BarCache, type CacheStats } from "./bar-cache.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
@@ -68,8 +68,9 @@ export interface AlertContext {
 export interface BacktestAlert extends Evaluation {
   close: number;
   context: AlertContext | null; // null for SPY or without enough data
-  // Area score vs SPY at the alert minute, as the live alert computes it
-  // (docs/features/area-vs-spy.md). Absent in results stored before it.
+  // Marked-sections score vs SPY at the alert's end minute, as the live
+  // alert computes it (docs/features/marks-vs-spy.md). Absent in results
+  // stored before the alert score vs SPY.
   vsSpy?: AlertVsSpy;
   outcome: Outcome; // trade view: stop/target in the alert's direction
   lookNow: LookNow; // main grade: how unusual the move after the alert was
@@ -347,8 +348,8 @@ export class BacktestRun {
       else this.spyDays.set(bar.date, [fromPriceBar(bar)]);
     }
   }
-  // SPY's bars per New York date, for the area score.
-  private readonly spyDays = new Map<string, AreaBar[]>();
+  // SPY's bars per New York date, for the score vs SPY.
+  private readonly spyDays = new Map<string, MarkBar[]>();
 
   /** Replays one symbol's minute bars (from `window.start`) and daily bars. */
   add(ticker: string, rows: RawBar[], daily: RawBar[]) {
@@ -387,41 +388,58 @@ export class BacktestRun {
       }
       return strengths.get(date)!;
     };
-    // Area score vs SPY: the stock's bars per date as index ranges into
-    // `normalized` (bars so far: no look-ahead), β-free session windows of
-    // completed past dates (memoized), and a σ curve per alert date.
+    // Score vs SPY: the stock's bars per date as index ranges into
+    // `normalized` (bars so far: no look-ahead), β-free marks of completed
+    // past dates (memoized), and a σ curve per alert date.
     const dayStart = new Map<string, number>();
     const barsOf = (date: string) => {
       const from = dayStart.get(date);
       if (from === undefined) return [];
-      const result: AreaBar[] = [];
+      const result: MarkBar[] = [];
       for (let i = from; i < normalized.length; i++) {
         if (normalized[i]!.date !== date) break;
         result.push(fromPriceBar(normalized[i]!));
       }
       return result;
     };
-    const windows = new Map<string, AreaWindow[]>();
-    const pastAreas = (date: string) => {
-      let value = windows.get(date);
-      if (!value)
-        windows.set(
-          date,
-          (value = dayAreas(barsOf(date), this.spyDays.get(date) ?? [], date)),
-        );
-      return value;
+    const previousOf = (date: string) => {
+      try {
+        return previousSessions(date, 1)[0]!;
+      } catch {
+        return null;
+      }
     };
-    const sigmas = new Map<string, SigmaCurve | null>();
+    // The date's bars and the previous session's (its close).
+    const withPrevious = (date: string) => {
+      const previous = previousOf(date);
+      return previous ? [...barsOf(previous), ...barsOf(date)] : barsOf(date);
+    };
+    const spyWithPrevious = (date: string) => {
+      const previous = previousOf(date);
+      return [
+        ...((previous && this.spyDays.get(previous)) || []),
+        ...(this.spyDays.get(date) ?? []),
+      ];
+    };
+    const marks = new Map<string, DayMarks | null>();
+    const pastMarks = (date: string) => {
+      if (!marks.has(date)) {
+        const previous = previousOf(date);
+        const days = new Map<string, MarkBar[]>([[date, barsOf(date)]]);
+        if (previous) days.set(previous, barsOf(previous));
+        marks.set(date, historyMarks(ticker, days, this.spyDays, date));
+      }
+      return marks.get(date)!;
+    };
+    const sigmas = new Map<string, MarksSigma | null>();
     const sigmaOf = (date: string, beta: number) => {
       if (!sigmas.has(date)) {
-        let value: SigmaCurve | null = null;
+        let value: MarksSigma | null = null;
         try {
           value = sigmaCurve(
-            [],
-            this.spyDays,
-            previousSessions(date, areaSigmaSessions),
+            pastMarks,
+            previousSessions(date, marksSigmaSessions),
             beta,
-            pastAreas,
           );
         } catch {
           // Outside calendar coverage: no σ.
@@ -433,12 +451,13 @@ export class BacktestRun {
     const vsSpyAt = (bar: PriceBar) => {
       const strength = strengthOf(bar.date);
       const beta = strength?.beta ?? 1;
-      return alertAreaVsSpy({
+      return alertVsSpy({
         ticker,
         date: bar.date,
         minute: bar.minute - 1,
-        stock: barsOf(bar.date),
-        spy: this.spyDays.get(bar.date) ?? [],
+        window: config.window,
+        stock: withPrevious(bar.date),
+        spy: spyWithPrevious(bar.date),
         beta,
         betaAssumed: strength?.betaAssumed ?? true,
         sigma: ticker === benchmark ? null : sigmaOf(bar.date, beta),

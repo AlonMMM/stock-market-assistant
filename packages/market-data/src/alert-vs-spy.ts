@@ -4,7 +4,6 @@
 // alert's own window, so the alert's own move is excluded.
 import type { AlertVsSpy } from "../../contracts/src/vs-spy.js";
 import { coreClose, newYorkToUtc } from "./calendar.js";
-import { areaAt, type AreaBar, type SigmaCurve } from "./area-vs-spy.js";
 import {
   alertEndMinute,
   byDate,
@@ -60,32 +59,6 @@ export function alertVsSpy(input: AlertVsSpyInput): AlertVsSpy {
     // SPY had no bar of its own at E: its last close was carried.
     spyLagged: !(spyDays.get(input.date) ?? []).some(
       (b) => b.start === endStart,
-    ),
-  };
-}
-
-export interface AreaAlertInput {
-  ticker: string;
-  date: string; // New York session date of the alert bar
-  minute: number; // the alert bar's New York start minute
-  stock: AreaBar[]; // the stock's bars of `date` (later ones are ignored)
-  spy: AreaBar[]; // SPY's bars of `date`
-  beta: number; // 60-session daily β vs SPY; 1 when assumed
-  betaAssumed: boolean;
-  sigma: SigmaCurve | null; // σ curve for the ticker and date
-}
-
-/** @deprecated Area score; replaced by alertVsSpy in step 2. */
-export function alertAreaVsSpy(input: AreaAlertInput): AlertVsSpy {
-  const value = areaAt(input, input.minute);
-  return {
-    score: value.score,
-    area: value.area === null ? null : Number(value.area.toFixed(4)),
-    beta: input.beta,
-    betaAssumed: input.betaAssumed,
-    // SPY's own bar of the alert minute was missing: its close was carried.
-    spyLagged: !input.spy.some(
-      (b) => b.date === input.date && b.minute === input.minute,
     ),
   };
 }

@@ -1,5 +1,6 @@
-// SYNTHETIC market data: area score vs SPY at alert time and now in the
-// collector (docs/features/area-vs-spy.md; SPY wait from alert-vs-spy.md).
+// SYNTHETIC market data: marked-sections score vs SPY at alert time and now
+// in the collector (docs/features/marks-vs-spy.md; SPY wait from
+// alert-vs-spy.md).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AlertEvent } from "../packages/alerts/src/events.js";
@@ -11,17 +12,25 @@ import {
   raiseScored,
 } from "../packages/market-data/src/live-strength.js";
 import {
-  areaSeries,
+  byDate,
+  dayMarks,
+  daySeries,
   fromPriceBar,
-  type SigmaCurve,
-} from "../packages/market-data/src/area-vs-spy.js";
+  marksScore,
+  marksSeries,
+  type MarksSigma,
+} from "../packages/market-data/src/marks-vs-spy.js";
+import {
+  marksAlertEnd,
+  marksScoreAt,
+} from "../packages/contracts/src/vs-spy.js";
 import type { SpyStrength } from "../packages/market-data/src/rs-score.js";
 import { MemoryDailyStore } from "../packages/market-data/src/volume-baseline.js";
 import {
   newYorkToUtc,
   previousSessions,
 } from "../packages/market-data/src/calendar.js";
-import { alert, alertEnd, day } from "./analysis-fixtures.js";
+import { alert, alertEnd, day, previous } from "./analysis-fixtures.js";
 
 const unit: SpyStrength = {
   beta: 1,
@@ -29,11 +38,7 @@ const unit: SpyStrength = {
   betaReturns: 60,
   sigma: 1.2,
 };
-const sigma = (value: number): SigmaCurve => ({
-  pre: new Array(330).fill(value),
-  regular: new Array(390).fill(value),
-  post: new Array(240).fill(value),
-});
+const sigma = (value: number): MarksSigma => new Array(390).fill(value);
 
 function bar(
   ticker: string,
@@ -69,26 +74,31 @@ const run = (
     bar(ticker, date, from + i, close(from + i), i ? close(from + i) : open),
   );
 
-// NVDA opens 100 at 09:30 and closes 101 every minute (+1%); SPY flat at
-// 500. The alert bar is 10:29–10:30 (start minute 629).
+// NVDA flat at 100 (previous close 100); SPY flat at 500 except a one-
+// minute dip to 497.5 (−0.5 %) at 10:20 (minute 620): a green mark with
+// c = 0.5 (β 1). The alert bar is 10:29–10:30 (start minute 629), window 3,
+// so E = 10:26 (626): w = 54/60, I = 0.45; σ 0.45 → round(100·Φ(1)) = 84.
+const spyClose = (t: number) => (t === 620 ? 497.5 : 500);
 function setup(
   options: {
     strength?: SpyStrength | null;
-    sigma?: SigmaCurve | null;
+    sigma?: MarksSigma | null;
     spyTo?: number;
     waitMs?: number;
   } = {},
 ) {
   const stored: PriceBar[] = [
-    ...run("NVDA", 570, 629, () => 101, 100),
-    ...run("SPY", 570, options.spyTo ?? 629, () => 500, 500),
+    bar("NVDA", previous, 959, 100),
+    bar("SPY", previous, 959, 500),
+    ...run("NVDA", 570, 629, () => 100, 100),
+    ...run("SPY", 570, options.spyTo ?? 629, spyClose, 500),
   ];
   const strengths = new MemoryDailyStore<SpyStrength>();
   if (options.strength !== null)
     strengths.rows.set(`${day}|NVDA`, options.strength ?? unit);
-  const sigmas = new MemoryDailyStore<SigmaCurve>();
+  const sigmas = new MemoryDailyStore<MarksSigma>();
   if (options.sigma !== null)
-    sigmas.rows.set(`${day}|NVDA`, options.sigma ?? sigma(1));
+    sigmas.rows.set(`${day}|NVDA`, options.sigma ?? sigma(0.45));
   const strength = new LiveStrength({
     multi: async () => {
       throw new Error("no daily request expected");
@@ -104,21 +114,21 @@ function setup(
 }
 
 const nvdaAlert = (overrides: Partial<AlertEvent> = {}) =>
-  alert({ ticker: "NVDA", close: 101, move: 0.8, ...overrides });
+  alert({ ticker: "NVDA", close: 100, move: 0.8, ...overrides });
 
 async function ready(s: LiveStrength) {
   await s.prepare(day, ["NVDA"]);
   await s.prepareSigma(day, ["NVDA"]);
 }
 
-test("alert score: 1 pt above SPY all window with σ 1 → 84, one Telegram line", async () => {
+test("alert score at E = alert − window: green mark, σ 0.45 → 84, one Telegram line", async () => {
   const { strength, stored } = setup();
   await ready(strength);
   strength.bar(stored.at(-1)!); // SPY's 10:29 bar
   const vsSpy = await strength.atAlert(nvdaAlert());
   assert.deepEqual(vsSpy, {
     score: 84,
-    area: 1,
+    sum: 0.45,
     beta: 1,
     betaAssumed: false,
     spyLagged: false,
@@ -135,13 +145,21 @@ test("scenario 7: the alert's score equals the chart's score at that minute", as
   await ready(strength);
   strength.bar(stored.at(-1)!);
   const live = await strength.atAlert(nvdaAlert());
-  const nvda = stored.filter((b) => b.ticker === "NVDA").map(fromPriceBar);
-  const spy = stored.filter((b) => b.ticker === "SPY").map(fromPriceBar);
-  const chart = areaSeries(
-    { ticker: "NVDA", stock: nvda, spy, date: day, beta: 1, sigma: sigma(1) },
-    nvda,
+  const days = (t: string) =>
+    byDate(stored.filter((b) => b.ticker === t).map(fromPriceBar));
+  const chart = marksSeries(
+    "NVDA",
+    dayMarks(
+      daySeries("NVDA", days("NVDA"), day),
+      daySeries("SPY", days("SPY"), day),
+      day,
+    ),
+    1,
+    false,
+    sigma(0.45),
   );
-  assert.equal(chart.score.at(-1), live.score);
+  assert.equal(marksScoreAt(chart, marksAlertEnd(alertEnd, 3)), live.score);
+  assert.equal(live.score, 84);
 });
 
 test("without σ the score is null and the alert still goes out", async () => {
@@ -150,19 +168,19 @@ test("without σ the score is null and the alert still goes out", async () => {
   strength.bar(stored.at(-1)!);
   const vsSpy = await strength.atAlert(nvdaAlert());
   assert.equal(vsSpy.score, null);
-  assert.equal(vsSpy.area, 1);
+  assert.equal(vsSpy.sum, 0.45);
   assert.equal(
     formatAlert({ ...nvdaAlert(), vsSpy }).split("\n")[1],
     "vs SPY —",
   );
   // β never prepared (daily request failed): no σ curve is computed (it
-  // must use the date's β); β 1 assumed, area still reported.
+  // must use the date's β); β 1 assumed, sum still reported.
   const missing = setup({ strength: null, sigma: null });
   assert.equal(await missing.strength.prepareSigma(day, ["NVDA"]), 1);
   missing.strength.bar(missing.stored.at(-1)!);
   assert.deepEqual(await missing.strength.atAlert(nvdaAlert()), {
     score: null,
-    area: 1,
+    sum: 0.45,
     beta: 1,
     betaAssumed: true,
     spyLagged: false,
@@ -184,24 +202,24 @@ test("a failed daily request is reported as missing and retried", async () => {
   assert.equal(calls, 2);
 });
 
-test("SPY's bar 1 s late is used; 5 s late → carried forward, lagged, ≤ 3 s", async (t) => {
+test("SPY's bar of E 1 s late is used; 5 s late → carried forward, lagged, ≤ 3 s", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const first = setup({ spyTo: 628 });
+  const first = setup({ spyTo: 625 });
   await ready(first.strength);
-  first.strength.bar(first.stored.at(-1)!); // SPY's 10:28 bar
+  first.strength.bar(first.stored.at(-1)!); // SPY's 10:25 bar
   let done = false;
   const late = first.strength.atAlert(nvdaAlert()).finally(() => (done = true));
   t.mock.timers.tick(1000);
   await Promise.resolve();
   assert.equal(done, false, "still waiting for SPY's bar");
-  const spy629 = bar("SPY", day, 629, 500);
-  first.stored.push(spy629);
-  first.strength.bar(spy629);
+  const spy626 = bar("SPY", day, 626, 500); // E's bar
+  first.stored.push(spy626);
+  first.strength.bar(spy626);
   const used = await late;
   assert.equal(used.spyLagged, false);
   assert.equal(used.score, 84);
 
-  const second = setup({ spyTo: 628 });
+  const second = setup({ spyTo: 625 });
   await ready(second.strength);
   second.strength.bar(second.stored.at(-1)!);
   let finished = false;
@@ -215,7 +233,7 @@ test("SPY's bar 1 s late is used; 5 s late → carried forward, lagged, ≤ 3 s"
   const result = await lagged;
   assert.equal(finished, true, "resolved at 3 s, before SPY's bar at 5 s");
   assert.equal(result.spyLagged, true);
-  assert.equal(result.score, 84); // SPY's 10:28 close carried forward
+  assert.equal(result.score, 84); // SPY's 10:25 close carried forward
 });
 
 test("the alert is stored and published with vsSpy attached", async () => {
@@ -243,10 +261,11 @@ test("the alert is stored and published with vsSpy attached", async () => {
   assert.equal(kept[0]!.vsSpy?.label, undefined);
 });
 
-test("strength now is the area score ending at each symbol's latest bar", async () => {
+test("strength now is the score with E = each symbol's latest bar", async () => {
   const { strength, stored } = setup();
   await ready(strength);
-  // NVDA falls back to its open by 10:49; SPY's later bar is ignored.
+  // NVDA's latest bar is 10:49 (E = 649, the mark at 620 has age 29); SPY's
+  // later bars are ignored.
   for (let t = 630; t <= 649; t++) {
     const b = bar("NVDA", day, t, 100);
     stored.push(b);
@@ -254,35 +273,30 @@ test("strength now is the area score ending at each symbol's latest bar", async 
   }
   stored.push(...run("SPY", 630, 655, () => 500, 500));
   const now = strength.current(["NVDA", "AAPL"]);
-  // Area of weights 1…80: (Σ1..60) / (Σ1..80) = 1830 / 3240.
   assert.deepEqual(now, {
     NVDA: {
-      score: Math.round(100 * 0.5 * (1 + erf(1830 / 3240 / Math.SQRT2))),
+      score: marksScore((0.5 * 31) / 60, 0.45),
       at: bar("NVDA", day, 649, 1).end,
     },
   });
+  // After the regular close the latest bar is outside the session: null.
+  const post = bar("NVDA", day, 965, 100);
+  stored.push(post);
+  strength.bar(post);
+  assert.equal(strength.current(["NVDA"]).NVDA!.score, null);
 });
-
-// Reference erf for the test only (series; adequate for |x| < 2).
-function erf(x: number) {
-  let sum = 0;
-  let term = x;
-  for (let n = 0; n < 60; n++) {
-    sum += term / (2 * n + 1);
-    term *= (-x * x) / (n + 1);
-  }
-  return (2 / Math.sqrt(Math.PI)) * sum;
-}
 
 test("σ curves come from 20 stored sessions, are stored, and need 15", async () => {
   const prior = previousSessions(day, 20);
+  // NVDA flat; SPY dips −0.5 % at 10:20 on every other session (a green
+  // mark, c = 0.5 with β 1).
   const history = (dates: string[]) =>
     dates.flatMap((date, i) => [
-      ...run("NVDA", 570, 700, () => (i % 2 ? 98 : 101), 100, date),
-      ...run("SPY", 570, 700, () => 500, 500, date),
+      ...run("NVDA", 570, 700, () => 100, 100, date),
+      ...run("SPY", 570, 700, i % 2 ? () => 500 : spyClose, 500, date),
     ]);
   const make = (stored: PriceBar[]) => {
-    const sigmas = new MemoryDailyStore<SigmaCurve>();
+    const sigmas = new MemoryDailyStore<MarksSigma>();
     const strengths = new MemoryDailyStore<SpyStrength>();
     strengths.rows.set(`${day}|NVDA`, unit);
     let reads = 0;
@@ -301,8 +315,10 @@ test("σ curves come from 20 stored sessions, are stored, and need 15", async ()
   await full.s.prepare(day, ["NVDA"]);
   assert.equal(await full.s.prepareSigma(day, ["NVDA", "SPY"]), 0);
   const curve = full.sigmas.rows.get(`${day}|NVDA`)!;
-  // RMS of +1 and −2 alternating: √2.5.
-  assert.ok(Math.abs(curve.regular[650 - 570]! - Math.sqrt(2.5)) < 1e-3);
+  // At 10:50 (age 30, w 1/2): I = 0.25 on 10 sessions, 0 on 10 → 0.25/√2.
+  assert.ok(Math.abs(curve[650 - 570]! - 0.25 / Math.SQRT2) < 1e-3);
+  // Before any mark (and long after it) every I is 0: σ 0 → null.
+  assert.equal(curve[610 - 570], null);
   assert.equal(full.sigmas.rows.has(`${day}|SPY`), false, "SPY is not scored");
   // A new instance reads the stored curve without touching the bars.
   const again = new LiveStrength({
@@ -319,7 +335,7 @@ test("σ curves come from 20 stored sessions, are stored, and need 15", async ()
   const sparse = make(history(prior.slice(6)));
   await sparse.s.prepare(day, ["NVDA"]);
   await sparse.s.prepareSigma(day, ["NVDA"]);
-  assert.equal(sparse.s.sigma(day, "NVDA")!.regular[80], null);
+  assert.equal(sparse.s.sigma(day, "NVDA")![80], null);
   // Without SPY's history nothing is computed (retried later).
   const noSpy = make(history(prior).filter((b) => b.ticker !== "SPY"));
   await noSpy.s.prepare(day, ["NVDA"]);

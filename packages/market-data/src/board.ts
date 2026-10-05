@@ -1,11 +1,18 @@
 import { AlpacaFeed } from "./alpaca.js";
 import type { Credentials } from "./backtest.js";
-import { areaAt, fromRawBars, sessionOf } from "./area-vs-spy.js";
 import {
-  areaSigmas,
-  type AreaSigmaStore,
+  dayMarks,
+  fromRawBars,
+  marksAt,
+  regularOpen,
+  type MarkBar,
+} from "./marks-vs-spy.js";
+import {
+  marksSigmas,
+  sigmaRowsPerInsert,
+  type MarksSigmaStore,
   type MinuteHistory,
-} from "./area-sigma.js";
+} from "./marks-sigma.js";
 import { defaultSipDelayMinutes, sipDelayMs } from "./sip-delay.js";
 import { normalize, type RawBar } from "./bars.js";
 import type { D1Like } from "./bar-cache.js";
@@ -41,10 +48,11 @@ export interface BoardStats {
   // previous 20 sessions; null with fewer than 15 such sessions.
   typicalVolume: number | null;
   relVolume: number | null; // volume / typicalVolume; null before the open
-  // Area score vs SPY (0–100) ending at the minute bar that closes at asOf
-  // (docs/features/area-vs-spy.md); null without σ, SPY's bars or the
-  // stock's bars in that session, in a window's first 5 minutes, or while
-  // the symbol's σ curve is not computed yet. Always against SPY.
+  // Marked-sections score vs SPY (0–100) with E = the minute bar that
+  // closes at asOf (docs/features/marks-vs-spy.md); null outside the regular
+  // session, without σ (or σ = 0 early in the session), without SPY's or the
+  // stock's bars by E, or while the symbol's σ curve is not computed yet.
+  // Always against SPY.
   rsScore?: number | null;
   // 60-session daily β vs SPY; null when it cannot be estimated (the score
   // then uses β = 1, "β assumed").
@@ -80,12 +88,12 @@ export type MultiHistory = (
   adjustment?: "raw" | "split",
 ) => Promise<Map<string, RawBar[]>>;
 
-/** Area score inputs for the board: minute history and stored σ curves. */
+/** Score inputs for the board: minute history and stored σ curves. */
 export interface BoardArea {
   // One symbol's minute bars, straight from Alpaca: at most 2 pages for 20
   // sessions (≤ 960 bars a day, 10,000 per page), no D1 statements.
   history: MinuteHistory;
-  store?: AreaSigmaStore;
+  store?: MarksSigmaStore;
   // Most σ curves computed per poll (default: sigmaSymbolsPerPoll).
   perPoll?: number;
 }
@@ -101,9 +109,9 @@ const pages = (bars: number) => Math.max(1, Math.ceil(bars / 10000));
  * σ curves one warm board poll can compute within the budget, worst case:
  * fixed = watchlist 1 + 5-minute intraday pages (192 bars a symbol) + daily
  * 1 + 3 stored-value reads + 3 table checks (first request of an isolate) +
- * 1-minute pages (≤ 390 bars a symbol, listed and SPY); then SPY's σ history
- * 2, the σ write 1 + ⌈k/8⌉, and 2 Alpaca pages per symbol. Polls that fetch
- * Rel vol or β history compute none.
+ * 1-minute pages (≤ 390 regular bars a symbol, listed and SPY); then SPY's
+ * σ history 2, the σ write 1 + ⌈k/16⌉, and 2 Alpaca pages per symbol. Polls
+ * that fetch Rel vol or β history compute none.
  */
 export function sigmaSymbolsPerPoll(symbols: number, listed: number): number {
   const fixed =
@@ -111,7 +119,8 @@ export function sigmaSymbolsPerPoll(symbols: number, listed: number): number {
   let k = listed;
   while (
     k > 0 &&
-    fixed + 2 + 1 + Math.ceil(k / 8) + 2 * k > boardSubrequestBudget
+    fixed + 2 + 1 + Math.ceil(k / sigmaRowsPerInsert) + 2 * k >
+      boardSubrequestBudget
   )
     k--;
   return k;
@@ -248,24 +257,19 @@ export async function strengths(
 }
 
 /**
- * Minute bars of `date` for the listed symbols and SPY, from the start of the
- * session that contains New York minute `minute` (pre-market from 04:00) to
- * `asOf` (Unix s). Failures leave the score null.
+ * Regular-session minute bars of `date` for the listed symbols and SPY, from
+ * 09:30 New York to `asOf` (Unix s). Failures leave the score null.
  */
-async function areaMinutes(
+async function regularMinutes(
   listed: string[],
   date: string,
-  minute: number,
   asOf: number,
   multi: MultiHistory,
 ): Promise<Map<string, RawBar[]> | null> {
-  const session = sessionOf(date, minute);
-  const from =
-    session === "pre" ? 240 : session === "regular" ? 570 : coreClose(date)!;
   try {
     return await multi(
       [...new Set([...listed, benchmark])],
-      new Date(newYorkToUtc(date, from)).toISOString(),
+      new Date(newYorkToUtc(date, regularOpen)).toISOString(),
       new Date(asOf * 1000).toISOString(),
       "1Min",
     );
@@ -339,14 +343,14 @@ export async function runBoard(
   const step = baselineStep * 60;
   const asOf =
     Math.floor(Math.min(end, newYorkToUtc(date, 1200)) / 1000 / step) * step;
-  // Area score at asOf: the minute bar closing at asOf ends the window.
+  // Score at asOf: E is the minute bar closing at asOf; regular session only.
   const scoredAt = newYork(asOf * 1000 - 60000);
   const scored =
     area !== undefined &&
     listed.some((t) => t !== benchmark) &&
     scoredAt.date === date &&
-    scoredAt.minute >= 240 &&
-    scoredAt.minute < 1200;
+    scoredAt.minute >= regularOpen &&
+    scoredAt.minute < coreClose(date)!;
   // Requests start in this order: intraday, daily, baselines, β/σ.
   const intradayRequest = multi(
     symbols,
@@ -371,11 +375,11 @@ export async function runBoard(
       dailyRequest,
       curveRequest,
       strengthRequest,
-      scored ? areaMinutes(listed, date, scoredAt.minute, asOf, multi) : null,
+      scored ? regularMinutes(listed, date, asOf, multi) : null,
       scored
         ? Promise.all([strengthRequest, curveRequest]).then(([values]) =>
             // Only with the date's β: a stored curve is kept all day.
-            areaSigmas(
+            marksSigmas(
               listed.filter((t) => values.has(t)),
               date,
               (t) => values.get(t)!.beta,
@@ -399,7 +403,16 @@ export async function runBoard(
       )?.close ?? null,
     ]),
   );
-  const spyMinutes = fromRawBars(benchmark, minutes?.get(benchmark) ?? []);
+  // Previous closes from the daily bars (the official close; the chart uses
+  // the last regular minute's close).
+  const dayOf = (ticker: string) => ({
+    ticker,
+    previousClose: previousCloses.get(ticker) ?? null,
+    bars: fromRawBars(ticker, minutes?.get(ticker) ?? []).filter(
+      (b: MarkBar) => b.date === date,
+    ),
+  });
+  const spyDay = dayOf(benchmark);
   return {
     source: "alpaca",
     feed: "sip",
@@ -435,16 +448,12 @@ export async function runBoard(
         const value = strength.get(ticker);
         if (value) series.stats.beta = value.betaAssumed ? null : value.beta;
         if (minutes && sigmas)
-          series.stats.rsScore = areaAt(
-            {
-              ticker,
-              stock: fromRawBars(ticker, minutes.get(ticker) ?? []),
-              spy: spyMinutes,
-              date,
-              beta: value?.beta ?? 1,
-              sigma: sigmas.get(ticker) ?? null,
-            },
+          series.stats.rsScore = marksAt(
+            ticker,
+            dayMarks(dayOf(ticker), spyDay, date),
             scoredAt.minute,
+            value?.beta ?? 1,
+            sigmas.get(ticker),
           ).score;
       }
       return series;
@@ -460,7 +469,7 @@ export async function handleBoard(
   now = Date.now(),
   store?: BaselineStore,
   strengthStore?: StrengthStore,
-  sigmas?: AreaSigmaStore,
+  sigmas?: MarksSigmaStore,
 ): Promise<{ status: number; body: Board | { error: string } }> {
   if (!credentials.key || !credentials.secret)
     return {

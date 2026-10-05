@@ -6,9 +6,12 @@ import {
   type History,
 } from "./backtest.js";
 import type { BarCache } from "./bar-cache.js";
-import type { AreaVsSpySeries } from "../../contracts/src/vs-spy.js";
-import { areaSeries, fromRawBars } from "./area-vs-spy.js";
-import { areaSigmas, type AreaSigmaStore } from "./area-sigma.js";
+import type {
+  AreaVsSpySeries,
+  MarksVsSpySeries,
+} from "../../contracts/src/vs-spy.js";
+import { dayMarks, marksSeries } from "./marks-vs-spy.js";
+import { marksSigmas, type MarksSigmaStore } from "./marks-sigma.js";
 import { benchmark, betaReturns, dailyBeta } from "./beta.js";
 import { normalize, type RawBar } from "./bars.js";
 import { coreClose, previousSessions } from "./calendar.js";
@@ -51,9 +54,11 @@ export interface DayChart {
   // when no entry is SPY (sector benchmark), it is carried in `spy` instead.
   // Deprecated by `areaVsSpy`; kept until the web reads the area series.
   vsSpy?: VsSpy;
-  // Area score vs SPY per bar of the requested ticker
-  // (docs/features/area-vs-spy.md): gap pane, per-minute score, σ, window
-  // starts and β. Absent for SPY itself or without SPY's minute bars.
+  // Marked-sections score vs SPY per regular minute of the requested ticker
+  // (docs/features/marks-vs-spy.md): contributions pane, per-minute sum, σ
+  // and score, β. Absent for SPY itself or without SPY's minute bars.
+  marksVsSpy?: MarksVsSpySeries;
+  /** @deprecated Replaced by `marksVsSpy`; never sent. */
   areaVsSpy?: AreaVsSpySeries;
 }
 
@@ -143,7 +148,7 @@ export async function runDayChart(
   now = Date.now(),
   daily: History = async () => [],
   delayMinutes = defaultSipDelayMinutes,
-  sigmas?: AreaSigmaStore,
+  sigmas?: MarksSigmaStore,
   // SPY's 20-session minute history for a σ curve; the Worker passes Alpaca
   // directly (≤ 2 pages, no D1 statements) to bound the request's cost.
   sigmaHistory: History = history,
@@ -256,9 +261,10 @@ export async function runDayChart(
       : strength;
     if (ticker !== benchmark) {
       // σ curve: stored per (date, ticker), else from the ticker's history
-      // already loaded and SPY's previous 20 sessions (bar cache).
+      // already loaded and SPY's previous 20 sessions (straight from Alpaca
+      // on the Worker).
       const loaded = rows[0]!;
-      const curves = await areaSigmas(
+      const curves = await marksSigmas(
         [ticker],
         date,
         () => strength.beta,
@@ -275,26 +281,17 @@ export async function runDayChart(
         // Stored only with the date's β (a curve is kept all day).
         spyDaily ? sigmas : undefined,
       );
-      const stock = fromRawBars(ticker, loaded).filter((b) => b.date === date);
-      const spy = fromRawBars(
-        benchmark,
-        spyRows ?? rows[tickers.indexOf(benchmark)]!,
-      ).filter((b) => b.date === date);
-      chart.areaVsSpy = {
-        ...areaSeries(
-          {
-            ticker,
-            stock,
-            spy,
-            date,
-            beta: strength.beta,
-            sigma: curves.get(ticker) ?? null,
-          },
-          stock,
-        ),
-        beta: strength.beta,
-        betaAssumed: strength.betaAssumed,
-      };
+      // The same series the web passes to opposite(): marks match its bands.
+      const spySeries = spyRows
+        ? toSeries(benchmark, spyRows)
+        : chart.series[tickers.indexOf(benchmark)]!;
+      chart.marksVsSpy = marksSeries(
+        ticker,
+        dayMarks(chart.series[0]!, spySeries, date),
+        strength.beta,
+        strength.betaAssumed,
+        curves.get(ticker) ?? null,
+      );
     }
   }
   return chart;
@@ -307,7 +304,7 @@ export async function handleDayChart(
   fetcher: typeof fetch = fetch,
   now = Date.now(),
   cache?: BarCache,
-  sigmas?: AreaSigmaStore,
+  sigmas?: MarksSigmaStore,
 ): Promise<{ status: number; body: DayChart | { error: string } }> {
   if (!credentials.key || !credentials.secret)
     return {

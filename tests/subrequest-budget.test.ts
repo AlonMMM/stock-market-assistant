@@ -1,5 +1,5 @@
 // SYNTHETIC market data: Worker subrequest budget of the board and the day
-// chart with the area score (Workers Free allows 50 per request; the budget
+// chart with the marked-sections score (Workers Free allows 50 per request; the budget
 // is 40). Every Alpaca page and every D1 statement counts, like the
 // collector's watchlist request (+1 for the board).
 import { test } from "node:test";
@@ -18,7 +18,7 @@ import {
   type Board,
 } from "../packages/market-data/src/board.js";
 import { D1BaselineStore } from "../packages/market-data/src/volume-baseline.js";
-import { D1AreaSigmaStore } from "../packages/market-data/src/area-sigma.js";
+import { D1MarksSigmaStore } from "../packages/market-data/src/marks-sigma.js";
 import {
   handleDayChart,
   type DayChart,
@@ -106,7 +106,13 @@ function alpaca() {
           base *
           (1 +
             0.01 * Math.sin(k * 1.7 + seed(symbol)) +
-            0.003 * Math.sin(m / 23 + k));
+            // Each stock out of phase with SPY, so minutes get marked.
+            0.003 *
+              Math.sin(
+                m / 23 +
+                  k +
+                  (symbol === "SPY" ? 0 : 2 + (seed(symbol) % 5) * 0.5),
+              ));
         out.push({ t: new Date(t).toISOString(), o: c, h: c, l: c, c, v: 100 });
       }
     }
@@ -153,7 +159,7 @@ test("board polls stay within 40 subrequests from a cold cache (30 symbols)", as
   const stores = {
     baselines: new D1BaselineStore(db),
     strengths: new D1StrengthStore(db),
-    sigmas: new D1AreaSigmaStore(db),
+    sigmas: new D1MarksSigmaStore(db),
   };
   const k = sigmaSymbolsPerPoll(tickers.length + 2, tickers.length);
   assert.equal(k, 12);
@@ -192,7 +198,7 @@ test("board polls stay within 40 subrequests from a cold cache (30 symbols)", as
 test("the day chart's first σ computation stays within 40 subrequests", async () => {
   const db = new CountingD1(new SqliteD1(":memory:"));
   const cache = new D1BarCache(db);
-  const sigmas = new D1AreaSigmaStore(db);
+  const sigmas = new D1MarksSigmaStore(db);
   const counts: number[] = [];
   for (let i = 0; i < 2; i++) {
     const { counter, fetcher } = alpaca();
@@ -207,7 +213,7 @@ test("the day chart's first σ computation stays within 40 subrequests", async (
     );
     assert.equal(result.status, 200);
     const chart = result.body as DayChart;
-    assert.equal(chart.areaVsSpy!.score.at(-1) === null, false);
+    assert.notEqual(chart.marksVsSpy!.score.at(-1), null);
     counts.push(counter.count + db.count);
   }
   console.log(`day chart subrequests (cold, then warm): ${counts.join(", ")}`);

@@ -38,7 +38,8 @@ export function formatAlert(
     // The alert says "look now": a big move is likely, in either direction
     // (study 2026-10-03); the arrow is the burst that just happened.
     `${alert.inPlay ? "⭐ " : ""}<b>${escape(alert.ticker)}</b> · big move likely`,
-    // Area score vs SPY at alert time (docs/features/area-vs-spy.md), e.g.
+    // Marked-sections score vs SPY at the alert's end minute
+    // (docs/features/marks-vs-spy.md), e.g.
     // "vs SPY 72/100", or "vs SPY —" without one; no labels. Evidence such as
     // a lagged SPY bar is not shown here.
     escape(vsSpyLine(alert.vsSpy)),
