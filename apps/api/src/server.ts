@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { D1BarCache } from "../../../packages/market-data/src/bar-cache.js";
 import { D1StrengthStore } from "../../../packages/market-data/src/board.js";
 import { D1BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
-import { D1AreaSigmaStore } from "../../../packages/market-data/src/area-sigma.js";
+import { D1MarksSigmaStore } from "../../../packages/market-data/src/marks-sigma.js";
 import { SqliteD1 } from "./sqlite-d1.js";
 import { codeVersion } from "../../../packages/market-data/src/code-version.js";
 import { ResultCache } from "../../../packages/market-data/src/result-cache.js";
@@ -21,7 +21,7 @@ const app = buildApp(true, {
   cache: new D1BarCache(db),
   baselines: new D1BaselineStore(db),
   strengths: new D1StrengthStore(db),
-  sigmas: new D1AreaSigmaStore(db),
+  sigmas: new D1MarksSigmaStore(db),
   // Run from the repository root, like the cache path above.
   results: new ResultCache(db, codeVersion(`${process.cwd()}/`)),
   symbols: new D1SymbolList(db),

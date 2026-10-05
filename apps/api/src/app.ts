@@ -18,7 +18,7 @@ import {
   type StrengthStore,
 } from "../../../packages/market-data/src/board.js";
 import type { BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
-import type { AreaSigmaStore } from "../../../packages/market-data/src/area-sigma.js";
+import type { MarksSigmaStore } from "../../../packages/market-data/src/marks-sigma.js";
 import type { ResultCache } from "../../../packages/market-data/src/result-cache.js";
 import {
   handleBacktestSymbols,
@@ -38,7 +38,7 @@ export function buildApp(
     cache?: BarCache;
     baselines?: BaselineStore; // stored Rel vol baselines for the board
     strengths?: StrengthStore; // stored β/σ vs SPY for the board's score
-    sigmas?: AreaSigmaStore; // stored σ curves of the area score vs SPY
+    sigmas?: MarksSigmaStore; // stored σ curves of the marked-sections score
     results?: ResultCache; // computed backtest parts
     symbols?: D1SymbolList; // the Backtest page's symbol list
   } = {

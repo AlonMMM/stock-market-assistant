@@ -1,27 +1,32 @@
-// The collector's area score vs SPY (docs/features/area-vs-spy.md): β per
-// watchlist symbol prepared once per US session date from daily bars, a σ
-// curve per symbol and date from the stored minute bars of the previous 20
-// sessions (both stored in the collector's SQLite), and the stored minute
-// bars of the stock and SPY for the session being scored.
+// The collector's marked-sections score vs SPY
+// (docs/features/marks-vs-spy.md): β per watchlist symbol prepared once per
+// US session date from daily bars, a σ curve per symbol and date from the
+// stored minute bars of the previous 20 sessions (both stored in the
+// collector's SQLite), and the stored minute bars of the stock and SPY for
+// the session being scored (and the previous one, for the previous close).
 import type { AlertEvent } from "../../alerts/src/events.js";
+import { defaults } from "../../alerts/src/relative-volume.js";
 import type { StrengthNow, AlertVsSpy } from "../../contracts/src/vs-spy.js";
-import { alertAreaVsSpy } from "./alert-vs-spy.js";
-import {
-  areaSigmaSessions,
-  byDate,
-  fromPriceBar,
-  sigmaCurve,
-  type AreaBar,
-  type SigmaCurve,
-} from "./area-vs-spy.js";
+import { alertVsSpy } from "./alert-vs-spy.js";
 import type { PriceBar } from "./bars.js";
 import { benchmark } from "./beta.js";
 import { newYork, previousSessions } from "./calendar.js";
 import { strengths, type MultiHistory, type StrengthStore } from "./board.js";
+import {
+  byDate,
+  dayMarks,
+  daySeries,
+  fromPriceBar,
+  marksAt,
+  marksSigmaSessions,
+  type MarkBar,
+  type MarksSigma,
+} from "./marks-vs-spy.js";
+import { sigmaFromBars } from "./marks-sigma.js";
 import type { SpyStrength } from "./rs-score.js";
 import type { DailyStore } from "./volume-baseline.js";
 
-/** Longest wait for SPY's bar of the alert minute (spec: ≤ 3 s). */
+/** Longest wait for SPY's bar of the scored minute (spec: ≤ 3 s). */
 export const spyWaitMs = 3000;
 
 export interface LiveStrengthDeps {
@@ -29,7 +34,7 @@ export interface LiveStrengthDeps {
   multi: MultiHistory;
   store: StrengthStore;
   // σ curves per symbol and date; absent → kept in memory only.
-  sigmas?: DailyStore<SigmaCurve>;
+  sigmas?: DailyStore<MarksSigma>;
   // The collector's stored one-minute bars for a ticker, from a date.
   bars: (ticker: string, from: string) => PriceBar[];
   waitMs?: number;
@@ -43,7 +48,7 @@ interface Waiter {
 
 export class LiveStrength {
   private values = new Map<string, Map<string, SpyStrength>>();
-  private curves = new Map<string, Map<string, SigmaCurve>>();
+  private curves = new Map<string, Map<string, MarksSigma>>();
   private latest = new Map<string, PriceBar>();
   private spyEnd: string | null = null;
   private waiters = new Set<Waiter>();
@@ -108,17 +113,18 @@ export class LiveStrength {
       (t) => !known.has(t) && this.strength(date, t),
     );
     if (!missing.length) return unprepared;
-    const dates = previousSessions(date, areaSigmaSessions);
+    const dates = previousSessions(date, marksSigmaSessions);
     const inRange = (bars: PriceBar[]) =>
       bars.filter((b) => b.date < date).map(fromPriceBar);
     const spy = byDate(inRange(this.deps.bars(benchmark, dates[0]!)));
     // Without SPY's history every curve would be empty: retry later.
     if (!spy.size) return missing.length + unprepared;
-    const fresh = new Map<string, SigmaCurve>();
+    const fresh = new Map<string, MarksSigma>();
     for (const ticker of missing)
       fresh.set(
         ticker,
-        sigmaCurve(
+        sigmaFromBars(
+          ticker,
           inRange(this.deps.bars(ticker, dates[0]!)),
           spy,
           dates,
@@ -134,7 +140,7 @@ export class LiveStrength {
     return this.values.get(date)?.get(ticker);
   }
 
-  sigma(date: string, ticker: string): SigmaCurve | undefined {
+  sigma(date: string, ticker: string): MarksSigma | undefined {
     return this.curves.get(date)?.get(ticker);
   }
 
@@ -169,57 +175,51 @@ export class LiveStrength {
     });
   }
 
-  private session(ticker: string, date: string): AreaBar[] {
+  /** The stored bars of `date` and of the previous session (its close). */
+  private session(ticker: string, date: string): MarkBar[] {
+    const previous = previousSessions(date, 1)[0]!;
     return this.deps
-      .bars(ticker, date)
-      .filter((b) => b.date === date)
+      .bars(ticker, previous)
+      .filter((b) => b.date <= date)
       .map(fromPriceBar);
   }
 
-  private score(
-    ticker: string,
-    date: string,
-    minute: number,
-    spy: AreaBar[],
-  ): AlertVsSpy {
-    const strength = this.strength(date, ticker);
-    return alertAreaVsSpy({
-      ticker,
-      date,
-      minute,
-      stock: this.session(ticker, date),
-      spy,
-      beta: strength?.beta ?? 1,
-      betaAssumed: strength?.betaAssumed ?? true,
-      sigma: this.sigma(date, ticker) ?? null,
-    });
-  }
-
   /**
-   * Area score ending at the alert bar. Waits at most `waitMs` for SPY's
-   * bar of that minute, then carries SPY's last close (`spyLagged`). Never
-   * throws: any failure yields a null score.
+   * Score at the alert's end minute E (the last minute before its own
+   * `config.window` minutes). Waits at most `waitMs` for SPY's bar of E
+   * (normally long arrived), then carries SPY's last close (`spyLagged`).
+   * Never throws: any failure yields a null score.
    */
   async atAlert(alert: {
     ticker: string;
     end: string;
     direction: "up" | "down" | null;
     close?: number;
+    config?: { window: number };
   }): Promise<AlertVsSpy> {
     try {
+      const window = alert.config?.window ?? defaults.window;
       // The alert bar started one minute before its end.
       const { date, minute } = newYork(Date.parse(alert.end) - 60000);
-      await this.waitForSpy(alert.end);
-      return this.score(
-        alert.ticker,
+      await this.waitForSpy(
+        new Date(Date.parse(alert.end) - window * 60000).toISOString(),
+      );
+      const strength = this.strength(date, alert.ticker);
+      return alertVsSpy({
+        ticker: alert.ticker,
         date,
         minute,
-        this.session(benchmark, date),
-      );
+        window,
+        stock: this.session(alert.ticker, date),
+        spy: this.session(benchmark, date),
+        beta: strength?.beta ?? 1,
+        betaAssumed: strength?.betaAssumed ?? true,
+        sigma: this.sigma(date, alert.ticker) ?? null,
+      });
     } catch {
       return {
         score: null,
-        area: null,
+        sum: null,
         beta: 1,
         betaAssumed: true,
         spyLagged: true,
@@ -228,20 +228,36 @@ export class LiveStrength {
   }
 
   /**
-   * Area score now per ticker, ending at its latest bar (SPY's later bars
-   * are ignored). Tickers without a bar are left out.
+   * Score now per ticker, with E = its latest bar (SPY's later bars are
+   * ignored; null outside the regular session). Tickers without a bar are
+   * left out.
    */
   current(tickers: string[]): Record<string, StrengthNow> {
     const result: Record<string, StrengthNow> = {};
-    const spy = new Map<string, AreaBar[]>();
+    const spy = new Map<string, Map<string, MarkBar[]>>();
     for (const ticker of tickers) {
       try {
         const bar = this.latestBar(ticker);
         if (!bar) continue;
-        let spyBars = spy.get(bar.date);
-        if (!spyBars)
-          spy.set(bar.date, (spyBars = this.session(benchmark, bar.date)));
-        const value = this.score(ticker, bar.date, bar.minute - 1, spyBars);
+        let spyDays = spy.get(bar.date);
+        if (!spyDays)
+          spy.set(
+            bar.date,
+            (spyDays = byDate(this.session(benchmark, bar.date))),
+          );
+        const strength = this.strength(bar.date, ticker);
+        const marks = dayMarks(
+          daySeries(ticker, byDate(this.session(ticker, bar.date)), bar.date),
+          daySeries(benchmark, spyDays, bar.date),
+          bar.date,
+        );
+        const value = marksAt(
+          ticker,
+          marks,
+          bar.minute - 1,
+          strength?.beta ?? 1,
+          this.sigma(bar.date, ticker),
+        );
         result[ticker] = { score: value.score, at: bar.end };
       } catch {
         // Calendar or store failure: no entry for this ticker.

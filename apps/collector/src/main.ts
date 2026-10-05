@@ -147,7 +147,8 @@ const live = (tickers: string[]) => {
 const streamed = (tickers: string[]) =>
   tickers.includes(benchmark) ? tickers : [...tickers, benchmark];
 
-// Area score vs SPY at alert time and now (docs/features/area-vs-spy.md).
+// Marked-sections score vs SPY at alert time and now
+// (docs/features/marks-vs-spy.md).
 // Daily bars (β) come from Alpaca's SIP history whatever the stream feed:
 // final daily closes are available on every plan. σ curves come from the
 // stored minute bars of the previous 20 sessions (the warmup history).
@@ -182,7 +183,7 @@ async function prepareStrength() {
     const noSigma = await strength.prepareSigma(date, watched);
     if (noSigma)
       console.error(
-        JSON.stringify({ event: "area-sigma-incomplete", date, noSigma }),
+        JSON.stringify({ event: "marks-sigma-incomplete", date, noSigma }),
       );
   } catch (error) {
     console.error(
@@ -195,7 +196,8 @@ async function prepareStrength() {
   }
 }
 
-// Attaches the area score vs SPY (waiting ≤ 3 s for SPY's bar of the same minute),
+// Attaches the marked-sections score vs SPY at the alert's end minute
+// (waiting ≤ 3 s for SPY's bar of that minute),
 // then stores and publishes the alert. A failure yields a null score; the
 // alert is still stored and published.
 const raise = (alert: AlertEvent) =>
