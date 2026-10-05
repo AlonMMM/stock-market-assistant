@@ -86,6 +86,39 @@ export interface CollectorAccess {
 }
 
 /** Reads the synced list from the collector; the default list otherwise. */
+// Most symbols the collector streams live (the backtest list's limit).
+export const maxLiveSymbols = 500;
+
+/** Sends the symbols to stream to the collector (`PUT /live-symbols`). */
+export async function pushLiveSymbols(
+  collector: CollectorAccess,
+  tickers: string[],
+  fetcher: typeof fetch = fetch,
+): Promise<{ synced: boolean; error?: string }> {
+  if (!collector.url || !collector.token)
+    return { synced: false, error: "Live collector is not configured" };
+  try {
+    const response = await fetcher.call(
+      globalThis,
+      `${collector.url.replace(/\/+$/, "")}/live-symbols`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${collector.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ tickers }),
+        signal: AbortSignal.timeout(10000),
+      },
+    );
+    return response.ok
+      ? { synced: true }
+      : { synced: false, error: `Collector answered ${response.status}` };
+  } catch {
+    return { synced: false, error: "Collector unreachable" };
+  }
+}
+
 export async function loadWatchlist(
   collector: CollectorAccess,
   fetcher: typeof fetch = fetch,

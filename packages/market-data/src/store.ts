@@ -23,8 +23,10 @@ export class MarketStore {
       CREATE TABLE IF NOT EXISTS bars (ticker TEXT, end TEXT, date TEXT, payload TEXT NOT NULL, PRIMARY KEY(ticker,end));
       CREATE TABLE IF NOT EXISTS alerts (ticker TEXT, end TEXT, payload TEXT NOT NULL, PRIMARY KEY(ticker,end));
       CREATE TABLE IF NOT EXISTS watchlist (id INTEGER PRIMARY KEY CHECK (id = 1), payload TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS live_symbols (id INTEGER PRIMARY KEY CHECK (id = 1), payload TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS spy_strength (date TEXT, ticker TEXT, payload TEXT NOT NULL, PRIMARY KEY(date,ticker));
       CREATE TABLE IF NOT EXISTS marks_sigma (date TEXT, ticker TEXT, payload TEXT NOT NULL, PRIMARY KEY(date,ticker));
+      CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       DROP TABLE IF EXISTS area_sigma;`);
   }
   put(bar: PriceBar) {
@@ -68,6 +70,20 @@ export class MarketStore {
       .get();
     return row ? (JSON.parse(String(row.payload)) as StoredWatchlist) : null;
   }
+  // Symbols to stream, set from the site's backtest list; null = the watchlist.
+  liveSymbols(): string[] | null {
+    const row = this.db
+      .prepare("SELECT payload FROM live_symbols WHERE id=1")
+      .get();
+    return row ? (JSON.parse(String(row.payload)) as string[]) : null;
+  }
+  setLiveSymbols(tickers: string[]) {
+    this.db
+      .prepare(
+        "INSERT INTO live_symbols VALUES (1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
+      )
+      .run(JSON.stringify(tickers));
+  }
   setWatchlist(list: StoredWatchlist) {
     this.db
       .prepare(
@@ -103,6 +119,23 @@ export class MarketStore {
           insert.run(date, ticker, JSON.stringify(value));
       },
     };
+  }
+  /** The Alpaca feed the stored bars came from (null before it was recorded). */
+  barsFeed(): string | null {
+    const row = this.db
+      .prepare("SELECT value FROM meta WHERE key='bars_feed'")
+      .get();
+    return row ? String(row.value) : null;
+  }
+  /** Drops every stored bar and records `feed` as theirs from now on. */
+  resetBars(feed: string): number {
+    const { changes } = this.db.prepare("DELETE FROM bars").run();
+    this.db
+      .prepare(
+        "INSERT INTO meta VALUES ('bars_feed',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      )
+      .run(feed);
+    return Number(changes);
   }
   prune(before: string) {
     this.db.prepare("DELETE FROM bars WHERE date<?").run(before);

@@ -36,6 +36,7 @@ function bar(
 // shares, so today needs ≥ 300 shares and a move ≥ 0.6% (3×) and ≥ 0.5%.
 const unit: Config = {
   ...defaults,
+  threshold: 3, // the fixtures below are built for 3× (the default until 2026-10-05)
   window: 1,
   days: 1,
   minVolume: 0,
@@ -50,9 +51,12 @@ function today(open: number, close: number, volume = 300, config = unit) {
   return engine.push(bar("2026-03-03", 661, open, close, volume))!;
 }
 
+// The synthetic demo was built for 3× volume, the default until 2026-10-05.
+const demoConfig: Config = { ...defaults, threshold: 3, paceMultiple: 3 };
+
 test("demo: volume, meaningful move and one direction alert once; the past is fixed", () => {
   const bars = demoBars();
-  const results = replay(bars);
+  const results = replay(bars, demoConfig);
   const alerts = results.filter((r) => r.status === "alert");
   assert.equal(alerts.length, 1);
   const [alert] = alerts;
@@ -70,16 +74,19 @@ test("demo: volume, meaningful move and one direction alert once; the past is fi
   assert.equal(alert!.rule, "rvol-v4");
   const cutoff = alert!.end;
   assert.deepEqual(
-    replay(bars.filter((b) => b.end <= cutoff)),
+    replay(
+      bars.filter((b) => b.end <= cutoff),
+      demoConfig,
+    ),
     results.filter((r) => r.end <= cutoff),
   );
   // Each of these settings blocks the 15:11 anomaly. (With one candle, the
   // demo's 15:20 drop also qualifies; on defaults the cooldown suppresses it.)
   for (const config of [
-    { ...defaults, threshold: 6 },
+    { ...demoConfig, threshold: 6 },
     // The steepest demo window moves 3 × 0.6 ≈ 1.8%.
-    { ...defaults, minMovePercent: 2 },
-    { ...defaults, lastBarMinMovePercent: 0.7 },
+    { ...demoConfig, minMovePercent: 2 },
+    { ...demoConfig, lastBarMinMovePercent: 0.7 },
   ])
     assert.equal(
       replay(bars, config).filter(
@@ -124,6 +131,7 @@ test("every close must pass the previous close and every candle must share the c
   const run = (directionBars: number) => {
     const engine = new RelativeVolume({
       ...defaults,
+      threshold: 3, // fixture volume is 3× the baseline
       days: 1,
       minVolume: 0,
       paceMultiple: 0,
@@ -337,6 +345,7 @@ test("the last-minute gate and the number of same-direction candles are configur
   const engine = (config: Partial<Config>) => {
     const e = new RelativeVolume({
       ...defaults,
+      threshold: 3, // fixture volume is 3× the baseline
       days: 1,
       minVolume: 0,
       paceMultiple: 0,

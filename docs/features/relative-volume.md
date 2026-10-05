@@ -4,6 +4,11 @@ Approved: US stocks, extended hours, minute-close evaluation, same-time volume a
 
 ## Rule v4 (`rvol-v4`, user-confirmed 2026-10-03)
 
+Volume defaults raised to 4× (`threshold` and `paceMultiple`) on 2026-10-05 (user
+decision). On the 196-symbol SIP year (2025-10-02…2026-10-02, filtered after the fact):
+alerts/day 170 → 83 and look-now "big" 17.6% → 22.9% (47 Favorites: 47 → 22/day, 21.0% →
+28.4%; random minutes 3.8%). Alerts store their config, so older 3× alerts stay labelled.
+
 v3 below, with these changes. The alert means "look at this stock now": a big move is
 likely, in either direction. Direction is not predicted.
 
@@ -36,8 +41,8 @@ Evaluated on each closed one-minute bar, per symbol and session, over the last `
 
 1. **Last minute moved (opt-in):** when `lastBarMinMovePercent` > 0, the last bar's close must move at least that much from the previous close, otherwise the window is not evaluated (`weak-last-bar`). Default 0 (off) since 2026-09-27: at 0.5% it cut alerts about 6× and they validated worse than chance (17% good vs 30% baseline; off: 32%).
 2. **Volume**, either of (the alert records which in `volumeBasis`):
-   - **vs history:** window volume ≥ `threshold` (3) × the median window volume ending at the same New York minute, same session, over the previous `days` (20) sessions;
-   - **vs today's pace:** window volume ≥ `paceMultiple` (3) × today's average window volume. Regular session only, inside the pace zone that excludes the first `paceSkipOpen` (30) and last `paceSkipClose` (30) minutes, whose volume is naturally far above the day's average; the average uses today's pace-zone bars before the window and needs ≥ `paceMinMinutes` (15) of them. The early close (13:00) is respected. 0 turns this off. At the open and close only the historical time-of-day comparison applies.
+   - **vs history:** window volume ≥ `threshold` (4; 3 until 2026-10-05) × the median window volume ending at the same New York minute, same session, over the previous `days` (20) sessions;
+   - **vs today's pace:** window volume ≥ `paceMultiple` (4; 3 until 2026-10-05) × today's average window volume. Regular session only, inside the pace zone that excludes the first `paceSkipOpen` (30) and last `paceSkipClose` (30) minutes, whose volume is naturally far above the day's average; the average uses today's pace-zone bars before the window and needs ≥ `paceMinMinutes` (15) of them. The early close (13:00) is respected. 0 turns this off. At the open and close only the historical time-of-day comparison applies.
 
    And ≥ `minVolume` (10,000) shares.
 

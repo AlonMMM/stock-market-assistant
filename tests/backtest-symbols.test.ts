@@ -8,6 +8,7 @@ import {
   handleBacktestSymbols,
   maxListSymbols,
 } from "../packages/market-data/src/backtest-symbols.js";
+import { pushLiveSymbols } from "../packages/market-data/src/watchlist.js";
 
 test("the backtest symbol list adds, removes and validates symbols", async () => {
   const store = new D1SymbolList(new SqliteD1(":memory:"));
@@ -126,5 +127,62 @@ test("a list made before kinds existed gains the column", async () => {
   assert.deepEqual(await store.list(), {
     tickers: ["AAPL", "QQQ"],
     etfs: ["QQQ"],
+  });
+});
+
+test("a list change is sent to the live collector, which streams it", async () => {
+  const store = new D1SymbolList(new SqliteD1(":memory:"));
+  const pushed: string[][] = [];
+  const push = async (tickers: string[]) => {
+    pushed.push(tickers);
+    return { synced: true };
+  };
+  await handleBacktestSymbols("GET", undefined, store, push);
+  assert.deepEqual(pushed, [], "reading does not push");
+  const added = await handleBacktestSymbols(
+    "POST",
+    { add: ["NVDA", "AMD"] },
+    store,
+    push,
+  );
+  assert.deepEqual(pushed, [["AMD", "NVDA"]]);
+  assert.deepEqual((added.body as { live?: unknown }).live, { synced: true });
+  // A collector failure is reported but the list change stands.
+  const failed = await handleBacktestSymbols(
+    "POST",
+    { add: ["TSM"] },
+    store,
+    async () => ({ synced: false, error: "Collector unreachable" }),
+  );
+  assert.equal(failed.status, 200);
+  assert.deepEqual((failed.body as { live?: unknown }).live, {
+    synced: false,
+    error: "Collector unreachable",
+  });
+  assert.deepEqual((failed.body as { tickers: string[] }).tickers, [
+    "AMD",
+    "NVDA",
+    "TSM",
+  ]);
+});
+
+test("pushLiveSymbols sends PUT /live-symbols with the collector token", async () => {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const fetcher = (async (url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    return new Response("{}", { status: 200 });
+  }) as unknown as typeof fetch;
+  const result = await pushLiveSymbols(
+    { url: "https://collector.test/", token: "t".repeat(32) },
+    ["AMD"],
+    fetcher,
+  );
+  assert.deepEqual(result, { synced: true });
+  assert.equal(calls[0]!.url, "https://collector.test/live-symbols");
+  assert.equal(calls[0]!.init.method, "PUT");
+  assert.equal(calls[0]!.init.body, JSON.stringify({ tickers: ["AMD"] }));
+  assert.deepEqual(await pushLiveSymbols({}, ["AMD"], fetcher), {
+    synced: false,
+    error: "Live collector is not configured",
   });
 });

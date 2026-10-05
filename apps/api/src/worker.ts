@@ -26,7 +26,10 @@ import {
   loadAnalysisChart,
   loadLive,
 } from "../../../packages/market-data/src/live.js";
-import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
+import {
+  loadWatchlist,
+  pushLiveSymbols,
+} from "../../../packages/market-data/src/watchlist.js";
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
 import { verifyAccess } from "./access.js";
 
@@ -120,6 +123,11 @@ export default {
         request.method,
         body,
         env.BARS_CACHE ? stores(env.BARS_CACHE).symbols : undefined,
+        (tickers) =>
+          pushLiveSymbols(
+            { url: env.COLLECTOR_URL, token: env.COLLECTOR_TOKEN },
+            tickers,
+          ),
       );
       return Response.json(result.body, { status: result.status });
     }
