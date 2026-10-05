@@ -87,7 +87,7 @@ const colors = {
     up: "22, 163, 74",
     down: "220, 38, 38",
     zero: "#6b7280",
-    window: "rgba(20, 43, 41, 0.07)",
+    window: "rgba(20, 43, 41, 0.05)",
     excluded: "rgba(107, 114, 128, 0.45)",
   },
   clear: "rgba(0, 0, 0, 0)",
