@@ -13,12 +13,9 @@ import {
 import { israelDay } from "./time.js";
 
 export type { StrengthNow, VsSpyTone };
-// Old stored alerts may lack `area` and still carry a direction `label`;
-// the label is ignored.
-export type VsSpy = Omit<AlertVsSpy, "area" | "label"> & {
-  area?: number | null;
-  label?: string;
-};
+// Old stored alerts lack `sum`, may carry `area` and a direction `label`;
+// only the score is shown.
+export type VsSpy = Omit<AlertVsSpy, "label"> & { label?: string };
 
 /** Colour thresholds from the shared contract: green ≥ 60, red ≤ 40. */
 export const scoreStrong = vsSpyStrong;

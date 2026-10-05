@@ -394,15 +394,16 @@ export function WatchTable({
       <p className="table-note">
         Change: since the previous close. vs SPY / vs sector: today&apos;s
         change minus the benchmark&apos;s change, in % points. vs SPY score:
-        0–100, always vs SPY ({scoreNote}), scaled by how large that weighted sum usually is for the stock at this minute over the previous 20 sessions; green ≥ {scoreStrong} stronger,
-        red ≤ {scoreWeak} weaker, grey between; “—” without enough history. Rel
-        vol: regular-session volume so far ÷ the median volume by the same New
-        York minute over the previous 20 sessions; “—” before the{" "}
-        {israelClock(board.open * 1000)} open or with too little history.
-        Moving: |change| ≥ {moving.change}% or rel vol ≥ {moving.relVolume}×.
-        Day range: today&apos;s low to high, the mark is the last price. Today:
-        blue = symbol, dashed orange = benchmark, dotted line = regular open.
-        Times in {israelLabel}.
+        0–100, always vs SPY ({scoreNote}), scaled by how large that weighted
+        sum usually is for the stock at this minute over the previous 20
+        sessions; green ≥ {scoreStrong} stronger, red ≤ {scoreWeak} weaker, grey
+        between; “—” without enough history. Rel vol: regular-session volume so
+        far ÷ the median volume by the same New York minute over the previous 20
+        sessions; “—” before the {israelClock(board.open * 1000)} open or with
+        too little history. Moving: |change| ≥ {moving.change}% or rel vol ≥{" "}
+        {moving.relVolume}×. Day range: today&apos;s low to high, the mark is
+        the last price. Today: blue = symbol, dashed orange = benchmark, dotted
+        line = regular open. Times in {israelLabel}.
       </p>
     </>
   );

@@ -36,9 +36,10 @@ import {
   contributionBars,
   dollars,
   type ChartScores,
-  endIndex,
+  endMinute,
   episodeSummary,
   gapPoints,
+  scoreAt,
   isStrongVolume,
   percentAndPrice,
   percentBase,
@@ -572,9 +573,7 @@ export function DayChart({
     if (marks) {
       const pane = panes[marksPane];
       pane?.setStretchFactor(0.9);
-      pane?.attachPrimitive(
-        excludedBand(chart, () => marks.excluded),
-      );
+      pane?.attachPrimitive(excludedBand(chart, () => marks.excluded));
       pane?.attachPrimitive(
         stripTag(`Marks: move − β×${scoreBenchmark}`, true),
       );
@@ -665,11 +664,11 @@ export function DayChart({
   // its window) in "Around alert", the same number as the alert's tag and
   // Telegram line; else at the latest bar.
   const aroundAlert = range === "alert" && !!alertEnd;
-  const headerAt = main
-    ? endIndex(main.bars, alertMs, window, aroundAlert)
-    : -1;
+  const headerEnd = main
+    ? endMinute(main.bars, alertEnd, window, aroundAlert)
+    : null;
   const header = scoreCell(
-    vs?.scores[headerAt],
+    scoreAt(vs, headerEnd),
     aroundAlert ? "at the alert" : "at the latest minute",
   );
   const benchName = bench?.ticker ?? benchmark;
@@ -900,7 +899,12 @@ function drawMarks(
 ) {
   if (!pane || !vs) return;
   const around = range === "alert" && !Number.isNaN(alertMs);
-  const end = endIndex(bars, alertMs, windowMinutes, around);
+  const end = endMinute(
+    bars,
+    around ? new Date(alertMs).toISOString() : undefined,
+    windowMinutes,
+    around,
+  );
   const c = contributionBars(bars, vs.contribution, end);
   pane.shade.setData(
     m.map((p, i) => ({

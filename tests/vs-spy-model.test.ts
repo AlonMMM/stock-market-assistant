@@ -13,7 +13,7 @@ import {
 // SYNTHETIC values, shaped like the spec's acceptance scenarios.
 const vs = (over: Partial<VsSpy>): VsSpy => ({
   score: 72,
-  area: 0.6,
+  sum: 0.6,
   beta: 2,
   betaAssumed: false,
   spyLagged: false,
