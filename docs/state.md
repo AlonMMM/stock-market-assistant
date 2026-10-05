@@ -1,7 +1,7 @@
 # Current state
 
 Updated: 2026-10-03
-Phase: Alpaca live alerts on real-time SIP with Telegram delivery; area score vs SPY in review.
+Phase: Alpaca live alerts on real-time SIP with Telegram delivery; marked-sections score vs SPY in review.
 
 ## Working product
 
@@ -27,7 +27,15 @@ Telegram alert notifications with deep links to the Live view (#24, #25), per-al
 analysis with Telegram follow-ups and a site panel (#26–#30,
 [spec](features/alert-analysis.md)), and the alert feed grouped by Israel date (#31).
 
-## In review: area score vs SPY
+## In review: marked-sections score vs SPY
+
+[Spec](features/marks-vs-spy.md). Replaces the area score: only the green/red marked
+minutes count, each sized by the stock's 5-min move minus β × SPY's, linearly weighted over
+the 60 minutes before the alert (its own minutes excluded), scaled by the same minute's
+20-session σ. Charts show a contributions pane; after hours the board and charts show the
+closing score. Worker subrequests stay ≤ 40 per request.
+
+## Merged: area score vs SPY
 
 [Spec](features/area-vs-spy.md). Replaces the day-based vs-SPY score and its labels: a
 linearly weighted area between the stock and β×SPY since the session open, scaled by the
