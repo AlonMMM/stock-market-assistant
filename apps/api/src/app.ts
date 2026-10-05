@@ -28,7 +28,10 @@ import {
   loadAnalysisChart,
   loadLive,
 } from "../../../packages/market-data/src/live.js";
-import { loadWatchlist } from "../../../packages/market-data/src/watchlist.js";
+import {
+  loadWatchlist,
+  pushLiveSymbols,
+} from "../../../packages/market-data/src/watchlist.js";
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
 
 export function buildApp(
@@ -78,6 +81,15 @@ export function buildApp(
       "POST",
       request.body,
       alpaca.symbols,
+      (tickers) =>
+        pushLiveSymbols(
+          {
+            url: process.env.COLLECTOR_URL,
+            token: process.env.COLLECTOR_TOKEN,
+          },
+          tickers,
+          alpaca.fetcher,
+        ),
     );
     return reply.code(result.status).send(result.body);
   });

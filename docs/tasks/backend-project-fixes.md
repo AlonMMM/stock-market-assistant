@@ -95,6 +95,12 @@ Fix intermittent HTTP 503 from backtests and prepare for the Workers Paid plan.
   picks, sector menu, one search/add box, Edit list mode. Checked at 390 px with headless
   Chrome against the local API.
 
+- 2026-10-05 live: volume defaults 4× (history and pace); the collector streams the site's
+  backtest list (`PUT /live-symbols`, sent by the Worker on every list change; 196
+  symbols, `ALPACA_MAX_SYMBOLS=500`); every alert still goes to Telegram and the Claude
+  analysis (user decision). Collector bars now record their feed and are dropped on a
+  feed change (the store held IEX bars when the feed switched to SIP that morning).
+
 ## Verification and handoff
 
 - `npm run check` and `git diff --check` pass (191 pass, 1 skipped).

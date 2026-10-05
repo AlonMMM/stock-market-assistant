@@ -51,7 +51,8 @@ export const ruleVersion = "rvol-v4";
 export const defaults: Config = {
   window: 3,
   days: 20,
-  threshold: 3,
+  // 4× (was 3×) since 2026-10-05: about half the alerts, better look-now rate.
+  threshold: 4,
   cooldown: 15,
   minVolume: 10000,
   priceMultiple: 3,
@@ -61,7 +62,7 @@ export const defaults: Config = {
   lastBarMinMovePercent: 0,
   // v4: one candle (was 3); the study kept quality with ~25% more alerts.
   directionBars: 1,
-  paceMultiple: 3,
+  paceMultiple: 4,
   paceMinMinutes: 15,
   paceSkipOpen: 30,
   paceSkipClose: 30,

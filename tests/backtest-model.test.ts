@@ -107,7 +107,7 @@ test("rule changes: one changed field gives the badge and title suffix (scenario
 
 test("rule summary is generated from the values", () => {
   const live = ruleSummary();
-  assert.match(live, /volume ≥ 3× typical/);
+  assert.match(live, /volume ≥ 4× typical/);
   assert.match(live, /≥ 0\.5%/);
   assert.match(live, /1 candle in the move's direction/);
   assert.match(live, /15 min cooldown/);

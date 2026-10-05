@@ -25,6 +25,14 @@ Set these on the existing collector service; never put real values in Git or cha
   (this account has Algo Trader Plus since 2026-10-04; see
   [real-time SIP rollout](#real-time-sip-rollout)).
 - `ALPACA_MAX_SYMBOLS` (default 30, the free IEX stream limit): symbols on the stream.
+  With SIP (no symbol limit) production uses 500, the backtest list's maximum.
+- What is streamed: the site's **backtest list** once it has been sent (`PUT /live-symbols`,
+  which the site calls on every list change), else the IBKR watchlist. `GET /live-symbols`
+  shows the list and its source. The weekly IBKR sync then only updates the watchlist
+  (Favorites display, sector benchmarks), not the stream.
+- Stored bars record their feed. On startup with a different `ALPACA_FEED`, the collector
+  drops them (`bars-reset` log) and warmup fetches the 20 sessions again from the new feed,
+  since IEX volume is a few percent of SIP and would skew every baseline.
   SPY is always streamed for the score vs SPY and takes one slot unless it is on the
   watchlist, so the default streams 29 watchlist symbols. With SIP, raise it to cover
   the watchlist plus SPY.

@@ -148,3 +148,28 @@ test("durable bars survive restart, deduplicate and preserve corrected volume", 
     rmSync(dir, { recursive: true });
   }
 });
+test("bars of another feed are dropped; the live symbol list persists", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sma-"));
+  try {
+    const path = join(dir, "market.sqlite");
+    const bar = normalize("NVDA", raw("2026-09-18T15:00:00Z"), "shares")!;
+    const store = new MarketStore(path);
+    store.put(bar);
+    // Bars stored before the feed was recorded (the IEX era) are unknown.
+    assert.equal(store.barsFeed(), null);
+    assert.equal(store.resetBars("sip"), 1);
+    assert.equal(store.barsFeed(), "sip");
+    assert.equal(store.bars("NVDA", "2026-09-01").length, 0);
+    store.put(bar);
+    assert.equal(store.liveSymbols(), null);
+    store.setLiveSymbols(["AMD", "NVDA"]);
+    store.close();
+    const reopened = new MarketStore(path);
+    assert.equal(reopened.barsFeed(), "sip");
+    assert.equal(reopened.bars("NVDA", "2026-09-01").length, 1);
+    assert.deepEqual(reopened.liveSymbols(), ["AMD", "NVDA"]);
+    reopened.close();
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});

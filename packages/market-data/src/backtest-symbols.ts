@@ -10,6 +10,8 @@ export type SymbolKind = "stock" | "etf";
 export interface SymbolList {
   tickers: string[]; // every symbol, sorted
   etfs: string[]; // the ETFs among them; the rest are stocks
+  // After a change: whether the live collector now streams the new list.
+  live?: { synced: boolean; error?: string };
 }
 
 export class D1SymbolList {
@@ -79,6 +81,8 @@ export async function handleBacktestSymbols(
   method: string,
   body: unknown,
   store?: D1SymbolList,
+  // Sends the changed list to the live collector, which streams it.
+  push?: (tickers: string[]) => Promise<{ synced: boolean; error?: string }>,
 ): Promise<{ status: number; body: SymbolList | { error: string } }> {
   if (!store)
     return { status: 503, body: { error: "No database is configured" } };
@@ -121,5 +125,7 @@ export async function handleBacktestSymbols(
       body: { error: `The list holds at most ${maxListSymbols} symbols` },
     };
   await store.change(add, remove, kind);
-  return { status: 200, body: await store.list() };
+  const list = await store.list();
+  if (!push || !list.tickers.length) return { status: 200, body: list };
+  return { status: 200, body: { ...list, live: await push(list.tickers) } };
 }

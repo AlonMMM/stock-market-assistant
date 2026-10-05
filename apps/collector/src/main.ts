@@ -45,9 +45,11 @@ import {
 import { pythonRunner } from "../../../packages/analysis/src/technical.js";
 import { chartNamePattern } from "../../../packages/analysis/src/technical-facts.js";
 import {
+  maxLiveSymbols,
   parseWatchlistInput,
   WatchlistInputError,
 } from "../../../packages/market-data/src/watchlist.js";
+import { tickerPattern } from "../../../packages/market-data/src/backtest.js";
 
 const enabled = process.env.ALPACA_ENABLED === "true";
 const feed = process.env.ALPACA_FEED ?? "iex";
@@ -78,6 +80,14 @@ validateConfig(config);
 const dbPath = process.env.COLLECTOR_DB ?? "data/local/alpaca.sqlite";
 mkdirSync(dirname(dbPath), { recursive: true });
 const store = new MarketStore(dbPath);
+// Volumes differ by feed (IEX sees a few percent of SIP), so bars stored from
+// another feed would skew every baseline: drop them; warmup fetches the
+// history again from the configured feed.
+if (store.barsFeed() !== feed) {
+  const dropped = store.resetBars(feed);
+  if (dropped)
+    console.log(JSON.stringify({ event: "bars-reset", feed, dropped }));
+}
 // Every new live alert is published here; consumers subscribe below.
 const alertEvents = new AlertEvents();
 // Phone notifications are on when both Telegram values are set.
@@ -144,6 +154,10 @@ const live = (tickers: string[]) => {
     ? first
     : tickers.slice(0, maxLive - 1);
 };
+// What to stream: the site's backtest list once it has been sent
+// (PUT /live-symbols), else the IBKR watchlist.
+const liveTickers = () =>
+  store.liveSymbols() ?? store.watchlist()?.tickers ?? null;
 const streamed = (tickers: string[]) =>
   tickers.includes(benchmark) ? tickers : [...tickers, benchmark];
 
@@ -374,7 +388,41 @@ api.get("/analyses/chart", async (request, reply) => {
 api.get("/watchlist", async (_request, reply) => {
   const list = store.watchlist();
   if (!list) return reply.code(404).send({ error: "No watchlist synced yet" });
-  return { source: "ibkr", ...list, live: live(list.tickers) };
+  return { source: "ibkr", ...list, live: live(liveTickers() ?? []) };
+});
+api.get("/live-symbols", async () => {
+  const tickers = liveTickers() ?? [];
+  return {
+    source: store.liveSymbols() ? "backtest-list" : "watchlist",
+    tickers,
+    live: live(tickers),
+  };
+});
+// The site sends its backtest list here whenever it changes.
+api.put("/live-symbols", async (request, reply) => {
+  const tickers = (request.body as { tickers?: unknown } | null)?.tickers;
+  if (
+    !Array.isArray(tickers) ||
+    !tickers.length ||
+    tickers.length > maxLiveSymbols ||
+    !tickers.every((t) => typeof t === "string" && tickerPattern.test(t))
+  )
+    return reply
+      .code(400)
+      .send({ error: `Expected 1–${maxLiveSymbols} US stock symbols` });
+  const previous = liveTickers() ?? [];
+  const next = [...new Set(tickers as string[])];
+  store.setLiveSymbols(next);
+  const changed = live(previous).join() !== live(next).join();
+  console.log(
+    JSON.stringify({
+      event: "live-symbols-set",
+      symbols: next.length,
+      changed,
+    }),
+  );
+  if (changed && enabled) void restart(next);
+  return { tickers: next, live: live(next), restarting: changed && enabled };
 });
 api.put("/watchlist", async (request, reply) => {
   let input: { name: string; tickers: string[] };
@@ -385,11 +433,12 @@ api.put("/watchlist", async (request, reply) => {
       return reply.code(400).send({ error: error.message });
     throw error;
   }
-  const previous = store.watchlist();
+  const previous = liveTickers() ?? [];
   const list = { ...input, syncedAt: new Date().toISOString() };
   store.setWatchlist(list);
+  // With a live symbol list set, the watchlist no longer changes the stream.
   const changed =
-    live(previous?.tickers ?? []).join() !== live(list.tickers).join();
+    !store.liveSymbols() && live(previous).join() !== live(list.tickers).join();
   console.log(
     JSON.stringify({
       event: "watchlist-synced",
@@ -401,7 +450,7 @@ api.put("/watchlist", async (request, reply) => {
   return {
     source: "ibkr",
     ...list,
-    live: live(list.tickers),
+    live: live(liveTickers() ?? []),
     restarting: changed && enabled,
   };
 });
@@ -547,13 +596,13 @@ try {
   if (outbox) setInterval(() => void outbox.drain(), 5000).unref();
   if (analyses) setInterval(() => void analyses.drain(), 5000).unref();
   setInterval(() => void prepareStrength(), 5 * 60000).unref();
-  const list = store.watchlist();
+  const tickers = liveTickers();
   if (!enabled) {
     state = "awaiting-alpaca-activation";
-  } else if (!list) {
+  } else if (!tickers) {
     state = "awaiting-watchlist";
   } else {
-    void restart(list.tickers);
+    void restart(tickers);
   }
   console.log(JSON.stringify({ state, address: api.server.address() }));
 } catch (error) {
