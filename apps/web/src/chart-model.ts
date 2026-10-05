@@ -143,8 +143,7 @@ function perBar(
  */
 export function chartScores(data: DayChart): ChartScores | null {
   const main = data.series[0];
-  const series = (data as DayChart & { marksVsSpy?: MarksVsSpySeries })
-    .marksVsSpy;
+  const series = data.marksVsSpy;
   if (!main || !series || main.ticker === scoreBenchmark) return null;
   return {
     series,

@@ -143,7 +143,7 @@ const marks = (over: Partial<MarksVsSpySeries> = {}): MarksVsSpySeries => ({
 const withMarks = (
   series: ChartSeries[],
   marksVsSpy?: MarksVsSpySeries,
-): DayChart => ({ ...chart(series), marksVsSpy }) as DayChart;
+): DayChart => ({ ...chart(series), marksVsSpy });
 
 test("score and contribution per bar come from the backend's minute series", () => {
   const nvda = series("NVDA", 100, [100, 101, 102]);
