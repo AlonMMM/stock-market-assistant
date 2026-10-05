@@ -1,7 +1,7 @@
 // Day-based relative-strength score against a benchmark (user-confirmed
 // 2026-09-28; docs/features/chart-vs-spy.md, "Semantics"). The alert
-// analysis keeps it; alerts, the board and the day chart now use the area
-// score (area-vs-spy.ts, docs/features/area-vs-spy.md).
+// analysis keeps it; alerts, the board and the day chart now use the marked-sections
+// score (marks-vs-spy.ts, docs/features/marks-vs-spy.md).
 //   excess = r_stock − β · r_benchmark          (all percent)
 //   σ      = sample stdev of the stock's daily excess (close-to-close, same β)
 //            over the 20 sessions before the scored day; ≥ 15 needed
@@ -104,7 +104,7 @@ export function spyStrength(
 }
 
 /**
- * @deprecated The day chart's score is the area score (`DayChart.areaVsSpy`);
+ * @deprecated The day chart's score is the marked-sections score (`DayChart.marksVsSpy`);
  * kept until the web stops calling it.
  *
  * Score per bar of `stock` (aligned with `stock.bars`) against `spy`: both %

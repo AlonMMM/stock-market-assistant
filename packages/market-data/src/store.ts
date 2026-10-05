@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import type { AlertEvent } from "../../alerts/src/events.js";
 import type { PriceBar } from "./bars.js";
-import type { SigmaCurve } from "./area-vs-spy.js";
+import type { MarksSigma } from "./marks-vs-spy.js";
 import type { SpyStrength } from "./rs-score.js";
 import type { DailyStore } from "./volume-baseline.js";
 
@@ -24,7 +24,8 @@ export class MarketStore {
       CREATE TABLE IF NOT EXISTS alerts (ticker TEXT, end TEXT, payload TEXT NOT NULL, PRIMARY KEY(ticker,end));
       CREATE TABLE IF NOT EXISTS watchlist (id INTEGER PRIMARY KEY CHECK (id = 1), payload TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS spy_strength (date TEXT, ticker TEXT, payload TEXT NOT NULL, PRIMARY KEY(date,ticker));
-      CREATE TABLE IF NOT EXISTS area_sigma (date TEXT, ticker TEXT, payload TEXT NOT NULL, PRIMARY KEY(date,ticker));`);
+      CREATE TABLE IF NOT EXISTS marks_sigma (date TEXT, ticker TEXT, payload TEXT NOT NULL, PRIMARY KEY(date,ticker));
+      DROP TABLE IF EXISTS area_sigma;`);
   }
   put(bar: PriceBar) {
     this.db
@@ -76,9 +77,10 @@ export class MarketStore {
   }
   // β/σ vs SPY per US session date and symbol (docs/features/alert-vs-spy.md).
   readonly strengths: DailyStore<SpyStrength> = this.daily("spy_strength");
-  // σ curves of the area score (docs/features/area-vs-spy.md), ~8 KB each.
-  readonly sigmas: DailyStore<SigmaCurve> = this.daily("area_sigma");
-  private daily<T>(table: "spy_strength" | "area_sigma"): DailyStore<T> {
+  // σ curves of the marked-sections score (docs/features/marks-vs-spy.md),
+  // ~3 KB each. Replaces the area score's `area_sigma` (dropped at start).
+  readonly sigmas: DailyStore<MarksSigma> = this.daily("marks_sigma");
+  private daily<T>(table: "spy_strength" | "marks_sigma"): DailyStore<T> {
     return {
       get: async (date, tickers) => {
         const wanted = new Set(tickers);
@@ -105,7 +107,7 @@ export class MarketStore {
   prune(before: string) {
     this.db.prepare("DELETE FROM bars WHERE date<?").run(before);
     this.db.prepare("DELETE FROM spy_strength WHERE date<?").run(before);
-    this.db.prepare("DELETE FROM area_sigma WHERE date<?").run(before);
+    this.db.prepare("DELETE FROM marks_sigma WHERE date<?").run(before);
   }
   close() {
     this.db.close();

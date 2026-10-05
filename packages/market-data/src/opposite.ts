@@ -32,6 +32,11 @@ export interface OppositeEpisode {
 export interface Opposite {
   states: (OppositeKind | null)[]; // aligned to ticker.bars
   episodes: OppositeEpisode[];
+  // The ticker's and the benchmark's moves over the window (% points from
+  // the previous close), aligned to ticker.bars; null where either was not
+  // computed. Used by the marked-sections score (marks-vs-spy.ts).
+  tickerMoves: (number | null)[];
+  benchMoves: (number | null)[];
 }
 
 // Absorbs float noise from % arithmetic so −0.05 exactly counts as −0.05.
@@ -102,6 +107,8 @@ export function opposite(
   const o = { ...oppositeDefaults, ...options };
   const states: (OppositeKind | null)[] = ticker.bars.map(() => null);
   const from: number[] = ticker.bars.map(() => -1);
+  const tickerMoves: (number | null)[] = ticker.bars.map(() => null);
+  const benchMoves: (number | null)[] = ticker.bars.map(() => null);
   const t = regularPercents(ticker);
   const b = regularPercents(bench);
   const moves: number[] = []; // today's |ticker moves| so far, sorted
@@ -122,6 +129,8 @@ export function opposite(
     if (!bNow || !bBefore) return;
     const bR = bNow.value - bBefore.value;
     from[i] = before.index;
+    tickerMoves[i] = tR;
+    benchMoves[i] = bR;
     if (bR <= o.benchFall + epsilon && tR >= -epsilon) states[i] = "strong";
     else if (bR >= o.benchHold - epsilon && moves.length >= o.minUsualMoves) {
       const usual = median(moves);
@@ -137,5 +146,5 @@ export function opposite(
     if (last && last.kind === kind && last.to === i - 1) last.to = i;
     else episodes.push({ kind, from: from[i]!, to: i });
   });
-  return { states, episodes };
+  return { states, episodes, tickerMoves, benchMoves };
 }

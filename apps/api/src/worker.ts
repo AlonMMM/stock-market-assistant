@@ -16,7 +16,7 @@ import {
   handleBoard,
 } from "../../../packages/market-data/src/board.js";
 import { D1BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
-import { D1AreaSigmaStore } from "../../../packages/market-data/src/area-sigma.js";
+import { D1MarksSigmaStore } from "../../../packages/market-data/src/marks-sigma.js";
 import { ResultCache } from "../../../packages/market-data/src/result-cache.js";
 import {
   D1SymbolList,
@@ -44,7 +44,7 @@ let cache:
       cache: D1BarCache;
       baselines: D1BaselineStore;
       strengths: D1StrengthStore;
-      sigmas: D1AreaSigmaStore;
+      sigmas: D1MarksSigmaStore;
       results: ResultCache;
       symbols: D1SymbolList;
     }
@@ -56,7 +56,7 @@ function stores(db: D1Like) {
       cache: new D1BarCache(db),
       baselines: new D1BaselineStore(db),
       strengths: new D1StrengthStore(db),
-      sigmas: new D1AreaSigmaStore(db),
+      sigmas: new D1MarksSigmaStore(db),
       // Unbuilt (tests import this module directly): a key no build shares.
       results: new ResultCache(
         db,
@@ -79,7 +79,7 @@ export default {
       ACCESS_AUD?: string;
       COLLECTOR_URL?: string;
       // D1 database caching Alpaca bars, Rel vol baselines, β/σ vs SPY and
-      // the area score's σ curves.
+      // the marked-sections score's σ curves (marks_sigma).
       BARS_CACHE?: D1Like;
       COLLECTOR_TOKEN?: string;
       // Minutes SIP data may lag real time; default 0 (see sip-delay.ts).

@@ -1,28 +1,37 @@
-// σ history of the area score vs SPY (docs/features/area-vs-spy.md, "Scale"):
-// one per-minute σ curve per symbol and session date, computed from the
-// previous 20 sessions of minute bars of the stock and SPY and stored per
-// day like the Rel vol baselines (D1 on the Worker, SQLite locally and in
-// the collector), so later requests that day need no history.
-import {
-  areaSigmaSessions,
-  byDate,
-  fromRawBars,
-  sigmaCurve,
-  type SigmaCurve,
-} from "./area-vs-spy.js";
+// σ history of the marked-sections score vs SPY
+// (docs/features/marks-vs-spy.md, "Scale"): one per-minute σ curve per
+// symbol and session date, computed from the previous 20 sessions of minute
+// bars of the stock and SPY and stored per day like the Rel vol baselines
+// (D1 on the Worker, SQLite locally and in the collector), so later requests
+// that day need no history.
 import type { D1Like } from "./bar-cache.js";
 import type { RawBar } from "./bars.js";
 import { benchmark } from "./beta.js";
 import { newYorkToUtc, previousSessions } from "./calendar.js";
+import {
+  byDate,
+  fromRawBars,
+  historyMarks,
+  marksSigmaSessions,
+  sigmaCurve,
+  type MarkBar,
+  type MarksSigma,
+} from "./marks-vs-spy.js";
 import { D1DailyStore, type DailyStore } from "./volume-baseline.js";
 
 /** σ curves per symbol and session date. */
-export type AreaSigmaStore = DailyStore<SigmaCurve>;
+export type MarksSigmaStore = DailyStore<MarksSigma>;
 
-/** D1 table `area_sigma` in the bar-cache database (~8 KB per row). */
-export class D1AreaSigmaStore extends D1DailyStore<SigmaCurve> {
+/** Rows per INSERT of σ curves (~3 KB each; a D1 statement allows 100 KB). */
+export const sigmaRowsPerInsert = 16;
+
+/**
+ * D1 table `marks_sigma` in the bar-cache database. It replaces the area
+ * score's `area_sigma` table, which is no longer read or written.
+ */
+export class D1MarksSigmaStore extends D1DailyStore<MarksSigma> {
   constructor(db: D1Like) {
-    super(db, "area_sigma", "curve", 8);
+    super(db, "marks_sigma", "curve", sigmaRowsPerInsert);
   }
 }
 
@@ -35,7 +44,7 @@ export type MinuteHistory = (
 
 /** The previous sessions and the [start, end) range their bars span. */
 export function sigmaRange(date: string) {
-  const dates = previousSessions(date, areaSigmaSessions);
+  const dates = previousSessions(date, marksSigmaSessions);
   return {
     dates,
     // New York midnight of the first and of the scored date: no look-ahead.
@@ -45,23 +54,44 @@ export function sigmaRange(date: string) {
 }
 
 /**
+ * σ curve of `ticker` from its and SPY's bars over `dates` (bars grouped by
+ * date; only those dates are read). The first date's previous close is its
+ * first regular open (its previous session is outside the range).
+ */
+export function sigmaFromBars(
+  ticker: string,
+  stock: MarkBar[] | Map<string, MarkBar[]>,
+  spy: Map<string, MarkBar[]>,
+  dates: string[],
+  beta: number,
+): MarksSigma {
+  const stockDays = stock instanceof Map ? stock : byDate(stock);
+  return sigmaCurve(
+    (date) => historyMarks(ticker, stockDays, spy, date),
+    dates,
+    beta,
+  );
+}
+
+/**
  * σ curves for `tickers` (not SPY) on `date`: stored curves first, then, for
  * at most `limit` missing symbols, their minute history and SPY's over the
  * previous 20 sessions, one symbol at a time (bounded memory). Computed
- * curves are stored (one write). Failures leave a symbol without a curve (score null),
- * to retry on a later request. `betaOf` is the date's β vs SPY (1 assumed).
+ * curves are stored (one write). Failures leave a symbol without a curve
+ * (score null), to retry on a later request. `betaOf` is the date's β vs SPY
+ * (1 assumed).
  */
-export async function areaSigmas(
+export async function marksSigmas(
   tickers: string[],
   date: string,
   betaOf: (ticker: string) => number,
   history: MinuteHistory,
-  store?: AreaSigmaStore,
+  store?: MarksSigmaStore,
   limit = Infinity,
   offset = 0, // rotates which missing symbols are computed first
-): Promise<Map<string, SigmaCurve>> {
+): Promise<Map<string, MarksSigma>> {
   const wanted = tickers.filter((t) => t !== benchmark);
-  let curves = new Map<string, SigmaCurve>();
+  let curves = new Map<string, MarksSigma>();
   if (!wanted.length) return curves;
   try {
     if (store) curves = await store.get(date, wanted);
@@ -89,7 +119,7 @@ export async function areaSigmas(
   }
   if (!spy.length) return curves;
   const spyDays = byDate(spy);
-  const fresh = new Map<string, SigmaCurve>();
+  const fresh = new Map<string, MarksSigma>();
   for (const ticker of missing) {
     try {
       const stock = fromRawBars(
@@ -98,7 +128,7 @@ export async function areaSigmas(
       );
       fresh.set(
         ticker,
-        sigmaCurve(stock, spyDays, range.dates, betaOf(ticker)),
+        sigmaFromBars(ticker, stock, spyDays, range.dates, betaOf(ticker)),
       );
     } catch {
       // This symbol's history failed: retried on a later request.

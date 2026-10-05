@@ -5,20 +5,25 @@ import type {
   ChartSeries,
   DayChart,
 } from "../packages/market-data/src/day-chart.js";
-import type { AreaVsSpySeries } from "../packages/contracts/src/vs-spy.js";
+import type { MarksVsSpySeries } from "../packages/contracts/src/vs-spy.js";
 import {
   bandKinds,
+  alertWindowBars,
+  barAtOrBefore,
+  barOpacity,
   chartScores,
+  contributionBars,
+  endMinute,
   gapPoints,
-  headerIndex,
+  outsideOpacity,
   dollars,
   episodeSummary,
   isStrongVolume,
   percentAndPrice,
   percentBase,
   priceAt,
+  scoreAt,
   scoreText,
-  weightRamp,
   signedPercent,
   stateText,
   typicalRatio,
@@ -124,94 +129,162 @@ const chart = (series: ChartSeries[], vsSpy?: DayChart["vsSpy"]): DayChart => ({
   beta: { value: null, returns: 0, lookback: 60 },
   vsSpy,
 });
-const area = (over: Partial<AreaVsSpySeries> = {}): AreaVsSpySeries => ({
-  gap: [],
-  area: [],
-  score: [],
+const marks = (over: Partial<MarksVsSpySeries> = {}): MarksVsSpySeries => ({
+  start: 1_000_000,
+  contribution: [],
+  mark: [],
+  sum: [],
   sigma: [],
-  windows: [],
+  score: [],
   beta: 2,
   betaAssumed: false,
   ...over,
 });
-const withArea = (
+const withMarks = (
   series: ChartSeries[],
-  areaVsSpy?: AreaVsSpySeries,
-): DayChart => ({ ...chart(series), areaVsSpy });
+  marksVsSpy?: MarksVsSpySeries,
+): DayChart => ({ ...chart(series), marksVsSpy });
 
-test("area score and gap per minute come from the backend's series", () => {
+test("score and contribution per bar come from the backend's minute series", () => {
   const nvda = series("NVDA", 100, [100, 101, 102]);
   const spy = series("SPY", 500, [500, 500, 501]);
   const s = chartScores(
-    withArea([nvda, spy], area({ gap: [0, 0.4, 1.2], score: [null, 61, 72] })),
+    withMarks(
+      [nvda, spy],
+      marks({ contribution: [null, 0.4, -0.2], score: [null, 61, 72] }),
+    ),
   )!;
   assert.deepEqual(s.scores, [null, 61, 72]);
-  assert.deepEqual(s.gap, [0, 0.4, 1.2]);
-  assert.equal(s.latest, 72);
-  assert.equal(scoreText(s.latest), "72 / 100");
+  assert.deepEqual(s.contribution, [null, 0.4, -0.2]);
+  assert.equal(scoreText(s.scores.at(-1)), "72 / 100");
+  // The series starts at 09:30: a bar one minute earlier (pre-market) has
+  // no value, the next bars shift by one minute.
+  const late = chartScores(
+    withMarks([nvda, spy], marks({ start: 1_000_060, score: [55, 56] })),
+  )!;
+  assert.deepEqual(late.scores, [null, 55, 56]);
   // Empty or short series → "—" per minute, nothing invented.
-  const none = chartScores(withArea([nvda, spy], area()))!;
+  const none = chartScores(withMarks([nvda, spy], marks()))!;
   assert.deepEqual(none.scores, [null, null, null]);
-  assert.deepEqual(none.gap, [null, null, null]);
-  assert.equal(scoreText(none.latest), "—");
-  const short = chartScores(withArea([nvda, spy], area({ score: [50] })))!;
-  assert.deepEqual(short.scores, [50, null, null]);
+  assert.deepEqual(none.contribution, [null, null, null]);
+  assert.equal(scoreText(none.scores.at(-1)), "—");
 });
 
-test("no score without areaVsSpy or for SPY itself", () => {
+test("no score without marksVsSpy or for SPY itself", () => {
   const nvda = series("NVDA", 100, [101]);
   const spy = series("SPY", 500, [501]);
-  assert.equal(chartScores(withArea([nvda, spy])), null);
-  assert.equal(chartScores(withArea([spy], area())), null);
+  assert.equal(chartScores(withMarks([nvda, spy])), null);
+  assert.equal(chartScores(withMarks([spy], marks())), null);
 });
 
-test("header ends at the alert minute only in Around alert", () => {
-  assert.equal(headerIndex(10, 4, true), 4);
-  assert.equal(headerIndex(10, 4, false), 9);
-  assert.equal(headerIndex(10, -1, true), 9);
-  assert.equal(headerIndex(0, -1, false), -1);
+// SYNTHETIC minute starts (Unix s) for the end-minute and weight tests.
+const t0 = 1_790_000_000 - (1_790_000_000 % 60);
+const at = (min: number, session = "regular") => ({
+  start: t0 + min * 60,
+  session,
+});
+const closeIso = (min: number) =>
+  new Date((t0 + (min + 1) * 60) * 1000).toISOString();
+
+test("end minute: before the alert's window in Around alert, else the latest bar", () => {
+  const bars = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => at(k));
+  // Alert bar = minute 7, 3-minute window 5–7 → E = minute 4.
+  assert.equal(endMinute(bars, closeIso(7), 3, true), at(4).start);
+  assert.equal(endMinute(bars, closeIso(7), 3, false), at(9).start);
+  assert.equal(endMinute(bars, undefined, 3, true), at(9).start);
+  // E is a clock minute even when its bar is missing.
+  const gappy = [0, 1, 2, 3, 5, 6, 7].map((k) => at(k));
+  assert.equal(endMinute(gappy, closeIso(7), 3, true), at(4).start);
+  assert.equal(endMinute([], undefined, 3, false), null);
+  // The readout's default bar: E's own bar, else the last one before it.
+  assert.equal(barAtOrBefore(gappy, at(4).start), 3);
+  assert.equal(barAtOrBefore(gappy, at(5).start), 4);
+  assert.equal(barAtOrBefore(gappy, at(-1).start), -1);
 });
 
-test("weight ramp: linear by minute from the window containing T", () => {
-  const t = (min: number) => 1_000_000 + min * 60;
-  const bars = [0, 1, 10, 11, 13, 14].map((m) => ({ start: t(m) }));
-  const windows = [
-    { session: "pre" as const, start: t(0) },
-    { session: "regular" as const, start: t(10) },
+test("end minute without an alert is clamped to the regular session", () => {
+  const day = [
+    at(-2, "pre"),
+    at(-1, "pre"),
+    at(0),
+    at(1),
+    at(2),
+    at(3, "post"),
+    at(4, "post"),
   ];
-  // Minute 12 is missing: weights still follow the clock minute.
-  assert.deepEqual(weightRamp(bars, 5, windows), [
-    null,
-    null,
-    0.2,
-    0.4,
-    0.8,
-    1,
-  ]);
-  assert.deepEqual(weightRamp(bars, 3, windows), [
-    null,
-    null,
-    0.5,
-    1,
-    null,
-    null,
-  ]);
-  assert.deepEqual(weightRamp(bars, 1, windows), [
-    0.5,
-    1,
-    null,
-    null,
-    null,
-    null,
-  ]);
-  assert.deepEqual(
-    weightRamp(bars, 5, []),
-    bars.map(() => null),
+  // After hours: the day's last regular bar (its closing score).
+  assert.equal(endMinute(day, undefined, 3, false), at(2).start);
+  // Before 09:30: no end minute → "—".
+  assert.equal(endMinute(day.slice(0, 2), undefined, 3, false), null);
+  // "Around alert" keeps the alert's own E (window 1 → minute 3), unclamped.
+  assert.equal(endMinute(day, closeIso(4), 1, true), at(3).start);
+});
+
+test("header = the series' score at E, the alert's own value (scenario 7)", () => {
+  const nvda = series("NVDA", 100, [100, 101, 102, 103, 104, 105]);
+  const spy = series("SPY", 500, [500, 500, 500, 500, 500, 500]);
+  const vs = chartScores(
+    withMarks([nvda, spy], marks({ score: [50, 52, 73, 60, 45, 41] })),
+  )!;
+  const bars = nvda.bars;
+  // Alert bar = minute 5, window 3 (minutes 3–5): E = minute 2 → 73, not
+  // the alert bar's 41.
+  const alertEnd = new Date((bars[5]!.start + 60) * 1000).toISOString();
+  assert.equal(scoreAt(vs, endMinute(bars, alertEnd, 3, true)), 73);
+  assert.equal(scoreAt(vs, endMinute(bars, alertEnd, 3, false)), 41);
+  assert.equal(scoreAt(vs, null), null);
+  assert.equal(scoreAt(null, bars[0]!.start), null);
+  // Before 09:30 (pre-market alert) → "—".
+  assert.equal(scoreAt(vs, bars[0]!.start - 60), null);
+});
+
+test("bar opacity: newest full, 60-minute-old faint, outside very faint", () => {
+  assert.equal(barOpacity(1), 1);
+  assert.ok(Math.abs(barOpacity(1 / 60) - 0.233) < 0.01);
+  assert.ok(barOpacity(0.5) > barOpacity(0.2));
+  assert.equal(barOpacity(0), outsideOpacity);
+  assert.ok(outsideOpacity < barOpacity(1 / 60));
+});
+
+test("contribution bars: value, sign and fade relative to the end bar", () => {
+  const bars = [0, 1, 10, 58, 59, 60, 61].map((k) => at(k));
+  const c = contributionBars(
+    bars,
+    [0.4, null, -0.2, 0.1, 0, Number.NaN, 0.3],
+    at(60).start,
   );
   assert.deepEqual(
-    weightRamp(bars, 9, windows),
-    bars.map(() => null),
+    c.map((b) => b.value),
+    [0.4, null, -0.2, 0.1, 0, null, 0.3],
   );
+  assert.deepEqual(
+    c.map((b) => b.up),
+    [true, true, false, true, true, true, true],
+  );
+  // E = minute 60: minute 0 is 60 min old (outside), 61 is after E.
+  assert.deepEqual(
+    c.map((b) => b.inWindow),
+    [false, true, true, true, true, true, false],
+  );
+  assert.equal(c[5]!.weight, 1);
+  assert.equal(c[4]!.weight, 59 / 60);
+  // 50 minutes before E: 10/60 (scenario 2).
+  assert.equal(c[2]!.weight, 10 / 60);
+  assert.equal(c[0]!.opacity, outsideOpacity);
+  assert.equal(c[6]!.opacity, outsideOpacity);
+  assert.ok(c[4]!.opacity > c[2]!.opacity);
+  // Without an end minute nothing counts.
+  assert.ok(contributionBars(bars, [], null).every((b) => b.weight === 0));
+});
+
+test("alert window bars: the alert's own minutes, excluded from its score", () => {
+  const bars = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((k) => at(k));
+  assert.deepEqual(
+    alertWindowBars(bars, Date.parse(closeIso(7)), 3),
+    [5, 6, 7],
+  );
+  assert.deepEqual(alertWindowBars(bars, NaN, 3), []);
+  assert.deepEqual(alertWindowBars(bars, Date.parse(closeIso(7)), 0), []);
   assert.equal(gapPoints(0.42), "+0.42 pts");
   assert.equal(gapPoints(-1.1), "−1.10 pts");
 });

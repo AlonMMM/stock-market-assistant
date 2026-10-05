@@ -4,7 +4,13 @@ import type {
   ChartBar,
   DayChart,
 } from "../../../packages/market-data/src/day-chart.js";
-import type { AreaVsSpySeries } from "../../../packages/contracts/src/vs-spy.js";
+import {
+  marksAlertEnd,
+  marksScoreAt,
+  marksWeight,
+  marksWeightMinutes,
+  type MarksVsSpySeries,
+} from "../../../packages/contracts/src/vs-spy.js";
 import type {
   OppositeEpisode,
   OppositeKind,
@@ -107,10 +113,9 @@ export const axisPriceMinWidth = 600;
 export const scoreBenchmark = "SPY";
 
 export interface ChartScores {
-  scores: (number | null)[]; // aligned with the requested ticker's bars
-  gap: (number | null)[]; // % points, aligned likewise
-  windows: AreaVsSpySeries["windows"];
-  latest: number | null; // at the last bar
+  series: MarksVsSpySeries; // the backend's per-minute series
+  scores: (number | null)[]; // score with E = that bar, aligned with the bars
+  contribution: (number | null)[]; // c of a marked minute, aligned likewise
   beta: number;
   betaAssumed: boolean;
 }
@@ -118,68 +123,135 @@ export interface ChartScores {
 const finiteOrNull = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
 
+/** Values of a regular-minute series (index k = minute from `start`) per bar. */
+function perBar(
+  bars: { start: number }[],
+  start: number,
+  xs: unknown[] | undefined,
+): (number | null)[] {
+  return bars.map((b) => {
+    const k = (b.start - start) / 60;
+    return Number.isInteger(k) && k >= 0 ? finiteOrNull(xs?.[k]) : null;
+  });
+}
+
 /**
- * Area score vs SPY and gap per minute of the requested ticker, from the
- * backend's `areaVsSpy`. Null when the response has none or the ticker is
- * SPY itself; minutes the series do not cover are null ("—", no gap drawn).
+ * Score vs SPY and contribution per bar of the requested ticker, from the
+ * backend's `marksVsSpy` (no formula in the web). Null when the response
+ * has none or the ticker is SPY itself; bars the series does not cover
+ * (outside the regular session) are null ("—", no bar drawn).
  */
 export function chartScores(data: DayChart): ChartScores | null {
   const main = data.series[0];
-  const area = data.areaVsSpy;
-  if (!main || !area || main.ticker === scoreBenchmark) return null;
-  const align = (xs: unknown[] | undefined) =>
-    main.bars.map((_, i) => finiteOrNull(xs?.[i]));
-  const scores = align(area.score);
+  const series = data.marksVsSpy;
+  if (!main || !series || main.ticker === scoreBenchmark) return null;
   return {
-    scores,
-    gap: align(area.gap),
-    windows: Array.isArray(area.windows) ? area.windows : [],
-    latest: scores.at(-1) ?? null,
-    beta: area.beta,
-    betaAssumed: area.betaAssumed,
+    series,
+    scores: perBar(main.bars, series.start, series.score),
+    contribution: perBar(main.bars, series.start, series.contribution),
+    beta: series.beta,
+    betaAssumed: series.betaAssumed,
   };
 }
 
+/** The score's weight window: the last 60 minutes up to the end minute E. */
+export const weightMinutes = marksWeightMinutes;
+
 /**
- * Bar index the header score ends at: the alert's bar in the "Around alert"
- * view of an alert chart, else the latest bar. -1 without bars.
+ * End minute E (Unix s of its bar start) the header score ends at. In the
+ * "Around alert" view of an alert chart: the last minute before the alert's
+ * own window (the shared `marksAlertEnd`), the same E as the alert's tag and
+ * Telegram line. Otherwise the latest bar clamped to the regular session:
+ * the last regular bar (the day's close after hours); null before the open
+ * or without bars ("—").
  */
-export function headerIndex(
-  count: number,
-  alertIndex: number,
+export function endMinute(
+  bars: { start: number; session: string }[],
+  alertEnd: string | undefined,
+  windowMinutes: number,
   aroundAlert: boolean,
-): number {
-  if (aroundAlert && alertIndex >= 0 && alertIndex < count) return alertIndex;
-  return count - 1;
+): number | null {
+  if (aroundAlert && alertEnd && !Number.isNaN(Date.parse(alertEnd)))
+    return marksAlertEnd(alertEnd, windowMinutes);
+  return bars.findLast((b) => b.session === "regular")?.start ?? null;
+}
+
+/** Index of the bar starting at `minute`, else the last one before it; -1. */
+export function barAtOrBefore(bars: { start: number }[], minute: number) {
+  return bars.findLastIndex((b) => b.start <= minute);
+}
+
+/** Header score at end minute E; null ("—") without a series or E. */
+export const scoreAt = (vs: ChartScores | null, end: number | null) =>
+  vs && end !== null ? finiteOrNull(marksScoreAt(vs.series, end)) : null;
+
+/** Bar opacity at weight 1 (the end minute) and just above 0 (60 min old). */
+export const opacityRange = { newest: 1, oldest: 0.22 } as const;
+/** Opacity of a bar outside the weight window (older, or after E). */
+export const outsideOpacity = 0.07;
+
+/**
+ * Opacity of a contribution bar: linear in its weight from `oldest` (weight
+ * → 0) to `newest` (weight 1); bars that do not count get `outsideOpacity`.
+ */
+export function barOpacity(weight: number): number {
+  if (!(weight > 0)) return outsideOpacity;
+  const { newest, oldest } = opacityRange;
+  return oldest + (newest - oldest) * Math.min(1, weight);
+}
+
+export interface ContributionBar {
+  value: number | null; // c(i), % points; null when the minute is unmarked
+  weight: number; // w(i) for the end minute, 0 outside its 60 minutes
+  opacity: number;
+  up: boolean; // c ≥ 0 → green
+  inWindow: boolean; // inside the shaded 60-minute weight window
 }
 
 /**
- * Display hint for the gap pane: the linear weight w(t) = (t − t0 + 1) /
- * (T − t0 + 1) in minutes, T = bar `end`'s minute and t0 = the start of the
- * backend's session window containing it (the latest window start ≤ T);
- * null outside that window or without one.
+ * Contributions pane bars relative to end minute `end` (the header's E,
+ * Unix s): value from the backend's per-minute contribution, weight
+ * (`marksWeight`) and opacity by clock-minute age. Without E every weight is 0.
  */
-export function weightRamp(
+export function contributionBars(
   bars: { start: number }[],
-  end: number,
-  windows: { start: number }[],
-): (number | null)[] {
-  const ramp: (number | null)[] = bars.map(() => null);
-  const last = bars[end];
-  if (!last) return ramp;
-  const t0 = Math.max(
-    ...windows.map((w) => w.start).filter((t) => t <= last.start),
-  );
-  if (!Number.isFinite(t0)) return ramp;
-  const span = (last.start - t0) / 60 + 1;
-  for (let i = 0; i <= end; i++) {
-    const t = bars[i]!.start;
-    if (t >= t0) ramp[i] = ((t - t0) / 60 + 1) / span;
-  }
-  return ramp;
+  contribution: (number | null)[],
+  end: number | null,
+): ContributionBar[] {
+  return bars.map((b, i) => {
+    const value = finiteOrNull(contribution[i]);
+    const weight = end === null ? 0 : marksWeight(end, b.start);
+    return {
+      value,
+      weight,
+      opacity: barOpacity(weight),
+      up: (value ?? 0) >= 0,
+      inWindow: weight > 0,
+    };
+  });
 }
 
-/** "+0.42 pts" / "−1.10 pts" for the gap pane. */
+/**
+ * Bars of the alert's own window (closing after alert close − window and at
+ * or before the alert close): excluded from the alert's score. Empty without
+ * an alert or a window.
+ */
+export function alertWindowBars(
+  bars: { start: number }[],
+  alertMs: number,
+  windowMinutes: number,
+): number[] {
+  if (Number.isNaN(alertMs) || windowMinutes <= 0) return [];
+  const from = alertMs - windowMinutes * 60000;
+  const out: number[] = [];
+  bars.forEach((b, i) => {
+    const close = (b.start + 60) * 1000;
+    if (close > from && close <= alertMs) out.push(i);
+  });
+  return out;
+}
+
+/** "+0.42 pts" / "−1.10 pts" for the contributions pane. */
 export const gapPoints = (n: number) => `${signed(n)} pts`;
 
 /** "72 / 100", or "—" without a score. */

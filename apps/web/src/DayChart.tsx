@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AreaSeries,
-  BaselineSeries,
   ColorType,
   createChart,
   createSeriesMarkers,
@@ -9,6 +7,7 @@ import {
   HistogramSeries,
   LineSeries,
   LineStyle,
+  type HistogramData,
   type IChartApi,
   type ISeriesApi,
   type IPanePrimitive,
@@ -30,14 +29,18 @@ import {
   type OppositeKind,
 } from "../../../packages/market-data/src/opposite.js";
 import {
+  alertWindowBars,
   axisPriceMinWidth,
   bandKinds,
   chartScores,
+  contributionBars,
   dollars,
   type ChartScores,
+  barAtOrBefore,
+  endMinute,
   episodeSummary,
   gapPoints,
-  headerIndex,
+  scoreAt,
   isStrongVolume,
   percentAndPrice,
   percentBase,
@@ -48,9 +51,9 @@ import {
   stateText,
   strongVolume,
   typicalRatio,
-  weightRamp,
+  weightMinutes,
 } from "./chart-model.js";
-import { areaScoreNote, scoreCell } from "./vs-spy-model.js";
+import { scoreNote, scoreCell } from "./vs-spy-model.js";
 import {
   israelClock,
   israelLabel,
@@ -78,15 +81,15 @@ const colors = {
   open: "rgba(107, 114, 128, 0.55)",
   band: { strong: "rgba(22, 163, 74, 0.13)", weak: "rgba(220, 38, 38, 0.11)" },
   strip: { strong: "#166534", weak: "#991b1b" },
-  // Gap pane: stock minus β×SPY, green above 0, red below; a faint ramp
-  // behind it shows how much each minute weighs in the score.
-  gap: {
-    upLine: "#15803d",
-    upFill: ["rgba(22, 163, 74, 0.32)", "rgba(22, 163, 74, 0.06)"],
-    downLine: "#b91c1c",
-    downFill: ["rgba(220, 38, 38, 0.06)", "rgba(220, 38, 38, 0.32)"],
+  // Contributions pane: one bar per marked minute, green above 0, red
+  // below, faded by its weight; the 60-minute weight window shaded and the
+  // alert's own (excluded) minutes hatched.
+  marks: {
+    up: "22, 163, 74",
+    down: "220, 38, 38",
     zero: "#6b7280",
-    ramp: "rgba(20, 43, 41, 0.05)",
+    window: "rgba(20, 43, 41, 0.05)",
+    excluded: "rgba(107, 114, 128, 0.45)",
   },
   clear: "rgba(0, 0, 0, 0)",
   surface: "#fafbf8",
@@ -110,6 +113,56 @@ function stripTag(text: string, corner = false): IPanePrimitive<Time> {
         context.fillStyle = colors.text;
         context.textBaseline = "middle";
         context.fillText(text, 4, height / 2 + 0.5);
+      }),
+  };
+  const view: IPanePrimitivePaneView = {
+    zOrder: () => "top",
+    renderer: () => renderer,
+  };
+  return { paneViews: () => [view] };
+}
+
+// Hatched band over the alert's own minutes in the contributions pane, with
+// a small "alert excluded" label: those minutes do not count in the alert's
+// score. `span()` gives the band's first and last bar times, or null to hide.
+function excludedBand(
+  chart: IChartApi,
+  span: () => { from: Time; to: Time } | null,
+): IPanePrimitive<Time> {
+  const renderer: IPrimitivePaneRenderer = {
+    draw: (target) =>
+      target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+        const s = span();
+        if (!s) return;
+        const scale = chart.timeScale();
+        const from = scale.timeToCoordinate(s.from);
+        const to = scale.timeToCoordinate(s.to);
+        if (from === null || to === null) return;
+        const half = Math.max(1, scale.options().barSpacing / 2);
+        const x = from - half;
+        const width = Math.max(2, to - from + 2 * half);
+        context.save();
+        context.beginPath();
+        context.rect(x, 0, width, mediaSize.height);
+        context.clip();
+        context.strokeStyle = colors.marks.excluded;
+        context.lineWidth = 1;
+        for (let d = -mediaSize.height; d < width; d += 5) {
+          context.beginPath();
+          context.moveTo(x + d, mediaSize.height);
+          context.lineTo(x + d + mediaSize.height, 0);
+          context.stroke();
+        }
+        context.restore();
+        context.font = "600 10px Inter, ui-sans-serif, system-ui, sans-serif";
+        const label = "alert excluded";
+        const w = context.measureText(label).width + 6;
+        const lx = Math.min(x + width + 2, mediaSize.width - w);
+        context.fillStyle = colors.surface;
+        context.fillRect(lx, mediaSize.height - 15, w, 14);
+        context.fillStyle = colors.text;
+        context.textBaseline = "middle";
+        context.fillText(label, lx + 3, mediaSize.height - 7.5);
       }),
   };
   const view: IPanePrimitivePaneView = {
@@ -242,8 +295,8 @@ export function DayChart({
   const chartRef = useRef<{
     chart: IChartApi;
     m: Point[];
-    ramp: ISeriesApi<"Area"> | null;
-    alertIndex: number;
+    marks: MarksPane | null;
+    readoutAt: (p: Point) => Readout;
   } | null>(null);
   const [data, setData] = useState<DayChartData | null>(null);
   const [error, setError] = useState("");
@@ -391,67 +444,51 @@ export function DayChart({
       benchLine.setData(b.map((p) => ({ time: p.time, value: p.percent })));
     }
 
-    // Gap pane under the price pane: gap(t) = stock − β×SPY in % points
-    // (the backend's series), a zero line, and the score's weight ramp.
+    // Contributions pane under the price pane: c(i) per marked minute (the
+    // backend's series), faded by weight for the header's end minute, the
+    // weight window shaded and, around an alert, its excluded minutes.
     let nextPane = 1;
-    let gapPane = -1;
-    let ramp: ISeriesApi<"Area"> | null = null;
-    if (vs && vs.gap.some((g) => g !== null)) {
-      gapPane = nextPane++;
-      ramp = chart.addSeries(
-        AreaSeries,
+    let marksPane = -1;
+    let marks: MarksPane | null = null;
+    if (vs) {
+      marksPane = nextPane++;
+      const shade = chart.addSeries(
+        HistogramSeries,
         {
-          priceScaleId: "ramp",
-          lineVisible: false,
-          topColor: colors.gap.ramp,
-          bottomColor: colors.gap.ramp,
+          priceScaleId: "shade",
           priceLineVisible: false,
           lastValueVisible: false,
-          crosshairMarkerVisible: false,
+          base: 0,
         },
-        gapPane,
+        marksPane,
       );
       chart
-        .priceScale("ramp", gapPane)
+        .priceScale("shade", marksPane)
         .applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
-      const gapSeries = chart.addSeries(
-        BaselineSeries,
+      const bars = chart.addSeries(
+        HistogramSeries,
         {
-          baseValue: { type: "price", price: 0 },
-          topLineColor: colors.gap.upLine,
-          topFillColor1: colors.gap.upFill[0],
-          topFillColor2: colors.gap.upFill[1],
-          bottomLineColor: colors.gap.downLine,
-          bottomFillColor1: colors.gap.downFill[0],
-          bottomFillColor2: colors.gap.downFill[1],
-          lineWidth: 1,
           priceScaleId: "right",
+          base: 0,
           priceFormat: {
             type: "custom",
             formatter: gapPoints,
             minMove: 0.01,
           },
           priceLineVisible: false,
-          crosshairMarkerRadius: 3,
+          lastValueVisible: false,
         },
-        gapPane,
+        marksPane,
       );
-      gapSeries.setData(
-        m.map((p) => {
-          const g = vs.gap[p.index];
-          return g === null || g === undefined
-            ? { time: p.time }
-            : { time: p.time, value: g };
-        }),
-      );
-      gapSeries.createPriceLine({
+      bars.createPriceLine({
         price: 0,
-        color: colors.gap.zero,
+        color: colors.marks.zero,
         lineWidth: 1,
         lineStyle: LineStyle.Dotted,
         axisLabelVisible: false,
         title: "",
       });
+      marks = { shade, bars, excluded: null };
     }
 
     // Strip between the price and volume panes: solid opposite-to-benchmark
@@ -535,10 +572,12 @@ export function DayChart({
     }
     const panes = chart.panes();
     panes[0]?.setStretchFactor(3);
-    if (gapPane >= 0) {
-      panes[gapPane]?.setStretchFactor(0.9);
-      panes[gapPane]?.attachPrimitive(
-        stripTag(`Gap vs β×${scoreBenchmark}`, true),
+    if (marks) {
+      const pane = panes[marksPane];
+      pane?.setStretchFactor(0.9);
+      pane?.attachPrimitive(excludedBand(chart, () => marks.excluded));
+      pane?.attachPrimitive(
+        stripTag(`Marks: move − β×${scoreBenchmark}`, true),
       );
     }
     if (opp) {
@@ -582,9 +621,7 @@ export function DayChart({
     const frame = requestAnimationFrame(() =>
       applyRange(chart, rangeRef.current, m, alertMs),
     );
-    const alertIndex = alertBar?.index ?? -1;
-    ramp?.setData(rampData(m, rangeRef.current, alertIndex, vs));
-    chartRef.current = { chart, m, ramp, alertIndex };
+    drawMarks(marks, m, main.bars, rangeRef.current, alertMs, window, vs);
 
     const benchByTime = new Map(b?.map((p) => [p.time, p]));
     const readoutAt = (p: Point): Readout => ({
@@ -600,7 +637,10 @@ export function DayChart({
       score: vs?.scores[p.index] ?? null,
     });
     const byTime = new Map(m.map((p) => [p.time, p]));
-    setLatest(readoutAt((alertBar ?? m[m.length - 1])!));
+    chartRef.current = { chart, m, marks, readoutAt };
+    setLatest(
+      endReadout(m, main.bars, rangeRef.current, alertEnd, window, readoutAt),
+    );
     const onMove = (param: MouseEventParams) => {
       const p = param.time ? byTime.get(param.time as UTCTimestamp) : undefined;
       setReadout(p ? readoutAt(p) : null);
@@ -619,22 +659,26 @@ export function DayChart({
     const c = chartRef.current;
     if (!c) return;
     applyRange(c.chart, range, c.m, alertMs);
-    c.ramp?.setData(rampData(c.m, range, c.alertIndex, vsRef.current));
+    if (main) {
+      drawMarks(c.marks, c.m, main.bars, range, alertMs, window, vsRef.current);
+      setLatest(
+        endReadout(c.m, main.bars, range, alertEnd, window, c.readoutAt),
+      );
+    }
   }, [range]);
 
   const shown = readout ?? latest;
-  // Header: the area score at the alert minute in "Around alert", else at
-  // the latest bar (the same number as the alert's tag and Telegram line).
-  const headerAt = main
-    ? headerIndex(
-        main.bars.length,
-        main.bars.findIndex((b) => (b.start + 60) * 1000 === alertMs),
-        range === "alert",
-      )
-    : -1;
+  // Header: the score at the alert's end minute E (the last minute before
+  // its window) in "Around alert", the same number as the alert's tag and
+  // Telegram line; else at the latest regular-session bar. The readout
+  // shows the same minute when nothing is pointed at.
+  const aroundAlert = range === "alert" && !!alertEnd;
+  const headerEnd = main
+    ? endMinute(main.bars, alertEnd, window, aroundAlert)
+    : null;
   const header = scoreCell(
-    vs?.scores[headerAt],
-    range === "alert" && alertEnd ? "at the alert" : "at the latest minute",
+    scoreAt(vs, headerEnd),
+    aroundAlert ? "at the alert" : "at the latest regular-session minute",
   );
   const benchName = bench?.ticker ?? benchmark;
   const base = main?.previousClose === null ? "first trade" : "previous close";
@@ -819,7 +863,7 @@ export function DayChart({
             {!Number.isNaN(alertMs) && "▼ marks the alert. "}
             {showScore &&
               (vs
-                ? `vs ${scoreBenchmark} score 0–100: the ${areaScoreNote} (β ${vs.betaAssumed ? "assumed 1" : vs.beta.toFixed(2)}); green ≥ 60 stronger, red ≤ 40 weaker. Header: ${alertEnd ? "the alert minute in Around alert, else " : ""}the latest minute; readout: the area ending at the pointed minute. Gap pane: ${main.ticker} minus β×${scoreBenchmark} in % points since the session's first bar, green above 0, red below; the faint ramp behind it is each minute's weight. `
+                ? `vs ${scoreBenchmark} score 0–100: ${scoreNote} (β ${vs.betaAssumed ? "assumed 1" : vs.beta.toFixed(2)}); green ≥ 60 stronger, red ≤ 40 weaker. Header: ${alertEnd ? "in Around alert, the last minute before the alert's window (as on the alert's tag); else " : ""}the latest regular-session minute (the close after hours); readout: that minute, or the score ending at the pointed minute. Marks pane: one bar per marked minute, its ${main.ticker} 5-min move minus β×${scoreBenchmark}'s in % points, green above 0, red below; the shaded ${weightMinutes} minutes up to the header's minute count, newer bars stronger, older ones faded${alertEnd ? "; hatched = the alert's own minutes, excluded" : ""}. `
                 : `vs ${scoreBenchmark} score: not available for this chart. `)}
             Shaded = pre-market. Times in {israelLabel}.
           </p>
@@ -843,20 +887,71 @@ function ReadoutScore({ score }: { score: number | null }) {
   );
 }
 
-// The weight ramp ends where the header score ends.
-function rampData(
+// Readout when nothing is pointed at: the bar at the header's end minute
+// (or the last bar before it); the latest bar when there is no end minute.
+function endReadout(
   m: Point[],
+  bars: { start: number; session: string }[],
   range: Range,
-  alertIndex: number,
+  alertEnd: string | undefined,
+  windowMinutes: number,
+  readoutAt: (p: Point) => Readout,
+): Readout | null {
+  const end = endMinute(bars, alertEnd, windowMinutes, range === "alert");
+  const i = end === null ? -1 : barAtOrBefore(bars, end);
+  const p = m[i >= 0 ? i : m.length - 1];
+  return p ? readoutAt(p) : null;
+}
+
+interface MarksPane {
+  shade: ISeriesApi<"Histogram">;
+  bars: ISeriesApi<"Histogram">;
+  // Excluded alert window, read by the hatched band; null hides it.
+  excluded: { from: Time; to: Time } | null;
+}
+
+// Contributions relative to the header's end minute: bar opacity by
+// weight, the weight window shaded, the alert's window hatched in "Around
+// alert". Redrawn when the range (and so the end minute) changes.
+function drawMarks(
+  pane: MarksPane | null,
+  m: Point[],
+  bars: { start: number; session: string }[],
+  range: Range,
+  alertMs: number,
+  windowMinutes: number,
   vs: ChartScores | null,
 ) {
-  const end = headerIndex(m.length, alertIndex, range === "alert");
-  const w = weightRamp(
-    m.map((p) => ({ start: p.instant / 1000 - 60 })),
-    end,
-    vs?.windows ?? [],
+  if (!pane || !vs) return;
+  const around = range === "alert" && !Number.isNaN(alertMs);
+  const end = endMinute(
+    bars,
+    around ? new Date(alertMs).toISOString() : undefined,
+    windowMinutes,
+    around,
   );
-  return m.map((p, i) =>
-    w[i] === null ? { time: p.time } : { time: p.time, value: w[i]! },
+  const c = contributionBars(bars, vs.contribution, end);
+  pane.shade.setData(
+    m.map((p, i) => ({
+      time: p.time,
+      value: 1,
+      color: c[i]!.inWindow ? colors.marks.window : colors.clear,
+    })),
   );
+  pane.bars.setData(
+    m.map((p, i): HistogramData<Time> | { time: Time } => {
+      const b = c[i]!;
+      return b.value === null
+        ? { time: p.time }
+        : {
+            time: p.time,
+            value: b.value,
+            color: `rgba(${b.up ? colors.marks.up : colors.marks.down}, ${b.opacity.toFixed(3)})`,
+          };
+    }),
+  );
+  const excluded = around ? alertWindowBars(bars, alertMs, windowMinutes) : [];
+  pane.excluded = excluded.length
+    ? { from: m[excluded[0]!]!.time, to: m[excluded.at(-1)!]!.time }
+    : null;
 }

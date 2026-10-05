@@ -6,7 +6,7 @@ import {
   runBoard as runLiveBoard,
 } from "../packages/market-data/src/board.js";
 import type { SpyStrength } from "../packages/market-data/src/rs-score.js";
-import type { SigmaCurve } from "../packages/market-data/src/area-vs-spy.js";
+import type { MarksSigma } from "../packages/market-data/src/marks-vs-spy.js";
 import { pairedDaily } from "./analysis-fixtures.js";
 import {
   newYorkToUtc,
@@ -291,7 +291,12 @@ function strengthBoard(failDaily = false) {
         symbols.map((s) => [s, s === "SPY" ? daily.benchmark : daily.stock]),
       );
     }
-    const base: Record<string, number> = { NVDA: 100, SPY: 500, QQQ: 400 };
+    const base: Record<string, number> = {
+      NVDA: 100,
+      AMD: 100,
+      SPY: 500,
+      QQQ: 400,
+    };
     return new Map(
       symbols.map((s) => {
         if (timeframe === "1Day")
@@ -313,34 +318,41 @@ function strengthBoard(failDaily = false) {
   return { calls, multi };
 }
 
-// Minute bars for the area score: NVDA opens 100 at 09:30 and closes 101
-// (+1%) every minute, SPY flat at 500. Past sessions: NVDA +1% / −1% on
-// alternate days, so σ = 1 at every minute.
-const minutes = (ticker: string, d: string, level: number, to = 960) =>
-  Array.from({ length: to - 570 }, (_, i) => ({
-    start: newYorkToUtc(d, 570 + i) / 1000,
-    open: i ? level : ticker === "SPY" ? 500 : 100,
-    high: Math.max(level, 100),
-    low: Math.min(level, 100),
-    close: level,
-    volume: 1,
-  }));
+// Minute bars for the marked-sections score: NVDA (and AMD) flat at 100,
+// SPY flat at 500 with a one-minute dip to 497.5 (−0.5 %) at 10:20 New
+// York when `dip`: a green mark, c = 0.5 β. Past sessions dip on alternate
+// days.
+const minutes = (
+  ticker: string,
+  d: string,
+  dip: boolean,
+  to = 960,
+  dipAt = 620,
+) =>
+  Array.from({ length: to - 570 }, (_, i) => {
+    const level =
+      ticker === "SPY" ? (dip && 570 + i === dipAt ? 497.5 : 500) : 100;
+    return {
+      start: newYorkToUtc(d, 570 + i) / 1000,
+      open: level,
+      high: level,
+      low: level,
+      close: level,
+      volume: 1,
+    };
+  });
 function areaHistory() {
   const calls: string[] = [];
   const history = async (ticker: string, start: string, end: string) => {
     calls.push(ticker);
     assert.equal(end, new Date(newYorkToUtc(date, 0)).toISOString());
     assert.equal(start, new Date(newYorkToUtc(sessions[0]!, 0)).toISOString());
-    return sessions.flatMap((d, i) =>
-      ticker === "SPY"
-        ? minutes("SPY", d, 500)
-        : minutes(ticker, d, i % 2 ? 99 : 101),
-    );
+    return sessions.flatMap((d, i) => minutes(ticker, d, i % 2 === 0));
   };
   return { calls, history };
 }
 
-test("board stats carry the area score and β vs SPY at asOf", async () => {
+test("board stats carry the marked-sections score and β vs SPY at asOf", async () => {
   const now = at(`${date}T15:00:00Z`) * 1000;
   const { multi: base } = strengthBoard();
   const requested: string[][] = [];
@@ -352,13 +364,13 @@ test("board stats carry the area score and β vs SPY at asOf", async () => {
       symbols.map((s) => [
         s,
         // Through 10:45 NY: the bar starting at asOf must be ignored.
-        minutes(s, date, s === "SPY" ? 500 : 101, 646).map((r, i, all) =>
+        minutes(s, date, true, 646).map((r, i, all) =>
           i === all.length - 1 ? { ...r, close: 50, low: 50 } : r,
         ),
       ]),
     );
   };
-  const sigmas = new MemoryDailyStore<SigmaCurve>();
+  const sigmas = new MemoryDailyStore<MarksSigma>();
   const baselineStore = new MemoryBaselineStore();
   const strengthStore = new MemoryDailyStore<SpyStrength>();
   const poll = (
@@ -384,8 +396,9 @@ test("board stats carry the area score and β vs SPY at asOf", async () => {
   const stats = board.series[0]!.stats!;
   assert.equal(stats.asOf, at(`${date}T14:45:00Z`));
   assert.ok(Math.abs(stats.beta! - 1.5) < 1e-9);
-  // Area 1 (SPY flat, so β does not matter), σ 1 → round(100 · Φ(1)).
-  assert.equal(stats.rsScore, 84);
+  // E = 10:44: the mark at 10:20 has age 24, w = 36/60, I = 0.5·1.5·0.6;
+  // σ = I/√2 (10 of the 20 past sessions dip) → round(100 · Φ(√2)) = 92.
+  assert.equal(stats.rsScore, 92);
   // One minute request from 09:30 NY to asOf; σ from 20 sessions, stored.
   assert.deepEqual(requested, [
     ["NVDA,SPY", `${date}T13:30:00.000Z`, `${date}T14:45:00.000Z`],
@@ -395,14 +408,14 @@ test("board stats carry the area score and β vs SPY at asOf", async () => {
   // A later poll reads the stored curve: no history.
   const second = areaHistory();
   const again = await poll(["NVDA"], second.history);
-  assert.equal(again.series[0]!.stats!.rsScore, 84);
+  assert.equal(again.series[0]!.stats!.rsScore, 92);
   assert.deepEqual(second.calls, []);
   // At most `perPoll` curves per poll, in a rotating order; the rest stay
   // null until a later poll.
-  const fresh = new MemoryDailyStore<SigmaCurve>();
+  const fresh = new MemoryDailyStore<MarksSigma>();
   const one = await poll(["NVDA", "AMD"], areaHistory().history, fresh, 1);
   const scores = one.series.slice(0, 2).map((x) => x.stats!.rsScore);
-  assert.deepEqual([...scores].sort(), [84, null]);
+  assert.deepEqual([...scores].sort(), [92, null]);
   const next = await poll(
     ["NVDA", "AMD"],
     areaHistory().history,
@@ -412,8 +425,50 @@ test("board stats carry the area score and β vs SPY at asOf", async () => {
   );
   assert.deepEqual(
     next.series.slice(0, 2).map((x) => x.stats!.rsScore),
-    [84, 84],
+    [92, 92],
   );
+  // Before the open and after the close the score is null (regular only),
+  // and no minute bars are requested.
+  requested.length = 0;
+  const pre = await poll(
+    ["NVDA"],
+    areaHistory().history,
+    sigmas,
+    undefined,
+    at(`${date}T13:20:00Z`) * 1000, // 09:20 NY, data to 09:05
+  );
+  assert.equal(pre.series[0]!.stats!.rsScore, null);
+  assert.deepEqual(requested, []);
+});
+
+test("after the close the board shows the closing score; E is clamped to 15:59", async () => {
+  // SYNTHETIC: SPY dips at 15:50 on alternate past sessions and today.
+  // 17:00 New York with the 15-minute delay: asOf 16:45 (after-hours).
+  const now = at(`${date}T21:00:00Z`) * 1000;
+  const { multi: base } = strengthBoard();
+  const requested: string[] = [];
+  const multi: Multi = async (symbols, start, end, timeframe, adjustment) => {
+    if (timeframe !== "1Min")
+      return base(symbols, start, end, timeframe, adjustment);
+    requested.push(`${start}–${end}`);
+    return new Map(symbols.map((s) => [s, minutes(s, date, true, 960, 950)]));
+  };
+  const history = async (ticker: string) =>
+    sessions.flatMap((d, i) => minutes(ticker, d, i % 2 === 0, 960, 950));
+  const poll = () =>
+    runBoard(["NVDA"], multi, now, {}, baselines, strengthStore, undefined, {
+      history,
+      store: sigmas,
+    });
+  const baselines = new MemoryBaselineStore();
+  const strengthStore = new MemoryDailyStore<SpyStrength>();
+  const sigmas = new MemoryDailyStore<MarksSigma>();
+  await poll(); // cold: Rel vol and β history, no σ
+  const board = await poll();
+  // E = 15:59: the mark at 15:50 has age 9 → I = 0.5·1.5·51/60, σ = I/√2.
+  assert.equal(board.series[0]!.stats!.rsScore, 92);
+  // The minute request stops at the regular close (16:00 New York).
+  assert.equal(requested.at(-1), `${date}T13:30:00.000Z–${date}T20:00:00.000Z`);
 });
 
 test("a failed β/σ history request leaves score and β null, not stored", async () => {

@@ -892,7 +892,7 @@ button.market-tile[aria-expanded="true"] {
     margin-left: auto;
   }
 }
-/* Area score vs SPY: green ≥ 60 (stronger), red ≤ 40 (weaker), grey
+/* Score vs SPY (marked sections): green ≥ 60 (stronger), red ≤ 40 (weaker), grey
    between; the words are in the tooltip and accessible label. */
 .vs-spy-score {
   min-width: 3.2ch;
