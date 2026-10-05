@@ -322,9 +322,16 @@ function strengthBoard(failDaily = false) {
 // SPY flat at 500 with a one-minute dip to 497.5 (−0.5 %) at 10:20 New
 // York when `dip`: a green mark, c = 0.5 β. Past sessions dip on alternate
 // days.
-const minutes = (ticker: string, d: string, dip: boolean, to = 960) =>
+const minutes = (
+  ticker: string,
+  d: string,
+  dip: boolean,
+  to = 960,
+  dipAt = 620,
+) =>
   Array.from({ length: to - 570 }, (_, i) => {
-    const level = ticker === "SPY" ? (dip && i === 50 ? 497.5 : 500) : 100;
+    const level =
+      ticker === "SPY" ? (dip && 570 + i === dipAt ? 497.5 : 500) : 100;
     return {
       start: newYorkToUtc(d, 570 + i) / 1000,
       open: level,
@@ -432,6 +439,36 @@ test("board stats carry the marked-sections score and β vs SPY at asOf", async 
   );
   assert.equal(pre.series[0]!.stats!.rsScore, null);
   assert.deepEqual(requested, []);
+});
+
+test("after the close the board shows the closing score; E is clamped to 15:59", async () => {
+  // SYNTHETIC: SPY dips at 15:50 on alternate past sessions and today.
+  // 17:00 New York with the 15-minute delay: asOf 16:45 (after-hours).
+  const now = at(`${date}T21:00:00Z`) * 1000;
+  const { multi: base } = strengthBoard();
+  const requested: string[] = [];
+  const multi: Multi = async (symbols, start, end, timeframe, adjustment) => {
+    if (timeframe !== "1Min")
+      return base(symbols, start, end, timeframe, adjustment);
+    requested.push(`${start}–${end}`);
+    return new Map(symbols.map((s) => [s, minutes(s, date, true, 960, 950)]));
+  };
+  const history = async (ticker: string) =>
+    sessions.flatMap((d, i) => minutes(ticker, d, i % 2 === 0, 960, 950));
+  const poll = () =>
+    runBoard(["NVDA"], multi, now, {}, baselines, strengthStore, undefined, {
+      history,
+      store: sigmas,
+    });
+  const baselines = new MemoryBaselineStore();
+  const strengthStore = new MemoryDailyStore<SpyStrength>();
+  const sigmas = new MemoryDailyStore<MarksSigma>();
+  await poll(); // cold: Rel vol and β history, no σ
+  const board = await poll();
+  // E = 15:59: the mark at 15:50 has age 9 → I = 0.5·1.5·51/60, σ = I/√2.
+  assert.equal(board.series[0]!.stats!.rsScore, 92);
+  // The minute request stops at the regular close (16:00 New York).
+  assert.equal(requested.at(-1), `${date}T13:30:00.000Z–${date}T20:00:00.000Z`);
 });
 
 test("a failed β/σ history request leaves score and β null, not stored", async () => {

@@ -279,10 +279,17 @@ test("strength now is the score with E = each symbol's latest bar", async () => 
       at: bar("NVDA", day, 649, 1).end,
     },
   });
-  // After the regular close the latest bar is outside the session: null.
+  // After the close the latest bar is after-hours: E = NVDA's last regular
+  // bar (10:49 here), the day's closing score (Product + UX, 2026-10-05).
   const post = bar("NVDA", day, 965, 100);
   stored.push(post);
   strength.bar(post);
+  assert.deepEqual(strength.current(["NVDA"]), now);
+  // Pre-market: null.
+  const next = previousSessions("2026-10-01", 1)[0]!; // a later session
+  const pre = bar("NVDA", next, 500, 100);
+  stored.push(pre);
+  strength.bar(pre);
   assert.equal(strength.current(["NVDA"]).NVDA!.score, null);
 });
 

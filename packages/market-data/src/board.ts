@@ -49,8 +49,8 @@ export interface BoardStats {
   typicalVolume: number | null;
   relVolume: number | null; // volume / typicalVolume; null before the open
   // Marked-sections score vs SPY (0–100) with E = the minute bar that
-  // closes at asOf (docs/features/marks-vs-spy.md); null outside the regular
-  // session, without σ (or σ = 0 early in the session), without SPY's or the
+  // closes at asOf, or the last regular minute after the close
+  // (docs/features/marks-vs-spy.md); null before 09:30, without σ (or σ = 0 early in the session), without SPY's or the
   // stock's bars by E, or while the symbol's σ curve is not computed yet.
   // Always against SPY.
   rsScore?: number | null;
@@ -343,14 +343,21 @@ export async function runBoard(
   const step = baselineStep * 60;
   const asOf =
     Math.floor(Math.min(end, newYorkToUtc(date, 1200)) / 1000 / step) * step;
-  // Score at asOf: E is the minute bar closing at asOf; regular session only.
-  const scoredAt = newYork(asOf * 1000 - 60000);
+  // Score at asOf: E is the minute bar closing at asOf, clamped to the
+  // regular session's last minute after the close (after-hours shows the
+  // day's closing score); null before 09:30 (Product + UX, 2026-10-05).
+  const closeMinute = coreClose(date)!;
+  const asOfAt = newYork(asOf * 1000 - 60000);
+  const scoredAt = {
+    date: asOfAt.date,
+    minute: Math.min(asOfAt.minute, closeMinute - 1),
+  };
+  const scoredEnd = Math.min(asOf, newYorkToUtc(date, closeMinute) / 1000);
   const scored =
     area !== undefined &&
     listed.some((t) => t !== benchmark) &&
     scoredAt.date === date &&
-    scoredAt.minute >= regularOpen &&
-    scoredAt.minute < coreClose(date)!;
+    scoredAt.minute >= regularOpen;
   // Requests start in this order: intraday, daily, baselines, β/σ.
   const intradayRequest = multi(
     symbols,
@@ -375,7 +382,7 @@ export async function runBoard(
       dailyRequest,
       curveRequest,
       strengthRequest,
-      scored ? regularMinutes(listed, date, asOf, multi) : null,
+      scored ? regularMinutes(listed, date, scoredEnd, multi) : null,
       scored
         ? Promise.all([strengthRequest, curveRequest]).then(([values]) =>
             // Only with the date's β: a stored curve is kept all day.
