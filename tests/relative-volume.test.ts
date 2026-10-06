@@ -36,6 +36,8 @@ function bar(
 // shares, so today needs ≥ 300 shares and a move ≥ 0.6% (3×) and ≥ 0.5%.
 const unit: Config = {
   ...defaults,
+  todayMoveMultiple: 0,
+  dayRangeMoveFraction: 0,
   threshold: 3, // the fixtures below are built for 3× (the default until 2026-10-05)
   window: 1,
   days: 1,
@@ -71,7 +73,7 @@ test("demo: volume, meaningful move and one direction alert once; the past is fi
   assert.ok(Math.abs(alert!.move - 1.25) < 1e-9);
   assert.equal(alert!.volumeBasis, "history");
   assert.equal(alert!.samples, 20);
-  assert.equal(alert!.rule, "rvol-v4");
+  assert.equal(alert!.rule, "rvol-v5");
   const cutoff = alert!.end;
   assert.deepEqual(
     replay(
@@ -131,6 +133,8 @@ test("every close must pass the previous close and every candle must share the c
   const run = (directionBars: number) => {
     const engine = new RelativeVolume({
       ...defaults,
+      todayMoveMultiple: 0,
+      dayRangeMoveFraction: 0,
       threshold: 3, // fixture volume is 3× the baseline
       days: 1,
       minVolume: 0,
@@ -345,6 +349,8 @@ test("the last-minute gate and the number of same-direction candles are configur
   const engine = (config: Partial<Config>) => {
     const e = new RelativeVolume({
       ...defaults,
+      todayMoveMultiple: 0,
+      dayRangeMoveFraction: 0,
       threshold: 3, // fixture volume is 3× the baseline
       days: 1,
       minVolume: 0,
@@ -388,6 +394,8 @@ function v4Day(
 ) {
   const engine = new RelativeVolume({
     ...defaults,
+    todayMoveMultiple: 0,
+    dayRangeMoveFraction: 0,
     window: 1,
     days: 10,
     minVolume: 0,
@@ -459,6 +467,68 @@ test("v4 settings are validated", () => {
     { inPlayDayRvol: -1 },
     { todayVolumeMultiple: Number.NaN },
     { todayMoveMultiple: 101 },
+  ])
+    assert.throws(() => new RelativeVolume({ ...defaults, ...bad }));
+});
+
+test("v5 defaults require 5x on both volume paths and enable adaptive price gates", () => {
+  assert.equal(defaults.threshold, 5);
+  assert.equal(defaults.paceMultiple, 5);
+  assert.equal(defaults.todayMoveMultiple, 3);
+  assert.equal(defaults.dayRangeMoveFraction, 0.2);
+  assert.equal(defaults.minPrice, 10);
+});
+
+test("day range raises the move floor, excludes the burst and includes overnight gaps", () => {
+  const run = (close: number, range = 109, gap = false) => {
+    const engine = new RelativeVolume({ ...unit, dayRangeMoveFraction: 0.2 });
+    engine.push(bar("2026-03-02", 660, 100, 100, 100));
+    engine.push(bar("2026-03-02", 661, 100, 100.2, 100));
+    engine.push(bar("2026-03-02", 960, 100, 100, 100));
+    engine.push(bar("2026-03-03", 659, gap ? range : 100, range, 100));
+    engine.push(bar("2026-03-03", 660, range, range, 100));
+    return engine.push(
+      bar("2026-03-03", 661, range, range * (1 + close / 100), 600),
+    )!;
+  };
+  const small = run(1.5);
+  assert.equal(small.status, "normal-for-today");
+  assert.equal(small.dayRangePercent, 9);
+  assert.ok(Math.abs(small.requiredMovePercent! - 1.8) < 1e-9);
+  assert.equal(run(2).status, "alert");
+  assert.equal(run(1.5, 109, true).status, "normal-for-today");
+  // The candidate's own 1% jump cannot increase its yardstick.
+  assert.equal(run(1, 100).dayRangePercent, 0);
+  assert.equal(run(1, 100).status, "alert");
+});
+
+test("price gate rejects cheap stocks and is configurable", () => {
+  const run = (minPrice: number) => {
+    const engine = new RelativeVolume({ ...unit, minPrice });
+    engine.push(bar("2026-03-02", 660, 5, 5, 100));
+    engine.push(bar("2026-03-02", 661, 5, 5.005, 100));
+    engine.push(bar("2026-03-03", 660, 5, 5, 100));
+    return engine.push(bar("2026-03-03", 661, 5, 5.1, 600))!;
+  };
+  assert.equal(run(10).status, "low-price");
+  assert.equal(run(0).status, "alert");
+});
+
+test("adaptive gates preserve past alerts when later bars are added", () => {
+  const rows = demoBars();
+  const config = { ...defaults, threshold: 3, paceMultiple: 3 };
+  const cutoff = "2026-03-30T15:11:00.000Z";
+  assert.deepEqual(
+    replay(
+      rows.filter((b) => b.end <= cutoff),
+      config,
+    ),
+    replay(rows, config).filter((r) => r.end <= cutoff),
+  );
+  for (const bad of [
+    { minPrice: -1 },
+    { dayRangeMoveFraction: 1.01 },
+    { dayRangeMoveFraction: NaN },
   ])
     assert.throws(() => new RelativeVolume({ ...defaults, ...bad }));
 });

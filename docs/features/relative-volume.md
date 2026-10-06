@@ -69,3 +69,15 @@ POST /api/backtest with `{ "tickers": ["AAPL"], "from": "YYYY-MM-DD", "to": "YYY
 ## Current delivery
 
 Deterministic streaming engine, JSON historical replay API, website demo/upload and ratio/liquidity controls. No live provider, database, price/sector charts or phone delivery yet. Historical input must contain its warmup history. The demo contains 21 synthetic weekdays with a single NVDA anomaly and accounts for March DST.
+
+## v5: reduce alert noise (2026-10-06, in review)
+
+The shared defaults now require 5× volume on both the historical and today's
+pace comparisons. Price ≥$10 is required. N2 is enabled at 3× today's prior
+median window move. `dayRangeMoveFraction: 0.2` adds a move floor of 20% of
+today's range observed before the alert window, including extended hours and
+the previous regular close. A 9% range requires at least 1.8%. The candidate
+window and future minutes never contribute. Both new gates are configurable
+(`minPrice: 0` and `dayRangeMoveFraction: 0` disable them); effective price
+requirements are recorded in alert evidence. See [task](../tasks/reduce-alert-noise.md)
+for universe liquidity screening and the proposed OPRA spread filter.

@@ -87,7 +87,7 @@ test("live alert requires actual prior trading dates and never publishes warmup 
     paceMultiple: 0,
   };
   // Each day: a flat 10.00 bar at 10:59 New York, then the evaluated 11:00
-  // bar. Baseline days rise 1%; the alert day rises 5% on 4× volume.
+  // bar. Baseline days rise 1%; the alert day rises 5% on 5× volume.
   const day = (e: LiveEvaluator, date: string, now: number, live: boolean) => {
     const bar = (time: string, close: number, volume: number) =>
       normalize(
@@ -105,7 +105,7 @@ test("live alert requires actual prior trading dates and never publishes warmup 
     const alertDay = date === "2026-09-18";
     e.push(bar("14:59", 10, 100), now, live);
     return e.push(
-      bar("15:00", alertDay ? 10.5 : 10.1, alertDay ? 400 : 100),
+      bar("15:00", alertDay ? 10.5 : 10.1, alertDay ? 500 : 100),
       now,
       live,
     );

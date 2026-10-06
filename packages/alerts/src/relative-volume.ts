@@ -10,6 +10,8 @@ export interface Bar {
   volume: number;
   open: number;
   close: number;
+  high?: number;
+  low?: number;
   // New York minute the regular session closes that day (780 on early-close
   // days); 960 when absent.
   regularClose?: number;
@@ -43,16 +45,19 @@ export interface Config {
   // same window length (median over today's regular minutes before the
   // window; needs 15). 0 = off.
   todayMoveMultiple: number;
+  // Fraction of today's observed price range before the alert window.
+  // 0.2 requires a 1.8% move after an observed 9% range. 0 = off.
+  dayRangeMoveFraction: number;
+  minPrice: number; // current close; 0 disables the price filter
 }
 // The rule this evaluator implements. Bump it with any change to the alert
 // conditions; stored alerts and cached backtests are keyed by it.
-export const ruleVersion = "rvol-v4";
+export const ruleVersion = "rvol-v5";
 
 export const defaults: Config = {
   window: 3,
   days: 20,
-  // 4× (was 3×) since 2026-10-05: about half the alerts, better look-now rate.
-  threshold: 4,
+  threshold: 5,
   cooldown: 15,
   minVolume: 10000,
   priceMultiple: 3,
@@ -62,13 +67,15 @@ export const defaults: Config = {
   lastBarMinMovePercent: 0,
   // v4: one candle (was 3); the study kept quality with ~25% more alerts.
   directionBars: 1,
-  paceMultiple: 4,
+  paceMultiple: 5,
   paceMinMinutes: 15,
   paceSkipOpen: 30,
   paceSkipClose: 30,
   inPlayDayRvol: 2,
   todayVolumeMultiple: 0,
-  todayMoveMultiple: 0,
+  todayMoveMultiple: 3,
+  dayRangeMoveFraction: 0.2,
+  minPrice: 10,
 };
 export interface Evaluation {
   ticker: string;
@@ -93,12 +100,15 @@ export interface Evaluation {
   dayRvol?: number | null;
   inPlay?: boolean;
   todayMove?: number | null;
+  dayRangePercent?: number | null;
+  requiredMovePercent?: number | null;
   status:
     | "insufficient-history"
     | "weak-last-bar"
     | "zero-baseline"
     | "below-threshold"
     | "low-volume"
+    | "low-price"
     | "mixed-direction"
     | "small-move"
     | "busy-day-volume" // N1
@@ -106,7 +116,7 @@ export interface Evaluation {
     | "suppressed"
     | "alert";
   // Stored alerts keep the rule that produced them.
-  rule: "rvol-v3" | "rvol-v4";
+  rule: "rvol-v3" | "rvol-v4" | "rvol-v5";
   config: Config;
 }
 export function validateConfig(c: Config) {
@@ -147,6 +157,11 @@ export function validateConfig(c: Config) {
     (c.paceMultiple !== 0 && c.paceMultiple <= 1) ||
     c.paceSkipOpen > 390 ||
     c.paceSkipClose > 390 ||
+    !Number.isFinite(c.minPrice) ||
+    c.minPrice < 0 ||
+    !Number.isFinite(c.dayRangeMoveFraction) ||
+    c.dayRangeMoveFraction < 0 ||
+    c.dayRangeMoveFraction > 1 ||
     ![c.inPlayDayRvol, c.todayVolumeMultiple, c.todayMoveMultiple].every(
       (v) => Number.isFinite(v) && v >= 0 && v <= 100,
     )
@@ -174,6 +189,10 @@ interface DayState {
   cum: number; // volume so far today, all sessions
   minutes: Float64Array; // cumulative volume by minute today (NaN = no bar)
   closes: Float64Array; // regular-session closes by minute today
+  highs: Float64Array;
+  lows: Float64Array;
+  anchor: number; // previous regular close, else first observed open
+  regularClose: number | null;
   // Previous sessions' cumulative volume by minute, forward-filled.
   past: Map<string, Float64Array>;
 }
@@ -211,7 +230,14 @@ export class RelativeVolume {
       !Number.isSafeInteger(bar.volume) ||
       bar.volume < 0 ||
       !(Number.isFinite(bar.open) && bar.open > 0) ||
-      !(Number.isFinite(bar.close) && bar.close > 0)
+      !(Number.isFinite(bar.close) && bar.close > 0) ||
+      (bar.high !== undefined &&
+        (!Number.isFinite(bar.high) ||
+          bar.high < Math.max(bar.open, bar.close))) ||
+      (bar.low !== undefined &&
+        (!Number.isFinite(bar.low) ||
+          bar.low <= 0 ||
+          bar.low > Math.min(bar.open, bar.close)))
     )
       throw new Error("Invalid closed bar");
     const day = this.today(bar);
@@ -329,7 +355,17 @@ export class RelativeVolume {
       c.todayMoveMultiple === 0 ||
       todayMove === null ||
       Math.abs(move) >= c.todayMoveMultiple * todayMove;
-    const signal = candidate && busyOk && todayOk;
+    const dayRangePercent = candidate ? this.dayRange(day, bar) : null;
+    const requiredMovePercent = Math.max(
+      c.minMovePercent,
+      c.priceMultiple * (expectedMove ?? 0),
+      c.todayMoveMultiple * (todayMove ?? 0),
+      c.dayRangeMoveFraction * (dayRangePercent ?? 0),
+    );
+    const rangeOk =
+      Math.abs(move) >= c.dayRangeMoveFraction * (dayRangePercent ?? 0);
+    const priceOk = bar.close >= c.minPrice;
+    const signal = candidate && busyOk && todayOk && rangeOk && priceOk;
     let status: Evaluation["status"] =
       expected === null
         ? "insufficient-history"
@@ -339,20 +375,22 @@ export class RelativeVolume {
             ? "zero-baseline"
             : !volumeOk
               ? "below-threshold"
-              : actual < this.config.minVolume
-                ? "low-volume"
-                : direction === null
-                  ? "mixed-direction"
-                  : !moveOk
-                    ? "small-move"
-                    : !busyOk
-                      ? "busy-day-volume"
-                      : !todayOk
-                        ? "normal-for-today"
-                        : s.above ||
-                            time - s.alerted < this.config.cooldown * 60000
-                          ? "suppressed"
-                          : "alert";
+              : !priceOk
+                ? "low-price"
+                : actual < this.config.minVolume
+                  ? "low-volume"
+                  : direction === null
+                    ? "mixed-direction"
+                    : !moveOk
+                      ? "small-move"
+                      : !busyOk
+                        ? "busy-day-volume"
+                        : !todayOk || !rangeOk
+                          ? "normal-for-today"
+                          : s.above ||
+                              time - s.alerted < this.config.cooldown * 60000
+                            ? "suppressed"
+                            : "alert";
     if (status === "alert") s.alerted = time;
     s.above = signal;
     return {
@@ -378,6 +416,8 @@ export class RelativeVolume {
       inPlay:
         c.inPlayDayRvol > 0 && dayRvol !== null && dayRvol >= c.inPlayDayRvol,
       todayMove,
+      dayRangePercent,
+      requiredMovePercent,
       status,
       rule: ruleVersion,
       config: { ...this.config },
@@ -404,14 +444,35 @@ export class RelativeVolume {
         cum: 0,
         minutes: new Float64Array(1441).fill(NaN),
         closes: new Float64Array(1441).fill(NaN),
+        highs: new Float64Array(1441).fill(NaN),
+        lows: new Float64Array(1441).fill(NaN),
+        anchor: d?.regularClose ?? bar.open,
+        regularClose: null,
         past,
       };
       this.days.set(bar.ticker, d);
     }
     d.cum += bar.volume;
     d.minutes[bar.minute] = d.cum;
+    d.highs[bar.minute] = bar.high ?? Math.max(bar.open, bar.close);
+    d.lows[bar.minute] = bar.low ?? Math.min(bar.open, bar.close);
+    if (bar.session === "regular") d.regularClose = bar.close;
     if (bar.session === "regular") d.closes[bar.minute] = bar.close;
     return d;
+  }
+  // All observed sessions, excluding every bar in the candidate window.
+  // The prior close includes overnight gaps; no future bars enter this floor.
+  private dayRange(d: DayState, bar: Bar): number | null {
+    let high = d.anchor;
+    let low = d.anchor;
+    let observed = false;
+    for (let m = 0; m <= bar.minute - this.config.window; m++) {
+      if (Number.isNaN(d.highs[m]!)) continue;
+      high = Math.max(high, d.highs[m]!);
+      low = Math.min(low, d.lows[m]!);
+      observed = true;
+    }
+    return observed ? ((high - low) / d.anchor) * 100 : null;
   }
   private dayRvol(d: DayState, minute: number): number | null {
     const levels = [...d.past.values()].map((v) => v[minute]!);

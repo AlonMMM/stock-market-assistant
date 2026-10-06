@@ -11,6 +11,7 @@ import {
   isSettingsError,
   lastSessions,
   liveSettings,
+  liveRule,
   maxSessions,
   maxTickers,
   mergeResults,
@@ -137,22 +138,20 @@ export function Backtest({ modes }: { modes: ReactNode }) {
   const now = Date.now();
   const pill = pillFor(live.value, now, live.at);
 
-  // Symbols on offer: the shared backtest list plus the live watchlist.
+  // A loaded shared list is authoritative, so removed stocks stay removed.
   const backtestList = useBacktestList();
-  const universe = watchlist.list
-    ? [
-        ...new Set([
-          ...(backtestList.list?.tickers ?? []),
-          ...watchlist.list.tickers,
-        ]),
-      ]
-    : [];
+  const universe = backtestList.list?.tickers ?? watchlist.list?.tickers ?? [];
   const [tickers, setTickersState] = useState<string[]>([]);
   const [loadedList, setLoadedList] = useState(false);
   if (watchlist.list && backtestList.list !== null && !loadedList) {
     setLoadedList(true);
     // Nothing saved on this device: start with the live watchlist.
-    setTickersState(savedTickers(universe, watchlist.list.tickers));
+    setTickersState(
+      savedTickers(
+        universe,
+        watchlist.list.tickers.filter((s) => universe.includes(s)),
+      ),
+    );
   }
   const setTickers = (t: string[]) => {
     saveTickers(t);
@@ -501,7 +500,7 @@ export function Backtest({ modes }: { modes: ReactNode }) {
               }
             >
               <p className="rule-summary">
-                <strong>Live rule (rvol-v4):</strong> {ruleSummary()}
+                <strong>Live rule ({liveRule}):</strong> {ruleSummary()}
               </p>
               <button
                 type="button"

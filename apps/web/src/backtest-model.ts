@@ -3,6 +3,7 @@
 // merging batch results. No DOM access, so Node tests import it.
 import {
   defaults,
+  ruleVersion,
   type Config,
 } from "../../../packages/alerts/src/relative-volume.js";
 import type {
@@ -32,12 +33,14 @@ import {
   maxSymbolsPerRequest,
 } from "../../../packages/market-data/src/backtest-limits.js";
 
-export const liveRule = "rvol-v4";
+export const liveRule = ruleVersion;
 export const maxSessions = backtestLimits.sessions;
 
 // ------------------------------------------------------------ rule fields
 
 export type RuleKey =
+  | "minPrice"
+  | "dayRangeMoveFraction"
   | "threshold"
   | "minVolume"
   | "paceMultiple"
@@ -86,6 +89,12 @@ export const ruleGroups: { title: string; fields: RuleField[] }[] = [
     title: "Price move",
     fields: [
       {
+        key: "minPrice",
+        label: "Minimum stock price ($)",
+        min: "0",
+        step: "1",
+      },
+      {
         key: "priceMultiple",
         label: "Move (× typical)",
         min: "1",
@@ -116,8 +125,16 @@ export const ruleGroups: { title: string; fields: RuleField[] }[] = [
     ],
   },
   {
-    title: "Today-relative (optional)",
+    title: "Today-relative",
     fields: [
+      {
+        key: "dayRangeMoveFraction",
+        label: "Move / prior day range",
+        hint: "0 = off; 0.2 = 20%",
+        min: "0",
+        max: "1",
+        step: "0.05",
+      },
       {
         key: "todayVolumeMultiple",
         label: "Burst vs today's volume (×)",
@@ -205,6 +222,8 @@ export function ruleSummary(s: RuleSettings = liveSettings): string {
       : "");
   const candles = `${s.directionBars} ${s.directionBars === 1 ? "candle" : "candles"} in the move's direction`;
   const today = [
+    s.dayRangeMoveFraction > 0 &&
+      `move ≥ ${s.dayRangeMoveFraction * 100}% of today's prior range`,
     s.todayVolumeMultiple > 0 &&
       `burst ≥ ${s.todayVolumeMultiple}× today's volume level`,
     s.todayMoveMultiple > 0 &&
@@ -212,6 +231,7 @@ export function ruleSummary(s: RuleSettings = liveSettings): string {
   ].filter(Boolean);
   return (
     `${volume}; ${move}; ${candles}` +
+    (s.minPrice > 0 ? `; price ≥ $${s.minPrice}` : "") +
     (today.length ? `; ${today.join(", ")}` : "") +
     `; ${s.cooldown} min cooldown.` +
     (s.inPlayDayRvol > 0
@@ -275,7 +295,9 @@ export function symbolGroups(
     listed.has(t)
       ? list!.etfs.includes(t)
       : knownEtfs.has(t) || benchmarks.has(t);
-  const all = [...new Set([...(list?.tickers ?? []), ...watchlist.tickers])];
+  // Once loaded, the shared list is authoritative. Deleted stocks must not
+  // reappear through the older display watchlist.
+  const all = [...new Set(list ? list.tickers : watchlist.tickers)];
   all.sort();
   return {
     stocks: all.filter((t) => !etf(t)),

@@ -1,6 +1,6 @@
 # Current state
 
-Updated: 2026-10-03
+Updated: 2026-10-06
 Phase: Alpaca live alerts on real-time SIP with Telegram delivery; marked-sections score vs SPY in review.
 
 ## Working product
@@ -10,6 +10,15 @@ https://stock-market-assistant.alonmor89.chatgpt.site. It uses synthetic demo da
 uploaded historical JSON, not live market data. The shared relative-volume engine,
 replay API, mobile layout and configurable thresholds/cooldown are implemented.
 See [publication](tasks/sites-publication.md) and [alert contract](features/relative-volume.md).
+
+## In review: reduce alert noise
+
+[Task](tasks/reduce-alert-noise.md). rvol-v5 uses 5× volume, adaptive price
+floors and a $10 price gate in live and backtest. The symbol selector previews
+20-session price/share/dollar liquidity and can remove failing stocks while
+keeping ETFs and missing-history symbols. A read-only Alpaca universe/OPRA
+chain screener supports the proposed spread filter. Live data validation and
+deployment remain pending; no list removals were performed in this session.
 
 ## Current increment
 

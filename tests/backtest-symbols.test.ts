@@ -186,3 +186,21 @@ test("pushLiveSymbols sends PUT /live-symbols with the collector token", async (
     error: "Live collector is not configured",
   });
 });
+
+test("removing the final symbol syncs an empty live list", async () => {
+  const store = new D1SymbolList(new SqliteD1(":memory:"));
+  await store.change(["PLUG"], [], "stock");
+  const pushed: string[][] = [];
+  const result = await handleBacktestSymbols(
+    "POST",
+    { remove: ["PLUG"] },
+    store,
+    async (tickers) => {
+      pushed.push(tickers);
+      return { synced: true };
+    },
+  );
+  assert.equal(result.status, 200);
+  assert.deepEqual(pushed, [[]]);
+  assert.deepEqual((result.body as { tickers: string[] }).tickers, []);
+});

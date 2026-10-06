@@ -33,6 +33,7 @@ import {
   pushLiveSymbols,
 } from "../../../packages/market-data/src/watchlist.js";
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
+import { handleSymbolScreen } from "../../../packages/market-data/src/screen-symbols.js";
 
 export function buildApp(
   logging = false,
@@ -57,6 +58,14 @@ export function buildApp(
       parseSipDelay(process.env.ALPACA_SIP_DELAY_MINUTES),
   };
   const app = Fastify({ logger: logging });
+  app.get("/api/backtest/symbols/screen", async (_request, reply) => {
+    const result = await handleSymbolScreen(
+      alpaca,
+      alpaca.symbols,
+      alpaca.fetcher,
+    );
+    return reply.code(result.status).send(result.body);
+  });
   app.post("/api/backtest", async (request, reply) => {
     const result = await handleBacktest(
       request.body,

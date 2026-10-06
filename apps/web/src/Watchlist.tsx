@@ -38,8 +38,14 @@ export function useBacktestList() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ add, remove, kind }),
     });
-    const body = await readJson<BacktestList>(response);
+    const body = await readJson<
+      BacktestList & { live?: { synced: boolean; error?: string } }
+    >(response);
     setList({ tickers: body.tickers, etfs: body.etfs ?? [] });
+    if (body.live && !body.live.synced)
+      throw new Error(
+        `List updated, but live collector sync failed: ${body.live.error ?? "unknown error"}. Retry the change.`,
+      );
   }
   return { list, error, change };
 }

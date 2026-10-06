@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import Fastify from "fastify";
 import {
   defaults,
+  ruleVersion,
   validateConfig,
   type Config,
 } from "../../../packages/alerts/src/relative-volume.js";
@@ -312,7 +313,7 @@ api.post("/notifications/synthetic", async (_request, reply) => {
     session: "regular",
     actual: 123456,
     expected: 30000,
-    ratio: 4.1,
+    ratio: 5.1,
     paceRatio: null,
     volumeBasis: "history",
     move: 1.23,
@@ -320,7 +321,7 @@ api.post("/notifications/synthetic", async (_request, reply) => {
     direction: "up",
     samples: config.days,
     status: "alert",
-    rule: "rvol-v4",
+    rule: ruleVersion,
     config,
     close: 100,
     synthetic: true,
@@ -403,13 +404,12 @@ api.put("/live-symbols", async (request, reply) => {
   const tickers = (request.body as { tickers?: unknown } | null)?.tickers;
   if (
     !Array.isArray(tickers) ||
-    !tickers.length ||
     tickers.length > maxLiveSymbols ||
     !tickers.every((t) => typeof t === "string" && tickerPattern.test(t))
   )
     return reply
       .code(400)
-      .send({ error: `Expected 1–${maxLiveSymbols} US stock symbols` });
+      .send({ error: `Expected 0–${maxLiveSymbols} US stock symbols` });
   const previous = liveTickers() ?? [];
   const next = [...new Set(tickers as string[])];
   store.setLiveSymbols(next);
