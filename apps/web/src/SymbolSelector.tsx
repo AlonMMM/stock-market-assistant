@@ -43,7 +43,10 @@ export function SymbolSelector({
 
   const groups = symbolGroups(list, watchlist);
   const all = [...groups.stocks, ...groups.etfs];
-  const sectors = sectorGroups(watchlist);
+  const sectors = sectorGroups(watchlist).map((g) => ({
+    ...g,
+    tickers: g.tickers.filter((s) => all.includes(s)),
+  }));
   const listed = new Set(list?.tickers ?? []);
   const typed = parseSymbols(query);
   // Typed words: exact symbols, search prefixes of existing symbols, and new
@@ -109,10 +112,13 @@ export function SymbolSelector({
   const quick: { label: string; tickers: string[]; reason?: string }[] = [
     { label: "All stocks", tickers: groups.stocks },
     { label: "All ETFs", tickers: groups.etfs },
-    { label: "Watchlist", tickers: watchlist.tickers },
+    {
+      label: "Watchlist",
+      tickers: watchlist.tickers.filter((s) => all.includes(s)),
+    },
     {
       label: "Alerted",
-      tickers: alerted ?? [],
+      tickers: (alerted ?? []).filter((s) => all.includes(s)),
       reason:
         alerted === null
           ? "Loading live alerts"
@@ -172,7 +178,6 @@ export function SymbolSelector({
       </div>
 
       <p className="preview">{previewTickers(selected)}</p>
-
       <label className="symbol-search">
         <span className="sr-only">Search or add symbols</span>
         <input
@@ -339,7 +344,7 @@ export function SymbolSelector({
         </button>
         <span className="muted small">
           {editing
-            ? "× removes a symbol from the shared list. Watchlist symbols come from IBKR."
+            ? "× removes a symbol from the shared list and the live engine."
             : `${list?.tickers.length ?? "…"} symbols in the shared list · watchlist: ${watchlistSource(watchlist)} · selection saved on this device`}
         </span>
       </div>

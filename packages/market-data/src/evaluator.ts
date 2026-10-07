@@ -16,6 +16,9 @@ export class LiveEvaluator {
   constructor(private config: Config = defaults) {
     this.engine = new RelativeVolume(config);
   }
+  rememberAlert(ticker: string, end: string) {
+    this.engine.rememberAlert(ticker, end);
+  }
   push(bar: PriceBar, now: number, live: boolean) {
     if (bar.end <= this.last) return null;
     if (bar.date !== this.date) {

@@ -54,6 +54,65 @@ function today(open: number, close: number, volume = 300, config = unit) {
 // The synthetic demo was built for 3× volume, the default until 2026-10-05.
 const demoConfig: Config = { ...defaults, threshold: 3, paceMultiple: 3 };
 
+test("defaults keep 4x volume, disable optional today gates and use a two-hour cooldown", () => {
+  assert.equal(defaults.threshold, 4);
+  assert.equal(defaults.paceMultiple, 4);
+  assert.equal(defaults.cooldown, 120);
+  assert.equal(defaults.todayMoveMultiple, 0);
+  assert.equal(defaults.todayVolumeMultiple, 0);
+});
+
+test("cooldown follows the ticker across sessions and directions, expires at two hours and is independent per ticker", () => {
+  const engine = new RelativeVolume(unit);
+  const push = (
+    date: string,
+    minute: number,
+    volume: number,
+    close: number,
+    session: Bar["session"],
+    ticker = "NVDA",
+  ) =>
+    engine.push({ ...bar(date, minute, 100, close, volume, ticker), session });
+  for (const ticker of ["NVDA", "AMD"]) {
+    push("2026-03-02", 660, 100, 100, "pre", ticker);
+    push("2026-03-02", 661, 100, 100.2, "pre", ticker);
+  }
+  for (const m of [720, 721, 780, 781])
+    push("2026-03-02", m, 100, m % 2 ? 100.2 : 100, "regular");
+  push("2026-03-03", 660, 100, 100, "pre");
+  assert.equal(push("2026-03-03", 661, 300, 101, "pre")?.status, "alert");
+  push("2026-03-03", 660, 100, 100, "pre", "AMD");
+  assert.equal(
+    push("2026-03-03", 661, 300, 101, "pre", "AMD")?.status,
+    "alert",
+  );
+  push("2026-03-03", 720, 100, 100, "regular");
+  assert.equal(
+    push("2026-03-03", 721, 300, 99, "regular")?.status,
+    "suppressed",
+  );
+  push("2026-03-03", 780, 100, 100, "regular");
+  assert.equal(
+    push("2026-03-03", 781, 300, 101, "regular")?.status,
+    "alert",
+    "exactly 120 minutes after the last alert; a suppressed candidate does not extend it",
+  );
+});
+
+test("a delivered alert restored after restart or ticker re-add still holds the cooldown", () => {
+  const engine = new RelativeVolume(unit);
+  engine.push(bar("2026-03-02", 660, 100, 100, 100));
+  engine.push(bar("2026-03-02", 661, 100, 100.2, 100));
+  engine.rememberAlert("NVDA", "2026-03-03T14:02:00.000Z");
+  engine.rememberAlert("NVDA", "2026-03-03T13:00:00.000Z");
+  engine.push(bar("2026-03-03", 660, 100, 100, 100));
+  assert.equal(
+    engine.push(bar("2026-03-03", 661, 100, 101, 300))?.status,
+    "suppressed",
+  );
+  assert.throws(() => engine.rememberAlert("NVDA", "invalid"));
+});
+
 test("demo: volume, meaningful move and one direction alert once; the past is fixed", () => {
   const bars = demoBars();
   const results = replay(bars, demoConfig);
@@ -71,7 +130,7 @@ test("demo: volume, meaningful move and one direction alert once; the past is fi
   assert.ok(Math.abs(alert!.move - 1.25) < 1e-9);
   assert.equal(alert!.volumeBasis, "history");
   assert.equal(alert!.samples, 20);
-  assert.equal(alert!.rule, "rvol-v4");
+  assert.equal(alert!.rule, "rvol-v6");
   const cutoff = alert!.end;
   assert.deepEqual(
     replay(

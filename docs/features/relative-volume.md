@@ -69,3 +69,20 @@ POST /api/backtest with `{ "tickers": ["AAPL"], "from": "YYYY-MM-DD", "to": "YYY
 ## Current delivery
 
 Deterministic streaming engine, JSON historical replay API, website demo/upload and ratio/liquidity controls. No live provider, database, price/sector charts or phone delivery yet. Historical input must contain its warmup history. The demo contains 21 synthetic weekdays with a single NVDA anomaly and accounts for March DST.
+
+## v6: ticker control and two-hour cooldown (2026-10-07, in review)
+
+The user kept 4× on both volume paths and withdrew the proposed v5 adaptive
+price/range gates and current-price floor. Existing time-of-day movement checks
+remain unchanged; optional today-relative gates default to off. Cooldown now
+defaults to 120 minutes per ticker, shared across directions, pre-market,
+regular and post-market. Suppressed candidates do not extend it; a fresh
+crossing at exactly 120 minutes can alert. Continuous qualifying windows still
+produce only one alert. The collector restores the latest delivered alert
+from its durable store after restart/list edits. Backtests use the same rule.
+
+Live → Manage engine tickers adds/removes stocks or ETFs through the shared
+list endpoint and syncs the collector; retrying a sync does not require another
+list edit. The shared list is authoritative in Live board and Backtest. The
+approved 35-stock cleanup is a one-time list edit, not an automatic filter;
+users may add these tickers again. See [task](../tasks/reduce-alert-noise.md).

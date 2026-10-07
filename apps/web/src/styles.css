@@ -2537,3 +2537,32 @@ main:has(> .backtest-page) {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+
+.engine-tickers {
+  padding: 16px;
+  border: 1px solid #d0d6ca;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+.engine-tickers summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.engine-ticker-add {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.engine-ticker-add .symbol-search {
+  flex: 1 1 220px;
+}
+.engine-ticker-add label span {
+  display: block;
+  margin-bottom: 6px;
+}
+.engine-tickers > .symbol-search {
+  display: block;
+  margin-bottom: 12px;
+}

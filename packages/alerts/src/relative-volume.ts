@@ -46,14 +46,14 @@ export interface Config {
 }
 // The rule this evaluator implements. Bump it with any change to the alert
 // conditions; stored alerts and cached backtests are keyed by it.
-export const ruleVersion = "rvol-v4";
+export const ruleVersion = "rvol-v6";
 
 export const defaults: Config = {
   window: 3,
   days: 20,
   // 4× (was 3×) since 2026-10-05: about half the alerts, better look-now rate.
   threshold: 4,
-  cooldown: 15,
+  cooldown: 120,
   minVolume: 10000,
   priceMultiple: 3,
   minMovePercent: 0.5,
@@ -106,7 +106,7 @@ export interface Evaluation {
     | "suppressed"
     | "alert";
   // Stored alerts keep the rule that produced them.
-  rule: "rvol-v3" | "rvol-v4";
+  rule: "rvol-v3" | "rvol-v4" | "rvol-v5" | "rvol-v6";
   config: Config;
 }
 export function validateConfig(c: Config) {
@@ -181,6 +181,8 @@ interface DayState {
 export class RelativeVolume {
   private config: Config;
   private days = new Map<string, DayState>();
+  // One cooldown for the ticker across directions, sessions and date changes.
+  private alerted = new Map<string, number>();
   private states = new Map<
     string,
     {
@@ -188,7 +190,6 @@ export class RelativeVolume {
       bars: Bar[];
       history: Map<string, Map<number, { volume: number; move: number }>>;
       above: boolean;
-      alerted: number;
       // Today's pace zone so far: volume and bar count.
       pace: { date: string; volume: number; bars: number };
     }
@@ -196,6 +197,16 @@ export class RelativeVolume {
   constructor(config: Config = defaults) {
     validateConfig(config);
     this.config = { ...config };
+  }
+  /** Restore the last delivered alert after a collector restart/list edit. */
+  rememberAlert(ticker: string, end: string) {
+    const time = Date.parse(end);
+    if (!ticker || !Number.isFinite(time) || time % 60000 !== 0)
+      throw new Error("Invalid alert cooldown");
+    this.alerted.set(
+      ticker,
+      Math.max(time, this.alerted.get(ticker) ?? -Infinity),
+    );
   }
   push(bar: Bar): Evaluation | null {
     const time = Date.parse(bar.end);
@@ -221,7 +232,6 @@ export class RelativeVolume {
       bars: [],
       history: new Map<string, Map<number, { volume: number; move: number }>>(),
       above: false,
-      alerted: -Infinity,
       pace: { date: bar.date, volume: 0, bars: 0 },
     };
     if (time <= s.last) throw new Error("Duplicate or out-of-order bar");
@@ -235,7 +245,6 @@ export class RelativeVolume {
       s.bars = [];
       s.above = false;
     }
-    if (previous && previous.date !== bar.date) s.alerted = -Infinity;
     if (s.pace.date !== bar.date)
       s.pace = { date: bar.date, volume: 0, bars: 0 };
     // Pace zone: regular session, excluding the opening and closing minutes
@@ -350,10 +359,11 @@ export class RelativeVolume {
                       : !todayOk
                         ? "normal-for-today"
                         : s.above ||
-                            time - s.alerted < this.config.cooldown * 60000
+                            time - (this.alerted.get(bar.ticker) ?? -Infinity) <
+                              this.config.cooldown * 60000
                           ? "suppressed"
                           : "alert";
-    if (status === "alert") s.alerted = time;
+    if (status === "alert") this.alerted.set(bar.ticker, time);
     s.above = signal;
     return {
       ticker: bar.ticker,

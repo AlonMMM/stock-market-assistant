@@ -126,6 +126,6 @@ export async function handleBacktestSymbols(
     };
   await store.change(add, remove, kind);
   const list = await store.list();
-  if (!push || !list.tickers.length) return { status: 200, body: list };
+  if (!push) return { status: 200, body: list };
   return { status: 200, body: { ...list, live: await push(list.tickers) } };
 }

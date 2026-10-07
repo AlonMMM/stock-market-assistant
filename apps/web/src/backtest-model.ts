@@ -3,6 +3,7 @@
 // merging batch results. No DOM access, so Node tests import it.
 import {
   defaults,
+  ruleVersion,
   type Config,
 } from "../../../packages/alerts/src/relative-volume.js";
 import type {
@@ -32,7 +33,7 @@ import {
   maxSymbolsPerRequest,
 } from "../../../packages/market-data/src/backtest-limits.js";
 
-export const liveRule = "rvol-v4";
+export const liveRule = ruleVersion;
 export const maxSessions = backtestLimits.sessions;
 
 // ------------------------------------------------------------ rule fields
@@ -149,7 +150,7 @@ export const ruleGroups: { title: string; fields: RuleField[] }[] = [
       },
       {
         key: "cooldown",
-        label: "Cooldown (min)",
+        label: "Ticker cooldown (min)",
         min: "0",
         max: "1440",
         step: "1",
@@ -182,7 +183,7 @@ export function changeBadge(changes: number): string {
     : `${changes} ${changes === 1 ? "change" : "changes"} from live`;
 }
 
-/** "rvol-v4" / "rvol-v4 + 1 change". */
+/** "rvol-v6" / "rvol-v6 + 1 change". */
 export function ruleLabel(changes: number): string {
   return changes === 0
     ? liveRule
@@ -275,7 +276,9 @@ export function symbolGroups(
     listed.has(t)
       ? list!.etfs.includes(t)
       : knownEtfs.has(t) || benchmarks.has(t);
-  const all = [...new Set([...(list?.tickers ?? []), ...watchlist.tickers])];
+  // Once loaded, the shared list is authoritative. Deleted stocks must not
+  // reappear through the older display watchlist.
+  const all = [...new Set(list ? list.tickers : watchlist.tickers)];
   all.sort();
   return {
     stocks: all.filter((t) => !etf(t)),
@@ -716,7 +719,7 @@ export function batches<T>(items: T[], size: number): T[][] {
   return out;
 }
 
-/** "Setup · 30 symbols · 5 sessions · rvol-v4 + 1 change". */
+/** "Setup · 30 symbols · 5 sessions · rvol-v6 + 1 change". */
 export function setupSummary(
   symbols: number,
   sessions: number | null,

@@ -99,7 +99,7 @@ export function buildApp(
       token: process.env.COLLECTOR_TOKEN,
     });
     const result = await handleBoard(
-      list.tickers,
+      alpaca.symbols ? (await alpaca.symbols.list()).tickers : list.tickers,
       list.benchmarks,
       alpaca,
       alpaca.fetcher,

@@ -195,7 +195,9 @@ export default {
         token: env.COLLECTOR_TOKEN,
       });
       const result = await handleBoard(
-        list.tickers,
+        env.BARS_CACHE
+          ? (await stores(env.BARS_CACHE).symbols.list()).tickers
+          : list.tickers,
         list.benchmarks,
         credentials,
         fetch,
