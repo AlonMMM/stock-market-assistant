@@ -71,6 +71,51 @@ test("the backtest symbol list adds, removes and validates symbols", async () =>
   assert.equal((await handleBacktestSymbols("GET", undefined)).status, 503);
 });
 
+test("adding and removing engine tickers changes the live board, including an empty engine", async (t) => {
+  const db = new SqliteD1(":memory:");
+  const symbols = new D1SymbolList(db);
+  await symbols.change(["AAPL", "PLUG"], [], "stock");
+  const fetcher = (async () =>
+    Response.json({ bars: {}, next_page_token: null })) as typeof fetch;
+  t.mock.method(globalThis, "fetch", fetcher);
+  const app = buildApp(false, {
+    key: "synthetic",
+    secret: "synthetic",
+    symbols,
+    fetcher,
+  });
+  t.after(() => app.close());
+  const env = {
+    BARS_CACHE: db,
+    ALPACA_API_KEY: "synthetic",
+    ALPACA_API_SECRET: "synthetic",
+  };
+  await app.inject({
+    method: "POST",
+    url: "/api/backtest/symbols",
+    payload: { add: ["AMD"], remove: ["PLUG"] },
+  });
+  const local = await app.inject({ method: "GET", url: "/api/board" });
+  const hosted = await worker.fetch(
+    new Request("https://example.test/api/board"),
+    env,
+  );
+  assert.equal(local.statusCode, 200);
+  assert.equal(hosted.status, 200);
+  assert.deepEqual(local.json().watchlist, ["AAPL", "AMD"]);
+  assert.deepEqual(
+    ((await hosted.json()) as { watchlist: string[] }).watchlist,
+    ["AAPL", "AMD"],
+  );
+  await symbols.change([], ["AAPL", "AMD"], "stock");
+  const empty = await app.inject({ method: "GET", url: "/api/board" });
+  assert.deepEqual(
+    empty.json().watchlist,
+    [],
+    "does not fall back to removed legacy watchlist tickers",
+  );
+});
+
 test("local API and hosted Worker serve the same backtest symbol list", async () => {
   const app = buildApp(false, {
     symbols: new D1SymbolList(new SqliteD1(":memory:")),

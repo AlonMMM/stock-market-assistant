@@ -32,7 +32,6 @@ import {
 } from "../../../packages/market-data/src/watchlist.js";
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
 import { verifyAccess } from "./access.js";
-import { handleSymbolScreen } from "../../../packages/market-data/src/screen-symbols.js";
 
 declare const __STATIC_ASSETS__: Record<
   string,
@@ -103,18 +102,6 @@ export default {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
     const path = new URL(request.url).pathname;
-    if (path === "/api/backtest/symbols/screen") {
-      if (request.method !== "GET")
-        return new Response("Method not allowed", { status: 405 });
-      const result = await handleSymbolScreen(
-        { key: env.ALPACA_API_KEY, secret: env.ALPACA_API_SECRET },
-        env.BARS_CACHE ? stores(env.BARS_CACHE).symbols : undefined,
-      );
-      return Response.json(result.body, {
-        status: result.status,
-        headers: { "Cache-Control": "no-store" },
-      });
-    }
     if (path === "/api/backtest/symbols") {
       let body: unknown;
       if (request.method === "POST")
@@ -208,7 +195,9 @@ export default {
         token: env.COLLECTOR_TOKEN,
       });
       const result = await handleBoard(
-        list.tickers,
+        env.BARS_CACHE
+          ? (await stores(env.BARS_CACHE).symbols.list()).tickers
+          : list.tickers,
         list.benchmarks,
         credentials,
         fetch,

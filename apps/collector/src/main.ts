@@ -313,7 +313,7 @@ api.post("/notifications/synthetic", async (_request, reply) => {
     session: "regular",
     actual: 123456,
     expected: 30000,
-    ratio: 5.1,
+    ratio: 4.1,
     paceRatio: null,
     volumeBasis: "history",
     move: 1.23,
@@ -505,6 +505,8 @@ async function collect(tickers: string[], id: number) {
       const evaluator = new LiveEvaluator(config);
       for (const bar of store.bars(ticker, from))
         evaluator.push(bar, Date.now(), false);
+      const lastAlert = store.latestAlertEnd(ticker);
+      if (lastAlert) evaluator.rememberAlert(ticker, lastAlert);
       evaluators.set(ticker, evaluator);
       symbols.get(ticker)!.state = "subscribing";
     }

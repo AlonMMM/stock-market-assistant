@@ -1,6 +1,6 @@
 # Current state
 
-Updated: 2026-10-06
+Updated: 2026-10-07
 Phase: Alpaca live alerts on real-time SIP with Telegram delivery; marked-sections score vs SPY in review.
 
 ## Working product
@@ -11,14 +11,18 @@ uploaded historical JSON, not live market data. The shared relative-volume engin
 replay API, mobile layout and configurable thresholds/cooldown are implemented.
 See [publication](tasks/sites-publication.md) and [alert contract](features/relative-volume.md).
 
-## In review: reduce alert noise
+## In review: engine tickers and two-hour cooldown
 
-[Task](tasks/reduce-alert-noise.md). rvol-v5 uses 5× volume, adaptive price
-floors and a $10 price gate in live and backtest. The symbol selector previews
-20-session price/share/dollar liquidity and can remove failing stocks while
-keeping ETFs and missing-history symbols. A read-only Alpaca universe/OPRA
-chain screener supports the proposed spread filter. Live data validation and
-deployment remain pending; no list removals were performed in this session.
+[Task](tasks/reduce-alert-noise.md), revised after the October 5 comparison.
+rvol-v6 keeps both volume routes at 4×, sets a 120-minute cooldown per ticker
+across sessions and directions, and restores delivered-alert cooldowns after
+collector restarts. The new price/range gates and automatic liquidity/options
+screening are withdrawn. Existing baseline movement checks stay as in rvol-v4.
+Live → Manage engine tickers supports add/remove and sync retries; Live board
+and Backtest use the authoritative shared list. The 35 stocks approved from
+the previous report were removed from production D1 on October 7: 161 tickers
+remain, including 19 unchanged ETFs. Running collector sync and code deployment
+remain pending. No deployment or merge has been performed.
 
 ## Current increment
 

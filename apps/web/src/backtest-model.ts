@@ -39,8 +39,6 @@ export const maxSessions = backtestLimits.sessions;
 // ------------------------------------------------------------ rule fields
 
 export type RuleKey =
-  | "minPrice"
-  | "dayRangeMoveFraction"
   | "threshold"
   | "minVolume"
   | "paceMultiple"
@@ -89,12 +87,6 @@ export const ruleGroups: { title: string; fields: RuleField[] }[] = [
     title: "Price move",
     fields: [
       {
-        key: "minPrice",
-        label: "Minimum stock price ($)",
-        min: "0",
-        step: "1",
-      },
-      {
         key: "priceMultiple",
         label: "Move (× typical)",
         min: "1",
@@ -125,16 +117,8 @@ export const ruleGroups: { title: string; fields: RuleField[] }[] = [
     ],
   },
   {
-    title: "Today-relative",
+    title: "Today-relative (optional)",
     fields: [
-      {
-        key: "dayRangeMoveFraction",
-        label: "Move / prior day range",
-        hint: "0 = off; 0.2 = 20%",
-        min: "0",
-        max: "1",
-        step: "0.05",
-      },
       {
         key: "todayVolumeMultiple",
         label: "Burst vs today's volume (×)",
@@ -166,7 +150,7 @@ export const ruleGroups: { title: string; fields: RuleField[] }[] = [
       },
       {
         key: "cooldown",
-        label: "Cooldown (min)",
+        label: "Ticker cooldown (min)",
         min: "0",
         max: "1440",
         step: "1",
@@ -199,7 +183,7 @@ export function changeBadge(changes: number): string {
     : `${changes} ${changes === 1 ? "change" : "changes"} from live`;
 }
 
-/** "rvol-v4" / "rvol-v4 + 1 change". */
+/** "rvol-v6" / "rvol-v6 + 1 change". */
 export function ruleLabel(changes: number): string {
   return changes === 0
     ? liveRule
@@ -222,8 +206,6 @@ export function ruleSummary(s: RuleSettings = liveSettings): string {
       : "");
   const candles = `${s.directionBars} ${s.directionBars === 1 ? "candle" : "candles"} in the move's direction`;
   const today = [
-    s.dayRangeMoveFraction > 0 &&
-      `move ≥ ${s.dayRangeMoveFraction * 100}% of today's prior range`,
     s.todayVolumeMultiple > 0 &&
       `burst ≥ ${s.todayVolumeMultiple}× today's volume level`,
     s.todayMoveMultiple > 0 &&
@@ -231,7 +213,6 @@ export function ruleSummary(s: RuleSettings = liveSettings): string {
   ].filter(Boolean);
   return (
     `${volume}; ${move}; ${candles}` +
-    (s.minPrice > 0 ? `; price ≥ $${s.minPrice}` : "") +
     (today.length ? `; ${today.join(", ")}` : "") +
     `; ${s.cooldown} min cooldown.` +
     (s.inPlayDayRvol > 0
@@ -738,7 +719,7 @@ export function batches<T>(items: T[], size: number): T[][] {
   return out;
 }
 
-/** "Setup · 30 symbols · 5 sessions · rvol-v4 + 1 change". */
+/** "Setup · 30 symbols · 5 sessions · rvol-v6 + 1 change". */
 export function setupSummary(
   symbols: number,
   sessions: number | null,

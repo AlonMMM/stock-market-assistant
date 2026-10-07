@@ -14,7 +14,8 @@ import {
   previousSessions,
 } from "../packages/market-data/src/calendar.js";
 import { LiveEvaluator } from "../packages/market-data/src/evaluator.js";
-import { defaults } from "../packages/alerts/src/relative-volume.js";
+import { defaults, replay } from "../packages/alerts/src/relative-volume.js";
+import { demoBars } from "../packages/alerts/src/demo.js";
 import { MarketStore } from "../packages/market-data/src/store.js";
 
 const raw = (time: string, volume = 100): RawBar => ({
@@ -87,7 +88,7 @@ test("live alert requires actual prior trading dates and never publishes warmup 
     paceMultiple: 0,
   };
   // Each day: a flat 10.00 bar at 10:59 New York, then the evaluated 11:00
-  // bar. Baseline days rise 1%; the alert day rises 5% on 5× volume.
+  // bar. Baseline days rise 1%; the alert day rises 5% on 4× volume.
   const day = (e: LiveEvaluator, date: string, now: number, live: boolean) => {
     const bar = (time: string, close: number, volume: number) =>
       normalize(
@@ -105,7 +106,7 @@ test("live alert requires actual prior trading dates and never publishes warmup 
     const alertDay = date === "2026-09-18";
     e.push(bar("14:59", 10, 100), now, live);
     return e.push(
-      bar("15:00", alertDay ? 10.5 : 10.1, alertDay ? 500 : 100),
+      bar("15:00", alertDay ? 10.5 : 10.1, alertDay ? 400 : 100),
       now,
       live,
     );
@@ -143,6 +144,38 @@ test("durable bars survive restart, deduplicate and preserve corrected volume", 
     assert.equal(reopened.bars("NVDA", "2026-09-01")[0]?.volume, 500);
     reopened.prune("2026-09-19");
     assert.equal(reopened.bars("NVDA", "2026-09-01").length, 0);
+    reopened.close();
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test("the latest delivered alert for a ticker survives restart even outside the recent feed", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sma-cooldown-"));
+  const path = join(dir, "market.sqlite");
+  try {
+    const event = replay(demoBars(), {
+      ...defaults,
+      threshold: 3,
+      paceMultiple: 3,
+    }).find((a) => a.status === "alert")!;
+    const store = new MarketStore(path);
+    store.alert(event);
+    for (let i = 0; i < 110; i++)
+      store.alert({
+        ...event,
+        ticker: "AMD",
+        end: new Date(Date.parse(event.end) + (i + 1) * 60000).toISOString(),
+      });
+    store.close();
+    const reopened = new MarketStore(path);
+    assert.ok(reopened.alerts().every((a) => a.ticker === "AMD"));
+    assert.equal(reopened.latestAlertEnd("NVDA"), event.end);
+    assert.equal(
+      reopened.latestAlertEnd("AMD"),
+      new Date(Date.parse(event.end) + 110 * 60000).toISOString(),
+    );
+    assert.equal(reopened.latestAlertEnd("MSFT"), null);
     reopened.close();
   } finally {
     rmSync(dir, { recursive: true });

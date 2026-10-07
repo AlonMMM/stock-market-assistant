@@ -9,6 +9,7 @@ import { MarketStrip } from "./MarketStrip.js";
 import { StatusPill } from "./StatusPill.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
 import { WatchTable } from "./WatchTable.js";
+import { EngineTickers } from "./EngineTickers.js";
 
 const liveRefreshMs = 30000;
 // Board data is SIP in 5-minute bars, delayed by the API's `delayMinutes`.
@@ -162,6 +163,8 @@ export function Live({
       )}
 
       <MarketStrip board={board.value} failed={!!board.error} now={now} />
+
+      <EngineTickers />
 
       <div
         role="tablist"

@@ -24,7 +24,7 @@ export function useBacktestList() {
       .then((r) => readJson<BacktestList>(r))
       .then((body) => setList({ tickers: body.tickers, etfs: body.etfs ?? [] }))
       .catch((e: Error) => {
-        setError(`Backtest list unavailable: ${e.message}`);
+        setError(`Ticker list unavailable: ${e.message}`);
         setList({ tickers: [], etfs: [] });
       });
   }, []);
@@ -37,6 +37,7 @@ export function useBacktestList() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ add, remove, kind }),
+      signal: AbortSignal.timeout(30000),
     });
     const body = await readJson<
       BacktestList & { live?: { synced: boolean; error?: string } }

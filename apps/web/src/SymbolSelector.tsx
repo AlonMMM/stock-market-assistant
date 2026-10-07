@@ -10,8 +10,6 @@ import {
   symbolGroups,
 } from "./backtest-model.js";
 import { watchlistSource, type BacktestList } from "./Watchlist.js";
-import { readJson } from "./api.js";
-import type { screenStock } from "../../../packages/market-data/src/universe.js";
 
 type Kind = "stock" | "etf";
 
@@ -42,45 +40,6 @@ export function SymbolSelector({
   const [editing, setEditing] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [screen, setScreen] = useState<{
-    asOf: string;
-    results: ReturnType<typeof screenStock>[];
-    remove: string[];
-  } | null>(null);
-
-  async function screenLiquidity() {
-    setBusy(true);
-    setScreen(null);
-    try {
-      const response = await fetch("/api/backtest/symbols/screen", {
-        signal: AbortSignal.timeout(120000),
-      });
-      setScreen(await readJson(response));
-    } catch (error) {
-      setMessage((error as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function removeIlliquid() {
-    if (!screen) return;
-    setBusy(true);
-    try {
-      // Only remove symbols that remain listed as stocks, preserving edits made
-      // while the preview was open and every ETF.
-      const remove = screen.remove.filter(
-        (s) => list?.tickers.includes(s) && !list.etfs.includes(s),
-      );
-      await onChangeList([], remove, "stock");
-      onChange(selected.filter((s) => !remove.includes(s)));
-      setMessage(`Removed ${remove.length} stocks from the shared list.`);
-      setScreen(null);
-    } catch (error) {
-      setMessage((error as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   const groups = symbolGroups(list, watchlist);
   const all = [...groups.stocks, ...groups.etfs];
@@ -219,43 +178,6 @@ export function SymbolSelector({
       </div>
 
       <p className="preview">{previewTickers(selected)}</p>
-      <button
-        type="button"
-        className="chip"
-        disabled={disabled || busy || !list}
-        onClick={() => void screenLiquidity()}
-      >
-        {busy ? "Checking…" : "Screen stock liquidity"}
-      </button>
-      <p className="preview">
-        Price ≥ $10 · 20-session average ≥ 1M shares and $50M/day. ETFs kept.
-      </p>
-      {screen && (
-        <div>
-          <p className="preview">
-            {screen.remove.length} stocks fail liquidity as of {screen.asOf}.
-            Missing history is kept for review.
-          </p>
-          <ul>
-            {screen.results
-              .filter((r) => !r.eligible)
-              .map((r) => (
-                <li key={r.symbol}>
-                  {r.symbol}: {r.reasons.join("; ")}
-                </li>
-              ))}
-          </ul>
-          <button
-            type="button"
-            className="chip"
-            disabled={disabled || busy || !screen.remove.length}
-            onClick={() => void removeIlliquid()}
-          >
-            Remove {screen.remove.length} stocks
-          </button>
-        </div>
-      )}
-
       <label className="symbol-search">
         <span className="sr-only">Search or add symbols</span>
         <input
@@ -422,7 +344,7 @@ export function SymbolSelector({
         </button>
         <span className="muted small">
           {editing
-            ? "× removes a symbol from the shared list. Watchlist symbols come from IBKR."
+            ? "× removes a symbol from the shared list and the live engine."
             : `${list?.tickers.length ?? "…"} symbols in the shared list · watchlist: ${watchlistSource(watchlist)} · selection saved on this device`}
         </span>
       </div>

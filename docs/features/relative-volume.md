@@ -70,14 +70,19 @@ POST /api/backtest with `{ "tickers": ["AAPL"], "from": "YYYY-MM-DD", "to": "YYY
 
 Deterministic streaming engine, JSON historical replay API, website demo/upload and ratio/liquidity controls. No live provider, database, price/sector charts or phone delivery yet. Historical input must contain its warmup history. The demo contains 21 synthetic weekdays with a single NVDA anomaly and accounts for March DST.
 
-## v5: reduce alert noise (2026-10-06, in review)
+## v6: ticker control and two-hour cooldown (2026-10-07, in review)
 
-The shared defaults now require 5× volume on both the historical and today's
-pace comparisons. Price ≥$10 is required. N2 is enabled at 3× today's prior
-median window move. `dayRangeMoveFraction: 0.2` adds a move floor of 20% of
-today's range observed before the alert window, including extended hours and
-the previous regular close. A 9% range requires at least 1.8%. The candidate
-window and future minutes never contribute. Both new gates are configurable
-(`minPrice: 0` and `dayRangeMoveFraction: 0` disable them); effective price
-requirements are recorded in alert evidence. See [task](../tasks/reduce-alert-noise.md)
-for universe liquidity screening and the proposed OPRA spread filter.
+The user kept 4× on both volume paths and withdrew the proposed v5 adaptive
+price/range gates and current-price floor. Existing time-of-day movement checks
+remain unchanged; optional today-relative gates default to off. Cooldown now
+defaults to 120 minutes per ticker, shared across directions, pre-market,
+regular and post-market. Suppressed candidates do not extend it; a fresh
+crossing at exactly 120 minutes can alert. Continuous qualifying windows still
+produce only one alert. The collector restores the latest delivered alert
+from its durable store after restart/list edits. Backtests use the same rule.
+
+Live → Manage engine tickers adds/removes stocks or ETFs through the shared
+list endpoint and syncs the collector; retrying a sync does not require another
+list edit. The shared list is authoritative in Live board and Backtest. The
+approved 35-stock cleanup is a one-time list edit, not an automatic filter;
+users may add these tickers again. See [task](../tasks/reduce-alert-noise.md).

@@ -99,18 +99,18 @@ test("rule changes: one changed field gives the badge and title suffix (scenario
   assert.equal(changeBadge(1), "1 change from live");
   assert.equal(changeBadge(3), "3 changes from live");
   assert.equal(changeBadge(0), "Live settings");
-  assert.equal(ruleLabel(1), "rvol-v5 + 1 change");
-  assert.equal(ruleLabel(0), "rvol-v5");
+  assert.equal(ruleLabel(1), "rvol-v6 + 1 change");
+  assert.equal(ruleLabel(0), "rvol-v6");
   // Reset = the live settings again.
   assert.deepEqual(ruleChanges({ ...liveSettings }), []);
 });
 
 test("rule summary is generated from the values", () => {
   const live = ruleSummary();
-  assert.match(live, /volume ≥ 5× typical/);
+  assert.match(live, /volume ≥ 4× typical/);
   assert.match(live, /≥ 0\.5%/);
   assert.match(live, /1 candle in the move's direction/);
-  assert.match(live, /15 min cooldown/);
+  assert.match(live, /120 min cooldown/);
   assert.doesNotMatch(live, /today's volume level/);
   assert.match(
     ruleSummary({ ...liveSettings, todayVolumeMultiple: 1.5 }),
@@ -497,6 +497,6 @@ test("settings key ignores symbol order; setup summary", () => {
   );
   assert.equal(
     setupSummary(30, 5, 1),
-    "Setup · 30 symbols · 5 sessions · rvol-v5 + 1 change",
+    "Setup · 30 symbols · 5 sessions · rvol-v6 + 1 change",
   );
 });

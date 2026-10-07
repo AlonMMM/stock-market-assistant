@@ -58,6 +58,14 @@ export class MarketStore {
       .all()
       .map((r) => JSON.parse(String(r.payload)) as StoredAlert);
   }
+  latestAlertEnd(ticker: string): string | null {
+    const row = this.db
+      .prepare(
+        "SELECT end FROM alerts WHERE ticker=? ORDER BY end DESC LIMIT 1",
+      )
+      .get(ticker);
+    return row ? String(row.end) : null;
+  }
   findAlert(ticker: string, end: string): StoredAlert | null {
     const row = this.db
       .prepare("SELECT payload FROM alerts WHERE ticker=? AND end=?")

@@ -93,7 +93,7 @@ test("backtest reconstructs the alerts the live collector would have sent", asyn
     later,
   );
   assert.equal(v4.alerts[0]?.end, "2026-06-03T14:01:00.000Z");
-  assert.equal(v4.alerts[0]?.rule, "rvol-v5");
+  assert.equal(v4.alerts[0]?.rule, "rvol-v6");
   assert.equal(alert?.expected, 3000);
   assert.equal(alert?.direction, "up");
   assert.equal(alert?.close, 103);

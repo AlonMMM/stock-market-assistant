@@ -49,13 +49,6 @@ export function AlertEvidence({ alert: a }: { alert: FeedAlert }) {
         </>
       )}
       {a.close !== undefined && <> · close ${a.close.toFixed(2)}</>}
-      {a.requiredMovePercent !== null &&
-        a.requiredMovePercent !== undefined && (
-          <> · required move {a.requiredMovePercent.toFixed(2)}%</>
-        )}
-      {a.dayRangePercent !== null && a.dayRangePercent !== undefined && (
-        <> · prior day range {a.dayRangePercent.toFixed(2)}%</>
-      )}
       {c && (
         <>
           {" "}
