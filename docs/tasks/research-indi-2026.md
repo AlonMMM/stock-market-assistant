@@ -1,0 +1,60 @@
+# Task: Study of @ultrawavetrader's 2026 option trades
+
+Status: active
+Owner: research (unattended role assumption: Integration / Review, read-only study)
+Branch: research/oltrawave-x
+
+## Outcome
+
+Understand why the trader enters, adds, trims and exits, and whether any part is a repeatable
+pattern worth an alert. Not a claim that his method is profitable going forward.
+
+## Data (outside Git, `data/local/x/ultrawavetrader-2026`)
+
+- His own X posts since 2026-01-01 (X API, `scripts/research/x-fetch.ts`).
+- Fills transcribed by hand from the Order Manager screenshots in his daily summaries; each
+  main-account contract checked against his Portfolio totals per day (all matched). 396 trades,
+  1,383 steps; `actions.csv` / `timeline.md`. Options left after expiry with no sale = 0 (assumed).
+- 1-min SIP bars for 59 stocks/ETFs and all 347 option contracts (`indi-bars.ts`, Alpaca).
+- His stated reasons: 367 posts read and tagged by hand (`reasons.csv`).
+
+## Method
+
+`indi-features.py`: context at each step (move vs SPY×β, relative volume and bursts, day-range
+position, VWAP, prior-day levels, opening range, option OTM/DTE), plus 20 random minutes per entry on
+the same stock, day and bet direction as a control. `indi-manage.py`: option-bar path while held and
+after exit. `indi-report.py`: comparisons with bootstrap 90% intervals. Scope: main account, option
+trades with an entry time (313). Exploratory; no multiple-comparison correction.
+
+## Findings (2026-10-10)
+
+1. **Entries vs random minutes**: modestly selective, consistent with the 2024–26 xlsx study. Beating
+   SPY×β over 15 min: 63% vs 48%; top 20% of the day range in his direction 52% vs 36%; 15-min volume
+   > 1.5× normal 56% vs 44%; the burst is closer (median 6 vs 8 min before). He enters earlier in the day
+   > (median 11:33 vs 12:48). These are tendencies, not a sharp filter.
+2. **Winners vs losers at entry**: barely separable. Winners beat SPY a little more often (73% vs 59%
+   over 15 min) and entered after smaller gaps in their direction (median 0.13% vs 0.41%, interval
+   excludes 0). Everything else overlaps.
+3. **Management is the edge**: losers are cut fast — first sale median −19% after 14 min, half the
+   size; worst point while held −48%. Winners: first sale at +35% after 16 min (40% of size), best point
+   +235%. After his last sale the options mostly decay to ~−90% by expiry, so the cuts were right on
+   average, though they often bounce first (median best +65% after exit).
+4. **His stated exit reason is the stock stalling** (62 posts: stuck, too calm, didn't break out), then
+   the stock turning (38), rolling the strike (35), profit (26), the market folding (15). Measured: adds
+   come with the stock moving his way and above VWAP; closes after it turned (−0.14% in 5 min) near VWAP.
+5. **End-of-day entries carry the year**: 36 entries in the last 15 minutes (overnight bets) won 15 times
+   for +$2.33M; +$0.28M without their top 3. All other entries: +$1.39M, and −$0.56M without their top 3.
+6. Results are fat-tailed: 76 of 311 entries won; average win ≈ +$126K vs loss ≈ −$25K.
+
+## Limits
+
+One trader, one year; P&L dominated by a few trades. Index options use SPY/QQQ as proxy. Option bars
+are trades (thin contracts have gaps). Aggregate days without times (May 6, May 11, Jul 6, Jul 10,
+Jul 27, Aug 19 partly, Aug 21, Aug 26) are excluded from timing results — including the year's biggest
+trade (IBIT 40.5C, Aug 19–21).
+
+## Next
+
+- Review charts with the user: https://claude.ai/artifact/NeV7hJpG1d2CBZtYhDitak
+- Dig into the end-of-day entries: what the stock and SPY did into the close, and the next open.
+- Rule test (step 7): stalling exit + fast cut + late-day entry, on 2 years of bars, holdout = last 2 months.
