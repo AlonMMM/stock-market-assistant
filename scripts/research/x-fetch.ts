@@ -14,6 +14,7 @@
 //
 // Options: --handle ultrawavetrader  --since 2023-10-09  --max 20000  --dir data/local/x/<handle>
 //   --own true   only his posts and his own thread updates: no retweets, no replies to others.
+//   --query "(a OR b)"   extra search terms, so only matching posts are fetched and billed.
 // Credential: X_BEARER_TOKEN in the ignored .env. Output stays under data/local (outside
 // Git): it is third-party content.
 import {
@@ -33,10 +34,12 @@ const since = args.get("since") ?? "2023-10-09";
 const max = Number(args.get("max") ?? 20000);
 const dir = args.get("dir") ?? `data/local/x/${handle}`;
 // Replies to himself (thread updates) are `to:<handle>`; replies to others are dropped.
+// --query adds search terms, e.g. a topic: `(סיכון OR סטופ)`; only matching posts are billed.
 const query =
-  args.get("own") === "true"
+  (args.has("query") ? `${args.get("query")} ` : "") +
+  (args.get("own") === "true"
     ? `from:${handle} -is:retweet (-is:reply OR to:${handle})`
-    : `from:${handle}`;
+    : `from:${handle}`);
 mkdirSync(`${dir}/raw`, { recursive: true });
 
 const fields = new URLSearchParams({

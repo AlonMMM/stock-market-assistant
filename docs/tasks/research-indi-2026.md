@@ -30,8 +30,8 @@ trades with an entry time (313). Exploratory; no multiple-comparison correction.
 
 1. **Entries vs random minutes**: modestly selective, consistent with the 2024–26 xlsx study. Beating
    SPY×β over 15 min: 63% vs 48%; top 20% of the day range in his direction 52% vs 36%; 15-min volume
-   > 1.5× normal 56% vs 44%; the burst is closer (median 6 vs 8 min before). He enters earlier in the day
-   > (median 11:33 vs 12:48). These are tendencies, not a sharp filter.
+   above 1.5× normal 56% vs 44%; the burst is closer (median 6 vs 8 min before). He enters earlier in
+   the day (median 11:33 vs 12:48). These are tendencies, not a sharp filter.
 2. **Winners vs losers at entry**: barely separable. Winners beat SPY a little more often (73% vs 59%
    over 15 min) and entered after smaller gaps in their direction (median 0.13% vs 0.41%, interval
    excludes 0). Everything else overlaps.
