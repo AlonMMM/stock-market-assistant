@@ -9,8 +9,11 @@
 //   ids      look up posts by id or URL listed in --file (one per line), e.g. highlights,
 //            which the API has no endpoint for.
 //   threads  offline: group the saved posts by conversation into threads.json / threads.md.
+//   media    download the saved posts' images (and video previews) into <dir>/media; the
+//            image CDN is not the API and is not billed.
 //
-// Options: --handle oltrawave  --since 2023-10-09  --max 20000  --dir data/local/x/<handle>
+// Options: --handle ultrawavetrader  --since 2023-10-09  --max 20000  --dir data/local/x/<handle>
+//   --own true   only his posts and his own thread updates: no retweets, no replies to others.
 // Credential: X_BEARER_TOKEN in the ignored .env. Output stays under data/local (outside
 // Git): it is third-party content.
 import {
@@ -25,10 +28,15 @@ const [step = "", ...rest] = process.argv.slice(2);
 const args = new Map<string, string>();
 for (let i = 0; i < rest.length; i += 2)
   args.set(rest[i]!.replace(/^--/, ""), rest[i + 1]!);
-const handle = (args.get("handle") ?? "oltrawave").replace(/^@/, "");
+const handle = (args.get("handle") ?? "ultrawavetrader").replace(/^@/, "");
 const since = args.get("since") ?? "2023-10-09";
 const max = Number(args.get("max") ?? 20000);
 const dir = args.get("dir") ?? `data/local/x/${handle}`;
+// Replies to himself (thread updates) are `to:<handle>`; replies to others are dropped.
+const query =
+  args.get("own") === "true"
+    ? `from:${handle} -is:retweet (-is:reply OR to:${handle})`
+    : `from:${handle}`;
 mkdirSync(`${dir}/raw`, { recursive: true });
 
 const fields = new URLSearchParams({
@@ -67,7 +75,7 @@ if (step === "count") {
   let next: string | undefined;
   do {
     const q = new URLSearchParams({
-      query: `from:${handle}`,
+      query,
       start_time: startTime,
       granularity: "day",
     });
@@ -92,7 +100,7 @@ if (step === "count") {
     : { page: 0, posts: 0, next: undefined as string | undefined, done: false };
   while (!state.done && state.posts < max) {
     const q = new URLSearchParams(fields);
-    q.set("query", `from:${handle}`);
+    q.set("query", query);
     q.set("start_time", startTime);
     q.set(
       "max_results",
@@ -225,9 +233,41 @@ if (step === "count") {
       highlights: [...highlights].length,
     }),
   );
+} else if (step === "media") {
+  // Saves each image as <post id>-<n>.<ext> and lists them in media.json.
+  mkdirSync(`${dir}/media`, { recursive: true });
+  const saved: { post: string; file: string; type: string }[] = [];
+  for (const f of readdirSync(`${dir}/raw`).sort()) {
+    const j = JSON.parse(readFileSync(`${dir}/raw/${f}`, "utf8"));
+    const media = new Map<string, any>(
+      (j.includes?.media ?? []).map((m: any) => [m.media_key, m]),
+    );
+    for (const p of j.data ?? [])
+      for (const [n, key] of (p.attachments?.media_keys ?? []).entries()) {
+        const m = media.get(key);
+        const url: string | undefined = m?.url ?? m?.preview_image_url;
+        if (!url) continue;
+        const file = `${p.id}-${n + 1}${url.match(/\.\w+$/)?.[0] ?? ".jpg"}`;
+        if (!existsSync(`${dir}/media/${file}`)) {
+          // `name=orig` is the full-resolution image.
+          const res = await fetch(`${url}?name=orig`);
+          if (!res.ok) {
+            console.error(`${res.status} ${file}`);
+            continue;
+          }
+          writeFileSync(
+            `${dir}/media/${file}`,
+            Buffer.from(await res.arrayBuffer()),
+          );
+        }
+        saved.push({ post: p.id, file, type: m.type });
+      }
+  }
+  writeFileSync(`${dir}/media.json`, JSON.stringify(saved, null, 1));
+  console.log(JSON.stringify({ images: saved.length }));
 } else {
   console.error(
-    "Usage: x-fetch.ts count|posts|ids|threads [--handle h] [--since YYYY-MM-DD] [--max n] [--file f]",
+    "Usage: x-fetch.ts count|posts|ids|threads|media [--handle h] [--since YYYY-MM-DD] [--max n] [--file f]",
   );
   process.exit(1);
 }
