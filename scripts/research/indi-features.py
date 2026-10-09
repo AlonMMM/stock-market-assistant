@@ -18,10 +18,19 @@ Writes <dir>/features.csv (steps) and <dir>/control.csv.
 import csv, json, sqlite3, sys, random, statistics as st, datetime as dt
 from zoneinfo import ZoneInfo
 
-d = sys.argv[1]
+d = sys.argv[1] if len(sys.argv) > 1 else "."
 NY = ZoneInfo("America/New_York")
 PROXY = {"SPXW": "SPY", "NDXP": "QQQ"}
-db = sqlite3.connect(f"{d}/bars.sqlite")
+db = None  # opened by open_db()
+
+
+def open_db(data_dir):
+    global db
+    db = sqlite3.connect(f"{data_dir}/bars.sqlite")
+
+
+if __name__ == "__main__":
+    open_db(d)
 _cache = {}
 
 
@@ -167,37 +176,42 @@ def measure(und, date, minute, bet, strike=None, expiry=None, premium=None):
     return f
 
 
-rows = list(csv.DictReader(open(f"{d}/actions.csv")))
-steps, ctrl = [], []
-random.seed(7)
-for r in rows:
-    und, expiry, sr = r["contract"].rsplit(" ", 2)
-    if r["account"] != "silexx" or sr.endswith("S") or not r["time_from"] or r["action"].startswith(("exit", "expired")):
-        continue
-    t = dt.datetime.fromisoformat(f"{r['date']}T{r['time_from']}")
-    minute = (t.hour * 60 + t.minute - 570) + (1 if t.second else 0)
-    if not 0 < minute <= 390:
-        continue
-    bet = 1 if sr.endswith("C") else -1
-    f = measure(und, r["date"], minute, bet, float(sr[:-1]), expiry, float(r["avg_price"]))
-    if not f:
-        continue
-    steps.append(dict(trade=r["trade"], date=r["date"], time=r["time_from"], und=und, bet=bet, action=r["action"],
-                      qty=r["qty"], price=r["avg_price"], **f))
-    if r["action"] == "open":
-        for m in random.sample(range(16, 390), 20):
-            g = measure(und, r["date"], m, bet, float(sr[:-1]), expiry, None)
-            if g:
-                ctrl.append(dict(trade=r["trade"], date=r["date"], und=und, bet=bet, **g))
+def main():
+    rows = list(csv.DictReader(open(f"{d}/actions.csv")))
+    steps, ctrl = [], []
+    random.seed(7)
+    for r in rows:
+        und, expiry, sr = r["contract"].rsplit(" ", 2)
+        if r["account"] != "silexx" or sr.endswith("S") or not r["time_from"] or r["action"].startswith(("exit", "expired")):
+            continue
+        t = dt.datetime.fromisoformat(f"{r['date']}T{r['time_from']}")
+        minute = (t.hour * 60 + t.minute - 570) + (1 if t.second else 0)
+        if not 0 < minute <= 390:
+            continue
+        bet = 1 if sr.endswith("C") else -1
+        f = measure(und, r["date"], minute, bet, float(sr[:-1]), expiry, float(r["avg_price"]))
+        if not f:
+            continue
+        steps.append(dict(trade=r["trade"], date=r["date"], time=r["time_from"], und=und, bet=bet, action=r["action"],
+                          qty=r["qty"], price=r["avg_price"], **f))
+        if r["action"] == "open":
+            for m in random.sample(range(16, 390), 20):
+                g = measure(und, r["date"], m, bet, float(sr[:-1]), expiry, None)
+                if g:
+                    ctrl.append(dict(trade=r["trade"], date=r["date"], und=und, bet=bet, **g))
 
 
-def write(path, data):
-    keys = list(dict.fromkeys(k for x in data for k in x))
-    w = csv.DictWriter(open(path, "w"), fieldnames=keys)
-    w.writeheader()
-    w.writerows(data)
+    def write(path, data):
+        keys = list(dict.fromkeys(k for x in data for k in x))
+        w = csv.DictWriter(open(path, "w"), fieldnames=keys)
+        w.writeheader()
+        w.writerows(data)
 
 
-write(f"{d}/features.csv", steps)
-write(f"{d}/control.csv", ctrl)
-print(len(steps), "steps,", len(ctrl), "control minutes")
+    write(f"{d}/features.csv", steps)
+    write(f"{d}/control.csv", ctrl)
+    print(len(steps), "steps,", len(ctrl), "control minutes")
+
+
+if __name__ == "__main__":
+    main()

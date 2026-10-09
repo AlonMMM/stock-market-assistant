@@ -46,6 +46,25 @@ trades with an entry time (313). Exploratory; no multiple-comparison correction.
    for +$2.33M; +$0.28M without their top 3. All other entries: +$1.39M, and −$0.56M without their top 3.
 6. Results are fat-tailed: 76 of 311 entries won; average win ≈ +$126K vs loss ≈ −$25K.
 
+## Entry and exit triggers (2026-10-10, `indi-triggers.py`, `indi-exits.py`)
+
+Events in the 10 minutes before his entries vs random minutes (same stock, day, direction):
+first break of yesterday's high/low 8% vs 2% (lift 4.3), of the 15-min opening range 6% vs 2% (3.1),
+new day high/low 28% vs 13% (2.2), 5-min move vs SPY×β ≥ +0.5% 35% vs 19% (1.8). He enters a median
+~1 minute after the event (chasing, not waiting for a pullback). Volume spikes alone add little
+(3×: 1.2, 5×: 1.4). States: first 15 minutes 14% vs 4%, last 15 minutes 12% vs 3%.
+
+Outcome by entry type (event within 5 min): breakout + strength vs SPY 49 entries, +$1.92M
+(+$0.27M without the top 2); breakout without strength vs SPY 36 entries, 11% win, −$0.78M;
+strength vs SPY only 42, +$0.96M (≈0 without top 2); no chart event 140, +$1.40M (+$0.16M).
+Last-15-minute entries: 32 of 36 calls, stock +1.75% vs SPY×β on the day, near the high (0.83).
+
+Exits: chart events barely separate his sell minutes from his holding minutes (losing VWAP 1.6×; he also
+sells into new highs 1.5×, i.e. profit-taking). The option's state does: chance of a sale per minute is
+6% in the first 15 minutes, up to 8–18% when the option is −25% or worse in that window, 0.3–0.7% while
+it is +25% to +100% (he lets it run), and 2–10% again above +100% (scaling out). First sale: median
+−4% after 15 minutes; when at a loss, median −18%, half within 15 minutes.
+
 ## Limits
 
 One trader, one year; P&L dominated by a few trades. Index options use SPY/QQQ as proxy. Option bars
