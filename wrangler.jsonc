@@ -27,6 +27,11 @@
       "database_id": "c3eec64d-d164-4632-8049-5f7b6e74b75a",
     },
   ],
-  // ALPACA_API_KEY, ALPACA_API_SECRET and COLLECTOR_TOKEN are Worker secrets:
+  // Every minute: check that the trading account is not short an option and
+  // tell the trades channel if it is (packages/trading/src/watch.ts).
+  "triggers": { "crons": ["* * * * *"] },
+  // ALPACA_API_KEY, ALPACA_API_SECRET, COLLECTOR_TOKEN, and for the check
+  // above TRADES_TELEGRAM_BOT_TOKEN and TRADES_TELEGRAM_CHAT_ID, are Worker
+  // secrets:
   //   npx wrangler secret put ALPACA_API_KEY
 }
