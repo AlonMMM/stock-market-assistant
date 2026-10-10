@@ -1,6 +1,6 @@
 ---
 name: option-order
-description: Buy an option on the user's Alpaca account from a chat command such as "buy ORCL calls, delta 0.1, 0.5% of the portfolio", "buy NVDA puts 1%", or "put a stop on my AMD call". Previews the contract, waits for the user's choice, then sends the order with its stop. Use whenever the user asks to buy calls or puts, open an option trade, or add a stop to an option position.
+description: Buy an option on the user's Alpaca account from a chat command such as "buy ORCL calls, delta 0.1, 0.5% of the portfolio", "buy NVDA puts 1%", "sell half NVDA", or "put a stop on my AMD call". For a buy it previews the contract, waits for the user's choice, then sends the order with its stop; for a sell it sells at the bid. Use whenever the user asks to buy calls or puts, open an option trade, sell or exit an option position, or add a stop to one.
 ---
 
 # Option order
@@ -67,6 +67,23 @@ about two and a half minutes. Report from the output:
 - `rejected-spread` or `rejected-budget`: nothing was sent.
 - Whether the Telegram post was sent. None is sent when nothing filled.
 
+## Sell
+
+For "sell half NVDA", "sell all NVDA", "get out of AMD", "sell 3 ORCL":
+
+```
+npm run trade -- sell --underlying NVDA --qty half
+```
+
+`--qty` is `all`, `half` (rounded up) or a number of contracts. Ask only if the user gave no
+quantity. No preview: the permission prompt is the confirmation. If the output says there
+are several positions in the stock, show them and ask which, then pass `--contract`.
+
+It sells at the bid and follows the bid every 5 seconds until everything has sold, for up
+to 2 minutes. Report: contracts sold and the average price, profit or loss, what is still
+held, and the stop on it (`stop.error` means the remainder has no stop: say so). If
+`timedOut` is true, say how many did not sell.
+
 ## Stop for a position already held
 
 ```
@@ -77,6 +94,7 @@ It places the stop at the position's average entry price less the stop %.
 
 ## Limits
 
+- There is no market-order exit and no profit target; say so if asked.
 - Paper account only. Never set `ALPACA_TRADING_LIVE`. If the user asks for a live order,
   say that live trading needs them to enable it themselves, and do not send it.
 - Never retry a failed `buy` on your own: report the error and ask.

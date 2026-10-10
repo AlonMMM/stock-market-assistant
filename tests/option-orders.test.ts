@@ -5,7 +5,12 @@ import type {
   TradingClient,
 } from "../packages/trading/src/alpaca-trading.js";
 import { buyWithLadder } from "../packages/trading/src/ladder.js";
-import { formatEntry } from "../packages/trading/src/message.js";
+import {
+  exitQty,
+  sellAtBid,
+  type ExitClient,
+} from "../packages/trading/src/exit.js";
+import { formatEntry, formatExit } from "../packages/trading/src/message.js";
 import {
   protectFill,
   type ProtectClient,
@@ -376,5 +381,178 @@ test("entry post: warns when the stop covers only part", () => {
       entryResult({ filledQty: 5, filledAvgPrice: 1.06 }, [1.05]),
     ),
     /Stop at 0\.64 \(-40%\)\n⚠️ The stop covers 3 of 5$/,
+  );
+});
+
+// A held position with one stop. `bids[i]` is the bid on quote i; the sell
+// order fills once its limit is at or below `fillAt`.
+function holding(
+  bids: number[],
+  fillAt: number | null,
+  held = 8,
+  stopAt: number | null = 0.6,
+) {
+  const calls: string[] = [];
+  let quotes = 0;
+  let position = held;
+  let stopOpen = stopAt !== null;
+  let sale: Order | null = null;
+  const client: ExitClient = {
+    position: async () => {
+      if (position === 0) throw new Error("position does not exist");
+      return { qty: position, avgEntryPrice: 1.0 };
+    },
+    openOrders: async () =>
+      stopOpen
+        ? [
+            {
+              id: "stop",
+              symbol,
+              status: "new",
+              qty: held,
+              filledQty: 0,
+              filledAvgPrice: null,
+              limitPrice: null,
+              side: "sell",
+              stopPrice: stopAt,
+            },
+          ]
+        : [],
+    quote: async () =>
+      q(symbol, bids[Math.min(quotes++, bids.length - 1)]!, 9, 0.1),
+    sellLimit: async (_s, qty, price) => {
+      calls.push(`sell ${qty} @ ${price}`);
+      sale = {
+        id: "1",
+        symbol,
+        status: "new",
+        qty,
+        filledQty: 0,
+        filledAvgPrice: null,
+        limitPrice: price,
+      };
+      return sale;
+    },
+    replace: async (_id, price) => {
+      calls.push(`reprice @ ${price}`);
+      sale = { ...sale!, id: String(Number(sale!.id) + 1), limitPrice: price };
+      return sale;
+    },
+    order: async () => {
+      const o = sale!;
+      if (
+        o.status === "new" &&
+        fillAt !== null &&
+        (o.limitPrice ?? 9) <= fillAt + 1e-9
+      ) {
+        position -= o.qty;
+        sale = {
+          ...o,
+          status: "filled",
+          filledQty: o.qty,
+          filledAvgPrice: o.limitPrice,
+        };
+      }
+      return sale!;
+    },
+    cancel: async (id) => {
+      calls.push(`cancel ${id}`);
+      if (id === "stop") stopOpen = false;
+      else sale = { ...sale!, status: "canceled" };
+    },
+    sellStop: async (_s, qty, price) => {
+      calls.push(`stop ${qty} @ ${price}`);
+      return sale!;
+    },
+  };
+  return { client, calls };
+}
+const brisk = { sleep: async () => {}, intervalMs: 5000, maxMs: 20000 };
+
+test("sell quantity: all, half rounded up, or a number", () => {
+  assert.equal(exitQty("all", 8), 8);
+  assert.equal(exitQty("half", 8), 4);
+  assert.equal(exitQty("half", 3), 2);
+  assert.equal(exitQty("half", 1), 1);
+  assert.equal(exitQty("3", 8), 3);
+  assert.throws(() => exitQty("9", 8), /from 1 to 8/);
+  assert.throws(() => exitQty("0", 8));
+  assert.throws(() => exitQty("some", 8));
+});
+
+test("sell: half at the bid, then the stop goes back on the rest", async () => {
+  const { client, calls } = holding([0.9], 0.9);
+  const result = await sellAtBid(client, symbol, "half", brisk);
+  assert.deepEqual(calls, ["cancel stop", "sell 4 @ 0.9", "stop 4 @ 0.6"]);
+  assert.equal(result.sold, 4);
+  assert.equal(result.price, 0.9);
+  assert.equal(result.remaining, 4);
+  assert.deepEqual(result.stop, { price: 0.6, qty: 4 });
+  assert.equal(result.timedOut, false);
+});
+
+test("sell: follows the bid down every 5 seconds until it sells", async () => {
+  const { client, calls } = holding([0.9, 0.9, 0.85, 0.8], 0.8);
+  const result = await sellAtBid(client, symbol, "all", brisk);
+  assert.deepEqual(calls, [
+    "cancel stop",
+    "sell 8 @ 0.9",
+    "reprice @ 0.85",
+    "reprice @ 0.8",
+  ]);
+  assert.equal(result.sold, 8);
+  assert.equal(result.remaining, 0);
+  assert.equal(result.stop, null);
+  assert.equal(result.attempts, 3);
+});
+
+test("sell: gives up after the limit, cancels and restores the stop", async () => {
+  const { client, calls } = holding([0.9], null);
+  const result = await sellAtBid(client, symbol, "all", brisk);
+  assert.deepEqual(calls, [
+    "cancel stop",
+    "sell 8 @ 0.9",
+    "cancel 1",
+    "stop 8 @ 0.6",
+  ]);
+  assert.equal(result.sold, 0);
+  assert.equal(result.price, null);
+  assert.equal(result.timedOut, true);
+});
+
+test("sell: a remainder that had no stop gets the default one", async () => {
+  const { client, calls } = holding([0.9], 0.9, 8, null);
+  await sellAtBid(client, symbol, "2", brisk);
+  // 40% below the 1.00 entry.
+  assert.deepEqual(calls, ["sell 2 @ 0.9", "stop 6 @ 0.6"]);
+});
+
+test("exit post: partial and full", () => {
+  const base = {
+    held: 8,
+    entry: 1.0,
+    asked: 4,
+    attempts: 1,
+    timedOut: false,
+  };
+  assert.equal(
+    formatExit(
+      { symbol, paper: true },
+      {
+        ...base,
+        sold: 4,
+        price: 1.5,
+        remaining: 4,
+        stop: { price: 0.6, qty: 4 },
+      },
+    ),
+    "🧪 PAPER\n<b>$ORCL | 250 Call 10/16</b>\nSold 4 of 8 at 1.50\nProfit $200 (+50%)\nStop at 0.60 on the remaining 4",
+  );
+  assert.equal(
+    formatExit(
+      { symbol, paper: false },
+      { ...base, sold: 8, price: 0.7, remaining: 0, stop: null },
+    ),
+    "<b>$ORCL | 250 Call 10/16</b>\nOut, sold 8 at 0.70\nLoss $240 (-30%)",
   );
 });

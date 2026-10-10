@@ -194,6 +194,56 @@ export class AlpacaTrading {
     );
   }
 
+  /** A day limit sell. */
+  async sellLimit(symbol: string, qty: number, limitPrice: number) {
+    return order(
+      await this.call<RawOrder>(this.tradingUrl, "/v2/orders", {
+        method: "POST",
+        body: {
+          symbol,
+          qty: String(qty),
+          side: "sell",
+          type: "limit",
+          time_in_force: "day",
+          limit_price: limitPrice.toFixed(2),
+        },
+      }),
+    );
+  }
+
+  /** Open orders for one contract, with their side and stop price. */
+  async openOrders(symbol: string) {
+    const raw = await this.call<
+      (RawOrder & { side: string; stop_price: string | null })[]
+    >(this.tradingUrl, "/v2/orders", {
+      query: { status: "open", symbols: symbol, limit: "100" },
+    });
+    return raw.map((o) => ({
+      ...order(o),
+      side: o.side,
+      stopPrice: o.stop_price === null ? null : Number(o.stop_price),
+    }));
+  }
+
+  /** Long option positions: contract, quantity and average entry price. */
+  async positions() {
+    const raw = await this.call<
+      {
+        symbol: string;
+        asset_class: string;
+        qty: string;
+        avg_entry_price: string;
+      }[]
+    >(this.tradingUrl, "/v2/positions");
+    return raw
+      .filter((p) => p.asset_class === "us_option" && Number(p.qty) > 0)
+      .map((p) => ({
+        symbol: p.symbol,
+        qty: Number(p.qty),
+        avgEntryPrice: Number(p.avg_entry_price),
+      }));
+  }
+
   /** Withdraws what has not filled. */
   async cancel(id: string) {
     await this.call<null>(this.tradingUrl, `/v2/orders/${id}`, {

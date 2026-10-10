@@ -38,6 +38,13 @@ The user explicitly authorized order execution on the Alpaca **paper** account
   nothing can fill later without a stop. A stop the broker refuses while the buy is open is
   tried again after the cancel. With nothing filled, no channel post is sent. This also
   applies outside market hours: a queued order is canceled after the wait.
+- **Selling (user-confirmed 2026-10-10):** `sell --underlying NVDA --qty all|half|N` sells
+  at the bid: a day limit sell at the current bid, re-priced to the new bid every 5 seconds
+  until it has all sold. Half rounds up. The position's stop is canceled first, because the
+  broker reserves the contracts for it, and placed again at the same price on whatever is
+  still held; a remainder that had no stop gets the default one. After `--wait` seconds
+  (120) an unsold order is canceled and reported. The exit is posted to the channel as a
+  reply to the entry post, whose id is kept in `data/local/trade-posts.json`.
 - **"Real value":** the mid is used as the estimate of fair value. The user questioned this;
   see the open questions below.
 
@@ -88,6 +95,10 @@ OPRA subscription); `ALPACA_TRADING_LIVE=true` for the live account (off by defa
 - Watch and cancel, paper account, market closed (2026-10-10): `buy --wait 9` of 1
   AMD261012C00627500 was accepted at 1.03, the raise was refused, and after 9 s the order
   was canceled at Alpaca (`status: canceled`, `canceledQty: 1`); no post was sent.
+- `sell`: covered by tests on a fake broker only. Against Alpaca it has only been run
+  with no position (it answers "No option position"). The unverified parts are how soon
+  the contracts are free after the stop is canceled, and the average price when a
+  re-priced order had partly filled.
 - Not yet run: price raises on a live order, fill reporting, and placing the stop. They
   need market hours.
 
