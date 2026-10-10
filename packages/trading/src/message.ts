@@ -1,4 +1,5 @@
 import { escape } from "../../notifications/src/telegram.js";
+import type { ExitResult } from "./exit.js";
 import type { LadderResult } from "./ladder.js";
 import { parseOccSymbol } from "./options.js";
 
@@ -59,6 +60,52 @@ export function formatEntry(note: EntryNote, result: LadderResult): string {
               ? [`⚠️ The stop covers ${stop.qty} of ${filled}`]
               : []),
           ]),
+  ];
+  return lines.join("\n");
+}
+
+const dollars = (n: number) =>
+  `$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+
+/**
+ * Exit post, sent as a reply to the entry post when its id is known:
+ *
+ *   $MU | 985 Put 10/16
+ *   Sold 125 of 250 at 1.50
+ *   Profit $2,500 (+12%)
+ *   Stop at 1.32 on the remaining 125
+ */
+export function formatExit(
+  note: { symbol: string; paper: boolean },
+  result: ExitResult,
+): string {
+  const c = parseOccSymbol(note.symbol);
+  const pnl =
+    result.price === null
+      ? null
+      : (result.price - result.entry) * result.sold * 100;
+  const pct =
+    result.price === null || !(result.entry > 0)
+      ? null
+      : ((result.price - result.entry) / result.entry) * 100;
+  const lines = [
+    ...(note.paper ? ["🧪 PAPER"] : []),
+    `<b>$${escape(c.underlying)} | ${c.strike} ${c.right === "call" ? "Call" : "Put"} ${shortDate(c.expiry)}</b>`,
+    result.remaining === 0
+      ? `Out, sold ${result.sold} at ${result.price?.toFixed(2) ?? "—"}`
+      : `Sold ${result.sold} of ${result.held} at ${result.price?.toFixed(2) ?? "—"}`,
+    ...(pnl === null
+      ? []
+      : [
+          `${pnl >= 0 ? "Profit" : "Loss"} ${dollars(pnl)}${pct === null ? "" : ` (${pct >= 0 ? "+" : "-"}${Math.abs(pct).toFixed(0)}%)`}`,
+        ]),
+    ...(result.stop
+      ? [
+          result.stop.error
+            ? `⚠️ No stop on the remaining ${result.remaining}: ${escape(result.stop.error)}`
+            : `Stop at ${result.stop.price.toFixed(2)} on the remaining ${result.remaining}`,
+        ]
+      : []),
   ];
   return lines.join("\n");
 }

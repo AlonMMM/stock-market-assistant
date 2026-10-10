@@ -9,11 +9,14 @@
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
-      "Bash(npm run trade -- preview:*)"
+      "Bash(npm run trade -- preview:*)",
+      "Bash(npm run trade -- check:*)",
+      "Bash(npm run trade -- check)"
     ],
     "ask": [
       "Bash(npm run trade -- buy:*)",
       "Bash(npm run trade -- stop:*)",
+      "Bash(npm run trade -- sell:*)",
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git push --force-with-lease:*)",

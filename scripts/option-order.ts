@@ -3,9 +3,12 @@
 //   preview --underlying ORCL --right call --size 0.5 [--delta 0.1]
 //   buy --contract ORCL261016C00250000 --size 0.5 [--stop 40] [--wait 120]
 //   stop --contract ORCL261016C00250000 [--stop 40]
+//   sell --underlying ORCL --qty all|half|3   (or --contract …)
+//   check   (short positions, or sell orders for more than is held)
 //
 // Paper trading unless ALPACA_TRADING_LIVE=true. `buy` sends an order; run it
 // only after the user approved the previewed contract.
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { newYork } from "../packages/market-data/src/calendar.js";
 import { TelegramSender } from "../packages/notifications/src/telegram.js";
@@ -14,15 +17,18 @@ import {
   liveUrl,
   paperUrl,
 } from "../packages/trading/src/alpaca-trading.js";
+import { sellAtBid } from "../packages/trading/src/exit.js";
 import { buyWithLadder } from "../packages/trading/src/ladder.js";
 import { protectFill } from "../packages/trading/src/protect.js";
-import { formatEntry, type StopNote } from "../packages/trading/src/message.js";
+import { shortRisks, uncovered } from "../packages/trading/src/safety.js";
+import { formatEntry, formatExit } from "../packages/trading/src/message.js";
 import {
   ceilingPrice,
   comingFriday,
   defaultDeltaRange,
   defaultStopPct,
   expiryChoices,
+  parseOccSymbol,
   pickByDelta,
   sizeContracts,
   spreadCheck,
@@ -57,6 +63,7 @@ const { positionals, values } = parseArgs({
     stop: { type: "string", default: String(defaultStopPct) },
     // Seconds an unfilled order is watched after the raises, then canceled.
     wait: { type: "string", default: "120" },
+    qty: { type: "string" }, // sell: all, half or a number of contracts
   },
 });
 
@@ -72,6 +79,27 @@ const deltaLabel =
     ? `${deltaLow.toFixed(2)}–${deltaHigh.toFixed(2)}`
     : String(targetDelta);
 const stopPct = Number(values.stop);
+// The channel post of each open trade, so its exits are sent as replies.
+// Local only (data/local is ignored by Git).
+const postsPath = "data/local/trade-posts.json";
+function readPosts(): Record<string, number> {
+  try {
+    return JSON.parse(readFileSync(postsPath, "utf8"));
+  } catch {
+    return {};
+  }
+}
+function savePost(symbol: string, messageId: number | null) {
+  try {
+    const posts = readPosts();
+    if (messageId === null) delete posts[symbol];
+    else posts[symbol] = messageId;
+    mkdirSync("data/local", { recursive: true });
+    writeFileSync(postsPath, JSON.stringify(posts, null, 2));
+  } catch {
+    // Without the file the next exit is posted on its own.
+  }
+}
 const addDays = (date: string, days: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000)
     .toISOString()
@@ -219,6 +247,49 @@ async function buy() {
     formatEntry({ symbol, paper: !live, stop }, final),
   );
   console.error(sent.ok ? "Telegram sent" : `Telegram failed: ${sent.error}`);
+  if (sent.ok && sent.messageId) savePost(symbol, sent.messageId);
+}
+
+// Sells at the bid, trying again at the new bid every 5 seconds.
+async function sell() {
+  let symbol = values.contract?.toUpperCase();
+  if (!symbol) {
+    const underlying = values.underlying?.toUpperCase();
+    if (!underlying) throw new Error("Need --contract or --underlying");
+    const held = (await client.positions()).filter(
+      (p) => p.qty > 0 && parseOccSymbol(p.symbol).underlying === underlying,
+    );
+    if (held.length !== 1)
+      throw new Error(
+        held.length === 0
+          ? `No option position in ${underlying}`
+          : `Several ${underlying} positions; pass --contract: ${held.map((p) => `${p.symbol} (${p.qty})`).join(", ")}`,
+      );
+    symbol = held[0]!.symbol;
+  }
+  if (!values.qty) throw new Error("Need --qty all|half|<contracts>");
+  const result = await sellAtBid(client, symbol, values.qty, {
+    maxMs: Number(values.wait) * 1000,
+    stopPct,
+    log: (line) => console.error(line),
+  });
+  console.log(JSON.stringify({ live, symbol, result }, null, 2));
+  if (!(result.sold > 0)) {
+    console.error("Nothing sold; no group message sent.");
+    return;
+  }
+  const token = process.env.TRADES_TELEGRAM_BOT_TOKEN;
+  const chat = process.env.TRADES_TELEGRAM_CHAT_ID;
+  if (!token || !chat) {
+    console.error("Telegram not configured; no group message sent.");
+    return;
+  }
+  const sent = await new TelegramSender(token, chat).send(
+    formatExit({ symbol, paper: !live }, result),
+    { replyTo: readPosts()[symbol] },
+  );
+  console.error(sent.ok ? "Telegram sent" : `Telegram failed: ${sent.error}`);
+  if (result.remaining === 0) savePost(symbol, null);
 }
 
 // Places the stop for a contract already held, at its average entry price.
@@ -227,26 +298,85 @@ async function stop() {
   if (!symbol) throw new Error("Need --contract");
   const held = await client.position(symbol);
   if (!(held.qty > 0)) throw new Error(`No long position in ${symbol}`);
+  // Only contracts that no open sell order already covers: a second stop on
+  // the same contracts could sell them twice.
+  const qty = uncovered(held.qty, symbol, await client.openOrders(symbol));
+  if (qty === 0) {
+    console.log(
+      JSON.stringify(
+        { live, held: held.qty, note: "open sell orders already cover it" },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
   const price = stopPrice(held.avgEntryPrice, stopPct);
-  const order = await client.sellStop(symbol, held.qty, price);
+  const order = await client.sellStop(symbol, qty, price);
   console.log(
     JSON.stringify(
-      { live, entry: held.avgEntryPrice, stopPct, price, order },
+      { live, entry: held.avgEntryPrice, stopPct, price, qty, order },
       null,
       2,
     ),
   );
 }
 
+// The account must never be short an option. Run after every order command
+// and by `check`: any short position, or sell orders for more than is held,
+// is printed, sent to the trades channel and fails the command.
+async function shortCheck() {
+  const problems = shortRisks(
+    await client.positions(),
+    await client.openOrders(),
+  );
+  if (problems.length === 0) return problems;
+  console.error(`\nALERT: SHORT OPTION RISK\n${problems.join("\n")}\n`);
+  const token = process.env.TRADES_TELEGRAM_BOT_TOKEN;
+  const chat = process.env.TRADES_TELEGRAM_CHAT_ID;
+  if (token && chat) {
+    const sent = await new TelegramSender(token, chat).send(
+      `🚨 <b>SHORT OPTION RISK</b>${live ? "" : " (paper)"}\n${problems.join("\n")}`,
+    );
+    console.error(
+      sent.ok
+        ? "Alert sent to Telegram"
+        : `Telegram alert failed: ${sent.error}`,
+    );
+  }
+  process.exitCode = 2;
+  return problems;
+}
+
 const command = positionals[0];
-(command === "preview"
-  ? preview()
-  : command === "buy"
-    ? buy()
-    : command === "stop"
-      ? stop()
-      : Promise.reject(new Error("Command: preview | buy | stop"))
-).catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+const commands: Record<string, () => Promise<unknown>> = {
+  preview,
+  buy,
+  stop,
+  sell,
+  check: async () => {
+    const problems = await shortCheck();
+    if (problems.length === 0)
+      console.log("No short positions and no oversized sell orders.");
+  },
+};
+const run = commands[command ?? ""];
+(run
+  ? run()
+  : Promise.reject(new Error(`Command: ${Object.keys(commands).join(" | ")}`))
+)
+  .catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  })
+  // Whatever an order command did or failed to do, look at the account.
+  .then(() =>
+    command === "buy" || command === "sell" || command === "stop"
+      ? shortCheck().catch((error: unknown) => {
+          console.error(
+            `ALERT: the short-position check itself failed: ${error instanceof Error ? error.message : error}`,
+          );
+          process.exitCode = 2;
+        })
+      : undefined,
+  );

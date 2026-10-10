@@ -107,6 +107,7 @@ test("portfolio: account totals, positions with their stop, and orders", async (
   assert.equal(body.positions[0]!.stop, null);
   assert.equal(body.riskAtStops, 204);
   assert.equal(body.unprotected, 1); // SPY has no stop
+  assert.deepEqual(body.shortRisks, []);
   assert.equal(body.orders.length, 1);
   // Read-only, on the paper host.
   assert.ok(seen.every((s) => s.startsWith("GET paper-api.alpaca.markets/")));
@@ -121,6 +122,18 @@ test("portfolio: a stop covering part of a position leaves it unprotected", asyn
   assert.equal(amd.stop?.qty, 2);
   assert.equal(amd.stop?.risk, 136);
   assert.equal(body.unprotected, 2);
+});
+
+test("portfolio: sell orders for more than is held are flagged", async () => {
+  const { fetcher } = fake([
+    order({ qty: "3" }),
+    order({ id: "o2", qty: "2" }),
+  ]);
+  const body = (await handlePortfolio(keys, false, fetcher, now))
+    .body as Portfolio;
+  assert.deepEqual(body.shortRisks, [
+    "OVERSOLD AMD261016C00660000: open sell orders for 5, 3 held",
+  ]);
 });
 
 test("portfolio: live account host, missing keys and refused keys", async () => {

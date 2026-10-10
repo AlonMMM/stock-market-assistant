@@ -366,6 +366,16 @@ function LiveTrades({ onError }: { onError: (m: string) => void }) {
           </dd>
         </div>
       </dl>
+      {value.shortRisks.length > 0 && (
+        <div className="notice error short-alert" role="alert">
+          <strong>Short option risk. This must never happen.</strong>
+          <ul>
+            {value.shortRisks.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {value.unprotected > 0 && (
         <p className="note-amber" role="status">
           {value.unprotected === 1

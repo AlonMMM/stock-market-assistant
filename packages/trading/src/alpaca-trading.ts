@@ -156,6 +156,7 @@ export class AlpacaTrading {
           symbol,
           qty: String(qty),
           side: "buy",
+          position_intent: "buy_to_open",
           type: "limit",
           time_in_force: "day",
           limit_price: limitPrice.toFixed(2),
@@ -176,6 +177,8 @@ export class AlpacaTrading {
           symbol,
           qty: String(qty),
           side: "sell",
+          // Close-only: the broker refuses it when it would open a short.
+          position_intent: "sell_to_close",
           type: "stop",
           time_in_force: "gtc",
           stop_price: stop.toFixed(2),
@@ -192,6 +195,62 @@ export class AlpacaTrading {
         body: { qty: String(qty), stop_price: stop.toFixed(2) },
       }),
     );
+  }
+
+  /** A day limit sell. */
+  async sellLimit(symbol: string, qty: number, limitPrice: number) {
+    return order(
+      await this.call<RawOrder>(this.tradingUrl, "/v2/orders", {
+        method: "POST",
+        body: {
+          symbol,
+          qty: String(qty),
+          side: "sell",
+          // Close-only: the broker refuses it when it would open a short.
+          position_intent: "sell_to_close",
+          type: "limit",
+          time_in_force: "day",
+          limit_price: limitPrice.toFixed(2),
+        },
+      }),
+    );
+  }
+
+  /** Open orders, for one contract or all, with their side and stop price. */
+  async openOrders(symbol?: string) {
+    const raw = await this.call<
+      (RawOrder & { side: string; stop_price: string | null })[]
+    >(this.tradingUrl, "/v2/orders", {
+      query: {
+        status: "open",
+        limit: "500",
+        ...(symbol ? { symbols: symbol } : {}),
+      },
+    });
+    return raw.map((o) => ({
+      ...order(o),
+      side: o.side,
+      stopPrice: o.stop_price === null ? null : Number(o.stop_price),
+    }));
+  }
+
+  /** Option positions; a short one has a negative quantity. */
+  async positions() {
+    const raw = await this.call<
+      {
+        symbol: string;
+        asset_class: string;
+        qty: string;
+        avg_entry_price: string;
+      }[]
+    >(this.tradingUrl, "/v2/positions");
+    return raw
+      .filter((p) => p.asset_class === "us_option")
+      .map((p) => ({
+        symbol: p.symbol,
+        qty: Number(p.qty),
+        avgEntryPrice: Number(p.avg_entry_price),
+      }));
   }
 
   /** Withdraws what has not filled. */
