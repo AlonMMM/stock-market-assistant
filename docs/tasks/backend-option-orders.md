@@ -15,7 +15,9 @@ The user explicitly authorized order execution on the Alpaca **paper** account
 
 ## Rules (user-confirmed 2026-10-10)
 
-- **Contract:** the strike whose |delta| is closest to the requested delta. The preview
+- **Contract:** the strike whose |delta| is closest to the requested delta. Without a delta
+  in the command the range 0.10–0.15 applies (user-confirmed 2026-10-10): the strike closest
+  to its middle, flagged when the expiry has none inside the range. The preview
   shows two expiries side by side: the nearest listed one and the coming Friday's (the last
   listed expiry up to that Friday). The user picks one.
 - **Size:** each command states its own size as % of account equity; 3% is the hard maximum.
@@ -37,7 +39,7 @@ The user explicitly authorized order execution on the Alpaca **paper** account
 ## Usage
 
 ```
-node --import tsx scripts/option-order.ts preview --underlying ORCL --right call --delta 0.1 --size 0.5
+npm run trade -- preview --underlying ORCL --right call --size 0.5 [--delta 0.1]
 node --import tsx scripts/option-order.ts buy --contract ORCL261016C00250000 --size 0.5 [--stop 40]
 node --import tsx scripts/option-order.ts stop --contract ORCL261016C00250000 [--stop 40]
 ```

@@ -15,13 +15,13 @@ feature: say so and stop.
 
 ## 1. Read the command
 
-| Value                     | Flag                | Default   | Limit      |
-| ------------------------- | ------------------- | --------- | ---------- |
-| Stock                     | `--underlying`      | none: ask |            |
-| Call or put               | `--right call\|put` | none: ask |            |
-| Size, % of account equity | `--size`            | none: ask | at most 3  |
-| Target delta              | `--delta`           | 0.1       |            |
-| Stop, % of the premium    | `--stop`            | 40        | at most 70 |
+| Value                     | Flag                | Default                                                 | Limit      |
+| ------------------------- | ------------------- | ------------------------------------------------------- | ---------- |
+| Stock                     | `--underlying`      | none: ask                                               |            |
+| Call or put               | `--right call\|put` | none: ask                                               |            |
+| Size, % of account equity | `--size`            | none: ask                                               | at most 3  |
+| Delta                     | `--delta`           | 0.10–0.15, when the user names none: leave the flag out |            |
+| Stop, % of the premium    | `--stop`            | 40                                                      | at most 70 |
 
 Ask for a missing stock, direction or size in one short question. Do not guess them. If the
 size is above 3 or the stop above 70, say the limit and ask for a new value.
@@ -29,8 +29,12 @@ size is above 3 or the stop above 70, say the limit and ask for a new value.
 ## 2. Preview
 
 ```
-npm run trade -- preview --underlying NVDA --right call --delta 0.1 --size 0.5 --stop 40
+npm run trade -- preview --underlying NVDA --right call --size 0.5 --stop 40
 ```
+
+Add `--delta 0.2` only when the user named a delta. Without it the strike closest to the
+middle of 0.10–0.15 is picked; if a row has `deltaInRange: false`, say that no strike of that
+expiry falls in the range and which delta was picked.
 
 Nothing is sent. Show each returned row in a short table: expiry, strike, delta, bid/ask,
 spread % of mid, contracts, maximum cost, stop price. Say which account it is (`live: false`

@@ -21,6 +21,9 @@ export const maxSizePct = 3;
 export const maxSpreadRatio = 0.1;
 // The limit price never goes past 85% of the way from mid to ask.
 export const ceilingFraction = 0.85;
+// Without a delta in the command, the contract is picked from this |delta|
+// range: the strike closest to its middle.
+export const defaultDeltaRange = [0.1, 0.15] as const;
 // Stop loss as a share of the premium paid: 40% unless the command says
 // otherwise, never more than 70%.
 export const defaultStopPct = 40;
