@@ -33,6 +33,7 @@ import {
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
 import {
   handlePortfolio,
+  handlePortfolioHistory,
   PortfolioCache,
 } from "../../../packages/trading/src/portfolio.js";
 
@@ -220,19 +221,30 @@ export default {
         headers: { "Cache-Control": "no-store" },
       });
     }
-    if (path === "/api/portfolio") {
+    if (path === "/api/portfolio" || path === "/api/portfolio/history") {
       if (request.method !== "GET")
         return new Response("Method not allowed", {
           status: 405,
           headers: { Allow: "GET" },
         });
-      const result = await handlePortfolio(
-        credentials,
-        env.ALPACA_TRADING_LIVE === "true",
-        fetch,
-        Date.now(),
-        portfolio,
-      );
+      const live = env.ALPACA_TRADING_LIVE === "true";
+      const result =
+        path === "/api/portfolio"
+          ? await handlePortfolio(
+              credentials,
+              live,
+              fetch,
+              Date.now(),
+              portfolio,
+            )
+          : await handlePortfolioHistory(
+              credentials,
+              new URL(request.url).searchParams.get("period") ?? undefined,
+              live,
+              fetch,
+              Date.now(),
+              portfolio,
+            );
       return Response.json(result.body, {
         status: result.status,
         headers: { "Cache-Control": "no-store" },

@@ -10,9 +10,8 @@ import { StatusPill } from "./StatusPill.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
 import { WatchTable } from "./WatchTable.js";
 import { EngineTickers } from "./EngineTickers.js";
-import { Portfolio } from "./Portfolio.js";
 
-const tabs = ["alerts", "watchlist", "portfolio"] as const;
+const tabs = ["alerts", "watchlist"] as const;
 
 const liveRefreshMs = 30000;
 // Board data is SIP in 5-minute bars, delayed by the API's `delayMinutes`.
@@ -185,7 +184,6 @@ export function Live({
           [
             ["alerts", "Alerts", status ? alerts.length : null],
             ["watchlist", "Watchlist", board.value?.watchlist.length ?? null],
-            ["portfolio", "Portfolio", null],
           ] as const
         ).map(([key, label, count]) => (
           <button
@@ -225,15 +223,6 @@ export function Live({
           ) : (
             <p className="notice">{emptyText}</p>
           )}
-        </section>
-      ) : tab === "portfolio" ? (
-        <section
-          role="tabpanel"
-          id="panel-portfolio"
-          aria-labelledby="tab-portfolio"
-          className="tab-panel"
-        >
-          <Portfolio onError={warn} />
         </section>
       ) : (
         <section

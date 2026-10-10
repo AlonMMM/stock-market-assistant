@@ -35,6 +35,7 @@ import {
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
 import {
   handlePortfolio,
+  handlePortfolioHistory,
   PortfolioCache,
 } from "../../../packages/trading/src/portfolio.js";
 
@@ -118,6 +119,20 @@ export function buildApp(
   app.get("/api/portfolio", async (_request, reply) => {
     const result = await handlePortfolio(
       alpaca,
+      process.env.ALPACA_TRADING_LIVE === "true",
+      alpaca.fetcher,
+      Date.now(),
+      portfolio,
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.get("/api/portfolio/history", async (request, reply) => {
+    const result = await handlePortfolioHistory(
+      alpaca,
+      (request.query as { period?: unknown }).period,
       process.env.ALPACA_TRADING_LIVE === "true",
       alpaca.fetcher,
       Date.now(),
