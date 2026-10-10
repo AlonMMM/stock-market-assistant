@@ -1,6 +1,6 @@
 // Option orders from a chat command (docs/tasks/backend-option-orders.md).
 //
-//   preview --underlying ORCL --right call --delta 0.1 --size 0.5
+//   preview --underlying ORCL --right call --size 0.5 [--delta 0.1]
 //   buy --contract ORCL261016C00250000 --size 0.5 [--stop 40]
 //   stop --contract ORCL261016C00250000 [--stop 40]
 //
@@ -19,6 +19,7 @@ import { formatEntry, type StopNote } from "../packages/trading/src/message.js";
 import {
   ceilingPrice,
   comingFriday,
+  defaultDeltaRange,
   defaultStopPct,
   expiryChoices,
   pickByDelta,
@@ -47,7 +48,7 @@ const { positionals, values } = parseArgs({
   options: {
     underlying: { type: "string" },
     right: { type: "string", default: "call" },
-    delta: { type: "string", default: "0.1" },
+    delta: { type: "string" },
     size: { type: "string" },
     contract: { type: "string" },
     steps: { type: "string", default: "5" },
@@ -57,7 +58,16 @@ const { positionals, values } = parseArgs({
 });
 
 const sizePct = Number(values.size);
-const targetDelta = Number(values.delta);
+// An explicit --delta is the target; otherwise the middle of the default range.
+const [deltaLow, deltaHigh] = defaultDeltaRange;
+const targetDelta =
+  values.delta === undefined
+    ? (deltaLow + deltaHigh) / 2
+    : Number(values.delta);
+const deltaLabel =
+  values.delta === undefined
+    ? `${deltaLow.toFixed(2)}–${deltaHigh.toFixed(2)}`
+    : String(targetDelta);
 const stopPct = Number(values.stop);
 const addDays = (date: string, days: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000)
@@ -107,6 +117,13 @@ async function preview() {
       contract: q.symbol,
       strike: q.strike,
       delta: q.delta,
+      ...(values.delta === undefined && q.delta !== null
+        ? {
+            deltaInRange:
+              Math.abs(q.delta) >= deltaLow - 1e-9 &&
+              Math.abs(q.delta) <= deltaHigh + 1e-9,
+          }
+        : {}),
       bid: q.bid,
       ask: q.ask,
       mid: Number(check.mid.toFixed(3)),
@@ -121,7 +138,15 @@ async function preview() {
   });
   console.log(
     JSON.stringify(
-      { live, feed, equity, sizePct, targetDelta, stopPct, rows },
+      {
+        live,
+        feed,
+        equity,
+        sizePct,
+        targetDelta: deltaLabel,
+        stopPct,
+        rows,
+      },
       null,
       2,
     ),
