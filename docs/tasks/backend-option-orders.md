@@ -55,8 +55,18 @@ OPRA subscription); `ALPACA_TRADING_LIVE=true` for the live account (off by defa
 - `npm test`: 263 pass, 0 fail, including `tests/option-orders.test.ts` (synthetic quotes
   and a fake broker client).
 - `npm run format:check` and `tsc -p tsconfig.json` pass.
-- Not run against Alpaca: this session's network blocks the Alpaca trading host and has no
-  keys. Paper-account verification is the next step.
+- Paper account, 2026-10-10 (Saturday, closing quotes from Friday): `preview` works with the
+  OPRA feed and reads equity ($100,000). 0.1-delta contracts on ORCL, SPY, QQQ, NVDA, AAPL,
+  TSLA and AMD, calls and puts, both expiries: 5 of 25 exceed the 10% spread guard (ORCL call
+  19.6%, AAPL 11.3% / 13.1% / 22.2%, AMD put 12.5%); SPY, QQQ, NVDA and TSLA are 1.5–7.1%.
+- `buy` on a contract over the guard (ORCL261016C00155000) returned `rejected-spread` and
+  sent nothing.
+- `buy` of 1 AMD261016C00660000 on paper with the market closed: the order was accepted at
+  the mid (1.67) and queued. Alpaca then refused the first raise (422 "cannot replace order
+  in accepted status") and the script crashed without a report. Fixed: a refused raise now
+  stops the raising, leaves the order working and is reported as `raiseError`. The test
+  order was canceled.
+- Not yet run: price raises on a live order and fill reporting. They need market hours.
 
 ## Open questions and next steps
 

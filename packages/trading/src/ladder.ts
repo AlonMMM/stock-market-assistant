@@ -30,6 +30,9 @@ export interface LadderResult {
   order?: Order;
   // Raising stopped early because the spread widened past the limit.
   spreadWidened?: boolean;
+  // Raising stopped early because the broker refused a price change (for
+  // example while the market is closed); the order stays at its last price.
+  raiseError?: string;
 }
 
 const finished = new Set([
@@ -90,6 +93,7 @@ export async function buyWithLadder(
   const prices = [price];
   log(`sent ${qty} @ ${price.toFixed(2)} (bid ${quote.bid}, ask ${quote.ask})`);
   let spreadWidened = false;
+  let raiseError: string | undefined;
 
   for (let i = 1; i <= steps; i++) {
     await sleep(interval);
@@ -104,7 +108,13 @@ export async function buyWithLadder(
     }
     const next = Math.min(stepPrice(quote, i, steps), cap);
     if (next <= price + 1e-9) continue;
-    order = await client.replace(order.id, next);
+    try {
+      order = await client.replace(order.id, next);
+    } catch (error) {
+      raiseError = error instanceof Error ? error.message : String(error);
+      log(`could not raise to ${next.toFixed(2)}: ${raiseError}`);
+      break;
+    }
     price = next;
     prices.push(price);
     log(`raised to ${price.toFixed(2)} (bid ${quote.bid}, ask ${quote.ask})`);
@@ -120,5 +130,6 @@ export async function buyWithLadder(
     prices,
     order,
     ...(spreadWidened ? { spreadWidened } : {}),
+    ...(raiseError === undefined ? {} : { raiseError }),
   };
 }

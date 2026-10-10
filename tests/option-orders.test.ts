@@ -189,6 +189,18 @@ test("ladder: stops raising when the spread widens", async () => {
   assert.equal(calls.length, 2);
 });
 
+test("ladder: a refused raise leaves the order working and is reported", async () => {
+  const { client, calls } = fakeClient([[1.0, 1.1]], null);
+  client.replace = async () => {
+    throw new Error("cannot replace order in accepted status");
+  };
+  const result = await buyWithLadder(client, symbol, 3, fast);
+  assert.equal(result.status, "open");
+  assert.deepEqual(result.prices, [1.05]);
+  assert.match(result.raiseError ?? "", /accepted status/);
+  assert.deepEqual(calls, ["buy 3 @ 1.05"]);
+});
+
 test("ladder: never pays above the budget cap", async () => {
   const { client } = fakeClient([[1.0, 1.1]], null);
   const result = await buyWithLadder(client, symbol, 3, {
