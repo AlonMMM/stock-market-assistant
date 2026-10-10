@@ -24,15 +24,20 @@ The user explicitly authorized order execution on the Alpaca **paper** account
   Whole contracts are sized at the ceiling price, so the cost stays within the size.
 - **Price:** a day limit order starts at the mid and is raised every few seconds (default
   5 raises, 3 s apart), with a fresh quote each time, up to 85% of the way from mid to ask.
-  It is never lowered. A partial or zero fill at the ceiling is left working and reported.
+  It is never lowered.
 - **Spread guard:** if (ask − bid) / mid exceeds 10%, nothing is sent and the user is told.
   If the spread widens past 10% while the order is working, raising stops and it is reported.
 - **Stop (user-confirmed 2026-10-10):** every buy gets a stop loss as a share of the premium
   paid: 40% by default, 70% at most (`--stop`). A larger value is refused before anything is
   sent. The stop price is the average fill price less that share, rounded up to a tick. It
   is a good-till-canceled stop order: once a trade prints at or below the stop it becomes a
-  market sell (Alpaca's rule for option stops). It covers the contracts filled when the
-  price raises end; contracts that fill later have no stop until `stop` is run.
+  market sell (Alpaca's rule for option stops).
+- **After the raises (user-confirmed 2026-10-10):** `buy` watches the order for 2 minutes
+  (`--wait`, seconds). Each time more contracts fill, the stop is placed or enlarged to cover
+  all of them, priced from the average fill. What has not filled by the end is canceled, so
+  nothing can fill later without a stop. A stop the broker refuses while the buy is open is
+  tried again after the cancel. With nothing filled, no channel post is sent. This also
+  applies outside market hours: a queued order is canceled after the wait.
 - **"Real value":** the mid is used as the estimate of fair value. The user questioned this;
   see the open questions below.
 
@@ -80,6 +85,9 @@ OPRA subscription); `ALPACA_TRADING_LIVE=true` for the live account (off by defa
   `formatEntry` and `TelegramSender` (no order behind them).
 - Stop: `buy --stop 80` is refused before any order; `preview` shows the stop at the ceiling
   price. The stop order itself has not been sent to Alpaca.
+- Watch and cancel, paper account, market closed (2026-10-10): `buy --wait 9` of 1
+  AMD261012C00627500 was accepted at 1.03, the raise was refused, and after 9 s the order
+  was canceled at Alpaca (`status: canceled`, `canceledQty: 1`); no post was sent.
 - Not yet run: price raises on a live order, fill reporting, and placing the stop. They
   need market hours.
 
