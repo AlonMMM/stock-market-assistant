@@ -15,6 +15,7 @@
     "build": "tsc -p apps/api/tsconfig.json && vite build --config apps/web/vite.config.ts && node --import tsx scripts/build-worker.mjs",
     "start:api": "node dist/apps/api/src/server.js",
     "deploy": "npx wrangler@4 deploy",
+    "trade": "node scripts/trade.mjs",
     "backfill:bars": "node --import tsx scripts/backfill-bars.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
