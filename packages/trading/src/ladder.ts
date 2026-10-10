@@ -35,7 +35,8 @@ export interface LadderResult {
   raiseError?: string;
 }
 
-const finished = new Set([
+// Order states in which nothing more can fill.
+export const finished = new Set([
   "filled",
   "canceled",
   "expired",

@@ -13,6 +13,7 @@ const contracts = (n: number) => `${n} contract${n === 1 ? "" : "s"}`;
 export interface StopNote {
   pct: number; // share of the premium
   price?: number; // set when the stop order was placed
+  qty?: number; // contracts the stop covers
   error?: string; // set when the broker refused it
 }
 
@@ -46,12 +47,17 @@ export function formatEntry(note: EntryNote, result: LadderResult): string {
     bought && qty > filled ? `${filled} of ${contracts(qty)}` : contracts(qty),
     ...(!stop
       ? []
-      : stop.price !== undefined
-        ? [`Stop at ${stop.price.toFixed(2)} (-${stop.pct}%)`]
-        : [
+      : stop.price === undefined
+        ? [
             stop.error
               ? `⚠️ No stop: ${escape(stop.error)}`
               : "No stop until it fills",
+          ]
+        : [
+            `Stop at ${stop.price.toFixed(2)} (-${stop.pct}%)`,
+            ...(stop.qty !== undefined && stop.qty < filled
+              ? [`⚠️ The stop covers ${stop.qty} of ${filled}`]
+              : []),
           ]),
   ];
   return lines.join("\n");

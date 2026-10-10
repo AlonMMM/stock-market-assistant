@@ -1,7 +1,7 @@
 // Option orders from a chat command (docs/tasks/backend-option-orders.md).
 //
 //   preview --underlying ORCL --right call --size 0.5 [--delta 0.1]
-//   buy --contract ORCL261016C00250000 --size 0.5 [--stop 40]
+//   buy --contract ORCL261016C00250000 --size 0.5 [--stop 40] [--wait 120]
 //   stop --contract ORCL261016C00250000 [--stop 40]
 //
 // Paper trading unless ALPACA_TRADING_LIVE=true. `buy` sends an order; run it
@@ -15,6 +15,7 @@ import {
   paperUrl,
 } from "../packages/trading/src/alpaca-trading.js";
 import { buyWithLadder } from "../packages/trading/src/ladder.js";
+import { protectFill } from "../packages/trading/src/protect.js";
 import { formatEntry, type StopNote } from "../packages/trading/src/message.js";
 import {
   ceilingPrice,
@@ -54,6 +55,8 @@ const { positionals, values } = parseArgs({
     steps: { type: "string", default: "5" },
     interval: { type: "string", default: "3" },
     stop: { type: "string", default: String(defaultStopPct) },
+    // Seconds an unfilled order is watched after the raises, then canceled.
+    wait: { type: "string", default: "120" },
   },
 });
 
@@ -178,21 +181,34 @@ async function buy() {
     console.log(JSON.stringify({ live, qty, budget, result }, null, 2));
     return;
   }
-  // The stop covers what has filled so far. Contracts that fill later have
-  // none until `stop` is run for the contract.
-  const stop: StopNote = { pct: stopPct };
-  const filled = result.order?.filledQty ?? 0;
-  const paid = result.order?.filledAvgPrice;
-  if (filled > 0 && paid) {
-    try {
-      const price = stopPrice(paid, stopPct);
-      await client.sellStop(symbol, filled, price);
-      stop.price = price;
-    } catch (error) {
-      stop.error = error instanceof Error ? error.message : String(error);
-    }
+  // Watch the order, keep a stop on what fills, cancel what does not.
+  const guarded = await protectFill(client, result.order!, stopPct, {
+    waitMs: Number(values.wait) * 1000,
+    log: (line) => console.error(line),
+  });
+  const order = guarded.order;
+  const final = {
+    ...result,
+    order,
+    status:
+      order.status === "filled"
+        ? ("filled" as const)
+        : guarded.cancelError
+          ? result.status
+          : ("closed" as const),
+  };
+  const { stop, canceledQty, cancelError } = guarded;
+  console.log(
+    JSON.stringify(
+      { live, qty, budget, result: final, stop, canceledQty, cancelError },
+      null,
+      2,
+    ),
+  );
+  if (!(order.filledQty > 0)) {
+    console.error("Nothing filled; no group message sent.");
+    return;
   }
-  console.log(JSON.stringify({ live, qty, budget, result, stop }, null, 2));
   const token = process.env.TRADES_TELEGRAM_BOT_TOKEN;
   const chat = process.env.TRADES_TELEGRAM_CHAT_ID;
   if (!token || !chat) {
@@ -200,7 +216,7 @@ async function buy() {
     return;
   }
   const sent = await new TelegramSender(token, chat).send(
-    formatEntry({ symbol, paper: !live, stop }, result),
+    formatEntry({ symbol, paper: !live, stop }, final),
   );
   console.error(sent.ok ? "Telegram sent" : `Telegram failed: ${sent.error}`);
 }

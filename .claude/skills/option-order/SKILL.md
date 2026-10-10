@@ -52,18 +52,20 @@ preview. A new command needs a new preview and a new choice.
 npm run trade -- buy --contract NVDA261016C00242500 --size 0.5 --stop 40
 ```
 
-The command asks the user for permission; that prompt is expected. Report from the output:
+The command asks the user for permission; that prompt is expected. It raises the price for
+about 20 seconds, then watches the order for 2 more minutes, placing and enlarging the stop
+as contracts fill, and cancels whatever has not filled. Tell the user it can take up to
+about two and a half minutes. Report from the output:
 
-- `status`: `filled`, `partial`, `open` (nothing filled yet), `closed`, `rejected-spread`
-  or `rejected-budget` (nothing was sent).
-- Contracts filled and the average price.
-- `stop`: the price it was placed at, or the error if Alpaca refused it.
-- `raiseError`, if present: the price could not be raised (the usual cause is a closed
-  market) and the order is still working at its last price.
-- Whether the Telegram post was sent.
-
-If the order is `open` or `partial`, say plainly that the unfilled contracts have no stop,
-and that `stop` must be run once they fill.
+- Contracts filled and the average price (`result.order`).
+- `canceledQty`: contracts that did not fill and were withdrawn.
+- `stop`: its price and the contracts it covers. If `stop.qty` is below the filled
+  quantity, or `stop.error` is set, say plainly which contracts have no stop and that
+  `stop` must be run for the contract.
+- `cancelError`, if present: the unfilled part could not be withdrawn and may still fill
+  without a stop.
+- `rejected-spread` or `rejected-budget`: nothing was sent.
+- Whether the Telegram post was sent. None is sent when nothing filled.
 
 ## Stop for a position already held
 
@@ -78,8 +80,8 @@ It places the stop at the position's average entry price less the stop %.
 - Paper account only. Never set `ALPACA_TRADING_LIVE`. If the user asks for a live order,
   say that live trading needs them to enable it themselves, and do not send it.
 - Never retry a failed `buy` on your own: report the error and ask.
-- The US options market is open 16:30–23:00 Israel time on trading days. Outside it an
-  order is queued for the next open and its price is not raised; say so before buying.
+- The US options market is open 16:30–23:00 Israel time on trading days. Outside it nothing
+  fills, and the order is canceled after the wait; say so before buying.
 - "Set ALPACA_API_KEY and ALPACA_API_SECRET" means no `.env` with the keys was found on
   this machine (a cloud session has none): tell the user, and do not ask for the keys in
   chat.

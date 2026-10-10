@@ -184,6 +184,23 @@ export class AlpacaTrading {
     );
   }
 
+  /** Changes a stop's quantity and price; Alpaca answers with a new order id. */
+  async replaceStop(id: string, qty: number, stop: number) {
+    return order(
+      await this.call<RawOrder>(this.tradingUrl, `/v2/orders/${id}`, {
+        method: "PATCH",
+        body: { qty: String(qty), stop_price: stop.toFixed(2) },
+      }),
+    );
+  }
+
+  /** Withdraws what has not filled. */
+  async cancel(id: string) {
+    await this.call<null>(this.tradingUrl, `/v2/orders/${id}`, {
+      method: "DELETE",
+    });
+  }
+
   /** Contracts held and their average entry price. */
   async position(symbol: string) {
     const raw = await this.call<{ qty: string; avg_entry_price: string }>(

@@ -7,6 +7,10 @@ import type {
 import { buyWithLadder } from "../packages/trading/src/ladder.js";
 import { formatEntry } from "../packages/trading/src/message.js";
 import {
+  protectFill,
+  type ProtectClient,
+} from "../packages/trading/src/protect.js";
+import {
   ceilingPrice,
   comingFriday,
   defaultStopPct,
@@ -273,5 +277,104 @@ test("entry post: contract, price, contracts and stop", () => {
       entryResult({}, [1.05]),
     ),
     "<b>$ORCL | 250 Call 10/16</b>\nBidding at 1.05, not filled yet\n9 contracts\nNo stop until it fills",
+  );
+});
+
+// A buy order whose fills arrive poll by poll: `fills[i]` is the filled
+// quantity seen on poll i (the last value repeats).
+function watched(
+  fills: number[],
+  refuse: { stopWhileOpen?: boolean; cancel?: boolean } = {},
+) {
+  const calls: string[] = [];
+  let polls = 0;
+  let state = "new";
+  let stops = 0;
+  const buy = (filled: number): Order => ({
+    id: "b",
+    symbol,
+    status: filled === 9 ? "filled" : state,
+    qty: 9,
+    filledQty: filled,
+    filledAvgPrice: filled > 0 ? 1.0 : null,
+    limitPrice: 1.09,
+  });
+  const stopOrder = (): Order => ({ ...buy(0), id: `s${++stops}` });
+  const client: ProtectClient = {
+    order: async () => buy(fills[Math.min(polls++, fills.length - 1)] ?? 0),
+    sellStop: async (_s, qty, price) => {
+      if (refuse.stopWhileOpen && state === "new")
+        throw new Error("potential wash trade");
+      calls.push(`stop ${qty} @ ${price}`);
+      return stopOrder();
+    },
+    replaceStop: async (id, qty, price) => {
+      calls.push(`replace ${id} to ${qty} @ ${price}`);
+      return stopOrder();
+    },
+    cancel: async () => {
+      if (refuse.cancel) throw new Error("cancel refused");
+      calls.push("cancel");
+      state = "canceled";
+    },
+  };
+  return { client, calls, first: buy(fills[0] ?? 0) };
+}
+const quick = { sleep: async () => {}, waitMs: 9000, pollMs: 3000 };
+
+test("after the raises: a full fill gets its stop and nothing is canceled", async () => {
+  const { client, calls, first } = watched([9]);
+  const result = await protectFill(client, first, 40, quick);
+  assert.deepEqual(calls, ["stop 9 @ 0.6"]);
+  assert.deepEqual(result.stop, { pct: 40, price: 0.6, qty: 9 });
+  assert.equal(result.canceledQty, 0);
+});
+
+test("after the raises: the stop grows with later fills, the rest is canceled", async () => {
+  const { client, calls, first } = watched([3, 3, 5, 5, 5]);
+  const result = await protectFill(client, first, 40, quick);
+  assert.deepEqual(calls, ["stop 3 @ 0.6", "replace s1 to 5 @ 0.6", "cancel"]);
+  assert.deepEqual(result.stop, { pct: 40, price: 0.6, qty: 5 });
+  assert.equal(result.canceledQty, 4);
+  assert.equal(result.order.status, "canceled");
+});
+
+test("after the raises: an order that never fills is canceled without a stop", async () => {
+  const { client, calls, first } = watched([0]);
+  const result = await protectFill(client, first, 40, quick);
+  assert.deepEqual(calls, ["cancel"]);
+  assert.deepEqual(result.stop, { pct: 40 });
+  assert.equal(result.canceledQty, 9);
+});
+
+test("after the raises: a fill during the cancel is still covered", async () => {
+  const { client, calls, first } = watched([0, 0, 0, 2]);
+  const result = await protectFill(client, first, 40, quick);
+  assert.deepEqual(calls, ["cancel", "stop 2 @ 0.6"]);
+  assert.equal(result.canceledQty, 7);
+});
+
+test("after the raises: a stop refused while the buy is open is retried after the cancel", async () => {
+  const { client, calls, first } = watched([3], { stopWhileOpen: true });
+  const result = await protectFill(client, first, 40, quick);
+  assert.deepEqual(calls, ["cancel", "stop 3 @ 0.6"]);
+  assert.deepEqual(result.stop, { pct: 40, price: 0.6, qty: 3 });
+});
+
+test("after the raises: a refused cancel is reported", async () => {
+  const { client, first } = watched([3], { cancel: true });
+  const result = await protectFill(client, first, 40, quick);
+  assert.equal(result.cancelError, "cancel refused");
+  assert.equal(result.canceledQty, 0);
+  assert.deepEqual(result.stop, { pct: 40, price: 0.6, qty: 3 });
+});
+
+test("entry post: warns when the stop covers only part", () => {
+  assert.match(
+    formatEntry(
+      { symbol, paper: false, stop: { pct: 40, price: 0.64, qty: 3 } },
+      entryResult({ filledQty: 5, filledAvgPrice: 1.06 }, [1.05]),
+    ),
+    /Stop at 0\.64 \(-40%\)\n⚠️ The stop covers 3 of 5$/,
   );
 });
