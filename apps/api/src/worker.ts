@@ -31,6 +31,12 @@ import {
   pushLiveSymbols,
 } from "../../../packages/market-data/src/watchlist.js";
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
+import {
+  handlePortfolio,
+  PortfolioCache,
+} from "../../../packages/trading/src/portfolio.js";
+
+const portfolio = new PortfolioCache();
 import { verifyAccess } from "./access.js";
 
 declare const __STATIC_ASSETS__: Record<
@@ -87,6 +93,9 @@ export default {
       COLLECTOR_TOKEN?: string;
       // Minutes SIP data may lag real time; default 0 (see sip-delay.ts).
       ALPACA_SIP_DELAY_MINUTES?: string;
+      // "true" reads the live trading account on the Portfolio tab; the
+      // keys must belong to it. Anything else reads the paper account.
+      ALPACA_TRADING_LIVE?: string;
     } = {},
   ): Promise<Response> {
     // Access protection is enabled by configuration; without both values the
@@ -205,6 +214,24 @@ export default {
         env.BARS_CACHE ? stores(env.BARS_CACHE).baselines : undefined,
         env.BARS_CACHE ? stores(env.BARS_CACHE).strengths : undefined,
         env.BARS_CACHE ? stores(env.BARS_CACHE).sigmas : undefined,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path === "/api/portfolio") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const result = await handlePortfolio(
+        credentials,
+        env.ALPACA_TRADING_LIVE === "true",
+        fetch,
+        Date.now(),
+        portfolio,
       );
       return Response.json(result.body, {
         status: result.status,

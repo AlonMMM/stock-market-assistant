@@ -25,6 +25,12 @@ The user explicitly authorized order execution on the Alpaca **paper** account
   It is never lowered. A partial or zero fill at the ceiling is left working and reported.
 - **Spread guard:** if (ask − bid) / mid exceeds 10%, nothing is sent and the user is told.
   If the spread widens past 10% while the order is working, raising stops and it is reported.
+- **Stop (user-confirmed 2026-10-10):** every buy gets a stop loss as a share of the premium
+  paid: 40% by default, 70% at most (`--stop`). A larger value is refused before anything is
+  sent. The stop price is the average fill price less that share, rounded up to a tick. It
+  is a good-till-canceled stop order: once a trade prints at or below the stop it becomes a
+  market sell (Alpaca's rule for option stops). It covers the contracts filled when the
+  price raises end; contracts that fill later have no stop until `stop` is run.
 - **"Real value":** the mid is used as the estimate of fair value. The user questioned this;
   see the open questions below.
 
@@ -32,7 +38,8 @@ The user explicitly authorized order execution on the Alpaca **paper** account
 
 ```
 node --import tsx scripts/option-order.ts preview --underlying ORCL --right call --delta 0.1 --size 0.5
-node --import tsx scripts/option-order.ts buy --contract ORCL261016C00250000 --size 0.5 --delta 0.1
+node --import tsx scripts/option-order.ts buy --contract ORCL261016C00250000 --size 0.5 [--stop 40]
+node --import tsx scripts/option-order.ts stop --contract ORCL261016C00250000 [--stop 40]
 ```
 
 Environment: `ALPACA_API_KEY`, `ALPACA_API_SECRET` (or `APCA_API_KEY_ID`,
@@ -47,8 +54,9 @@ OPRA subscription); `ALPACA_TRADING_LIVE=true` for the live account (off by defa
   tick rounding, price steps, sizing.
 - `packages/trading/src/ladder.ts`: the stepped limit order.
 - `packages/trading/src/alpaca-trading.ts`: account equity, option snapshots, orders.
-- `packages/trading/src/message.ts`: the group message (placeholder format).
-- `scripts/option-order.ts`: `preview` and `buy`.
+- `packages/trading/src/message.ts`: the channel post, in the format of Indi's entry posts
+  (`$TICKER | strike Call/Put expiry`, `Bought at X`, `N contracts`) plus the stop line.
+- `scripts/option-order.ts`: `preview`, `buy` and `stop`.
 
 ## Verification evidence
 
@@ -66,12 +74,36 @@ OPRA subscription); `ALPACA_TRADING_LIVE=true` for the live account (off by defa
   in accepted status") and the script crashed without a report. Fixed: a refused raise now
   stops the raising, leaves the order working and is reported as `raiseError`. The test
   order was canceled.
-- Not yet run: price raises on a live order and fill reporting. They need market hours.
+- Telegram: the trades bot posts to its own channel; sample entry posts were sent through
+  `formatEntry` and `TelegramSender` (no order behind them).
+- Stop: `buy --stop 80` is refused before any order; `preview` shows the stop at the ceiling
+  price. The stop order itself has not been sent to Alpaca.
+- Not yet run: price raises on a live order, fill reporting, and placing the stop. They
+  need market hours.
+
+## Portfolio tab (Live → Portfolio)
+
+`GET /api/portfolio` (local API and Worker) reads the Alpaca trading account with GET
+requests only: equity, change since the previous close, cash, open positions and open
+orders. Each position carries its stop (the open sell stop orders for the contract): price,
+loss from entry, money at risk, and the quantity covered. `riskAtStops` sums that risk;
+`unprotected` counts positions with no stop or a partial one. Paper account unless
+`ALPACA_TRADING_LIVE=true`; the keys must belong to the selected account. Code:
+`packages/trading/src/portfolio.ts`, `apps/web/src/Portfolio.tsx`,
+`tests/portfolio.test.ts`.
+
+Verified 2026-10-10: `npm run check` passes (270 pass, 1 skipped). Locally the tab shows
+the real paper account (empty: $100,000, no positions or orders). Positions, stops and
+orders were checked in headless Chrome at phone and desktop widths with SYNTHETIC data
+only. Not deployed: the hosted Worker would use its own `ALPACA_API_KEY`, which may belong
+to a different account than the local paper keys.
 
 ## Open questions and next steps
 
-1. Indy's post format: the research was not found in the repo, Notion or Drive. Until the
-   user provides examples, `formatEntry` posts a simple placeholder.
+1. Stop orders on thin options: the stop sells at market once triggered, so on a wide
+   spread the exit can be well below the stop price. A stop-limit avoids that but may not
+   fill. Also unverified: whether Alpaca accepts the stop while part of the buy is still
+   working. A refusal is reported and posted as "No stop".
 2. Fair value for the spread guard: mid, or size-weighted mid (microprice)?
 3. Tick sizes assume the penny program ($0.01 below $3, $0.05 from $3); a contract outside
    the program may reject a price, and the error is reported as is.

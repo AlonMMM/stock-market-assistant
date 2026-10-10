@@ -10,6 +10,9 @@ import { StatusPill } from "./StatusPill.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
 import { WatchTable } from "./WatchTable.js";
 import { EngineTickers } from "./EngineTickers.js";
+import { Portfolio } from "./Portfolio.js";
+
+const tabs = ["alerts", "watchlist", "portfolio"] as const;
 
 const liveRefreshMs = 30000;
 // Board data is SIP in 5-minute bars, delayed by the API's `delayMinutes`.
@@ -92,7 +95,7 @@ export function Live({
   link?: AlertLink | null;
 }) {
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [tab, setTab] = useState<"alerts" | "watchlist">("alerts");
+  const [tab, setTab] = useState<(typeof tabs)[number]>("alerts");
   const [symbol, setSymbol] = useState<string | null>(null);
   const since = useLastVisit();
   const warn = (message: string) =>
@@ -172,7 +175,8 @@ export function Live({
         className="tabs"
         onKeyDown={(e) => {
           if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-          const next = tab === "alerts" ? "watchlist" : "alerts";
+          const step = e.key === "ArrowRight" ? 1 : tabs.length - 1;
+          const next = tabs[(tabs.indexOf(tab) + step) % tabs.length]!;
           setTab(next);
           document.getElementById(`tab-${next}`)?.focus();
         }}
@@ -181,6 +185,7 @@ export function Live({
           [
             ["alerts", "Alerts", status ? alerts.length : null],
             ["watchlist", "Watchlist", board.value?.watchlist.length ?? null],
+            ["portfolio", "Portfolio", null],
           ] as const
         ).map(([key, label, count]) => (
           <button
@@ -220,6 +225,15 @@ export function Live({
           ) : (
             <p className="notice">{emptyText}</p>
           )}
+        </section>
+      ) : tab === "portfolio" ? (
+        <section
+          role="tabpanel"
+          id="panel-portfolio"
+          aria-labelledby="tab-portfolio"
+          className="tab-panel"
+        >
+          <Portfolio onError={warn} />
         </section>
       ) : (
         <section

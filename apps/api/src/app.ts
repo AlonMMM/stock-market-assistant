@@ -33,6 +33,10 @@ import {
   pushLiveSymbols,
 } from "../../../packages/market-data/src/watchlist.js";
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
+import {
+  handlePortfolio,
+  PortfolioCache,
+} from "../../../packages/trading/src/portfolio.js";
 
 export function buildApp(
   logging = false,
@@ -57,6 +61,7 @@ export function buildApp(
       parseSipDelay(process.env.ALPACA_SIP_DELAY_MINUTES),
   };
   const app = Fastify({ logger: logging });
+  const portfolio = new PortfolioCache();
   app.post("/api/backtest", async (request, reply) => {
     const result = await handleBacktest(
       request.body,
@@ -109,6 +114,19 @@ export function buildApp(
       alpaca.sigmas,
     );
     return reply.code(result.status).send(result.body);
+  });
+  app.get("/api/portfolio", async (_request, reply) => {
+    const result = await handlePortfolio(
+      alpaca,
+      process.env.ALPACA_TRADING_LIVE === "true",
+      alpaca.fetcher,
+      Date.now(),
+      portfolio,
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
   });
   app.get("/api/live", async () =>
     loadLive({
