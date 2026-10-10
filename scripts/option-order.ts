@@ -4,6 +4,7 @@
 //   buy --contract ORCL261016C00250000 --size 0.5 [--stop 40] [--wait 120]
 //   stop --contract ORCL261016C00250000 [--stop 40]
 //   sell --underlying ORCL --qty all|half|3   (or --contract …)
+//   check   (short positions, or sell orders for more than is held)
 //
 // Paper trading unless ALPACA_TRADING_LIVE=true. `buy` sends an order; run it
 // only after the user approved the previewed contract.
@@ -19,6 +20,7 @@ import {
 import { sellAtBid } from "../packages/trading/src/exit.js";
 import { buyWithLadder } from "../packages/trading/src/ladder.js";
 import { protectFill } from "../packages/trading/src/protect.js";
+import { shortRisks, uncovered } from "../packages/trading/src/safety.js";
 import { formatEntry, formatExit } from "../packages/trading/src/message.js";
 import {
   ceilingPrice,
@@ -255,7 +257,7 @@ async function sell() {
     const underlying = values.underlying?.toUpperCase();
     if (!underlying) throw new Error("Need --contract or --underlying");
     const held = (await client.positions()).filter(
-      (p) => parseOccSymbol(p.symbol).underlying === underlying,
+      (p) => p.qty > 0 && parseOccSymbol(p.symbol).underlying === underlying,
     );
     if (held.length !== 1)
       throw new Error(
@@ -296,28 +298,85 @@ async function stop() {
   if (!symbol) throw new Error("Need --contract");
   const held = await client.position(symbol);
   if (!(held.qty > 0)) throw new Error(`No long position in ${symbol}`);
+  // Only contracts that no open sell order already covers: a second stop on
+  // the same contracts could sell them twice.
+  const qty = uncovered(held.qty, symbol, await client.openOrders(symbol));
+  if (qty === 0) {
+    console.log(
+      JSON.stringify(
+        { live, held: held.qty, note: "open sell orders already cover it" },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
   const price = stopPrice(held.avgEntryPrice, stopPct);
-  const order = await client.sellStop(symbol, held.qty, price);
+  const order = await client.sellStop(symbol, qty, price);
   console.log(
     JSON.stringify(
-      { live, entry: held.avgEntryPrice, stopPct, price, order },
+      { live, entry: held.avgEntryPrice, stopPct, price, qty, order },
       null,
       2,
     ),
   );
 }
 
+// The account must never be short an option. Run after every order command
+// and by `check`: any short position, or sell orders for more than is held,
+// is printed, sent to the trades channel and fails the command.
+async function shortCheck() {
+  const problems = shortRisks(
+    await client.positions(),
+    await client.openOrders(),
+  );
+  if (problems.length === 0) return problems;
+  console.error(`\nALERT: SHORT OPTION RISK\n${problems.join("\n")}\n`);
+  const token = process.env.TRADES_TELEGRAM_BOT_TOKEN;
+  const chat = process.env.TRADES_TELEGRAM_CHAT_ID;
+  if (token && chat) {
+    const sent = await new TelegramSender(token, chat).send(
+      `🚨 <b>SHORT OPTION RISK</b>${live ? "" : " (paper)"}\n${problems.join("\n")}`,
+    );
+    console.error(
+      sent.ok
+        ? "Alert sent to Telegram"
+        : `Telegram alert failed: ${sent.error}`,
+    );
+  }
+  process.exitCode = 2;
+  return problems;
+}
+
 const command = positionals[0];
-(command === "preview"
-  ? preview()
-  : command === "buy"
-    ? buy()
-    : command === "stop"
-      ? stop()
-      : command === "sell"
-        ? sell()
-        : Promise.reject(new Error("Command: preview | buy | stop | sell"))
-).catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+const commands: Record<string, () => Promise<unknown>> = {
+  preview,
+  buy,
+  stop,
+  sell,
+  check: async () => {
+    const problems = await shortCheck();
+    if (problems.length === 0)
+      console.log("No short positions and no oversized sell orders.");
+  },
+};
+const run = commands[command ?? ""];
+(run
+  ? run()
+  : Promise.reject(new Error(`Command: ${Object.keys(commands).join(" | ")}`))
+)
+  .catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  })
+  // Whatever an order command did or failed to do, look at the account.
+  .then(() =>
+    command === "buy" || command === "sell" || command === "stop"
+      ? shortCheck().catch((error: unknown) => {
+          console.error(
+            `ALERT: the short-position check itself failed: ${error instanceof Error ? error.message : error}`,
+          );
+          process.exitCode = 2;
+        })
+      : undefined,
+  );

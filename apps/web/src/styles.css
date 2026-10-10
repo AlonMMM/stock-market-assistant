@@ -2690,3 +2690,11 @@ dd > .stop-missing {
 .portfolio.loading {
   opacity: 0.55;
 }
+
+.short-alert {
+  border: 2px solid #b91c1c;
+}
+.short-alert ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}

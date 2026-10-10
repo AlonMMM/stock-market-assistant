@@ -1,11 +1,15 @@
 import type { AlpacaTrading, Order } from "./alpaca-trading.js";
 import { finished } from "./ladder.js";
 import { stopPrice } from "./options.js";
+import { uncovered } from "./safety.js";
 
 // Selling at the bid (user-confirmed 2026-10-10): a limit sell at the current
 // bid, re-priced to the new bid every 5 seconds until it has all sold. The
 // position's stop is taken off first, because the broker reserves the
 // contracts for it, and put back on whatever is still held at the end.
+//
+// The account must never go short: every quantity sent is read fresh from the
+// position, and a stop only ever covers contracts no other sell order does.
 
 export type ExitClient = Pick<
   AlpacaTrading,
@@ -87,7 +91,21 @@ export async function sellAtBid(
   const oldStop =
     stops.length > 0 ? Math.min(...stops.map((o) => o.stopPrice!)) : null;
   for (const stop of stops) await client.cancel(stop.id);
-  if (stops.length > 0) log(`stop taken off (${oldStop!.toFixed(2)})`);
+  // Nothing is sold until the broker confirms the stops are gone: a stop and
+  // a sale working together could sell the same contracts twice.
+  let stopsGone = stops.length === 0;
+  for (let i = 0; i < 10 && !stopsGone; i++) {
+    await sleep(Math.min(interval, 1000));
+    stopsGone = (await client.openOrders(symbol)).every(
+      (o) => o.side !== "sell",
+    );
+  }
+  if (stops.length > 0)
+    log(
+      stopsGone
+        ? `stop taken off (${oldStop!.toFixed(2)})`
+        : "the stop is still open; nothing will be sold",
+    );
 
   let order: Order | null = null;
   let price: number | null = null;
@@ -95,7 +113,7 @@ export async function sellAtBid(
   let waited = 0;
   let failure: unknown;
   try {
-    while (waited <= maxMs) {
+    while (stopsGone && waited <= maxMs) {
       if (order) {
         order = await client.order(order.id);
         if (finished.has(order.status)) break;
@@ -105,7 +123,12 @@ export async function sellAtBid(
         try {
           order = order
             ? await client.replace(order.id, bid)
-            : await client.sellLimit(symbol, asked, bid);
+            : await client.sellLimit(
+                symbol,
+                // Never more than is held at this moment.
+                Math.min(asked, (await client.position(symbol)).qty),
+                bid,
+              );
           price = bid;
           attempts++;
           log(`selling ${asked} @ ${bid.toFixed(2)} (the bid)`);
@@ -139,19 +162,31 @@ export async function sellAtBid(
   if (remaining > 0) {
     const at =
       oldStop ?? stopPrice(before.avgEntryPrice, options.stopPct ?? 40);
-    stop = { price: at, qty: remaining };
-    try {
-      await client.sellStop(symbol, remaining, at);
-      log(`stop ${at.toFixed(2)} back on ${remaining}`);
-    } catch (error) {
-      stop.error = message(error);
-      log(`stop for ${remaining} failed: ${stop.error}`);
+    // Only contracts that no open sell order still covers get the stop.
+    const free = uncovered(remaining, symbol, await client.openOrders(symbol));
+    stop = { price: at, qty: free };
+    if (free < remaining && !stopsGone) {
+      // The earlier stop never went away; it still protects the position.
+    } else if (free < remaining) {
+      stop.error = `a sell order is still open for ${remaining - free} contracts`;
     }
+    if (free > 0)
+      try {
+        await client.sellStop(symbol, free, at);
+        log(`stop ${at.toFixed(2)} back on ${free}`);
+      } catch (error) {
+        stop.error = message(error);
+        log(`stop for ${free} failed: ${stop.error}`);
+      }
   }
   if (failure) {
     log(`sale stopped: ${message(failure)}`);
     if (!order) throw failure;
   }
+  if (!stopsGone)
+    throw new Error(
+      "The stop could not be taken off, so nothing was sold. Check the open orders.",
+    );
   const sold = before.qty - remaining;
   return {
     held: before.qty,

@@ -13,6 +13,14 @@ keys from `.env` itself, taking the main checkout's file when a worktree has non
 read or print `.env`. If `npm run trade` is missing, this checkout is older than the
 feature: say so and stop.
 
+## The rule that comes first: never short
+
+The account must never be short an option. If any command prints `ALERT: SHORT OPTION
+RISK`, or exits with code 2, put that alert at the very top of your reply, in bold, with
+every line it printed, before anything else. Do not send further orders and do not try to
+fix it yourself: tell the user and wait. `npm run trade -- check` runs the same check on
+its own; run it when the user asks whether the account is safe.
+
 ## 1. Read the command
 
 | Value                     | Flag                | Default                                                 | Limit      |

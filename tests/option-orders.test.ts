@@ -11,6 +11,8 @@ import {
   type ExitClient,
 } from "../packages/trading/src/exit.js";
 import { formatEntry, formatExit } from "../packages/trading/src/message.js";
+import { shortRisks, uncovered } from "../packages/trading/src/safety.js";
+import { AlpacaTrading } from "../packages/trading/src/alpaca-trading.js";
 import {
   protectFill,
   type ProtectClient,
@@ -555,4 +557,120 @@ test("exit post: partial and full", () => {
     ),
     "<b>$ORCL | 250 Call 10/16</b>\nOut, sold 8 at 0.70\nLoss $240 (-30%)",
   );
+});
+
+test("never short: short positions and oversized sell orders are found", () => {
+  const sell = (s: string, qty: number, filledQty = 0) => ({
+    symbol: s,
+    side: "sell",
+    qty,
+    filledQty,
+  });
+  assert.deepEqual(
+    shortRisks([{ symbol: "A", qty: 5 }], [sell("A", 5), sell("B", 0)]),
+    [],
+  );
+  assert.deepEqual(
+    shortRisks(
+      [
+        { symbol: "A", qty: -2 },
+        { symbol: "B", qty: 5 },
+      ],
+      [sell("B", 4), sell("B", 3, 1), sell("C", 1)],
+    ),
+    [
+      "SHORT A: 2 contracts sold short",
+      "OVERSOLD B: open sell orders for 6, 5 held",
+      "OVERSOLD C: open sell orders for 1, 0 held",
+    ],
+  );
+  // Buy orders never count.
+  assert.deepEqual(
+    shortRisks([], [{ symbol: "A", side: "buy", qty: 9, filledQty: 0 }]),
+    [],
+  );
+  assert.equal(uncovered(8, "A", [sell("A", 3), sell("B", 9)]), 5);
+  assert.equal(uncovered(2, "A", [sell("A", 3)]), 0);
+});
+
+test("never short: every sell is close-only, every buy opens", async () => {
+  const bodies: Record<string, unknown>[] = [];
+  const fetcher = (async (_url: URL | RequestInfo, init?: RequestInit) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return Response.json({
+      id: "1",
+      symbol,
+      status: "new",
+      qty: "1",
+      filled_qty: "0",
+      filled_avg_price: null,
+      limit_price: null,
+    });
+  }) as typeof fetch;
+  const alpaca = new AlpacaTrading("k", "s", undefined, "opra", fetcher);
+  await alpaca.buyLimit(symbol, 1, 1);
+  await alpaca.sellLimit(symbol, 1, 1);
+  await alpaca.sellStop(symbol, 1, 0.6);
+  assert.deepEqual(
+    bodies.map((b) => [b.side, b.type, b.position_intent]),
+    [
+      ["buy", "limit", "buy_to_open"],
+      ["sell", "limit", "sell_to_close"],
+      ["sell", "stop", "sell_to_close"],
+    ],
+  );
+});
+
+test("never short: nothing is sold while the stop is still open", async () => {
+  const { client, calls } = holding([0.9], 0.9);
+  client.cancel = async (id) => {
+    calls.push(`cancel ${id}`); // the broker never confirms it
+  };
+  await assert.rejects(
+    sellAtBid(client, symbol, "all", brisk),
+    /nothing was sold/,
+  );
+  assert.deepEqual(calls, ["cancel stop"]);
+});
+
+test("never short: a sale is cut to what is held, the stop to what is uncovered", async () => {
+  // 8 were held when the command started; 5 are left when the sale is sent.
+  const { client, calls } = holding([0.9], null);
+  let reads = 0;
+  client.position = async () => ({
+    qty: reads++ === 0 ? 8 : 5,
+    avgEntryPrice: 1.0,
+  });
+  // The sale cannot be canceled, so it still covers its contracts.
+  client.cancel = async (id) => {
+    calls.push(`cancel ${id}`);
+    if (id !== "stop") throw new Error("too late to cancel");
+  };
+  const open = client.openOrders;
+  let stopCanceled = false;
+  client.openOrders = async (s) => {
+    if (!stopCanceled) {
+      stopCanceled = true;
+      return [];
+    }
+    void open;
+    return [
+      {
+        id: "1",
+        symbol: s ?? symbol,
+        status: "new",
+        qty: 5,
+        filledQty: 0,
+        filledAvgPrice: null,
+        limitPrice: 0.9,
+        side: "sell",
+        stopPrice: null,
+      },
+    ];
+  };
+  const result = await sellAtBid(client, symbol, "all", brisk);
+  assert.ok(calls.includes("sell 5 @ 0.9"));
+  assert.ok(!calls.some((c) => c.startsWith("stop ")));
+  assert.equal(result.stop?.qty, 0);
+  assert.match(result.stop?.error ?? "", /still open for 5/);
 });

@@ -1,5 +1,6 @@
 import { liveUrl, paperUrl } from "./alpaca-trading.js";
 import { parseOccSymbol, type Right } from "./options.js";
+import { shortRisks } from "./safety.js";
 
 // Read-only view of the Alpaca trading account for the site's Portfolio tab:
 // account totals, open positions with their stop, and working orders. It only
@@ -64,6 +65,9 @@ export interface Portfolio {
   // are not counted.
   riskAtStops: number;
   unprotected: number; // positions with no stop, or one covering only part
+  // Must stay empty: a short option position, or sell orders for more
+  // contracts than are held (safety.ts).
+  shortRisks: string[];
 }
 
 interface RawAccount {
@@ -276,6 +280,10 @@ export async function handlePortfolio(
         orders,
         riskAtStops: round(
           positions.reduce((sum, p) => sum + (p.stop?.risk ?? 0), 0),
+        ),
+        shortRisks: shortRisks(
+          positions.filter((p) => p.option),
+          orders.filter((o) => o.option),
         ),
         unprotected: positions.filter(
           (p) => p.qty > 0 && (p.stop?.qty ?? 0) < p.qty,

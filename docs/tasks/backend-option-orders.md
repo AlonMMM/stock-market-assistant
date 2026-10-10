@@ -15,6 +15,22 @@ The user explicitly authorized order execution on the Alpaca **paper** account
 
 ## Rules (user-confirmed 2026-10-10)
 
+- **Never short (hard rule, user 2026-10-10):** the account must never be short an option,
+  and the user must be alerted if it ever is. Enforced in four places:
+  1. Every sell order, limit or stop, is close-only (`position_intent: sell_to_close`).
+     Verified on the paper account: Alpaca refuses such an order when no contracts are held
+     (422 "position intent mismatch"). Every buy is `buy_to_open`.
+  2. Quantities are read fresh from the position. `sell` takes the stop off and waits for
+     the broker to confirm it is gone before selling anything; a stop only ever covers
+     contracts that no other open sell order covers (`uncovered`).
+  3. After every `buy`, `sell` and `stop`, and on `npm run trade -- check`, the account is
+     checked (`shortRisks`): a negative option position, or open sell orders for more
+     contracts than are held, prints `ALERT: SHORT OPTION RISK`, is posted to the trades
+     channel and ends the command with exit code 2.
+  4. `/api/portfolio` returns the same findings as `shortRisks`, shown as a red banner on
+     Portfolio → Live trades.
+     Nothing checks the account while no command runs and the page is closed.
+
 - **Contract:** the strike whose |delta| is closest to the requested delta. Without a delta
   in the command the range 0.10–0.15 applies (user-confirmed 2026-10-10): the strike closest
   to its middle, flagged when the expiry has none inside the range. The preview
