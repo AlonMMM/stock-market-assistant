@@ -1,11 +1,27 @@
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import type {
+  ClosedTrade,
   Contract,
+  HistoryPeriod,
   Portfolio as PortfolioData,
+  PortfolioHistory,
   PortfolioOrder,
   PortfolioPosition,
 } from "../../../packages/trading/src/portfolio.js";
 import { usePolling } from "./Live.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
+
+const PnlChart = lazy(() =>
+  import("./PnlChart.js").then((m) => ({ default: m.PnlChart })),
+);
+// Daily points and closed trades; the API keeps them for a minute.
+const historyRefreshMs = 60000;
+const periods: [HistoryPeriod, string][] = [
+  ["1W", "Week"],
+  ["1M", "Month"],
+  ["3M", "3 months"],
+  ["1A", "Year"],
+];
 
 // The API reuses Alpaca's answers briefly (portfolioTtlMs), so open orders
 // and the stops read from them can be up to five seconds old.
@@ -116,8 +132,190 @@ function Order({ o }: { o: PortfolioOrder }) {
   );
 }
 
-/** Live → Portfolio: the Alpaca account, its positions and working orders. */
-export function Portfolio({ onError }: { onError: (m: string) => void }) {
+function Trade({ t }: { t: ClosedTrade }) {
+  const opened = israelDateTime(Date.parse(t.openedAt));
+  // An expiry has a date but no time of day.
+  const closed = t.expired ? "expiry" : israelDateTime(Date.parse(t.closedAt));
+  return (
+    <li className="position">
+      <div className="position-head">
+        <strong>{optionName(t)}</strong>
+        <span className="muted">
+          {t.option ? `${expiryLabel(t.option.expiry)} · ` : ""}
+          {t.qty} {t.option ? "contract" : "share"}
+          {t.qty === 1 ? "" : "s"}
+        </span>
+        <span className={`position-pnl num${tone(t.pnl)}`}>
+          {signedUsd(t.pnl)}
+          {t.pnlPct !== null && ` (${signedPct(t.pnlPct)})`}
+        </span>
+      </div>
+      <dl>
+        <dt>Bought → sold</dt>
+        <dd className="num">
+          {t.entry.toFixed(2)} → {t.expired ? "expired" : t.exit.toFixed(2)}
+        </dd>
+        <dt>Held</dt>
+        <dd>
+          {opened} → {closed} · {israelLabel}
+        </dd>
+      </dl>
+    </li>
+  );
+}
+
+function History({ onError }: { onError: (m: string) => void }) {
+  const [period, setPeriod] = useState<HistoryPeriod>("1M");
+  const { value, error } = usePolling<PortfolioHistory>(
+    `/api/portfolio/history?period=${period}`,
+    historyRefreshMs,
+    onError,
+  );
+  // While another period loads, the previous one stays on screen.
+  const stale = value !== null && value.period !== period;
+  const label = periods.find(([key]) => key === period)![1].toLowerCase();
+  return (
+    <div className="portfolio">
+      <div className="toolbar">
+        <div className="segmented" role="group" aria-label="Period">
+          {periods.map(([key, text]) => (
+            <button
+              type="button"
+              key={key}
+              aria-pressed={period === key}
+              onClick={() => setPeriod(key)}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
+        {value && (
+          <span className={value.paper ? "account-tag paper" : "account-tag"}>
+            {value.paper ? "Paper account" : "Live account"}
+          </span>
+        )}
+      </div>
+      {!value ? (
+        <p className={error ? "notice error" : "chart-status"}>
+          {error ? `History unavailable: ${error}` : "Loading history…"}
+        </p>
+      ) : (
+        <div className={stale ? "portfolio loading" : "portfolio"}>
+          {error && <p className="note-amber">Update failed: {error}</p>}
+          <dl className="portfolio-totals">
+            <div>
+              <dt>Profit and loss, {stale ? "…" : label}</dt>
+              <dd className={`num${tone(value.pnl)}`}>
+                {signedUsd(value.pnl)}
+                {value.pnlPct !== null && ` (${signedPct(value.pnlPct)})`}
+              </dd>
+            </div>
+            <div>
+              <dt>Closed trades</dt>
+              <dd className="num">
+                {value.trades.length}
+                {value.trades.length > 0 && ` · ${value.wins} won`}
+              </dd>
+            </div>
+            <div>
+              <dt>Realized on closed trades</dt>
+              <dd className={`num${tone(value.realized)}`}>
+                {signedUsd(value.realized)}
+              </dd>
+            </div>
+          </dl>
+          {value.points.length > 1 ? (
+            <Suspense fallback={<p className="chart-status">Loading chart…</p>}>
+              <PnlChart points={value.points} />
+            </Suspense>
+          ) : (
+            <p className="notice">Not enough account history for a chart.</p>
+          )}
+          <h2 className="portfolio-title">Closed trades</h2>
+          {value.trades.length > 0 ? (
+            <ul className="positions">
+              {value.trades.map((t) => (
+                <Trade key={t.symbol + t.closedAt} t={t} />
+              ))}
+            </ul>
+          ) : (
+            <p className="notice">No trades were closed in this period.</p>
+          )}
+          {value.truncated && (
+            <p className="muted">
+              Built from the account&apos;s latest {value.activityLimit} fills;
+              older trades may be missing.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const sections = [
+  ["live", "Live trades"],
+  ["history", "History"],
+] as const;
+
+/** The Portfolio area: open trades, and the account's history. */
+export function Portfolio({ modes }: { modes: ReactNode }) {
+  const [tab, setTab] = useState<(typeof sections)[number][0]>("live");
+  const ignore = () => {}; // failures are shown in place
+  return (
+    <div className="live-page">
+      <header>
+        <div className="brand-status">
+          <span className="brand">
+            SMA<span className="brand-dot">.</span>
+          </span>
+        </div>
+        {modes}
+      </header>
+      <div
+        role="tablist"
+        aria-label="Portfolio sections"
+        className="tabs"
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          const next = tab === "live" ? "history" : "live";
+          setTab(next);
+          document.getElementById(`tab-${next}`)?.focus();
+        }}
+      >
+        {sections.map(([key, label]) => (
+          <button
+            type="button"
+            role="tab"
+            key={key}
+            id={`tab-${key}`}
+            aria-selected={tab === key}
+            aria-controls={`panel-${key}`}
+            tabIndex={tab === key ? 0 : -1}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <section
+        role="tabpanel"
+        id={`panel-${tab}`}
+        aria-labelledby={`tab-${tab}`}
+        className="tab-panel"
+      >
+        {tab === "live" ? (
+          <LiveTrades onError={ignore} />
+        ) : (
+          <History onError={ignore} />
+        )}
+      </section>
+    </div>
+  );
+}
+
+/** The Alpaca account now: totals, open positions and working orders. */
+function LiveTrades({ onError }: { onError: (m: string) => void }) {
   const { value, at, error } = usePolling<PortfolioData>(
     "/api/portfolio",
     refreshMs,

@@ -3,8 +3,11 @@ import test from "node:test";
 import { buildApp } from "../apps/api/src/app.js";
 import worker from "../apps/api/src/worker.js";
 import {
+  closedTrades,
   handlePortfolio,
+  handlePortfolioHistory,
   PortfolioCache,
+  type PortfolioHistory,
   type Portfolio,
 } from "../packages/trading/src/portfolio.js";
 
@@ -177,5 +180,122 @@ test("portfolio: answers are reused, orders for longer, and errors are not kept"
   assert.equal(
     (await handlePortfolio(keys, false, fetcher, now, failing)).status,
     200,
+  );
+});
+
+// Synthetic fills in Alpaca's activity shape.
+const fill = (
+  symbol: string,
+  side: string,
+  qty: number,
+  price: number,
+  time: string,
+) => ({
+  id: `${time}::${symbol}${side}`,
+  activity_type: "FILL",
+  symbol,
+  side,
+  qty: String(qty),
+  price: String(price),
+  transaction_time: time,
+});
+const amd = "AMD261016C00660000";
+const nvda = "NVDA261009P00217500";
+const activities = [
+  fill(amd, "buy", 2, 1.6, "2026-10-05T14:00:00Z"),
+  fill(amd, "buy", 1, 1.9, "2026-10-05T14:05:00Z"),
+  fill(amd, "sell", 1, 2.5, "2026-10-06T15:00:00Z"),
+  fill(amd, "sell", 2, 1.0, "2026-10-07T15:00:00Z"),
+  fill(nvda, "buy", 4, 0.5, "2026-10-08T14:00:00Z"),
+  {
+    id: "exp",
+    activity_type: "OPEXP",
+    symbol: nvda,
+    qty: "4",
+    date: "2026-10-09",
+  },
+  fill("SPY", "sell", 5, 700, "2026-10-08T15:00:00Z"), // its buy is older
+  fill("TSLA", "buy", 3, 400, "2026-10-09T15:00:00Z"), // still open
+];
+
+test("history: fills pair into closed trades, expiry closes at zero", () => {
+  const trades = closedTrades([...activities].reverse());
+  assert.deepEqual(
+    trades.map((t) => [t.symbol, t.qty, t.entry, t.exit, t.pnl, t.expired]),
+    [
+      // 4 × 0.50 × 100 lost in full.
+      [nvda, 4, 0.5, 0, -200, true],
+      // Bought 3 for 5.10, sold for 4.50: (4.50 − 5.10) × 100 = −60.
+      [amd, 3, 1.7, 1.5, -60, false],
+    ],
+  );
+  assert.equal(trades[0]!.pnlPct, -100);
+  assert.equal(trades[1]!.openedAt, "2026-10-05T14:00:00Z");
+  assert.equal(trades[1]!.closedAt, "2026-10-07T15:00:00Z");
+});
+
+test("history: daily profit and loss with the period's closed trades", async () => {
+  const seen: string[] = [];
+  const fetcher = (async (input: URL | RequestInfo) => {
+    const url = new URL(String(input));
+    seen.push(url.pathname + url.search);
+    return Response.json(
+      url.pathname.endsWith("/history")
+        ? {
+            timestamp: [1791244800, 1791331200, 1791417600],
+            equity: [100000, 100150, null],
+            profit_loss: [0, 150, null],
+            base_value: 100000,
+          }
+        : activities,
+    );
+  }) as typeof fetch;
+  const cache = new PortfolioCache();
+  const at = Date.parse("2026-10-10T09:00:00Z");
+  const result = await handlePortfolioHistory(
+    keys,
+    "1W",
+    false,
+    fetcher,
+    at,
+    cache,
+  );
+  assert.equal(result.status, 200);
+  const body = result.body as PortfolioHistory;
+  assert.deepEqual(body.points, [
+    { date: "2026-10-05", equity: 100000, pnl: 0 },
+    { date: "2026-10-06", equity: 100150, pnl: 150 },
+  ]);
+  assert.equal(body.pnl, 150);
+  assert.equal(body.pnlPct, 0.15);
+  assert.equal(body.trades.length, 2);
+  assert.equal(body.realized, -260);
+  assert.equal(body.wins, 0);
+  assert.equal(body.truncated, false);
+  assert.match(seen[0]!, /portfolio\/history\?period=1W&timeframe=1D/);
+  // Reused within a minute; a bad period is refused before any request.
+  await handlePortfolioHistory(keys, "1W", false, fetcher, at + 30000, cache);
+  assert.equal(seen.length, 2);
+  assert.equal(
+    (await handlePortfolioHistory(keys, "5Y", false, fetcher)).status,
+    400,
+  );
+  assert.equal(seen.length, 2);
+  const app = buildApp(false, { ...keys, fetcher });
+  const local = await app.inject({
+    method: "GET",
+    url: "/api/portfolio/history?period=1M",
+  });
+  assert.equal(local.statusCode, 200);
+  assert.equal((local.json() as PortfolioHistory).period, "1M");
+  await app.close();
+  assert.equal(
+    (
+      await worker.fetch(
+        new Request("https://example.test/api/portfolio/history"),
+        {},
+      )
+    ).status,
+    503,
   );
 });

@@ -3,13 +3,20 @@ import { createRoot } from "react-dom/client";
 import { parseAlertLink } from "../../../packages/contracts/src/alert-link.js";
 import { Backtest } from "./Backtest.js";
 import { Live } from "./Live.js";
+import { Portfolio } from "./Portfolio.js";
 import "./styles.css";
 
-type Mode = "backtest" | "live";
+const modeNames = [
+  ["live", "Live"],
+  ["backtest", "Backtest"],
+  ["portfolio", "Portfolio"],
+] as const;
+type Mode = (typeof modeNames)[number][0];
 const modeKey = "sma.mode.v1";
 function savedMode(): Mode {
   try {
-    return localStorage.getItem(modeKey) === "backtest" ? "backtest" : "live";
+    const saved = localStorage.getItem(modeKey);
+    return modeNames.find(([value]) => value === saved)?.[0] ?? "live";
   } catch {
     return "live";
   }
@@ -30,12 +37,7 @@ function App() {
   };
   const modes = (
     <nav className="modes" aria-label="Data mode">
-      {(
-        [
-          ["live", "Live"],
-          ["backtest", "Backtest"],
-        ] as const
-      ).map(([value, label]) =>
+      {modeNames.map(([value, label]) =>
         value === mode ? (
           <span className="selected" key={value} aria-current="page">
             {label}
@@ -50,6 +52,8 @@ function App() {
   );
   return mode === "live" ? (
     <Live modes={modes} link={link} />
+  ) : mode === "portfolio" ? (
+    <Portfolio modes={modes} />
   ) : (
     <Backtest modes={modes} />
   );

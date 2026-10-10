@@ -98,6 +98,20 @@ orders were checked in headless Chrome at phone and desktop widths with SYNTHETI
 only. Not deployed: the hosted Worker would use its own `ALPACA_API_KEY`, which may belong
 to a different account than the local paper keys.
 
+### Portfolio area (2026-10-10, branch feat/portfolio-area)
+
+Portfolio is now its own area next to Live and Backtest, with two tabs. Live trades is the
+view above. History reads `GET /api/portfolio/history?period=1W|1M|3M|1A`: Alpaca's daily
+profit and loss for the period (chart on top), and the trades closed in it, paired from the
+account's latest 500 fills (`closedTrades`). A trade runs from the first buy of a contract
+until the position is back to zero; an expiry closes it at zero. Answers are reused for a
+minute.
+
+Verified: `npm run check` passes (273 pass, 1 skipped); the real paper account shows a flat
+line and no trades. The chart and closed trades were checked in headless Chrome with
+SYNTHETIC data only. Not verified against Alpaca: the shape of expiry (`OPEXP`) activities,
+since the account has none.
+
 ## Open questions and next steps
 
 1. Stop orders on thin options: the stop sells at market once triggered, so on a wide
