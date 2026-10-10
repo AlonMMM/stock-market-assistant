@@ -164,6 +164,35 @@ export class AlpacaTrading {
     );
   }
 
+  /**
+   * Stop loss for a long option: once a trade prints at or below `stop`, it
+   * becomes a market sell. Good till canceled.
+   */
+  async sellStop(symbol: string, qty: number, stop: number) {
+    return order(
+      await this.call<RawOrder>(this.tradingUrl, "/v2/orders", {
+        method: "POST",
+        body: {
+          symbol,
+          qty: String(qty),
+          side: "sell",
+          type: "stop",
+          time_in_force: "gtc",
+          stop_price: stop.toFixed(2),
+        },
+      }),
+    );
+  }
+
+  /** Contracts held and their average entry price. */
+  async position(symbol: string) {
+    const raw = await this.call<{ qty: string; avg_entry_price: string }>(
+      this.tradingUrl,
+      `/v2/positions/${encodeURIComponent(symbol)}`,
+    );
+    return { qty: Number(raw.qty), avgEntryPrice: Number(raw.avg_entry_price) };
+  }
+
   /** Replaces the limit price; Alpaca answers with a new order id. */
   async replace(id: string, limitPrice: number) {
     return order(

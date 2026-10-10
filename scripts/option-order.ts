@@ -1,7 +1,8 @@
 // Option orders from a chat command (docs/tasks/backend-option-orders.md).
 //
 //   preview --underlying ORCL --right call --delta 0.1 --size 0.5
-//   buy --contract ORCL261016C00250000 --size 0.5 --delta 0.1
+//   buy --contract ORCL261016C00250000 --size 0.5 [--stop 40]
+//   stop --contract ORCL261016C00250000 [--stop 40]
 //
 // Paper trading unless ALPACA_TRADING_LIVE=true. `buy` sends an order; run it
 // only after the user approved the previewed contract.
@@ -14,14 +15,16 @@ import {
   paperUrl,
 } from "../packages/trading/src/alpaca-trading.js";
 import { buyWithLadder } from "../packages/trading/src/ladder.js";
-import { formatEntry } from "../packages/trading/src/message.js";
+import { formatEntry, type StopNote } from "../packages/trading/src/message.js";
 import {
   ceilingPrice,
   comingFriday,
+  defaultStopPct,
   expiryChoices,
   pickByDelta,
   sizeContracts,
   spreadCheck,
+  stopPrice,
   type Right,
 } from "../packages/trading/src/options.js";
 
@@ -49,11 +52,13 @@ const { positionals, values } = parseArgs({
     contract: { type: "string" },
     steps: { type: "string", default: "5" },
     interval: { type: "string", default: "3" },
+    stop: { type: "string", default: String(defaultStopPct) },
   },
 });
 
 const sizePct = Number(values.size);
 const targetDelta = Number(values.delta);
+const stopPct = Number(values.stop);
 const addDays = (date: string, days: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000)
     .toISOString()
@@ -108,19 +113,25 @@ async function preview() {
       spreadPctOfMid: Number((check.ratio * 100).toFixed(1)),
       spreadOk: check.ok,
       ceiling,
+      stopAtCeiling: stopPrice(ceiling, stopPct),
       qty: size.qty,
       maxCost: Number(size.cost.toFixed(2)),
       budget: Number(size.budget.toFixed(2)),
     };
   });
   console.log(
-    JSON.stringify({ live, feed, equity, sizePct, targetDelta, rows }, null, 2),
+    JSON.stringify(
+      { live, feed, equity, sizePct, targetDelta, stopPct, rows },
+      null,
+      2,
+    ),
   );
 }
 
 async function buy() {
   const symbol = values.contract?.toUpperCase();
   if (!symbol) throw new Error("Need --contract");
+  stopPrice(1, stopPct); // refuse a bad --stop before anything is sent
   const equity = await client.equity();
   const quote = await client.quote(symbol);
   const ceiling = ceilingPrice(quote);
@@ -135,12 +146,28 @@ async function buy() {
     maxPrice: budget / (qty * 100),
     log: (line) => console.error(line),
   });
-  console.log(JSON.stringify({ live, qty, budget, result }, null, 2));
   if (
     result.status === "rejected-spread" ||
     result.status === "rejected-budget"
-  )
+  ) {
+    console.log(JSON.stringify({ live, qty, budget, result }, null, 2));
     return;
+  }
+  // The stop covers what has filled so far. Contracts that fill later have
+  // none until `stop` is run for the contract.
+  const stop: StopNote = { pct: stopPct };
+  const filled = result.order?.filledQty ?? 0;
+  const paid = result.order?.filledAvgPrice;
+  if (filled > 0 && paid) {
+    try {
+      const price = stopPrice(paid, stopPct);
+      await client.sellStop(symbol, filled, price);
+      stop.price = price;
+    } catch (error) {
+      stop.error = error instanceof Error ? error.message : String(error);
+    }
+  }
+  console.log(JSON.stringify({ live, qty, budget, result, stop }, null, 2));
   const token = process.env.TRADES_TELEGRAM_BOT_TOKEN;
   const chat = process.env.TRADES_TELEGRAM_CHAT_ID;
   if (!token || !chat) {
@@ -148,19 +175,26 @@ async function buy() {
     return;
   }
   const sent = await new TelegramSender(token, chat).send(
-    formatEntry(
-      {
-        symbol,
-        sizePct,
-        targetDelta,
-        delta: quote.delta,
-        paper: !live,
-        at: new Date(),
-      },
-      result,
-    ),
+    formatEntry({ symbol, paper: !live, stop }, result),
   );
   console.error(sent.ok ? "Telegram sent" : `Telegram failed: ${sent.error}`);
+}
+
+// Places the stop for a contract already held, at its average entry price.
+async function stop() {
+  const symbol = values.contract?.toUpperCase();
+  if (!symbol) throw new Error("Need --contract");
+  const held = await client.position(symbol);
+  if (!(held.qty > 0)) throw new Error(`No long position in ${symbol}`);
+  const price = stopPrice(held.avgEntryPrice, stopPct);
+  const order = await client.sellStop(symbol, held.qty, price);
+  console.log(
+    JSON.stringify(
+      { live, entry: held.avgEntryPrice, stopPct, price, order },
+      null,
+      2,
+    ),
+  );
 }
 
 const command = positionals[0];
@@ -168,7 +202,9 @@ const command = positionals[0];
   ? preview()
   : command === "buy"
     ? buy()
-    : Promise.reject(new Error("Command: preview | buy"))
+    : command === "stop"
+      ? stop()
+      : Promise.reject(new Error("Command: preview | buy | stop"))
 ).catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);

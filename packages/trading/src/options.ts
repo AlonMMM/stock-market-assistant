@@ -21,6 +21,10 @@ export const maxSizePct = 3;
 export const maxSpreadRatio = 0.1;
 // The limit price never goes past 85% of the way from mid to ask.
 export const ceilingFraction = 0.85;
+// Stop loss as a share of the premium paid: 40% unless the command says
+// otherwise, never more than 70%.
+export const defaultStopPct = 40;
+export const maxStopPct = 70;
 
 const occ = /^([A-Z.]{1,6})(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/;
 
@@ -142,4 +146,17 @@ export function sizeContracts(equity: number, sizePct: number, price: number) {
   const budget = (equity * sizePct) / 100;
   const qty = Math.floor(budget / (price * 100) + 1e-9);
   return { qty, budget, cost: qty * price * 100 };
+}
+
+/**
+ * Stop price for losing `stopPct`% of the premium paid. Rounded up to a tick,
+ * so the planned loss never exceeds the percentage.
+ */
+export function stopPrice(entry: number, stopPct: number): number {
+  if (!(stopPct > 0) || stopPct > maxStopPct)
+    throw new Error(
+      `Stop must be above 0% and at most ${maxStopPct}% of the premium`,
+    );
+  if (!(entry > 0)) throw new Error("Entry price is not positive");
+  return roundToTick(entry * (1 - stopPct / 100), "up");
 }

@@ -5,15 +5,18 @@ import type {
   TradingClient,
 } from "../packages/trading/src/alpaca-trading.js";
 import { buyWithLadder } from "../packages/trading/src/ladder.js";
+import { formatEntry } from "../packages/trading/src/message.js";
 import {
   ceilingPrice,
   comingFriday,
+  defaultStopPct,
   expiryChoices,
   parseOccSymbol,
   pickByDelta,
   sizeContracts,
   spreadCheck,
   stepPrice,
+  stopPrice,
   type OptionQuote,
 } from "../packages/trading/src/options.js";
 
@@ -218,4 +221,57 @@ test("ladder: never pays above the budget cap", async () => {
     },
   );
   assert.equal(below.status, "rejected-budget");
+});
+
+test("stop: 40% of the premium by default, never more than 70%", () => {
+  assert.equal(defaultStopPct, 40);
+  assert.equal(stopPrice(1.0, 40), 0.6);
+  assert.equal(stopPrice(0.5, 40), 0.3);
+  // Rounded up to the tick: the loss stays within the percentage.
+  assert.equal(stopPrice(1.69, 40), 1.02);
+  assert.equal(stopPrice(5.2, 70), 1.56);
+  assert.equal(stopPrice(10, 40), 6);
+  assert.throws(() => stopPrice(1, 71), /at most 70%/);
+  assert.throws(() => stopPrice(1, 0));
+});
+
+const entryResult = (order: Partial<Order>, prices: number[]) => ({
+  status: "open" as const,
+  quote: q(symbol, 1.0, 1.1, 0.1),
+  spreadRatio: 0.05,
+  prices,
+  order: {
+    id: "1",
+    symbol,
+    status: "new",
+    qty: 9,
+    filledQty: 0,
+    filledAvgPrice: null,
+    limitPrice: 1.05,
+    ...order,
+  },
+});
+
+test("entry post: contract, price, contracts and stop", () => {
+  assert.equal(
+    formatEntry(
+      { symbol, paper: false, stop: { pct: 40, price: 0.64 } },
+      entryResult({ filledQty: 9, filledAvgPrice: 1.06 }, [1.05, 1.06]),
+    ),
+    "<b>$ORCL | 250 Call 10/16</b>\nBought at 1.06\n9 contracts\nStop at 0.64 (-40%)",
+  );
+  assert.equal(
+    formatEntry(
+      { symbol, paper: true, stop: { pct: 40, price: 0.64 } },
+      entryResult({ filledQty: 3, filledAvgPrice: 1.06 }, [1.05, 1.06]),
+    ),
+    "🧪 PAPER\n<b>$ORCL | 250 Call 10/16</b>\nBought at 1.06\n3 of 9 contracts\nStop at 0.64 (-40%)",
+  );
+  assert.equal(
+    formatEntry(
+      { symbol, paper: false, stop: { pct: 40 } },
+      entryResult({}, [1.05]),
+    ),
+    "<b>$ORCL | 250 Call 10/16</b>\nBidding at 1.05, not filled yet\n9 contracts\nNo stop until it fills",
+  );
 });
