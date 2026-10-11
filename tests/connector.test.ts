@@ -91,6 +91,7 @@ test("connector: the credential works as a header or as the end of the address",
       env,
     );
   assert.equal((await call(token)).status, 200);
+  assert.equal((await call(`Bearer ${token}`)).status, 200);
   assert.equal((await call("wrong")).status, 401);
 });
 

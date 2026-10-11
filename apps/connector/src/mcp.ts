@@ -286,15 +286,18 @@ export async function handleMcp(
     return json({ error: "Not found" }, 404);
   if (!env.MCP_TOKEN || env.MCP_TOKEN.length < 32)
     return json({ error: "The connector is not configured" }, 503);
-  const header = request.headers.get("Authorization") ?? "";
   // Claude's connector settings reserve Authorization for OAuth, so a fixed
-  // credential is sent as X-Auth-Token.
-  const presented = header.startsWith("Bearer ")
-    ? header.slice(7)
-    : (request.headers.get("X-Auth-Token") ?? parts[1] ?? "");
+  // credential arrives as X-Auth-Token; "Bearer " in front of it is accepted.
+  const given =
+    request.headers.get("X-Auth-Token") ??
+    request.headers.get("Authorization") ??
+    parts[1] ??
+    "";
+  const presented = given.replace(/^Bearer\s+/i, "").trim();
   if (!same(presented, env.MCP_TOKEN)) {
+    // Which headers came is logged, never their values.
     console.warn(
-      `connector: refused a call without the credential (${request.headers.get("CF-Connecting-IP") ?? "unknown address"})`,
+      `connector: refused ${request.method} ${parts.length > 1 ? "/mcp/…" : "/mcp"}, credential ${presented ? "wrong" : "missing"}; headers: ${[...request.headers.keys()].filter((k) => /auth|token|key/i.test(k)).join(", ") || "none"}`,
     );
     return json({ error: "Unauthorized" }, 401);
   }
