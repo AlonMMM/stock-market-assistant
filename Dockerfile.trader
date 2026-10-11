@@ -1,0 +1,21 @@
+FROM node:24-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY apps/trader apps/trader
+COPY packages packages
+COPY config config
+RUN npm run build:trader
+
+FROM node:24-bookworm-slim
+ENV NODE_ENV=production TRADER_HOST=0.0.0.0 PORT=3003 TRADER_DB=/data/trader.sqlite
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN apt-get update && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm ci --omit=dev && mkdir /data && chown node:node /data
+COPY --from=build /app/dist/trader.mjs ./trader.mjs
+COPY deploy/trader/start.sh /usr/local/bin/start-trader
+RUN chmod +x /usr/local/bin/start-trader
+EXPOSE 3003
+CMD ["start-trader"]

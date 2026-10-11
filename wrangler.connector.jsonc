@@ -1,0 +1,15 @@
+// Cloudflare Worker for the Claude connector (apps/connector/src/worker.ts):
+// an MCP endpoint that forwards trade tools to the trading service.
+//   npx wrangler@4 deploy -c wrangler.connector.jsonc
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sma-trade-connector",
+  "main": "apps/connector/src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  // Secrets (npx wrangler@4 secret put <NAME> -c wrangler.connector.jsonc):
+  //   MCP_TOKEN     the credential Claude presents, at least 32 characters
+  //   TRADER_URL    the trading service's address
+  //   TRADER_TOKEN  the trading service's token
+}

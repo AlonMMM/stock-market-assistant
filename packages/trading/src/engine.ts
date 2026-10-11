@@ -3,6 +3,7 @@ import type { Broker } from "./broker.js";
 import {
   checkBuy,
   defaultBuyLimits,
+  openRisk,
   type BuyLimits,
   type HeldPosition,
 } from "./checks.js";
@@ -24,7 +25,12 @@ import {
   type Right,
 } from "./options.js";
 import { protectFill, type ProtectResult } from "./protect.js";
-import { checkRisk, defaultRiskRules, type RiskRules } from "./risk-manager.js";
+import {
+  accountState,
+  checkRisk,
+  defaultRiskRules,
+  type RiskRules,
+} from "./risk-manager.js";
 import { shortRisks, uncovered } from "./safety.js";
 
 // The trade flow, written against a broker and a notifier
@@ -144,6 +150,15 @@ export interface BuyDone extends BuyBase {
   post?: Sent; // set when any contract filled
 }
 export type BuyOutcome = BuyRefused | BuyDone;
+/** A buy that passed every check and has not been sent yet. */
+export interface BuyPlan extends BuyBase {
+  budget: number;
+  stopPct: number;
+  record: BuyRecord;
+  steps?: number;
+  intervalMs?: number;
+  waitMs?: number;
+}
 
 const addDays = (date: string, days: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000)
@@ -402,12 +417,20 @@ export class TradeEngine {
 
   /**
    * Buys in one step: picks the contract (or takes the one named), runs every
-   * check, and only then sends the order: price raises, then a watch that
-   * keeps a stop on what fills and cancels what does not. A failed check
-   * sends nothing and is returned in `refused`. Posts the entry when any
-   * contract filled.
+   * check, and only then sends the order. A failed check sends nothing and is
+   * returned in `refused`.
    */
   async buy(request: BuyRequest): Promise<BuyOutcome> {
+    const plan = await this.planBuy(request);
+    return "refused" in plan ? plan : this.runBuy(plan);
+  }
+
+  /**
+   * The first half of a buy: the contract, its size and every check. It
+   * sends no order. An accepted plan is recorded as one of the day's buys, so
+   * a doubled command is refused while the first is still working.
+   */
+  async planBuy(request: BuyRequest): Promise<BuyRefused | BuyPlan> {
     const stopPct = request.stopPct ?? defaultStopPct;
     let quote: OptionQuote;
     let deltaRange: readonly [number, number] | undefined;
@@ -461,6 +484,28 @@ export class TradeEngine {
     };
     // Recorded before the order goes out, so a doubled command is refused.
     await this.buys.put(record);
+    return {
+      paper: this.paper,
+      contract: symbol,
+      qty,
+      budget,
+      stopPct,
+      record,
+      ...(request.steps === undefined ? {} : { steps: request.steps }),
+      ...(request.intervalMs === undefined
+        ? {}
+        : { intervalMs: request.intervalMs }),
+      ...(request.waitMs === undefined ? {} : { waitMs: request.waitMs }),
+    };
+  }
+
+  /**
+   * The second half: price raises, then a watch that keeps a stop on what
+   * fills and cancels what does not. Posts the entry when any contract filled.
+   */
+  async runBuy(plan: BuyPlan): Promise<BuyDone> {
+    const { contract: symbol, qty, budget, stopPct, record } = plan;
+    const request = plan;
     let filled = false;
     try {
       const result = await buyWithLadder(this.broker, symbol, qty, {
@@ -517,23 +562,27 @@ export class TradeEngine {
     }
   }
 
+  /** The contract a sell request means: the one named, or the only one held. */
+  async sellTarget(request: Pick<SellRequest, "contract" | "underlying">) {
+    const named = request.contract?.toUpperCase();
+    if (named) return named;
+    const underlying = request.underlying?.toUpperCase();
+    if (!underlying) throw new Error("Need a contract or an underlying");
+    const held = (await this.broker.positions()).filter(
+      (p) => p.qty > 0 && parseOccSymbol(p.symbol).underlying === underlying,
+    );
+    if (held.length !== 1)
+      throw new Error(
+        held.length === 0
+          ? `No option position in ${underlying}`
+          : `Several ${underlying} positions; name the contract: ${held.map((p) => `${p.symbol} (${p.qty})`).join(", ")}`,
+      );
+    return held[0]!.symbol;
+  }
+
   /** Sells at the bid, re-priced every 5 seconds; posts the exit. */
   async sell(request: SellRequest) {
-    let symbol = request.contract?.toUpperCase();
-    if (!symbol) {
-      const underlying = request.underlying?.toUpperCase();
-      if (!underlying) throw new Error("Need a contract or an underlying");
-      const held = (await this.broker.positions()).filter(
-        (p) => p.qty > 0 && parseOccSymbol(p.symbol).underlying === underlying,
-      );
-      if (held.length !== 1)
-        throw new Error(
-          held.length === 0
-            ? `No option position in ${underlying}`
-            : `Several ${underlying} positions; name the contract: ${held.map((p) => `${p.symbol} (${p.qty})`).join(", ")}`,
-        );
-      symbol = held[0]!.symbol;
-    }
+    const symbol = await this.sellTarget(request);
     const result = await sellAtBid(this.broker, symbol, request.qty, {
       ...(request.waitMs === undefined ? {} : { maxMs: request.waitMs }),
       stopPct: request.stopPct ?? defaultStopPct,
@@ -578,6 +627,40 @@ export class TradeEngine {
       price,
       qty,
       order,
+    };
+  }
+
+  /** Positions with their stops, and today's use of each limit. */
+  async status() {
+    const a = await this.account();
+    const { equity, lastEquity } = a.account;
+    const risk = openRisk(a.held);
+    const state = accountState(a.history, this.riskRules);
+    return {
+      paper: this.paper,
+      tradingEnabled: this.enabled,
+      shortRisks: a.shortRisks,
+      equity,
+      dayChangePct:
+        lastEquity > 0
+          ? Number((((equity - lastEquity) / lastEquity) * 100).toFixed(2))
+          : null,
+      marketOpen: a.marketOpen,
+      positions: a.held,
+      limits: {
+        buysToday: a.buysToday.length,
+        maxBuysPerDay: this.limits.maxBuysPerDay,
+        openRisk: Number(risk.toFixed(2)),
+        openRiskPct:
+          equity > 0 ? Number(((risk / equity) * 100).toFixed(2)) : null,
+        maxOpenRiskPct: this.limits.maxOpenRiskPct,
+        maxDayLossPct: this.limits.maxDayLossPct,
+        riskManager: {
+          state: state.state,
+          reason: state.reason,
+          ...this.riskRules.limits[state.state],
+        },
+      },
     };
   }
 
