@@ -10,6 +10,9 @@ export interface LadderOptions {
   steps?: number; // raises after the first price; the last one is the ceiling
   intervalMs?: number;
   maxPrice?: number; // budget cap per contract
+  // An order already at the broker (sent while the market was closed): it is
+  // raised from its own price, and no new order is sent.
+  existing?: Order;
   sleep?: (ms: number) => Promise<void>;
   log?: (line: string) => void;
 }
@@ -74,25 +77,36 @@ export async function buyWithLadder(
 
   let quote = await client.quote(symbol);
   let check = spreadCheck(quote);
-  if (!check.ok)
-    return {
-      status: "rejected-spread",
-      quote,
-      spreadRatio: check.ratio,
-      prices: [],
-    };
-  let price = Math.min(stepPrice(quote, 0, steps), cap);
-  if (!(price > 0) || price < roundToTick(check.mid, "down") - 1e-9)
-    return {
-      status: "rejected-budget",
-      quote,
-      spreadRatio: check.ratio,
-      prices: [],
-    };
-
-  let order = await client.buyLimit(symbol, qty, price);
+  let order: Order;
+  let price: number;
+  if (options.existing) {
+    order = options.existing;
+    price = order.limitPrice ?? Math.min(stepPrice(quote, 0, steps), cap);
+    log(
+      `working the waiting order @ ${price.toFixed(2)} (bid ${quote.bid}, ask ${quote.ask})`,
+    );
+  } else {
+    if (!check.ok)
+      return {
+        status: "rejected-spread",
+        quote,
+        spreadRatio: check.ratio,
+        prices: [],
+      };
+    price = Math.min(stepPrice(quote, 0, steps), cap);
+    if (!(price > 0) || price < roundToTick(check.mid, "down") - 1e-9)
+      return {
+        status: "rejected-budget",
+        quote,
+        spreadRatio: check.ratio,
+        prices: [],
+      };
+    order = await client.buyLimit(symbol, qty, price);
+    log(
+      `sent ${qty} @ ${price.toFixed(2)} (bid ${quote.bid}, ask ${quote.ask})`,
+    );
+  }
   const prices = [price];
-  log(`sent ${qty} @ ${price.toFixed(2)} (bid ${quote.bid}, ask ${quote.ask})`);
   let spreadWidened = false;
   let raiseError: string | undefined;
 

@@ -48,9 +48,12 @@ export const defaultBuyLimits: BuyLimits = {
   maxQuoteAgeMs: 120_000,
   repeatMs: 60_000,
   lastMinutes: 15,
-  requireMarketOpen: true,
+  // Off-hours orders are allowed and wait for the open (user 2026-10-11).
+  requireMarketOpen: false,
   requireStops: true,
-  requireDeltaInRange: true,
+  // The nearest expiry often has no strike inside the range; the closest
+  // strike is bought and the miss is noted, as before the checks existed.
+  requireDeltaInRange: false,
 };
 
 export interface HeldPosition {
@@ -95,6 +98,8 @@ export interface BuyVerdict {
   ok: boolean;
   checks: CheckResult[];
   refused: string[]; // "check: detail" of each failed check
+  // Things the user must be told that do not stop the order.
+  notes: string[];
 }
 
 const pct = (n: number) => `${Number(n.toFixed(2))}%`;
@@ -122,6 +127,7 @@ export function checkBuy(
   limits: BuyLimits = defaultBuyLimits,
 ): BuyVerdict {
   const checks: CheckResult[] = [];
+  const notes: string[] = [];
   const add = (check: string, ok: boolean, detail: string) =>
     checks.push({ check, ok, detail });
   const { quote, qty, ceiling, sizePct, stopPct } = c.order;
@@ -148,6 +154,10 @@ export function checkBuy(
       "market open",
       c.marketOpen,
       c.marketOpen ? "open" : "the market is closed",
+    );
+  else if (!c.marketOpen)
+    notes.push(
+      "off hours: the market is closed; the order waits at the broker and is worked when the market opens",
     );
   add(
     "buys per day",
@@ -216,14 +226,21 @@ export function checkBuy(
         : `the premium ${ceiling.toFixed(2)} is too small for a stop price`,
   );
   const usable = quote.bid > 0 && quote.ask > quote.bid;
-  const age = quote.quotedAt === undefined ? null : c.now - quote.quotedAt;
+  // While the market is closed every quote is old; its age is not held
+  // against an order that waits for the open.
+  const age =
+    quote.quotedAt === undefined || !c.marketOpen
+      ? null
+      : c.now - quote.quotedAt;
   add(
     "quote is usable",
     usable && (age === null || age <= limits.maxQuoteAgeMs),
     !usable
       ? `bid ${quote.bid}, ask ${quote.ask}`
       : age === null
-        ? "the broker gave no quote time"
+        ? c.marketOpen
+          ? "the broker gave no quote time"
+          : "the last quote before the close"
         : `${Math.max(0, Math.round(age / 1000))} s old, at most ${limits.maxQuoteAgeMs / 1000} s`,
   );
   const spread = spreadCheck(quote);
@@ -232,14 +249,14 @@ export function checkBuy(
     usable && spread.ratio <= limits.maxSpreadRatio + 1e-9,
     `${pct(spread.ratio * 100)} of the mid, at most ${pct(limits.maxSpreadRatio * 100)}`,
   );
-  if (limits.requireDeltaInRange && c.order.deltaRange) {
+  if (c.order.deltaRange) {
     const [low, high] = c.order.deltaRange;
     const d = quote.delta === null ? null : Math.abs(quote.delta);
-    add(
-      "delta in range",
-      d !== null && d >= low - 1e-9 && d <= high + 1e-9,
-      `delta ${d === null ? "unknown" : d.toFixed(3)}, wanted ${low.toFixed(2)}–${high.toFixed(2)}`,
-    );
+    const inRange = d !== null && d >= low - 1e-9 && d <= high + 1e-9;
+    const detail = `delta ${d === null ? "unknown" : d.toFixed(3)}, wanted ${low.toFixed(2)}–${high.toFixed(2)}`;
+    if (limits.requireDeltaInRange) add("delta in range", inRange, detail);
+    else if (!inRange)
+      notes.push(`delta: no strike of this expiry is in the range; ${detail}`);
   }
   const same = c.buysToday.filter((b) => {
     const other = parseOccSymbol(b.symbol);
@@ -270,5 +287,5 @@ export function checkBuy(
   const refused = checks
     .filter((r) => !r.ok)
     .map((r) => `${r.check}: ${r.detail}`);
-  return { ok: refused.length === 0, checks, refused };
+  return { ok: refused.length === 0, checks, refused, notes };
 }

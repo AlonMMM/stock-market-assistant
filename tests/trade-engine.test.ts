@@ -111,35 +111,32 @@ test("engine buy: a stop above 70% is refused before any order", async () => {
   assert.equal(broker.orders.size, 0);
 });
 
-test("engine buy in one step: picks Friday's contract by default, or the named expiry", async () => {
+test("engine buy in one step: the nearest expiry by default, Friday's when named", async () => {
   const { broker, engine, clock } = setup();
   const out = await engine.buy({
     underlying: "nvda",
     right: "call",
     sizePct: 0.5,
   });
-  assert.equal(out.contract, friday);
-  assert.ok("stop" in out && out.stop?.qty === 4);
-  // The nearest expiry has no strike inside 0.10–0.15: refused, not bought.
+  // The nearest expiry has no strike inside 0.10–0.15: the closest is bought.
+  assert.equal(out.contract, near);
+  assert.ok("stop" in out && out.stop?.qty === 25);
   clock.now += 5 * 60_000;
-  const nearest = await engine.buy({
+  const toFriday = await engine.buy({
     underlying: "NVDA",
     right: "call",
     sizePct: 0.5,
-    expiry: "nearest",
+    expiry: "friday",
   });
-  assert.equal(nearest.contract, near);
-  assert.ok("refused" in nearest);
-  assert.match(nearest.refused.join(), /delta in range: delta 0\.090/);
-  // A named delta is a target, not a range.
-  const named = await engine.buy({
+  assert.equal(toFriday.contract, friday);
+  clock.now += 5 * 60_000;
+  const dated = await engine.buy({
     underlying: "NVDA",
     right: "call",
     sizePct: 0.5,
-    expiry: "2026-10-12",
-    delta: 0.09,
+    expiry: "2026-10-16",
   });
-  assert.ok(!("refused" in named));
+  assert.equal(dated.contract, friday);
   await assert.rejects(
     engine.buy({
       underlying: "NVDA",
@@ -150,6 +147,68 @@ test("engine buy in one step: picks Friday's contract by default, or the named e
     /offered: 2026-10-12, 2026-10-16/,
   );
   assert.equal((await broker.positions()).length, 2);
+  const preview = await engine.preview({
+    underlying: "NVDA",
+    right: "call",
+    sizePct: 0.5,
+  });
+  assert.equal(preview.defaultExpiry, "nearest");
+  const row = preview.rows[0]!;
+  assert.ok("notes" in row);
+  assert.match(
+    row.notes.join(),
+    /delta: no strike of this expiry is in the range/,
+  );
+});
+
+test("engine buy off hours: the order waits, is worked at the open, and the posts say so", async () => {
+  const { broker, engine, sent } = setup();
+  broker.isOpen = false;
+  broker.fillAt.set(friday, 5); // nobody sells while the market is closed
+  let sleeps = 0;
+  const waitingEngine = new TradeEngine({
+    broker,
+    notifier: new TelegramNotifier({
+      send: async (html) => {
+        sent.push({ html });
+        return { ok: true, messageId: 7 };
+      },
+    }),
+    posts: new MemoryPostStore(),
+    buys: new MemoryBuyLog(),
+    now: () => monday,
+    sleep: async () => {
+      // The market opens during the third wait, and sellers arrive.
+      if (++sleeps === 3) {
+        broker.isOpen = true;
+        broker.fillAt.set(friday, 1.03);
+        broker.setQuote(friday, 1.0, 1.04, 0.12);
+      }
+    },
+  });
+  void engine;
+  const stages: string[] = [];
+  const plan = await waitingEngine.planBuy({ contract: friday, sizePct: 0.5 });
+  assert.ok(!("refused" in plan));
+  assert.equal(plan.offHours, true);
+  const out = await waitingEngine.runBuy(plan, (p) => stages.push(p.stage));
+  assert.equal(stages[0], "waiting for the market to open");
+  assert.equal(out.offHours, true);
+  assert.equal(out.result.order!.filledQty, 4);
+  assert.equal(out.stop?.qty, 4);
+  // One order only: the waiting one was raised, no second order was sent.
+  assert.equal(
+    [...broker.orders.values()].filter((o) => o.side === "buy").length,
+    1,
+  );
+  assert.match(
+    sent[0]!.html,
+    /^🕒 <b>Off-hours order \(paper\)<\/b>\n\$NVDA \| 240 Call 2026-10-16\n4 contracts, bidding 1\.02/,
+  );
+  assert.match(
+    sent[1]!.html,
+    /Bought at 1\.03\n4 contracts\nOrdered off hours\nStop at/,
+  );
 });
 
 test("engine buy: a doubled command is refused; a buy that filled nothing is not counted", async () => {

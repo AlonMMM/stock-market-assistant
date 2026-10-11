@@ -74,7 +74,8 @@ test("buy checks: a good order passes all of them", () => {
   const v = checkBuy(good());
   assert.deepEqual(v.refused, []);
   assert.equal(v.ok, true);
-  assert.equal(v.checks.length, 17);
+  assert.equal(v.checks.length, 15);
+  assert.deepEqual(v.notes, []);
 });
 
 const cases: [string, (c: BuyContext) => void, RegExp][] = [
@@ -85,7 +86,6 @@ const cases: [string, (c: BuyContext) => void, RegExp][] = [
     (c) => (c.shortRisks = ["SHORT X: 1 contract sold short"]),
     /SHORT X/,
   ],
-  ["market open", (c) => (c.marketOpen = false), /market is closed/],
   [
     "buys per day",
     (c) =>
@@ -135,12 +135,6 @@ const cases: [string, (c: BuyContext) => void, RegExp][] = [
     /121 s old, at most 120 s/,
   ],
   ["spread", quote({ ask: 1.12 }), /11\.32% of the mid, at most 10%/],
-  [
-    "delta in range",
-    quote({ delta: 0.16 }),
-    /delta 0\.160, wanted 0\.10–0\.15/,
-  ],
-  ["delta in range", quote({ delta: null }), /delta unknown/],
   [
     "not a repeat",
     (c) =>
@@ -212,18 +206,46 @@ test("buy checks: things that must not refuse", () => {
   );
 });
 
-test("buy checks: the proposed checks can be switched off", () => {
+test("buy checks: off hours and a delta outside the range are noted, not refused", () => {
   const c = good();
   c.marketOpen = false;
-  c.positions = [held(0, null, 1)];
-  c.order.quote.delta = 0.3;
-  const limits = {
+  c.order.quote.quotedAt = now - 160_000_000; // Friday's close
+  c.order.quote.delta = 0.085;
+  const v = checkBuy(c);
+  assert.deepEqual(v.refused, []);
+  assert.match(v.notes[0]!, /^off hours: the market is closed/);
+  assert.match(
+    v.notes[1]!,
+    /^delta: no strike of this expiry is in the range; delta 0\.085/,
+  );
+  // An empty quote is refused off hours too.
+  c.order.quote.bid = 0;
+  assert.match(checkBuy(c).refused.join(), /quote is usable: bid 0/);
+});
+
+test("buy checks: the optional checks refuse when switched on", () => {
+  const strict = {
     ...defaultBuyLimits,
-    requireMarketOpen: false,
-    requireStops: false,
-    requireDeltaInRange: false,
+    requireMarketOpen: true,
+    requireDeltaInRange: true,
   };
-  assert.deepEqual(checkBuy(c, limits).refused, []);
+  const closed = good();
+  closed.marketOpen = false;
+  assert.deepEqual(checkBuy(closed, strict).refused, [
+    "market open: the market is closed",
+  ]);
+  const far = good();
+  far.order.quote.delta = 0.16;
+  assert.deepEqual(checkBuy(far, strict).refused, [
+    "delta in range: delta 0.160, wanted 0.10–0.15",
+  ]);
+  // And a position without a stop can be allowed.
+  const bare = good();
+  bare.positions = [held(0, null, 1)];
+  assert.deepEqual(
+    checkBuy(bare, { ...defaultBuyLimits, requireStops: false }).refused,
+    [],
+  );
 });
 
 test("buy checks: risk of open positions, a missing stop counts in full", () => {
