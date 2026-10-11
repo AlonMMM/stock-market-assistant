@@ -36,6 +36,7 @@ import {
   handlePortfolioHistory,
   PortfolioCache,
 } from "../../../packages/trading/src/portfolio.js";
+import { handleOrderDecisions } from "../../../packages/trading/src/decisions-api.js";
 import {
   D1WatchStore,
   MemoryWatchStore,
@@ -140,6 +141,9 @@ export default {
       // "true" reads the live trading account on the Portfolio tab; the
       // keys must belong to it. Anything else reads the paper account.
       ALPACA_TRADING_LIVE?: string;
+      // The trading service and its read-only token, for the Orders tab.
+      TRADER_URL?: string;
+      TRADER_READ_TOKEN?: string;
     } = {},
   ): Promise<Response> {
     // Access protection is enabled by configuration; without both values the
@@ -259,6 +263,21 @@ export default {
         env.BARS_CACHE ? stores(env.BARS_CACHE).strengths : undefined,
         env.BARS_CACHE ? stores(env.BARS_CACHE).sigmas : undefined,
       );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path === "/api/portfolio/orders") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const result = await handleOrderDecisions({
+        url: env.TRADER_URL,
+        token: env.TRADER_READ_TOKEN,
+      });
       return Response.json(result.body, {
         status: result.status,
         headers: { "Cache-Control": "no-store" },

@@ -4,6 +4,10 @@ import type {
   BuyRecord,
   PostStore,
 } from "../../../packages/trading/src/engine.js";
+import type {
+  Decision,
+  DecisionLog,
+} from "../../../packages/trading/src/explain.js";
 
 // The trading service's records (docs/tasks/backend-trading-service.md).
 // Every row has an owner, so more traders can be added without a rewrite.
@@ -64,6 +68,10 @@ export class TradeStore {
       CREATE TABLE IF NOT EXISTS buys (
         id TEXT NOT NULL, user_id TEXT NOT NULL, day TEXT NOT NULL,
         symbol TEXT NOT NULL, at INTEGER NOT NULL, filled INTEGER,
+        PRIMARY KEY (user_id, id));
+      CREATE TABLE IF NOT EXISTS decisions (
+        id TEXT NOT NULL, user_id TEXT NOT NULL, at INTEGER NOT NULL,
+        symbol TEXT NOT NULL, outcome TEXT NOT NULL, data TEXT NOT NULL,
         PRIMARY KEY (user_id, id));
       CREATE TABLE IF NOT EXISTS log (
         id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL,
@@ -174,6 +182,29 @@ export class TradeStore {
         );
       },
     };
+  }
+
+  /** Why each buy of one user looks the way it does. */
+  decisions(userId: string): DecisionLog {
+    const db = this.db;
+    return {
+      async put(d) {
+        db.prepare(
+          "INSERT OR REPLACE INTO decisions (id, user_id, at, symbol, outcome, data) VALUES (?, ?, ?, ?, ?, ?)",
+        ).run(d.id, userId, d.at, d.symbol, d.outcome, JSON.stringify(d));
+      },
+    };
+  }
+
+  /** The latest decisions of one user, newest first. */
+  recentDecisions(userId: string, limit: number): Decision[] {
+    return (
+      this.db
+        .prepare(
+          "SELECT data FROM decisions WHERE user_id = ? ORDER BY at DESC LIMIT ?",
+        )
+        .all(userId, limit) as unknown as { data: string }[]
+    ).map((r) => JSON.parse(r.data) as Decision);
   }
 
   log(

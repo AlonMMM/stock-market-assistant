@@ -2698,3 +2698,189 @@ dd > .stop-missing {
   margin: 6px 0 0;
   padding-left: 18px;
 }
+
+/* Orders and the reasons behind each one (Portfolio → Orders). */
+.decisions li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px 12px;
+}
+.decisions li .num,
+.decisions li .muted {
+  grid-column: 1 / -1;
+}
+.why-button {
+  padding: 4px 12px;
+  border: 1px solid #cdd7ce;
+  border-radius: 999px;
+  background: #fff;
+  color: #142b29;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.decisions li .why-button,
+.portfolio-orders li .why-button {
+  justify-self: end;
+  align-self: center;
+  width: auto;
+}
+.why-button:hover {
+  background: #eef1ea;
+}
+.position-head .why-button {
+  margin-left: 8px;
+}
+dialog.why {
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  border: 1px solid #cdd7ce;
+  border-radius: 14px;
+  background: #fafbf8;
+  color: #142b29;
+}
+dialog.why::backdrop {
+  background: rgba(20, 43, 41, 0.45);
+}
+.why-body {
+  padding: 20px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.why-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.why-head > div {
+  flex: 1;
+  min-width: 0;
+}
+.why-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.why-head p {
+  margin: 2px 0 0;
+}
+.why-close {
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: #526461;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+.why-body section {
+  margin-top: 16px;
+}
+.why-body h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #526461;
+}
+.why-body h3 .muted {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+.why-body p {
+  margin: 0 0 6px;
+}
+.why-refused {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 2px solid #b91c1c;
+  border-radius: 10px;
+  background: #fff;
+}
+.why-refused ul,
+.why-notes {
+  margin: 6px 0 0;
+  padding-left: 30px;
+}
+.why-notes {
+  margin-top: 12px;
+}
+.why-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.why-table th,
+.why-table td {
+  padding: 4px 8px 4px 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #e3e8e1;
+}
+.why-table th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.why-strikes th {
+  font-size: 12px;
+  color: #526461;
+}
+.why-strikes tr.chosen td {
+  font-weight: 700;
+  background: #eaf5dc;
+}
+.why-source {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.why-source.command {
+  background: #142b29;
+  color: #fff;
+}
+.why-source.default {
+  background: #e3e8e1;
+  color: #142b29;
+}
+.why-checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.why-checks li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, auto) minmax(0, 1fr);
+  gap: 0 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid #e3e8e1;
+}
+.why-checks li.ok > span:first-child {
+  color: #15803d;
+}
+.why-checks li.bad {
+  color: #b91c1c;
+}
+.why-checks li.bad .muted {
+  color: #b91c1c;
+}
+.why-checks strong {
+  font-weight: 600;
+}
+@media (max-width: 560px) {
+  .why-checks li {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+  .why-checks li .muted {
+    grid-column: 2;
+  }
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

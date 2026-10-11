@@ -346,6 +346,16 @@ export class TraderService {
     return { canceled, jobIds: jobs.map((j) => j.id) };
   }
 
+  /** Every recent buy command with the reasons behind it, newest first. */
+  decisions(limit = 50) {
+    return {
+      decisions: this.store.recentDecisions(
+        this.userId,
+        Math.min(Math.max(Math.trunc(limit) || 50, 1), 200),
+      ),
+    };
+  }
+
   /** Positions and limits, plus the orders that are waiting or working. */
   async status() {
     const [status, open] = await Promise.all([

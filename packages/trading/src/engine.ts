@@ -8,6 +8,12 @@ import {
   type HeldPosition,
 } from "./checks.js";
 import { sellAtBid } from "./exit.js";
+import {
+  explainBuy,
+  type Decision,
+  type DecisionLog,
+  type ExplainParts,
+} from "./explain.js";
 import { buyWithLadder, finished, type LadderResult } from "./ladder.js";
 import type { Notifier, Sent } from "./notifier.js";
 import {
@@ -87,6 +93,8 @@ export interface EngineOptions {
   notifier: Notifier;
   posts: PostStore;
   buys: BuyLog;
+  // Where the explanation of each buy is kept; nowhere when absent.
+  decisions?: DecisionLog;
   limits?: BuyLimits;
   riskRules?: RiskRules;
   // The kill switch: false refuses every buy. Sells and stops still work.
@@ -167,6 +175,7 @@ export interface BuyPlan extends BuyBase {
   budget: number;
   stopPct: number;
   record: BuyRecord;
+  decision: Decision;
   steps?: number;
   intervalMs?: number;
   waitMs?: number;
@@ -182,6 +191,7 @@ export class TradeEngine {
   private readonly notifier: Notifier;
   private readonly posts: PostStore;
   private readonly buys: BuyLog;
+  private readonly decisions: DecisionLog;
   private readonly limits: BuyLimits;
   private readonly riskRules: RiskRules;
   private readonly enabled: boolean;
@@ -195,6 +205,7 @@ export class TradeEngine {
     this.notifier = options.notifier;
     this.posts = options.posts;
     this.buys = options.buys;
+    this.decisions = options.decisions ?? { put: async () => {} };
     this.limits = options.limits ?? defaultBuyLimits;
     this.riskRules = options.riskRules ?? defaultRiskRules;
     this.enabled = options.enabled ?? true;
@@ -263,6 +274,7 @@ export class TradeEngine {
           quotes.filter((x) => x.expiry === expiry),
           targetDelta,
         ),
+        candidates: quotes.filter((x) => x.expiry === expiry),
       })),
     };
   }
@@ -361,7 +373,7 @@ export class TradeEngine {
       },
       this.limits,
     );
-    return { ceiling, ...sized, verdict };
+    return { ceiling, ...sized, verdict, risk, daysToExpiry };
   }
 
   /**
@@ -447,6 +459,7 @@ export class TradeEngine {
     const stopPct = request.stopPct ?? defaultStopPct;
     let quote: OptionQuote;
     let deltaRange: readonly [number, number] | undefined;
+    let picked: ExplainParts["chosen"];
     if (request.contract) {
       quote = await this.broker.quote(request.contract.toUpperCase());
     } else {
@@ -471,16 +484,46 @@ export class TradeEngine {
         );
       quote = row.quote;
       deltaRange = chosen.deltaRange;
+      picked = {
+        rows: chosen.rows.map((r) => ({ expiry: r.expiry, label: r.label })),
+        expiry: row.expiry,
+        candidates: row.candidates,
+      };
     }
     const symbol = quote.symbol;
     const a = await this.account();
-    const { qty, budget, verdict } = this.assess(
-      a,
-      quote,
-      request.sizePct,
-      stopPct,
-      deltaRange,
-    );
+    const sized = this.assess(a, quote, request.sizePct, stopPct, deltaRange);
+    const { qty, budget, verdict } = sized;
+    const decision: Decision = {
+      id: `${a.now}-${symbol}`,
+      at: a.now,
+      symbol,
+      outcome: verdict.ok ? "working" : "refused",
+      explanation: explainBuy({
+        now: a.now,
+        paper: this.paper,
+        request,
+        defaultExpiry: this.defaultExpiry,
+        quote,
+        ...(picked ? { chosen: picked } : {}),
+        equity: a.account.equity,
+        ceiling: sized.ceiling,
+        qty,
+        budget,
+        cost: sized.cost,
+        stopPct,
+        stopAtCeiling:
+          stopPct > 0 && stopPct <= this.limits.maxStopPct && sized.ceiling > 0
+            ? stopPrice(sized.ceiling, stopPct)
+            : null,
+        daysToExpiry: sized.daysToExpiry,
+        risk: sized.risk,
+        marketOpen: a.marketOpen,
+        verdict,
+      }),
+    };
+    // Why this order looks the way it does; kept for refused ones too.
+    await this.decisions.put(decision).catch(() => {});
     if (!verdict.ok)
       return {
         paper: this.paper,
@@ -504,6 +547,7 @@ export class TradeEngine {
       budget,
       stopPct,
       record,
+      decision,
       offHours: !a.marketOpen,
       notes: verdict.notes,
       ...(request.steps === undefined ? {} : { steps: request.steps }),
@@ -525,7 +569,61 @@ export class TradeEngine {
     const { contract: symbol, qty, budget, stopPct, record } = plan;
     const request = plan;
     let filled = false;
+    let done: BuyDone | undefined;
+    let failure: unknown;
     try {
+      done = await this.workBuy(plan, progress);
+      filled = (done.result.order?.filledQty ?? 0) > 0;
+      return done;
+    } catch (error) {
+      failure = error;
+      throw error;
+    } finally {
+      // One command is one buy however it filled; one that bought nothing
+      // does not use up one of the day's buys.
+      await this.buys.put({ ...record, filled });
+      const order = done?.result.order;
+      const got = order?.filledQty ?? 0;
+      await this.decisions
+        .put({
+          ...plan.decision,
+          outcome: failure
+            ? "failed"
+            : got === 0
+              ? "not filled"
+              : got < qty
+                ? "partly filled"
+                : "filled",
+          result: {
+            filledQty: got,
+            avgPrice: order?.filledAvgPrice ?? null,
+            ...(done?.stop?.price === undefined
+              ? {}
+              : { stopPrice: done.stop.price, stopQty: done.stop.qty ?? 0 }),
+            ...(done?.canceledQty ? { canceledQty: done.canceledQty } : {}),
+            ...(failure
+              ? {
+                  error:
+                    failure instanceof Error
+                      ? failure.message
+                      : String(failure),
+                }
+              : done?.stop?.error
+                ? { error: `stop: ${done.stop.error}` }
+                : {}),
+          },
+        })
+        .catch(() => {});
+    }
+  }
+
+  private async workBuy(
+    plan: BuyPlan,
+    progress: (p: BuyProgress) => void,
+  ): Promise<BuyDone> {
+    const { contract: symbol, qty, budget, stopPct } = plan;
+    const request = plan;
+    {
       let waiting: Order | undefined;
       if (plan.offHours) {
         const queued = await this.queueOffHours(plan, progress);
@@ -556,7 +654,7 @@ export class TradeEngine {
         ...this.timing,
       });
       const order = guarded.order;
-      filled = order.filledQty > 0;
+      const filled = order.filledQty > 0;
       const final = {
         ...result,
         order,
@@ -591,10 +689,6 @@ export class TradeEngine {
       );
       if (post.ok && post.ref) await this.posts.set(symbol, post.ref);
       return { ...outcome, post };
-    } finally {
-      // One command is one buy however it filled; one that bought nothing
-      // does not use up one of the day's buys.
-      await this.buys.put({ ...record, filled });
     }
   }
 
