@@ -134,7 +134,7 @@ test("connector: each tool reaches its route on the trading service", async () =
   });
   await call("preview", buy);
   await call("trade_status", { jobId: "a/b" });
-  await call("cancel_order", { jobId: "j1" });
+  await call("cancel_order", { underlying: "MU" });
   await call("sell", { underlying: "NVDA", qty: "half" });
   await call("set_stop", { underlying: "NVDA", stopPct: 30 });
   await call("positions", {});
@@ -148,7 +148,7 @@ test("connector: each tool reaches its route on the trading service", async () =
       ["POST", "/v1/buy", buy],
       ["POST", "/v1/preview", buy],
       ["GET", "/v1/jobs/a%2Fb", undefined],
-      ["POST", "/v1/jobs/j1/cancel", {}],
+      ["POST", "/v1/cancel", { underlying: "MU" }],
       ["POST", "/v1/sell", { underlying: "NVDA", qty: "half" }],
       ["POST", "/v1/stop", { underlying: "NVDA", stopPct: 30 }],
       ["GET", "/v1/positions", undefined],

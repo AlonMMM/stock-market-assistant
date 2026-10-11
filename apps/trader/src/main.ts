@@ -98,8 +98,9 @@ api.get<{ Params: { id: string } }>("/v1/jobs/:id", async (request) =>
   service.job(request.params.id),
 );
 api.post<{ Params: { id: string } }>("/v1/jobs/:id/cancel", async (request) =>
-  service.cancel(request.params.id),
+  service.cancel({ jobId: request.params.id }),
 );
+api.post("/v1/cancel", async (request) => service.cancel(body(request.body)));
 api.get("/v1/positions", async () => service.status());
 
 async function stop() {
