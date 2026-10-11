@@ -4,8 +4,9 @@
 // alone, answered as plain JSON.
 
 export interface ConnectorEnv {
-  // The credential a caller must present, as a Bearer header or as the last
-  // part of the address (/mcp/<token>). At least 32 characters.
+  // The credential a caller must present: the X-Auth-Token header, a Bearer
+  // header, or the last part of the address (/mcp/<token>). At least 32
+  // characters.
   MCP_TOKEN?: string;
   TRADER_URL?: string;
   TRADER_TOKEN?: string;
@@ -286,9 +287,11 @@ export async function handleMcp(
   if (!env.MCP_TOKEN || env.MCP_TOKEN.length < 32)
     return json({ error: "The connector is not configured" }, 503);
   const header = request.headers.get("Authorization") ?? "";
+  // Claude's connector settings reserve Authorization for OAuth, so a fixed
+  // credential is sent as X-Auth-Token.
   const presented = header.startsWith("Bearer ")
     ? header.slice(7)
-    : (parts[1] ?? "");
+    : (request.headers.get("X-Auth-Token") ?? parts[1] ?? "");
   if (!same(presented, env.MCP_TOKEN)) {
     console.warn(
       `connector: refused a call without the credential (${request.headers.get("CF-Connecting-IP") ?? "unknown address"})`,
