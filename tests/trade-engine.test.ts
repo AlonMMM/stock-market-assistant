@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  MemoryBuyLog,
   MemoryPostStore,
   TradeEngine,
 } from "../packages/trading/src/engine.js";
@@ -21,6 +22,7 @@ function setup(telegram = true) {
   broker.setQuote(near, 0.2, 0.21, 0.09);
   // The price raises stop below the ask; a seller meets the buy at 1.03.
   broker.fillAt.set(friday, 1.03);
+  broker.fillAt.set(near, 0.2);
   const sent: { html: string; replyTo?: number }[] = [];
   let id = 100;
   const notifier = telegram
@@ -31,14 +33,16 @@ function setup(telegram = true) {
         },
       })
     : new NoNotifier();
+  const clock = { now: monday };
   const engine = new TradeEngine({
     broker,
     notifier,
     posts: new MemoryPostStore(),
-    now: () => monday,
+    buys: new MemoryBuyLog(),
+    now: () => clock.now,
     sleep: async () => {},
   });
-  return { broker, engine, sent };
+  return { broker, engine, sent, clock };
 }
 
 test("engine preview: both expiries, sized and with the stop, nothing sent", async () => {
@@ -65,8 +69,8 @@ test("engine preview: both expiries, sized and with the stop, nothing sent", asy
 test("engine buy: fills, places the stop and posts the entry", async () => {
   const { broker, engine, sent } = setup();
   const out = await engine.buy({ contract: friday, sizePct: 0.5 });
+  assert.ok("stop" in out && out.stop);
   assert.equal(out.result.status, "filled");
-  assert.ok("stop" in out && "post" in out);
   const paid = out.result.order!.filledAvgPrice!;
   assert.equal(out.stop.qty, 4);
   assert.equal(out.stop.price, Number((paid * 0.6).toFixed(2)));
@@ -78,11 +82,12 @@ test("engine buy: fills, places the stop and posts the entry", async () => {
   assert.deepEqual((await engine.shortCheck()).problems, []);
 });
 
-test("engine buy: a wide spread sends nothing and posts nothing", async () => {
+test("engine buy: a wide spread is refused, nothing sent, nothing posted", async () => {
   const { broker, engine, sent } = setup();
   broker.setQuote(friday, 1.0, 1.3, 0.12);
   const out = await engine.buy({ contract: friday, sizePct: 0.5 });
-  assert.equal(out.result.status, "rejected-spread");
+  assert.ok("refused" in out);
+  assert.match(out.refused.join(), /^spread: 26\.09% of the mid/);
   assert.equal(broker.orders.size, 0);
   assert.equal(sent.length, 0);
 });
@@ -91,7 +96,7 @@ test("engine buy: an order that never fills is canceled, no stop, no post", asyn
   const { broker, engine, sent } = setup();
   broker.fillAt.set(friday, 5);
   const out = await engine.buy({ contract: friday, sizePct: 0.5 });
-  assert.ok("canceledQty" in out);
+  assert.ok("stop" in out && out.stop);
   assert.equal(out.canceledQty, 4);
   assert.equal(out.stop.price, undefined);
   assert.equal((await broker.openOrders()).length, 0);
@@ -100,14 +105,99 @@ test("engine buy: an order that never fills is canceled, no stop, no post", asyn
 
 test("engine buy: a stop above 70% is refused before any order", async () => {
   const { broker, engine } = setup();
-  await assert.rejects(
-    engine.buy({ contract: friday, sizePct: 0.5, stopPct: 80 }),
-  );
+  const out = await engine.buy({ contract: friday, sizePct: 0.5, stopPct: 80 });
+  assert.ok("refused" in out);
+  assert.match(out.refused.join(), /^stop: stop 80% is outside 0–70%/);
   assert.equal(broker.orders.size, 0);
 });
 
+test("engine buy in one step: picks Friday's contract by default, or the named expiry", async () => {
+  const { broker, engine, clock } = setup();
+  const out = await engine.buy({
+    underlying: "nvda",
+    right: "call",
+    sizePct: 0.5,
+  });
+  assert.equal(out.contract, friday);
+  assert.ok("stop" in out && out.stop?.qty === 4);
+  // The nearest expiry has no strike inside 0.10–0.15: refused, not bought.
+  clock.now += 5 * 60_000;
+  const nearest = await engine.buy({
+    underlying: "NVDA",
+    right: "call",
+    sizePct: 0.5,
+    expiry: "nearest",
+  });
+  assert.equal(nearest.contract, near);
+  assert.ok("refused" in nearest);
+  assert.match(nearest.refused.join(), /delta in range: delta 0\.090/);
+  // A named delta is a target, not a range.
+  const named = await engine.buy({
+    underlying: "NVDA",
+    right: "call",
+    sizePct: 0.5,
+    expiry: "2026-10-12",
+    delta: 0.09,
+  });
+  assert.ok(!("refused" in named));
+  await assert.rejects(
+    engine.buy({
+      underlying: "NVDA",
+      right: "call",
+      sizePct: 0.5,
+      expiry: "2026-11-20",
+    }),
+    /offered: 2026-10-12, 2026-10-16/,
+  );
+  assert.equal((await broker.positions()).length, 2);
+});
+
+test("engine buy: a doubled command is refused; a buy that filled nothing is not counted", async () => {
+  const { broker, engine, clock } = setup();
+  await engine.buy({ contract: friday, sizePct: 0.5 });
+  const again = await engine.buy({ contract: friday, sizePct: 0.5 });
+  assert.ok("refused" in again);
+  assert.match(
+    again.refused.join(),
+    /not a repeat: NVDA calls were bought 0 s ago/,
+  );
+  clock.now += 61_000;
+  broker.fillAt.set(friday, 5); // nobody sells: the order is canceled
+  const unfilled = await engine.buy({ contract: friday, sizePct: 0.5 });
+  assert.ok("canceledQty" in unfilled);
+  assert.equal(
+    (await engine.preview({ underlying: "NVDA", right: "call", sizePct: 0.5 }))
+      .buysToday,
+    1,
+  );
+});
+
+test("engine buy: the kill switch refuses buys; sells still work", async () => {
+  const { broker, engine } = setup();
+  await engine.buy({ contract: friday, sizePct: 0.5 });
+  const off = new TradeEngine({
+    broker,
+    notifier: new NoNotifier(),
+    posts: new MemoryPostStore(),
+    buys: new MemoryBuyLog(),
+    now: () => monday + 120_000,
+    sleep: async () => {},
+    enabled: false,
+  });
+  const out = await off.buy({ contract: friday, sizePct: 0.5 });
+  assert.ok("refused" in out);
+  assert.match(
+    out.refused.join(),
+    /trading switched on: trading is switched off/,
+  );
+  assert.equal(
+    (await off.sell({ contract: friday, qty: "all" })).result.sold,
+    4,
+  );
+});
+
 test("engine sell: half by underlying, exit posted under the entry, stop on the rest", async () => {
-  const { broker, engine, sent } = setup();
+  const { broker, engine, sent, clock } = setup();
   await engine.buy({ contract: friday, sizePct: 0.5 });
   broker.setQuote(friday, 1.5, 1.54, 0.2);
   const out = await engine.sell({ underlying: "NVDA", qty: "half" });
@@ -125,6 +215,7 @@ test("engine sell: half by underlying, exit posted under the entry, stop on the 
   assert.equal(sent[2]!.replyTo, 100);
   assert.equal((await broker.positions()).length, 0);
   assert.equal((await broker.openOrders()).length, 0);
+  clock.now += 5 * 60_000;
   await engine.buy({ contract: friday, sizePct: 0.5 });
   await engine.sell({ contract: friday, qty: "all" });
   assert.equal(sent[4]!.replyTo, 103);

@@ -1,4 +1,4 @@
-import type { Broker, BrokerCapabilities, Order } from "./broker.js";
+import type { Account, Broker, BrokerCapabilities, Order } from "./broker.js";
 import { parseOccSymbol, type OptionQuote, type Right } from "./options.js";
 
 type Fetcher = typeof fetch;
@@ -9,7 +9,7 @@ export const liveUrl = "https://api.alpaca.markets";
 export type { Order, TradingClient } from "./broker.js";
 
 interface Snapshot {
-  latestQuote?: { bp?: number; ap?: number };
+  latestQuote?: { bp?: number; ap?: number; t?: string };
   greeks?: { delta?: number } | null;
 }
 
@@ -37,14 +37,21 @@ const order = (raw: RawOrder): Order => ({
 function quote(symbol: string, s: Snapshot): OptionQuote {
   const parsed = parseOccSymbol(symbol);
   const delta = s.greeks?.delta;
+  const at = s.latestQuote?.t ? Date.parse(s.latestQuote.t) : undefined;
   return {
     symbol,
     ...parsed,
     bid: s.latestQuote?.bp ?? 0,
     ask: s.latestQuote?.ap ?? 0,
     delta: typeof delta === "number" && Number.isFinite(delta) ? delta : null,
+    ...(at !== undefined && Number.isFinite(at) ? { quotedAt: at } : {}),
   };
 }
+
+// A daily point is labelled with its New York trading day.
+const tradingDay = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York",
+});
 
 // Alpaca Trading API (account and orders) plus option snapshots from the
 // Market Data API. Paper trading unless the caller passes liveUrl.
@@ -105,6 +112,43 @@ export class AlpacaTrading implements Broker {
       "/v2/account",
     );
     return Number(account.equity);
+  }
+
+  async account(): Promise<Account> {
+    const a = await this.call<{
+      equity: string;
+      last_equity: string;
+      buying_power: string;
+      options_buying_power?: string;
+    }>(this.tradingUrl, "/v2/account");
+    return {
+      equity: Number(a.equity),
+      lastEquity: Number(a.last_equity),
+      buyingPower: Number(a.options_buying_power ?? a.buying_power),
+    };
+  }
+
+  async marketOpen(): Promise<boolean> {
+    const clock = await this.call<{ is_open: boolean }>(
+      this.tradingUrl,
+      "/v2/clock",
+    );
+    return clock.is_open === true;
+  }
+
+  async equityHistory() {
+    const h = await this.call<{
+      timestamp: number[];
+      equity: (number | null)[];
+    }>(this.tradingUrl, "/v2/account/portfolio/history", {
+      query: { period: "1A", timeframe: "1D" },
+    });
+    return h.timestamp.flatMap((t, i) => {
+      const equity = h.equity[i];
+      return typeof equity === "number" && equity > 0
+        ? [{ date: tradingDay.format(t * 1000), equity }]
+        : [];
+    });
   }
 
   /** Quotes and deltas for one side of the chain, expiries in [from, to]. */

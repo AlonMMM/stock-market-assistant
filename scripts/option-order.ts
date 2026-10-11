@@ -1,13 +1,15 @@
 // Option orders from a chat command (docs/tasks/backend-option-orders.md).
 //
 //   preview --underlying ORCL --right call --size 0.5 [--delta 0.1]
-//   buy --contract ORCL261016C00250000 --size 0.5 [--stop 40] [--wait 120]
+//   buy --underlying ORCL --right call --size 0.5 [--expiry friday|nearest|DATE]
+//       [--delta 0.1] [--stop 40] [--wait 120]   (or --contract …)
 //   stop --contract ORCL261016C00250000 [--stop 40]
 //   sell --underlying ORCL --qty all|half|3   (or --contract …)
 //   check   (short positions, or sell orders for more than is held)
 //
-// Paper trading unless ALPACA_TRADING_LIVE=true. `buy` sends an order; run it
-// only after the user approved the previewed contract.
+// Paper trading unless ALPACA_TRADING_LIVE=true. `buy` picks the contract,
+// runs every check and sends the order in one step; a failed check sends
+// nothing and exits with code 3. TRADING_ENABLED=false refuses every buy.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { TelegramSender } from "../packages/notifications/src/telegram.js";
@@ -16,7 +18,12 @@ import {
   liveUrl,
   paperUrl,
 } from "../packages/trading/src/alpaca-trading.js";
-import { TradeEngine, type PostStore } from "../packages/trading/src/engine.js";
+import {
+  TradeEngine,
+  type BuyLog,
+  type BuyRecord,
+  type PostStore,
+} from "../packages/trading/src/engine.js";
 import {
   NoNotifier,
   TelegramNotifier,
@@ -46,6 +53,7 @@ const { positionals, values } = parseArgs({
     delta: { type: "string" },
     size: { type: "string" },
     contract: { type: "string" },
+    expiry: { type: "string" }, // buy: nearest, friday or a date
     steps: { type: "string", default: "5" },
     interval: { type: "string", default: "3" },
     stop: { type: "string", default: String(defaultStopPct) },
@@ -87,6 +95,29 @@ const posts: PostStore = {
   },
 };
 
+// The buys of each day, for the daily limit and the repeat check.
+const buysPath = "data/local/trade-buys.json";
+function readBuys(): BuyRecord[] {
+  try {
+    return JSON.parse(readFileSync(buysPath, "utf8"));
+  } catch {
+    return [];
+  }
+}
+const buys: BuyLog = {
+  async list(day) {
+    return readBuys().filter((r) => r.day === day);
+  },
+  async put(record) {
+    // Only the last days are kept; older ones no longer matter.
+    const kept = readBuys()
+      .filter((r) => r.id !== record.id)
+      .slice(-200);
+    mkdirSync("data/local", { recursive: true });
+    writeFileSync(buysPath, JSON.stringify([...kept, record], null, 2));
+  },
+};
+
 const token = process.env.TRADES_TELEGRAM_BOT_TOKEN;
 const chat = process.env.TRADES_TELEGRAM_CHAT_ID;
 const engine = new TradeEngine({
@@ -96,6 +127,8 @@ const engine = new TradeEngine({
       ? new TelegramNotifier(new TelegramSender(token, chat))
       : new NoNotifier(),
   posts,
+  buys,
+  enabled: process.env.TRADING_ENABLED !== "false",
   log: (line) => console.error(line),
 });
 
@@ -129,9 +162,18 @@ async function preview() {
 }
 
 async function buy() {
-  if (!values.contract) throw new Error("Need --contract");
+  const right = values.right as Right;
+  if (
+    !values.contract &&
+    (!values.underlying || !["call", "put"].includes(right))
+  )
+    throw new Error("Need --contract, or --underlying and --right call|put");
   const outcome = await engine.buy({
-    contract: values.contract,
+    ...(values.contract
+      ? { contract: values.contract }
+      : { underlying: values.underlying!, right }),
+    ...(values.expiry ? { expiry: values.expiry } : {}),
+    ...(values.delta === undefined ? {} : { delta: Number(values.delta) }),
     sizePct,
     stopPct,
     steps: Number(values.steps),
@@ -140,7 +182,10 @@ async function buy() {
   });
   const { post, ...rest } = { post: undefined, ...outcome };
   print(rest);
-  if ("stop" in outcome) posted(post, "Nothing filled");
+  if ("refused" in outcome && outcome.refused) {
+    console.error(`Not bought. ${outcome.refused.join("\n")}`);
+    process.exitCode = 3;
+  } else if ("stop" in outcome) posted(post, "Nothing filled");
 }
 
 // Sells at the bid, trying again at the new bid every 5 seconds.
