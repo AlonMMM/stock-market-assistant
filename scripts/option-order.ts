@@ -10,31 +10,19 @@
 // only after the user approved the previewed contract.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { newYork } from "../packages/market-data/src/calendar.js";
 import { TelegramSender } from "../packages/notifications/src/telegram.js";
 import {
   AlpacaTrading,
   liveUrl,
   paperUrl,
 } from "../packages/trading/src/alpaca-trading.js";
-import { sellAtBid } from "../packages/trading/src/exit.js";
-import { buyWithLadder } from "../packages/trading/src/ladder.js";
-import { protectFill } from "../packages/trading/src/protect.js";
-import { shortRisks, uncovered } from "../packages/trading/src/safety.js";
-import { formatEntry, formatExit } from "../packages/trading/src/message.js";
+import { TradeEngine, type PostStore } from "../packages/trading/src/engine.js";
 import {
-  ceilingPrice,
-  comingFriday,
-  defaultDeltaRange,
-  defaultStopPct,
-  expiryChoices,
-  parseOccSymbol,
-  pickByDelta,
-  sizeContracts,
-  spreadCheck,
-  stopPrice,
-  type Right,
-} from "../packages/trading/src/options.js";
+  NoNotifier,
+  TelegramNotifier,
+  type Sent,
+} from "../packages/trading/src/notifier.js";
+import { defaultStopPct, type Right } from "../packages/trading/src/options.js";
 
 const env = (...names: string[]) =>
   names.map((n) => process.env[n]).find((v) => v) ?? "";
@@ -68,282 +56,126 @@ const { positionals, values } = parseArgs({
 });
 
 const sizePct = Number(values.size);
-// An explicit --delta is the target; otherwise the middle of the default range.
-const [deltaLow, deltaHigh] = defaultDeltaRange;
-const targetDelta =
-  values.delta === undefined
-    ? (deltaLow + deltaHigh) / 2
-    : Number(values.delta);
-const deltaLabel =
-  values.delta === undefined
-    ? `${deltaLow.toFixed(2)}–${deltaHigh.toFixed(2)}`
-    : String(targetDelta);
 const stopPct = Number(values.stop);
+const waitMs = Number(values.wait) * 1000;
+
 // The channel post of each open trade, so its exits are sent as replies.
 // Local only (data/local is ignored by Git).
 const postsPath = "data/local/trade-posts.json";
-function readPosts(): Record<string, number> {
+function readPosts(): Record<string, string | number> {
   try {
     return JSON.parse(readFileSync(postsPath, "utf8"));
   } catch {
     return {};
   }
 }
-function savePost(symbol: string, messageId: number | null) {
-  try {
-    const posts = readPosts();
-    if (messageId === null) delete posts[symbol];
-    else posts[symbol] = messageId;
-    mkdirSync("data/local", { recursive: true });
-    writeFileSync(postsPath, JSON.stringify(posts, null, 2));
-  } catch {
-    // Without the file the next exit is posted on its own.
-  }
-}
-const addDays = (date: string, days: number) =>
-  new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000)
-    .toISOString()
-    .slice(0, 10);
+const posts: PostStore = {
+  async get(symbol) {
+    const ref = readPosts()[symbol];
+    return ref === undefined ? undefined : String(ref);
+  },
+  async set(symbol, ref) {
+    try {
+      const all = readPosts();
+      if (ref === null) delete all[symbol];
+      else all[symbol] = ref;
+      mkdirSync("data/local", { recursive: true });
+      writeFileSync(postsPath, JSON.stringify(all, null, 2));
+    } catch {
+      // Without the file the next exit is posted on its own.
+    }
+  },
+};
+
+const token = process.env.TRADES_TELEGRAM_BOT_TOKEN;
+const chat = process.env.TRADES_TELEGRAM_CHAT_ID;
+const engine = new TradeEngine({
+  broker: client,
+  notifier:
+    token && chat
+      ? new TelegramNotifier(new TelegramSender(token, chat))
+      : new NoNotifier(),
+  posts,
+  log: (line) => console.error(line),
+});
+
+// The engine reports `paper`; this command has always printed `live`.
+const print = ({
+  paper,
+  ...rest
+}: { paper: boolean } & Record<string, unknown>) =>
+  console.log(JSON.stringify({ live: !paper, ...rest }, null, 2));
+const posted = (post: Sent | undefined, nothing: string) =>
+  console.error(
+    post === undefined
+      ? `${nothing}; no group message sent.`
+      : post.ok
+        ? "Notification sent"
+        : `No group message sent: ${post.error}`,
+  );
 
 async function preview() {
-  const underlying = values.underlying?.toUpperCase();
   const right = values.right as Right;
-  if (!underlying || (right !== "call" && right !== "put"))
+  if (!values.underlying || (right !== "call" && right !== "put"))
     throw new Error("Need --underlying and --right call|put");
-  const today = newYork(Date.now()).date;
-  const equity = await client.equity();
-  let quotes = await client.chain(
-    underlying,
+  const { paper, ...rest } = await engine.preview({
+    underlying: values.underlying,
     right,
-    today,
-    comingFriday(today),
-  );
-  if (!quotes.length)
-    quotes = await client.chain(underlying, right, today, addDays(today, 21));
-  const choices = expiryChoices(
-    quotes.map((q) => q.expiry),
-    today,
-  );
-  if (!choices) throw new Error(`No ${right}s listed for ${underlying}`);
-  const expiries = [...new Set([choices.nearest, choices.friday])].filter(
-    (e): e is string => e !== null,
-  );
-  const rows = expiries.map((expiry) => {
-    const q = pickByDelta(
-      quotes.filter((x) => x.expiry === expiry),
-      targetDelta,
-    );
-    if (!q) return { expiry, error: "no quote with a delta" };
-    const check = spreadCheck(q);
-    const ceiling = ceilingPrice(q);
-    const size = sizeContracts(equity, sizePct, ceiling);
-    return {
-      expiry,
-      label:
-        expiry === choices.nearest && expiry === choices.friday
-          ? "nearest = Friday"
-          : expiry === choices.nearest
-            ? "nearest"
-            : "Friday",
-      contract: q.symbol,
-      strike: q.strike,
-      delta: q.delta,
-      ...(values.delta === undefined && q.delta !== null
-        ? {
-            deltaInRange:
-              Math.abs(q.delta) >= deltaLow - 1e-9 &&
-              Math.abs(q.delta) <= deltaHigh + 1e-9,
-          }
-        : {}),
-      bid: q.bid,
-      ask: q.ask,
-      mid: Number(check.mid.toFixed(3)),
-      spreadPctOfMid: Number((check.ratio * 100).toFixed(1)),
-      spreadOk: check.ok,
-      ceiling,
-      stopAtCeiling: stopPrice(ceiling, stopPct),
-      qty: size.qty,
-      maxCost: Number(size.cost.toFixed(2)),
-      budget: Number(size.budget.toFixed(2)),
-    };
+    sizePct,
+    ...(values.delta === undefined ? {} : { delta: Number(values.delta) }),
+    stopPct,
   });
-  console.log(
-    JSON.stringify(
-      {
-        live,
-        feed,
-        equity,
-        sizePct,
-        targetDelta: deltaLabel,
-        stopPct,
-        rows,
-      },
-      null,
-      2,
-    ),
-  );
+  print({ paper, feed, ...rest });
 }
 
 async function buy() {
-  const symbol = values.contract?.toUpperCase();
-  if (!symbol) throw new Error("Need --contract");
-  stopPrice(1, stopPct); // refuse a bad --stop before anything is sent
-  const equity = await client.equity();
-  const quote = await client.quote(symbol);
-  const ceiling = ceilingPrice(quote);
-  const { qty, budget } = sizeContracts(equity, sizePct, ceiling);
-  if (qty < 1)
-    throw new Error(
-      `Budget ${budget.toFixed(2)} buys no contract at ${ceiling}`,
-    );
-  const result = await buyWithLadder(client, symbol, qty, {
+  if (!values.contract) throw new Error("Need --contract");
+  const outcome = await engine.buy({
+    contract: values.contract,
+    sizePct,
+    stopPct,
     steps: Number(values.steps),
     intervalMs: Number(values.interval) * 1000,
-    maxPrice: budget / (qty * 100),
-    log: (line) => console.error(line),
+    waitMs,
   });
-  if (
-    result.status === "rejected-spread" ||
-    result.status === "rejected-budget"
-  ) {
-    console.log(JSON.stringify({ live, qty, budget, result }, null, 2));
-    return;
-  }
-  // Watch the order, keep a stop on what fills, cancel what does not.
-  const guarded = await protectFill(client, result.order!, stopPct, {
-    waitMs: Number(values.wait) * 1000,
-    log: (line) => console.error(line),
-  });
-  const order = guarded.order;
-  const final = {
-    ...result,
-    order,
-    status:
-      order.status === "filled"
-        ? ("filled" as const)
-        : guarded.cancelError
-          ? result.status
-          : ("closed" as const),
-  };
-  const { stop, canceledQty, cancelError } = guarded;
-  console.log(
-    JSON.stringify(
-      { live, qty, budget, result: final, stop, canceledQty, cancelError },
-      null,
-      2,
-    ),
-  );
-  if (!(order.filledQty > 0)) {
-    console.error("Nothing filled; no group message sent.");
-    return;
-  }
-  const token = process.env.TRADES_TELEGRAM_BOT_TOKEN;
-  const chat = process.env.TRADES_TELEGRAM_CHAT_ID;
-  if (!token || !chat) {
-    console.error("Telegram not configured; no group message sent.");
-    return;
-  }
-  const sent = await new TelegramSender(token, chat).send(
-    formatEntry({ symbol, paper: !live, stop }, final),
-  );
-  console.error(sent.ok ? "Telegram sent" : `Telegram failed: ${sent.error}`);
-  if (sent.ok && sent.messageId) savePost(symbol, sent.messageId);
+  const { post, ...rest } = { post: undefined, ...outcome };
+  print(rest);
+  if ("stop" in outcome) posted(post, "Nothing filled");
 }
 
 // Sells at the bid, trying again at the new bid every 5 seconds.
 async function sell() {
-  let symbol = values.contract?.toUpperCase();
-  if (!symbol) {
-    const underlying = values.underlying?.toUpperCase();
-    if (!underlying) throw new Error("Need --contract or --underlying");
-    const held = (await client.positions()).filter(
-      (p) => p.qty > 0 && parseOccSymbol(p.symbol).underlying === underlying,
-    );
-    if (held.length !== 1)
-      throw new Error(
-        held.length === 0
-          ? `No option position in ${underlying}`
-          : `Several ${underlying} positions; pass --contract: ${held.map((p) => `${p.symbol} (${p.qty})`).join(", ")}`,
-      );
-    symbol = held[0]!.symbol;
-  }
+  if (!values.contract && !values.underlying)
+    throw new Error("Need --contract or --underlying");
   if (!values.qty) throw new Error("Need --qty all|half|<contracts>");
-  const result = await sellAtBid(client, symbol, values.qty, {
-    maxMs: Number(values.wait) * 1000,
+  const outcome = await engine.sell({
+    ...(values.contract ? { contract: values.contract } : {}),
+    ...(values.underlying ? { underlying: values.underlying } : {}),
+    qty: values.qty,
     stopPct,
-    log: (line) => console.error(line),
+    waitMs,
   });
-  console.log(JSON.stringify({ live, symbol, result }, null, 2));
-  if (!(result.sold > 0)) {
-    console.error("Nothing sold; no group message sent.");
-    return;
-  }
-  const token = process.env.TRADES_TELEGRAM_BOT_TOKEN;
-  const chat = process.env.TRADES_TELEGRAM_CHAT_ID;
-  if (!token || !chat) {
-    console.error("Telegram not configured; no group message sent.");
-    return;
-  }
-  const sent = await new TelegramSender(token, chat).send(
-    formatExit({ symbol, paper: !live }, result),
-    { replyTo: readPosts()[symbol] },
-  );
-  console.error(sent.ok ? "Telegram sent" : `Telegram failed: ${sent.error}`);
-  if (result.remaining === 0) savePost(symbol, null);
+  const { post, ...rest } = { post: undefined, ...outcome };
+  print(rest);
+  posted(post, "Nothing sold");
 }
 
 // Places the stop for a contract already held, at its average entry price.
 async function stop() {
-  const symbol = values.contract?.toUpperCase();
-  if (!symbol) throw new Error("Need --contract");
-  const held = await client.position(symbol);
-  if (!(held.qty > 0)) throw new Error(`No long position in ${symbol}`);
-  // Only contracts that no open sell order already covers: a second stop on
-  // the same contracts could sell them twice.
-  const qty = uncovered(held.qty, symbol, await client.openOrders(symbol));
-  if (qty === 0) {
-    console.log(
-      JSON.stringify(
-        { live, held: held.qty, note: "open sell orders already cover it" },
-        null,
-        2,
-      ),
-    );
-    return;
-  }
-  const price = stopPrice(held.avgEntryPrice, stopPct);
-  const order = await client.sellStop(symbol, qty, price);
-  console.log(
-    JSON.stringify(
-      { live, entry: held.avgEntryPrice, stopPct, price, qty, order },
-      null,
-      2,
-    ),
-  );
+  if (!values.contract) throw new Error("Need --contract");
+  print(await engine.setStop({ contract: values.contract, stopPct }));
 }
 
 // The account must never be short an option. Run after every order command
 // and by `check`: any short position, or sell orders for more than is held,
 // is printed, sent to the trades channel and fails the command.
 async function shortCheck() {
-  const problems = shortRisks(
-    await client.positions(),
-    await client.openOrders(),
-  );
+  const { problems, alert } = await engine.shortCheck();
   if (problems.length === 0) return problems;
   console.error(`\nALERT: SHORT OPTION RISK\n${problems.join("\n")}\n`);
-  const token = process.env.TRADES_TELEGRAM_BOT_TOKEN;
-  const chat = process.env.TRADES_TELEGRAM_CHAT_ID;
-  if (token && chat) {
-    const sent = await new TelegramSender(token, chat).send(
-      `🚨 <b>SHORT OPTION RISK</b>${live ? "" : " (paper)"}\n${problems.join("\n")}`,
-    );
-    console.error(
-      sent.ok
-        ? "Alert sent to Telegram"
-        : `Telegram alert failed: ${sent.error}`,
-    );
-  }
+  console.error(
+    alert?.ok ? "Alert sent" : `Alert not sent: ${alert?.error ?? "unknown"}`,
+  );
   process.exitCode = 2;
   return problems;
 }
