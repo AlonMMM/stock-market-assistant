@@ -25,6 +25,9 @@ export class SimBroker implements Broker {
     replaceInPlace: true,
   };
   cash: number;
+  isOpen = true; // the market
+  lastEquity: number;
+  history: { date: string; equity: number }[] = [];
   /** Buy limit at which a buy fills; the ask when not set. */
   fillAt = new Map<string, number>();
   readonly orders = new Map<string, SimOrder>();
@@ -34,16 +37,24 @@ export class SimBroker implements Broker {
 
   constructor(equity = 100_000) {
     this.cash = equity;
+    this.lastEquity = equity;
   }
 
   /** Sets or moves a contract's quote. */
-  setQuote(symbol: string, bid: number, ask: number, delta: number | null) {
+  setQuote(
+    symbol: string,
+    bid: number,
+    ask: number,
+    delta: number | null,
+    quotedAt?: number,
+  ) {
     this.quotes.set(symbol, {
       symbol,
       ...parseOccSymbol(symbol),
       bid,
       ask,
       delta,
+      ...(quotedAt === undefined ? {} : { quotedAt }),
     });
     for (const o of this.orders.values()) this.settle(o);
   }
@@ -133,6 +144,19 @@ export class SimBroker implements Broker {
     for (const [symbol, h] of this.held)
       value += h.qty * (this.quotes.get(symbol)?.bid ?? 0) * 100;
     return value;
+  }
+  async account() {
+    return {
+      equity: await this.equity(),
+      lastEquity: this.lastEquity,
+      buyingPower: this.cash,
+    };
+  }
+  async marketOpen() {
+    return this.isOpen;
+  }
+  async equityHistory() {
+    return this.history;
   }
   async chain(underlying: string, right: string, from: string, to: string) {
     return [...this.quotes.values()].filter(

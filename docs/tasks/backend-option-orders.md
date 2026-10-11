@@ -36,6 +36,12 @@ The user explicitly authorized order execution on the Alpaca **paper** account
      are posted too. The Worker needs the secrets `TRADES_TELEGRAM_BOT_TOKEN` and
      `TRADES_TELEGRAM_CHAT_ID`, and its Alpaca keys must be the trading account's.
 
+- **One-step buy (user decision 2026-10-11):** `buy` picks the contract, runs every check
+  and sends the order, with no preview in between. The checks and their limits (10 buys a
+  day, 10% of the account at risk at the same time, no buy after a 5% day loss, the risk
+  manager, and the order checks) are in
+  [backend-trading-service.md](backend-trading-service.md), "Checks before a buy". A failed
+  check sends nothing. `preview` is read-only and shows what a buy would do.
 - **Contract:** the strike whose |delta| is closest to the requested delta. Without a delta
   in the command the range 0.10–0.15 applies (user-confirmed 2026-10-10): the strike closest
   to its middle, flagged when the expiry has none inside the range. The preview
@@ -73,7 +79,7 @@ The user explicitly authorized order execution on the Alpaca **paper** account
 
 ```
 npm run trade -- preview --underlying ORCL --right call --size 0.5 [--delta 0.1]
-node --import tsx scripts/option-order.ts buy --contract ORCL261016C00250000 --size 0.5 [--stop 40]
+npm run trade -- buy --underlying ORCL --right call --size 0.5 [--expiry friday|nearest|DATE] [--delta 0.1] [--stop 40]
 node --import tsx scripts/option-order.ts stop --contract ORCL261016C00250000 [--stop 40]
 ```
 

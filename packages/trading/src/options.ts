@@ -13,6 +13,8 @@ export interface OptionQuote {
   bid: number;
   ask: number;
   delta: number | null;
+  // When the broker published this quote (ms); absent when it gives no time.
+  quotedAt?: number;
 }
 
 // Hard cap per trade; the size itself comes with each command.

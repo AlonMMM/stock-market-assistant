@@ -26,6 +26,12 @@ export interface Position {
   avgEntryPrice: number;
 }
 
+export interface Account {
+  equity: number;
+  lastEquity: number; // at the previous close
+  buyingPower: number; // what a new option purchase may cost
+}
+
 export interface BrokerCapabilities {
   paper: boolean;
   // The broker itself refuses a sell that would open a short position.
@@ -40,6 +46,11 @@ export interface Broker {
   readonly name: string;
   readonly capabilities: BrokerCapabilities;
   equity(): Promise<number>;
+  account(): Promise<Account>;
+  /** Whether options can trade right now. */
+  marketOpen(): Promise<boolean>;
+  /** Daily closing equity of the past year, oldest first. */
+  equityHistory(): Promise<{ date: string; equity: number }[]>;
   /** Quotes and deltas for one side of the chain, expiries in [from, to]. */
   chain(
     underlying: string,

@@ -192,7 +192,7 @@ Order-level:
 | Size                  | at most 3% of equity; at least one contract fits, otherwise refused                                        | user-confirmed |
 | Stop                  | 40% default, 70% at most                                                                                   | user-confirmed |
 | Delta                 | the chosen strike is inside the range (0.10–0.15 by default); PROPOSED: refuse when the expiry has none    | proposed       |
-| Quote is usable       | bid > 0, ask > bid, and PROPOSED: the quote is at most 15 seconds old                                      | proposed       |
+| Quote is usable       | bid > 0, ask > bid, and PROPOSED: the quote is at most 120 seconds old                                     | proposed       |
 | Spread                | at most 10% of mid, before sending and at every raise                                                      | user-confirmed |
 | Stop price exists     | the stop rounds to at least one tick and stays below the entry price                                       | design         |
 | Not a repeat          | PROPOSED: a second buy of the same underlying and right within 60 seconds is refused (a doubled tool call) | proposed       |
@@ -367,7 +367,8 @@ reviewed alone. Most parts are backend; the owner is named per part.
 
 Parts 1 and 2 are independent of each other. Part 1 does not change what a command does.
 
-Progress: part 1 is implemented on `feat/trading-service` (see Verification evidence).
+Progress: parts 1, 2 and 3 are implemented and merged or in review (see Verification
+evidence).
 
 Needed from the user:
 
@@ -394,6 +395,26 @@ Part 1 (2026-10-11):
   as before the change.
 - Not run against Alpaca after the change: `buy`, `sell` and `stop`. They need market hours;
   the code they call (`ladder`, `protect`, `exit`) is unchanged apart from its types.
+
+Parts 2 and 3 (2026-10-11, branch `feat/buy-checks`):
+
+- `packages/trading/src/checks.ts` (`checkBuy`, 17 checks) and `risk-manager.ts`
+  (`checkRisk`), called by `TradeEngine.buy` before any order. `buy` takes an underlying and
+  a right, or one contract; `preview` shows `wouldBuy` and `refused` per expiry.
+- `npm run check`: 340 pass, 0 fail, 1 skipped. `tests/buy-checks.test.ts` breaks each check alone and
+  expects that check, and only it, to refuse the order; `tests/trade-engine.test.ts` covers
+  the one-step buy, the default and named expiry, a doubled command, the kill switch (sells
+  still work) and a buy that filled nothing not being counted.
+- Paper account, market closed, read-only: `preview` for NVDA calls returned
+  `wouldBuy: false` for both expiries with "market open: the market is closed" and "quote is
+  usable: … s old", and for the nearest expiry also "delta in range: delta 0.085".
+- Not run: a buy that passes the checks, which needs market hours. Unknown until then: how
+  old the quote of a quiet contract is during market hours (the proposed limit is 120 s),
+  and whether Alpaca's `options_buying_power` is the right figure for the buying-power check.
+- Values still PROPOSED and not confirmed by the user: the default expiry (Friday's), the
+  quote age, the 60-second repeat window, the last 15 minutes, and the three switches
+  (market open, positions without a stop, delta in range). Each is one field of
+  `defaultBuyLimits` or an engine option.
 
 ## Handoff
 
