@@ -12,7 +12,8 @@
 //   media    download the saved posts' images (and video previews) into <dir>/media; the
 //            image CDN is not the API and is not billed.
 //
-// Options: --handle ultrawavetrader  --since 2023-10-09  --max 20000  --dir data/local/x/<handle>
+// Options: --handle ultrawavetrader  --since 2023-10-09  --until 2026-01-01 (exclusive, optional)
+//   --max 20000  --dir data/local/x/<handle>
 //   --own true   only his posts and his own thread updates: no retweets, no replies to others.
 //   --query "(a OR b)"   extra search terms, so only matching posts are fetched and billed.
 // Credential: X_BEARER_TOKEN in the ignored .env. Output stays under data/local (outside
@@ -31,6 +32,7 @@ for (let i = 0; i < rest.length; i += 2)
   args.set(rest[i]!.replace(/^--/, ""), rest[i + 1]!);
 const handle = (args.get("handle") ?? "ultrawavetrader").replace(/^@/, "");
 const since = args.get("since") ?? "2023-10-09";
+const until = args.get("until");
 const max = Number(args.get("max") ?? 20000);
 const dir = args.get("dir") ?? `data/local/x/${handle}`;
 // Replies to himself (thread updates) are `to:<handle>`; replies to others are dropped.
@@ -72,6 +74,7 @@ async function get(path: string, query: URLSearchParams): Promise<any> {
   }
 }
 const startTime = `${since}T00:00:00Z`;
+const endTime = until ? `${until}T00:00:00Z` : undefined;
 
 if (step === "count") {
   let total = 0;
@@ -82,6 +85,7 @@ if (step === "count") {
       start_time: startTime,
       granularity: "day",
     });
+    if (endTime) q.set("end_time", endTime);
     if (next) q.set("next_token", next);
     const j = await get("/tweets/counts/all", q);
     total += j.meta?.total_tweet_count ?? 0;
@@ -105,6 +109,7 @@ if (step === "count") {
     const q = new URLSearchParams(fields);
     q.set("query", query);
     q.set("start_time", startTime);
+    if (endTime) q.set("end_time", endTime);
     q.set(
       "max_results",
       String(Math.min(500, Math.max(10, max - state.posts))),
