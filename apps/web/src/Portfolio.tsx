@@ -8,7 +8,9 @@ import type {
   PortfolioOrder,
   PortfolioPosition,
 } from "../../../packages/trading/src/portfolio.js";
+import type { Decision } from "../../../packages/trading/src/explain.js";
 import { usePolling } from "./Live.js";
+import { Orders, useDecisions, WhyButton } from "./Orders.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
 
 const PnlChart = lazy(() =>
@@ -50,7 +52,7 @@ const optionName = (c: Contract) =>
     ? `${c.underlying} ${c.option.strike} ${c.option.right === "call" ? "Call" : "Put"}`
     : c.symbol;
 
-function Position({ p }: { p: PortfolioPosition }) {
+function Position({ p, why }: { p: PortfolioPosition; why?: Decision }) {
   const unit = p.option ? "contract" : "share";
   // How far the current price is above the stop, as a share of the price.
   const away =
@@ -68,6 +70,7 @@ function Position({ p }: { p: PortfolioPosition }) {
           {p.pnl === null ? "—" : signedUsd(p.pnl)}
           {p.pnlPct !== null && ` (${signedPct(p.pnlPct)})`}
         </span>
+        {why && <WhyButton decision={why} />}
       </div>
       <dl>
         <dt>Entry → now</dt>
@@ -106,7 +109,7 @@ function Position({ p }: { p: PortfolioPosition }) {
   );
 }
 
-function Order({ o }: { o: PortfolioOrder }) {
+function Order({ o, why }: { o: PortfolioOrder; why?: Decision }) {
   const price =
     o.stopPrice !== null
       ? `stop ${o.stopPrice.toFixed(2)}`
@@ -128,6 +131,7 @@ function Order({ o }: { o: PortfolioOrder }) {
         {o.submittedAt &&
           ` · ${israelDateTime(Date.parse(o.submittedAt))} ${israelLabel}`}
       </span>
+      {why && o.side === "buy" && <WhyButton decision={why} />}
     </li>
   );
 }
@@ -255,6 +259,7 @@ function History({ onError }: { onError: (m: string) => void }) {
 
 const sections = [
   ["live", "Live trades"],
+  ["orders", "Orders"],
   ["history", "History"],
 ] as const;
 
@@ -278,7 +283,9 @@ export function Portfolio({ modes }: { modes: ReactNode }) {
         className="tabs"
         onKeyDown={(e) => {
           if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-          const next = tab === "live" ? "history" : "live";
+          const at = sections.findIndex(([key]) => key === tab);
+          const step = e.key === "ArrowRight" ? 1 : sections.length - 1;
+          const next = sections[(at + step) % sections.length]![0];
           setTab(next);
           document.getElementById(`tab-${next}`)?.focus();
         }}
@@ -306,6 +313,8 @@ export function Portfolio({ modes }: { modes: ReactNode }) {
       >
         {tab === "live" ? (
           <LiveTrades onError={ignore} />
+        ) : tab === "orders" ? (
+          <Orders onError={ignore} />
         ) : (
           <History onError={ignore} />
         )}
@@ -316,6 +325,8 @@ export function Portfolio({ modes }: { modes: ReactNode }) {
 
 /** The Alpaca account now: totals, open positions and working orders. */
 function LiveTrades({ onError }: { onError: (m: string) => void }) {
+  // The reasons behind each order; the page works without them.
+  const why = useDecisions(() => {});
   const { value, at, error } = usePolling<PortfolioData>(
     "/api/portfolio",
     refreshMs,
@@ -388,7 +399,7 @@ function LiveTrades({ onError }: { onError: (m: string) => void }) {
       {positions.length > 0 ? (
         <ul className="positions">
           {positions.map((p) => (
-            <Position key={p.symbol} p={p} />
+            <Position key={p.symbol} p={p} why={why.get(p.symbol)} />
           ))}
         </ul>
       ) : (
@@ -398,7 +409,7 @@ function LiveTrades({ onError }: { onError: (m: string) => void }) {
       {orders.length > 0 ? (
         <ul className="portfolio-orders">
           {orders.map((o) => (
-            <Order key={o.id} o={o} />
+            <Order key={o.id} o={o} why={why.get(o.symbol)} />
           ))}
         </ul>
       ) : (

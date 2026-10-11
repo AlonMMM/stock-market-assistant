@@ -363,6 +363,29 @@ Differences from the plan above, decided while building:
   close; the contract is picked from the deltas at that close. Sells are not changed: a
   sell sent off hours still gives up after its two minutes.
 
+### Why each order looks the way it does (user, 2026-10-11)
+
+Every buy command, refused ones too, is recorded with its reasons
+(`packages/trading/src/explain.ts`, table `decisions` in the trading service):
+
+- each value the order was built from, marked as from the command or a default;
+- the expiries offered, the rule that picked the expiry and the strike, and the chosen
+  strike with its neighbours and their deltas;
+- bid, ask, mid, spread and the highest price the order may reach;
+- the sizing arithmetic, the stop, and the risk manager's state and numbers;
+- every check with its result, the notes, the refusals, and the final fill.
+
+The trading service serves them at `GET /v1/decisions`. A second token,
+`TRADER_READ_TOKEN`, is accepted for GET requests only; the website uses it
+(`GET /api/portfolio/orders`, secrets `TRADER_URL` and `TRADER_READ_TOKEN` on the site
+Worker), so the site can show orders and never send one. On the site: Portfolio → Orders
+lists every buy with a "Why" button that opens the reasons; open positions and open buy
+orders on Live trades carry the same button. Sells are not explained yet.
+
+Verified 2026-10-11: `tests/order-explanations.test.ts`; the tab and the window were checked
+in headless Chrome at phone and desktop widths with SYNTHETIC decisions produced by the
+engine on the in-memory broker.
+
 ## Failure cases
 
 | Case                            | Behavior                                                                                        |

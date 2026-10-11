@@ -58,6 +58,7 @@ const engine = new TradeEngine({
   notifier,
   posts: store.posts(userId),
   buys: store.buys(userId),
+  decisions: store.decisions(userId),
   enabled: process.env.TRADING_ENABLED !== "false",
   log,
 });
@@ -71,11 +72,22 @@ const service = new TraderService({
 });
 
 const api = Fastify({ bodyLimit: 16384 });
+// A second, optional token that can only read: the website shows orders and
+// their reasons with it and can never send one.
+const readToken = env("TRADER_READ_TOKEN");
+if (readToken && readToken.length < 32)
+  throw new Error("TRADER_READ_TOKEN must be at least 32 characters");
+const bearer = (header: string | undefined, value: string) => {
+  const expected = Buffer.from(`Bearer ${value}`);
+  const actual = Buffer.from(header ?? "");
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+};
 api.addHook("onRequest", async (request, reply) => {
   if (request.url === "/health") return;
-  const expected = Buffer.from(`Bearer ${token}`);
-  const actual = Buffer.from(request.headers.authorization ?? "");
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual))
+  const header = request.headers.authorization;
+  const reading =
+    readToken !== "" && request.method === "GET" && bearer(header, readToken);
+  if (!reading && !bearer(header, token))
     return reply.code(401).send({ error: "Unauthorized" });
 });
 api.setErrorHandler((error, _request, reply) => {
@@ -102,6 +114,9 @@ api.post<{ Params: { id: string } }>("/v1/jobs/:id/cancel", async (request) =>
 );
 api.post("/v1/cancel", async (request) => service.cancel(body(request.body)));
 api.get("/v1/positions", async () => service.status());
+api.get<{ Querystring: { limit?: string } }>("/v1/decisions", async (request) =>
+  service.decisions(Number(request.query.limit)),
+);
 
 async function stop() {
   await api.close();
