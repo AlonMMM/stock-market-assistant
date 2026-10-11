@@ -1,4 +1,4 @@
-import type { AlpacaTrading, Order } from "./alpaca-trading.js";
+import type { Broker, Order } from "./broker.js";
 import { finished } from "./ladder.js";
 import { stopPrice } from "./options.js";
 import { uncovered } from "./safety.js";
@@ -12,7 +12,7 @@ import { uncovered } from "./safety.js";
 // position, and a stop only ever covers contracts no other sell order does.
 
 export type ExitClient = Pick<
-  AlpacaTrading,
+  Broker,
   | "position"
   | "openOrders"
   | "quote"

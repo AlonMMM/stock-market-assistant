@@ -1,4 +1,4 @@
-import type { AlpacaTrading, Order } from "./alpaca-trading.js";
+import type { Broker, Order } from "./broker.js";
 import { finished } from "./ladder.js";
 import { stopPrice } from "./options.js";
 
@@ -7,7 +7,7 @@ import { stopPrice } from "./options.js";
 // working that could fill later without a stop.
 
 export type ProtectClient = Pick<
-  AlpacaTrading,
+  Broker,
   "order" | "sellStop" | "replaceStop" | "cancel"
 >;
 

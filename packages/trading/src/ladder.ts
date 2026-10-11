@@ -1,4 +1,4 @@
-import type { Order, TradingClient } from "./alpaca-trading.js";
+import type { Order, TradingClient } from "./broker.js";
 import {
   roundToTick,
   spreadCheck,

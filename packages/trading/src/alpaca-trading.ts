@@ -1,3 +1,4 @@
+import type { Broker, BrokerCapabilities, Order } from "./broker.js";
 import { parseOccSymbol, type OptionQuote, type Right } from "./options.js";
 
 type Fetcher = typeof fetch;
@@ -5,15 +6,7 @@ type Fetcher = typeof fetch;
 export const paperUrl = "https://paper-api.alpaca.markets";
 export const liveUrl = "https://api.alpaca.markets";
 
-export interface Order {
-  id: string;
-  symbol: string;
-  status: string;
-  qty: number;
-  filledQty: number;
-  filledAvgPrice: number | null;
-  limitPrice: number | null;
-}
+export type { Order, TradingClient } from "./broker.js";
 
 interface Snapshot {
   latestQuote?: { bp?: number; ap?: number };
@@ -55,7 +48,8 @@ function quote(symbol: string, s: Snapshot): OptionQuote {
 
 // Alpaca Trading API (account and orders) plus option snapshots from the
 // Market Data API. Paper trading unless the caller passes liveUrl.
-export class AlpacaTrading {
+export class AlpacaTrading implements Broker {
+  readonly name = "alpaca";
   constructor(
     private key: string,
     private secret: string,
@@ -64,6 +58,16 @@ export class AlpacaTrading {
     private fetcher: Fetcher = fetch,
     private dataUrl = "https://data.alpaca.markets",
   ) {}
+
+  get capabilities(): BrokerCapabilities {
+    return {
+      paper: this.tradingUrl === paperUrl,
+      // `position_intent: sell_to_close`, verified on paper 2026-10-10.
+      closeOnlyOrders: true,
+      optionStops: true,
+      replaceInPlace: true,
+    };
+  }
 
   private async call<T>(
     base: string,
@@ -285,8 +289,3 @@ export class AlpacaTrading {
     );
   }
 }
-
-export type TradingClient = Pick<
-  AlpacaTrading,
-  "quote" | "buyLimit" | "replace" | "order"
->;
