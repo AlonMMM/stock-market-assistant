@@ -91,6 +91,7 @@ test("connector: the credential works as a header or as the end of the address",
       env,
     );
   assert.equal((await call(token)).status, 200);
+  assert.equal((await call(`Bearer ${token}`)).status, 200);
   assert.equal((await call("wrong")).status, 401);
 });
 
@@ -106,7 +107,15 @@ test("connector: initialize, notifications and the tool list", async () => {
   const list = await rpc("tools/list");
   assert.deepEqual(
     list.body.result.tools.map((t: { name: string }) => t.name),
-    ["buy", "preview", "trade_status", "sell", "set_stop", "positions"],
+    [
+      "buy",
+      "preview",
+      "trade_status",
+      "cancel_order",
+      "sell",
+      "set_stop",
+      "positions",
+    ],
   );
   assert.equal(list.body.result.tools[0].call, undefined);
   assert.equal((await rpc("resources/list")).body.error.code, -32601);
@@ -125,6 +134,7 @@ test("connector: each tool reaches its route on the trading service", async () =
   });
   await call("preview", buy);
   await call("trade_status", { jobId: "a/b" });
+  await call("cancel_order", { jobId: "j1" });
   await call("sell", { underlying: "NVDA", qty: "half" });
   await call("set_stop", { underlying: "NVDA", stopPct: 30 });
   await call("positions", {});
@@ -138,13 +148,14 @@ test("connector: each tool reaches its route on the trading service", async () =
       ["POST", "/v1/buy", buy],
       ["POST", "/v1/preview", buy],
       ["GET", "/v1/jobs/a%2Fb", undefined],
+      ["POST", "/v1/jobs/j1/cancel", {}],
       ["POST", "/v1/sell", { underlying: "NVDA", qty: "half" }],
       ["POST", "/v1/stop", { underlying: "NVDA", stopPct: 30 }],
       ["GET", "/v1/positions", undefined],
     ],
   );
   assert.ok(seen.every((s) => s.auth === "Bearer service-token"));
-  assert.equal(tools.length, 6);
+  assert.equal(tools.length, 7);
 });
 
 test("connector: errors of the trading service are shown as errors", async () => {

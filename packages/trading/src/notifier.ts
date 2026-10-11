@@ -20,6 +20,8 @@ export interface Notifier {
     result: ExitResult,
     entryRef?: string,
   ): Promise<Sent>;
+  /** Something worth knowing that is not a problem, such as a waiting order. */
+  notice(title: string, lines: string[]): Promise<Sent>;
   /** Something the user must see at once, such as a short option position. */
   alert(title: string, lines: string[]): Promise<Sent>;
 }
@@ -37,6 +39,9 @@ export class NoNotifier implements Notifier {
     return this.none;
   }
   async alert() {
+    return this.none;
+  }
+  async notice() {
     return this.none;
   }
 }
@@ -70,6 +75,10 @@ export class TelegramNotifier implements Notifier {
       formatExit(note, result),
       entryRef !== undefined && Number.isInteger(replyTo) ? { replyTo } : {},
     );
+  }
+
+  notice(title: string, lines: string[]) {
+    return this.post(`🕒 <b>${title}</b>\n${lines.join("\n")}`);
   }
 
   alert(title: string, lines: string[]) {

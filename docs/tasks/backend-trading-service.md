@@ -150,8 +150,7 @@ between. The code therefore decides alone whether an order is good, and refuses 
 failed check named when it is not. `preview` stays as a read-only tool that runs the same
 choice and the same checks without sending anything.
 
-Expiry: the request may name it (`nearest`, `friday` or a date). PROPOSED default when it
-does not: the coming Friday's. Needs the user's choice.
+Expiry: the nearest one, unless the request names `friday` or a date (user 2026-10-11).
 
 ### Checks before a buy (per user, enforced in the engine)
 
@@ -344,6 +343,25 @@ Differences from the plan above, decided while building:
 - The website still holds its own Alpaca keys for the Portfolio page and the short watch.
   Moving both to read from the trading service, and removing the keys from Cloudflare, is
   open.
+
+### Changes after the first run from Claude (user, 2026-10-11)
+
+- **Off-hours orders are allowed.** With the market closed a buy is no longer refused. The
+  order goes to the broker at the last mid and waits there (`offHours: true`, and a line in
+  `notes`); the channel gets an "Off-hours order" post at once. The job watches it until the
+  market opens, waits 20 seconds for the first quotes, then raises the price and keeps the
+  stop like any buy; the entry post carries "Ordered off hours". The age of the quote is not
+  checked while the market is closed. A waiting order can be withdrawn with the
+  `cancel_order` tool (`POST /v1/jobs/:id/cancel`). `requireMarketOpen` is now off by default.
+- **The default expiry is the nearest one.** Friday's is bought only when the command says
+  so ("to Friday", `expiry: friday`) or gives that date.
+- **Delta in range is a note, not a refusal** (`requireDeltaInRange` off by default): the
+  nearest expiry often has no strike inside 0.10–0.15, so the closest strike is bought and
+  `notes` says which delta it has.
+- Known limits of the off-hours order: a restart of the service while it waits cancels it
+  and alerts (the restart rule for every buy); it is priced from the last quote before the
+  close; the contract is picked from the deltas at that close. Sells are not changed: a
+  sell sent off hours still gives up after its two minutes.
 
 ## Failure cases
 

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Broker } from "../../../packages/trading/src/broker.js";
 import type {
+  BuyProgress,
   BuyRequest,
   TradeEngine,
 } from "../../../packages/trading/src/engine.js";
@@ -87,6 +88,8 @@ export class TraderService {
   private readonly now: () => number;
   private readonly log: (line: string) => void;
   private readonly running = new Map<string, Promise<void>>();
+  // Where each running job stands; lost on a restart, like the job itself.
+  private readonly progress = new Map<string, BuyProgress>();
 
   constructor(options: TraderOptions) {
     this.userId = options.userId;
@@ -107,7 +110,7 @@ export class TraderService {
     kind: JobKind,
     symbol: string,
     request: unknown,
-    work: () => Promise<object>,
+    work: (id: string) => Promise<object>,
   ): string {
     const id = randomUUID();
     this.store.createJob(
@@ -116,7 +119,7 @@ export class TraderService {
     );
     const run = (async () => {
       try {
-        const outcome = await work();
+        const outcome = await work(id);
         // Whatever the order did, look at the account.
         const { problems } = await this.engine.shortCheck().catch((error) => ({
           problems: [`the short check failed: ${message(error)}`],
@@ -137,6 +140,7 @@ export class TraderService {
         );
       } finally {
         this.running.delete(id);
+        this.progress.delete(id);
       }
     })();
     this.running.set(id, run);
@@ -171,8 +175,8 @@ export class TraderService {
       this.record("buy", body, `refused: ${plan.refused.join("; ")}`);
       return { status: "refused" as const, ...plan };
     }
-    const jobId = this.start("buy", plan.contract, request, () =>
-      this.engine.runBuy(plan),
+    const jobId = this.start("buy", plan.contract, request, (id) =>
+      this.engine.runBuy(plan, (p) => this.progress.set(id, p)),
     );
     this.record("buy", body, `started ${jobId}: ${plan.qty} ${plan.contract}`);
     return {
@@ -183,6 +187,8 @@ export class TraderService {
       qty: plan.qty,
       budget: plan.budget,
       stopPct: plan.stopPct,
+      offHours: plan.offHours,
+      notes: plan.notes,
     };
   }
 
@@ -269,10 +275,36 @@ export class TraderService {
       kind: job.kind,
       contract: job.symbol,
       state: job.state,
+      ...(this.progress.has(id) ? { stage: this.progress.get(id)!.stage } : {}),
       result: job.result,
       startedAt: new Date(job.createdAt).toISOString(),
       updatedAt: new Date(job.updatedAt).toISOString(),
     };
+  }
+
+  /**
+   * Withdraws a buy that is still working at the broker, such as an order
+   * waiting for the open. The job then ends on its own, with whatever filled
+   * covered by a stop.
+   */
+  async cancel(id: string) {
+    const job = this.store.job(this.userId, id);
+    if (!job) throw new RequestError("No such job", 404);
+    const orderId = this.progress.get(id)?.orderId;
+    if (job.state !== "running" || job.kind !== "buy" || !orderId)
+      throw new RequestError(
+        job.state === "running"
+          ? "This order cannot be canceled at this stage"
+          : `This order is already ${job.state}`,
+        409,
+      );
+    try {
+      await this.broker.cancel(orderId);
+    } catch (error) {
+      throw new RequestError(message(error), 502);
+    }
+    this.record("cancel", { jobId: id }, `canceled the order of ${job.symbol}`);
+    return { jobId: id, contract: job.symbol, canceling: true };
   }
 
   async status() {

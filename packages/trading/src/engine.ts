@@ -1,5 +1,5 @@
 import { newYork } from "../../market-data/src/calendar.js";
-import type { Broker } from "./broker.js";
+import type { Broker, Order } from "./broker.js";
 import {
   checkBuy,
   defaultBuyLimits,
@@ -8,7 +8,7 @@ import {
   type HeldPosition,
 } from "./checks.js";
 import { sellAtBid } from "./exit.js";
-import { buyWithLadder, type LadderResult } from "./ladder.js";
+import { buyWithLadder, finished, type LadderResult } from "./ladder.js";
 import type { Notifier, Sent } from "./notifier.js";
 import {
   ceilingPrice,
@@ -19,7 +19,9 @@ import {
   parseOccSymbol,
   pickByDelta,
   sizeContracts,
+  roundToTick,
   spreadCheck,
+  stepPrice,
   stopPrice,
   type OptionQuote,
   type Right,
@@ -89,8 +91,8 @@ export interface EngineOptions {
   riskRules?: RiskRules;
   // The kill switch: false refuses every buy. Sells and stops still work.
   enabled?: boolean;
-  // The expiry bought when a command names none. PROPOSED: the coming
-  // Friday's; not yet confirmed by the user.
+  // The expiry bought when a command names none: the nearest one. The
+  // coming Friday's only when the command says so (user 2026-10-11).
   defaultExpiry?: "nearest" | "friday";
   log?: (line: string) => void;
   now?: () => number;
@@ -148,10 +150,20 @@ export interface BuyDone extends BuyBase {
   canceledQty?: number;
   cancelError?: string;
   post?: Sent; // set when any contract filled
+  offHours?: boolean; // the order was sent while the market was closed
+}
+
+/** Where a running buy stands, for whoever started it. */
+export interface BuyProgress {
+  stage: string;
+  orderId?: string; // the order at the broker, once there is one
 }
 export type BuyOutcome = BuyRefused | BuyDone;
 /** A buy that passed every check and has not been sent yet. */
 export interface BuyPlan extends BuyBase {
+  // The market is closed: the order waits at the broker for the open.
+  offHours: boolean;
+  notes: string[]; // from the checks; they do not stop the order
   budget: number;
   stopPct: number;
   record: BuyRecord;
@@ -186,7 +198,7 @@ export class TradeEngine {
     this.limits = options.limits ?? defaultBuyLimits;
     this.riskRules = options.riskRules ?? defaultRiskRules;
     this.enabled = options.enabled ?? true;
-    this.defaultExpiry = options.defaultExpiry ?? "friday";
+    this.defaultExpiry = options.defaultExpiry ?? "nearest";
     this.log = options.log ?? (() => {});
     this.now = options.now ?? Date.now;
     this.sleep = options.sleep;
@@ -401,6 +413,7 @@ export class TradeEngine {
         budget: Number(size.budget.toFixed(2)),
         wouldBuy: size.verdict.ok,
         refused: size.verdict.refused,
+        notes: size.verdict.notes,
       };
     });
     return {
@@ -491,6 +504,8 @@ export class TradeEngine {
       budget,
       stopPct,
       record,
+      offHours: !a.marketOpen,
+      notes: verdict.notes,
       ...(request.steps === undefined ? {} : { steps: request.steps }),
       ...(request.intervalMs === undefined
         ? {}
@@ -503,12 +518,23 @@ export class TradeEngine {
    * The second half: price raises, then a watch that keeps a stop on what
    * fills and cancels what does not. Posts the entry when any contract filled.
    */
-  async runBuy(plan: BuyPlan): Promise<BuyDone> {
+  async runBuy(
+    plan: BuyPlan,
+    progress: (p: BuyProgress) => void = () => {},
+  ): Promise<BuyDone> {
     const { contract: symbol, qty, budget, stopPct, record } = plan;
     const request = plan;
     let filled = false;
     try {
+      let waiting: Order | undefined;
+      if (plan.offHours) {
+        const queued = await this.queueOffHours(plan, progress);
+        if ("result" in queued) return queued;
+        waiting = queued.order;
+      }
+      progress({ stage: "raising the price" });
       const result = await buyWithLadder(this.broker, symbol, qty, {
+        ...(waiting ? { existing: waiting } : {}),
         ...(request.steps === undefined ? {} : { steps: request.steps }),
         ...(request.intervalMs === undefined
           ? {}
@@ -521,6 +547,10 @@ export class TradeEngine {
         result.status === "rejected-budget"
       )
         return { paper: this.paper, contract: symbol, qty, budget, result };
+      progress({
+        stage: "watching the order, keeping its stop",
+        orderId: result.order!.id,
+      });
       const guarded = await protectFill(this.broker, result.order!, stopPct, {
         ...(request.waitMs === undefined ? {} : { waitMs: request.waitMs }),
         ...this.timing,
@@ -547,10 +577,16 @@ export class TradeEngine {
         stop,
         canceledQty,
         cancelError,
+        ...(plan.offHours ? { offHours: true } : {}),
       };
       if (!filled) return outcome;
       const post = await this.notifier.entry(
-        { symbol, paper: this.paper, stop },
+        {
+          symbol,
+          paper: this.paper,
+          stop,
+          ...(plan.offHours ? { note: "Ordered off hours" } : {}),
+        },
         final,
       );
       if (post.ok && post.ref) await this.posts.set(symbol, post.ref);
@@ -578,6 +614,73 @@ export class TradeEngine {
           : `Several ${underlying} positions; name the contract: ${held.map((p) => `${p.symbol} (${p.qty})`).join(", ")}`,
       );
     return held[0]!.symbol;
+  }
+
+  /**
+   * An order sent while the market is closed (user 2026-10-11): it goes to the
+   * broker at the last mid and waits there. The user is told on the channel.
+   * This watches it until the market opens, then hands it back to be raised
+   * and protected like any other buy. If it is canceled first, that is the
+   * end of it.
+   */
+  private async queueOffHours(
+    plan: BuyPlan,
+    progress: (p: BuyProgress) => void,
+  ): Promise<{ order: Order } | BuyDone> {
+    const { contract: symbol, qty, budget } = plan;
+    const sleep =
+      this.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+    const quote = await this.broker.quote(symbol);
+    const spread = spreadCheck(quote);
+    const price = Math.min(
+      stepPrice(quote, 0, 5),
+      roundToTick(budget / (qty * 100), "down"),
+    );
+    let order = await this.broker.buyLimit(symbol, qty, price);
+    this.log(
+      `off hours: sent ${qty} @ ${price.toFixed(2)}, waiting for the open`,
+    );
+    progress({ stage: "waiting for the market to open", orderId: order.id });
+    const c = parseOccSymbol(symbol);
+    await this.notifier
+      .notice(`Off-hours order${this.paper ? " (paper)" : ""}`, [
+        `$${c.underlying} | ${c.strike} ${c.right === "call" ? "Call" : "Put"} ${c.expiry}`,
+        `${qty} contract${qty === 1 ? "" : "s"}, bidding ${price.toFixed(2)}`,
+        "The market is closed. The order waits and is worked at the open.",
+      ])
+      .catch(() => {});
+    // At most a long weekend; then it is withdrawn.
+    const pollMs = 30_000;
+    let open = false;
+    for (let waited = 0; waited < 4 * 86_400_000; waited += pollMs) {
+      await sleep(pollMs);
+      order = await this.broker.order(order.id);
+      if (finished.has(order.status)) break;
+      if ((open = await this.broker.marketOpen())) break;
+    }
+    if (!open && !finished.has(order.status)) {
+      await this.broker.cancel(order.id).catch(() => {});
+      order = await this.broker.order(order.id);
+    }
+    if (finished.has(order.status) && !(order.filledQty > 0))
+      return {
+        paper: this.paper,
+        contract: symbol,
+        qty,
+        budget,
+        result: {
+          status: "closed",
+          quote,
+          spreadRatio: spread.ratio,
+          prices: [price],
+          order,
+        },
+        canceledQty: order.qty,
+        offHours: true,
+      };
+    // Let the first quotes of the session arrive before raising the price.
+    if (!finished.has(order.status)) await sleep(20_000);
+    return { order };
   }
 
   /** Sells at the bid, re-priced every 5 seconds; posts the exit. */
