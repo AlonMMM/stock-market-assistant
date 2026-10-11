@@ -323,6 +323,28 @@ Who may connect:
 - Every new connection and every refused one is logged; step B also posts new sign-ins to
   the notifier.
 
+### As built (2026-10-11, parts 4 and 5)
+
+Differences from the plan above, decided while building:
+
+- The connector is its own Worker, `sma-trade-connector` (`apps/connector`,
+  `wrangler.connector.jsonc`), not a `/mcp` path on the website's Worker. The website's
+  Access application covers its whole hostname and would have needed a dashboard exception;
+  a separate Worker needs none, serves nothing else and holds no broker key. Its secrets
+  are `MCP_TOKEN`, `TRADER_URL` and `TRADER_TOKEN`.
+- The credential is accepted as a Bearer header or as the last part of the address
+  (`/mcp/<token>`).
+- There is no preview code; `buy` is one step (see "Buying in one step").
+- `set_stop` places a stop on contracts that have none. It does not move an existing stop.
+- Not built: blocking a source after repeated wrong credentials, and a Telegram message on
+  refused attempts. A refused attempt is written to the Worker's log only. The token is at
+  least 32 random characters, so guessing is not practical.
+- The trading service has one user, `owner`. `users` is not a table yet; every table has
+  the `user_id` column.
+- The website still holds its own Alpaca keys for the Portfolio page and the short watch.
+  Moving both to read from the trading service, and removing the keys from Cloudflare, is
+  open.
+
 ## Failure cases
 
 | Case                            | Behavior                                                                                        |

@@ -24,7 +24,9 @@
     "backtest": "node --import tsx scripts/backtest.ts",
     "session": "node scripts/session.mjs",
     "start:collector": "node --import tsx apps/collector/src/main.ts",
-    "build:collector": "esbuild apps/collector/src/main.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/collector.mjs"
+    "build:collector": "esbuild apps/collector/src/main.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/collector.mjs",
+    "start:trader": "node --import tsx apps/trader/src/main.ts",
+    "build:trader": "esbuild apps/trader/src/main.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/trader.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.125.0",
