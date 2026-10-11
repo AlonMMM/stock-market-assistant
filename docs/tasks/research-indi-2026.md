@@ -65,6 +65,27 @@ sells into new highs 1.5×, i.e. profit-taking). The option's state does: chance
 it is +25% to +100% (he lets it run), and 2–10% again above +100% (scaling out). First sale: median
 −4% after 15 minutes; when at a loss, median −18%, half within 15 minutes.
 
+## Risk management (2026-10-11, his posts 2022–2026)
+
+Data: `data/local/x/ultrawavetrader-risk*` — 737 posts matching risk keywords (with replies), 9 full
+threads, his risk series (Part A/B, Sep 2023; English chart, Jan 2025). Profile Highlights not read
+(no API endpoint). Page: https://claude.ai/artifact/Wg9VNmJWxBcTAqAQA3Dtyp
+
+1. **No stop orders; the premium is the stop.** The stock's behaviour decides the exit. Before buying
+   he splits the premium into immediate risk, counter-move risk and an "unlikely" part he can still
+   sell. The first two are the most he will lose: 50% of the premium a month out, 70% a week out,
+   75/80/85/90% with 5/4/3/2 days left, 100% at 4 hours or less (OTM, delta 10–25; not around
+   earnings or macro data).
+2. **Sizing:** premium = account × risk % ÷ that share. $20K × 2% = $400; a week out → $570 premium.
+   So a "3% risk" trade can be 4–6% of the account in premium.
+3. **Account limits cycle:** full limits at highs (5% per trade / 7% daily); a brake at a 25% drawdown
+   (12.5% from 2025) or two daily stops in a row → 2% / 3%; ⅔ recovered → 3% / 5%; giving back half the
+   recovery → brake again; new high → full. The daily stop counts only that day's trades; rolls paid
+   from the remaining premium and rare earnings bets (about yearly, 2–3%) sit outside it.
+4. **Management:** never add money to a loser (roll only with what is left); sell a third to cover;
+   don't sell cheap OTM winners at 2×; expect to lose half a premium on 5–8 trades and make 4–5× on one.
+   Advice to beginners: at most 2% per options trade.
+
 ## Limits
 
 One trader, one year; P&L dominated by a few trades. Index options use SPY/QQQ as proxy. Option bars
