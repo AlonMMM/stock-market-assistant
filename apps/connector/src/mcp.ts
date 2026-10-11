@@ -242,7 +242,8 @@ async function handleRpc(
         capabilities: { tools: {} },
         serverInfo: { name: "option-trading", version: "1.0.0" },
         instructions:
-          "Option trading on the user's own account. Orders are sent only on the user's explicit command. Every limit is enforced by the server; a refusal is final for that request.",
+          "Option trading on the user's own account. Orders are sent only on the user's explicit command. Every limit is enforced by the server; a refusal is final for that request. " +
+          'A command such as "buy NVDA call 0.5%" is complete: call buy at once. Expiry, delta, stop and pricing have server defaults, so never ask about them. Ask one short question only when the stock, call or put, or size is missing. Do not preview first unless the user asks for a preview.',
       });
     }
     case "ping":
