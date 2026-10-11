@@ -81,6 +81,17 @@ test("connector: the credential works as a header or as the end of the address",
     path: `/mcp/${token}`,
   });
   assert.deepEqual(byPath.body, { jsonrpc: "2.0", id: 1, result: {} });
+  const call = (value: string) =>
+    handleMcp(
+      new Request("https://connector.test/mcp", {
+        method: "POST",
+        headers: { "X-Auth-Token": value },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+      }),
+      env,
+    );
+  assert.equal((await call(token)).status, 200);
+  assert.equal((await call("wrong")).status, 401);
 });
 
 test("connector: initialize, notifications and the tool list", async () => {
