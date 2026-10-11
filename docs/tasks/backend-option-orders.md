@@ -29,7 +29,12 @@ The user explicitly authorized order execution on the Alpaca **paper** account
      channel and ends the command with exit code 2.
   4. `/api/portfolio` returns the same findings as `shortRisks`, shown as a red banner on
      Portfolio → Live trades.
-     Nothing checks the account while no command runs and the page is closed.
+  5. The hosted Worker runs the same check every minute, all week (cron in
+     `wrangler.jsonc`, `packages/trading/src/watch.ts`), so it does not depend on a command
+     or an open page. A finding is posted to the trades channel, repeated every 15 minutes
+     while it lasts, and followed by a post when it is gone. Five failed checks in a row
+     are posted too. The Worker needs the secrets `TRADES_TELEGRAM_BOT_TOKEN` and
+     `TRADES_TELEGRAM_CHAT_ID`, and its Alpaca keys must be the trading account's.
 
 - **Contract:** the strike whose |delta| is closest to the requested delta. Without a delta
   in the command the range 0.10–0.15 applies (user-confirmed 2026-10-10): the strike closest

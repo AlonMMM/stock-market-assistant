@@ -36,6 +36,13 @@ import {
   handlePortfolioHistory,
   PortfolioCache,
 } from "../../../packages/trading/src/portfolio.js";
+import {
+  D1WatchStore,
+  MemoryWatchStore,
+  watchShort,
+  type WatchStore,
+} from "../../../packages/trading/src/watch.js";
+import { TelegramSender } from "../../../packages/notifications/src/telegram.js";
 
 const portfolio = new PortfolioCache();
 import { verifyAccess } from "./access.js";
@@ -79,7 +86,43 @@ function stores(db: D1Like) {
   return cache;
 }
 
+let watchStore: WatchStore | undefined;
+
 export default {
+  // Cron (wrangler.jsonc), every minute: the account must never be short an
+  // option, and the trades channel is told if it is. Read-only at Alpaca.
+  async scheduled(
+    _event: unknown,
+    env: {
+      ALPACA_API_KEY?: string;
+      ALPACA_API_SECRET?: string;
+      ALPACA_TRADING_LIVE?: string;
+      BARS_CACHE?: D1Like;
+      TRADES_TELEGRAM_BOT_TOKEN?: string;
+      TRADES_TELEGRAM_CHAT_ID?: string;
+    },
+  ): Promise<void> {
+    const token = env.TRADES_TELEGRAM_BOT_TOKEN;
+    const chat = env.TRADES_TELEGRAM_CHAT_ID;
+    const sender = token && chat ? new TelegramSender(token, chat) : undefined;
+    watchStore ??= env.BARS_CACHE
+      ? new D1WatchStore(env.BARS_CACHE)
+      : new MemoryWatchStore();
+    const line = await watchShort({
+      credentials: { key: env.ALPACA_API_KEY, secret: env.ALPACA_API_SECRET },
+      live: env.ALPACA_TRADING_LIVE === "true",
+      store: watchStore,
+      send: async (html) => {
+        if (!sender) return false;
+        const sent = await sender.send(html);
+        if (!sent.ok) console.error(`short watch: Telegram: ${sent.error}`);
+        return sent.ok;
+      },
+    }).catch((error: unknown) => `crashed: ${String(error)}`);
+    console.log(
+      `short watch: ${line}${sender ? "" : " (Telegram is not configured)"}`,
+    );
+  },
   async fetch(
     request: Request,
     env: {
