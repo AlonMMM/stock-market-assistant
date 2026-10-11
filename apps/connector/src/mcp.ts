@@ -114,19 +114,24 @@ export const tools: Tool[] = [
     name: "cancel_order",
     title: "Cancel a waiting buy",
     description:
-      "Withdraws a buy that is still working, such as an order sent off hours that waits for the market to open. Call it only on the user's own command. Then call trade_status to confirm.",
+      "Withdraws a buy order that has not filled yet: an order sent off hours that waits for the market to open, or one still being worked. Use THIS tool when the user says to cancel an order placed through this connector; other broker connectors (such as Interactive Brokers) cannot see these orders. Name the order by underlying (for example MU), or by the jobId that buy returned. Call it only on the user's own command. A buy that already filled cannot be canceled: it is sold with sell.",
     inputSchema: {
       type: "object",
-      properties: { jobId: { type: "string" } },
-      required: ["jobId"],
+      properties: {
+        underlying: {
+          type: "string",
+          description: "Stock ticker of the order to withdraw",
+        },
+        jobId: { type: "string", description: "The jobId that buy returned" },
+        contract: {
+          type: "string",
+          description: "The OCC contract symbol, to withdraw only that one",
+        },
+      },
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
-    call: ({ jobId }) => ({
-      method: "POST",
-      path: `/v1/jobs/${encodeURIComponent(String(jobId))}/cancel`,
-      body: {},
-    }),
+    call: (body) => ({ method: "POST", path: "/v1/cancel", body }),
   },
   {
     name: "sell",
@@ -165,7 +170,7 @@ export const tools: Tool[] = [
     name: "positions",
     title: "Positions and limits",
     description:
-      "The account's option positions with their stops, the account value and day change, any short option risk, and today's use of each limit (buys today, risk at the same time, the risk manager's state). If shortRisks is not empty, put it first in your answer, in bold.",
+      "The account's option positions with their stops, the orders that are waiting or working (workingOrders, openOrders), the account value and day change, any short option risk, and today's use of each limit (buys today, risk at the same time, the risk manager's state). If shortRisks is not empty, put it first in your answer, in bold.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -260,7 +265,7 @@ async function handleRpc(
         capabilities: { tools: {} },
         serverInfo: { name: "option-trading", version: "1.0.0" },
         instructions:
-          "Option trading on the user's own account. Orders are sent only on the user's explicit command. Every limit is enforced by the server; a refusal is final for that request. " +
+          "Option trading on the user's own Alpaca account. Orders placed here exist only here: use this connector's tools (positions, cancel_order, sell) for them, never another broker's connector. Orders are sent only on the user's explicit command. Every limit is enforced by the server; a refusal is final for that request. " +
           'A command such as "buy NVDA call 0.5%" is complete: call buy at once. Expiry, delta, stop and pricing have server defaults, so never ask about them. Ask one short question only when the stock, call or put, or size is missing. Do not preview first unless the user asks for a preview.',
       });
     }

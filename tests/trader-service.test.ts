@@ -233,7 +233,27 @@ test("service off hours: the order waits at the broker and can be canceled", asy
   assert.equal((await broker.openOrders(friday)).length, 1);
   assert.match(sent[0]!, /Off-hours order \(paper\)/);
   assert.match(sent[0]!, /The market is closed/);
-  await service.cancel(started.jobId);
+  // The waiting order is listed, and is canceled by its stock alone.
+  const status = await service.status();
+  assert.deepEqual(
+    status.workingOrders.map((o) => [o.contract, o.stage]),
+    [[friday, "waiting for the market to open"]],
+  );
+  assert.deepEqual(
+    status.openOrders.map((o) => [o.side, o.type, o.qty]),
+    [["buy", "limit", 4]],
+  );
+  await assert.rejects(
+    service.cancel({}),
+    /Need jobId, underlying or contract/,
+  );
+  await assert.rejects(
+    service.cancel({ underlying: "AMD" }),
+    /No waiting or working buy order/,
+  );
+  const canceled = await service.cancel({ underlying: "nvda" });
+  assert.deepEqual(canceled.canceled, [`4 ${friday}`]);
+  assert.deepEqual(canceled.jobIds, [started.jobId]);
   release();
   await service.idle();
   const done = service.job(started.jobId);
@@ -242,5 +262,14 @@ test("service off hours: the order waits at the broker and can be canceled", asy
   assert.equal((await broker.openOrders()).length, 0);
   // It bought nothing, so it does not use up one of the day's buys.
   assert.equal((await service.status()).limits.buysToday, 0);
-  await assert.rejects(service.cancel(started.jobId), /already done/);
+  await assert.rejects(
+    service.cancel({ jobId: started.jobId }),
+    /already done/,
+  );
+  // An open buy order no job owns (after a restart) is withdrawn too; a stop is not.
+  await broker.buyLimit(friday, 1, 1.0);
+  assert.deepEqual((await service.cancel({ underlying: "NVDA" })).canceled, [
+    `1 ${friday}`,
+  ]);
+  assert.equal((await broker.openOrders()).length, 0);
 });

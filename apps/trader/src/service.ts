@@ -6,6 +6,7 @@ import type {
   TradeEngine,
 } from "../../../packages/trading/src/engine.js";
 import { exitQty } from "../../../packages/trading/src/exit.js";
+import { parseOccSymbol } from "../../../packages/trading/src/options.js";
 import type { Notifier } from "../../../packages/trading/src/notifier.js";
 import type { JobKind, TradeStore } from "./store.js";
 
@@ -284,31 +285,95 @@ export class TraderService {
 
   /**
    * Withdraws a buy that is still working at the broker, such as an order
-   * waiting for the open. The job then ends on its own, with whatever filled
-   * covered by a stop.
+   * waiting for the open. It is named by its job, or by the stock or contract
+   * when exactly that is known. The job then ends on its own, with whatever
+   * filled covered by a stop. Open buy orders that no running job owns (after
+   * a restart) are withdrawn too.
    */
-  async cancel(id: string) {
-    const job = this.store.job(this.userId, id);
-    if (!job) throw new RequestError("No such job", 404);
-    const orderId = this.progress.get(id)?.orderId;
-    if (job.state !== "running" || job.kind !== "buy" || !orderId)
-      throw new RequestError(
-        job.state === "running"
-          ? "This order cannot be canceled at this stage"
-          : `This order is already ${job.state}`,
-        409,
+  async cancel(body: Body) {
+    const jobId = text(body, "jobId", /^[\w-]{1,64}$/);
+    const contract = text(body, "contract", occ)?.toUpperCase();
+    const underlying = text(body, "underlying", ticker)?.toUpperCase();
+    if (!jobId && !contract && !underlying)
+      throw new RequestError("Need jobId, underlying or contract");
+    const matches = (symbol: string) =>
+      contract
+        ? symbol === contract
+        : parseOccSymbol(symbol).underlying === underlying;
+    if (jobId) {
+      const job = this.store.job(this.userId, jobId);
+      if (!job) throw new RequestError("No such job", 404);
+      if (job.state !== "running")
+        throw new RequestError(`This order is already ${job.state}`, 409);
+    }
+    const jobs = this.store
+      .runningJobs()
+      .filter(
+        (j) =>
+          j.userId === this.userId &&
+          j.kind === "buy" &&
+          (jobId ? j.id === jobId : matches(j.symbol)),
       );
+    const canceled: string[] = [];
     try {
-      await this.broker.cancel(orderId);
+      const ids = new Set(
+        jobs.flatMap((j) => this.progress.get(j.id)?.orderId ?? []),
+      );
+      // Also any open buy order of that contract the broker still holds.
+      const symbols = new Set(jobs.map((j) => j.symbol));
+      const open = (await this.broker.openOrders()).filter(
+        (o) =>
+          o.side === "buy" &&
+          (ids.has(o.id) ||
+            symbols.has(o.symbol) ||
+            (!jobId && matches(o.symbol))),
+      );
+      for (const order of open) {
+        await this.broker.cancel(order.id);
+        canceled.push(`${order.qty - order.filledQty} ${order.symbol}`);
+      }
     } catch (error) {
       throw new RequestError(message(error), 502);
     }
-    this.record("cancel", { jobId: id }, `canceled the order of ${job.symbol}`);
-    return { jobId: id, contract: job.symbol, canceling: true };
+    if (canceled.length === 0)
+      throw new RequestError(
+        jobs.length > 0
+          ? "This order cannot be canceled at this stage"
+          : "No waiting or working buy order was found for that",
+        409,
+      );
+    this.record("cancel", body, `canceled ${canceled.join(", ")}`);
+    return { canceled, jobIds: jobs.map((j) => j.id) };
   }
 
+  /** Positions and limits, plus the orders that are waiting or working. */
   async status() {
-    return this.engine.status();
+    const [status, open] = await Promise.all([
+      this.engine.status(),
+      this.broker.openOrders(),
+    ]);
+    return {
+      ...status,
+      workingOrders: this.store
+        .runningJobs()
+        .filter((j) => j.userId === this.userId)
+        .map((j) => ({
+          jobId: j.id,
+          kind: j.kind,
+          contract: j.symbol,
+          stage: this.progress.get(j.id)?.stage ?? "running",
+          startedAt: new Date(j.createdAt).toISOString(),
+        })),
+      openOrders: open.map((o) => ({
+        contract: o.symbol,
+        side: o.side,
+        type: o.stopPrice === null ? "limit" : "stop",
+        qty: o.qty,
+        filledQty: o.filledQty,
+        price: o.stopPrice ?? o.limitPrice,
+        status: o.status,
+      })),
+    };
   }
 
   /**
