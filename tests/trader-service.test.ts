@@ -69,14 +69,13 @@ test("service buy: answers at once with a job; the job ends with the fill and st
 
 test("service buy: a refused buy creates no job and is logged", async () => {
   const { service, store, broker } = setup();
-  broker.isOpen = false;
-  const out = await service.buy(buyNvda);
+  const out = await service.buy({ ...buyNvda, sizePct: 5 });
   assert.equal(out.status, "refused");
   assert.ok("refused" in out);
-  assert.match(out.refused.join(), /market open: the market is closed/);
+  assert.match(out.refused.join(), /size: size 5% is outside 0–3%/);
   assert.equal(store.runningJobs().length, 0);
   assert.equal(broker.orders.size, 0);
-  assert.match(store.recentLog()[0]!.outcome, /^refused: market open/);
+  assert.match(store.recentLog()[0]!.outcome, /^refused: size: size 5%/);
 });
 
 test("service: bad requests are refused before anything else", async () => {
@@ -187,4 +186,61 @@ test("service restart during a sale: its order is canceled, the stop goes back",
     open.map((o) => [o.qty, o.stopPrice !== null]),
     [[4, true]],
   );
+});
+
+test("service off hours: the order waits at the broker and can be canceled", async () => {
+  const store = new TradeStore(":memory:");
+  const broker = new SimBroker();
+  broker.setQuote(friday, 1.0, 1.04, 0.12);
+  broker.fillAt.set(friday, 5); // nobody sells while the market is closed
+  broker.isOpen = false;
+  const sent: string[] = [];
+  const notifier = new TelegramNotifier({
+    send: async (html) => {
+      sent.push(html);
+      return { ok: true, messageId: 1 };
+    },
+  });
+  // Each sleep hands control back, so the test can act while the job waits.
+  let release: (() => void) | undefined;
+  const sleep = () => new Promise<void>((r) => (release = r));
+  const engine = new TradeEngine({
+    broker,
+    notifier,
+    posts: store.posts("owner"),
+    buys: store.buys("owner"),
+    now: () => monday,
+    sleep,
+  });
+  const service = new TraderService({
+    userId: "owner",
+    store,
+    engine,
+    broker,
+    notifier,
+    now: () => monday,
+  });
+  const started = await service.buy(buyNvda);
+  assert.ok("jobId" in started);
+  assert.equal(started.offHours, true);
+  assert.match(started.notes.join(), /off hours: the market is closed/);
+  while (!release) await new Promise((r) => setImmediate(r));
+  const waiting = service.job(started.jobId);
+  assert.deepEqual(
+    [waiting.state, waiting.stage],
+    ["running", "waiting for the market to open"],
+  );
+  assert.equal((await broker.openOrders(friday)).length, 1);
+  assert.match(sent[0]!, /Off-hours order \(paper\)/);
+  assert.match(sent[0]!, /The market is closed/);
+  await service.cancel(started.jobId);
+  release();
+  await service.idle();
+  const done = service.job(started.jobId);
+  assert.equal(done.state, "done");
+  assert.equal((done.result as { canceledQty: number }).canceledQty, 4);
+  assert.equal((await broker.openOrders()).length, 0);
+  // It bought nothing, so it does not use up one of the day's buys.
+  assert.equal((await service.status()).limits.buysToday, 0);
+  await assert.rejects(service.cancel(started.jobId), /already done/);
 });

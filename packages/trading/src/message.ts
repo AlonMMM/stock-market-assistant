@@ -22,6 +22,7 @@ export interface EntryNote {
   symbol: string;
   paper: boolean;
   stop?: StopNote;
+  note?: string; // an extra line, such as "Ordered off hours"
 }
 
 /**
@@ -46,6 +47,7 @@ export function formatEntry(note: EntryNote, result: LadderResult): string {
       ? `Bought at ${order.filledAvgPrice!.toFixed(2)}`
       : `Bidding at ${result.prices.at(-1)?.toFixed(2) ?? "—"}, not filled yet`,
     bought && qty > filled ? `${filled} of ${contracts(qty)}` : contracts(qty),
+    ...(note.note ? [escape(note.note)] : []),
     ...(!stop
       ? []
       : stop.price === undefined
