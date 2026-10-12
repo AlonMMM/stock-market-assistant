@@ -462,6 +462,20 @@ the account or contracts), the stop and optionally force, check the order, then 
 Verified 2026-10-12: `npm run check`; the tab was checked in headless Chromium at 390 and
 1280 px with a SYNTHETIC chain and a mocked API. Not run against Alpaca.
 
+### Adding to a position was refused by the broker (2026-10-12)
+
+Seen on the paper account: "Alpaca refused POST /v2/orders (HTTP 403): potential wash
+trade detected. use complex orders". Alpaca refuses a buy while a sell stop is open on the
+same contract, so every addition failed. The tests had not caught it because the in-memory
+broker did not have that rule; it has it now.
+
+Fix (`TradeEngine.workBuy`): for an addition the position's stop orders are canceled
+first, the buy runs as usual, and then the old stop price is put back on every contract the
+new stop does not cover (`uncovered`, so never more than is held). It goes back whatever
+the buy did; if it cannot, an alert "NO STOP after adding" is sent. While the addition is
+working (up to about 3 minutes) the contracts already held have no stop. For that reason an
+addition while the market is closed is refused: the order would wait with the stop off.
+
 ## Failure cases
 
 | Case                            | Behavior                                                                                        |

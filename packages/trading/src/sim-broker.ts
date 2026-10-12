@@ -116,6 +116,14 @@ export class SimBroker implements Broker {
           `sim: sell of ${qty} ${symbol} refused, ${Math.max(free, 0)} free`,
         );
     }
+    // Like Alpaca: no buy while a sell stop is open on the same contract.
+    if (
+      kind === "buy" &&
+      [...this.orders.values()].some(
+        (o) => o.symbol === symbol && o.kind === "stop" && this.open(o),
+      )
+    )
+      throw new Error("sim: potential wash trade detected");
     const o: SimOrder = {
       id: `sim-${this.nextId++}`,
       symbol,

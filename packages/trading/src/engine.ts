@@ -823,6 +823,20 @@ export class TradeEngine {
         qty,
         refused: verdict.refused,
       };
+    // An addition takes the position's stop off while it buys. Off hours the
+    // order waits, and the stop would be missing at the open.
+    if (
+      !a.marketOpen &&
+      a.held.some((p) => p.symbol === symbol && p.stopQty > 0)
+    )
+      return {
+        paper: this.paper,
+        contract: symbol,
+        qty,
+        refused: [
+          "adding off hours: this contract is already held with a stop, and adding to it takes the stop off while the order works; add when the market is open",
+        ],
+      };
     const record = {
       id: `${a.now}-${symbol}`,
       day: a.day,
@@ -910,7 +924,67 @@ export class TradeEngine {
     }
   }
 
+  /**
+   * A buy that adds to a held contract. The broker refuses a buy while a
+   * sell stop is open on the same contract ("potential wash trade", seen on
+   * Alpaca 2026-10-12), so the position's stop is taken off first and put
+   * back, at its old price, on every contract the new stop does not cover.
+   * It goes back whatever the buy did, and the user is alerted if it cannot.
+   */
   private async workBuy(
+    plan: BuyPlan,
+    progress: (p: BuyProgress) => void,
+  ): Promise<BuyDone> {
+    const { contract: symbol } = plan;
+    const sleep =
+      this.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+    const stopsOf = async () =>
+      (await this.broker.openOrders(symbol)).filter(
+        (o) => o.side === "sell" && o.stopPrice !== null,
+      );
+    const stops = await stopsOf();
+    if (stops.length === 0) return this.fillBuy(plan, progress);
+    const oldStop = Math.min(...stops.map((o) => o.stopPrice!));
+    progress({ stage: "taking the stop off to add to the position" });
+    try {
+      for (const stop of stops) await this.broker.cancel(stop.id);
+      let gone = false;
+      for (let i = 0; i < 10 && !gone; i++) {
+        await sleep(1000);
+        gone = (await stopsOf()).length === 0;
+      }
+      if (!gone)
+        throw new Error(
+          "The position's stop could not be taken off, so nothing was bought",
+        );
+      this.log(`stop ${oldStop.toFixed(2)} taken off to add`);
+      return await this.fillBuy(plan, progress);
+    } finally {
+      try {
+        const held = await this.broker.position(symbol).catch(() => null);
+        // Only contracts no open sell order covers: never more than is held.
+        const free = held
+          ? uncovered(held.qty, symbol, await this.broker.openOrders(symbol))
+          : 0;
+        if (free > 0) {
+          await this.broker.sellStop(symbol, free, oldStop);
+          this.log(`stop ${oldStop.toFixed(2)} back on ${free}`);
+        }
+      } catch (error) {
+        const text = error instanceof Error ? error.message : String(error);
+        this.log(`stop not restored on ${symbol}: ${text}`);
+        await this.notifier
+          .alert(`NO STOP after adding${this.paper ? " (paper)" : ""}`, [
+            symbol,
+            `The stop at ${oldStop.toFixed(2)} could not be put back: ${text}`,
+            "Set it by hand, or with set_stop.",
+          ])
+          .catch(() => {});
+      }
+    }
+  }
+
+  private async fillBuy(
     plan: BuyPlan,
     progress: (p: BuyProgress) => void,
   ): Promise<BuyDone> {
