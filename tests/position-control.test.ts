@@ -54,6 +54,7 @@ function setup(
   const clock = { now: monday };
   const posts = store.posts("owner");
   const engine = new TradeEngine({
+    buyAtAsk: false,
     broker,
     notifier,
     posts,

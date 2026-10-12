@@ -700,3 +700,25 @@ test("an order whose price was changed from outside is followed to its new id", 
   const now = await current(client, "a");
   assert.deepEqual([now.id, now.status, now.filledQty], ["c", "filled", 2]);
 });
+
+test("ladder at the ask: the first order is at the ask and follows it up to the cap", async () => {
+  const { client, calls } = fakeClient(
+    [
+      [1.0, 1.1],
+      [1.02, 1.12],
+      [1.05, 1.2],
+    ],
+    null,
+  );
+  const result = await buyWithLadder(client, symbol, 3, {
+    ...fast,
+    atAsk: true,
+    maxPrice: 1.15,
+  });
+  assert.deepEqual(calls.slice(0, 3), [
+    "buy 3 @ 1.1",
+    "replace @ 1.12",
+    "replace @ 1.15",
+  ]);
+  assert.deepEqual(result.prices, [1.1, 1.12, 1.15]);
+});
