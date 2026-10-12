@@ -84,12 +84,10 @@ test("manual strike works without delta on same-day option", async () => {
   const row = preview.rows.find((item) => item.expiry === "2026-10-12");
   assert.ok(row);
   if ("error" in row) assert.fail(row.error);
-  assert.deepEqual([row.contract, row.strike, row.delta, row.wouldBuy], [
-    contract,
-    765,
-    null,
-    true,
-  ]);
+  assert.deepEqual(
+    [row.contract, row.strike, row.delta, row.wouldBuy],
+    [contract, 765, null, true],
+  );
 
   const started = await service.buy(request);
   assert.equal(started.status, "started");
