@@ -267,4 +267,30 @@ test("trade ticket: chain, check and buy are forwarded for the owner only", asyn
     404,
   );
   assert.equal(seen.length, 3);
+  // Moving a stop, canceling an order and changing a price.
+  const id = "0b1c2d3e-aaaa-bbbb-cccc-000000000001";
+  for (const [sub, body] of [
+    ["stop", { contract, price: 0.8 }],
+    ["cancel", { orderId: id }],
+    ["price", { orderId: id, price: 0.95 }],
+  ] as const) {
+    assert.equal((await call(null, "POST", sub, { body })).status, 403);
+    assert.equal((await call(owner, "POST", sub, { body })).status, 200);
+  }
+  assert.deepEqual(
+    seen
+      .slice(3)
+      .map((s) => [s.url.replace("https://trader.test", ""), s.body]),
+    [
+      ["/v1/stop/move", { contract, price: 0.8, via: "site" }],
+      ["/v1/orders/cancel", { orderId: id, via: "site" }],
+      ["/v1/orders/price", { orderId: id, price: 0.95, via: "site" }],
+    ],
+  );
+  const refused = async (sub: string, body: unknown) =>
+    (await call(owner, "POST", sub, { body })).status;
+  assert.equal(await refused("stop", { contract, price: -1 }), 400);
+  assert.equal(await refused("cancel", { orderId: "../x" }), 400);
+  assert.equal(await refused("price", { orderId: id }), 400);
+  assert.equal(seen.length, 6);
 });

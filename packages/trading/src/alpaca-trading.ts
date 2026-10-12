@@ -21,6 +21,7 @@ interface RawOrder {
   filled_qty: string;
   filled_avg_price: string | null;
   limit_price: string | null;
+  replaced_by?: string | null;
 }
 
 const order = (raw: RawOrder): Order => ({
@@ -32,6 +33,7 @@ const order = (raw: RawOrder): Order => ({
   filledAvgPrice:
     raw.filled_avg_price === null ? null : Number(raw.filled_avg_price),
   limitPrice: raw.limit_price === null ? null : Number(raw.limit_price),
+  ...(raw.replaced_by ? { replacedBy: raw.replaced_by } : {}),
 });
 
 function quote(symbol: string, s: Snapshot): OptionQuote {

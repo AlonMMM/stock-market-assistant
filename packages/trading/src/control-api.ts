@@ -100,6 +100,9 @@ function order(body: unknown): Record<string, unknown> | Answer {
  * `POST …/check` `{ contract, sizePct | qty, stopPct?, force? }`: what a buy
  * would be and each check; sends nothing.
  * `POST …/buy` with the same fields: buys.
+ * `POST …/stop` `{ contract, price }`: moves the position's stop.
+ * `POST …/cancel` `{ orderId }`: withdraws one open order.
+ * `POST …/price` `{ orderId, price }`: changes a working buy's limit price.
  */
 export async function handleControl(
   config: ControlConfig,
@@ -153,6 +156,31 @@ export async function handleControl(
       path = "/v1/resize";
       // `via` is kept in the trading service's log with the request.
       body = { contract: b.contract, qty: b.qty, via: "site" };
+    } else if (sub === "stop" || sub === "cancel" || sub === "price") {
+      const b = (
+        request.body && typeof request.body === "object" ? request.body : {}
+      ) as { contract?: unknown; orderId?: unknown; price?: unknown };
+      const priced =
+        typeof b.price === "number" && Number.isFinite(b.price) && b.price > 0;
+      const named =
+        typeof b.orderId === "string" && /^[\w-]{1,64}$/.test(b.orderId);
+      if (sub === "stop") {
+        if (typeof b.contract !== "string" || !occ.test(b.contract))
+          return bad("contract is not valid");
+        if (!priced) return bad("price must be a number above zero");
+        path = "/v1/stop/move";
+        body = { contract: b.contract, price: b.price, via: "site" };
+      } else {
+        if (!named) return bad("orderId is not valid");
+        if (sub === "price" && !priced)
+          return bad("price must be a number above zero");
+        path = sub === "cancel" ? "/v1/orders/cancel" : "/v1/orders/price";
+        body = {
+          orderId: b.orderId,
+          ...(sub === "price" ? { price: b.price } : {}),
+          via: "site",
+        };
+      }
     } else if (sub === "check" || sub === "buy") {
       const fields = order(request.body);
       if ("status" in fields) return fields as Answer;

@@ -8,7 +8,10 @@ import {
   type TradeEngine,
 } from "../../../packages/trading/src/engine.js";
 import { exitQty } from "../../../packages/trading/src/exit.js";
-import { parseOccSymbol } from "../../../packages/trading/src/options.js";
+import {
+  parseOccSymbol,
+  roundToTick,
+} from "../../../packages/trading/src/options.js";
 import type { Notifier } from "../../../packages/trading/src/notifier.js";
 import type { JobKind, TradeStore } from "./store.js";
 
@@ -478,6 +481,168 @@ export class TraderService {
     } finally {
       this.watching = false;
     }
+  }
+
+  /** Moves the position's stop to a price. */
+  async moveStop(body: Body) {
+    const { symbol } = await this.target(body);
+    const price = number(body, "price");
+    if (price === undefined) throw new RequestError("Need price");
+    if (this.store.runningJobs().some((j) => j.symbol === symbol))
+      throw new RequestError(
+        `${symbol} has an order in progress; wait for it`,
+        409,
+      );
+    let result;
+    try {
+      result = await this.engine.moveStop({ contract: symbol, price });
+    } catch (error) {
+      this.record("move-stop", body, `failed: ${message(error)}`);
+      if (error instanceof TradeRefusal)
+        throw new RequestError(
+          [error.detail, error.hint].filter(Boolean).join(". "),
+          422,
+        );
+      throw error;
+    }
+    const { problems } = await this.engine.shortCheck();
+    this.record(
+      "move-stop",
+      body,
+      `${result.qty} ${symbol} at ${result.price.toFixed(2)}`,
+    );
+    // The new stop is the one watched from now on.
+    await this.watchStops().catch(() => {});
+    const c = parseOccSymbol(symbol);
+    const post = await this.notifier
+      .notice(`Stop moved${result.paper ? " (paper)" : ""}`, [
+        `$${c.underlying} | ${c.strike} ${c.right === "call" ? "Call" : "Put"} ${c.expiry}`,
+        `Stop at ${result.price.toFixed(2)} on ${result.qty}${result.was === null ? "" : `, was ${result.was.toFixed(2)}`}`,
+        `Entry ${result.entry.toFixed(2)}`,
+      ])
+      .catch(() => null);
+    return { ...result, shortRisks: problems, posted: post?.ok === true };
+  }
+
+  /** One open option order of the account, by its id at the broker. */
+  private async openOrder(id: unknown) {
+    if (typeof id !== "string" || !/^[\w-]{1,64}$/.test(id))
+      throw new RequestError("orderId is not valid");
+    const order = (await this.broker.openOrders()).find((o) => o.id === id);
+    if (!order) throw new RequestError("No open order with that id", 404);
+    return order;
+  }
+
+  /**
+   * Withdraws one open order (the site's "cancel"). A buy's job then ends on
+   * its own, with whatever filled covered by a stop. Canceling a stop leaves
+   * its contracts without one; that is said in the answer.
+   */
+  async cancelOrder(body: Body) {
+    const order = await this.openOrder(body.orderId);
+    try {
+      await this.broker.cancel(order.id);
+    } catch (error) {
+      throw new RequestError(message(error), 502);
+    }
+    const left = order.qty - order.filledQty;
+    const kind =
+      order.stopPrice !== null ? "stop" : order.side === "buy" ? "buy" : "sell";
+    this.record(
+      "cancel-order",
+      body,
+      `canceled ${kind} ${left} ${order.symbol}`,
+    );
+    if (kind === "stop") {
+      const c = parseOccSymbol(order.symbol);
+      await this.notifier
+        .alert(
+          `Stop canceled${this.broker.capabilities.paper ? " (paper)" : ""}`,
+          [
+            `$${c.underlying} | ${c.strike} ${c.right === "call" ? "Call" : "Put"} ${c.expiry}`,
+            `${left} contract${left === 1 ? "" : "s"} now have no stop.`,
+          ],
+        )
+        .catch(() => {});
+    }
+    return {
+      canceled: `${left} ${order.symbol}`,
+      kind,
+      ...(kind === "stop"
+        ? { warning: `${left} ${order.symbol} now have no stop` }
+        : {}),
+    };
+  }
+
+  /**
+   * Changes the limit price of a buy that is waiting or working (the site's
+   * "change price"). Not above the ask, and the order may not cost more than
+   * the largest size allowed. The job that owns the order follows it.
+   */
+  async repriceOrder(body: Body) {
+    const order = await this.openOrder(body.orderId);
+    const asked = number(body, "price");
+    if (asked === undefined || !(asked > 0))
+      throw new RequestError("price must be above zero");
+    if (order.side !== "buy" || order.stopPrice !== null)
+      throw new RequestError(
+        "Only a buy order's price can be changed here; a stop is moved on its position",
+        409,
+      );
+    // While the service raises the price itself, two changes would collide.
+    const raising = this.store
+      .runningJobs()
+      .some(
+        (j) =>
+          j.symbol === order.symbol &&
+          this.progress.get(j.id)?.stage === "raising the price",
+      );
+    if (raising)
+      throw new RequestError(
+        "The service is raising this order's price right now; try again in a few seconds",
+        409,
+      );
+    const price = roundToTick(asked, "down");
+    let quote;
+    let status;
+    try {
+      [quote, status] = await Promise.all([
+        this.broker.quote(order.symbol),
+        this.engine.status(),
+      ]);
+    } catch (error) {
+      throw new RequestError(message(error), 502);
+    }
+    if (quote.ask > 0 && price > quote.ask + 1e-9)
+      throw new RequestError(
+        `${price.toFixed(2)} is above the ask ${quote.ask.toFixed(2)}`,
+        422,
+      );
+    const cost = price * order.qty * 100;
+    const most = (status.equity * status.limits.maxSizePct) / 100;
+    if (cost > most + 1e-9)
+      throw new RequestError(
+        `${order.qty} at ${price.toFixed(2)} costs $${Math.round(cost).toLocaleString("en-US")}, more than ${status.limits.maxSizePct}% of the account ($${Math.round(most).toLocaleString("en-US")})`,
+        422,
+      );
+    let changed;
+    try {
+      changed = await this.broker.replace(order.id, price);
+    } catch (error) {
+      throw new RequestError(message(error), 502);
+    }
+    this.record(
+      "reprice-order",
+      body,
+      `${order.symbol} ${order.limitPrice?.toFixed(2) ?? "?"} -> ${price.toFixed(2)}`,
+    );
+    return {
+      contract: order.symbol,
+      orderId: changed.id,
+      price,
+      was: order.limitPrice,
+      qty: order.qty,
+    };
   }
 
   /** Puts a stop on held contracts that have none. */

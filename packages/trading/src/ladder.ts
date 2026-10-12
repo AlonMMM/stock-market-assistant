@@ -49,6 +49,20 @@ export const finished = new Set([
   "done_for_day",
 ]);
 
+/**
+ * The order's present state. An order whose price was changed from outside
+ * (the site's "change price") lives on under a new id: that one is returned.
+ */
+export async function current(
+  client: Pick<TradingClient, "order">,
+  id: string,
+): Promise<Order> {
+  let order = await client.order(id);
+  for (let hops = 0; order.replacedBy && hops < 20; hops++)
+    order = await client.order(order.replacedBy);
+  return order;
+}
+
 function status(order: Order): LadderStatus {
   if (order.status === "filled") return "filled";
   if (finished.has(order.status)) return "closed";
@@ -114,7 +128,7 @@ export async function buyWithLadder(
 
   for (let i = 1; i <= steps; i++) {
     await sleep(interval);
-    order = await client.order(order.id);
+    order = await current(client, order.id);
     if (status(order) === "filled" || status(order) === "closed") break;
     quote = await client.quote(symbol);
     check = spreadCheck(quote);
@@ -138,7 +152,7 @@ export async function buyWithLadder(
   }
   if (status(order) !== "filled" && status(order) !== "closed") {
     await sleep(interval);
-    order = await client.order(order.id);
+    order = await current(client, order.id);
   }
   return {
     status: status(order),

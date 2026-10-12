@@ -14,7 +14,12 @@ import {
   type DecisionLog,
   type ExplainParts,
 } from "./explain.js";
-import { buyWithLadder, finished, type LadderResult } from "./ladder.js";
+import {
+  buyWithLadder,
+  current,
+  finished,
+  type LadderResult,
+} from "./ladder.js";
 import type { Notifier, Sent } from "./notifier.js";
 import {
   ceilingPrice,
@@ -1141,7 +1146,7 @@ export class TradeEngine {
     let open = false;
     for (let waited = 0; waited < 4 * 86_400_000; waited += pollMs) {
       await sleep(pollMs);
-      order = await this.broker.order(order.id);
+      order = await current(this.broker, order.id);
       if (finished.has(order.status)) break;
       if ((open = await this.broker.marketOpen())) break;
     }
@@ -1220,6 +1225,79 @@ export class TradeEngine {
     };
   }
 
+  /**
+   * Puts the position's stop at `price` (the site's "move stop"): one stop
+   * for every held contract no other sell order covers. The price must be
+   * below the bid, or the stop would sell at once, and not further below the
+   * entry than the largest stop allowed.
+   */
+  async moveStop(request: { contract: string; price: number }) {
+    const symbol = request.contract.toUpperCase();
+    const held = await this.broker.position(symbol).catch(() => null);
+    if (!held || !(held.qty > 0))
+      throw new TradeRefusal("position", `no long position in ${symbol}`);
+    if (!(request.price > 0))
+      throw new TradeRefusal("stop", "the stop price must be above zero");
+    const price = roundToTick(request.price, "up");
+    const lowest = stopPrice(held.avgEntryPrice, this.limits.maxStopPct);
+    if (price < lowest - 1e-9)
+      throw new TradeRefusal(
+        "stop",
+        `${price.toFixed(2)} is more than ${this.limits.maxStopPct}% below the entry ${held.avgEntryPrice.toFixed(2)}; the lowest stop allowed is ${lowest.toFixed(2)}`,
+      );
+    const quote = await this.broker.quote(symbol);
+    if (quote.bid > 0 && price >= quote.bid - 1e-9)
+      throw new TradeRefusal(
+        "stop",
+        `${price.toFixed(2)} is at or above the bid ${quote.bid.toFixed(2)}: the stop would sell at once`,
+        "Choose a price below the bid, or sell the position.",
+      );
+    const open = await this.broker.openOrders(symbol);
+    const sells = open.filter((o) => o.side === "sell");
+    if (sells.some((o) => o.stopPrice === null))
+      throw new TradeRefusal(
+        "stop",
+        `a sale of ${symbol} is in progress; wait for it to end`,
+      );
+    const was =
+      sells.length > 0 ? Math.min(...sells.map((o) => o.stopPrice!)) : null;
+    const done = (qty: number) => ({
+      paper: this.paper,
+      contract: symbol,
+      entry: held.avgEntryPrice,
+      price,
+      qty,
+      was,
+    });
+    // One stop is changed in place: the position is never without it.
+    if (sells.length === 1) {
+      await this.broker.replaceStop(sells[0]!.id, held.qty, price);
+      return done(held.qty);
+    }
+    const sleep =
+      this.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+    for (const stop of sells) await this.broker.cancel(stop.id);
+    let free = held.qty;
+    for (let i = 0; i < 10; i++) {
+      free = uncovered(held.qty, symbol, await this.broker.openOrders(symbol));
+      if (free === held.qty || sells.length === 0) break;
+      await sleep(1000);
+    }
+    if (free === 0)
+      throw new Error(
+        "The old stops could not be taken off; they are still in place",
+      );
+    try {
+      await this.broker.sellStop(symbol, free, price);
+    } catch (error) {
+      // The position must not be left bare: the old price goes back.
+      if (was !== null)
+        await this.broker.sellStop(symbol, free, was).catch(() => {});
+      throw error;
+    }
+    return done(free);
+  }
+
   /** Positions with their stops, and today's use of each limit. */
   async status() {
     const a = await this.account();
@@ -1243,6 +1321,7 @@ export class TradeEngine {
         openRisk: Number(risk.toFixed(2)),
         openRiskPct:
           equity > 0 ? Number(((risk / equity) * 100).toFixed(2)) : null,
+        maxSizePct: this.limits.maxSizePct,
         maxOpenRiskPct: this.limits.maxOpenRiskPct,
         maxDayLossPct: this.limits.maxDayLossPct,
         maxPositionPct: this.limits.maxPositionPct,

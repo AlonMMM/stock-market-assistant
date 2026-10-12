@@ -13,6 +13,8 @@ export interface Order {
   filledQty: number;
   filledAvgPrice: number | null;
   limitPrice: number | null;
+  // The order that took this one's place when its price or size was changed.
+  replacedBy?: string | null;
 }
 
 export interface OpenOrder extends Order {

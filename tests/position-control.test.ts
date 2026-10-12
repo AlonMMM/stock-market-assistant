@@ -362,3 +362,95 @@ test("adding: the stop comes off for the buy and goes back at its old price", as
   assert.ok("refused" in closed);
   assert.match(closed.refused[0]!, /^adding off hours: /);
 });
+
+test("move stop: one stop changes in place; several become one; bad prices are refused", async () => {
+  const { service, broker, sent, clock } = setup();
+  await service.buy({ underlying: "NVDA", right: "call", sizePct: 0.5 });
+  await service.idle();
+  const stopsNow = async () =>
+    (await broker.openOrders(friday))
+      .filter((o) => o.stopPrice !== null)
+      .map((o) => [o.qty, o.stopPrice]);
+  assert.deepEqual(await stopsNow(), [[4, 0.62]]);
+  const moved = await service.moveStop({ contract: friday, price: 0.8 });
+  assert.deepEqual([moved.price, moved.qty, moved.was], [0.8, 4, 0.62]);
+  assert.deepEqual(await stopsNow(), [[4, 0.8]]);
+  assert.match(
+    sent.at(-1)!.html,
+    /Stop moved[\s\S]*Stop at 0\.80 on 4, was 0\.62/,
+  );
+  // At or above the bid it would sell at once; too far below the entry is
+  // more than the largest stop allowed.
+  await assert.rejects(
+    service.moveStop({ contract: friday, price: 1.0 }),
+    (e) =>
+      e instanceof RequestError && /at or above the bid 1\.00/.test(e.message),
+  );
+  await assert.rejects(
+    service.moveStop({ contract: friday, price: 0.2 }),
+    (e) =>
+      e instanceof RequestError &&
+      /more than 70% below the entry/.test(e.message),
+  );
+  assert.deepEqual(await stopsNow(), [[4, 0.8]]);
+  // After an addition there are two stops: moving makes one for all six.
+  clock.now += 5 * 60_000;
+  broker.setQuote(friday, 1.5, 1.56, 0.2);
+  broker.fillAt.set(friday, 1.54);
+  await service.resize({ contract: friday, qty: 6 });
+  await service.idle();
+  assert.equal((await stopsNow()).length, 2);
+  await service.moveStop({ underlying: "NVDA", price: 1.1 });
+  assert.deepEqual(await stopsNow(), [[6, 1.1]]);
+  assert.deepEqual((await service.status()).shortRisks, []);
+  // A moved stop is not a stop-out, and it is the one watched from now on.
+  assert.equal(await service.watchStops(), 0);
+  broker.setQuote(friday, 1.0, 1.04, 0.1);
+  assert.equal(await service.watchStops(), 1);
+  assert.match(
+    sent.at(-1)!.html,
+    /STOPPED OUT[\s\S]*Sold 6 at 1\.00 \(stop 1\.10\)/,
+  );
+});
+
+test("open orders: a waiting buy is repriced within limits or canceled; a canceled stop is alerted", async () => {
+  const { service, broker, sent } = setup();
+  await service.buy({ underlying: "NVDA", right: "call", sizePct: 0.5 });
+  await service.idle();
+  // A buy resting below the market, as one sent off hours would be.
+  const stop = (await broker.openOrders(friday))[0]!;
+  await broker.cancel(stop.id);
+  const resting = await broker.buyLimit(friday, 2, 0.9);
+  await assert.rejects(
+    service.repriceOrder({ orderId: resting.id, price: 1.2 }),
+    (e) => e instanceof RequestError && /above the ask 1\.04/.test(e.message),
+  );
+  await assert.rejects(
+    service.repriceOrder({ orderId: "nope", price: 1 }),
+    (e) => e instanceof RequestError && e.status === 404,
+  );
+  const changed = await service.repriceOrder({
+    orderId: resting.id,
+    price: 0.95,
+  });
+  assert.deepEqual([changed.price, changed.was, changed.qty], [0.95, 0.9, 2]);
+  assert.equal((await broker.order(resting.id)).limitPrice, 0.95);
+  const gone = await service.cancelOrder({ orderId: resting.id });
+  assert.deepEqual([gone.kind, gone.canceled], ["buy", `2 ${friday}`]);
+  assert.equal((await broker.openOrders(friday)).length, 0);
+  // A stop's price is not changed here, and canceling one is said loudly.
+  const again = await service.stop({ contract: friday });
+  assert.ok("order" in again);
+  const stopId = (await broker.openOrders(friday))[0]!.id;
+  await assert.rejects(
+    service.repriceOrder({ orderId: stopId, price: 0.5 }),
+    (e) => e instanceof RequestError && e.status === 409,
+  );
+  const bare = await service.cancelOrder({ orderId: stopId });
+  assert.equal(bare.kind, "stop");
+  assert.match(bare.warning!, /now have no stop/);
+  assert.match(
+    sent.at(-1)!.html,
+    /Stop canceled[\s\S]*4 contracts now have no stop/,
+  );
+});
