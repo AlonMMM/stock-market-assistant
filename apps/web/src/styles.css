@@ -3580,3 +3580,20 @@ dialog.why::backdrop {
 .order-confirm .pos-go {
   min-height: 44px;
 }
+.order-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.portfolio-orders li.order-row {
+  cursor: pointer;
+}
+.portfolio-orders li.order-row:hover {
+  background: #f4f7f1;
+}
+.portfolio-orders li .order-open {
+  margin-left: auto;
+}
+.open-order {
+  border-color: #142b29;
+}

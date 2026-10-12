@@ -515,6 +515,12 @@ Branch `feat/order-controls`. Owner only, through the same site route.
   changed order a new id; the job follows it (`current` in `ladder.ts`, `replaced_by`).
   The quantity cannot be changed: cancel and send again.
 
+- **An open order opens on the Trade page.** A click on an order in Live trades goes to
+  Trade with its stock, side, expiry and strike selected and the order shown above the
+  chain: its price box with Bid / Mid / Ask buttons from the live quote, cancel, and for a
+  stop the stop mover. While that order is open the new-buy ticket for the same contract
+  is hidden.
+
 Verified 2026-10-12: `npm run check`. Not run against Alpaca; in particular that Alpaca's
 `replaced_by` chain carries fills as assumed is untested.
 

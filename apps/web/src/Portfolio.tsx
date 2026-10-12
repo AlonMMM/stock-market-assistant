@@ -9,7 +9,6 @@ import type {
 } from "../../../packages/trading/src/portfolio.js";
 import type { Decision } from "../../../packages/trading/src/explain.js";
 import { usePolling } from "./Live.js";
-import { OrderActions } from "./OrderControls.js";
 import { Orders, useDecisions, WhyButton } from "./Orders.js";
 import { PositionList, useControlAccess } from "./Positions.js";
 import { Trade as TradeTicket } from "./Trade.js";
@@ -57,11 +56,12 @@ const optionName = (c: Contract) =>
 function Order({
   o,
   why,
-  canTrade,
+  onEdit,
 }: {
   o: PortfolioOrder;
   why?: Decision | undefined;
-  canTrade: boolean;
+  // Opens the order on the Trade page; absent for visitors who cannot trade.
+  onEdit?: ((o: PortfolioOrder) => void) | undefined;
 }) {
   const price =
     o.stopPrice !== null
@@ -69,12 +69,28 @@ function Order({
       : o.limitPrice !== null
         ? `limit ${o.limitPrice.toFixed(2)}`
         : o.type;
+  const editable = onEdit && o.option;
   return (
-    <li>
+    <li
+      className={editable ? "order-row" : undefined}
+      onClick={editable ? () => onEdit(o) : undefined}
+    >
       <strong>
         {optionName(o)}
         {o.option && ` · ${expiryLabel(o.option.expiry)}`}
       </strong>
+      {onEdit && o.option && (
+        <button
+          type="button"
+          className="why-button order-open"
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(o);
+          }}
+        >
+          Open in Trade
+        </button>
+      )}
       <span className="num">
         {o.side === "buy" ? "Buy" : "Sell"} {o.qty} · {price}
         {o.filledQty > 0 && ` · ${o.filledQty} filled`}
@@ -85,7 +101,6 @@ function Order({
           ` · ${israelDateTime(Date.parse(o.submittedAt))} ${israelLabel}`}
       </span>
       {why && o.side === "buy" && <WhyButton decision={why} />}
-      {canTrade && o.option && <OrderActions o={o} />}
     </li>
   );
 }
@@ -223,6 +238,8 @@ export function Portfolio({ modes }: { modes: ReactNode }) {
   const [tab, setTab] = useState<(typeof allSections)[number][0]>("live");
   // The trade ticket is for the account owner only.
   const { canTrade } = useControlAccess();
+  // The open order the Trade page was opened on, if any.
+  const [editing, setEditing] = useState<PortfolioOrder | null>(null);
   const sections = allSections.filter(([key]) => key !== "trade" || canTrade);
   const ignore = () => {}; // failures are shown in place
   return (
@@ -257,7 +274,11 @@ export function Portfolio({ modes }: { modes: ReactNode }) {
             aria-selected={tab === key}
             aria-controls={`panel-${key}`}
             tabIndex={tab === key ? 0 : -1}
-            onClick={() => setTab(key)}
+            onClick={() => {
+              // The tab itself starts a new ticket, not the last order.
+              setEditing(null);
+              setTab(key);
+            }}
           >
             {label}
           </button>
@@ -270,9 +291,15 @@ export function Portfolio({ modes }: { modes: ReactNode }) {
         className="tab-panel"
       >
         {tab === "live" ? (
-          <LiveTrades onError={ignore} />
+          <LiveTrades
+            onError={ignore}
+            onEdit={(o) => {
+              setEditing(o);
+              setTab("trade");
+            }}
+          />
         ) : tab === "trade" && canTrade ? (
-          <TradeTicket />
+          <TradeTicket key={editing?.id ?? "new"} edit={editing} />
         ) : tab === "orders" ? (
           <Orders onError={ignore} />
         ) : (
@@ -284,7 +311,13 @@ export function Portfolio({ modes }: { modes: ReactNode }) {
 }
 
 /** The Alpaca account now: totals, open positions and working orders. */
-function LiveTrades({ onError }: { onError: (m: string) => void }) {
+function LiveTrades({
+  onError,
+  onEdit,
+}: {
+  onError: (m: string) => void;
+  onEdit: (o: PortfolioOrder) => void;
+}) {
   // The reasons behind each order; the page works without them.
   const why = useDecisions(() => {});
   const { canTrade } = useControlAccess();
@@ -375,7 +408,7 @@ function LiveTrades({ onError }: { onError: (m: string) => void }) {
               key={o.id}
               o={o}
               why={why.get(o.symbol)}
-              canTrade={canTrade}
+              onEdit={canTrade ? onEdit : undefined}
             />
           ))}
         </ul>

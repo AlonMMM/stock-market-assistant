@@ -111,7 +111,14 @@ export function StopMover({ p }: { p: PortfolioPosition }) {
 }
 
 /** Withdraw an open order, or change the price of a working buy. */
-export function OrderActions({ o }: { o: PortfolioOrder }) {
+export function OrderActions({
+  o,
+  quote,
+}: {
+  o: PortfolioOrder;
+  // The contract's live quote, to set the price from with one tap.
+  quote?: { bid: number; ask: number; mid: number } | undefined;
+}) {
   const isStop = o.stopPrice !== null;
   const canPrice = o.side === "buy" && !isStop && o.limitPrice !== null;
   const [value, setValue] = useState(o.limitPrice?.toFixed(2) ?? "");
@@ -147,6 +154,30 @@ export function OrderActions({ o }: { o: PortfolioOrder }) {
               }}
             />
           </label>
+          {quote && (
+            <span className="order-quick" role="group" aria-label="Set price">
+              {(
+                [
+                  ["Bid", quote.bid],
+                  ["Mid", quote.mid],
+                  ["Ask", quote.ask],
+                ] as const
+              ).map(([label, at]) => (
+                <button
+                  type="button"
+                  key={label}
+                  className="pos-cancel"
+                  disabled={busy || !(at > 0)}
+                  onClick={() => {
+                    setValue(at.toFixed(2));
+                    clear();
+                  }}
+                >
+                  {label} <span className="num">{at.toFixed(2)}</span>
+                </button>
+              ))}
+            </span>
+          )}
           <button
             type="submit"
             className="pos-cancel"

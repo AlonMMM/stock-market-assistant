@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { TradeEngine } from "../../../packages/trading/src/engine.js";
 import { readJson } from "./api.js";
+import type {
+  Portfolio,
+  PortfolioOrder,
+} from "../../../packages/trading/src/portfolio.js";
+import { usePolling } from "./Live.js";
+import { OrderActions, StopMover } from "./OrderControls.js";
 import { followOrder, type Run } from "./order-run.js";
 import { chartSession } from "./positions-model.js";
 import { StockChart } from "./StockChart.js";
@@ -270,9 +276,17 @@ function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
 }
 
 /** Pick a stock, see its options, choose a strike, check and buy. */
-export function Trade() {
-  const [ticker, setTicker] = useState("");
-  const [right, setRight] = useState<Right>("call");
+export function Trade({ edit }: { edit?: PortfolioOrder | null }) {
+  const [ticker, setTicker] = useState(edit?.underlying ?? "");
+  const [right, setRight] = useState<Right>(edit?.option?.right ?? "call");
+  // The account as it is now: the order being edited, and its position.
+  const account = usePolling<Portfolio>("/api/portfolio", 1000, () => {});
+  const order = edit
+    ? account.value?.orders.find((o) => o.id === edit.id)
+    : undefined;
+  const position = edit
+    ? account.value?.positions.find((p) => p.symbol === edit.symbol)
+    : undefined;
   const [chain, setChain] = useState<Chain | null>(null);
   // The first answer lists the expiries; later ones are for one of them.
   const [expiries, setExpiries] = useState<string[]>([]);
@@ -282,7 +296,23 @@ export function Trade() {
   const request = useRef(0);
   const picked = useRef<HTMLTableRowElement>(null);
 
-  async function load(underlying: string, side: Right, date?: string) {
+  // An order opened from the list: its stock, side, expiry and strike.
+  useEffect(() => {
+    if (!edit?.option) return;
+    void load(
+      edit.underlying,
+      edit.option.right,
+      edit.option.expiry,
+      edit.symbol,
+    );
+  }, [edit?.id]);
+
+  async function load(
+    underlying: string,
+    side: Right,
+    date?: string,
+    select?: string,
+  ) {
     const id = ++request.current;
     setLoading(true);
     setError("");
@@ -300,7 +330,11 @@ export function Trade() {
       if (id !== request.current) return;
       setChain(next);
       if (next.expiries) setExpiries(next.expiries);
-      setSelected(next.pick);
+      setSelected(
+        select && next.quotes.some((q) => q.contract === select)
+          ? select
+          : next.pick,
+      );
     } catch (e) {
       if (id !== request.current) return;
       if (!date) {
@@ -505,7 +539,44 @@ export function Trade() {
               </tbody>
             </table>
           </div>
-          {quote ? (
+          {edit && selected === edit.symbol && (
+            <section className="ticket open-order" aria-label="Open order">
+              <h3>
+                {edit.stopPrice !== null ? "Stop" : "Open order"} on{" "}
+                {chain.underlying} {quote?.strike}{" "}
+                {chain.right === "call" ? "Call" : "Put"}
+                {quote && (
+                  <span className="muted num">
+                    bid {price(quote.bid)} · ask {price(quote.ask)}
+                  </span>
+                )}
+              </h3>
+              {!account.value ? (
+                <p className="chart-status">Loading the order…</p>
+              ) : !order ? (
+                <p className="note-amber" role="status">
+                  This order is no longer open: it filled, was canceled or was
+                  replaced. Live trades shows what is held now.
+                </p>
+              ) : (
+                <>
+                  <p className="ticket-summary num">
+                    {order.side === "buy" ? "Buy" : "Sell"} {order.qty} ·{" "}
+                    {order.stopPrice !== null
+                      ? `stop ${order.stopPrice.toFixed(2)}`
+                      : `limit ${order.limitPrice?.toFixed(2) ?? "—"}`}
+                    {order.filledQty > 0 && ` · ${order.filledQty} filled`} ·{" "}
+                    {order.status.replaceAll("_", " ")}
+                  </p>
+                  {order.stopPrice !== null && position && (
+                    <StopMover p={position} />
+                  )}
+                  <OrderActions key={order.id} o={order} quote={quote} />
+                </>
+              )}
+            </section>
+          )}
+          {edit && selected === edit.symbol && order ? null : quote ? (
             <Ticket key={quote.contract} chain={chain} quote={quote} />
           ) : (
             <p className="muted">Choose a strike to build the order.</p>
