@@ -67,9 +67,7 @@ test("service buy: answers at once with a job; the job ends with the fill and st
   assert.equal(status.limits.riskManager.state, "full");
 });
 
-test(
-  "service buy: a manual strike works without a delta on a same-day option",
-  async () => {
+test("manual strike works without delta on same-day option", async () => {
   const contract = "META261012C00765000";
   const broker = new SimBroker();
   broker.setQuote(contract, 1.0, 1.04, null);
@@ -99,12 +97,9 @@ test(
   await service.idle();
   assert.equal(service.job(started.jobId).state, "done");
   assert.equal((await broker.position(contract)).qty, started.qty);
-  },
-);
+});
 
-test(
-  "service buy: a missing manual strike is a clear client error and sends nothing",
-  async () => {
+test("missing strike returns a client error without sending", async () => {
   const { service, broker } = setup();
   await assert.rejects(
     service.buy({
@@ -119,8 +114,7 @@ test(
       /No contract at strike 765/.test(error.message),
   );
   assert.equal(broker.orders.size, 0);
-  },
-);
+});
 
 test("service buy: a refused buy creates no job and is logged", async () => {
   const { service, store, broker } = setup();
