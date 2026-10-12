@@ -9,6 +9,7 @@ import type {
 } from "../../../packages/trading/src/portfolio.js";
 import type { Decision } from "../../../packages/trading/src/explain.js";
 import { usePolling } from "./Live.js";
+import { OrderActions } from "./OrderControls.js";
 import { Orders, useDecisions, WhyButton } from "./Orders.js";
 import { PositionList, useControlAccess } from "./Positions.js";
 import { Trade as TradeTicket } from "./Trade.js";
@@ -53,7 +54,15 @@ const optionName = (c: Contract) =>
     ? `${c.underlying} ${c.option.strike} ${c.option.right === "call" ? "Call" : "Put"}`
     : c.symbol;
 
-function Order({ o, why }: { o: PortfolioOrder; why?: Decision }) {
+function Order({
+  o,
+  why,
+  canTrade,
+}: {
+  o: PortfolioOrder;
+  why?: Decision | undefined;
+  canTrade: boolean;
+}) {
   const price =
     o.stopPrice !== null
       ? `stop ${o.stopPrice.toFixed(2)}`
@@ -76,6 +85,7 @@ function Order({ o, why }: { o: PortfolioOrder; why?: Decision }) {
           ` · ${israelDateTime(Date.parse(o.submittedAt))} ${israelLabel}`}
       </span>
       {why && o.side === "buy" && <WhyButton decision={why} />}
+      {canTrade && o.option && <OrderActions o={o} />}
     </li>
   );
 }
@@ -277,6 +287,7 @@ export function Portfolio({ modes }: { modes: ReactNode }) {
 function LiveTrades({ onError }: { onError: (m: string) => void }) {
   // The reasons behind each order; the page works without them.
   const why = useDecisions(() => {});
+  const { canTrade } = useControlAccess();
   const { value, at, error } = usePolling<PortfolioData>(
     "/api/portfolio",
     refreshMs,
@@ -360,7 +371,12 @@ function LiveTrades({ onError }: { onError: (m: string) => void }) {
       {orders.length > 0 ? (
         <ul className="portfolio-orders">
           {orders.map((o) => (
-            <Order key={o.id} o={o} why={why.get(o.symbol)} />
+            <Order
+              key={o.id}
+              o={o}
+              why={why.get(o.symbol)}
+              canTrade={canTrade}
+            />
           ))}
         </ul>
       ) : (

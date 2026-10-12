@@ -1,5 +1,5 @@
 import type { Broker, Order } from "./broker.js";
-import { finished } from "./ladder.js";
+import { current, finished } from "./ladder.js";
 import { stopPrice } from "./options.js";
 
 // After the price raises: watch the buy order for a short time, keep a stop
@@ -75,7 +75,7 @@ export async function protectFill(
   ) {
     await sleep(pollMs);
     const before = order.filledQty;
-    order = await client.order(order.id);
+    order = await current(client, order.id);
     if (order.filledQty !== before) await cover();
   }
 
@@ -91,7 +91,7 @@ export async function protectFill(
     }
     // A fill can arrive while the cancel is on its way.
     await sleep(pollMs);
-    order = await client.order(order.id);
+    order = await current(client, order.id);
     if (!cancelError) canceledQty = order.qty - order.filledQty;
   }
   // Also retries a stop the broker refused while the buy was still open.

@@ -681,3 +681,22 @@ test("never short: a sale is cut to what is held, the stop to what is uncovered"
   assert.equal(result.stop?.qty, 0);
   assert.match(result.stop?.error ?? "", /still open for 5/);
 });
+
+test("an order whose price was changed from outside is followed to its new id", async () => {
+  const { current } = await import("../packages/trading/src/ladder.js");
+  const base = {
+    symbol,
+    qty: 2,
+    filledQty: 0,
+    filledAvgPrice: null,
+    limitPrice: 1,
+  };
+  const orders: Record<string, object> = {
+    a: { ...base, id: "a", status: "replaced", replacedBy: "b" },
+    b: { ...base, id: "b", status: "replaced", replacedBy: "c" },
+    c: { ...base, id: "c", status: "filled", filledQty: 2 },
+  };
+  const client = { order: async (id: string) => orders[id] as never };
+  const now = await current(client, "a");
+  assert.deepEqual([now.id, now.status, now.filledQty], ["c", "filled", 2]);
+});

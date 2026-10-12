@@ -114,6 +114,15 @@ api.get("/v1/chain", async (request) => service.chain(body(request.query)));
 api.post("/v1/buy", async (request) => service.buy(body(request.body)));
 api.post("/v1/sell", async (request) => service.sell(body(request.body)));
 api.post("/v1/stop", async (request) => service.stop(body(request.body)));
+api.post("/v1/stop/move", async (request) =>
+  service.moveStop(body(request.body)),
+);
+api.post("/v1/orders/cancel", async (request) =>
+  service.cancelOrder(body(request.body)),
+);
+api.post("/v1/orders/price", async (request) =>
+  service.repriceOrder(body(request.body)),
+);
 api.post("/v1/resize", async (request) => service.resize(body(request.body)));
 api.get<{ Params: { id: string } }>("/v1/jobs/:id", async (request) =>
   service.job(request.params.id),

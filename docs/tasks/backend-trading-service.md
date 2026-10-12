@@ -496,6 +496,28 @@ the buy did; if it cannot, an alert "NO STOP after adding" is sent. While the ad
 working (up to about 3 minutes) the contracts already held have no stop. For that reason an
 addition while the market is closed is refused: the order would wait with the stop off.
 
+### Stop and order controls on the site (user, 2026-10-12)
+
+Branch `feat/order-controls`. Owner only, through the same site route.
+
+- **Move the stop.** `POST /v1/stop/move { contract, price }` (`TradeEngine.moveStop`): one
+  stop for every held contract no other sell order covers. A single stop is changed in
+  place; several (after an addition) are canceled and replaced by one, and the old price
+  goes back if the new one is refused. Refused: at or above the bid (it would sell at
+  once), more than 70% below the entry, or while a sale is in progress. A "Stop moved"
+  post goes to the channel. On the site: a price box in the opened position.
+- **Cancel an order.** `POST /v1/orders/cancel { orderId }`: any open option order. A
+  buy's job ends on its own with what filled covered by a stop. Canceling a stop leaves its
+  contracts bare: the page asks first, and an alert "Stop canceled" is posted.
+- **Change a buy's price.** `POST /v1/orders/price { orderId, price }`: a buy that is
+  waiting (off hours) or working. Not above the ask, not more than the largest order size,
+  and not during the seconds the service is raising the price itself. Alpaca gives a
+  changed order a new id; the job follows it (`current` in `ladder.ts`, `replaced_by`).
+  The quantity cannot be changed: cancel and send again.
+
+Verified 2026-10-12: `npm run check`. Not run against Alpaca; in particular that Alpaca's
+`replaced_by` chain carries fills as assumed is untested.
+
 ## Failure cases
 
 | Case                            | Behavior                                                                                        |

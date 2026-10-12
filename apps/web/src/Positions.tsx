@@ -3,6 +3,7 @@ import type { ControlAccess } from "../../../packages/trading/src/control-api.js
 import type { Decision } from "../../../packages/trading/src/explain.js";
 import type { PortfolioPosition } from "../../../packages/trading/src/portfolio.js";
 import { readJson } from "./api.js";
+import { StopMover } from "./OrderControls.js";
 import { followOrder, type Run } from "./order-run.js";
 import { WhyButton } from "./Orders.js";
 import { chartSession } from "./positions-model.js";
@@ -258,7 +259,10 @@ function Detail({
         )}
       </p>
       {access.canTrade && p.option && p.qty > 0 ? (
-        <Controls p={p} />
+        <>
+          <StopMover p={p} />
+          <Controls p={p} />
+        </>
       ) : (
         access.reason && <p className="muted">{access.reason}.</p>
       )}
