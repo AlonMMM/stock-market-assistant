@@ -74,8 +74,8 @@ Broker interface         Notifier interface
    Alpaca (first)           Telegram (first), None
 ```
 
-Why a separate Railway service and not the existing collector: the collector exits on a
-market-data failure (`stop(1)`), and a restart in the middle of a buy would interrupt the
+Why a separate Railway service and not the existing collector: the collector exits on invalid
+market data (`stop(1)`) and restarts its stream on a drop, and a restart in the middle of a buy would interrupt the
 watch that places the stop. The two must fail independently. Same repository, its own
 Dockerfile and volume.
 
