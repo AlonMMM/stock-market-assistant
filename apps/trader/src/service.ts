@@ -75,6 +75,8 @@ function buyRequest(body: Body): BuyRequest {
     throw new RequestError("strike must be greater than zero");
   if (strike !== undefined && delta !== undefined)
     throw new RequestError("strike and delta cannot be combined");
+  if (contract && strike !== undefined)
+    throw new RequestError("strike cannot be combined with contract");
   const stopPct = number(body, "stopPct");
   return {
     ...(contract ? { contract } : { underlying: underlying!, right: right! }),
