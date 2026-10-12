@@ -67,6 +67,55 @@ test("service buy: answers at once with a job; the job ends with the fill and st
   assert.equal(status.limits.riskManager.state, "full");
 });
 
+test("service buy: a manual strike works without a delta on a same-day option", async () => {
+  const contract = "META261012C00765000";
+  const broker = new SimBroker();
+  broker.setQuote(contract, 1.0, 1.04, null);
+  broker.fillAt.set(contract, 1.03);
+  const { service } = setup(undefined, broker);
+  const request = {
+    underlying: "META",
+    right: "call",
+    strike: 765,
+    expiry: "2026-10-12",
+    sizePct: 0.5,
+  };
+  const preview = await service.preview(request);
+  const row = preview.rows.find((item) => item.expiry === "2026-10-12");
+  assert.ok(row);
+  if ("error" in row) assert.fail(row.error);
+  assert.deepEqual([row.contract, row.strike, row.delta, row.wouldBuy], [
+    contract,
+    765,
+    null,
+    true,
+  ]);
+
+  const started = await service.buy(request);
+  assert.equal(started.status, "started");
+  assert.equal(started.contract, contract);
+  await service.idle();
+  assert.equal(service.job(started.jobId).state, "done");
+  assert.equal((await broker.position(contract)).qty, started.qty);
+});
+
+test("service buy: a missing manual strike is a clear client error and sends nothing", async () => {
+  const { service, broker } = setup();
+  await assert.rejects(
+    service.buy({
+      underlying: "NVDA",
+      right: "call",
+      strike: 765,
+      expiry: "2026-10-12",
+      sizePct: 0.5,
+    }),
+    (error) =>
+      error instanceof RequestError &&
+      /No contract at strike 765/.test(error.message),
+  );
+  assert.equal(broker.orders.size, 0);
+});
+
 test("service buy: a refused buy creates no job and is logged", async () => {
   const { service, store, broker } = setup();
   const out = await service.buy({ ...buyNvda, sizePct: 5 });
@@ -101,6 +150,14 @@ test("service: bad requests are refused before anything else", async () => {
   await bad(
     { underlying: "NVDA", right: "call", sizePct: 0.5, expiry: "soon" },
     /expiry is not valid/,
+  );
+  await bad(
+    { underlying: "NVDA", right: "call", sizePct: 0.5, strike: 0 },
+    /strike must be greater than zero/,
+  );
+  await bad(
+    { underlying: "NVDA", right: "call", sizePct: 0.5, strike: 765, delta: 0.12 },
+    /strike and delta cannot be combined/,
   );
   await assert.rejects(
     service.sell({ underlying: "NVDA", qty: "all" }),
