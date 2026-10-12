@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { TradeEngine } from "../../../packages/trading/src/engine.js";
 import { readJson } from "./api.js";
 import { followOrder, type Run } from "./order-run.js";
+import { chartSession } from "./positions-model.js";
+import { StockChart } from "./StockChart.js";
 
 // The trade ticket (Portfolio → Trade, account owner only): the option chain
 // of a stock, a strike picked from it, the order sized and checked, then
@@ -23,6 +25,14 @@ const expiry = new Intl.DateTimeFormat("en-GB", {
 const expiryLabel = (date: string) =>
   expiry.format(Date.parse(`${date}T00:00:00Z`));
 const price = (n: number) => (n > 0 ? n.toFixed(2) : "—");
+const quoteRefreshMs = 2000;
+const clockSeconds = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Jerusalem",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
 
 function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
   const [unit, setUnit] = useState<"pct" | "qty">("pct");
@@ -302,6 +312,51 @@ export function Trade() {
       if (id === request.current) setLoading(false);
     }
   }
+  // Quotes move all the time: the open expiry is read again every two
+  // seconds while the page is visible. The chosen strike stays chosen.
+  const [quotedAt, setQuotedAt] = useState<number | null>(null);
+  const [showChart, setShowChart] = useState(false);
+  const shown = chain
+    ? `${chain.underlying}/${chain.right}/${chain.expiry}`
+    : "";
+  useEffect(() => {
+    if (!chain) return;
+    const { underlying, right: side, expiry: date } = chain;
+    setQuotedAt(Date.now());
+    let live = true;
+    let reading = false;
+    const refresh = async () => {
+      if (reading || document.visibilityState !== "visible") return;
+      reading = true;
+      const id = request.current;
+      try {
+        const query = new URLSearchParams({
+          underlying,
+          right: side,
+          expiry: date,
+        });
+        const next = await readJson<Chain>(
+          await fetch(`/api/portfolio/control/chain?${query}`, {
+            signal: AbortSignal.timeout(10000),
+          }),
+        );
+        // Dropped when another stock, side or expiry was asked for meanwhile.
+        if (!live || id !== request.current) return;
+        setChain(next);
+        setQuotedAt(Date.now());
+      } catch {
+        // One missed refresh; the next one is two seconds away.
+      } finally {
+        reading = false;
+      }
+    };
+    const timer = setInterval(refresh, quoteRefreshMs);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [shown]);
+
   // The strike a plain buy would take is brought into view.
   useEffect(() => {
     picked.current?.scrollIntoView({ block: "center" });
@@ -359,6 +414,24 @@ export function Trade() {
       )}
       {chain && (
         <>
+          <div className="trade-chart">
+            <button
+              type="button"
+              className="pos-cancel"
+              aria-expanded={showChart}
+              onClick={() => setShowChart(!showChart)}
+            >
+              {showChart ? "Hide" : "Show"} the {chain.underlying} chart
+            </button>
+            {quotedAt !== null && (
+              <span className="muted num" role="status">
+                Quotes updated {clockSeconds.format(quotedAt)} Israel time
+              </span>
+            )}
+          </div>
+          {showChart && (
+            <StockChart ticker={chain.underlying} date={chartSession()} />
+          )}
           <div
             className="trade-expiries"
             role="group"

@@ -462,6 +462,26 @@ the account or contracts), the stop and optionally force, check the order, then 
 Verified 2026-10-12: `npm run check`; the tab was checked in headless Chromium at 390 and
 1280 px with a SYNTHETIC chain and a mocked API. Not run against Alpaca.
 
+### Charts and live quotes (user, 2026-10-12)
+
+Branch `feat/chart-candles`.
+
+- **Candles.** `GET /api/candles?ticker=&date=` (`packages/market-data/src/candles.ts`):
+  the session's 1-minute bars with high and low, plus the stock's snapshot, whose last
+  trade moves the candle of the minute still forming. Two Alpaca requests, nothing cached.
+  On the site a chart has a Candles / vs SPY switch (remembered per device, Candles first)
+  in the position detail and, behind "Show the chart", in the Trade view. Today's candles
+  are read every 3 seconds while the page is visible.
+- **vs SPY chart** of today's session is read again every 30 seconds (it is a heavy
+  request); before it was read once.
+- **Option quotes** in the Trade view are read every 2 seconds for the open expiry; the
+  chosen strike stays chosen.
+- **Telegram entry post** has a line with what the whole position cost as % of the account
+  ("0.4% of the portfolio").
+
+Verified 2026-10-12: `npm run check`, `tests/candles.test.ts`; the chart was checked in
+headless Chromium with SYNTHETIC candles. Not run against Alpaca.
+
 ## Failure cases
 
 | Case                            | Behavior                                                                                        |
