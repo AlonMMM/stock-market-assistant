@@ -117,7 +117,6 @@ interface ChooseRequest {
 export interface PreviewRequest extends ChooseRequest {
   sizePct: number;
   stopPct?: number;
-  strike?: number;
 }
 
 export interface BuyRequest {
