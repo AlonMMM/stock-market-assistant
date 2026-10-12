@@ -283,8 +283,8 @@ export class TradeEngine {
             request.strike === undefined
               ? pickByDelta(candidates, targetDelta)
               : candidates.find(
-                    (q) => Math.abs(q.strike - request.strike!) < 1e-9,
-                  ) ?? null,
+                  (q) => Math.abs(q.strike - request.strike!) < 1e-9,
+                ) ?? null,
           candidates,
         };
       }),
