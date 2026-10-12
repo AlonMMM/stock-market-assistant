@@ -109,6 +109,8 @@ const body = (value: unknown) =>
 // No account data here: it only says the process is up.
 api.get("/health", async () => ({ ok: true }));
 api.post("/v1/preview", async (request) => service.preview(body(request.body)));
+api.post("/v1/check", async (request) => service.check(body(request.body)));
+api.get("/v1/chain", async (request) => service.chain(body(request.query)));
 api.post("/v1/buy", async (request) => service.buy(body(request.body)));
 api.post("/v1/sell", async (request) => service.sell(body(request.body)));
 api.post("/v1/stop", async (request) => service.stop(body(request.body)));

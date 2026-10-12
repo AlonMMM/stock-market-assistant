@@ -193,6 +193,7 @@ export default {
         {
           method: request.method,
           path,
+          query: new URL(request.url).searchParams,
           body,
           origin: new URL(request.url).origin,
           requestOrigin: request.headers.get("Origin"),

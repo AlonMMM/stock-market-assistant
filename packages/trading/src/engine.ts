@@ -236,6 +236,9 @@ export interface BuyPlan extends BuyBase {
   waitMs?: number;
 }
 
+// How far ahead the trade ticket offers expiries.
+const chainDays = 35;
+
 const addDays = (date: string, days: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000)
     .toISOString()
@@ -564,6 +567,135 @@ export class TradeEngine {
       defaultExpiry: this.defaultExpiry,
       buysToday: a.buysToday.length,
       rows,
+    };
+  }
+
+  /**
+   * One side of a stock's option chain for one expiry, for a person to pick
+   * a strike from (the site's trade ticket). Without an expiry: the nearest
+   * one, and the expiries of the coming weeks to choose from. `pick` is the
+   * strike a buy without a strike or delta would take.
+   */
+  async chainFor(request: {
+    underlying: string;
+    right: Right;
+    expiry?: string;
+  }) {
+    const underlying = request.underlying.toUpperCase();
+    const { right } = request;
+    const today = newYork(this.now()).date;
+    let expiries: string[] | undefined;
+    let expiry = request.expiry;
+    let quotes: OptionQuote[];
+    if (expiry === undefined) {
+      const all = await this.broker.chain(
+        underlying,
+        right,
+        today,
+        addDays(today, chainDays),
+      );
+      expiries = [...new Set(all.map((q) => q.expiry))].sort();
+      if (expiries.length === 0)
+        throw new TradeRefusal(
+          "options listed",
+          `the broker lists no ${right}s for ${underlying} in the next ${chainDays} days`,
+          "Check the ticker; not every stock has options.",
+        );
+      expiry = expiries[0]!;
+      quotes = all.filter((q) => q.expiry === expiry);
+    } else {
+      if (expiry < today)
+        throw new TradeRefusal(
+          "expiry",
+          `${expiry} is in the past; today is ${today} in New York`,
+        );
+      quotes = await this.broker.chain(underlying, right, expiry, expiry);
+      if (quotes.length === 0)
+        throw new TradeRefusal(
+          "expiry",
+          `no ${underlying} ${right}s expire on ${expiry}`,
+        );
+    }
+    const [low, high] = defaultDeltaRange;
+    const pick = pickByDelta(quotes, (low + high) / 2);
+    return {
+      paper: this.paper,
+      underlying,
+      right,
+      expiry,
+      ...(expiries ? { expiries } : {}),
+      pick: pick?.symbol ?? null,
+      maxSpreadPct: this.limits.maxSpreadRatio * 100,
+      quotes: quotes
+        .sort((a, b) => a.strike - b.strike)
+        .map((q) => {
+          const spread = spreadCheck(q);
+          return {
+            contract: q.symbol,
+            strike: q.strike,
+            bid: q.bid,
+            ask: q.ask,
+            mid: Number(spread.mid.toFixed(3)),
+            spreadPct: Number.isFinite(spread.ratio)
+              ? Number((spread.ratio * 100).toFixed(1))
+              : null,
+            delta: q.delta,
+          };
+        }),
+    };
+  }
+
+  /**
+   * What a buy of this exact contract would be now, with the result of every
+   * check. Sends nothing and records nothing.
+   */
+  async checkContract(request: {
+    contract: string;
+    sizePct?: number;
+    qty?: number;
+    stopPct?: number;
+    force?: boolean;
+  }) {
+    const stopPct = request.stopPct ?? defaultStopPct;
+    if (request.sizePct === undefined && request.qty === undefined)
+      throw new Error("Need a size: sizePct or qty");
+    const [quote, a] = await Promise.all([
+      this.broker.quote(request.contract.toUpperCase()),
+      this.account(),
+    ]);
+    const sized = this.assess(
+      a,
+      quote,
+      request.qty === undefined
+        ? { sizePct: request.sizePct! }
+        : { qty: request.qty },
+      stopPct,
+      undefined,
+      request.force,
+    );
+    const spread = spreadCheck(quote);
+    return {
+      paper: this.paper,
+      contract: quote.symbol,
+      equity: a.account.equity,
+      marketOpen: a.marketOpen,
+      bid: quote.bid,
+      ask: quote.ask,
+      mid: Number(spread.mid.toFixed(3)),
+      delta: quote.delta,
+      ceiling: sized.ceiling,
+      qty: sized.qty,
+      maxCost: Number(sized.cost.toFixed(2)),
+      sizePct: sized.sizePct,
+      stopPct,
+      stopAtCeiling:
+        stopPct > 0 && stopPct <= this.limits.maxStopPct && sized.ceiling > 0
+          ? stopPrice(sized.ceiling, stopPct)
+          : null,
+      wouldBuy: sized.verdict.ok,
+      checks: sized.verdict.checks,
+      refused: sized.verdict.refused,
+      notes: sized.verdict.notes,
     };
   }
 
