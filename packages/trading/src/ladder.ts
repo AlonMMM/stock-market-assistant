@@ -13,6 +13,9 @@ export interface LadderOptions {
   // An order already at the broker (sent while the market was closed): it is
   // raised from its own price, and no new order is sent.
   existing?: Order;
+  // Bid the ask from the first order on, and follow it up, instead of
+  // starting at the mid (user 2026-10-12: a paper account fills at the ask).
+  atAsk?: boolean;
   // A forced buy: the spread is not checked, before sending or while raising.
   anySpread?: boolean;
   sleep?: (ms: number) => Promise<void>;
@@ -109,7 +112,10 @@ export async function buyWithLadder(
         spreadRatio: check.ratio,
         prices: [],
       };
-    price = Math.min(stepPrice(quote, 0, steps), cap);
+    price = Math.min(
+      options.atAsk ? quote.ask : stepPrice(quote, 0, steps),
+      cap,
+    );
     if (!(price > 0) || price < roundToTick(check.mid, "down") - 1e-9)
       return {
         status: "rejected-budget",
@@ -137,7 +143,10 @@ export async function buyWithLadder(
       log(`spread ${(check.ratio * 100).toFixed(1)}% of mid; stopped raising`);
       break;
     }
-    const next = Math.min(stepPrice(quote, i, steps), cap);
+    const next = Math.min(
+      options.atAsk ? quote.ask : stepPrice(quote, i, steps),
+      cap,
+    );
     if (next <= price + 1e-9) continue;
     try {
       order = await client.replace(order.id, next);

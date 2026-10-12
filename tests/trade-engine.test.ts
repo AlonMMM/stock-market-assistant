@@ -36,6 +36,7 @@ function setup(telegram = true) {
     : new NoNotifier();
   const clock = { now: monday };
   const engine = new TradeEngine({
+    buyAtAsk: false,
     broker,
     notifier,
     posts: new MemoryPostStore(),
@@ -220,6 +221,7 @@ test("engine buy off hours: the order waits, is worked at the open, and the post
   broker.fillAt.set(friday, 5); // nobody sells while the market is closed
   let sleeps = 0;
   const waitingEngine = new TradeEngine({
+    buyAtAsk: false,
     broker,
     notifier: new TelegramNotifier({
       send: async (html) => {
@@ -288,6 +290,7 @@ test("engine buy: the kill switch refuses buys; sells still work", async () => {
   const { broker, engine } = setup();
   await engine.buy({ contract: friday, sizePct: 0.5 });
   const off = new TradeEngine({
+    buyAtAsk: false,
     broker,
     notifier: new NoNotifier(),
     posts: new MemoryPostStore(),
@@ -357,4 +360,36 @@ test("engine short check: a short position is alerted", async () => {
   assert.equal(out.problems.length, 1);
   assert.equal(out.alert?.ok, true);
   assert.match(sent[0]!.html, /SHORT OPTION RISK \(paper\)<\/b>\nSHORT NVDA/);
+});
+
+test("paper account: a buy is sent at the ask at once and sized at the ask", async () => {
+  const broker = new SimBroker(100_000);
+  broker.setQuote(friday, 1.0, 1.04, 0.12);
+  const lines: string[] = [];
+  // No `buyAtAsk` given: a paper account buys at the ask by default.
+  const engine = new TradeEngine({
+    broker,
+    notifier: new NoNotifier(),
+    posts: new MemoryPostStore(),
+    buys: new MemoryBuyLog(),
+    now: () => monday,
+    sleep: async () => {},
+    log: (line) => lines.push(line),
+  });
+  const preview = await engine.preview({
+    underlying: "NVDA",
+    right: "call",
+    sizePct: 0.5,
+  });
+  const row = preview.rows.at(-1)!;
+  assert.ok("ceiling" in row);
+  // $500 at 1.04 a contract is four contracts.
+  assert.deepEqual([row.ceiling, row.qty, row.maxCost], [1.04, 4, 416]);
+  const out = await engine.buy({ contract: friday, sizePct: 0.5 });
+  assert.ok("result" in out);
+  assert.equal(out.result.status, "filled");
+  assert.deepEqual(out.result.prices, [1.04]);
+  assert.equal(out.result.order?.filledAvgPrice, 1.04);
+  assert.match(lines[0]!, /^sent 4 @ 1\.04 /);
+  assert.deepEqual([out.stop?.price, out.stop?.qty], [0.63, 4]);
 });

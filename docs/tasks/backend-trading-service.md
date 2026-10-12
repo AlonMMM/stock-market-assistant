@@ -524,6 +524,15 @@ Branch `feat/order-controls`. Owner only, through the same site route.
 Verified 2026-10-12: `npm run check`. Not run against Alpaca; in particular that Alpaca's
 `replaced_by` chain carries fills as assumed is untested.
 
+### Paper account buys at the ask (user, 2026-10-12)
+
+Branch `feat/buy-at-ask`. On a paper account a buy is sent at the ask at once, not at the
+mid: the paper account fills a buy only at the ask, so the raises from the mid only cost
+time. The order follows the ask up while it stays within the order's size; the contracts
+are sized at the ask. An off-hours order is sent at the last ask. `EngineOptions.buyAtAsk`
+defaults to the broker being a paper account; for any other account the mid-to-85% flow of
+`backend-option-orders.md` is unchanged. Selling is unchanged (at the bid).
+
 ## Failure cases
 
 | Case                            | Behavior                                                                                        |

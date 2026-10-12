@@ -24,6 +24,7 @@ function setup(store = new TradeStore(":memory:"), broker = new SimBroker()) {
   });
   const clock = { now: monday };
   const engine = new TradeEngine({
+    buyAtAsk: false,
     broker,
     notifier,
     posts: store.posts("owner"),
@@ -266,6 +267,7 @@ test("service off hours: the order waits at the broker and can be canceled", asy
   let release: (() => void) | undefined;
   const sleep = () => new Promise<void>((r) => (release = r));
   const engine = new TradeEngine({
+    buyAtAsk: false,
     broker,
     notifier,
     posts: store.posts("owner"),

@@ -124,6 +124,7 @@ export interface ExplainParts {
     stopPct?: number;
   };
   defaultExpiry: string;
+  atAsk?: boolean; // bought at the ask at once, not raised from the mid
   quote: OptionQuote;
   // Present when the engine picked the contract.
   chosen?: {
@@ -232,7 +233,9 @@ export function explainBuy(p: ExplainParts): BuyExplanation {
       mid: Number(mid.toFixed(3)),
       spreadPct: mid > 0 ? r2(((quote.ask - quote.bid) / mid) * 100) : 0,
       ceiling: p.ceiling,
-      rule: `The order starts at the mid and is raised at most to ${Math.round(ceilingFraction * 100)}% of the way from the mid to the ask, rounded down to a tick: ${p.ceiling.toFixed(2)}.`,
+      rule: p.atAsk
+        ? `The order is sent at the ask, ${p.ceiling.toFixed(2)}, and follows the ask up while it stays within the size.`
+        : `The order starts at the mid and is raised at most to ${Math.round(ceilingFraction * 100)}% of the way from the mid to the ask, rounded down to a tick: ${p.ceiling.toFixed(2)}.`,
     },
     sizing: {
       equity: r2(p.equity),

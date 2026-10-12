@@ -152,6 +152,10 @@ export interface EngineOptions {
   // The expiry bought when a command names none: the nearest one. The
   // coming Friday's only when the command says so (user 2026-10-11).
   defaultExpiry?: "nearest" | "friday";
+  // Buy at the ask at once instead of starting at the mid and raising. On by
+  // default for a paper account, which fills a buy only at the ask (user
+  // 2026-10-12); off for any other.
+  buyAtAsk?: boolean;
   log?: (line: string) => void;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -259,6 +263,7 @@ export class TradeEngine {
   private readonly riskRules: RiskRules;
   private readonly enabled: boolean;
   private readonly defaultExpiry: "nearest" | "friday";
+  private readonly buyAtAsk: boolean;
   private readonly log: (line: string) => void;
   private readonly now: () => number;
   private readonly sleep?: (ms: number) => Promise<void>;
@@ -273,6 +278,7 @@ export class TradeEngine {
     this.riskRules = options.riskRules ?? defaultRiskRules;
     this.enabled = options.enabled ?? true;
     this.defaultExpiry = options.defaultExpiry ?? "nearest";
+    this.buyAtAsk = options.buyAtAsk ?? options.broker.capabilities.paper;
     this.log = options.log ?? (() => {});
     this.now = options.now ?? Date.now;
     this.sleep = options.sleep;
@@ -435,7 +441,10 @@ export class TradeEngine {
     deltaRange?: readonly [number, number],
     force = false,
   ) {
-    const ceiling = ceilingPrice(quote);
+    // The most one contract can cost: the ask itself when buying at the ask.
+    const ceiling = this.buyAtAsk
+      ? roundToTick(quote.ask, "down")
+      : ceilingPrice(quote);
     const { equity } = a.account;
     // An exact number of contracts is measured as the share it costs.
     const exact =
@@ -801,6 +810,7 @@ export class TradeEngine {
         paper: this.paper,
         request: { ...request, sizePct: sized.sizePct },
         defaultExpiry: this.defaultExpiry,
+        atAsk: this.buyAtAsk,
         quote,
         ...(picked ? { chosen: picked } : {}),
         equity: a.account.equity,
@@ -1006,6 +1016,7 @@ export class TradeEngine {
       const result = await buyWithLadder(this.broker, symbol, qty, {
         ...(waiting ? { existing: waiting } : {}),
         ...(plan.force ? { anySpread: true } : {}),
+        ...(this.buyAtAsk ? { atAsk: true } : {}),
         ...(request.steps === undefined ? {} : { steps: request.steps }),
         ...(request.intervalMs === undefined
           ? {}
@@ -1125,7 +1136,7 @@ export class TradeEngine {
     const quote = await this.broker.quote(symbol);
     const spread = spreadCheck(quote);
     const price = Math.min(
-      stepPrice(quote, 0, 5),
+      this.buyAtAsk ? quote.ask : stepPrice(quote, 0, 5),
       roundToTick(budget / (qty * 100), "down"),
     );
     let order = await this.broker.buyLimit(symbol, qty, price);
