@@ -317,3 +317,48 @@ test("trade ticket: the chain of one expiry, and a check that sends and records 
   assert.equal((await service.status()).limits.buysToday, 0);
   assert.equal(store.recentDecisions("owner", 10).length, 0);
 });
+
+test("adding: the stop comes off for the buy and goes back at its old price", async () => {
+  const { service, broker, clock } = setup();
+  await service.buy({ underlying: "NVDA", right: "call", sizePct: 0.5 });
+  await service.idle();
+  // The broker refuses a buy while the position's stop is open.
+  await assert.rejects(broker.buyLimit(friday, 1, 1.0), /wash trade/);
+  clock.now += 5 * 60_000;
+  // The price moved up: the addition is bought higher than the first lot.
+  broker.setQuote(friday, 1.5, 1.56, 0.2);
+  broker.fillAt.set(friday, 1.54);
+  const added = await service.resize({ contract: friday, qty: 6 });
+  assert.equal(added.status, "started");
+  await service.idle();
+  assert.equal((await broker.position(friday)).qty, 6);
+  const stops = (await broker.openOrders(friday))
+    .filter((o) => o.stopPrice !== null)
+    .map((o) => [o.qty, o.stopPrice])
+    .sort();
+  // The first four keep their stop; the two new ones get their own.
+  assert.deepEqual(stops, [
+    [2, 0.93],
+    [4, 0.62],
+  ]);
+  // A buy that fills nothing still leaves the old stop in place.
+  clock.now += 5 * 60_000;
+  broker.fillAt.set(friday, 9);
+  await service.resize({ contract: friday, qty: 7 });
+  await service.idle();
+  assert.equal((await broker.position(friday)).qty, 6);
+  assert.equal(
+    (await broker.openOrders(friday))
+      .filter((o) => o.stopPrice !== null)
+      .reduce((sum, o) => sum + o.qty, 0),
+    6,
+  );
+  assert.deepEqual((await service.status()).shortRisks, []);
+  // Off hours the order would wait with the stop off: refused.
+  broker.isOpen = false;
+  clock.now += 5 * 60_000;
+  const closed = await service.resize({ contract: friday, qty: 7 });
+  assert.equal(closed.status, "refused");
+  assert.ok("refused" in closed);
+  assert.match(closed.refused[0]!, /^adding off hours: /);
+});
