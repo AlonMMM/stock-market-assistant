@@ -46,7 +46,8 @@ import {
 import { TelegramSender } from "../../../packages/notifications/src/telegram.js";
 
 const portfolio = new PortfolioCache();
-import { verifyAccess } from "./access.js";
+import { handleControl } from "../../../packages/trading/src/control-api.js";
+import { verifyAccess, type AccessIdentity } from "./access.js";
 
 declare const __STATIC_ASSETS__: Record<
   string,
@@ -144,14 +145,19 @@ export default {
       // The trading service and its read-only token, for the Orders tab.
       TRADER_URL?: string;
       TRADER_READ_TOKEN?: string;
+      // Position controls on the Portfolio page: the one email that may use
+      // them, and the trading service's full token. Both unset: no controls.
+      TRADE_OWNER_EMAIL?: string;
+      TRADER_TOKEN?: string;
     } = {},
   ): Promise<Response> {
     // Access protection is enabled by configuration; without both values the
     // Worker stays open (local tests, the owner-private Sites publication).
+    let identity: AccessIdentity | null = null;
     if (env.ACCESS_TEAM_DOMAIN || env.ACCESS_AUD) {
       if (!env.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUD)
         return new Response("Access is misconfigured", { status: 500 });
-      const identity = await verifyAccess(request, {
+      identity = await verifyAccess(request, {
         teamDomain: env.ACCESS_TEAM_DOMAIN.replace(/\/+$/, ""),
         audience: env.ACCESS_AUD,
       }).catch(() => null);
@@ -159,6 +165,44 @@ export default {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
     const path = new URL(request.url).pathname;
+    if (path.startsWith("/api/portfolio/control")) {
+      let body: unknown;
+      if (request.method === "POST")
+        try {
+          const text = await request.text();
+          if (text.length > 4096)
+            return Response.json(
+              { error: "Request too large" },
+              { status: 413 },
+            );
+          body = JSON.parse(text);
+        } catch {
+          return Response.json(
+            { error: "Expected JSON object" },
+            { status: 400 },
+          );
+        }
+      // Without the site's sign-in nobody is verified, so nobody may trade.
+      const result = await handleControl(
+        {
+          owner: env.TRADE_OWNER_EMAIL,
+          url: env.TRADER_URL,
+          token: env.TRADER_TOKEN,
+        },
+        identity,
+        {
+          method: request.method,
+          path,
+          body,
+          origin: new URL(request.url).origin,
+          requestOrigin: request.headers.get("Origin"),
+        },
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
     if (path === "/api/backtest/symbols") {
       let body: unknown;
       if (request.method === "POST")

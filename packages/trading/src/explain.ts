@@ -118,6 +118,7 @@ export interface ExplainParts {
     underlying?: string;
     right?: string;
     sizePct: number;
+    qty?: number; // an exact number of contracts was asked for
     expiry?: string;
     delta?: number;
     stopPct?: number;
@@ -174,7 +175,10 @@ export function explainBuy(p: ExplainParts): BuyExplanation {
   inputs.push(
     {
       name: "Size",
-      value: `${request.sizePct}% of the account`,
+      value:
+        request.qty === undefined
+          ? `${request.sizePct}% of the account`
+          : `${request.qty} contract${request.qty === 1 ? "" : "s"}, ${r2(request.sizePct)}% of the account`,
       source: "command",
     },
     {
@@ -237,9 +241,11 @@ export function explainBuy(p: ExplainParts): BuyExplanation {
       qty: p.qty,
       maxCost: r2(p.cost),
       rule:
-        p.qty > 0
-          ? `${request.sizePct}% of ${Math.round(p.equity).toLocaleString("en-US")} is ${r2(p.budget)}. One contract costs at most ${p.ceiling.toFixed(2)} × 100 = ${r2(p.ceiling * 100)}, so ${p.qty} whole contract${p.qty === 1 ? "" : "s"} fit${p.qty === 1 ? "s" : ""} (${r2(p.cost)}).`
-          : "No whole contract fits this size.",
+        request.qty !== undefined
+          ? `${request.qty} contract${request.qty === 1 ? "" : "s"} asked for. One costs at most ${p.ceiling.toFixed(2)} × 100 = ${r2(p.ceiling * 100)}, so the order costs at most ${r2(p.cost)}: ${r2(request.sizePct)}% of ${Math.round(p.equity).toLocaleString("en-US")}.`
+          : p.qty > 0
+            ? `${request.sizePct}% of ${Math.round(p.equity).toLocaleString("en-US")} is ${r2(p.budget)}. One contract costs at most ${p.ceiling.toFixed(2)} × 100 = ${r2(p.ceiling * 100)}, so ${p.qty} whole contract${p.qty === 1 ? "" : "s"} fit${p.qty === 1 ? "s" : ""} (${r2(p.cost)}).`
+            : "No whole contract fits this size.",
     },
     stop: {
       pct: p.stopPct,

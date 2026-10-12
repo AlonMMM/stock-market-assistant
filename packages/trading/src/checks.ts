@@ -29,6 +29,10 @@ export interface BuyLimits {
   // No new buy while equity is this far below the previous close
   // (user-confirmed 2026-10-11).
   maxDayLossPct: number;
+  // The most one position may cost, % of equity: what is held of the same
+  // stock and side, plus the new order (user 2026-10-12). A buy may add to an
+  // open position up to this.
+  maxPositionPct: number;
   // PROPOSED values below, not yet confirmed by the user.
   maxQuoteAgeMs: number;
   repeatMs: number; // a second buy of the same underlying and right
@@ -45,6 +49,7 @@ export const defaultBuyLimits: BuyLimits = {
   maxBuysPerDay: 10,
   maxOpenRiskPct: 10,
   maxDayLossPct: 5,
+  maxPositionPct: 5,
   maxQuoteAgeMs: 120_000,
   repeatMs: 60_000,
   lastMinutes: 15,
@@ -76,12 +81,16 @@ export interface BuyContext {
   positions: HeldPosition[];
   // Earlier buys of this trading day that filled or are still working.
   buysToday: { symbol: string; at: number }[];
+  // Open buy orders: what they can still fill counts toward a position.
+  working?: { symbol: string; qty: number; price: number }[];
   order: {
     quote: OptionQuote;
     qty: number;
     ceiling: number; // the most one contract can cost
     sizePct: number;
     stopPct: number;
+    // A forced buy: the spread is not checked (user 2026-10-12).
+    force?: boolean;
     // Set when the strike was picked from a range and not from a target.
     deltaRange?: readonly [number, number];
   };
@@ -190,6 +199,29 @@ export function checkBuy(
     );
   }
   const cost = ceiling * qty * 100;
+  // One position is every contract of the same stock and side.
+  const sameSide = (symbol: string) => {
+    const other = parseOccSymbol(symbol);
+    return (
+      other.underlying === contract.underlying && other.right === contract.right
+    );
+  };
+  const heldCost =
+    c.positions
+      .filter((p) => p.qty > 0 && sameSide(p.symbol))
+      .reduce((sum, p) => sum + p.qty * p.avgEntryPrice * 100, 0) +
+    (c.working ?? [])
+      .filter((o) => sameSide(o.symbol))
+      .reduce((sum, o) => sum + o.qty * o.price * 100, 0);
+  const positionLimit = (c.equity * limits.maxPositionPct) / 100;
+  const side = `${contract.underlying} ${contract.right}s`;
+  add(
+    "position size",
+    heldCost + cost <= positionLimit + 1e-9,
+    heldCost === 0
+      ? `${money(cost)} in ${side}, at most ${limits.maxPositionPct}% of the account, ${money(positionLimit)}`
+      : `${money(heldCost)} already in ${side} plus ${money(cost)} is ${pct(c.equity > 0 ? ((heldCost + cost) / c.equity) * 100 : 0)} of the account; one position may be at most ${limits.maxPositionPct}%, ${money(positionLimit)}, so ${money(Math.max(positionLimit - heldCost, 0))} more fits`,
+  );
   add(
     "buying power",
     cost <= c.buyingPower + 1e-9,
@@ -244,11 +276,16 @@ export function checkBuy(
         : `${Math.max(0, Math.round(age / 1000))} s old, at most ${limits.maxQuoteAgeMs / 1000} s`,
   );
   const spread = spreadCheck(quote);
+  const spreadOk = usable && spread.ratio <= limits.maxSpreadRatio + 1e-9;
   add(
     "spread",
-    usable && spread.ratio <= limits.maxSpreadRatio + 1e-9,
-    `${pct(spread.ratio * 100)} of the mid, at most ${pct(limits.maxSpreadRatio * 100)}`,
+    spreadOk || c.order.force === true,
+    `${pct(spread.ratio * 100)} of the mid, at most ${pct(limits.maxSpreadRatio * 100)}${c.order.force && !spreadOk ? "; not checked, the buy is forced" : ""}`,
   );
+  if (c.order.force && !spreadOk)
+    notes.push(
+      `forced: the spread is ${pct(spread.ratio * 100)} of the mid, above the ${pct(limits.maxSpreadRatio * 100)} limit, and was not checked`,
+    );
   if (c.order.deltaRange) {
     const [low, high] = c.order.deltaRange;
     const d = quote.delta === null ? null : Math.abs(quote.delta);

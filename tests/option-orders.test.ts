@@ -87,10 +87,10 @@ test("picks the delta closest to the target, puts by magnitude", () => {
   assert.equal(pickByDelta([], 0.1), null);
 });
 
-test("spread check: more than 10% of the mid fails", () => {
-  assert.equal(spreadCheck({ bid: 1.0, ask: 1.1 }).ok, true); // 9.5%
-  assert.equal(spreadCheck({ bid: 0.95, ask: 1.05 }).ok, true); // exactly 10%
-  assert.equal(spreadCheck({ bid: 0.9, ask: 1.1 }).ok, false); // 20%
+test("spread check: more than 25% of the mid fails", () => {
+  assert.equal(spreadCheck({ bid: 0.9, ask: 1.1 }).ok, true); // 20%
+  assert.equal(spreadCheck({ bid: 0.875, ask: 1.125 }).ok, true); // exactly 25%
+  assert.equal(spreadCheck({ bid: 0.85, ask: 1.15 }).ok, false); // 30%
   assert.equal(spreadCheck({ bid: 0, ask: 0.05 }).ok, false); // no bid
 });
 
@@ -168,10 +168,17 @@ function fakeClient(quotes: Array<[number, number]>, fillAt: number | null) {
 const fast = { sleep: async () => {}, steps: 5 };
 
 test("ladder: does not send when the spread is too wide", async () => {
-  const { client, calls } = fakeClient([[0.9, 1.1]], null);
+  const { client, calls } = fakeClient([[0.8, 1.2]], null);
   const result = await buyWithLadder(client, symbol, 3, fast);
   assert.equal(result.status, "rejected-spread");
   assert.deepEqual(calls, []);
+  // A forced buy is sent whatever the spread is.
+  const forced = await buyWithLadder(client, symbol, 3, {
+    ...fast,
+    anySpread: true,
+  });
+  assert.notEqual(forced.status, "rejected-spread");
+  assert.equal(calls[0], "buy 3 @ 1");
 });
 
 test("ladder: raises until filled", async () => {

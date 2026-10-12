@@ -46,6 +46,51 @@ import { shortRisks, uncovered } from "./safety.js";
 // service both run it, so they cannot behave differently. The rules it applies
 // are in docs/tasks/backend-option-orders.md.
 
+/**
+ * A buy that cannot be made, for a reason the user can act on. Nothing was
+ * sent. `check` names what failed, like the checks of `checkBuy`; `hint` says
+ * what would work instead.
+ */
+export class TradeRefusal extends Error {
+  constructor(
+    readonly check: string,
+    readonly detail: string,
+    readonly hint?: string,
+  ) {
+    super(`${check}: ${detail}`);
+  }
+}
+
+/** Why no strike of one expiry could be picked by delta. */
+export function whyNoPick(
+  underlying: string,
+  right: Right,
+  expiry: string,
+  candidates: OptionQuote[],
+): { detail: string; hint: string } {
+  const kind = `${underlying} ${right}s expiring ${expiry}`;
+  const strikes = candidates.map((q) => q.strike).sort((a, b) => a - b);
+  const listed =
+    strikes.length > 0
+      ? `strikes ${strikes[0]} to ${strikes.at(-1)} are listed`
+      : "";
+  if (candidates.length === 0)
+    return {
+      detail: `no ${kind} are listed`,
+      hint: "Ask for another expiry, or check the ticker.",
+    };
+  const withDelta = candidates.filter((q) => q.delta !== null);
+  if (withDelta.length === 0)
+    return {
+      detail: `the broker published no delta for any of the ${candidates.length} ${kind}, so no strike can be picked by delta`,
+      hint: `Name the strike to buy without a delta (${listed}), or ask for another expiry. Deltas are often missing on the last day of a contract and while the market is closed.`,
+    };
+  return {
+    detail: `none of the ${withDelta.length} ${kind} that have a delta has an ask price`,
+    hint: `Nothing is offered for sale there right now. Name a strike (${listed}), or ask for another expiry.`,
+  };
+}
+
 /** Remembers the post of each open trade, so its exits are attached to it. */
 export interface PostStore {
   get(symbol: string): Promise<string | undefined>;
@@ -112,11 +157,13 @@ interface ChooseRequest {
   right: Right;
   delta?: number; // the target; without it, the middle of the default range
   strike?: number; // exact strike, which does not require a published delta
+  expiry?: string; // a date; it is offered next to the nearest and Friday's
 }
 
 export interface PreviewRequest extends ChooseRequest {
   sizePct: number;
   stopPct?: number;
+  force?: boolean;
 }
 
 export interface BuyRequest {
@@ -128,8 +175,13 @@ export interface BuyRequest {
   strike?: number; // exact strike, even when the broker has no delta
   // "nearest", "friday" or a date; the engine's default when absent.
   expiry?: string;
-  sizePct: number;
+  // Size as % of equity; or `qty`, an exact number of contracts, which is
+  // then held to the same limits.
+  sizePct?: number;
+  qty?: number;
   stopPct?: number;
+  // Buy whatever the spread is (user 2026-10-12). Every other check applies.
+  force?: boolean;
   steps?: number;
   intervalMs?: number;
   waitMs?: number; // how long an unfilled order is watched, then canceled
@@ -178,6 +230,7 @@ export interface BuyPlan extends BuyBase {
   stopPct: number;
   record: BuyRecord;
   decision: Decision;
+  force?: boolean;
   steps?: number;
   intervalMs?: number;
   waitMs?: number;
@@ -248,14 +301,39 @@ export class TradeEngine {
         today,
         addDays(today, 21),
       );
-    const choices = expiryChoices(
-      quotes.map((q) => q.expiry),
-      today,
-    );
-    if (!choices) throw new Error(`No ${right}s listed for ${underlying}`);
-    const expiries = [...new Set([choices.nearest, choices.friday])].filter(
-      (e): e is string => e !== null,
-    );
+    // A named date is read on its own: it may be past the coming Friday.
+    const named =
+      request.expiry && /^\d{4}-\d{2}-\d{2}$/.test(request.expiry)
+        ? request.expiry
+        : undefined;
+    if (named !== undefined && named < today)
+      throw new TradeRefusal(
+        "expiry",
+        `${named} is in the past; today is ${today} in New York`,
+      );
+    if (named !== undefined && !quotes.some((q) => q.expiry === named))
+      quotes = [
+        ...quotes,
+        ...(await this.broker.chain(underlying, right, named, named)),
+      ];
+    const choices =
+      expiryChoices(
+        quotes.filter((q) => q.expiry !== named).map((q) => q.expiry),
+        today,
+      ) ??
+      expiryChoices(
+        quotes.map((q) => q.expiry),
+        today,
+      );
+    if (!choices)
+      throw new TradeRefusal(
+        "options listed",
+        `the broker lists no ${right}s for ${underlying} in the next 21 days`,
+        "Check the ticker; not every stock has options.",
+      );
+    const expiries = [
+      ...new Set([choices.nearest, choices.friday, named]),
+    ].filter((e): e is string => typeof e === "string");
     return {
       choices,
       // Only an automatically selected strike is held to the default range.
@@ -278,7 +356,9 @@ export class TradeEngine {
               ? "nearest = Friday"
               : expiry === choices.nearest
                 ? "nearest"
-                : "Friday",
+                : expiry === choices.friday
+                  ? "Friday"
+                  : "named",
           quote:
             request.strike === undefined
               ? pickByDelta(candidates, targetDelta)
@@ -304,6 +384,13 @@ export class TradeEngine {
         this.broker.equityHistory(),
         this.buys.list(day),
       ]);
+    const working = orders
+      .filter((o) => o.side === "buy" && o.limitPrice !== null)
+      .map((o) => ({
+        symbol: o.symbol,
+        qty: o.qty - o.filledQty,
+        price: o.limitPrice!,
+      }));
     const held: HeldPosition[] = positions.map((p) => {
       const stops = orders.filter(
         (o) =>
@@ -322,6 +409,7 @@ export class TradeEngine {
       account,
       marketOpen,
       held,
+      working,
       shortRisks: shortRisks(positions, orders),
       // Closes before today; today is measured by the day's loss.
       history: history.filter((d) => d.date < day),
@@ -334,17 +422,28 @@ export class TradeEngine {
   private assess(
     a: Awaited<ReturnType<TradeEngine["account"]>>,
     quote: OptionQuote,
-    sizePct: number,
+    size: { sizePct?: number; qty?: number },
     stopPct: number,
     deltaRange?: readonly [number, number],
+    force = false,
   ) {
     const ceiling = ceilingPrice(quote);
-    const sized =
-      sizePct > 0 &&
-      sizePct <= this.limits.maxSizePct &&
-      ceiling > 0 &&
-      a.account.equity > 0
-        ? sizeContracts(a.account.equity, sizePct, ceiling)
+    const { equity } = a.account;
+    // An exact number of contracts is measured as the share it costs.
+    const exact =
+      size.qty !== undefined && ceiling > 0 && equity > 0
+        ? { qty: size.qty, cost: size.qty * ceiling * 100 }
+        : null;
+    const sizePct = exact
+      ? Number(((exact.cost / equity) * 100).toFixed(4))
+      : (size.sizePct ?? 0);
+    const sized = exact
+      ? { ...exact, budget: exact.cost }
+      : sizePct > 0 &&
+          sizePct <= this.limits.maxSizePct &&
+          ceiling > 0 &&
+          equity > 0
+        ? sizeContracts(equity, sizePct, ceiling)
         : { qty: 0, cost: 0, budget: 0 };
     const daysToExpiry = Math.round(
       (Date.parse(`${quote.expiry}T00:00:00Z`) -
@@ -373,19 +472,21 @@ export class TradeEngine {
         buyingPower: a.account.buyingPower,
         positions: a.held,
         buysToday: a.buysToday,
+        working: a.working,
         order: {
           quote,
           qty: sized.qty,
           ceiling,
           sizePct,
           stopPct,
+          ...(force ? { force } : {}),
           ...(deltaRange ? { deltaRange } : {}),
         },
         risk,
       },
       this.limits,
     );
-    return { ceiling, ...sized, verdict, risk, daysToExpiry };
+    return { ceiling, ...sized, sizePct, verdict, risk, daysToExpiry };
   }
 
   /**
@@ -398,22 +499,29 @@ export class TradeEngine {
       this.choose(request),
       this.account(),
     ]);
-    const rows = chosen.rows.map(({ expiry, label, quote: q }) => {
-      if (!q)
-        return {
+    const rows = chosen.rows.map(({ expiry, label, quote: q, candidates }) => {
+      if (!q) {
+        if (request.strike !== undefined)
+          return {
+            expiry,
+            error: `no contract at strike ${request.strike}; offered strikes: ${candidates.map((c) => c.strike).join(", ") || "none"}`,
+          };
+        const why = whyNoPick(
+          request.underlying.toUpperCase(),
+          request.right,
           expiry,
-          error:
-            request.strike === undefined
-              ? "no quote with a delta"
-              : `no contract at strike ${request.strike}`,
-        };
+          candidates,
+        );
+        return { expiry, error: why.detail, hint: why.hint };
+      }
       const spread = spreadCheck(q);
       const size = this.assess(
         a,
         q,
-        request.sizePct,
+        { sizePct: request.sizePct },
         stopPct,
         chosen.deltaRange,
+        request.force,
       );
       const [low, high] = defaultDeltaRange;
       return {
@@ -489,6 +597,7 @@ export class TradeEngine {
         right: request.right,
         ...(request.delta === undefined ? {} : { delta: request.delta }),
         ...(request.strike === undefined ? {} : { strike: request.strike }),
+        ...(request.expiry === undefined ? {} : { expiry: request.expiry }),
       });
       const want = request.expiry ?? this.defaultExpiry;
       const expiry =
@@ -503,9 +612,24 @@ export class TradeEngine {
           throw new Error(
             `No contract at strike ${request.strike} for ${request.underlying.toUpperCase()} ${request.right} expiring ${expiry ?? want}; offered strikes: ${(row?.candidates ?? []).map((q) => q.strike).join(", ") || "none"}`,
           );
-        throw new Error(
-          `No ${request.right} to buy for ${request.underlying.toUpperCase()} expiring ${expiry ?? want}; offered: ${chosen.rows.map((r) => r.expiry).join(", ")}`,
+        if (!row || row.candidates.length === 0)
+          throw new TradeRefusal(
+            "expiry",
+            want === "friday"
+              ? `no ${request.underlying.toUpperCase()} ${request.right}s expire by the coming Friday`
+              : `no ${request.underlying.toUpperCase()} ${request.right}s expire on ${want}`,
+            `Offered: ${chosen.rows
+              .filter((r) => r.candidates.length > 0)
+              .map((r) => `${r.expiry} (${r.label})`)
+              .join(", ")}.`,
+          );
+        const why = whyNoPick(
+          request.underlying.toUpperCase(),
+          request.right,
+          row.expiry,
+          row.candidates,
         );
+        throw new TradeRefusal("delta", why.detail, why.hint);
       }
       quote = row.quote;
       deltaRange = chosen.deltaRange;
@@ -517,7 +641,18 @@ export class TradeEngine {
     }
     const symbol = quote.symbol;
     const a = await this.account();
-    const sized = this.assess(a, quote, request.sizePct, stopPct, deltaRange);
+    if (request.sizePct === undefined && request.qty === undefined)
+      throw new Error("Need a size: sizePct or qty");
+    const sized = this.assess(
+      a,
+      quote,
+      request.qty === undefined
+        ? { sizePct: request.sizePct! }
+        : { qty: request.qty },
+      stopPct,
+      deltaRange,
+      request.force,
+    );
     const { qty, budget, verdict } = sized;
     const decision: Decision = {
       id: `${a.now}-${symbol}`,
@@ -527,7 +662,7 @@ export class TradeEngine {
       explanation: explainBuy({
         now: a.now,
         paper: this.paper,
-        request,
+        request: { ...request, sizePct: sized.sizePct },
         defaultExpiry: this.defaultExpiry,
         quote,
         ...(picked ? { chosen: picked } : {}),
@@ -575,6 +710,7 @@ export class TradeEngine {
       decision,
       offHours: !a.marketOpen,
       notes: verdict.notes,
+      ...(request.force ? { force: true } : {}),
       ...(request.steps === undefined ? {} : { steps: request.steps }),
       ...(request.intervalMs === undefined
         ? {}
@@ -658,6 +794,7 @@ export class TradeEngine {
       progress({ stage: "raising the price" });
       const result = await buyWithLadder(this.broker, symbol, qty, {
         ...(waiting ? { existing: waiting } : {}),
+        ...(plan.force ? { anySpread: true } : {}),
         ...(request.steps === undefined ? {} : { steps: request.steps }),
         ...(request.intervalMs === undefined
           ? {}
@@ -703,16 +840,34 @@ export class TradeEngine {
         ...(plan.offHours ? { offHours: true } : {}),
       };
       if (!filled) return outcome;
+      // A buy that adds to an open trade is posted under that trade's post.
+      // A post left by a trade that is gone (more is not held than this
+      // order bought) is not one.
+      const known = await this.posts.get(symbol);
+      const total = known
+        ? await this.broker
+            .position(symbol)
+            .then((p) => p.qty)
+            .catch(() => null)
+        : null;
+      const earlier =
+        known && total !== null && total > order.filledQty ? known : undefined;
+      const notes = [
+        ...(plan.offHours ? ["Ordered off hours"] : []),
+        ...(earlier ? [`Added to the position, ${total} held now`] : []),
+      ];
       const post = await this.notifier.entry(
         {
           symbol,
           paper: this.paper,
           stop,
-          ...(plan.offHours ? { note: "Ordered off hours" } : {}),
+          ...(notes.length > 0 ? { note: notes.join(". ") } : {}),
         },
         final,
+        earlier,
       );
-      if (post.ok && post.ref) await this.posts.set(symbol, post.ref);
+      if (post.ok && post.ref && !earlier)
+        await this.posts.set(symbol, post.ref);
       return { ...outcome, post };
     }
   }
@@ -877,6 +1032,7 @@ export class TradeEngine {
           equity > 0 ? Number(((risk / equity) * 100).toFixed(2)) : null,
         maxOpenRiskPct: this.limits.maxOpenRiskPct,
         maxDayLossPct: this.limits.maxDayLossPct,
+        maxPositionPct: this.limits.maxPositionPct,
         riskManager: {
           state: state.state,
           reason: state.reason,

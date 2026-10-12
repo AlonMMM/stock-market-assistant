@@ -2884,3 +2884,351 @@ dialog.why::backdrop {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* Portfolio → Live trades: the account line and the position list. */
+.account {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #cdd7ce;
+  border-radius: 12px;
+  background: #fafbf8;
+}
+.account-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+}
+.account-label {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: #526461;
+}
+.account-main strong {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.account-day {
+  font-size: 15px;
+  font-weight: 600;
+}
+.account-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 14px;
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px solid #dfe6dd;
+}
+.account-stats dt {
+  font-size: 12px;
+  color: #526461;
+}
+.account-stats dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.pos-list {
+  border: 1px solid #cdd7ce;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+.pos-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pos-head,
+.pos-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.15fr) repeat(
+      2,
+      minmax(0, 1fr)
+    );
+  gap: 10px;
+  padding: 0 14px;
+}
+.pos-head {
+  padding-block: 8px;
+  background: #eef2ea;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #526461;
+}
+.pos-head span:not(:first-child),
+.pos-cell {
+  text-align: right;
+}
+.pos + .pos {
+  border-top: 1px solid #e3e9e1;
+}
+.pos-row {
+  width: 100%;
+  min-height: 60px;
+  padding-block: 10px;
+  align-items: center;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 15px;
+  transition: background-color 120ms ease-out;
+}
+.pos-row:hover,
+.pos.open > .pos-row {
+  background: #f4f7f1;
+}
+.pos-row:focus-visible {
+  outline-offset: -3px;
+}
+.pos-name,
+.pos-cell {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.pos-name strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  font-weight: 700;
+}
+.pos-side {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pos-side.call {
+  color: #15803d;
+}
+.pos-side.put {
+  color: #b91c1c;
+}
+.pos-sub {
+  font-size: 12px;
+  font-weight: 400;
+  color: #526461;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pos-head span {
+  white-space: nowrap;
+}
+.pos-sub.warn {
+  color: #8a4b06;
+  font-weight: 600;
+}
+.pos-pnl > .num:first-of-type {
+  font-weight: 650;
+}
+.pos-pnl.up .pos-sub {
+  color: #15803d;
+}
+.pos-pnl.down .pos-sub {
+  color: #b91c1c;
+}
+.pos-detail {
+  display: grid;
+  gap: 14px;
+  padding: 4px 14px 16px;
+  background: #f4f7f1;
+}
+.pos-detail .day-chart {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #cdd7ce;
+  border-radius: 10px;
+  background: #fafbf8;
+  min-width: 0;
+}
+.pos-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+}
+.pos-facts dt {
+  font-size: 12px;
+  color: #526461;
+}
+.pos-facts dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.pos-stop {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0 10px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #cdd7ce;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.pos-stop.missing,
+.pos-stop em {
+  color: #7a4307;
+  font-style: normal;
+  font-weight: 600;
+}
+.pos-stop.missing {
+  border-color: #e8c98f;
+  background: #fbefd9;
+}
+.pos-controls {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #cdd7ce;
+  border-radius: 10px;
+  background: #fff;
+}
+.pos-size {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.pos-size-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.stepper {
+  display: inline-grid;
+  grid-template-columns: 44px 64px 44px;
+  border: 1px solid #cdd7ce;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.stepper button,
+.stepper input {
+  height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: #fafbf8;
+  font: inherit;
+  font-size: 17px;
+  color: #142b29;
+  text-align: center;
+}
+.stepper input {
+  width: 100%;
+  border-inline: 1px solid #cdd7ce;
+  background: #fff;
+  font-weight: 650;
+}
+.stepper button:hover:not(:disabled),
+.pos-quick button:hover:not(:disabled),
+.pos-cancel:hover {
+  background: #eef1ea;
+}
+.stepper :focus-visible {
+  outline-offset: -3px;
+}
+.pos-controls button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.pos-quick {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.pos-quick button,
+.pos-cancel {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid #cdd7ce;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+.pos-go {
+  min-height: 46px;
+  padding: 0 18px;
+  background: #142b29;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 650;
+}
+.pos-go.sell {
+  background: #9f1a1a;
+}
+.pos-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.pos-confirm span {
+  flex: 1 1 100%;
+}
+.pos-confirm button {
+  flex: 1;
+}
+.pos-run {
+  min-height: 18px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #526461;
+}
+.pos-run > span {
+  display: grid;
+  gap: 2px;
+  color: #142b29;
+}
+.pos-run .pos-problem {
+  color: #8f1818;
+}
+.pos-why {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+@media (max-width: 560px) {
+  .account-main strong {
+    font-size: 26px;
+  }
+  .pos-head,
+  .pos-row {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.2fr) repeat(
+        2,
+        minmax(0, 0.95fr)
+      );
+    gap: 6px;
+    padding-inline: 10px;
+  }
+  .pos-row {
+    font-size: 14px;
+  }
+  .pos-sub {
+    font-size: 11px;
+  }
+  .pos-detail {
+    padding-inline: 10px;
+  }
+  .pos-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pos-quick {
+    margin-left: 0;
+  }
+  .pos-controls > .pos-go {
+    width: 100%;
+  }
+}
