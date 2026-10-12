@@ -8,11 +8,17 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 
 // Starts the collector and returns its base URL once it logs its address.
-async function start(env: Record<string, string>) {
+// `preload` is a module imported into the collector first, e.g. a fetch stub.
+async function start(env: Record<string, string>, preload?: string) {
   const dir = mkdtempSync(join(tmpdir(), "collector-"));
   const child = spawn(
     process.execPath,
-    ["--import", "tsx", "apps/collector/src/main.ts"],
+    [
+      ...(preload ? ["--import", preload] : []),
+      "--import",
+      "tsx",
+      "apps/collector/src/main.ts",
+    ],
     {
       env: {
         ...process.env,
@@ -218,6 +224,47 @@ test(
       assert.equal(status.muted, true);
     } finally {
       await telegram.close();
+    }
+  },
+);
+
+test(
+  "an Alpaca outage keeps the collector running and retrying",
+  { timeout: 15000 },
+  async () => {
+    const token = randomBytes(32).toString("hex");
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    };
+    const collector = await start(
+      {
+        ALPACA_ENABLED: "true",
+        ALPACA_API_KEY: "key",
+        ALPACA_API_SECRET: "secret",
+        COLLECTOR_TOKEN: token,
+      },
+      "./tests/offline-alpaca.mjs",
+    );
+    try {
+      const synced = await fetch(`${collector.url}/watchlist`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ name: "F", tickers: ["NVDA"] }),
+      });
+      assert.equal((await synced.json()).restarting, true);
+      // The stream starts after a 2 s pause; its warmup request then fails.
+      let health: { state: string; failure: string | null } | undefined;
+      for (let i = 0; i < 40 && health?.state !== "reconnecting"; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        health = await (
+          await fetch(`${collector.url}/health`, { headers })
+        ).json();
+      }
+      assert.equal(health?.state, "reconnecting");
+      assert.match(health?.failure ?? "", /fetch failed/);
+    } finally {
+      await collector.close();
     }
   },
 );

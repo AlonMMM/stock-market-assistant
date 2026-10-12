@@ -54,6 +54,12 @@ Set these on the existing collector service; never put real values in Git or cha
    timestamp/volume with Alpaca's dashboard or another view of the same feed.
 5. Expand to the 50-symbol watchlist and watch for rate-limit or stream entitlement errors.
 
+Alpaca drops the stream about once a day. The collector then shows state `reconnecting`
+with the error in `failure`, and starts the stream again after 5 s, doubling the wait after
+each failed attempt up to 5 minutes; today's missed bars are refetched on reconnect. It no
+longer exits on a drop: each exit used one of Railway's 10 restarts per deployment, and the
+11th drop left the service crashed (2026-10-12).
+
 Alpaca commonly limits an account to one connection per market-data endpoint. A 406 stream
 error usually means another client is already using that feed connection. IEX volume covers
 IEX executions, not consolidated US-market volume; use entitled SIP when full-market volume

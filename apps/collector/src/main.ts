@@ -460,11 +460,7 @@ async function collect(tickers: string[], id: number) {
     key,
     secret,
     feed as AlpacaFeedName,
-    (message) => {
-      if (id !== session) return;
-      failure = message;
-      void stop(1);
-    },
+    (message) => reconnect(id, message),
   );
   feedClient = client;
   state = "warming-up";
@@ -557,6 +553,8 @@ async function collect(tickers: string[], id: number) {
   });
   if (id !== session) return;
   state = "subscribed";
+  failure = null;
+  retries = 0;
   for (const symbol of symbols.values()) symbol.state = "subscribed";
   console.log(
     JSON.stringify({ state, symbols: tickers.length, streamed: spyStreamed }),
@@ -574,10 +572,27 @@ async function restart(tickers: string[]) {
   try {
     await collect(live(tickers), id);
   } catch (error) {
-    if (id !== session) return;
-    failure = error instanceof Error ? error.message : "Collector failed";
-    await stop(1);
+    reconnect(id, error instanceof Error ? error.message : "Collector failed");
   }
+}
+
+// Alpaca drops the stream about once a day. Exiting used up Railway's limited
+// restarts, so the collector reconnects in place instead, waiting 5 s, then
+// twice as long after each failed attempt, up to 5 minutes. A new watchlist
+// session supersedes a pending retry.
+let retries = 0;
+function reconnect(id: number, message: string) {
+  if (id !== session || stopping) return;
+  failure = message;
+  state = "reconnecting";
+  const wait = Math.min(300000, 5000 * 2 ** retries++);
+  console.error(
+    JSON.stringify({ state, error: message, retryInSeconds: wait / 1000 }),
+  );
+  setTimeout(() => {
+    const tickers = liveTickers();
+    if (id === session && !stopping && tickers) void restart(tickers);
+  }, wait);
 }
 
 try {
