@@ -44,7 +44,12 @@ const order = {
   delta: {
     type: "number",
     description:
-      "Only when the user named a delta. Otherwise leave out (0.10–0.15 is used).",
+      "Only when the user named a delta. Otherwise leave out (0.10–0.15 is used). Do not combine with strike.",
+  },
+  strike: {
+    type: "number",
+    description:
+      "Exact option strike in dollars, for example 765. When specified, the server uses this strike and does not require a delta.",
   },
   stopPct: {
     type: "number",
@@ -266,7 +271,7 @@ async function handleRpc(
         serverInfo: { name: "option-trading", version: "1.0.0" },
         instructions:
           "Option trading on the user's own Alpaca account. Orders placed here exist only here: use this connector's tools (positions, cancel_order, sell) for them, never another broker's connector. Orders are sent only on the user's explicit command. Every limit is enforced by the server; a refusal is final for that request. " +
-          'A command such as "buy NVDA call 0.5%" is complete: call buy at once. Expiry, delta, stop and pricing have server defaults, so never ask about them. Ask one short question only when the stock, call or put, or size is missing. Do not preview first unless the user asks for a preview.',
+          'A command such as "buy NVDA call 0.5%" is complete: call buy at once. Expiry, delta, stop and pricing have server defaults, so never ask about them. If the user names a strike, pass it exactly; that strike does not require a delta. Ask one short question only when the stock, call or put, or size is missing. Do not preview first unless the user asks for a preview.',
       });
     }
     case "ping":
