@@ -111,6 +111,7 @@ interface ChooseRequest {
   underlying: string;
   right: Right;
   delta?: number; // the target; without it, the middle of the default range
+  strike?: number; // exact strike, which does not require a published delta
 }
 
 export interface PreviewRequest extends ChooseRequest {
@@ -124,6 +125,7 @@ export interface BuyRequest {
   underlying?: string;
   right?: Right;
   delta?: number;
+  strike?: number; // exact strike, even when the broker has no delta
   // "nearest", "friday" or a date; the engine's default when absent.
   expiry?: string;
   sizePct: number;
@@ -256,26 +258,36 @@ export class TradeEngine {
     );
     return {
       choices,
-      // Only a strike picked from the default range is held to that range.
-      deltaRange: request.delta === undefined ? defaultDeltaRange : undefined,
+      // Only an automatically selected strike is held to the default range.
+      deltaRange:
+        request.delta === undefined && request.strike === undefined
+          ? defaultDeltaRange
+          : undefined,
       targetDelta:
-        request.delta === undefined
-          ? `${deltaLow.toFixed(2)}–${deltaHigh.toFixed(2)}`
-          : String(targetDelta),
-      rows: expiries.map((expiry) => ({
-        expiry,
-        label:
-          expiry === choices.nearest && expiry === choices.friday
-            ? "nearest = Friday"
-            : expiry === choices.nearest
-              ? "nearest"
-              : "Friday",
-        quote: pickByDelta(
-          quotes.filter((x) => x.expiry === expiry),
-          targetDelta,
-        ),
-        candidates: quotes.filter((x) => x.expiry === expiry),
-      })),
+        request.strike !== undefined
+          ? `manual strike ${request.strike}`
+          : request.delta === undefined
+            ? `${deltaLow.toFixed(2)}–${deltaHigh.toFixed(2)}`
+            : String(targetDelta),
+      rows: expiries.map((expiry) => {
+        const candidates = quotes.filter((x) => x.expiry === expiry);
+        return {
+          expiry,
+          label:
+            expiry === choices.nearest && expiry === choices.friday
+              ? "nearest = Friday"
+              : expiry === choices.nearest
+                ? "nearest"
+                : "Friday",
+          quote:
+            request.strike === undefined
+              ? pickByDelta(candidates, targetDelta)
+              : (candidates.find(
+                  (q) => Math.abs(q.strike - request.strike!) < 1e-9,
+                ) ?? null),
+          candidates,
+        };
+      }),
     };
   }
 
@@ -387,7 +399,14 @@ export class TradeEngine {
       this.account(),
     ]);
     const rows = chosen.rows.map(({ expiry, label, quote: q }) => {
-      if (!q) return { expiry, error: "no quote with a delta" };
+      if (!q)
+        return {
+          expiry,
+          error:
+            request.strike === undefined
+              ? "no quote with a delta"
+              : `no contract at strike ${request.strike}`,
+        };
       const spread = spreadCheck(q);
       const size = this.assess(
         a,
@@ -469,6 +488,7 @@ export class TradeEngine {
         underlying: request.underlying,
         right: request.right,
         ...(request.delta === undefined ? {} : { delta: request.delta }),
+        ...(request.strike === undefined ? {} : { strike: request.strike }),
       });
       const want = request.expiry ?? this.defaultExpiry;
       const expiry =
@@ -478,10 +498,15 @@ export class TradeEngine {
             ? chosen.choices.friday
             : want;
       const row = chosen.rows.find((r) => r.expiry === expiry);
-      if (!row?.quote)
+      if (!row?.quote) {
+        if (request.strike !== undefined)
+          throw new Error(
+            `No contract at strike ${request.strike} for ${request.underlying.toUpperCase()} ${request.right} expiring ${expiry ?? want}; offered strikes: ${(row?.candidates ?? []).map((q) => q.strike).join(", ") || "none"}`,
+          );
         throw new Error(
           `No ${request.right} to buy for ${request.underlying.toUpperCase()} expiring ${expiry ?? want}; offered: ${chosen.rows.map((r) => r.expiry).join(", ")}`,
         );
+      }
       quote = row.quote;
       deltaRange = chosen.deltaRange;
       picked = {
