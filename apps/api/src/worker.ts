@@ -46,6 +46,7 @@ import {
 import { TelegramSender } from "../../../packages/notifications/src/telegram.js";
 
 const portfolio = new PortfolioCache();
+import { handleCandles } from "../../../packages/market-data/src/candles.js";
 import { handleControl } from "../../../packages/trading/src/control-api.js";
 import { verifyAccess, type AccessIdentity } from "./access.js";
 
@@ -247,6 +248,22 @@ export default {
       secret: env.ALPACA_API_SECRET,
       sipDelayMinutes,
     };
+    if (path === "/api/candles") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const query = new URL(request.url).searchParams;
+      const result = await handleCandles(
+        { ticker: query.get("ticker"), date: query.get("date") },
+        credentials,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
     if (path === "/api/backtest" || path === "/api/day-chart") {
       if (request.method !== "POST")
         return new Response("Method not allowed", {

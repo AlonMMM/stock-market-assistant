@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ControlAccess } from "../../../packages/trading/src/control-api.js";
 import type { Decision } from "../../../packages/trading/src/explain.js";
 import type { PortfolioPosition } from "../../../packages/trading/src/portfolio.js";
@@ -6,14 +6,11 @@ import { readJson } from "./api.js";
 import { followOrder, type Run } from "./order-run.js";
 import { WhyButton } from "./Orders.js";
 import { chartSession } from "./positions-model.js";
+import { StockChart } from "./StockChart.js";
 
 // Open positions as a dense list, in the manner of a broker's phone app: one
 // row per position, and a tap opens the stock's day chart, the position's
 // numbers and, for the account owner, the controls.
-
-const DayChart = lazy(() =>
-  import("./DayChart.js").then((m) => ({ default: m.DayChart })),
-);
 
 const usd = (n: number, digits = 0) =>
   `$${Math.abs(n).toLocaleString("en-US", {
@@ -265,9 +262,7 @@ function Detail({
       ) : (
         access.reason && <p className="muted">{access.reason}.</p>
       )}
-      <Suspense fallback={<p className="chart-status">Loading day chart…</p>}>
-        <DayChart ticker={p.underlying} date={chartSession()} />
-      </Suspense>
+      <StockChart ticker={p.underlying} date={chartSession()} />
       {why && (
         <p className="pos-why">
           <WhyButton decision={why} />

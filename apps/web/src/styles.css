@@ -3472,3 +3472,44 @@ dialog.why::backdrop {
     white-space: nowrap;
   }
 }
+
+/* The Candles / vs SPY switch and the plain candle chart. */
+.stock-chart {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.stock-chart > .segmented {
+  justify-self: start;
+}
+.stock-chart .day-chart {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #cdd7ce;
+  border-radius: 10px;
+  background: #fafbf8;
+  min-width: 0;
+}
+.candle-last {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 15px;
+  color: #142b29;
+}
+.candle-last .num {
+  font-weight: 650;
+}
+.candle-last .up {
+  color: #15803d;
+}
+.candle-last .down {
+  color: #b91c1c;
+}
+.trade-chart {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}

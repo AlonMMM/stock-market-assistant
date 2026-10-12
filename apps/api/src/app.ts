@@ -12,6 +12,7 @@ import {
   type Credentials,
 } from "../../../packages/market-data/src/backtest.js";
 import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
+import { handleCandles } from "../../../packages/market-data/src/candles.js";
 import type { BarCache } from "../../../packages/market-data/src/bar-cache.js";
 import {
   handleBoard,
@@ -184,6 +185,17 @@ export function buildApp(
       token: process.env.COLLECTOR_TOKEN,
     }),
   );
+  app.get("/api/candles", async (request, reply) => {
+    const result = await handleCandles(
+      request.query as { ticker?: unknown; date?: unknown },
+      alpaca,
+      alpaca.fetcher,
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
   app.post("/api/day-chart", async (request, reply) => {
     const result = await handleDayChart(
       request.body,

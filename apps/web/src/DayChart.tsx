@@ -173,13 +173,16 @@ function excludedBand(
 }
 
 const cache = new Map<string, Promise<DayChartData>>();
+// Today's chart is read again this often; the request is a heavy one.
+const refreshMs = 30000;
 function load(
   ticker: string,
   date: string,
   benchmark: string,
+  fresh = false,
 ): Promise<DayChartData> {
   const key = `${ticker}/${date}/${benchmark}`;
-  let request = cache.get(key);
+  let request = fresh ? undefined : cache.get(key);
   if (!request) {
     request = fetch("/api/day-chart", {
       method: "POST",
@@ -323,8 +326,20 @@ export function DayChart({
           e.name === "TimeoutError" ? "The chart took too long." : e.message,
         ),
     );
+    // The session still running gains a bar every minute.
+    const timer =
+      date === usSessionDate(Date.now())
+        ? setInterval(() => {
+            if (document.visibilityState !== "visible") return;
+            load(ticker, date, benchmark, true).then(
+              (d) => live && setData(d),
+              () => {}, // the chart on screen stays
+            );
+          }, refreshMs)
+        : undefined;
     return () => {
       live = false;
+      clearInterval(timer);
     };
   }, [ticker, date, benchmark]);
 

@@ -23,6 +23,8 @@ export interface EntryNote {
   paper: boolean;
   stop?: StopNote;
   note?: string; // an extra line, such as "Ordered off hours"
+  // What the whole position cost, as % of the account (user 2026-10-12).
+  sharePct?: number;
 }
 
 /**
@@ -47,6 +49,11 @@ export function formatEntry(note: EntryNote, result: LadderResult): string {
       ? `Bought at ${order.filledAvgPrice!.toFixed(2)}`
       : `Bidding at ${result.prices.at(-1)?.toFixed(2) ?? "—"}, not filled yet`,
     bought && qty > filled ? `${filled} of ${contracts(qty)}` : contracts(qty),
+    ...(bought && note.sharePct !== undefined
+      ? [
+          `${note.sharePct < 0.1 ? note.sharePct.toFixed(2) : note.sharePct.toFixed(1)}% of the portfolio`,
+        ]
+      : []),
     ...(note.note ? [escape(note.note)] : []),
     ...(!stop
       ? []

@@ -1050,12 +1050,18 @@ export class TradeEngine {
       // A post left by a trade that is gone (more is not held than this
       // order bought) is not one.
       const known = await this.posts.get(symbol);
-      const total = known
-        ? await this.broker
-            .position(symbol)
-            .then((p) => p.qty)
-            .catch(() => null)
-        : null;
+      // What is held of this contract now, for the post: how many, and what
+      // share of the account they cost.
+      const [held, equity] = await Promise.all([
+        this.broker.position(symbol).catch(() => null),
+        this.broker.equity().catch(() => 0),
+      ]);
+      const total = known && held ? held.qty : null;
+      const cost = held
+        ? held.qty * held.avgEntryPrice * 100
+        : order.filledQty * (order.filledAvgPrice ?? 0) * 100;
+      const sharePct =
+        equity > 0 && cost > 0 ? (cost / equity) * 100 : undefined;
       const earlier =
         known && total !== null && total > order.filledQty ? known : undefined;
       const notes = [
@@ -1067,6 +1073,7 @@ export class TradeEngine {
           symbol,
           paper: this.paper,
           stop,
+          ...(sharePct === undefined ? {} : { sharePct }),
           ...(notes.length > 0 ? { note: notes.join(". ") } : {}),
         },
         final,

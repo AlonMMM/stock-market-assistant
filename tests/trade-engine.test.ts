@@ -260,7 +260,7 @@ test("engine buy off hours: the order waits, is worked at the open, and the post
   );
   assert.match(
     sent[1]!.html,
-    /Bought at 1\.03\n4 contracts\nOrdered off hours\nStop at/,
+    /Bought at 1\.03\n4 contracts\n0\.4% of the portfolio\nOrdered off hours\nStop at/,
   );
 });
 
