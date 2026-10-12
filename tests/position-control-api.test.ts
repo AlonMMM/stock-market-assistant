@@ -161,3 +161,110 @@ test("chart session: today's once pre-market has begun, otherwise the last one",
   assert.equal(chartSession(Date.parse("2026-10-12T05:00:00Z")), "2026-10-09");
   assert.equal(chartSession(Date.parse("2026-10-11T15:00:00Z")), "2026-10-09");
 });
+
+test("trade ticket: chain, check and buy are forwarded for the owner only", async () => {
+  const { seen, fetcher } = setup({ body: { ok: true } });
+  const call = (
+    who: { email: string } | null,
+    method: string,
+    sub: string,
+    extra: {
+      body?: unknown;
+      query?: string;
+      requestOrigin?: string | null;
+    } = {},
+  ) =>
+    handleControl(
+      config,
+      who,
+      {
+        method,
+        path: `/api/portfolio/control/${sub}`,
+        origin,
+        requestOrigin:
+          extra.requestOrigin === undefined ? origin : extra.requestOrigin,
+        ...(extra.body === undefined ? {} : { body: extra.body }),
+        ...(extra.query === undefined
+          ? {}
+          : { query: new URLSearchParams(extra.query) }),
+      },
+      fetcher,
+    );
+  const order = { contract, sizePct: 0.5, stopPct: 40, force: true, x: 1 };
+  // Nobody else reaches any of it.
+  for (const who of [null, { email: "other@example.com" }]) {
+    assert.equal(
+      (await call(who, "GET", "chain", { query: "underlying=NVDA&right=call" }))
+        .status,
+      403,
+    );
+    assert.equal(
+      (await call(who, "POST", "check", { body: order })).status,
+      403,
+    );
+    assert.equal((await call(who, "POST", "buy", { body: order })).status, 403);
+  }
+  assert.equal(seen.length, 0);
+  await call(owner, "GET", "chain", {
+    query: "underlying=nvda&right=call&expiry=2026-10-16&junk=1",
+  });
+  await call(owner, "POST", "check", { body: order });
+  await call(owner, "POST", "buy", { body: { contract, qty: 3 } });
+  assert.deepEqual(
+    seen.map((s) => [
+      s.method,
+      s.url.replace("https://trader.test", ""),
+      s.body,
+    ]),
+    [
+      [
+        "GET",
+        "/v1/chain?underlying=NVDA&right=call&expiry=2026-10-16",
+        undefined,
+      ],
+      [
+        "POST",
+        "/v1/check",
+        { contract, sizePct: 0.5, stopPct: 40, force: true, via: "site" },
+      ],
+      ["POST", "/v1/buy", { contract, qty: 3, via: "site" }],
+    ],
+  );
+  // Bad input and requests from another site send nothing more.
+  assert.equal(
+    (await call(owner, "GET", "chain", { query: "underlying=NVDA&right=both" }))
+      .status,
+    400,
+  );
+  assert.equal(
+    (await call(owner, "GET", "chain", { query: "underlying=../x&right=call" }))
+      .status,
+    400,
+  );
+  assert.equal(
+    (
+      await call(owner, "POST", "buy", {
+        body: { contract, sizePct: 1, qty: 1 },
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (await call(owner, "POST", "buy", { body: { contract } })).status,
+    400,
+  );
+  assert.equal(
+    (
+      await call(owner, "POST", "buy", {
+        body: order,
+        requestOrigin: "https://evil.test",
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await call(owner, "POST", "sell", { body: order })).status,
+    404,
+  );
+  assert.equal(seen.length, 3);
+});

@@ -444,6 +444,24 @@ broker. The page was checked in headless Chromium at 390 and 1280 px with SYNTHE
 positions and a mocked API. Not run: anything against Alpaca or Telegram, and the Access
 identity check on the hosted site.
 
+### Trade ticket on the site (user, 2026-10-12)
+
+Branch `feat/trade-ticket`. Portfolio → Trade, shown to the owner only: enter a stock,
+choose calls or puts and an expiry (the coming 35 days), pick a strike from the chain table
+(bid, ask, spread, delta; the strike a plain buy would take is marked), set the size (% of
+the account or contracts), the stop and optionally force, check the order, then confirm.
+
+- Trading service: `GET /v1/chain?underlying=&right=&expiry=` and `POST /v1/check`
+  (`TradeEngine.chainFor`, `checkContract`). A check runs every buy check on the exact
+  contract and sends and records nothing. The buy itself is the existing `POST /v1/buy`
+  with `contract`, so the Telegram entry post and every limit are unchanged.
+- Site Worker: `GET …/control/chain`, `POST …/control/check` and `POST …/control/buy`,
+  under the same owner and Origin rule as the position controls; only the known order
+  fields are passed on.
+
+Verified 2026-10-12: `npm run check`; the tab was checked in headless Chromium at 390 and
+1280 px with a SYNTHETIC chain and a mocked API. Not run against Alpaca.
+
 ## Failure cases
 
 | Case                            | Behavior                                                                                        |

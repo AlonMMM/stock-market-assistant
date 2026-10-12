@@ -10,7 +10,8 @@ import type {
 import type { Decision } from "../../../packages/trading/src/explain.js";
 import { usePolling } from "./Live.js";
 import { Orders, useDecisions, WhyButton } from "./Orders.js";
-import { PositionList } from "./Positions.js";
+import { PositionList, useControlAccess } from "./Positions.js";
+import { Trade as TradeTicket } from "./Trade.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
 
 const PnlChart = lazy(() =>
@@ -200,15 +201,19 @@ function History({ onError }: { onError: (m: string) => void }) {
   );
 }
 
-const sections = [
+const allSections = [
   ["live", "Live trades"],
+  ["trade", "Trade"],
   ["orders", "Orders"],
   ["history", "History"],
 ] as const;
 
 /** The Portfolio area: open trades, and the account's history. */
 export function Portfolio({ modes }: { modes: ReactNode }) {
-  const [tab, setTab] = useState<(typeof sections)[number][0]>("live");
+  const [tab, setTab] = useState<(typeof allSections)[number][0]>("live");
+  // The trade ticket is for the account owner only.
+  const { canTrade } = useControlAccess();
+  const sections = allSections.filter(([key]) => key !== "trade" || canTrade);
   const ignore = () => {}; // failures are shown in place
   return (
     <div className="live-page">
@@ -256,6 +261,8 @@ export function Portfolio({ modes }: { modes: ReactNode }) {
       >
         {tab === "live" ? (
           <LiveTrades onError={ignore} />
+        ) : tab === "trade" && canTrade ? (
+          <TradeTicket />
         ) : tab === "orders" ? (
           <Orders onError={ignore} />
         ) : (

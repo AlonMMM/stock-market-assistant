@@ -3,6 +3,7 @@ import type { ControlAccess } from "../../../packages/trading/src/control-api.js
 import type { Decision } from "../../../packages/trading/src/explain.js";
 import type { PortfolioPosition } from "../../../packages/trading/src/portfolio.js";
 import { readJson } from "./api.js";
+import { followOrder, type Run } from "./order-run.js";
 import { WhyButton } from "./Orders.js";
 import { chartSession } from "./positions-model.js";
 
@@ -52,86 +53,6 @@ export function useControlAccess(): ControlAccess {
   return access;
 }
 
-type Job = {
-  state: "running" | "done" | "failed" | "interrupted";
-  stage?: string;
-  result?: {
-    error?: string;
-    notes?: string[];
-    // A sale.
-    result?: {
-      sold?: number;
-      price?: number | null;
-      remaining?: number;
-      // A buy.
-      order?: { filledQty: number; filledAvgPrice: number | null } | null;
-    };
-    stop?: { price?: number; qty?: number; error?: string };
-    canceledQty?: number;
-    shortRisks?: string[];
-  } | null;
-};
-type Started = { status: "started"; jobId: string };
-type Refused = { status: "refused"; refused: string[]; hint?: string };
-
-type Run =
-  | { step: "idle" }
-  | { step: "confirm" }
-  | { step: "sending" }
-  | { step: "working"; jobId: string; stage: string }
-  | { step: "ended"; ok: boolean; lines: string[] };
-
-/** What a finished order did, in the page's words. */
-function outcome(job: Job, buying: boolean): { ok: boolean; lines: string[] } {
-  const r = job.result ?? {};
-  const short = r.shortRisks?.length
-    ? [`Short option risk: ${r.shortRisks.join("; ")}`]
-    : [];
-  if (job.state !== "done")
-    return {
-      ok: false,
-      lines: [
-        job.state === "interrupted"
-          ? `The trading service restarted during the order. ${(r.notes ?? []).join("; ")}`
-          : `The order failed: ${r.error ?? "no reason given"}`,
-        ...short,
-      ],
-    };
-  if (buying) {
-    const got = r.result?.order?.filledQty ?? 0;
-    const at = r.result?.order?.filledAvgPrice;
-    return {
-      ok: got > 0,
-      lines: [
-        got > 0
-          ? `Bought ${got} at ${at?.toFixed(2) ?? "—"}.`
-          : "Nothing filled; the order was withdrawn.",
-        ...(got > 0 && r.canceledQty
-          ? [`${r.canceledQty} did not fill and were withdrawn.`]
-          : []),
-        ...(got > 0
-          ? [
-              r.stop?.price !== undefined
-                ? `Stop at ${r.stop.price.toFixed(2)} on ${r.stop.qty}.`
-                : `No stop was placed: ${r.stop?.error ?? "unknown reason"}.`,
-            ]
-          : []),
-        ...short,
-      ],
-    };
-  }
-  const sold = r.result?.sold ?? 0;
-  return {
-    ok: sold > 0,
-    lines: [
-      sold > 0
-        ? `Sold ${sold} at ${r.result?.price?.toFixed(2) ?? "—"}${r.result?.remaining ? `, ${r.result.remaining} still held` : ""}.`
-        : "Nothing sold at the bid in time; the stop is back in place.",
-      ...short,
-    ],
-  };
-}
-
 /** Add to, reduce or close one position. Shown to the account owner only. */
 function Controls({ p }: { p: PortfolioPosition }) {
   const [target, setTarget] = useState(p.qty);
@@ -169,74 +90,14 @@ function Controls({ p }: { p: PortfolioPosition }) {
     setRun({ step: "idle" });
   };
 
-  async function send() {
-    setRun({ step: "sending" });
-    try {
-      const started = await readJson<Started | Refused>(
-        await fetch("/api/portfolio/control", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contract: p.symbol, qty: target }),
-          signal: AbortSignal.timeout(30000),
-        }),
-      );
-      if (!alive.current) return;
-      if (started.status === "refused")
-        return setRun({
-          step: "ended",
-          ok: false,
-          lines: [
-            "Refused, nothing was sent:",
-            ...started.refused,
-            ...(started.hint ? [started.hint] : []),
-          ],
-        });
-      setRun({
-        step: "working",
-        jobId: started.jobId,
-        stage: "sending the order",
-      });
-      // A buy raises its price and watches the fill for up to about 3 minutes.
-      for (let i = 0; i < 150; i++) {
-        await new Promise((r) => setTimeout(r, 2000));
-        if (!alive.current) return;
-        const job = await fetch(
-          `/api/portfolio/control/jobs/${started.jobId}`,
-          { signal: AbortSignal.timeout(15000) },
-        )
-          .then((r) => readJson<Job>(r))
-          .catch(() => null); // one missed answer; the next one is asked for
-        if (!alive.current) return;
-        if (!job) continue;
-        if (job.state === "running") {
-          setRun({
-            step: "working",
-            jobId: started.jobId,
-            stage: job.stage ?? "working",
-          });
-          continue;
-        }
-        return setRun({ step: "ended", ...outcome(job, buying) });
-      }
-      setRun({
-        step: "ended",
-        ok: false,
-        lines: [
-          "The order is still running. Its result will show in the position and in Orders.",
-        ],
-      });
-    } catch (error) {
-      if (!alive.current) return;
-      setRun({
-        step: "ended",
-        ok: false,
-        lines: [
-          error instanceof Error ? error.message : "The request failed",
-          "Check the position before trying again.",
-        ],
-      });
-    }
-  }
+  const send = () =>
+    followOrder(
+      "/api/portfolio/control",
+      { contract: p.symbol, qty: target },
+      buying,
+      setRun,
+      alive,
+    );
 
   return (
     <div className="pos-controls">

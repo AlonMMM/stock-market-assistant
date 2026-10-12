@@ -265,3 +265,55 @@ test("stop watch: a canceled stop is not a stop-out; a failed post is tried agai
   assert.equal(await service.watchStops(), 1);
   assert.match(sent.at(-1)!.html, /Sold 2 at 0\.60/);
 });
+
+test("trade ticket: the chain of one expiry, and a check that sends and records nothing", async () => {
+  const broker = new SimBroker();
+  broker.setQuote("NVDA261012C00235000", 0.2, 0.21, 0.09);
+  broker.setQuote(friday, 1.0, 1.04, 0.12);
+  broker.setQuote("NVDA261016C00245000", 0.5, 0.7, 0.07);
+  broker.setQuote("NVDA261023C00250000", 1.5, 1.56, 0.14);
+  const { service, store } = setup({ broker });
+  const first = await service.chain({ underlying: "nvda", right: "call" });
+  assert.deepEqual(first.expiries, ["2026-10-12", "2026-10-16", "2026-10-23"]);
+  assert.equal(first.expiry, "2026-10-12");
+  const week = await service.chain({
+    underlying: "NVDA",
+    right: "call",
+    expiry: "2026-10-16",
+  });
+  assert.equal(week.expiries, undefined);
+  assert.equal(week.pick, friday);
+  assert.deepEqual(
+    week.quotes.map((q) => [q.strike, q.bid, q.ask, q.spreadPct, q.delta]),
+    [
+      [240, 1.0, 1.04, 3.9, 0.12],
+      [245, 0.5, 0.7, 33.3, 0.07],
+    ],
+  );
+  await assert.rejects(
+    service.chain({ underlying: "NVDA", right: "call", expiry: "2026-10-20" }),
+    (e) =>
+      e instanceof RequestError &&
+      /no NVDA calls expire on 2026-10-20/.test(e.message),
+  );
+  await assert.rejects(
+    service.chain({ underlying: "ZZZZ", right: "put" }),
+    (e) => e instanceof RequestError && e.status === 404,
+  );
+  const ok = await service.check({ contract: friday, sizePct: 0.5 });
+  assert.deepEqual([ok.wouldBuy, ok.qty, ok.stopAtCeiling], [true, 4, 0.62]);
+  const wide = { contract: "NVDA261016C00245000", qty: 2 };
+  const refused = await service.check(wide);
+  assert.equal(refused.wouldBuy, false);
+  assert.match(
+    refused.refused.join(),
+    /^spread: 33\.33% of the mid, at most 25%/,
+  );
+  const forced = await service.check({ ...wide, force: true });
+  assert.equal(forced.wouldBuy, true);
+  assert.match(forced.notes.join(), /^forced: the spread is 33\.33%/);
+  // Nothing was sent, and no buy of the day was used up.
+  assert.equal(broker.orders.size, 0);
+  assert.equal((await service.status()).limits.buysToday, 0);
+  assert.equal(store.recentDecisions("owner", 10).length, 0);
+});

@@ -3232,3 +3232,243 @@ dialog.why::backdrop {
     width: 100%;
   }
 }
+
+/* Portfolio → Trade: the option chain and the order ticket. */
+.trade-find {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.trade-find label,
+.ticket-field {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #526461;
+}
+.trade-find input,
+.ticket input:not([type="checkbox"]) {
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid #cdd7ce;
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 650;
+  color: #142b29;
+}
+.trade-find input {
+  width: 120px;
+  text-transform: uppercase;
+}
+.trade-find input::placeholder {
+  color: #8c9a96;
+  font-weight: 400;
+}
+.trade-find .segmented button {
+  min-height: 36px;
+}
+.trade-expiries {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #cdd7ce transparent;
+}
+.trade-expiries button {
+  flex: none;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid #cdd7ce;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.trade-expiries button[aria-pressed="true"] {
+  border-color: #142b29;
+  background: #142b29;
+  color: #fff;
+  font-weight: 600;
+}
+.chain {
+  max-height: min(52vh, 460px);
+  overflow-y: auto;
+  border: 1px solid #cdd7ce;
+  border-radius: 12px;
+  background: #fff;
+  scrollbar-width: thin;
+  scrollbar-color: #cdd7ce transparent;
+  transition: opacity 120ms ease-out;
+}
+.chain.loading {
+  opacity: 0.5;
+}
+.chain table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+.chain thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 12px;
+  background: #eef2ea;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #526461;
+  text-align: right;
+}
+.chain thead th:first-child,
+.chain tbody th {
+  text-align: left;
+}
+.chain tbody tr {
+  border-top: 1px solid #e3e9e1;
+  cursor: pointer;
+}
+.chain tbody tr:hover {
+  background: #f4f7f1;
+}
+.chain tbody tr.selected {
+  background: #e4efd6;
+  box-shadow: inset 3px 0 0 #142b29;
+}
+.chain tbody tr.dead td {
+  color: #8c9a96;
+}
+.chain td {
+  padding: 0 12px;
+  text-align: right;
+}
+.chain td.wide {
+  color: #8a4b06;
+  font-weight: 600;
+}
+.chain tbody th {
+  padding: 0;
+  font-weight: 700;
+}
+.chain tbody th button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 0;
+  background: transparent;
+  font-weight: inherit;
+  text-align: left;
+}
+.chain tbody th button:focus-visible {
+  outline-offset: -3px;
+}
+.chain-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #142b29;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+.ticket {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #cdd7ce;
+  border-radius: 12px;
+  background: #fff;
+}
+.ticket h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 17px;
+}
+.ticket h3 .muted {
+  font-weight: 400;
+}
+.ticket-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.ticket-size {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ticket-size input {
+  width: 96px;
+}
+.ticket-field > input {
+  width: 96px;
+}
+.ticket-force {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 14px;
+  color: #142b29;
+}
+.ticket-force input {
+  width: 20px;
+  height: 20px;
+  accent-color: #142b29;
+}
+.ticket-check {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid #dfe6dd;
+}
+.ticket-summary {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.ticket-notes {
+  margin: 0;
+  padding: 8px 12px 8px 28px;
+  border-radius: 10px;
+  background: #fbefd9;
+  color: #6b3d06;
+  font-size: 13px;
+}
+@media (max-width: 560px) {
+  .trade-find > .pos-go {
+    flex: 1 1 100%;
+  }
+  .ticket-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chain table {
+    font-size: 14px;
+  }
+  .chain td,
+  .chain thead th,
+  .chain tbody th button {
+    padding-inline: 8px;
+  }
+  .ticket > .pos-go,
+  .ticket-check > .pos-go {
+    width: 100%;
+  }
+}
+@media (max-width: 560px) {
+  .tabs button {
+    padding-inline: 6px;
+    white-space: nowrap;
+  }
+}

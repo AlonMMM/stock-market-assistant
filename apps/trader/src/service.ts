@@ -221,6 +221,40 @@ export class TraderService {
     return result;
   }
 
+  /** One side of a stock's chain for one expiry, to pick a strike from. */
+  async chain(query: Body) {
+    const underlying = text(query, "underlying", ticker);
+    const right = text(query, "right", /^(call|put)$/) as
+      "call" | "put" | undefined;
+    if (!underlying || !right)
+      throw new RequestError("Need underlying and right (call or put)");
+    const expiry = text(query, "expiry", /^\d{4}-\d{2}-\d{2}$/);
+    return this.engine
+      .chainFor({ underlying, right, ...(expiry ? { expiry } : {}) })
+      .catch((error: unknown) => {
+        if (error instanceof TradeRefusal)
+          throw new RequestError(
+            [error.detail, error.hint].filter(Boolean).join(". "),
+            404,
+          );
+        throw error;
+      });
+  }
+
+  /** What a buy of one contract would be, and each check. Sends nothing. */
+  async check(body: Body) {
+    const request = buyRequest(body);
+    if (!request.contract) throw new RequestError("A check needs a contract");
+    return this.engine.checkContract({
+      contract: request.contract,
+      ...(request.qty === undefined
+        ? { sizePct: request.sizePct! }
+        : { qty: request.qty }),
+      ...(request.stopPct === undefined ? {} : { stopPct: request.stopPct }),
+      ...(request.force ? { force: true } : {}),
+    });
+  }
+
   /** Checks the buy and, when it passes, starts it. Answers at once. */
   async buy(body: Body) {
     const request = buyRequest(body);
