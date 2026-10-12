@@ -125,7 +125,7 @@ test("connector: each tool reaches its route on the trading service", async () =
   const { seen, rpc } = setup({ body: { status: "started", jobId: "j1" } });
   const call = (name: string, args: unknown) =>
     rpc("tools/call", { name, arguments: args });
-  const buy = { underlying: "NVDA", right: "call", sizePct: 0.5 };
+  const buy = { underlying: "NVDA", right: "call", sizePct: 0.5, strike: 765 };
   const out = await call("buy", buy);
   assert.equal(out.body.result.isError, false);
   assert.deepEqual(JSON.parse(out.body.result.content[0].text), {
