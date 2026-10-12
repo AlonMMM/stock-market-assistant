@@ -70,12 +70,18 @@ function buyRequest(body: Body): BuyRequest {
   if (sizePct === undefined) throw new RequestError("Need sizePct");
   const expiry = text(body, "expiry", /^(nearest|friday|\d{4}-\d{2}-\d{2})$/);
   const delta = number(body, "delta");
+  const strike = number(body, "strike");
+  if (strike !== undefined && !(strike > 0))
+    throw new RequestError("strike must be greater than zero");
+  if (strike !== undefined && delta !== undefined)
+    throw new RequestError("strike and delta cannot be combined");
   const stopPct = number(body, "stopPct");
   return {
     ...(contract ? { contract } : { underlying: underlying!, right: right! }),
     sizePct,
     ...(expiry ? { expiry } : {}),
     ...(delta === undefined ? {} : { delta }),
+    ...(strike === undefined ? {} : { strike }),
     ...(stopPct === undefined ? {} : { stopPct }),
   };
 }
@@ -162,6 +168,7 @@ export class TraderService {
       right: request.right,
       sizePct: request.sizePct,
       ...(request.delta === undefined ? {} : { delta: request.delta }),
+      ...(request.strike === undefined ? {} : { strike: request.strike }),
       ...(request.stopPct === undefined ? {} : { stopPct: request.stopPct }),
     });
     this.record("preview", body, "ok");
@@ -171,7 +178,17 @@ export class TraderService {
   /** Checks the buy and, when it passes, starts it. Answers at once. */
   async buy(body: Body) {
     const request = buyRequest(body);
-    const plan = await this.engine.planBuy(request);
+    let plan;
+    try {
+      plan = await this.engine.planBuy(request);
+    } catch (error) {
+      if (
+        request.strike !== undefined &&
+        message(error).startsWith("No contract at strike ")
+      )
+        throw new RequestError(message(error));
+      throw error;
+    }
     if ("refused" in plan) {
       this.record("buy", body, `refused: ${plan.refused.join("; ")}`);
       return { status: "refused" as const, ...plan };
