@@ -155,7 +155,7 @@ const cases: [string, (c: BuyContext) => void, RegExp][] = [
     quote({ quotedAt: now - 121_000 }),
     /121 s old, at most 120 s/,
   ],
-  ["spread", quote({ ask: 1.12 }), /11\.32% of the mid, at most 10%/],
+  ["spread", quote({ ask: 1.3 }), /26\.09% of the mid, at most 25%/],
   [
     "not a repeat",
     (c) =>

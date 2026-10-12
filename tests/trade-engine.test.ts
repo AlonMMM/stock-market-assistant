@@ -93,6 +93,55 @@ test("engine buy: a wide spread is refused, nothing sent, nothing posted", async
   assert.equal(sent.length, 0);
 });
 
+test("engine buy: forced, the spread is not checked and the order is bought", async () => {
+  const { broker, engine, sent } = setup();
+  broker.setQuote(friday, 1.0, 1.3, 0.12);
+  broker.fillAt.set(friday, 1.2);
+  const out = await engine.buy({ contract: friday, sizePct: 0.5, force: true });
+  assert.ok("result" in out);
+  assert.equal(out.result.status, "filled");
+  assert.equal(out.stop?.qty, out.qty);
+  assert.equal(sent.length, 1);
+  // Only the spread is skipped: any other failed check still refuses.
+  const big = await engine.buy({ contract: friday, sizePct: 5, force: true });
+  assert.ok("refused" in big);
+  assert.match(big.refused.join(), /^size: /);
+});
+
+test("engine buy: a named date beyond Friday is bought when it is listed", async () => {
+  const { broker, engine } = setup();
+  const later = "NVDA261023C00245000";
+  broker.setQuote(later, 2.0, 2.06, 0.13);
+  broker.fillAt.set(later, 2.04);
+  const out = await engine.buy({
+    underlying: "NVDA",
+    right: "call",
+    sizePct: 0.5,
+    expiry: "2026-10-23",
+  });
+  assert.equal(out.contract, later);
+  assert.ok("result" in out && out.result.status === "filled");
+  const p = await engine.preview({
+    underlying: "NVDA",
+    right: "call",
+    sizePct: 0.5,
+    expiry: "2026-10-23",
+  });
+  assert.deepEqual(
+    p.rows.map((r) => r.expiry),
+    ["2026-10-12", "2026-10-16", "2026-10-23"],
+  );
+  await assert.rejects(
+    engine.buy({
+      underlying: "NVDA",
+      right: "call",
+      sizePct: 0.5,
+      expiry: "2026-10-09",
+    }),
+    /^TradeRefusal: expiry: 2026-10-09 is in the past|expiry: 2026-10-09 is in the past/,
+  );
+});
+
 test("engine buy: an order that never fills is canceled, no stop, no post", async () => {
   const { broker, engine, sent } = setup();
   broker.fillAt.set(friday, 5);
@@ -147,9 +196,7 @@ test("engine buy in one step: the nearest expiry by default, Friday's when named
     }),
     (error) =>
       error instanceof TradeRefusal &&
-      /^expiry: 2026-11-20 is not an expiry this server buys for NVDA/.test(
-        error.message,
-      ) &&
+      /^expiry: no NVDA calls expire on 2026-11-20/.test(error.message) &&
       error.hint === "Offered: 2026-10-12 (nearest), 2026-10-16 (Friday).",
   );
   assert.equal((await broker.positions()).length, 2);

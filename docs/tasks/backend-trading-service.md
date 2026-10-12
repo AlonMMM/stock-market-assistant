@@ -428,7 +428,17 @@ Branch `feat/first-day-fixes`. Not merged, not deployed.
   until now the site held only the read-only one). Without both, nobody can trade from the
   site. The local API never allows it.
 
-Verified 2026-10-12: `npm run check` (369 pass, 0 fail, 1 skipped), including
+- **Spread limit 25%, and a forced buy.** The spread may be at most 25% of the mid (was
+  10%). `force: true` on `buy` skips the spread check, before sending and at every raise;
+  every other check still applies, and `notes` says the spread was not checked. The
+  connector sets it only when the user says "force".
+- **Any expiry date.** `expiry` may be any listed date, not only the nearest or Friday's
+  ("META call 14/10 0.5%": the connector passes `2026-10-14`). A date with no contracts, or
+  in the past, is refused with the offered expiries.
+- **Owner.** `TRADE_OWNER_EMAIL` is `alonmor89@gmail.com` (user 2026-10-12); it is set as a
+  Worker secret at deploy, not kept in the repository.
+
+Verified 2026-10-12: `npm run check` (371 pass, 0 fail, 1 skipped), including
 `tests/position-control.test.ts` and `tests/position-control-api.test.ts` on the in-memory
 broker. The page was checked in headless Chromium at 390 and 1280 px with SYNTHETIC
 positions and a mocked API. Not run: anything against Alpaca or Telegram, and the Access

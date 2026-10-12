@@ -19,8 +19,9 @@ export interface OptionQuote {
 
 // Hard cap per trade; the size itself comes with each command.
 export const maxSizePct = 3;
-// A spread wider than this share of the mid means no trade.
-export const maxSpreadRatio = 0.1;
+// A spread wider than this share of the mid means no trade, unless the buy
+// is forced (user 2026-10-12: 25%, was 10%).
+export const maxSpreadRatio = 0.25;
 // The limit price never goes past 85% of the way from mid to ask.
 export const ceilingFraction = 0.85;
 // Without a delta in the command, the contract is picked from this |delta|

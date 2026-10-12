@@ -39,7 +39,7 @@ const order = {
   expiry: {
     type: "string",
     description:
-      'Leave out unless the user named one: the nearest expiry is bought by default. Use friday only when the user said so (for example "to Friday"), or a date YYYY-MM-DD when they gave one.',
+      'Leave out unless the user named one: the nearest expiry is bought by default. Use friday only when the user said so (for example "to Friday"). When the user gave a date, pass it as YYYY-MM-DD: they write day/month, so "14/10" is October 14 of the current year (the next year if that day has passed). Any listed expiry date is accepted.',
   },
   delta: {
     type: "number",
@@ -55,6 +55,11 @@ const order = {
     type: "number",
     description:
       "Stop loss as % of the premium. Only when the user named one; 40 by default, at most 70.",
+  },
+  force: {
+    type: "boolean",
+    description:
+      'true ONLY when the user said to force the buy (for example "force buy NVDA call 0.5%"). The spread check (at most 25% of the mid) is then skipped; every other check still applies. Never set it on your own, and never retry a refused buy with it unless the user asks.',
   },
 };
 const position = {

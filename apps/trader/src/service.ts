@@ -101,7 +101,10 @@ function buyRequest(body: Body): BuyRequest {
   if (contract && strike !== undefined)
     throw new RequestError("strike cannot be combined with contract");
   const stopPct = number(body, "stopPct");
+  if (body.force !== undefined && typeof body.force !== "boolean")
+    throw new RequestError("force must be true or false");
   return {
+    ...(body.force === true ? { force: true } : {}),
     ...(contract ? { contract } : { underlying: underlying!, right: right! }),
     ...(qty === undefined ? { sizePct: sizePct! } : { qty }),
     ...(expiry ? { expiry } : {}),
@@ -200,6 +203,8 @@ export class TraderService {
         underlying: request.underlying,
         right: request.right,
         sizePct: request.sizePct,
+        ...(request.expiry === undefined ? {} : { expiry: request.expiry }),
+        ...(request.force ? { force: true } : {}),
         ...(request.delta === undefined ? {} : { delta: request.delta }),
         ...(request.strike === undefined ? {} : { strike: request.strike }),
         ...(request.stopPct === undefined ? {} : { stopPct: request.stopPct }),

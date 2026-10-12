@@ -157,11 +157,13 @@ interface ChooseRequest {
   right: Right;
   delta?: number; // the target; without it, the middle of the default range
   strike?: number; // exact strike, which does not require a published delta
+  expiry?: string; // a date; it is offered next to the nearest and Friday's
 }
 
 export interface PreviewRequest extends ChooseRequest {
   sizePct: number;
   stopPct?: number;
+  force?: boolean;
 }
 
 export interface BuyRequest {
@@ -178,6 +180,8 @@ export interface BuyRequest {
   sizePct?: number;
   qty?: number;
   stopPct?: number;
+  // Buy whatever the spread is (user 2026-10-12). Every other check applies.
+  force?: boolean;
   steps?: number;
   intervalMs?: number;
   waitMs?: number; // how long an unfilled order is watched, then canceled
@@ -226,6 +230,7 @@ export interface BuyPlan extends BuyBase {
   stopPct: number;
   record: BuyRecord;
   decision: Decision;
+  force?: boolean;
   steps?: number;
   intervalMs?: number;
   waitMs?: number;
@@ -296,19 +301,39 @@ export class TradeEngine {
         today,
         addDays(today, 21),
       );
-    const choices = expiryChoices(
-      quotes.map((q) => q.expiry),
-      today,
-    );
+    // A named date is read on its own: it may be past the coming Friday.
+    const named =
+      request.expiry && /^\d{4}-\d{2}-\d{2}$/.test(request.expiry)
+        ? request.expiry
+        : undefined;
+    if (named !== undefined && named < today)
+      throw new TradeRefusal(
+        "expiry",
+        `${named} is in the past; today is ${today} in New York`,
+      );
+    if (named !== undefined && !quotes.some((q) => q.expiry === named))
+      quotes = [
+        ...quotes,
+        ...(await this.broker.chain(underlying, right, named, named)),
+      ];
+    const choices =
+      expiryChoices(
+        quotes.filter((q) => q.expiry !== named).map((q) => q.expiry),
+        today,
+      ) ??
+      expiryChoices(
+        quotes.map((q) => q.expiry),
+        today,
+      );
     if (!choices)
       throw new TradeRefusal(
         "options listed",
         `the broker lists no ${right}s for ${underlying} in the next 21 days`,
         "Check the ticker; not every stock has options.",
       );
-    const expiries = [...new Set([choices.nearest, choices.friday])].filter(
-      (e): e is string => e !== null,
-    );
+    const expiries = [
+      ...new Set([choices.nearest, choices.friday, named]),
+    ].filter((e): e is string => typeof e === "string");
     return {
       choices,
       // Only an automatically selected strike is held to the default range.
@@ -331,7 +356,9 @@ export class TradeEngine {
               ? "nearest = Friday"
               : expiry === choices.nearest
                 ? "nearest"
-                : "Friday",
+                : expiry === choices.friday
+                  ? "Friday"
+                  : "named",
           quote:
             request.strike === undefined
               ? pickByDelta(candidates, targetDelta)
@@ -398,6 +425,7 @@ export class TradeEngine {
     size: { sizePct?: number; qty?: number },
     stopPct: number,
     deltaRange?: readonly [number, number],
+    force = false,
   ) {
     const ceiling = ceilingPrice(quote);
     const { equity } = a.account;
@@ -451,6 +479,7 @@ export class TradeEngine {
           ceiling,
           sizePct,
           stopPct,
+          ...(force ? { force } : {}),
           ...(deltaRange ? { deltaRange } : {}),
         },
         risk,
@@ -492,6 +521,7 @@ export class TradeEngine {
         { sizePct: request.sizePct },
         stopPct,
         chosen.deltaRange,
+        request.force,
       );
       const [low, high] = defaultDeltaRange;
       return {
@@ -567,6 +597,7 @@ export class TradeEngine {
         right: request.right,
         ...(request.delta === undefined ? {} : { delta: request.delta }),
         ...(request.strike === undefined ? {} : { strike: request.strike }),
+        ...(request.expiry === undefined ? {} : { expiry: request.expiry }),
       });
       const want = request.expiry ?? this.defaultExpiry;
       const expiry =
@@ -581,16 +612,16 @@ export class TradeEngine {
           throw new Error(
             `No contract at strike ${request.strike} for ${request.underlying.toUpperCase()} ${request.right} expiring ${expiry ?? want}; offered strikes: ${(row?.candidates ?? []).map((q) => q.strike).join(", ") || "none"}`,
           );
-        const offered = chosen.rows
-          .map((r) => `${r.expiry} (${r.label})`)
-          .join(", ");
-        if (!row)
+        if (!row || row.candidates.length === 0)
           throw new TradeRefusal(
             "expiry",
             want === "friday"
               ? `no ${request.underlying.toUpperCase()} ${request.right}s expire by the coming Friday`
-              : `${want} is not an expiry this server buys for ${request.underlying.toUpperCase()}`,
-            `Offered: ${offered}.`,
+              : `no ${request.underlying.toUpperCase()} ${request.right}s expire on ${want}`,
+            `Offered: ${chosen.rows
+              .filter((r) => r.candidates.length > 0)
+              .map((r) => `${r.expiry} (${r.label})`)
+              .join(", ")}.`,
           );
         const why = whyNoPick(
           request.underlying.toUpperCase(),
@@ -620,6 +651,7 @@ export class TradeEngine {
         : { qty: request.qty },
       stopPct,
       deltaRange,
+      request.force,
     );
     const { qty, budget, verdict } = sized;
     const decision: Decision = {
@@ -678,6 +710,7 @@ export class TradeEngine {
       decision,
       offHours: !a.marketOpen,
       notes: verdict.notes,
+      ...(request.force ? { force: true } : {}),
       ...(request.steps === undefined ? {} : { steps: request.steps }),
       ...(request.intervalMs === undefined
         ? {}
@@ -761,6 +794,7 @@ export class TradeEngine {
       progress({ stage: "raising the price" });
       const result = await buyWithLadder(this.broker, symbol, qty, {
         ...(waiting ? { existing: waiting } : {}),
+        ...(plan.force ? { anySpread: true } : {}),
         ...(request.steps === undefined ? {} : { steps: request.steps }),
         ...(request.intervalMs === undefined
           ? {}
