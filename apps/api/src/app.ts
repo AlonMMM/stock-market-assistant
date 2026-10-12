@@ -140,6 +140,12 @@ export function buildApp(
       .header("Cache-Control", "no-store")
       .send(result.body);
   });
+  // Position controls need the hosted site's sign-in; here nobody is
+  // verified, so the page is told it cannot trade.
+  app.get("/api/portfolio/control", async () => ({
+    canTrade: false,
+    reason: "Position controls work on the hosted site only",
+  }));
   app.get("/api/portfolio/history", async (request, reply) => {
     const result = await handlePortfolioHistory(
       alpaca,

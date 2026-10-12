@@ -386,6 +386,54 @@ Verified 2026-10-11: `tests/order-explanations.test.ts`; the tab and the window 
 in headless Chrome at phone and desktop widths with SYNTHETIC decisions produced by the
 engine on the in-memory broker.
 
+### Changes after the first trading day (user, 2026-10-12)
+
+Branch `feat/first-day-fixes`. Not merged, not deployed.
+
+- **Refusals say why.** A buy that cannot pick a contract is answered as
+  `status: refused` with the reason and a `hint`, not as a broker error: no delta published
+  for the expiry (`delta: …`, with the listed strike range), nothing listed for the ticker
+  (`options listed: …`), or an expiry that is not offered (`expiry: …`). The preview row
+  carries the same text. Alpaca's own message is taken out of its error body. The connector
+  adds `httpStatus` and `meaning` to every error, and a timeout answers `sent: unknown`
+  instead of claiming nothing was sent.
+- **Adding to a position, capped at 5%.** New check `position size`
+  (`maxPositionPct: 5`): what is held of the same stock and side (calls or puts, any strike
+  or expiry) at cost, plus open buy orders, plus the new order, is at most 5% of equity.
+  ASSUMPTION to confirm: "one position" is the stock and side, measured at cost, not at
+  market value. An addition is posted as a reply to the trade's first post ("Added to the
+  position, N held now") and gets its own stop for the contracts it bought.
+- **Resize.** `POST /v1/resize { contract | underlying, qty }` brings a position to `qty`
+  contracts: fewer sells the difference at the bid, more buys it (every buy check applies),
+  zero sells all. `buy` accepts `qty` with `contract` in place of `sizePct`.
+- **A stop that sells is reported.** The service looks at the open stop orders every 15
+  seconds and after every job (`TraderService.watchStops`). A stop seen open and gone is
+  read back; if it sold contracts, "STOPPED OUT" is posted as a reply to the entry post in
+  the channel (which quotes it and notifies). What was seen is stored (`notes` table), so a
+  stop that fills while the service is down is reported on start. A failed post is tried
+  five times. Known gap: a stop placed and filled within one 15-second look during a
+  running job is not seen.
+- **Comment under the entry post.** With `TRADES_TELEGRAM_COMMENTS=true` the stop-out is
+  also sent as a comment under the entry post, in the channel's discussion group. Needed
+  first: the trades bot must be a member of that group (checked 2026-10-12: it is not), and
+  no other process may read that bot's updates (`getUpdates`); the collector does so for
+  the alerts bot, so the two must be different bots. Off by default.
+- **Position controls on the site.** Portfolio → Live trades lists positions as rows
+  (last and stop, value, profit and loss); a row opens the numbers, the stop, the stock's
+  day chart and, for the owner, a size control with Half and Close. The site Worker
+  forwards `POST /api/portfolio/control { contract, qty }` to `/v1/resize`
+  (`packages/trading/src/control-api.ts`). It is allowed only when the Cloudflare Access
+  identity of the request equals `TRADE_OWNER_EMAIL`, and the request's `Origin` is the
+  site itself. New Worker secrets: `TRADE_OWNER_EMAIL` and `TRADER_TOKEN` (the full token;
+  until now the site held only the read-only one). Without both, nobody can trade from the
+  site. The local API never allows it.
+
+Verified 2026-10-12: `npm run check` (369 pass, 0 fail, 1 skipped), including
+`tests/position-control.test.ts` and `tests/position-control-api.test.ts` on the in-memory
+broker. The page was checked in headless Chromium at 390 and 1280 px with SYNTHETIC
+positions and a mocked API. Not run: anything against Alpaca or Telegram, and the Access
+identity check on the hosted site.
+
 ## Failure cases
 
 | Case                            | Behavior                                                                                        |

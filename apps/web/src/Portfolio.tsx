@@ -6,11 +6,11 @@ import type {
   Portfolio as PortfolioData,
   PortfolioHistory,
   PortfolioOrder,
-  PortfolioPosition,
 } from "../../../packages/trading/src/portfolio.js";
 import type { Decision } from "../../../packages/trading/src/explain.js";
 import { usePolling } from "./Live.js";
 import { Orders, useDecisions, WhyButton } from "./Orders.js";
+import { PositionList } from "./Positions.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
 
 const PnlChart = lazy(() =>
@@ -51,63 +51,6 @@ const optionName = (c: Contract) =>
   c.option
     ? `${c.underlying} ${c.option.strike} ${c.option.right === "call" ? "Call" : "Put"}`
     : c.symbol;
-
-function Position({ p, why }: { p: PortfolioPosition; why?: Decision }) {
-  const unit = p.option ? "contract" : "share";
-  // How far the current price is above the stop, as a share of the price.
-  const away =
-    p.stop && p.price ? ((p.price - p.stop.price) / p.price) * 100 : null;
-  return (
-    <li className="position">
-      <div className="position-head">
-        <strong>{optionName(p)}</strong>
-        <span className="muted">
-          {p.option ? `${expiryLabel(p.option.expiry)} · ` : ""}
-          {p.qty} {unit}
-          {Math.abs(p.qty) === 1 ? "" : "s"}
-        </span>
-        <span className={`position-pnl num${tone(p.pnl)}`}>
-          {p.pnl === null ? "—" : signedUsd(p.pnl)}
-          {p.pnlPct !== null && ` (${signedPct(p.pnlPct)})`}
-        </span>
-        {why && <WhyButton decision={why} />}
-      </div>
-      <dl>
-        <dt>Entry → now</dt>
-        <dd className="num">
-          {p.entry.toFixed(2)} → {p.price === null ? "—" : p.price.toFixed(2)}
-        </dd>
-        <dt>Value</dt>
-        <dd className="num">
-          {p.value === null ? "—" : usd(p.value)}
-          {p.sharePct !== null && ` · ${p.sharePct.toFixed(1)}% of account`}
-        </dd>
-        <dt>Today</dt>
-        <dd className={`num${tone(p.dayPnl)}`}>
-          {p.dayPnl === null ? "—" : signedUsd(p.dayPnl)}
-        </dd>
-        <dt>Stop</dt>
-        {p.stop ? (
-          <dd className="num">
-            {p.stop.price.toFixed(2)} (−{p.stop.lossPct.toFixed(0)}% from entry,{" "}
-            {usd(p.stop.risk)} at risk)
-            {away !== null &&
-              (away > 0
-                ? ` · ${away.toFixed(0)}% above the stop`
-                : " · at or below the stop")}
-            {p.stop.qty < p.qty && (
-              <span className="stop-missing">
-                Covers {p.stop.qty} of {p.qty}.
-              </span>
-            )}
-          </dd>
-        ) : (
-          <dd className="stop-missing">No stop order</dd>
-        )}
-      </dl>
-    </li>
-  );
-}
 
 function Order({ o, why }: { o: PortfolioOrder; why?: Decision }) {
   const price =
@@ -339,6 +282,7 @@ function LiveTrades({ onError }: { onError: (m: string) => void }) {
       </p>
     );
   const { account, positions, orders } = value;
+  const openPnl = positions.reduce((sum, p) => sum + (p.pnl ?? 0), 0);
   return (
     <div className="portfolio">
       <p className="portfolio-meta">
@@ -351,32 +295,36 @@ function LiveTrades({ onError }: { onError: (m: string) => void }) {
             : `Updated ${israelClock(at ?? Date.parse(value.at))} ${israelLabel}`}
         </span>
       </p>
-      <dl className="portfolio-totals">
-        <div>
-          <dt>Equity</dt>
-          <dd className="num">{usd(account.equity)}</dd>
-        </div>
-        <div>
-          <dt>Today</dt>
-          <dd className={`num${tone(account.dayChange)}`}>
+      <div className="account">
+        <div className="account-main">
+          <span className="account-label">Net liquidation</span>
+          <strong className="num">{usd(account.equity)}</strong>
+          <span className={`num account-day${tone(account.dayChange)}`}>
             {signedUsd(account.dayChange)}
             {account.dayChangePct !== null &&
-              ` (${signedPct(account.dayChangePct)})`}
-          </dd>
+              ` (${signedPct(account.dayChangePct)})`}{" "}
+            today
+          </span>
         </div>
-        <div>
-          <dt>Cash</dt>
-          <dd className="num">{usd(account.cash)}</dd>
-        </div>
-        <div>
-          <dt>At risk to stops</dt>
-          <dd className="num">
-            {usd(value.riskAtStops)}
-            {account.equity > 0 &&
-              ` (${((value.riskAtStops / account.equity) * 100).toFixed(1)}%)`}
-          </dd>
-        </div>
-      </dl>
+        <dl className="account-stats">
+          <div>
+            <dt>Open P&amp;L</dt>
+            <dd className={`num${tone(openPnl)}`}>{signedUsd(openPnl)}</dd>
+          </div>
+          <div>
+            <dt>Cash</dt>
+            <dd className="num">{usd(account.cash)}</dd>
+          </div>
+          <div>
+            <dt>At risk to stops</dt>
+            <dd className="num">
+              {usd(value.riskAtStops)}
+              {account.equity > 0 &&
+                ` (${((value.riskAtStops / account.equity) * 100).toFixed(1)}%)`}
+            </dd>
+          </div>
+        </dl>
+      </div>
       {value.shortRisks.length > 0 && (
         <div className="notice error short-alert" role="alert">
           <strong>Short option risk. This must never happen.</strong>
@@ -397,11 +345,7 @@ function LiveTrades({ onError }: { onError: (m: string) => void }) {
       )}
       <h2 className="portfolio-title">Positions</h2>
       {positions.length > 0 ? (
-        <ul className="positions">
-          {positions.map((p) => (
-            <Position key={p.symbol} p={p} why={why.get(p.symbol)} />
-          ))}
-        </ul>
+        <PositionList positions={positions} why={why} />
       ) : (
         <p className="notice">No open positions.</p>
       )}
