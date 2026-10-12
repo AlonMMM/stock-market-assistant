@@ -73,6 +73,9 @@ export class TradeStore {
         id TEXT NOT NULL, user_id TEXT NOT NULL, at INTEGER NOT NULL,
         symbol TEXT NOT NULL, outcome TEXT NOT NULL, data TEXT NOT NULL,
         PRIMARY KEY (user_id, id));
+      CREATE TABLE IF NOT EXISTS notes (
+        user_id TEXT NOT NULL, name TEXT NOT NULL, data TEXT NOT NULL,
+        PRIMARY KEY (user_id, name));
       CREATE TABLE IF NOT EXISTS log (
         id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL,
         user_id TEXT NOT NULL, tool TEXT NOT NULL, input TEXT NOT NULL,
@@ -205,6 +208,22 @@ export class TradeStore {
         )
         .all(userId, limit) as unknown as { data: string }[]
     ).map((r) => JSON.parse(r.data) as Decision);
+  }
+
+  /** A small named record of one user, such as the stops being watched. */
+  note<T>(userId: string, name: string): T | undefined {
+    const row = this.db
+      .prepare("SELECT data FROM notes WHERE user_id = ? AND name = ?")
+      .get(userId, name) as { data: string } | undefined;
+    return row && (JSON.parse(row.data) as T);
+  }
+
+  setNote(userId: string, name: string, value: unknown) {
+    this.db
+      .prepare(
+        "INSERT OR REPLACE INTO notes (user_id, name, data) VALUES (?, ?, ?)",
+      )
+      .run(userId, name, JSON.stringify(value));
   }
 
   log(

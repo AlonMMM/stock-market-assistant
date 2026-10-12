@@ -51,7 +51,12 @@ const telegramToken = process.env.TRADES_TELEGRAM_BOT_TOKEN;
 const telegramChat = process.env.TRADES_TELEGRAM_CHAT_ID;
 const notifier =
   telegramToken && telegramChat
-    ? new TelegramNotifier(new TelegramSender(telegramToken, telegramChat))
+    ? new TelegramNotifier(new TelegramSender(telegramToken, telegramChat), {
+        // Also comment under the entry post. The bot must be a member of the
+        // channel's discussion group, and no other process may read this
+        // bot's updates (docs/tasks/backend-trading-service.md).
+        comments: process.env.TRADES_TELEGRAM_COMMENTS === "true",
+      })
     : new NoNotifier();
 const engine = new TradeEngine({
   broker,
@@ -68,6 +73,7 @@ const service = new TraderService({
   engine,
   broker,
   notifier,
+  posts: store.posts(userId),
   log,
 });
 
@@ -106,6 +112,7 @@ api.post("/v1/preview", async (request) => service.preview(body(request.body)));
 api.post("/v1/buy", async (request) => service.buy(body(request.body)));
 api.post("/v1/sell", async (request) => service.sell(body(request.body)));
 api.post("/v1/stop", async (request) => service.stop(body(request.body)));
+api.post("/v1/resize", async (request) => service.resize(body(request.body)));
 api.get<{ Params: { id: string } }>("/v1/jobs/:id", async (request) =>
   service.job(request.params.id),
 );
@@ -118,7 +125,20 @@ api.get<{ Querystring: { limit?: string } }>("/v1/decisions", async (request) =>
   service.decisions(Number(request.query.limit)),
 );
 
+// A stop that sells is reported within this long.
+const stopWatchMs = 15_000;
+const stopWatch = setInterval(() => {
+  service
+    .watchStops()
+    .catch((error: unknown) =>
+      log(
+        `stop watch failed: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
+}, stopWatchMs);
+
 async function stop() {
+  clearInterval(stopWatch);
   await api.close();
   // A job cut off here is settled by `reconcile` on the next start.
   store.close();
@@ -129,6 +149,10 @@ process.once("SIGTERM", () => void stop());
 
 const cut = await service.reconcile();
 if (cut > 0) log(`settled ${cut} job(s) cut off by a restart`);
+// Stops that sold while the service was down are reported now.
+await service
+  .watchStops()
+  .catch((error: unknown) => log(`stop watch failed: ${String(error)}`));
 await api.listen({
   host: process.env.TRADER_HOST ?? "127.0.0.1",
   port: Number(process.env.PORT ?? 3003),

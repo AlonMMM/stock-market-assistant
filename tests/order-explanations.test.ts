@@ -98,7 +98,7 @@ test("explanation: a buy records what was asked, what was default, and how it wa
     [e.risk.state, e.risk.daysToExpiry, e.risk.sharePct, e.risk.tradeRisk],
     ["full", 4, 80, 329.6],
   );
-  assert.equal(e.checks.length, 15);
+  assert.equal(e.checks.length, 16);
   assert.ok(e.checks.every((c) => c.ok));
   assert.deepEqual(d.result, {
     filledQty: 4,

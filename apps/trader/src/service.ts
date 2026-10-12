@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { Broker } from "../../../packages/trading/src/broker.js";
-import type {
-  BuyProgress,
-  BuyRequest,
-  TradeEngine,
+import {
+  TradeRefusal,
+  type BuyProgress,
+  type BuyRequest,
+  type PostStore,
+  type TradeEngine,
 } from "../../../packages/trading/src/engine.js";
 import { exitQty } from "../../../packages/trading/src/exit.js";
 import { parseOccSymbol } from "../../../packages/trading/src/options.js";
@@ -31,9 +33,22 @@ export interface TraderOptions {
   engine: TradeEngine;
   broker: Broker;
   notifier: Notifier;
+  // The post of each open trade; a stop-out is attached to it.
+  posts?: PostStore;
   now?: () => number;
   log?: (line: string) => void;
 }
+
+/** The stop orders seen open at the last look, and each position's entry. */
+interface StopWatch {
+  stops: Record<
+    string,
+    { symbol: string; stopPrice: number | null; tries?: number }
+  >;
+  entries: Record<string, number>;
+}
+// A stop-out that could not be posted is tried again this many times.
+const postTries = 5;
 
 type Body = Record<string, unknown>;
 
@@ -67,7 +82,15 @@ function buyRequest(body: Body): BuyRequest {
   if (!contract && !(underlying && right))
     throw new RequestError("Need underlying and right (call or put)");
   const sizePct = number(body, "sizePct");
-  if (sizePct === undefined) throw new RequestError("Need sizePct");
+  const qty = number(body, "qty");
+  if (qty !== undefined && !(Number.isInteger(qty) && qty >= 1))
+    throw new RequestError("qty must be a whole number of contracts");
+  if (qty !== undefined && !contract)
+    throw new RequestError("qty needs a contract; otherwise give sizePct");
+  if (sizePct !== undefined && qty !== undefined)
+    throw new RequestError("sizePct and qty cannot be combined");
+  if (sizePct === undefined && qty === undefined)
+    throw new RequestError("Need sizePct");
   const expiry = text(body, "expiry", /^(nearest|friday|\d{4}-\d{2}-\d{2})$/);
   const delta = number(body, "delta");
   const strike = number(body, "strike");
@@ -80,7 +103,7 @@ function buyRequest(body: Body): BuyRequest {
   const stopPct = number(body, "stopPct");
   return {
     ...(contract ? { contract } : { underlying: underlying!, right: right! }),
-    sizePct,
+    ...(qty === undefined ? { sizePct: sizePct! } : { qty }),
     ...(expiry ? { expiry } : {}),
     ...(delta === undefined ? {} : { delta }),
     ...(strike === undefined ? {} : { strike }),
@@ -94,6 +117,8 @@ export class TraderService {
   private readonly engine: TradeEngine;
   private readonly broker: Broker;
   private readonly notifier: Notifier;
+  private readonly posts: PostStore | undefined;
+  private watching = false;
   private readonly now: () => number;
   private readonly log: (line: string) => void;
   private readonly running = new Map<string, Promise<void>>();
@@ -106,6 +131,7 @@ export class TraderService {
     this.engine = options.engine;
     this.broker = options.broker;
     this.notifier = options.notifier;
+    this.posts = options.posts;
     this.now = options.now ?? Date.now;
     this.log = options.log ?? (() => {});
   }
@@ -150,6 +176,8 @@ export class TraderService {
       } finally {
         this.running.delete(id);
         this.progress.delete(id);
+        // The job may have placed or moved a stop: have it watched from now.
+        await this.watchStops().catch(() => {});
       }
     })();
     this.running.set(id, run);
@@ -165,14 +193,25 @@ export class TraderService {
     const request = buyRequest(body);
     if (!request.underlying || !request.right)
       throw new RequestError("A preview needs underlying and right");
-    const result = await this.engine.preview({
-      underlying: request.underlying,
-      right: request.right,
-      sizePct: request.sizePct,
-      ...(request.delta === undefined ? {} : { delta: request.delta }),
-      ...(request.strike === undefined ? {} : { strike: request.strike }),
-      ...(request.stopPct === undefined ? {} : { stopPct: request.stopPct }),
-    });
+    if (request.sizePct === undefined)
+      throw new RequestError("A preview needs sizePct");
+    const result = await this.engine
+      .preview({
+        underlying: request.underlying,
+        right: request.right,
+        sizePct: request.sizePct,
+        ...(request.delta === undefined ? {} : { delta: request.delta }),
+        ...(request.strike === undefined ? {} : { strike: request.strike }),
+        ...(request.stopPct === undefined ? {} : { stopPct: request.stopPct }),
+      })
+      .catch((error: unknown) => {
+        if (error instanceof TradeRefusal)
+          throw new RequestError(
+            [error.message, error.hint].filter(Boolean).join(". "),
+            422,
+          );
+        throw error;
+      });
     this.record("preview", body, "ok");
     return result;
   }
@@ -184,6 +223,19 @@ export class TraderService {
     try {
       plan = await this.engine.planBuy(request);
     } catch (error) {
+      // Nothing could be picked: answered like any refused buy, with the
+      // reason and what would work instead.
+      if (error instanceof TradeRefusal) {
+        this.record("buy", body, `refused: ${error.message}`);
+        return {
+          status: "refused" as const,
+          paper: this.broker.capabilities.paper,
+          contract: null,
+          qty: 0,
+          refused: [error.message],
+          ...(error.hint ? { hint: error.hint } : {}),
+        };
+      }
       if (
         request.strike !== undefined &&
         message(error).startsWith("No contract at strike ")
@@ -266,6 +318,127 @@ export class TraderService {
       selling: asked,
       held: held.qty,
     };
+  }
+
+  /**
+   * Brings a position to `qty` contracts: sells the difference at the bid, or
+   * buys it as an addition that every buy check must pass. Zero sells all.
+   */
+  async resize(body: Body) {
+    const { symbol, held } = await this.target(body);
+    const wanted = number(body, "qty");
+    if (wanted === undefined || !Number.isInteger(wanted) || wanted < 0)
+      throw new RequestError(
+        "qty must be a whole number of contracts, 0 or more",
+      );
+    if (wanted === held.qty)
+      throw new RequestError(`${symbol} already holds ${held.qty}`, 409);
+    if (wanted < held.qty)
+      return this.sell({
+        contract: symbol,
+        qty: wanted === 0 ? "all" : String(held.qty - wanted),
+      });
+    if (this.store.runningJobs().some((j) => j.symbol === symbol))
+      throw new RequestError(
+        `${symbol} already has an order in progress; wait for it`,
+        409,
+      );
+    const stopPct = number(body, "stopPct");
+    return this.buy({
+      contract: symbol,
+      qty: wanted - held.qty,
+      ...(stopPct === undefined ? {} : { stopPct }),
+    });
+  }
+
+  /**
+   * One look at the stop orders (user 2026-10-12: a stop that sells must be
+   * reported). A stop seen open at the last look and gone now is read back
+   * from the broker; if it sold contracts, the channel is told, under the
+   * trade's post. What was seen is kept in the store, so a stop that fills
+   * while the service is down is reported when it is back. Returns how many
+   * stop-outs were handled.
+   */
+  async watchStops(): Promise<number> {
+    if (this.watching) return 0;
+    this.watching = true;
+    try {
+      const last = this.store.note<StopWatch>(this.userId, "stop-watch") ?? {
+        stops: {},
+        entries: {},
+      };
+      const [open, positions] = await Promise.all([
+        this.broker.openOrders(),
+        this.broker.positions(),
+      ]);
+      const stops = open.filter(
+        (o) => o.side === "sell" && o.stopPrice !== null,
+      );
+      const stillOpen = new Set(stops.map((o) => o.id));
+      const held = new Map(positions.map((p) => [p.symbol, p]));
+      const next: StopWatch = { stops: {}, entries: {} };
+      let handled = 0;
+      for (const [id, seen] of Object.entries(last.stops)) {
+        if (stillOpen.has(id)) continue;
+        const tries = (seen.tries ?? 0) + 1;
+        const retry = () => {
+          if (tries < postTries) next.stops[id] = { ...seen, tries };
+          return tries < postTries;
+        };
+        const order = await this.broker.order(id).catch(() => null);
+        if (!order) {
+          if (!retry()) this.log(`stop watch: order ${id} cannot be read`);
+          continue;
+        }
+        // Canceled, replaced or expired with nothing sold: not a stop-out.
+        if (!(order.filledQty > 0)) continue;
+        const fill = {
+          symbol: seen.symbol,
+          sold: order.filledQty,
+          price: order.filledAvgPrice ?? seen.stopPrice ?? 0,
+          stopPrice: seen.stopPrice,
+          entry: last.entries[seen.symbol] ?? null,
+          remaining: Math.max(held.get(seen.symbol)?.qty ?? 0, 0),
+        };
+        const sent = await this.notifier
+          .stopped(
+            { symbol: seen.symbol, paper: this.broker.capabilities.paper },
+            fill,
+            await this.posts?.get(seen.symbol),
+          )
+          .catch((error: unknown) => ({
+            ok: false as const,
+            error: message(error),
+          }));
+        if (!sent.ok && retry()) continue;
+        this.record(
+          "stop-out",
+          { orderId: id, ...fill },
+          sent.ok
+            ? `posted${sent.commentError ? `, comment failed: ${sent.commentError}` : ""}`
+            : `NOT posted: ${sent.error}`,
+        );
+        this.log(
+          `stop-out: ${fill.sold} ${fill.symbol} at ${fill.price.toFixed(2)}`,
+        );
+        if (fill.remaining === 0) await this.posts?.set(seen.symbol, null);
+        handled++;
+      }
+      for (const o of stops)
+        next.stops[o.id] = { symbol: o.symbol, stopPrice: o.stopPrice };
+      for (const p of positions)
+        if (p.qty > 0) next.entries[p.symbol] = p.avgEntryPrice;
+      // The entry of a stop-out still to be posted is kept until it is.
+      for (const seen of Object.values(next.stops))
+        if (next.entries[seen.symbol] === undefined) {
+          const entry = last.entries[seen.symbol];
+          if (entry !== undefined) next.entries[seen.symbol] = entry;
+        }
+      this.store.setNote(this.userId, "stop-watch", next);
+      return handled;
+    } finally {
+      this.watching = false;
+    }
   }
 
   /** Puts a stop on held contracts that have none. */

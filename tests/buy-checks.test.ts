@@ -74,7 +74,7 @@ test("buy checks: a good order passes all of them", () => {
   const v = checkBuy(good());
   assert.deepEqual(v.refused, []);
   assert.equal(v.ok, true);
-  assert.equal(v.checks.length, 15);
+  assert.equal(v.checks.length, 16);
   assert.deepEqual(v.notes, []);
 });
 
@@ -106,6 +106,27 @@ const cases: [string, (c: BuyContext) => void, RegExp][] = [
     "positions without a stop",
     (c) => (c.positions = [held(6, 1.2)]),
     /no full stop on AMD261016C00660000/,
+  ],
+  [
+    "position size",
+    // $4,700 of NVDA calls held, fully stopped, plus this order's $412.
+    (c) =>
+      (c.positions = [
+        {
+          symbol: "NVDA261016C00230000",
+          qty: 47,
+          avgEntryPrice: 1,
+          stopQty: 47,
+          stopPrice: 0.9,
+        },
+      ]),
+    /\$4,700 already in NVDA calls plus \$412 is 5\.11% of the account; one position may be at most 5%, \$5,000, so \$300 more fits/,
+  ],
+  [
+    "position size",
+    // An open buy order counts with what is held.
+    (c) => (c.working = [{ symbol: "NVDA261012C00235000", qty: 46, price: 1 }]),
+    /\$4,600 already in NVDA calls plus \$412 is 5\.01%/,
   ],
   [
     "buying power",

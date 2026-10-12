@@ -48,6 +48,18 @@ function quote(symbol: string, s: Snapshot): OptionQuote {
   };
 }
 
+/** Alpaca's own words for a refusal, out of its JSON error body. */
+function reason(text: string): string {
+  try {
+    const body = JSON.parse(text) as { message?: unknown };
+    if (typeof body.message === "string" && body.message)
+      return body.message.slice(0, 300);
+  } catch {
+    // Not JSON: shown as it came.
+  }
+  return text.slice(0, 300) || "no reason given";
+}
+
 // A daily point is labelled with its New York trading day.
 const tradingDay = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/New_York",
@@ -101,7 +113,7 @@ export class AlpacaTrading implements Broker {
     const text = await response.text();
     if (!response.ok)
       throw new Error(
-        `Alpaca ${init.method ?? "GET"} ${url.pathname} failed (${response.status}): ${text.slice(0, 300)}`,
+        `Alpaca refused ${init.method ?? "GET"} ${url.pathname} (HTTP ${response.status}): ${reason(text)}`,
       );
     return (text ? JSON.parse(text) : null) as T;
   }

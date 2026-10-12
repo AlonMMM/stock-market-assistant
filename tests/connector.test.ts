@@ -175,7 +175,11 @@ test("connector: errors of the trading service are shown as errors", async () =>
     arguments: {},
   });
   assert.equal(lost.body.result.isError, true);
-  assert.match(lost.body.result.content[0].text, /unreachable/);
+  assert.match(lost.body.result.content[0].text, /could not be reached/);
+  assert.match(lost.body.result.content[0].text, /"sent": "no"/);
+  // Where an error came from is said, so it is not read as a refused check.
+  assert.match(out.body.result.content[0].text, /"httpStatus": 400/);
+  assert.match(out.body.result.content[0].text, /nothing was sent/);
   const unknown = await down.rpc("tools/call", {
     name: "wire_money",
     arguments: {},

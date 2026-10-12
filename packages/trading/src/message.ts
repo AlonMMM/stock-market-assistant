@@ -111,3 +111,46 @@ export function formatExit(
   ];
   return lines.join("\n");
 }
+
+/** A stop order that sold contracts at the broker. */
+export interface StopFill {
+  symbol: string;
+  sold: number;
+  price: number; // average sale price
+  stopPrice: number | null; // where the stop was set
+  entry: number | null; // average entry price, when it is known
+  remaining: number; // contracts still held after it
+}
+
+/**
+ * Stop-out post, sent as a reply to the entry post and as a comment under it:
+ *
+ *   🛑 STOPPED OUT
+ *   $MU | 985 Put 10/16
+ *   Sold 250 at 1.30 (stop 1.32)
+ *   Loss $22,250 (-41%)
+ */
+export function formatStopOut(
+  note: { symbol: string; paper: boolean },
+  fill: StopFill,
+): string {
+  const c = parseOccSymbol(note.symbol);
+  const pnl =
+    fill.entry === null ? null : (fill.price - fill.entry) * fill.sold * 100;
+  const pct =
+    fill.entry === null || !(fill.entry > 0)
+      ? null
+      : ((fill.price - fill.entry) / fill.entry) * 100;
+  return [
+    ...(note.paper ? ["🧪 PAPER"] : []),
+    "🛑 <b>STOPPED OUT</b>",
+    `<b>$${escape(c.underlying)} | ${c.strike} ${c.right === "call" ? "Call" : "Put"} ${shortDate(c.expiry)}</b>`,
+    `Sold ${fill.sold} at ${fill.price.toFixed(2)}${fill.stopPrice === null ? "" : ` (stop ${fill.stopPrice.toFixed(2)})`}`,
+    ...(pnl === null
+      ? []
+      : [
+          `${pnl >= 0 ? "Profit" : "Loss"} ${dollars(pnl)}${pct === null ? "" : ` (${pct >= 0 ? "+" : "-"}${Math.abs(pct).toFixed(0)}%)`}`,
+        ]),
+    ...(fill.remaining > 0 ? [`${contracts(fill.remaining)} still held`] : []),
+  ].join("\n");
+}

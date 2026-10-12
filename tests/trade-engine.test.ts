@@ -4,6 +4,7 @@ import {
   MemoryBuyLog,
   MemoryPostStore,
   TradeEngine,
+  TradeRefusal,
 } from "../packages/trading/src/engine.js";
 import {
   NoNotifier,
@@ -144,7 +145,12 @@ test("engine buy in one step: the nearest expiry by default, Friday's when named
       sizePct: 0.5,
       expiry: "2026-11-20",
     }),
-    /offered: 2026-10-12, 2026-10-16/,
+    (error) =>
+      error instanceof TradeRefusal &&
+      /^expiry: 2026-11-20 is not an expiry this server buys for NVDA/.test(
+        error.message,
+      ) &&
+      error.hint === "Offered: 2026-10-12 (nearest), 2026-10-16 (Friday).",
   );
   assert.equal((await broker.positions()).length, 2);
   const preview = await engine.preview({
