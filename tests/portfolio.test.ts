@@ -260,11 +260,15 @@ test("history: daily profit and loss with the period's closed trades", async () 
             profit_loss: [0, 150, null],
             base_value: 100000,
           }
-        : activities,
+        : url.pathname.endsWith("/clock")
+          ? { is_open: true }
+          : url.pathname.endsWith("/account")
+            ? account
+            : activities,
     );
   }) as typeof fetch;
   const cache = new PortfolioCache();
-  const at = Date.parse("2026-10-10T09:00:00Z");
+  const at = Date.parse("2026-10-12T15:00:00Z");
   const result = await handlePortfolioHistory(
     keys,
     "1W",
@@ -278,9 +282,10 @@ test("history: daily profit and loss with the period's closed trades", async () 
   assert.deepEqual(body.points, [
     { date: "2026-10-05", equity: 100000, pnl: 0 },
     { date: "2026-10-06", equity: 100150, pnl: 150 },
+    { date: "2026-10-12", equity: 100500, pnl: 500 },
   ]);
-  assert.equal(body.pnl, 150);
-  assert.equal(body.pnlPct, 0.15);
+  assert.equal(body.pnl, 500);
+  assert.equal(body.pnlPct, 0.5);
   assert.equal(body.trades.length, 2);
   assert.equal(body.realized, -260);
   assert.equal(body.wins, 0);
@@ -288,12 +293,12 @@ test("history: daily profit and loss with the period's closed trades", async () 
   assert.match(seen[0]!, /portfolio\/history\?period=1W&timeframe=1D/);
   // Reused within a minute; a bad period is refused before any request.
   await handlePortfolioHistory(keys, "1W", false, fetcher, at + 30000, cache);
-  assert.equal(seen.length, 2);
+  assert.equal(seen.length, 4);
   assert.equal(
     (await handlePortfolioHistory(keys, "5Y", false, fetcher)).status,
     400,
   );
-  assert.equal(seen.length, 2);
+  assert.equal(seen.length, 4);
   const app = buildApp(false, { ...keys, fetcher });
   const local = await app.inject({
     method: "GET",
