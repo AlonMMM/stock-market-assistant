@@ -5,7 +5,7 @@ Phase: Alpaca live alerts on real-time SIP with Telegram delivery; marked-sectio
 
 ## In review: live portfolio P&L point
 
-The Portfolio History chart now adds a live account-equity point while Alpaca reports the market open, so current-session gains and losses appear alongside the daily history and closed-trade list. The history API and portfolio tests are updated; CI verification is pending.
+The Portfolio History chart now adds a live account-equity point while Alpaca reports the market open, so current-session gains and losses appear alongside the daily history and closed-trade list. The history API and portfolio tests are updated; `npm run doctor` and `npm run check` pass in CI.
 
 ## Working product
 
