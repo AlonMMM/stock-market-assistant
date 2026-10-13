@@ -496,9 +496,9 @@ export async function handlePortfolioHistory(
         `/v2/account/portfolio/history?period=${chosen}&timeframe=1D`,
       ),
       cache.get(`${base}activities`, portfolioTtlMs.history, now, activities),
-      get<{ is_open?: boolean }>("/v2/clock").catch(
-        () => ({ is_open: false }),
-      ),
+      get<{ is_open?: boolean }>("/v2/clock").catch(() => ({
+        is_open: false,
+      })),
     ]);
     const points = history.timestamp.flatMap((t, i) => {
       const equity = history.equity[i];
