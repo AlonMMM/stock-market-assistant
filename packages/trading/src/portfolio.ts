@@ -491,11 +491,12 @@ export async function handlePortfolioHistory(
     return { all, truncated: true };
   };
   try {
-    const [history, activity] = await Promise.all([
+    const [history, activity, clock] = await Promise.all([
       get<RawHistory>(
         `/v2/account/portfolio/history?period=${chosen}&timeframe=1D`,
       ),
       cache.get(`${base}activities`, portfolioTtlMs.history, now, activities),
+      get<{ is_open?: boolean }>("/v2/clock", portfolioTtlMs.history),
     ]);
     const points = history.timestamp.flatMap((t, i) => {
       const equity = history.equity[i];
@@ -510,6 +511,24 @@ export async function handlePortfolioHistory(
             },
           ];
     });
+    // Alpaca's daily history can lag the current session. While the market is
+    // open, replace today's EOD point (if present) with the live account equity
+    // so the chart and headline include current realized and unrealized P&L.
+    if (clock.is_open && history.base_value > 0) {
+      const current = await get<RawAccount>("/v2/account", portfolioTtlMs.history);
+      const equity = Number(current.equity);
+      if (Number.isFinite(equity)) {
+        const today = tradingDay.format(now);
+        const livePoint = {
+          date: today,
+          equity: round(equity),
+          pnl: round(equity - history.base_value),
+        };
+        const todayIndex = points.findIndex((point) => point.date === today);
+        if (todayIndex >= 0) points[todayIndex] = livePoint;
+        else points.push(livePoint);
+      }
+    }
     const from = new Date(
       now - periodDays[chosen as HistoryPeriod] * 86400000,
     ).toISOString();
