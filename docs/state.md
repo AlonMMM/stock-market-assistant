@@ -3,6 +3,10 @@
 Updated: 2026-10-07
 Phase: Alpaca live alerts on real-time SIP with Telegram delivery; marked-sections score vs SPY in review.
 
+## In review: live portfolio P&L point
+
+The Portfolio History chart now adds a live account-equity point while Alpaca reports the market open, so current-session gains and losses appear alongside the daily history and closed-trade list. The history API and portfolio tests are updated; CI verification is pending.
+
 ## Working product
 
 The mobile replay site is published privately through Sites/Cloudflare Workers at
