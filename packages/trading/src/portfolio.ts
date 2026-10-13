@@ -496,7 +496,9 @@ export async function handlePortfolioHistory(
         `/v2/account/portfolio/history?period=${chosen}&timeframe=1D`,
       ),
       cache.get(`${base}activities`, portfolioTtlMs.history, now, activities),
-      get<{ is_open?: boolean }>("/v2/clock", portfolioTtlMs.history),
+      get<{ is_open?: boolean }>("/v2/clock", portfolioTtlMs.history).catch(
+        () => ({ is_open: false }),
+      ),
     ]);
     const points = history.timestamp.flatMap((t, i) => {
       const equity = history.equity[i];
@@ -515,8 +517,11 @@ export async function handlePortfolioHistory(
     // open, replace today's EOD point (if present) with the live account equity
     // so the chart and headline include current realized and unrealized P&L.
     if (clock.is_open && history.base_value > 0) {
-      const current = await get<RawAccount>("/v2/account", portfolioTtlMs.history);
-      const equity = Number(current.equity);
+      const current = await get<RawAccount>(
+        "/v2/account",
+        portfolioTtlMs.history,
+      ).catch(() => null);
+      const equity = Number(current?.equity);
       if (Number.isFinite(equity)) {
         const today = tradingDay.format(now);
         const livePoint = {
