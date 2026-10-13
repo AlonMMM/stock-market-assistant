@@ -3,6 +3,15 @@
 Updated: 2026-10-07
 Phase: Alpaca live alerts on real-time SIP with Telegram delivery; marked-sections score vs SPY in review.
 
+## In review: History trade dots
+
+History now plots each closed trade's realized P&L as a separate dot in closing
+order, with profit/loss colors and tap/keyboard details in Israel time. Equal
+spacing preserves trades closed on the same day or timestamp; longer histories
+scroll horizontally. Account summary tiles retain their existing meaning.
+Validation: `npm run doctor`, `npm run check` and `git diff --check` pass.
+Not deployed; browser interaction has not been verified.
+
 ## Working product
 
 The mobile replay site is published privately through Sites/Cloudflare Workers at
