@@ -43,6 +43,22 @@ export function niceTicks(low: number, high: number, count = 5) {
 }
 
 const hour = 3_600_000;
+
+/** Keep the true time spacing while framing the dates that contain trades. */
+export function tradeTimeDomain(
+  times: number[],
+  periodStart: number,
+  periodEnd: number,
+) {
+  if (times.length === 0)
+    return [periodStart, Math.max(periodEnd, periodStart + 60_000)] as const;
+
+  const first = Math.min(...times);
+  const last = Math.max(...times);
+  const padding = Math.max(2 * hour, (last - first) * 0.08);
+  return [first - padding, last + padding] as const;
+}
+
 const timeSteps = [
   hour,
   3 * hour,
