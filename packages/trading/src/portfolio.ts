@@ -40,6 +40,7 @@ export interface PortfolioPosition extends Contract {
   estimatedPrice: number | null;
   estimateAsOf: string | null;
   underlyingAsOf: string | null;
+  marketDataIssue: string | null;
   stop: PortfolioStop | null;
 }
 
@@ -173,6 +174,7 @@ function position(
     estimatedPrice: null,
     estimateAsOf: null,
     underlyingAsOf: null,
+    marketDataIssue: null,
     stop:
       stops.length === 0 || !(entry > 0)
         ? null
@@ -241,11 +243,16 @@ function validPrice(value: unknown): number | null {
     : null;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Market-data request failed";
+}
+
 function estimatedOptionPrice(
   position: PortfolioPosition,
   option: OptionSnapshot | undefined,
   stock: StockSnapshot | undefined,
   now: number,
+  fetchIssues: string[],
 ) {
   const delta = option?.greeks?.delta;
   const gamma = option?.greeks?.gamma;
@@ -258,7 +265,26 @@ function estimatedOptionPrice(
     bid !== null && ask !== null && ask >= bid
       ? (bid + ask) / 2
       : (trade ?? position.price);
-  if (current === null) return position;
+  const issues = [...fetchIssues];
+  if (!option && !fetchIssues.some((issue) => issue.startsWith("Options")))
+    issues.push("Alpaca returned no option snapshot");
+  if (
+    current === null &&
+    !fetchIssues.some((issue) => issue.startsWith("Stocks"))
+  )
+    issues.push("Underlying latest trade is unavailable");
+  if (
+    (delta === undefined || gamma === undefined || theta === undefined) &&
+    !fetchIssues.some((issue) => issue.startsWith("Options"))
+  )
+    issues.push("Option Greeks are unavailable");
+  if (
+    mark === null &&
+    !fetchIssues.some((issue) => issue.startsWith("Options"))
+  )
+    issues.push("Option mark is unavailable");
+  if (current === null)
+    return { ...position, marketDataIssue: issues.join(" · ") || null };
   const sourceTime = option?.latestQuote?.t ?? option?.latestTrade?.t;
   const sourceDay = sourceTime ? nyDay.format(Date.parse(sourceTime)) : null;
   const reference =
@@ -287,6 +313,9 @@ function estimatedOptionPrice(
       delta: delta ?? null,
       gamma: gamma ?? null,
       theta: theta ?? null,
+      marketDataIssue:
+        issues.join(" · ") ||
+        "A matching stock bar is unavailable for this option quote",
     };
   const elapsedDays = Math.max(0, (now - Date.parse(sourceTime)) / 86400000);
   const move = current - reference;
@@ -305,6 +334,7 @@ function estimatedOptionPrice(
     estimatedPrice: estimate,
     estimateAsOf: sourceTime,
     underlyingAsOf: stock?.latestTrade?.t ?? null,
+    marketDataIssue: null,
   };
 }
 
@@ -411,6 +441,14 @@ export async function handlePortfolio(
         stockResult.status === "fulfilled"
           ? (stockResult.value.snapshots ?? {})
           : {};
+      const fetchIssues = [
+        ...(optionResult.status === "rejected"
+          ? [`Options: ${errorMessage(optionResult.reason)}`]
+          : []),
+        ...(stockResult.status === "rejected"
+          ? [`Stocks: ${errorMessage(stockResult.reason)}`]
+          : []),
+      ];
       positions = positions.map((p) =>
         p.option
           ? estimatedOptionPrice(
@@ -418,6 +456,7 @@ export async function handlePortfolio(
               optionSnapshots[p.symbol],
               stockSnapshots[p.underlying],
               now,
+              fetchIssues,
             )
           : p,
       );

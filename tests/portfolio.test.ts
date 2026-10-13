@@ -138,6 +138,20 @@ test("portfolio: account totals, positions with their stop, and orders", async (
   assert.equal(seen.length, 5);
 });
 
+test("portfolio: missing option data explains failed market-data requests", async () => {
+  const { fetcher: accountFetcher } = fake([order({})]);
+  const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    if (new URL(String(input)).host === "data.alpaca.markets")
+      return Response.json({ message: "forbidden" }, { status: 403 });
+    return accountFetcher(input, init);
+  }) as typeof fetch;
+  const result = await handlePortfolio(keys, false, fetcher, now);
+  const body = result.body as Portfolio;
+  const option = body.positions.find((p) => p.option)!;
+  assert.match(option.marketDataIssue ?? "", /Options: .*HTTP 403/);
+  assert.match(option.marketDataIssue ?? "", /Stocks: .*HTTP 403/);
+});
+
 test("portfolio: a stop covering part of a position leaves it unprotected", async () => {
   const { fetcher } = fake([order({ qty: "2" }), order({ side: "buy" })]);
   const body = (await handlePortfolio(keys, false, fetcher, now))

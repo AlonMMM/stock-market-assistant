@@ -286,6 +286,9 @@ function Detail({
             " This is a model estimate, not an executable after-hours option quote."}
         </p>
       )}
+      {p.option && p.marketDataIssue && (
+        <p className="muted">Option data: {p.marketDataIssue}.</p>
+      )}
       <p className={p.stop ? "pos-stop" : "pos-stop missing"}>
         <strong>Stop</strong>
         {p.stop ? (
@@ -391,6 +394,9 @@ function Row({
           )}
           {deltaExposure !== null && (
             <span className="pos-sub num">Δ {signedUsd(deltaExposure)}</span>
+          )}
+          {p.option && p.marketDataIssue && (
+            <span className="pos-sub warn">Option data unavailable</span>
           )}
         </span>
         <span className="pos-cell">
