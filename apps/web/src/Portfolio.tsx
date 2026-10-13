@@ -197,12 +197,12 @@ function History({ onError }: { onError: (m: string) => void }) {
               </dd>
             </div>
           </dl>
-          {value.points.length > 1 ? (
+          {value.trades.length > 0 ? (
             <Suspense fallback={<p className="chart-status">Loading chart…</p>}>
-              <PnlChart points={value.points} />
+              <PnlChart key={value.period} trades={value.trades} />
             </Suspense>
           ) : (
-            <p className="notice">Not enough account history for a chart.</p>
+            <p className="notice">No closed trades to plot in this period.</p>
           )}
           <h2 className="portfolio-title">Closed trades</h2>
           {value.trades.length > 0 ? (

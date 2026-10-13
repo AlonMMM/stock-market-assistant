@@ -2680,12 +2680,34 @@ dd > .stop-missing {
   font-size: 14px;
 }
 
-.pnl-chart {
-  height: 260px;
+.trade-pnl-chart {
+  min-width: 0;
+  padding: 16px;
   border: 1px solid #cdd7ce;
   border-radius: 12px;
-  overflow: hidden;
+}
+.trade-pnl-chart p {
+  margin: 8px 0;
+}
+.trade-pnl-scroll {
+  overflow-x: auto;
   background: #fafbf8;
+  border-radius: 8px;
+}
+.trade-pnl-scroll svg {
+  display: block;
+  min-width: 100%;
+}
+.trade-pnl-dot {
+  cursor: pointer;
+}
+.trade-pnl-dot:focus {
+  outline: 2px solid #16746b;
+}
+.trade-pnl-detail {
+  min-height: 40px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .portfolio.loading {
   opacity: 0.55;
