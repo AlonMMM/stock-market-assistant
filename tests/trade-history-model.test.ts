@@ -6,6 +6,7 @@ import {
   nearestPoint,
   niceTicks,
   timeTicks,
+  tradeTimeDomain,
 } from "../apps/web/src/trade-history-model.js";
 import type { ClosedTrade } from "../packages/trading/src/portfolio.js";
 const trade = (pnl: number, closedAt: string): ClosedTrade => ({
@@ -67,6 +68,21 @@ test("time ticks pick a whole-day step for multi-day ranges", () => {
   assert.ok(ticks.length >= 3 && ticks.length <= 6);
   assert.ok(ticks.every((t) => t >= start && t <= start + 30 * day));
   assert.equal(timeTicks(start, start + 6 * 3_600_000).daily, false);
+});
+
+test("trade time domain focuses on closes while retaining real timestamps", () => {
+  const periodStart = Date.parse("2026-09-13T00:00:00Z");
+  const periodEnd = Date.parse("2026-10-13T00:00:00Z");
+  const first = Date.parse("2026-10-12T12:00:00Z");
+  const last = Date.parse("2026-10-13T12:00:00Z");
+  const [start, end] = tradeTimeDomain([first, last], periodStart, periodEnd);
+  assert.equal(start, first - 2 * 3_600_000);
+  assert.equal(end, last + 2 * 3_600_000);
+  assert.ok(start > periodStart);
+  assert.deepEqual(tradeTimeDomain([], periodStart, periodEnd), [
+    periodStart,
+    periodEnd,
+  ]);
 });
 
 test("nearest point finds the closest trade time", () => {
