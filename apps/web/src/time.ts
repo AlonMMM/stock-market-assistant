@@ -83,3 +83,11 @@ const weekday = new Intl.DateTimeFormat("en-GB", {
 export const israelWeekday = (ms: number) => weekday.format(ms);
 /** Israel calendar date "2026-10-03" containing the instant. */
 export const israelDate = (ms: number) => day.format(ms);
+
+const shortDate = new Intl.DateTimeFormat("en-GB", {
+  timeZone: israelZone,
+  day: "numeric",
+  month: "short",
+});
+/** "24 Sep" in Israel time. */
+export const israelShortDate = (ms: number) => shortDate.format(ms);

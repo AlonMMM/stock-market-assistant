@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cumulativeTrades } from "../apps/web/src/trade-history-model.js";
+import {
+  cumulativeTrades,
+  nearestPoint,
+  niceTicks,
+  timeTicks,
+} from "../apps/web/src/trade-history-model.js";
 import type { ClosedTrade } from "../packages/trading/src/portfolio.js";
 const trade = (pnl: number, closedAt: string): ClosedTrade => ({
   symbol: "TEST",
@@ -45,4 +50,26 @@ test("empty, single, zero and missing account base", () => {
     cumulativeTrades([trade(-20, "2026-10-13T12:00:00Z")], 10000)[0]!.pct,
     -0.2,
   );
+});
+
+test("axis ticks are round numbers that cover the range", () => {
+  assert.deepEqual(niceTicks(-37, 212), [-100, 0, 100, 200, 300]);
+  assert.deepEqual(niceTicks(0, 1), [0, 0.25, 0.5, 0.75, 1]);
+  assert.deepEqual(niceTicks(0, 0), [-1, -0.5, 0, 0.5, 1]);
+});
+
+test("time ticks pick a whole-day step for multi-day ranges", () => {
+  const day = 86_400_000;
+  const start = Date.parse("2026-09-13T00:00:00Z");
+  const { ticks, daily } = timeTicks(start, start + 30 * day);
+  assert.equal(daily, true);
+  assert.ok(ticks.length >= 3 && ticks.length <= 6);
+  assert.ok(ticks.every((t) => t >= start && t <= start + 30 * day));
+  assert.equal(timeTicks(start, start + 6 * 3_600_000).daily, false);
+});
+
+test("nearest point finds the closest trade time", () => {
+  assert.equal(nearestPoint([10, 20, 40], 33), 2);
+  assert.equal(nearestPoint([10, 20, 40], 14), 0);
+  assert.equal(nearestPoint([], 5), -1);
 });

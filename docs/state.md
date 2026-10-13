@@ -5,12 +5,16 @@ Phase: Alpaca live alerts on real-time SIP with Telegram delivery; marked-sectio
 
 ## History: cumulative P&L at trade closes
 
-Replaces the individual-trade scatter plot with a cumulative realized P&L line
-on an actual time axis, with one point per closed trade. Dollar/percent controls
-use Alpaca's starting account value for cumulative returns, rather than adding
-individual trade returns. Missing starting equity disables percentage mode.
-Account tiles remain unchanged; unrealized P&L is not part of this chart.
-Validation: doctor, full check, and cumulative dollar/percent calculation tests pass.
+Cumulative realized P&L as a step line on a true time axis (Israel time), one
+dot per closed trade, green above zero and red below. The chart fills its
+container width, uses rounded axis ticks and day-aligned date labels, and shows
+a crosshair tooltip with the trade and cumulative result on hover, tap or
+arrow keys. Dollar/percent controls use Alpaca's starting account value for
+cumulative returns, rather than adding individual trade returns. Missing
+starting equity disables percentage mode. Account tiles remain unchanged;
+unrealized P&L is not part of this chart.
+Validation: full check, tick/nearest-trade tests, and desktop/phone
+screenshots with synthetic trades.
 
 ## Working product
 
