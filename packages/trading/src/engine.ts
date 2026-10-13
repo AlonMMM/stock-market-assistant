@@ -579,7 +579,8 @@ export class TradeEngine {
    * One side of a stock's option chain for one expiry, for a person to pick
    * a strike from (the site's trade ticket). Without an expiry: the nearest
    * one, and the expiries of the coming weeks to choose from. `pick` is the
-   * strike a buy without a strike or delta would take.
+   * strike a buy without a strike or delta would take. `underlyingPrice` is
+   * the stock's latest trade, or null when the broker cannot give it.
    */
   async chainFor(request: {
     underlying: string;
@@ -588,6 +589,11 @@ export class TradeEngine {
   }) {
     const underlying = request.underlying.toUpperCase();
     const { right } = request;
+    // Read alongside the chain. It only marks where the stock trades among
+    // the strikes, so the chain is still shown without it.
+    const stock: Promise<number | null> = this.broker.stockPrice
+      ? this.broker.stockPrice(underlying).catch(() => null)
+      : Promise.resolve(null);
     const today = newYork(this.now()).date;
     let expiries: string[] | undefined;
     let expiry = request.expiry;
@@ -623,9 +629,11 @@ export class TradeEngine {
     }
     const [low, high] = defaultDeltaRange;
     const pick = pickByDelta(quotes, (low + high) / 2);
+    const underlyingPrice = await stock;
     return {
       paper: this.paper,
       underlying,
+      underlyingPrice,
       right,
       expiry,
       ...(expiries ? { expiries } : {}),

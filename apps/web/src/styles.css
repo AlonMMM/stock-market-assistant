@@ -3419,6 +3419,44 @@ dialog.why::backdrop {
 .chain tbody th button:focus-visible {
   outline-offset: -3px;
 }
+.chain tbody tr.itm {
+  background: #f3f6ee;
+}
+.chain tbody tr.itm:hover {
+  background: #eaf0e3;
+}
+.chain tbody tr.chain-price {
+  border-top: 0;
+  cursor: default;
+  background: transparent;
+}
+.chain tbody tr.chain-price td {
+  position: relative;
+  height: 28px;
+  padding: 0;
+  text-align: center;
+}
+/* A line across the table with the price on a pill, between the strikes. */
+.chain tbody tr.chain-price td::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 2px solid #142b29;
+}
+.chain-price-tag {
+  position: relative;
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 6px;
+  background: #142b29;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+  box-shadow: 0 1px 4px rgba(20, 43, 41, 0.25);
+}
 .chain-tag {
   padding: 1px 7px;
   border-radius: 999px;

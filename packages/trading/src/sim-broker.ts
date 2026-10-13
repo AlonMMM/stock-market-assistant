@@ -33,6 +33,8 @@ export class SimBroker implements Broker {
   readonly orders = new Map<string, SimOrder>();
   private held = new Map<string, { qty: number; cost: number }>();
   private quotes = new Map<string, OptionQuote>();
+  /** Latest stock prices, by symbol. */
+  readonly stocks = new Map<string, number>();
   private nextId = 1;
 
   constructor(equity = 100_000) {
@@ -179,6 +181,9 @@ export class SimBroker implements Broker {
     const q = this.quotes.get(symbol);
     if (!q) throw new Error(`No quote for ${symbol}`);
     return q;
+  }
+  async stockPrice(symbol: string) {
+    return this.stocks.get(symbol) ?? null;
   }
   async buyLimit(symbol: string, qty: number, limitPrice: number) {
     return this.add("buy", symbol, qty, limitPrice, null);

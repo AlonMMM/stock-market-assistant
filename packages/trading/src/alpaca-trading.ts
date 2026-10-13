@@ -210,6 +210,16 @@ export class AlpacaTrading implements Broker {
     return quote(symbol, s);
   }
 
+  async stockPrice(symbol: string): Promise<number | null> {
+    // No `feed`: Alpaca uses the best one the account is subscribed to.
+    const body = await this.call<{ trade?: { p?: number } }>(
+      this.dataUrl,
+      `/v2/stocks/${encodeURIComponent(symbol)}/trades/latest`,
+    );
+    const price = body?.trade?.p;
+    return typeof price === "number" && price > 0 ? price : null;
+  }
+
   async buyLimit(symbol: string, qty: number, limitPrice: number) {
     return order(
       await this.call<RawOrder>(this.tradingUrl, "/v2/orders", {
