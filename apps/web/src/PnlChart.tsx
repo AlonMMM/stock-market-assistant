@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { PortfolioHistory } from "../../../packages/trading/src/portfolio.js";
 import {
   cumulativeTrades,
+  monotonePath,
   nearestPoint,
   niceTicks,
   timeTicks,
@@ -56,8 +57,8 @@ function useWidth<T extends HTMLElement>() {
 }
 
 /**
- * Realized P&L through each close as a step line on a true time axis: the
- * total only changes when a trade closes, and each dot is one closed trade.
+ * Realized P&L through each close as a smooth line on a true time axis;
+ * each dot is one closed trade.
  */
 export function PnlChart({ history }: { history: PortfolioHistory }) {
   const [unit, setUnit] = useState<"usd" | "pct">("usd");
@@ -101,10 +102,12 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
     offset,
   );
 
-  // Step-after: flat until the next close, then a vertical move to the new total.
-  let line = `M ${x(start)} ${y(0)}`;
-  for (const p of points) line += ` H ${x(p.time)} V ${y(value(p))}`;
-  line += ` H ${x(end)}`;
+  // A smooth curve from $0 at the period start through each close.
+  const vertices: [number, number][] = [
+    [x(start), y(0)],
+    ...points.map((p): [number, number] => [x(p.time), y(value(p))]),
+  ];
+  const line = monotonePath(vertices);
   const area = `${line} V ${y(0)} H ${x(start)} Z`;
 
   const shown = hover ?? selected;
@@ -316,16 +319,18 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
               d={line}
               fill="none"
               stroke={colors.up}
-              strokeWidth={2}
+              strokeWidth={2.25}
               strokeLinejoin="round"
+              strokeLinecap="round"
               clipPath={`url(#${clip}-up)`}
             />
             <path
               d={line}
               fill="none"
               stroke={colors.down}
-              strokeWidth={2}
+              strokeWidth={2.25}
               strokeLinejoin="round"
+              strokeLinecap="round"
               clipPath={`url(#${clip}-down)`}
             />
             {active && (

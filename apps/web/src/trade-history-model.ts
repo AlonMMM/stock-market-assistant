@@ -88,3 +88,45 @@ export function nearestPoint(times: number[], time: number) {
   });
   return best;
 }
+
+/**
+ * SVG path through the points as a monotone cubic curve (Fritsch–Carlson):
+ * smooth, but never above or below its neighbouring points, so it shows no
+ * peaks or dips that did not happen. Points must be sorted by x.
+ */
+export function monotonePath(points: [number, number][]) {
+  const n = points.length;
+  if (n === 0) return "";
+  const [x0, y0] = points[0]!;
+  if (n === 1) return `M ${x0} ${y0}`;
+  const dx: number[] = [];
+  const slope: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const [xa, ya] = points[i]!;
+    const [xb, yb] = points[i + 1]!;
+    dx.push(xb - xa);
+    slope.push(xb > xa ? (yb - ya) / (xb - xa) : 0);
+  }
+  const tangent = points.map((_, i) => {
+    if (i === 0) return slope[0]!;
+    if (i === n - 1) return slope[n - 2]!;
+    const a = slope[i - 1]!;
+    const b = slope[i]!;
+    // Flat at a local high or low keeps the curve inside the data range.
+    if (a * b <= 0) return 0;
+    const wa = 2 * dx[i]! + dx[i - 1]!;
+    const wb = dx[i]! + 2 * dx[i - 1]!;
+    return (wa + wb) / (wa / a + wb / b);
+  });
+  let path = `M ${x0} ${y0}`;
+  for (let i = 0; i < n - 1; i++) {
+    const [xa, ya] = points[i]!;
+    const [xb, yb] = points[i + 1]!;
+    const h = dx[i]! / 3;
+    path +=
+      h > 0
+        ? ` C ${xa + h} ${ya + tangent[i]! * h} ${xb - h} ${yb - tangent[i + 1]! * h} ${xb} ${yb}`
+        : ` L ${xb} ${yb}`;
+  }
+  return path;
+}

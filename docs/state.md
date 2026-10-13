@@ -5,7 +5,8 @@ Phase: Alpaca live alerts on real-time SIP with Telegram delivery; marked-sectio
 
 ## History: cumulative P&L at trade closes
 
-Cumulative realized P&L as a step line on a true time axis (Israel time), one
+Cumulative realized P&L as a smooth monotone curve (no overshoot between
+trades) on a true time axis (Israel time), one
 dot per closed trade, green above zero and red below. The chart fills its
 container width, uses rounded axis ticks and day-aligned date labels, and shows
 a crosshair tooltip with the trade and cumulative result on hover, tap or

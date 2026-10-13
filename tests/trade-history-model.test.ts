@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   cumulativeTrades,
+  monotonePath,
   nearestPoint,
   niceTicks,
   timeTicks,
@@ -72,4 +73,26 @@ test("nearest point finds the closest trade time", () => {
   assert.equal(nearestPoint([10, 20, 40], 33), 2);
   assert.equal(nearestPoint([10, 20, 40], 14), 0);
   assert.equal(nearestPoint([], 5), -1);
+});
+
+test("monotone curve passes through every point without overshooting", () => {
+  const path = monotonePath([
+    [0, 0],
+    [10, 10],
+    [20, 10],
+    [30, 0],
+  ]);
+  assert.match(path, /^M 0 0 C /);
+  const numbers = path.match(/-?[\d.]+/g)!.map(Number);
+  const ys = numbers.filter((_, i) => i % 2 === 1);
+  assert.ok(ys.every((v) => v >= 0 && v <= 10));
+  assert.ok(path.endsWith(" 30 0"));
+  assert.equal(monotonePath([[5, 5]]), "M 5 5");
+  assert.match(
+    monotonePath([
+      [0, 0],
+      [0, 5],
+    ]),
+    / L 0 5$/,
+  );
 });
