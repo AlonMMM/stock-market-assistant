@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import type { TradeEngine } from "../../../packages/trading/src/engine.js";
 import { readJson } from "./api.js";
 import type {
@@ -8,6 +8,7 @@ import type {
 import { usePolling } from "./Live.js";
 import { OrderActions, StopMover } from "./OrderControls.js";
 import { followOrder, type Run } from "./order-run.js";
+import { inTheMoney, priceRowIndex } from "./chain-model.js";
 import { chartSession } from "./positions-model.js";
 import { StockChart } from "./StockChart.js";
 
@@ -275,6 +276,19 @@ function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
   );
 }
 
+/** The stock's latest price, between the strikes around it. */
+function PriceRow({ chain }: { chain: Chain }) {
+  return (
+    <tr className="chain-price" aria-label="Stock price">
+      <td colSpan={5}>
+        <span className="chain-price-tag num">
+          {chain.underlying} {chain.underlyingPrice!.toFixed(2)}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
 /** Pick a stock, see its options, choose a strike, check and buy. */
 export function Trade({ edit }: { edit?: PortfolioOrder | null }) {
   const [ticker, setTicker] = useState(edit?.underlying ?? "");
@@ -398,6 +412,12 @@ export function Trade({ edit }: { edit?: PortfolioOrder | null }) {
 
   const symbol = ticker.trim().toUpperCase();
   const quote = chain?.quotes.find((q) => q.contract === selected);
+  const priceRow = chain
+    ? priceRowIndex(
+        chain.quotes.map((q) => q.strike),
+        chain.underlyingPrice,
+      )
+    : null;
   return (
     <div className="portfolio trade">
       <form
@@ -498,44 +518,54 @@ export function Trade({ edit }: { edit?: PortfolioOrder | null }) {
                 </tr>
               </thead>
               <tbody>
-                {chain.quotes.map((q) => {
+                {chain.quotes.map((q, i) => {
                   const wide =
                     q.spreadPct === null || q.spreadPct > chain.maxSpreadPct;
                   return (
-                    <tr
-                      key={q.contract}
-                      ref={q.contract === chain.pick ? picked : undefined}
-                      className={[
-                        q.contract === selected ? "selected" : "",
-                        q.ask > 0 ? "" : "dead",
-                      ].join(" ")}
-                      onClick={() => setSelected(q.contract)}
-                    >
-                      <th scope="row">
-                        <button
-                          type="button"
-                          aria-pressed={q.contract === selected}
-                          onClick={() => setSelected(q.contract)}
-                        >
-                          <span className="num">{q.strike}</span>
-                          {q.contract === chain.pick && (
-                            <span className="chain-tag">default</span>
-                          )}
-                        </button>
-                      </th>
-                      <td className="num">{price(q.bid)}</td>
-                      <td className="num">{price(q.ask)}</td>
-                      <td className={wide ? "num wide" : "num"}>
-                        {q.spreadPct === null
-                          ? "—"
-                          : `${q.spreadPct.toFixed(0)}%`}
-                      </td>
-                      <td className="num">
-                        {q.delta === null ? "—" : q.delta.toFixed(2)}
-                      </td>
-                    </tr>
+                    <Fragment key={q.contract}>
+                      {i === priceRow && <PriceRow chain={chain} />}
+                      <tr
+                        ref={q.contract === chain.pick ? picked : undefined}
+                        className={[
+                          q.contract === selected ? "selected" : "",
+                          q.ask > 0 ? "" : "dead",
+                          inTheMoney(
+                            chain.right,
+                            q.strike,
+                            chain.underlyingPrice,
+                          )
+                            ? "itm"
+                            : "",
+                        ].join(" ")}
+                        onClick={() => setSelected(q.contract)}
+                      >
+                        <th scope="row">
+                          <button
+                            type="button"
+                            aria-pressed={q.contract === selected}
+                            onClick={() => setSelected(q.contract)}
+                          >
+                            <span className="num">{q.strike}</span>
+                            {q.contract === chain.pick && (
+                              <span className="chain-tag">default</span>
+                            )}
+                          </button>
+                        </th>
+                        <td className="num">{price(q.bid)}</td>
+                        <td className="num">{price(q.ask)}</td>
+                        <td className={wide ? "num wide" : "num"}>
+                          {q.spreadPct === null
+                            ? "—"
+                            : `${q.spreadPct.toFixed(0)}%`}
+                        </td>
+                        <td className="num">
+                          {q.delta === null ? "—" : q.delta.toFixed(2)}
+                        </td>
+                      </tr>
+                    </Fragment>
                   );
                 })}
+                {priceRow === chain.quotes.length && <PriceRow chain={chain} />}
               </tbody>
             </table>
           </div>

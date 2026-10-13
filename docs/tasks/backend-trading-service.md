@@ -458,6 +458,10 @@ the account or contracts), the stop and optionally force, check the order, then 
 - Site Worker: `GET …/control/chain`, `POST …/control/check` and `POST …/control/buy`,
   under the same owner and Origin rule as the position controls; only the known order
   fields are passed on.
+- The chain also carries `underlyingPrice`: the stock's latest trade from Alpaca
+  (`GET /v2/stocks/{symbol}/trades/latest`, optional `Broker.stockPrice`), or null when it
+  cannot be read. The table shows it as a row between the strikes around it and tints the
+  in-the-money strikes. Added 2026-10-13.
 
 Verified 2026-10-12: `npm run check`; the tab was checked in headless Chromium at 390 and
 1280 px with a SYNTHETIC chain and a mocked API. Not run against Alpaca.

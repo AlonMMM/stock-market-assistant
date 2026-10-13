@@ -5,12 +5,27 @@ Phase: Alpaca live alerts on real-time SIP with Telegram delivery; marked-sectio
 
 ## History: cumulative P&L at trade closes
 
-Replaces the individual-trade scatter plot with a cumulative realized P&L line
-on an actual time axis, with one point per closed trade. Dollar/percent controls
-use Alpaca's starting account value for cumulative returns, rather than adding
-individual trade returns. Missing starting equity disables percentage mode.
-Account tiles remain unchanged; unrealized P&L is not part of this chart.
-Validation: doctor, full check, and cumulative dollar/percent calculation tests pass.
+Cumulative realized P&L as a smooth monotone curve (no overshoot between
+trades) on a true time axis (Israel time), one
+dot per closed trade, green above zero and red below. The chart fills its
+container width, uses rounded axis ticks and day-aligned date labels, and shows
+a crosshair tooltip with the trade and cumulative result on hover, tap or
+arrow keys. Dollar/percent controls use Alpaca's starting account value for
+cumulative returns, rather than adding individual trade returns. Missing
+starting equity disables percentage mode. Account tiles remain unchanged;
+unrealized P&L is not part of this chart.
+Validation: full check, tick/nearest-trade tests, and desktop/phone
+screenshots with synthetic trades.
+
+## Trade tab: stock price in the chain, confirmed stop moves
+
+The option chain shows the stock's latest price as a row between the strikes around it
+(as in IBKR) and tints in-the-money strikes; the chain's optional `underlyingPrice` is
+null when Alpaca's latest stock trade cannot be read. Moving or setting a stop now asks
+for Confirm/Cancel before anything is sent, like buys, sells and cancels; changing a
+working buy's limit price still sends at once.
+Validation: full check, chain/stop tests, and a 390px headless Chromium run with mocked
+API responses (no POST until Confirm).
 
 ## Working product
 

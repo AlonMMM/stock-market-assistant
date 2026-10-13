@@ -61,6 +61,8 @@ export interface Broker {
     to: string,
   ): Promise<OptionQuote[]>;
   quote(symbol: string): Promise<OptionQuote>;
+  /** Latest trade price of a stock; null when the broker has none. */
+  stockPrice?(symbol: string): Promise<number | null>;
   /** A day limit buy that opens or adds to a long position. */
   buyLimit(symbol: string, qty: number, limitPrice: number): Promise<Order>;
   /** A day limit sell that can only close contracts that are held. */

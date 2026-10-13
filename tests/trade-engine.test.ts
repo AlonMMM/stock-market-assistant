@@ -358,3 +358,18 @@ test("engine short check: a short position is alerted", async () => {
   assert.equal(out.alert?.ok, true);
   assert.match(sent[0]!.html, /SHORT OPTION RISK \(paper\)<\/b>\nSHORT NVDA/);
 });
+
+test("chain carries the stock price, or null when the broker has none", async () => {
+  const { broker, engine } = setup();
+  const before = await engine.chainFor({ underlying: "nvda", right: "call" });
+  assert.equal(before.underlyingPrice, null);
+  broker.stocks.set("NVDA", 238.4);
+  const after = await engine.chainFor({ underlying: "nvda", right: "call" });
+  assert.equal(after.underlyingPrice, 238.4);
+  broker.stockPrice = async () => {
+    throw new Error("data API down");
+  };
+  const down = await engine.chainFor({ underlying: "nvda", right: "call" });
+  assert.equal(down.underlyingPrice, null);
+  assert.ok(down.quotes.length > 0);
+});

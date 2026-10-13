@@ -700,3 +700,20 @@ test("an order whose price was changed from outside is followed to its new id", 
   const now = await current(client, "a");
   assert.deepEqual([now.id, now.status, now.filledQty], ["c", "filled", 2]);
 });
+
+test("stock price comes from Alpaca's latest stock trade", async () => {
+  const urls: string[] = [];
+  let body: unknown = { symbol: "NVDA", trade: { p: 238.41 } };
+  const fetcher = (async (url: URL | RequestInfo) => {
+    urls.push(String(url));
+    return Response.json(body);
+  }) as typeof fetch;
+  const alpaca = new AlpacaTrading("k", "s", undefined, "opra", fetcher);
+  assert.equal(await alpaca.stockPrice("NVDA"), 238.41);
+  assert.equal(
+    urls[0],
+    "https://data.alpaca.markets/v2/stocks/NVDA/trades/latest",
+  );
+  body = { symbol: "NVDA" };
+  assert.equal(await alpaca.stockPrice("NVDA"), null);
+});
