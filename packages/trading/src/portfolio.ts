@@ -319,6 +319,8 @@ export interface ClosedTrade extends Contract {
 }
 
 export interface PortfolioHistory {
+  from: string; // start of the selected trade-history period
+  baseEquity: number | null; // Alpaca base_value for account-level returns
   paper: boolean;
   at: string;
   period: HistoryPeriod;
@@ -521,6 +523,8 @@ export async function handlePortfolioHistory(
         paper: !live,
         at: new Date(now).toISOString(),
         period: chosen as HistoryPeriod,
+        from,
+        baseEquity: history.base_value > 0 ? history.base_value : null,
         points,
         pnl,
         pnlPct:
