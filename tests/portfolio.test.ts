@@ -281,6 +281,8 @@ test("history: daily profit and loss with the period's closed trades", async () 
   ]);
   assert.equal(body.pnl, 150);
   assert.equal(body.pnlPct, 0.15);
+  assert.equal(body.baseEquity, 100000);
+  assert.equal(body.from, new Date(at - 7 * 86400000).toISOString());
   assert.equal(body.trades.length, 2);
   assert.equal(body.realized, -260);
   assert.equal(body.wins, 0);

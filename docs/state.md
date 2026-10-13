@@ -3,14 +3,14 @@
 Updated: 2026-10-07
 Phase: Alpaca live alerts on real-time SIP with Telegram delivery; marked-sections score vs SPY in review.
 
-## In review: History trade dots
+## History: cumulative P&L at trade closes
 
-History now plots each closed trade's realized P&L as a separate dot in closing
-order, with profit/loss colors and tap/keyboard details in Israel time. Equal
-spacing preserves trades closed on the same day or timestamp; longer histories
-scroll horizontally. Account summary tiles retain their existing meaning.
-Validation: `npm run doctor`, `npm run check` and `git diff --check` pass.
-Not deployed; browser interaction has not been verified.
+Replaces the individual-trade scatter plot with a cumulative realized P&L line
+on an actual time axis, with one point per closed trade. Dollar/percent controls
+use Alpaca's starting account value for cumulative returns, rather than adding
+individual trade returns. Missing starting equity disables percentage mode.
+Account tiles remain unchanged; unrealized P&L is not part of this chart.
+Validation: doctor, full check, and cumulative dollar/percent calculation tests pass.
 
 ## Working product
 
