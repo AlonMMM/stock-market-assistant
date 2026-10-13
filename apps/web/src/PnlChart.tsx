@@ -5,6 +5,7 @@ import {
   monotonePath,
   nearestPoint,
   niceTicks,
+  tradeTimeDomain,
   timeTicks,
 } from "./trade-history-model.js";
 import {
@@ -82,14 +83,10 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
   const yTicks = niceTicks(Math.min(0, ...values), Math.max(0, ...values), 5);
   const min = yTicks[0]!;
   const max = yTicks.at(-1)!;
-  const start = Math.min(
+  const [start, end] = tradeTimeDomain(
+    points.map((p) => p.time),
     Date.parse(history.from),
-    ...points.map((p) => p.time),
-  );
-  const end = Math.max(
     Date.parse(history.at),
-    start + 60_000,
-    ...points.map((p) => p.time),
   );
   const x = (time: number) =>
     margin.left + ((time - start) / (end - start)) * plotW;
@@ -102,11 +99,12 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
     offset,
   );
 
-  // A smooth curve from $0 at the period start through each close.
-  const vertices: [number, number][] = [
-    [x(start), y(0)],
-    ...points.map((p): [number, number] => [x(p.time), y(value(p))]),
-  ];
+  // Show only the realized path between closes; do not imply a flat $0 line
+  // during periods with no closed trades.
+  const vertices: [number, number][] = points.map((p): [number, number] => [
+    x(p.time),
+    y(value(p)),
+  ]);
   const line = monotonePath(vertices);
   const area = `${line} V ${y(0)} H ${x(start)} Z`;
 
