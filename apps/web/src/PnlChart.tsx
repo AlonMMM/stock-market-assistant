@@ -68,19 +68,25 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
   const [frame, width] = useWidth<HTMLDivElement>();
   const clip = useId().replace(/:/g, "");
   const points = cumulativeTrades(history.trades, history.baseEquity);
+  const equityChart = history.baseEquity !== null;
   const pctAvailable = history.baseEquity !== null && history.baseEquity > 0;
   const showPct = unit === "pct" && pctAvailable;
   const format = showPct ? percent : money;
   const axisFormat = showPct ? axisPercent : axisMoney;
-  const value = (p: (typeof points)[number]) => (showPct ? p.pct! : p.pnl);
+  const value = (p: (typeof points)[number]) =>
+    showPct ? p.pct! : equityChart ? history.baseEquity! + p.pnl : p.pnl;
   const tradeValue = (p: (typeof points)[number]) =>
     showPct ? (p.trade.pnl / history.baseEquity!) * 100 : p.trade.pnl;
+  const baseline = showPct || !equityChart ? 0 : history.baseEquity!;
 
   const height = width > 0 && width < 520 ? 260 : 340;
   const plotW = Math.max(1, width - margin.left - margin.right);
   const plotH = height - margin.top - margin.bottom;
   const values = points.map(value);
-  const yTicks = niceTicks(Math.min(0, ...values), Math.max(0, ...values), 5);
+  const dataMin = Math.min(...values, baseline);
+  const dataMax = Math.max(...values, baseline);
+  const padding = Math.max(1, (dataMax - dataMin) * 0.12);
+  const yTicks = niceTicks(dataMin - padding, dataMax + padding, 5);
   const min = yTicks[0]!;
   const max = yTicks.at(-1)!;
   const [start, end] = tradeTimeDomain(
@@ -101,12 +107,15 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
 
   // Show only the realized path between closes; do not imply a flat $0 line
   // during periods with no closed trades.
-  const vertices: [number, number][] = points.map((p): [number, number] => [
-    x(p.time),
-    y(value(p)),
-  ]);
+  const tradeVertices: [number, number][] = points.map(
+    (p): [number, number] => [x(p.time), y(value(p))],
+  );
+  const vertices: [number, number][] =
+    !showPct && points.length > 0 && equityChart
+      ? [[x(points[0]!.time) - 1, y(history.baseEquity!)], ...tradeVertices]
+      : tradeVertices;
   const line = monotonePath(vertices);
-  const area = `${line} V ${y(0)} H ${x(start)} Z`;
+  const area = `${line} V ${y(baseline)} H ${x(start)} Z`;
 
   const shown = hover ?? selected;
   const active = shown !== null ? points[shown] : undefined;
@@ -121,7 +130,7 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
     return i < 0 ? null : i;
   };
   const describe = (p: (typeof points)[number]) =>
-    `${p.trade.symbol} · ${israelDateTime(p.time)} ${israelLabel} · Trade: ${format(tradeValue(p))} · Cumulative: ${format(value(p))}`;
+    `${p.trade.symbol} · ${israelDateTime(p.time)} ${israelLabel} · Trade: ${format(tradeValue(p))} · Account value: ${format(value(p))}`;
 
   const tooltipLeft = active ? x(active.time) : 0;
   const tooltipTop = active ? y(value(active)) : 0;
@@ -129,17 +138,29 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
   return (
     <section
       className="trade-pnl-chart"
-      aria-label="Cumulative realized profit and loss over time"
+      aria-label={
+        equityChart
+          ? "Realized account value over time"
+          : "Cumulative realized profit and loss over time"
+      }
     >
       <div className="toolbar">
         <div className="trade-pnl-heading">
-          <strong>Cumulative realized P&amp;L</strong>
+          <strong>
+            {showPct
+              ? "Cumulative realized return"
+              : equityChart
+                ? "Realized account value"
+                : "Cumulative realized P&L"}
+          </strong>
           {last && (
             <span
               className="trade-pnl-total num"
-              style={{ color: tone(value(last)) }}
+              style={{ color: tone(last.pnl) }}
             >
-              {format(value(last))}
+              {showPct || !equityChart
+                ? format(value(last))
+                : `$${value(last).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
             </span>
           )}
         </div>
@@ -163,7 +184,13 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
       </div>
       <p className="muted">
         {points.length} closed {points.length === 1 ? "trade" : "trades"} · one
-        dot per trade · {israelLabel}
+        dot per trade
+        {showPct
+          ? " · of starting account value"
+          : equityChart
+            ? ` · starts at $${history.baseEquity!.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+            : ""}{" "}
+        · {israelLabel}
       </p>
       <div className="trade-pnl-frame" ref={frame}>
         {width > 0 && (
@@ -171,7 +198,7 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
             width={width}
             height={height}
             role="img"
-            aria-label={`Cumulative realized P&L in ${showPct ? "percent" : "dollars"} by closing time`}
+            aria-label={`${equityChart ? "Realized account value" : "Cumulative realized P&L"} in ${showPct ? "percent return" : "dollars"} by closing time`}
             tabIndex={0}
             className="trade-pnl-svg"
             onPointerMove={(event) =>
@@ -217,10 +244,15 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
           >
             <defs>
               <clipPath id={`${clip}-up`}>
-                <rect x={0} y={0} width={width} height={y(0)} />
+                <rect x={0} y={0} width={width} height={y(baseline)} />
               </clipPath>
               <clipPath id={`${clip}-down`}>
-                <rect x={0} y={y(0)} width={width} height={height - y(0)} />
+                <rect
+                  x={0}
+                  y={y(baseline)}
+                  width={width}
+                  height={height - y(baseline)}
+                />
               </clipPath>
               <linearGradient
                 id={`${clip}-fill-up`}
@@ -254,8 +286,8 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
                   x2={margin.left + plotW}
                   y1={y(tick)}
                   y2={y(tick)}
-                  stroke={tick === 0 ? colors.zero : colors.grid}
-                  strokeDasharray={tick === 0 ? "4 4" : undefined}
+                  stroke={tick === baseline ? colors.zero : colors.grid}
+                  strokeDasharray={tick === baseline ? "4 4" : undefined}
                 />
                 <text
                   x={margin.left - 8}

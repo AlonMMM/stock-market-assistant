@@ -32,6 +32,14 @@ export interface PortfolioPosition extends Contract {
   dayPnl: number | null;
   // Market value as a share of account equity, in percent.
   sharePct: number | null;
+  // Market-data enrichment for options; all may be null when the feed omits it.
+  underlyingPrice: number | null;
+  delta: number | null;
+  gamma: number | null;
+  theta: number | null;
+  estimatedPrice: number | null;
+  estimateAsOf: string | null;
+  underlyingAsOf: string | null;
   stop: PortfolioStop | null;
 }
 
@@ -109,6 +117,7 @@ const num = (v: string | null | undefined) => {
   return Number.isFinite(n) ? n : null;
 };
 const round = (n: number, digits = 2) => Number(n.toFixed(digits));
+const marketDataUrl = "https://data.alpaca.markets";
 
 // Option symbols are in OCC form; anything else is a stock ticker.
 function contract(symbol: string): Contract {
@@ -157,6 +166,13 @@ function position(
     dayPnl: num(raw.unrealized_intraday_pl),
     sharePct:
       value === null || !(equity > 0) ? null : round((value / equity) * 100),
+    underlyingPrice: null,
+    delta: null,
+    gamma: null,
+    theta: null,
+    estimatedPrice: null,
+    estimateAsOf: null,
+    underlyingAsOf: null,
     stop:
       stops.length === 0 || !(entry > 0)
         ? null
@@ -177,6 +193,7 @@ export const portfolioTtlMs = {
   account: 900,
   positions: 900,
   orders: 5000,
+  marketData: 10000,
   history: 60000, // daily points and closed trades change slowly
 };
 
@@ -200,6 +217,97 @@ export class PortfolioCache {
   }
 }
 
+interface OptionSnapshot {
+  greeks?: { delta?: number; gamma?: number; theta?: number };
+  latestQuote?: { ap?: number; bp?: number; t?: string };
+  latestTrade?: { p?: number; t?: string };
+}
+interface StockSnapshot {
+  latestTrade?: { p?: number; t?: string };
+  dailyBar?: { c?: number; t?: string };
+  prevDailyBar?: { c?: number; t?: string };
+}
+
+const nyDay = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function validPrice(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
+}
+
+function estimatedOptionPrice(
+  position: PortfolioPosition,
+  option: OptionSnapshot | undefined,
+  stock: StockSnapshot | undefined,
+  now: number,
+) {
+  const delta = option?.greeks?.delta;
+  const gamma = option?.greeks?.gamma;
+  const theta = option?.greeks?.theta;
+  const current = validPrice(stock?.latestTrade?.p);
+  const bid = validPrice(option?.latestQuote?.bp);
+  const ask = validPrice(option?.latestQuote?.ap);
+  const trade = validPrice(option?.latestTrade?.p);
+  const mark =
+    bid !== null && ask !== null && ask >= bid
+      ? (bid + ask) / 2
+      : (trade ?? position.price);
+  if (current === null) return position;
+  const sourceTime = option?.latestQuote?.t ?? option?.latestTrade?.t;
+  const sourceDay = sourceTime ? nyDay.format(Date.parse(sourceTime)) : null;
+  const reference =
+    sourceDay !== null &&
+    stock?.dailyBar?.t &&
+    nyDay.format(Date.parse(stock.dailyBar.t)) === sourceDay
+      ? validPrice(stock.dailyBar.c)
+      : sourceDay !== null &&
+          stock?.prevDailyBar?.t &&
+          nyDay.format(Date.parse(stock.prevDailyBar.t)) === sourceDay
+        ? validPrice(stock.prevDailyBar.c)
+        : null;
+  if (
+    delta === undefined ||
+    gamma === undefined ||
+    theta === undefined ||
+    reference === null ||
+    mark === null ||
+    !sourceTime ||
+    !Number.isFinite(Date.parse(sourceTime))
+  )
+    return {
+      ...position,
+      underlyingPrice: current,
+      underlyingAsOf: stock?.latestTrade?.t ?? null,
+      delta: delta ?? null,
+      gamma: gamma ?? null,
+      theta: theta ?? null,
+    };
+  const elapsedDays = Math.max(0, (now - Date.parse(sourceTime)) / 86400000);
+  const move = current - reference;
+  const estimate = Math.max(
+    0,
+    round(
+      mark + delta * move + 0.5 * gamma * move * move + theta * elapsedDays,
+    ),
+  );
+  return {
+    ...position,
+    underlyingPrice: current,
+    delta,
+    gamma,
+    theta,
+    estimatedPrice: estimate,
+    estimateAsOf: sourceTime,
+    underlyingAsOf: stock?.latestTrade?.t ?? null,
+  };
+}
+
 /**
  * Shared by the local API and the hosted Worker. `live` selects the live
  * account; the keys must belong to the account that is selected.
@@ -217,6 +325,26 @@ export async function handlePortfolio(
       body: { error: "Alpaca credentials are not configured" },
     };
   const base = live ? liveUrl : paperUrl;
+  const dataGet = <T>(path: string): Promise<T> =>
+    cache.get(
+      `${marketDataUrl}${path}`,
+      portfolioTtlMs.marketData,
+      now,
+      async () => {
+        const response = await fetcher(new URL(path, marketDataUrl), {
+          headers: {
+            "APCA-API-KEY-ID": credentials.key!,
+            "APCA-API-SECRET-KEY": credentials.secret!,
+          },
+          signal: AbortSignal.timeout(20000),
+        });
+        if (!response.ok)
+          throw new Error(
+            `Alpaca market data failed (HTTP ${response.status})`,
+          );
+        return (await response.json()) as T;
+      },
+    );
   const get = <T>(path: string, ttlMs: number): Promise<T> =>
     cache.get(`${base}${path}`, ttlMs, now, () => request<T>(path));
   const request = async <T>(path: string): Promise<T> => {
@@ -258,9 +386,42 @@ export async function handlePortfolio(
       status: o.status,
       submittedAt: o.submitted_at,
     }));
-    const positions = rawPositions
+    let positions = rawPositions
       .map((p) => position(p, orders, equity))
       .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+    const options = positions.filter((p) => p.option !== null);
+    if (options.length > 0) {
+      const optionSymbols = options.map((p) => p.symbol).join(",");
+      const underlyings = [...new Set(options.map((p) => p.underlying))].join(
+        ",",
+      );
+      const [optionResult, stockResult] = await Promise.allSettled([
+        dataGet<{ snapshots?: Record<string, OptionSnapshot> }>(
+          `/v1beta1/options/snapshots?symbols=${encodeURIComponent(optionSymbols)}`,
+        ),
+        dataGet<{ snapshots?: Record<string, StockSnapshot> }>(
+          `/v2/stocks/snapshots?symbols=${encodeURIComponent(underlyings)}`,
+        ),
+      ]);
+      const optionSnapshots =
+        optionResult.status === "fulfilled"
+          ? (optionResult.value.snapshots ?? {})
+          : {};
+      const stockSnapshots =
+        stockResult.status === "fulfilled"
+          ? (stockResult.value.snapshots ?? {})
+          : {};
+      positions = positions.map((p) =>
+        p.option
+          ? estimatedOptionPrice(
+              p,
+              optionSnapshots[p.symbol],
+              stockSnapshots[p.underlying],
+              now,
+            )
+          : p,
+      );
+    }
     return {
       status: 200,
       body: {

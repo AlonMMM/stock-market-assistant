@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildApp } from "../apps/api/src/app.js";
 import worker from "../apps/api/src/worker.js";
+import { optionDeltaExposure } from "../apps/web/src/positions-model.js";
 import {
   closedTrades,
   handlePortfolio,
@@ -68,7 +69,26 @@ function fake(orders: object[], status = 200) {
         ? account
         : url.pathname === "/v2/positions"
           ? positions
-          : orders;
+          : url.pathname === "/v1beta1/options/snapshots"
+            ? {
+                snapshots: {
+                  AMD261016C00660000: {
+                    greeks: { delta: 0.6, gamma: 0.02, theta: -0.1 },
+                    latestQuote: { bp: 2, ap: 2.2, t: "2026-10-12T14:59:00Z" },
+                  },
+                },
+              }
+            : url.pathname === "/v2/stocks/snapshots"
+              ? {
+                  snapshots: {
+                    AMD: {
+                      latestTrade: { p: 700, t: "2026-10-12T15:00:00Z" },
+                      dailyBar: { c: 690, t: "2026-10-12T04:00:00Z" },
+                      prevDailyBar: { c: 680, t: "2026-10-09T04:00:00Z" },
+                    },
+                  },
+                }
+              : orders;
     return Response.json(body, { status });
   }) as typeof fetch;
   return { fetcher, seen };
@@ -102,6 +122,9 @@ test("portfolio: account totals, positions with their stop, and orders", async (
   });
   assert.equal(amd.pnlPct, 23.53);
   assert.equal(amd.sharePct, 0.63);
+  assert.equal(amd.underlyingPrice, 700);
+  assert.equal(amd.delta, 0.6);
+  assert.equal(amd.estimatedPrice, 9.1);
   // (1.70 − 1.02) × 3 contracts × 100 = 204 at risk: 40% of the premium.
   assert.deepEqual(amd.stop, { price: 1.02, qty: 3, lossPct: 40, risk: 204 });
   assert.equal(body.positions[0]!.stop, null);
@@ -110,8 +133,9 @@ test("portfolio: account totals, positions with their stop, and orders", async (
   assert.deepEqual(body.shortRisks, []);
   assert.equal(body.orders.length, 1);
   // Read-only, on the paper host.
-  assert.ok(seen.every((s) => s.startsWith("GET paper-api.alpaca.markets/")));
-  assert.equal(seen.length, 3);
+  assert.ok(seen.some((s) => s.startsWith("GET paper-api.alpaca.markets/")));
+  assert.ok(seen.some((s) => s.startsWith("GET data.alpaca.markets/")));
+  assert.equal(seen.length, 5);
 });
 
 test("portfolio: a stop covering part of a position leaves it unprotected", async () => {
@@ -122,6 +146,11 @@ test("portfolio: a stop covering part of a position leaves it unprotected", asyn
   assert.equal(amd.stop?.qty, 2);
   assert.equal(amd.stop?.risk, 136);
   assert.equal(body.unprotected, 2);
+});
+
+test("delta exposure converts contracts into equivalent dollars of stock", () => {
+  assert.equal(optionDeltaExposure(3, 700, 0.6), 126000);
+  assert.equal(optionDeltaExposure(2, 100, -0.25), -5000);
 });
 
 test("portfolio: sell orders for more than is held are flagged", async () => {
@@ -143,7 +172,8 @@ test("portfolio: live account host, missing keys and refused keys", async () => 
       .paper,
     false,
   );
-  assert.ok(live.seen.every((s) => s.startsWith("GET api.alpaca.markets/")));
+  assert.ok(live.seen.every((s) => s.startsWith("GET ")));
+  assert.ok(live.seen.some((s) => s.startsWith("GET api.alpaca.markets/")));
   assert.equal((await handlePortfolio({}, false, live.fetcher)).status, 503);
   const refused = await handlePortfolio(keys, false, fake([], 403).fetcher);
   assert.equal(refused.status, 502);
@@ -172,18 +202,18 @@ test("portfolio: answers are reused, orders for longer, and errors are not kept"
     handlePortfolio(keys, false, fetcher, now + ms, cache);
   await at(0);
   await at(500); // everything reused
-  assert.equal(seen.length, 3);
+  assert.equal(seen.length, 5);
   await at(1000); // account and positions again, orders reused
   assert.deepEqual(
-    seen.slice(3).map((s) => s.split("/v2/")[1]),
+    seen.slice(5).map((s) => s.split("/v2/")[1]),
     ["account", "positions"],
   );
   const later = await at(6000);
-  assert.equal(seen.length, 8);
+  assert.equal(seen.length, 10);
   assert.equal((later.body as Portfolio).at, "2026-10-12T15:00:06.000Z");
   // The paper and live accounts never share an answer.
   await handlePortfolio(keys, true, fetcher, now + 6000, cache);
-  assert.equal(seen.length, 11);
+  assert.equal(seen.length, 13);
   const failing = new PortfolioCache();
   const down = fake([], 500);
   assert.equal(
