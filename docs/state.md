@@ -17,6 +17,16 @@ unrealized P&L is not part of this chart.
 Validation: full check, tick/nearest-trade tests, and desktop/phone
 screenshots with synthetic trades.
 
+## Trade tab: stock price in the chain, confirmed stop moves
+
+The option chain shows the stock's latest price as a row between the strikes around it
+(as in IBKR) and tints in-the-money strikes; the chain's optional `underlyingPrice` is
+null when Alpaca's latest stock trade cannot be read. Moving or setting a stop now asks
+for Confirm/Cancel before anything is sent, like buys, sells and cancels; changing a
+working buy's limit price still sends at once.
+Validation: full check, chain/stop tests, and a 390px headless Chromium run with mocked
+API responses (no POST until Confirm).
+
 ## Working product
 
 The mobile replay site is published privately through Sites/Cloudflare Workers at

@@ -7,8 +7,8 @@ import { readJson } from "./api.js";
 
 // The owner's controls for what is already at the broker: moving a
 // position's stop, withdrawing an open order, and changing the price of a buy
-// that is waiting or working. Each answers at once; the page's next refresh
-// shows the new state.
+// that is waiting or working. Moving a stop and withdrawing an order are
+// confirmed first; the page's next refresh shows the new state.
 
 type Result = { ok: boolean; text: string } | null;
 
@@ -55,21 +55,27 @@ const priceText = (value: string) => value.replace(/[^\d.]/g, "");
 export function StopMover({ p }: { p: PortfolioPosition }) {
   const suggested = p.stop?.price ?? p.entry * 0.6;
   const [value, setValue] = useState(suggested.toFixed(2));
+  // Nothing is sent until the new stop is confirmed.
+  const [confirming, setConfirming] = useState(false);
   const { busy, result, run, clear } = useAction();
   const price = Number(value);
   const valid = price > 0;
   const below = valid && p.entry > 0 ? (1 - price / p.entry) * 100 : null;
   const same = p.stop !== null && Math.abs(price - p.stop.price) < 0.005;
+  const send = () => {
+    setConfirming(false);
+    void run<{ price: number; qty: number }>(
+      "stop",
+      { contract: p.symbol, price },
+      (r) => `Stop is now ${r.price.toFixed(2)} on ${r.qty}.`,
+    );
+  };
   return (
     <form
       className="order-edit"
       onSubmit={(e) => {
         e.preventDefault();
-        void run<{ price: number; qty: number }>(
-          "stop",
-          { contract: p.symbol, price },
-          (r) => `Stop is now ${r.price.toFixed(2)} on ${r.qty}.`,
-        );
+        if (!busy && valid && !same) setConfirming(true);
       }}
     >
       <label>
@@ -81,17 +87,37 @@ export function StopMover({ p }: { p: PortfolioPosition }) {
           disabled={busy}
           onChange={(e) => {
             setValue(priceText(e.target.value));
+            setConfirming(false);
             clear();
           }}
         />
       </label>
-      <button
-        type="submit"
-        className="pos-cancel"
-        disabled={busy || !valid || same}
-      >
-        {busy ? "Working…" : p.stop ? "Move stop" : "Set stop"}
-      </button>
+      {confirming ? (
+        <div className="pos-confirm" role="group" aria-label="Confirm the stop">
+          <span>
+            {p.stop ? "Move the stop" : "Set a stop"} to {price.toFixed(2)} on{" "}
+            {p.qty}?
+          </span>
+          <button type="button" className="pos-go sell" onClick={send}>
+            Confirm
+          </button>
+          <button
+            type="button"
+            className="pos-cancel"
+            onClick={() => setConfirming(false)}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          type="submit"
+          className="pos-cancel"
+          disabled={busy || !valid || same}
+        >
+          {busy ? "Working…" : p.stop ? "Move stop" : "Set stop"}
+        </button>
+      )}
       <span
         className={
           result && !result.ok ? "order-note pos-problem" : "order-note"
