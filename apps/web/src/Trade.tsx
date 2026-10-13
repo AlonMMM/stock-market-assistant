@@ -277,12 +277,18 @@ function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
 }
 
 /** The stock's latest price, between the strikes around it. */
-function PriceRow({ chain }: { chain: Chain }) {
+function PriceRow({
+  underlying,
+  price,
+}: {
+  underlying: string;
+  price: number;
+}) {
   return (
     <tr className="chain-price" aria-label="Stock price">
       <td colSpan={5}>
         <span className="chain-price-tag num">
-          {chain.underlying} {chain.underlyingPrice!.toFixed(2)}
+          {underlying} {price.toFixed(2)}
         </span>
       </td>
     </tr>
@@ -412,10 +418,12 @@ export function Trade({ edit }: { edit?: PortfolioOrder | null }) {
 
   const symbol = ticker.trim().toUpperCase();
   const quote = chain?.quotes.find((q) => q.contract === selected);
+  // `?? null`: a trading service from before the field omits it.
+  const stockPrice = chain?.underlyingPrice ?? null;
   const priceRow = chain
     ? priceRowIndex(
         chain.quotes.map((q) => q.strike),
-        chain.underlyingPrice,
+        stockPrice,
       )
     : null;
   return (
@@ -523,17 +531,18 @@ export function Trade({ edit }: { edit?: PortfolioOrder | null }) {
                     q.spreadPct === null || q.spreadPct > chain.maxSpreadPct;
                   return (
                     <Fragment key={q.contract}>
-                      {i === priceRow && <PriceRow chain={chain} />}
+                      {i === priceRow && (
+                        <PriceRow
+                          underlying={chain.underlying}
+                          price={stockPrice!}
+                        />
+                      )}
                       <tr
                         ref={q.contract === chain.pick ? picked : undefined}
                         className={[
                           q.contract === selected ? "selected" : "",
                           q.ask > 0 ? "" : "dead",
-                          inTheMoney(
-                            chain.right,
-                            q.strike,
-                            chain.underlyingPrice,
-                          )
+                          inTheMoney(chain.right, q.strike, stockPrice)
                             ? "itm"
                             : "",
                         ].join(" ")}
@@ -565,7 +574,9 @@ export function Trade({ edit }: { edit?: PortfolioOrder | null }) {
                     </Fragment>
                   );
                 })}
-                {priceRow === chain.quotes.length && <PriceRow chain={chain} />}
+                {priceRow === chain.quotes.length && (
+                  <PriceRow underlying={chain.underlying} price={stockPrice!} />
+                )}
               </tbody>
             </table>
           </div>

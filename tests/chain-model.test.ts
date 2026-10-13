@@ -19,3 +19,10 @@ test("calls are in the money below the price, puts above it", () => {
   assert.equal(inTheMoney("put", 94, 94.26), false);
   assert.equal(inTheMoney("call", 94, null), false);
 });
+
+test("a chain without the price field shows no price row", () => {
+  // A trading service from before `underlyingPrice` omits it.
+  const missing = ({} as { underlyingPrice?: number | null }).underlyingPrice;
+  assert.equal(priceRowIndex([94, 95], missing ?? null), null);
+  assert.equal(inTheMoney("put", 95, missing ?? null), false);
+});
