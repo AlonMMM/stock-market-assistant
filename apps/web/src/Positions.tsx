@@ -6,8 +6,9 @@ import { readJson } from "./api.js";
 import { StopMover } from "./OrderControls.js";
 import { followOrder, type Run } from "./order-run.js";
 import { WhyButton } from "./Orders.js";
-import { chartSession } from "./positions-model.js";
+import { chartSession, optionDeltaExposure } from "./positions-model.js";
 import { StockChart } from "./StockChart.js";
+import { israelDateTime, israelLabel } from "./time.js";
 
 // Open positions as a dense list, in the manner of a broker's phone app: one
 // row per position, and a tap opens the stock's day chart, the position's
@@ -212,6 +213,10 @@ function Detail({
   // How far the current price is above the stop, as a share of the price.
   const away =
     p.stop && p.price ? ((p.price - p.stop.price) / p.price) * 100 : null;
+  const deltaExposure =
+    p.option && p.delta !== null && p.underlyingPrice !== null
+      ? optionDeltaExposure(p.qty, p.underlyingPrice, p.delta)
+      : null;
   return (
     <div className="pos-detail">
       <dl className="pos-facts">
@@ -229,6 +234,40 @@ function Detail({
             {p.sharePct === null ? "—" : `${p.sharePct.toFixed(1)}%`}
           </dd>
         </div>
+        {p.option && (
+          <>
+            <div>
+              <dt>Underlying</dt>
+              <dd className="num">
+                {p.underlyingPrice === null
+                  ? "—"
+                  : `$${p.underlyingPrice.toFixed(2)}`}
+              </dd>
+            </div>
+            <div>
+              <dt>Delta exposure</dt>
+              <dd className="num">
+                {deltaExposure === null ? "—" : signedUsd(deltaExposure)}
+              </dd>
+            </div>
+            <div>
+              <dt>Estimated option price</dt>
+              <dd className="num">
+                {p.estimatedPrice === null
+                  ? "—"
+                  : `$${p.estimatedPrice.toFixed(2)}`}
+              </dd>
+            </div>
+            <div>
+              <dt>Last Greeks</dt>
+              <dd className="num">
+                {p.delta === null || p.gamma === null || p.theta === null
+                  ? "—"
+                  : `Δ ${p.delta.toFixed(3)} · Γ ${p.gamma.toFixed(4)} · Θ ${p.theta.toFixed(3)}`}
+              </dd>
+            </div>
+          </>
+        )}
         <div>
           <dt>Today</dt>
           <dd className={`num${tone(p.dayPnl)}`}>
@@ -236,6 +275,17 @@ function Detail({
           </dd>
         </div>
       </dl>
+      {p.option && (
+        <p className="muted">
+          Delta exposure = {p.qty} × 100 × underlying price × delta.
+          {p.estimateAsOf &&
+            ` Estimated premium uses the last option mark and Greeks from ${israelDateTime(Date.parse(p.estimateAsOf))} ${israelLabel}, adjusted for the underlying move and elapsed theta.`}
+          {p.underlyingAsOf &&
+            ` Underlying print: ${israelDateTime(Date.parse(p.underlyingAsOf))} ${israelLabel}.`}
+          {p.estimatedPrice !== null &&
+            " This is a model estimate, not an executable after-hours option quote."}
+        </p>
+      )}
       <p className={p.stop ? "pos-stop" : "pos-stop missing"}>
         <strong>Stop</strong>
         {p.stop ? (
@@ -290,6 +340,10 @@ function Row({
   open: boolean;
   onToggle: () => void;
 }) {
+  const deltaExposure =
+    p.option && p.delta !== null && p.underlyingPrice !== null
+      ? optionDeltaExposure(p.qty, p.underlyingPrice, p.delta)
+      : null;
   const stopText = !p.stop
     ? "no stop"
     : p.stop.qty < p.qty
@@ -330,6 +384,14 @@ function Row({
           <span className={bare ? "pos-sub num warn" : "pos-sub num"}>
             {stopText}
           </span>
+          {p.option && p.estimatedPrice !== null && (
+            <span className="pos-sub num">
+              Est ${p.estimatedPrice.toFixed(2)}
+            </span>
+          )}
+          {deltaExposure !== null && (
+            <span className="pos-sub num">Δ {signedUsd(deltaExposure)}</span>
+          )}
         </span>
         <span className="pos-cell">
           <span className="sr-only">Value </span>

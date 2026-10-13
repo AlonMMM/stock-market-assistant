@@ -12,10 +12,24 @@ container width, uses rounded axis ticks and day-aligned date labels, and shows
 a crosshair tooltip with the trade and cumulative result on hover, tap or
 arrow keys. Dollar/percent controls use Alpaca's starting account value for
 cumulative returns, rather than adding individual trade returns. Missing
-starting equity disables percentage mode. Account tiles remain unchanged;
-unrealized P&L is not part of this chart.
-Validation: full check, tick/nearest-trade tests, and desktop/phone
-screenshots with synthetic trades.
+starting equity disables percentage mode. In dollars, the graph starts at the period's
+account base value and changes at each close, with vertical padding above and below the
+balance range; percentage mode remains cumulative realized return. Unrealized P&L is not
+part of this chart. The x-axis fits dates with closes while preserving their true spacing.
+
+## Portfolio: pre/post-market option estimates
+
+Option positions use Alpaca's last option mark and Greeks plus the latest underlying print.
+The estimated premium applies delta × spot move, ½ gamma × spot move², and theta × elapsed
+calendar days to the last mark. The spot reference bar is matched to the option mark's New
+York trading date; when that date is unavailable, no premium estimate is shown. The view
+also shows delta-adjusted exposure (contracts × 100 × underlying price × delta) and the
+source times. This is a model estimate, not an executable option quote. Market-data
+requests are cached for 10 seconds and fail open so the account positions still load.
+
+Validation: typecheck, production build, and portfolio tests. The full suite also reported
+existing collector-startup and session tests failing because their child processes exit
+with status 1 in this sandbox; their code is outside this change.
 
 ## Trade tab: stock price in the chain, confirmed stop moves
 
