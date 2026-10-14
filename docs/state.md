@@ -1,6 +1,6 @@
 # Current state
 
-Updated: 2026-10-07
+Updated: 2026-10-14
 Phase: Alpaca live alerts on real-time SIP with Telegram delivery; marked-sections score vs SPY in review.
 
 ## History: cumulative P&L at trade closes
@@ -19,10 +19,12 @@ part of this chart. The x-axis fits dates with closes while preserving their tru
 
 ## Portfolio: pre/post-market option estimates
 
-Option positions use Alpaca's last option mark and Greeks plus the latest underlying print.
-The estimated premium applies delta × spot move, ½ gamma × spot move², and theta × elapsed
-calendar days to the last mark. The spot reference bar is matched to the option mark's New
-York trading date; when that date is unavailable, no premium estimate is shown. The view
+Option positions are repriced with Black-Scholes: volatility is implied from Alpaca's last
+option mark at the underlying's one-minute bar of that moment (else that day's regular-feed
+close, never the BOATS bar), then applied to the latest underlying print and the remaining
+time to the expiry close, floored at intrinsic value. Without any volatility, a Greeks
+expansion is used with theta capped at the remaining time value. See the
+[review task](tasks/backend-trading-page-review.md). The view
 also shows delta-adjusted exposure (contracts × 100 × underlying price × delta) and the
 source times. This is a model estimate, not an executable option quote. Market-data
 requests are cached for 10 seconds and fail open so the account positions still load.

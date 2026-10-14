@@ -24,7 +24,7 @@ const account = {
 };
 const positions = [
   {
-    symbol: "AMD261016C00660000",
+    symbol: "AMD261016C00720000",
     asset_class: "us_option",
     qty: "3",
     avg_entry_price: "1.70",
@@ -50,7 +50,7 @@ const positions = [
 ];
 const order = (over: object) => ({
   id: "o1",
-  symbol: "AMD261016C00660000",
+  symbol: "AMD261016C00720000",
   side: "sell",
   type: "stop",
   qty: "3",
@@ -77,7 +77,7 @@ function fake(orders: object[], status = 200, isOpen = true) {
             : url.pathname === "/v1beta1/options/snapshots"
               ? {
                   snapshots: {
-                    AMD261016C00660000: {
+                    AMD261016C00720000: {
                       greeks: {
                         delta: 0.6,
                         gamma: 0.02,
@@ -127,19 +127,21 @@ test("portfolio: account totals, positions with their stop, and orders", async (
   // Largest position first.
   assert.deepEqual(
     body.positions.map((p) => p.symbol),
-    ["SPY", "AMD261016C00660000"],
+    ["SPY", "AMD261016C00720000"],
   );
   const amd = body.positions[1]!;
   assert.deepEqual(amd.option, {
     right: "call",
-    strike: 660,
+    strike: 720,
     expiry: "2026-10-16",
   });
   assert.equal(amd.pnlPct, 23.53);
   assert.equal(amd.sharePct, 0.63);
   assert.equal(amd.underlyingPrice, 700);
   assert.equal(amd.delta, 0.6);
-  assert.equal(amd.estimatedPrice, 9.1);
+  // A one-minute-old mark at the live price: one minute of decay only.
+  assert.equal(amd.estimatedPrice, 2.1);
+  assert.equal(amd.estimateBreakdown?.underlyingReferenceSource, "live");
   // (1.70 − 1.02) × 3 contracts × 100 = 204 at risk: 40% of the premium.
   assert.deepEqual(amd.stop, { price: 1.02, qty: 3, lossPct: 40, risk: 204 });
   assert.equal(body.positions[0]!.stop, null);
@@ -292,11 +294,25 @@ test("portfolio: overnight Greeks calculate delta exposure and estimated option 
       return Response.json({
         bars: { AMD: { c: 705, t: "2026-10-13T23:59:00Z" } },
       });
+    if (
+      url.pathname === "/v2/stocks/bars" &&
+      url.searchParams.get("timeframe") === "1Min"
+    )
+      // AMD at the option's 10:59 quote, and a minute later.
+      return Response.json({
+        bars: {
+          AMD: [
+            { c: 688, t: "2026-10-12T14:58:00Z" },
+            { c: 690, t: "2026-10-12T14:59:00Z" },
+            { c: 699, t: "2026-10-12T15:00:00Z" },
+          ],
+        },
+      });
     if (url.pathname === "/v2/stocks/bars")
       return Response.json({
         bars: {
           AMD: [
-            { c: 690, t: "2026-10-12T04:00:00Z" },
+            { c: 695, t: "2026-10-12T04:00:00Z" },
             { c: 680, t: "2026-10-09T04:00:00Z" },
           ],
         },
@@ -318,25 +334,33 @@ test("portfolio: overnight Greeks calculate delta exposure and estimated option 
   assert.equal(option.underlyingPriceSource, "bar");
   assert.equal(option.delta, 0.6);
   assert.ok(option.estimatedPrice !== null);
-  assert.equal(option.estimatedPrice, 13.2);
-  assert.deepEqual(option.estimateBreakdown, {
-    optionMark: 2.1,
-    underlyingReference: 690,
-    underlyingMove: 15,
-    deltaEffect: 9,
-    gammaEffect: 2.25,
-    thetaEffect: -0.1 * elapsedDays,
-    vegaEffect: null,
-    impliedVolatilityChange: null,
-    elapsedDays,
-  });
+  // Black-Scholes at the IV implied by the 2.10 mark with AMD at 690 (the
+  // minute bar of the quote, not the 695 daily close), repriced at 705 with
+  // 1.46 fewer days to expiry.
+  assert.equal(option.estimatedPrice, 3.6);
+  const breakdown = option.estimateBreakdown!;
+  assert.equal(breakdown.model, "black-scholes");
+  assert.equal(breakdown.underlyingReference, 690);
+  assert.equal(breakdown.underlyingReferenceSource, "minute");
+  assert.equal(breakdown.underlyingMove, 15);
+  assert.ok(Math.abs(breakdown.elapsedDays - elapsedDays) < 1e-9);
+  assert.ok(breakdown.moveEffect > 0 && breakdown.timeEffect < 0);
+  assert.ok(
+    Math.abs(
+      breakdown.optionMark +
+        breakdown.moveEffect +
+        breakdown.timeEffect -
+        3.6006,
+    ) < 1e-3,
+  );
   assert.equal(
     optionDeltaExposure(option.qty, option.underlyingPrice, option.delta),
     126900,
   );
   assert.deepEqual(body.overnightEstimate, {
-    equity: 103830,
-    change: 3330,
+    equity: 100950,
+    change: 450, // (3.60 − 2.10) × 3 contracts × 100
+
     pricedPositions: 1,
     totalPositions: 2,
   });
@@ -522,7 +546,7 @@ test("portfolio: sell orders for more than is held are flagged", async () => {
   const body = (await handlePortfolio(keys, false, fetcher, now))
     .body as Portfolio;
   assert.deepEqual(body.shortRisks, [
-    "OVERSOLD AMD261016C00660000: open sell orders for 5, 3 held",
+    "OVERSOLD AMD261016C00720000: open sell orders for 5, 3 held",
   ]);
 });
 
@@ -603,7 +627,7 @@ const fill = (
   price: String(price),
   transaction_time: time,
 });
-const amd = "AMD261016C00660000";
+const amd = "AMD261016C00720000";
 const nvda = "NVDA261009P00217500";
 const activities = [
   fill(amd, "buy", 2, 1.6, "2026-10-05T14:00:00Z"),
@@ -704,4 +728,81 @@ test("history: daily profit and loss with the period's closed trades", async () 
     ).status,
     503,
   );
+});
+
+test("portfolio: overnight reference is the regular close, never the BOATS daily bar", async () => {
+  const { fetcher: baseFetcher } = fake([order({})], 200, false);
+  const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v2/stocks/snapshots")
+      return Response.json({
+        snapshots: {
+          AMD:
+            url.searchParams.get("feed") === "boats"
+              ? {
+                  // Overnight venue: its "daily" bar ends with night trading.
+                  latestTrade: { p: 705, t: "2026-10-14T02:00:00Z" },
+                  dailyBar: { c: 704, t: "2026-10-12T04:00:00Z" },
+                }
+              : {
+                  dailyBar: { c: 690, t: "2026-10-12T04:00:00Z" },
+                  prevDailyBar: { c: 680, t: "2026-10-09T04:00:00Z" },
+                },
+        },
+      });
+    if (url.pathname.startsWith("/v2/stocks/bars"))
+      return Response.json({ message: "unavailable" }, { status: 500 });
+    return baseFetcher(input, init);
+  }) as typeof fetch;
+  const result = await handlePortfolio(
+    keys,
+    false,
+    fetcher,
+    Date.parse("2026-10-14T02:00:00Z"),
+  );
+  const option = (result.body as Portfolio).positions.find((p) => p.option)!;
+  assert.equal(option.underlyingPrice, 705);
+  assert.equal(option.estimateBreakdown?.underlyingReference, 690);
+  assert.equal(option.estimateBreakdown?.underlyingReferenceSource, "close");
+  assert.equal(option.estimateBreakdown?.underlyingMove, 15);
+});
+
+test("portfolio: reads Alpaca's real snapshot shape (symbols at the top, minuteBar, impliedVolatility)", async () => {
+  const { fetcher: baseFetcher } = fake([order({})], 200, false);
+  const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const url = new URL(String(input));
+    // Pre-market, as Alpaca answered on 2026-10-14 (values synthetic).
+    if (url.pathname === "/v2/stocks/snapshots")
+      return Response.json({
+        AMD: {
+          latestTrade: { p: 704, t: "2026-10-13T11:00:00Z" },
+          minuteBar: { c: 705, t: "2026-10-13T11:20:00Z" },
+          dailyBar: { c: 690, t: "2026-10-12T04:00:00Z" },
+        },
+      });
+    if (url.pathname === "/v2/stocks/bars") return Response.json({ bars: {} });
+    if (url.pathname === "/v1beta1/options/snapshots")
+      return Response.json({
+        snapshots: {
+          AMD261016C00720000: {
+            impliedVolatility: 0.4,
+            latestQuote: { bp: 2, ap: 2.2, t: "2026-10-12T19:59:59Z" },
+          },
+        },
+      });
+    return baseFetcher(input, init);
+  }) as typeof fetch;
+  const result = await handlePortfolio(
+    keys,
+    false,
+    fetcher,
+    Date.parse("2026-10-13T11:22:00Z"),
+  );
+  const option = (result.body as Portfolio).positions.find((p) => p.option)!;
+  assert.equal(option.underlyingPrice, 705);
+  assert.equal(option.underlyingPriceSource, "bar");
+  assert.equal(option.impliedVolatility, 0.4);
+  assert.equal(option.estimateBreakdown?.underlyingReference, 690);
+  assert.equal(option.estimateBreakdown?.model, "black-scholes");
+  assert.equal(option.marketDataIssue, null);
 });

@@ -295,11 +295,14 @@ function Detail({
       </dl>
       {view === "overnight" && p.option && p.estimateBreakdown && (
         <p className="muted">
-          ${p.estimateBreakdown.optionMark.toFixed(2)} + Δ{" "}
-          {signedUsdExact(p.estimateBreakdown.deltaEffect)} + Γ{" "}
-          {signedUsdExact(p.estimateBreakdown.gammaEffect)} + Θ{" "}
-          {signedUsdExact(p.estimateBreakdown.thetaEffect)} = $
-          {p.estimatedPrice?.toFixed(2)} · V×ΔIV —
+          ${p.estimateBreakdown.optionMark.toFixed(2)} at{" "}
+          {p.estimateBreakdown.underlyingReference.toFixed(2)} · move{" "}
+          {signedUsdExact(p.estimateBreakdown.moveEffect)} · time{" "}
+          {signedUsdExact(p.estimateBreakdown.timeEffect)} = $
+          {p.estimatedPrice?.toFixed(2)}
+          {p.estimateBreakdown.volatility !== null
+            ? ` · IV ${(p.estimateBreakdown.volatility * 100).toFixed(1)}% held`
+            : " · Greeks only"}
         </p>
       )}
       {p.option && p.marketDataIssue && (
