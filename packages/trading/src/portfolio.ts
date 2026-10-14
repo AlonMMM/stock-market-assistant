@@ -34,7 +34,7 @@ export interface PortfolioPosition extends Contract {
   sharePct: number | null;
   // Market-data enrichment for options; all may be null when the feed omits it.
   underlyingPrice: number | null;
-  underlyingPriceSource: "trade" | "quote" | "close" | null;
+  underlyingPriceSource: "trade" | "quote" | "bar" | "close" | null;
   delta: number | null;
   gamma: number | null;
   theta: number | null;
@@ -229,8 +229,10 @@ interface OptionSnapshot {
 interface StockSnapshot {
   latestTrade?: { p?: number; t?: string };
   latestQuote?: { ap?: number; bp?: number; t?: string };
+  latestMinuteBar?: { c?: number; t?: string };
   dailyBar?: { c?: number; t?: string };
   prevDailyBar?: { c?: number; t?: string };
+  dailyBars?: Array<{ c?: number; t?: string }>;
 }
 
 function newer<T extends { t?: string }>(a: T | undefined, b: T | undefined) {
@@ -255,8 +257,10 @@ function mergeStockSnapshots(
     merged[symbol] = {
       latestTrade: newer(a?.latestTrade, b?.latestTrade),
       latestQuote: newer(a?.latestQuote, b?.latestQuote),
+      latestMinuteBar: newer(a?.latestMinuteBar, b?.latestMinuteBar),
       dailyBar: a?.dailyBar ?? b?.dailyBar,
       prevDailyBar: a?.prevDailyBar ?? b?.prevDailyBar,
+      dailyBars: [...(a?.dailyBars ?? []), ...(b?.dailyBars ?? [])],
     };
   }
   return merged;
@@ -331,27 +335,43 @@ function estimatedOptionPrice(
     (tradePrice === null ||
       (Number.isFinite(quoteTime) &&
         (!Number.isFinite(tradeTime) || quoteTime > tradeTime)));
+  const livePrice = useQuote ? quotePrice : tradePrice;
+  const latestBarPrice = validPrice(stock?.latestMinuteBar?.c);
+  const latestBarTime = stock?.latestMinuteBar?.t
+    ? Date.parse(stock.latestMinuteBar.t)
+    : Number.NaN;
+  const liveTime = useQuote ? quoteTime : tradeTime;
+  const useBar =
+    latestBarPrice !== null &&
+    (livePrice === null ||
+      (Number.isFinite(latestBarTime) &&
+        (!Number.isFinite(liveTime) || latestBarTime > liveTime)));
   const closePrice = validPrice(stock?.dailyBar?.c);
   const previousClose = validPrice(stock?.prevDailyBar?.c);
-  const current = useQuote
-    ? quotePrice
-    : (tradePrice ?? closePrice ?? previousClose);
-  const underlyingPriceSource: "trade" | "quote" | "close" | null = useQuote
-    ? "quote"
-    : tradePrice !== null
-      ? "trade"
-      : current !== null
-        ? "close"
-        : null;
-  const underlyingAsOf = useQuote
-    ? (stock?.latestQuote?.t ?? null)
-    : tradePrice !== null
-      ? (stock?.latestTrade?.t ?? null)
-      : closePrice !== null
-        ? (stock?.dailyBar?.t ?? null)
-        : previousClose !== null
-          ? (stock?.prevDailyBar?.t ?? null)
-          : null;
+  const current = useBar
+    ? latestBarPrice
+    : (livePrice ?? closePrice ?? previousClose);
+  const underlyingPriceSource: "trade" | "quote" | "bar" | "close" | null =
+    useBar
+      ? "bar"
+      : useQuote
+        ? "quote"
+        : tradePrice !== null
+          ? "trade"
+          : current !== null
+            ? "close"
+            : null;
+  const underlyingAsOf = useBar
+    ? (stock?.latestMinuteBar?.t ?? null)
+    : useQuote
+      ? (stock?.latestQuote?.t ?? null)
+      : tradePrice !== null
+        ? (stock?.latestTrade?.t ?? null)
+        : closePrice !== null
+          ? (stock?.dailyBar?.t ?? null)
+          : previousClose !== null
+            ? (stock?.prevDailyBar?.t ?? null)
+            : null;
   const bid = validPrice(option?.latestQuote?.bp);
   const ask = validPrice(option?.latestQuote?.ap);
   const trade = validPrice(option?.latestTrade?.p);
@@ -366,7 +386,9 @@ function estimatedOptionPrice(
     current === null &&
     !fetchIssues.some((issue) => issue.startsWith("Stocks"))
   )
-    issues.push("Underlying trade and bid/ask quote are unavailable");
+    issues.push(
+      "Underlying trade, bid/ask quote and latest bar are unavailable",
+    );
   if (
     (delta === undefined || gamma === undefined || theta === undefined) &&
     !fetchIssues.some((issue) => issue.startsWith("Options"))
@@ -387,16 +409,19 @@ function estimatedOptionPrice(
     };
   const sourceTime = option?.latestQuote?.t ?? option?.latestTrade?.t;
   const sourceDay = sourceTime ? nyDay.format(Date.parse(sourceTime)) : null;
+  const referenceBars = [
+    stock?.dailyBar,
+    stock?.prevDailyBar,
+    ...(stock?.dailyBars ?? []),
+  ];
   const reference =
-    sourceDay !== null &&
-    stock?.dailyBar?.t &&
-    nyDay.format(Date.parse(stock.dailyBar.t)) === sourceDay
-      ? validPrice(stock.dailyBar.c)
-      : sourceDay !== null &&
-          stock?.prevDailyBar?.t &&
-          nyDay.format(Date.parse(stock.prevDailyBar.t)) === sourceDay
-        ? validPrice(stock.prevDailyBar.c)
-        : null;
+    sourceDay === null
+      ? null
+      : validPrice(
+          referenceBars.find(
+            (bar) => bar?.t && nyDay.format(Date.parse(bar.t)) === sourceDay,
+          )?.c,
+        );
   if (
     delta === undefined ||
     gamma === undefined ||
@@ -529,27 +554,55 @@ export async function handlePortfolio(
       );
       const feed = overnightStockFeed(now);
       const regularStockUrl = `/v2/stocks/snapshots?symbols=${encodeURIComponent(underlyings)}`;
-      const [optionResult, stockResult, regularStockResult] = await Promise.all(
-        [
-          Promise.allSettled([
-            dataGet<{ snapshots?: Record<string, OptionSnapshot> }>(
-              `/v1beta1/options/snapshots?symbols=${encodeURIComponent(optionSymbols)}`,
-            ),
-            dataGet<{ snapshots?: Record<string, StockSnapshot> }>(
-              `${regularStockUrl}${feed ? `&feed=${feed}` : ""}`,
-            ),
-          ]),
-          feed
-            ? Promise.allSettled([
-                dataGet<{ snapshots?: Record<string, StockSnapshot> }>(
-                  regularStockUrl,
-                ),
-              ])
-            : Promise.resolve(null),
-        ],
-      ).then(
-        ([primary, fallback]) =>
-          [primary[0]!, primary[1]!, fallback?.[0] ?? null] as const,
+      const latestBarsUrl = `/v2/stocks/bars/latest?symbols=${encodeURIComponent(underlyings)}&feed=boats`;
+      const historyStart = new Date(now - 14 * 86400000).toISOString();
+      const historyEnd = new Date(now + 86400000).toISOString();
+      const dailyBarsUrl = `/v2/stocks/bars?symbols=${encodeURIComponent(underlyings)}&timeframe=1Day&start=${encodeURIComponent(historyStart)}&end=${encodeURIComponent(historyEnd)}&limit=1000&sort=desc`;
+      const [
+        optionResult,
+        stockResult,
+        regularStockResult,
+        latestBarsResult,
+        dailyBarsResult,
+      ] = await Promise.all([
+        Promise.allSettled([
+          dataGet<{ snapshots?: Record<string, OptionSnapshot> }>(
+            `/v1beta1/options/snapshots?symbols=${encodeURIComponent(optionSymbols)}`,
+          ),
+          dataGet<{ snapshots?: Record<string, StockSnapshot> }>(
+            `${regularStockUrl}${feed ? `&feed=${feed}` : ""}`,
+          ),
+        ]),
+        feed
+          ? Promise.allSettled([
+              dataGet<{ snapshots?: Record<string, StockSnapshot> }>(
+                regularStockUrl,
+              ),
+            ])
+          : Promise.resolve(null),
+        feed
+          ? Promise.allSettled([
+              dataGet<{
+                bars?: Record<string, { c?: number; t?: string }>;
+              }>(latestBarsUrl),
+            ])
+          : Promise.resolve(null),
+        feed
+          ? Promise.allSettled([
+              dataGet<{
+                bars?: Record<string, Array<{ c?: number; t?: string }>>;
+              }>(dailyBarsUrl),
+            ])
+          : Promise.resolve(null),
+      ]).then(
+        ([primary, fallback, bars, daily]) =>
+          [
+            primary[0]!,
+            primary[1]!,
+            fallback?.[0] ?? null,
+            bars?.[0] ?? null,
+            daily?.[0] ?? null,
+          ] as const,
       );
       const optionSnapshots =
         optionResult.status === "fulfilled"
@@ -563,9 +616,35 @@ export async function handlePortfolio(
         regularStockResult?.status === "fulfilled"
           ? (regularStockResult.value?.snapshots ?? {})
           : {};
-      const stockSnapshots = feed
+      let stockSnapshots = feed
         ? mergeStockSnapshots(overnightStockSnapshots, regularStockSnapshots)
         : overnightStockSnapshots;
+      const latestBars =
+        latestBarsResult?.status === "fulfilled"
+          ? (latestBarsResult.value?.bars ?? {})
+          : {};
+      if (feed && Object.keys(latestBars).length > 0) {
+        stockSnapshots = { ...stockSnapshots };
+        for (const [symbol, bar] of Object.entries(latestBars)) {
+          stockSnapshots[symbol] = {
+            ...(stockSnapshots[symbol] ?? {}),
+            latestMinuteBar: bar,
+          };
+        }
+      }
+      const dailyBars =
+        dailyBarsResult?.status === "fulfilled"
+          ? (dailyBarsResult.value?.bars ?? {})
+          : {};
+      if (feed && Object.keys(dailyBars).length > 0) {
+        stockSnapshots = { ...stockSnapshots };
+        for (const [symbol, bars] of Object.entries(dailyBars)) {
+          stockSnapshots[symbol] = {
+            ...(stockSnapshots[symbol] ?? {}),
+            dailyBars: bars,
+          };
+        }
+      }
       const fetchIssues = [
         ...(optionResult.status === "rejected"
           ? [`Options: ${errorMessage(optionResult.reason)}`]
@@ -577,6 +656,12 @@ export async function handlePortfolio(
           : []),
         ...(regularStockResult?.status === "rejected"
           ? [`Stocks regular feed: ${errorMessage(regularStockResult.reason)}`]
+          : []),
+        ...(latestBarsResult?.status === "rejected"
+          ? [`Latest stock bars: ${errorMessage(latestBarsResult.reason)}`]
+          : []),
+        ...(dailyBarsResult?.status === "rejected"
+          ? [`Historical stock bars: ${errorMessage(dailyBarsResult.reason)}`]
           : []),
       ];
       positions = positions.map((p) =>
