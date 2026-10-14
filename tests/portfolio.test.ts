@@ -294,20 +294,86 @@ test("portfolio: overnight Greeks calculate delta exposure and estimated option 
   );
   const body = result.body as Portfolio;
   const option = body.positions.find((p) => p.option)!;
+  const elapsedDays =
+    (Date.parse("2026-10-14T02:00:00Z") - Date.parse("2026-10-12T14:59:00Z")) /
+    86400000;
   assert.equal(option.underlyingPrice, 705);
   assert.equal(option.underlyingPriceSource, "bar");
   assert.equal(option.delta, 0.6);
   assert.ok(option.estimatedPrice !== null);
   assert.equal(option.estimatedPrice, 13.2);
+  assert.deepEqual(option.estimateBreakdown, {
+    optionMark: 2.1,
+    underlyingReference: 690,
+    underlyingMove: 15,
+    deltaEffect: 9,
+    gammaEffect: 2.25,
+    thetaEffect: -0.1 * elapsedDays,
+    elapsedDays,
+  });
   assert.equal(
     optionDeltaExposure(option.qty, option.underlyingPrice, option.delta),
     126900,
   );
+  assert.deepEqual(body.overnightEstimate, {
+    equity: 103830,
+    change: 3330,
+    pricedPositions: 1,
+    totalPositions: 2,
+  });
   assert.equal(option.marketDataIssue, null);
   assert.ok(
     requested.some((path) => path.startsWith("/v2/stocks/bars/latest?")),
   );
   assert.ok(requested.some((path) => path.startsWith("/v2/stocks/bars?")));
+});
+
+test("portfolio: night estimate revalues stock positions from the latest overnight bar", async () => {
+  const { fetcher: baseFetcher } = fake([]);
+  const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v2/positions")
+      return Response.json([
+        {
+          symbol: "SPY",
+          asset_class: "us_equity",
+          qty: "5",
+          avg_entry_price: "690",
+          current_price: "690",
+          market_value: "3450",
+          cost_basis: "3450",
+          unrealized_pl: "0",
+          unrealized_plpc: "0",
+          unrealized_intraday_pl: "0",
+        },
+      ]);
+    if (url.pathname === "/v2/stocks/snapshots")
+      return url.searchParams.get("feed") === "boats"
+        ? Response.json({ snapshots: {} })
+        : Response.json({
+            snapshots: {
+              SPY: { latestTrade: { p: 700, t: "2026-10-13T23:00:00Z" } },
+            },
+          });
+    if (url.pathname === "/v2/stocks/bars/latest")
+      return Response.json({
+        bars: { SPY: { c: 705, t: "2026-10-13T23:59:00Z" } },
+      });
+    return baseFetcher(input, init);
+  }) as typeof fetch;
+  const result = await handlePortfolio(
+    keys,
+    false,
+    fetcher,
+    Date.parse("2026-10-14T02:00:00Z"),
+  );
+  const body = result.body as Portfolio;
+  assert.deepEqual(body.overnightEstimate, {
+    equity: 100575,
+    change: 75,
+    pricedPositions: 1,
+    totalPositions: 1,
+  });
 });
 
 test("portfolio: a stop covering part of a position leaves it unprotected", async () => {

@@ -2964,6 +2964,32 @@ dialog.why::backdrop {
   font-size: 15px;
   font-weight: 600;
 }
+.account-overnight {
+  flex-basis: 100%;
+  display: grid;
+  gap: 3px;
+  padding-top: 9px;
+  border-top: 1px solid #dfe6dd;
+}
+.account-overnight-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+.account-overnight-main .account-label {
+  flex-basis: 100%;
+}
+.account-overnight-main strong {
+  font-size: 20px;
+  line-height: 1.15;
+}
+.account-overnight-main .account-day {
+  font-size: 13px;
+}
+.account-overnight-note {
+  font-size: 11px;
+}
 .account-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
