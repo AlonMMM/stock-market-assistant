@@ -236,6 +236,30 @@ const nyDay = new Intl.DateTimeFormat("en-CA", {
   month: "2-digit",
   day: "2-digit",
 });
+const nyClock = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+// Alpaca's Algo Trader Plus plan serves overnight stock snapshots on BOATS.
+// The normal SIP snapshot feed covers pre-market and after-hours, but not the
+// separate 8 PM–4 AM ET overnight session.
+function overnightStockFeed(now: number): "boats" | null {
+  const parts = Object.fromEntries(
+    nyClock.formatToParts(now).map(({ type, value }) => [type, value]),
+  );
+  const minuteOfDay = Number(parts.hour) * 60 + Number(parts.minute);
+  const weekday = parts.weekday;
+  const overnight =
+    (weekday === "Sun" && minuteOfDay >= 20 * 60) ||
+    (["Mon", "Tue", "Wed", "Thu"].includes(weekday!) &&
+      (minuteOfDay < 4 * 60 || minuteOfDay >= 20 * 60)) ||
+    (weekday === "Fri" && minuteOfDay < 4 * 60);
+  return overnight ? "boats" : null;
+}
 
 function validPrice(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0
@@ -425,12 +449,13 @@ export async function handlePortfolio(
       const underlyings = [...new Set(options.map((p) => p.underlying))].join(
         ",",
       );
+      const feed = overnightStockFeed(now);
       const [optionResult, stockResult] = await Promise.allSettled([
         dataGet<{ snapshots?: Record<string, OptionSnapshot> }>(
           `/v1beta1/options/snapshots?symbols=${encodeURIComponent(optionSymbols)}`,
         ),
         dataGet<{ snapshots?: Record<string, StockSnapshot> }>(
-          `/v2/stocks/snapshots?symbols=${encodeURIComponent(underlyings)}`,
+          `/v2/stocks/snapshots?symbols=${encodeURIComponent(underlyings)}${feed ? `&feed=${feed}` : ""}`,
         ),
       ]);
       const optionSnapshots =
