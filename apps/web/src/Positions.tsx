@@ -20,6 +20,8 @@ const usd = (n: number, digits = 0) =>
     maximumFractionDigits: digits,
   })}`;
 const signedUsd = (n: number) => `${n >= 0 ? "+" : "−"}${usd(n)}`;
+const signedUsdExact = (n: number) =>
+  `${n >= 0 ? "+" : "−"}$${Math.abs(n).toFixed(2)}`;
 const signedPct = (n: number) =>
   `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(1)}%`;
 const tone = (n: number | null) =>
@@ -279,7 +281,10 @@ function Detail({
         <p className="muted">
           Delta exposure = {p.qty} × 100 × underlying price × delta.
           {p.estimateAsOf &&
-            ` Estimated premium uses the last option mark and Greeks from ${israelDateTime(Date.parse(p.estimateAsOf))} ${israelLabel}, adjusted for the underlying move and elapsed theta.`}
+            ` Starting option mark timestamp: ${israelDateTime(Date.parse(p.estimateAsOf))} ${israelLabel}. Alpaca does not provide a separate timestamp for the Greeks.`}
+          {p.estimateBreakdown &&
+            p.underlyingPrice !== null &&
+            ` Estimate math: $${p.estimateBreakdown.optionMark.toFixed(2)} mark + Δ ${signedUsdExact(p.estimateBreakdown.deltaEffect)} + Γ ${signedUsdExact(p.estimateBreakdown.gammaEffect)} + Θ ${signedUsdExact(p.estimateBreakdown.thetaEffect)} = $${p.estimatedPrice!.toFixed(2)}; underlying $${p.estimateBreakdown.underlyingReference.toFixed(2)} → $${p.underlyingPrice.toFixed(2)} over ${p.estimateBreakdown.elapsedDays.toFixed(2)} days.`}
           {p.underlyingAsOf &&
             ` Underlying ${p.underlyingPriceSource === "quote" ? "midpoint quote" : p.underlyingPriceSource === "close" ? "last regular-session close" : p.underlyingPriceSource === "bar" ? "latest available minute bar" : "last trade"}: ${israelDateTime(Date.parse(p.underlyingAsOf))} ${israelLabel}.`}
           {p.underlyingPriceSource === "close" &&

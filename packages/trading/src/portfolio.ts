@@ -39,6 +39,15 @@ export interface PortfolioPosition extends Contract {
   gamma: number | null;
   theta: number | null;
   estimatedPrice: number | null;
+  estimateBreakdown: {
+    optionMark: number;
+    underlyingReference: number;
+    underlyingMove: number;
+    deltaEffect: number;
+    gammaEffect: number;
+    thetaEffect: number;
+    elapsedDays: number;
+  } | null;
   estimateAsOf: string | null;
   underlyingAsOf: string | null;
   marketDataIssue: string | null;
@@ -68,6 +77,12 @@ export interface Portfolio {
     dayChange: number;
     dayChangePct: number | null;
   };
+  overnightEstimate: {
+    equity: number | null;
+    change: number | null;
+    pricedPositions: number;
+    totalPositions: number;
+  } | null;
   positions: PortfolioPosition[];
   // Open orders, including the stops shown on their positions.
   orders: PortfolioOrder[];
@@ -174,6 +189,7 @@ function position(
     gamma: null,
     theta: null,
     estimatedPrice: null,
+    estimateBreakdown: null,
     estimateAsOf: null,
     underlyingAsOf: null,
     marketDataIssue: null,
@@ -303,6 +319,103 @@ function validPrice(value: unknown): number | null {
     : null;
 }
 
+function stockMark(stock: StockSnapshot | undefined) {
+  const tradePrice = validPrice(stock?.latestTrade?.p);
+  const bid = validPrice(stock?.latestQuote?.bp);
+  const ask = validPrice(stock?.latestQuote?.ap);
+  const quotePrice =
+    bid !== null && ask !== null && ask >= bid ? (bid + ask) / 2 : null;
+  const tradeTime = stock?.latestTrade?.t
+    ? Date.parse(stock.latestTrade.t)
+    : Number.NaN;
+  const quoteTime = stock?.latestQuote?.t
+    ? Date.parse(stock.latestQuote.t)
+    : Number.NaN;
+  const useQuote =
+    quotePrice !== null &&
+    (tradePrice === null ||
+      (Number.isFinite(quoteTime) &&
+        (!Number.isFinite(tradeTime) || quoteTime > tradeTime)));
+  const livePrice = useQuote ? quotePrice : tradePrice;
+  const liveTime = useQuote ? quoteTime : tradeTime;
+  const barPrice = validPrice(stock?.latestMinuteBar?.c);
+  const barTime = stock?.latestMinuteBar?.t
+    ? Date.parse(stock.latestMinuteBar.t)
+    : Number.NaN;
+  const useBar =
+    barPrice !== null &&
+    (livePrice === null ||
+      (Number.isFinite(barTime) &&
+        (!Number.isFinite(liveTime) || barTime > liveTime)));
+  if (useBar)
+    return {
+      price: barPrice,
+      source: "bar" as const,
+      asOf: stock?.latestMinuteBar?.t ?? null,
+    };
+  if (useQuote)
+    return {
+      price: quotePrice,
+      source: "quote" as const,
+      asOf: stock?.latestQuote?.t ?? null,
+    };
+  if (tradePrice !== null)
+    return {
+      price: tradePrice,
+      source: "trade" as const,
+      asOf: stock?.latestTrade?.t ?? null,
+    };
+  const close = validPrice(stock?.dailyBar?.c);
+  if (close !== null)
+    return {
+      price: close,
+      source: "close" as const,
+      asOf: stock?.dailyBar?.t ?? null,
+    };
+  const previousClose = validPrice(stock?.prevDailyBar?.c);
+  if (previousClose !== null)
+    return {
+      price: previousClose,
+      source: "close" as const,
+      asOf: stock?.prevDailyBar?.t ?? null,
+    };
+  return { price: null, source: null, asOf: null };
+}
+
+function estimateOvernightPortfolio(
+  equity: number,
+  positions: PortfolioPosition[],
+  stockSnapshots: Record<string, StockSnapshot>,
+) {
+  let adjustment = 0;
+  let pricedPositions = 0;
+  for (const p of positions) {
+    if (p.option) {
+      if (p.price === null || p.estimatedPrice === null) continue;
+      adjustment += (p.estimatedPrice - p.price) * p.qty * 100;
+      pricedPositions++;
+      continue;
+    }
+    const marketPrice = stockMark(stockSnapshots[p.symbol]).price;
+    if (p.price === null || marketPrice === null) continue;
+    adjustment += (marketPrice - p.price) * p.qty;
+    pricedPositions++;
+  }
+  if (pricedPositions === 0)
+    return {
+      equity: null,
+      change: null,
+      pricedPositions,
+      totalPositions: positions.length,
+    };
+  return {
+    equity: round(equity + adjustment),
+    change: round(adjustment),
+    pricedPositions,
+    totalPositions: positions.length,
+  };
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Market-data request failed";
 }
@@ -317,61 +430,10 @@ function estimatedOptionPrice(
   const delta = option?.greeks?.delta;
   const gamma = option?.greeks?.gamma;
   const theta = option?.greeks?.theta;
-  const tradePrice = validPrice(stock?.latestTrade?.p);
-  const stockBid = validPrice(stock?.latestQuote?.bp);
-  const stockAsk = validPrice(stock?.latestQuote?.ap);
-  const quotePrice =
-    stockBid !== null && stockAsk !== null && stockAsk >= stockBid
-      ? (stockBid + stockAsk) / 2
-      : null;
-  const tradeTime = stock?.latestTrade?.t
-    ? Date.parse(stock.latestTrade.t)
-    : Number.NaN;
-  const quoteTime = stock?.latestQuote?.t
-    ? Date.parse(stock.latestQuote.t)
-    : Number.NaN;
-  const useQuote =
-    quotePrice !== null &&
-    (tradePrice === null ||
-      (Number.isFinite(quoteTime) &&
-        (!Number.isFinite(tradeTime) || quoteTime > tradeTime)));
-  const livePrice = useQuote ? quotePrice : tradePrice;
-  const latestBarPrice = validPrice(stock?.latestMinuteBar?.c);
-  const latestBarTime = stock?.latestMinuteBar?.t
-    ? Date.parse(stock.latestMinuteBar.t)
-    : Number.NaN;
-  const liveTime = useQuote ? quoteTime : tradeTime;
-  const useBar =
-    latestBarPrice !== null &&
-    (livePrice === null ||
-      (Number.isFinite(latestBarTime) &&
-        (!Number.isFinite(liveTime) || latestBarTime > liveTime)));
-  const closePrice = validPrice(stock?.dailyBar?.c);
-  const previousClose = validPrice(stock?.prevDailyBar?.c);
-  const current = useBar
-    ? latestBarPrice
-    : (livePrice ?? closePrice ?? previousClose);
-  const underlyingPriceSource: "trade" | "quote" | "bar" | "close" | null =
-    useBar
-      ? "bar"
-      : useQuote
-        ? "quote"
-        : tradePrice !== null
-          ? "trade"
-          : current !== null
-            ? "close"
-            : null;
-  const underlyingAsOf = useBar
-    ? (stock?.latestMinuteBar?.t ?? null)
-    : useQuote
-      ? (stock?.latestQuote?.t ?? null)
-      : tradePrice !== null
-        ? (stock?.latestTrade?.t ?? null)
-        : closePrice !== null
-          ? (stock?.dailyBar?.t ?? null)
-          : previousClose !== null
-            ? (stock?.prevDailyBar?.t ?? null)
-            : null;
+  const stockPrice = stockMark(stock);
+  const current = stockPrice.price;
+  const underlyingPriceSource = stockPrice.source;
+  const underlyingAsOf = stockPrice.asOf;
   const bid = validPrice(option?.latestQuote?.bp);
   const ask = validPrice(option?.latestQuote?.ap);
   const trade = validPrice(option?.latestTrade?.p);
@@ -445,11 +507,12 @@ function estimatedOptionPrice(
     };
   const elapsedDays = Math.max(0, (now - Date.parse(sourceTime)) / 86400000);
   const move = current - reference;
+  const deltaEffect = delta * move;
+  const gammaEffect = 0.5 * gamma * move * move;
+  const thetaEffect = theta * elapsedDays;
   const estimate = Math.max(
     0,
-    round(
-      mark + delta * move + 0.5 * gamma * move * move + theta * elapsedDays,
-    ),
+    round(mark + deltaEffect + gammaEffect + thetaEffect),
   );
   return {
     ...position,
@@ -459,6 +522,15 @@ function estimatedOptionPrice(
     gamma,
     theta,
     estimatedPrice: estimate,
+    estimateBreakdown: {
+      optionMark: mark,
+      underlyingReference: reference,
+      underlyingMove: move,
+      deltaEffect,
+      gammaEffect,
+      thetaEffect,
+      elapsedDays,
+    },
     estimateAsOf: sourceTime,
     underlyingAsOf,
     marketDataIssue: null,
@@ -547,17 +619,31 @@ export async function handlePortfolio(
       .map((p) => position(p, orders, equity))
       .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
     const options = positions.filter((p) => p.option !== null);
-    if (options.length > 0) {
+    const feed = overnightStockFeed(now);
+    let overnightEstimate: Portfolio["overnightEstimate"] = null;
+    if (feed && positions.length === 0)
+      overnightEstimate = {
+        equity: null,
+        change: null,
+        pricedPositions: 0,
+        totalPositions: 0,
+      };
+    if (options.length > 0 || (feed !== null && positions.length > 0)) {
       const optionSymbols = options.map((p) => p.symbol).join(",");
-      const underlyings = [...new Set(options.map((p) => p.underlying))].join(
-        ",",
-      );
-      const feed = overnightStockFeed(now);
-      const regularStockUrl = `/v2/stocks/snapshots?symbols=${encodeURIComponent(underlyings)}`;
-      const latestBarsUrl = `/v2/stocks/bars/latest?symbols=${encodeURIComponent(underlyings)}&feed=boats`;
+      const symbols = [
+        ...new Set([
+          ...options.map((p) => p.underlying),
+          ...(feed
+            ? positions.filter((p) => !p.option).map((p) => p.symbol)
+            : []),
+        ]),
+      ].join(",");
+      let stockSnapshots: Record<string, StockSnapshot> = {};
+      const regularStockUrl = `/v2/stocks/snapshots?symbols=${encodeURIComponent(symbols)}`;
+      const latestBarsUrl = `/v2/stocks/bars/latest?symbols=${encodeURIComponent(symbols)}&feed=boats`;
       const historyStart = new Date(now - 14 * 86400000).toISOString();
       const historyEnd = new Date(now + 86400000).toISOString();
-      const dailyBarsUrl = `/v2/stocks/bars?symbols=${encodeURIComponent(underlyings)}&timeframe=1Day&start=${encodeURIComponent(historyStart)}&end=${encodeURIComponent(historyEnd)}&limit=1000&sort=desc`;
+      const dailyBarsUrl = `/v2/stocks/bars?symbols=${encodeURIComponent(symbols)}&timeframe=1Day&start=${encodeURIComponent(historyStart)}&end=${encodeURIComponent(historyEnd)}&limit=1000&sort=desc`;
       const [
         optionResult,
         stockResult,
@@ -566,11 +652,13 @@ export async function handlePortfolio(
         dailyBarsResult,
       ] = await Promise.all([
         Promise.allSettled([
-          dataGet<{ snapshots?: Record<string, OptionSnapshot> }>(
-            `/v1beta1/options/snapshots?symbols=${encodeURIComponent(optionSymbols)}`,
-          ),
+          optionSymbols
+            ? dataGet<{ snapshots?: Record<string, OptionSnapshot> }>(
+                `/v1beta1/options/snapshots?symbols=${encodeURIComponent(optionSymbols)}`,
+              )
+            : Promise.resolve({ snapshots: {} }),
           dataGet<{ snapshots?: Record<string, StockSnapshot> }>(
-            `${regularStockUrl}${feed ? `&feed=${feed}` : ""}`,
+            `/v2/stocks/snapshots?symbols=${encodeURIComponent(symbols)}${feed ? `&feed=${feed}` : ""}`,
           ),
         ]),
         feed
@@ -587,7 +675,7 @@ export async function handlePortfolio(
               }>(latestBarsUrl),
             ])
           : Promise.resolve(null),
-        feed
+        feed && options.length > 0
           ? Promise.allSettled([
               dataGet<{
                 bars?: Record<string, Array<{ c?: number; t?: string }>>;
@@ -604,11 +692,11 @@ export async function handlePortfolio(
             daily?.[0] ?? null,
           ] as const,
       );
-      const optionSnapshots =
+      const optionSnapshots: Record<string, OptionSnapshot> =
         optionResult.status === "fulfilled"
           ? (optionResult.value.snapshots ?? {})
           : {};
-      const overnightStockSnapshots =
+      const overnightStockSnapshots: Record<string, StockSnapshot> =
         stockResult.status === "fulfilled"
           ? (stockResult.value.snapshots ?? {})
           : {};
@@ -616,7 +704,7 @@ export async function handlePortfolio(
         regularStockResult?.status === "fulfilled"
           ? (regularStockResult.value?.snapshots ?? {})
           : {};
-      let stockSnapshots = feed
+      stockSnapshots = feed
         ? mergeStockSnapshots(overnightStockSnapshots, regularStockSnapshots)
         : overnightStockSnapshots;
       const latestBars =
@@ -675,6 +763,12 @@ export async function handlePortfolio(
             )
           : p,
       );
+      if (feed)
+        overnightEstimate = estimateOvernightPortfolio(
+          equity,
+          positions,
+          stockSnapshots,
+        );
     }
     return {
       status: 200,
@@ -691,6 +785,7 @@ export async function handlePortfolio(
               ? round(((equity - lastEquity) / lastEquity) * 100)
               : null,
         },
+        overnightEstimate,
         positions,
         orders,
         riskAtStops: round(

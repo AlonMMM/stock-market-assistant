@@ -357,6 +357,29 @@ function LiveTrades({
             today
           </span>
         </div>
+        {value.overnightEstimate && (
+          <div className="account-overnight">
+            <div className="account-overnight-main">
+              <span className="account-label">Approx. overnight value</span>
+              <strong className="num">
+                {value.overnightEstimate.equity === null
+                  ? "—"
+                  : `~${usd(value.overnightEstimate.equity)}`}
+              </strong>
+              {value.overnightEstimate.change !== null && (
+                <span
+                  className={`num account-day${tone(value.overnightEstimate.change)}`}
+                >
+                  {signedUsd(value.overnightEstimate.change)} vs broker mark
+                </span>
+              )}
+            </div>
+            <span className="muted account-overnight-note">
+              Model estimate for {value.overnightEstimate.pricedPositions} of{" "}
+              {value.overnightEstimate.totalPositions} positions.
+            </span>
+          </div>
+        )}
         <dl className="account-stats">
           <div>
             <dt>Open P&amp;L</dt>
