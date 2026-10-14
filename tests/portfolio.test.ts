@@ -157,8 +157,10 @@ test("portfolio: overnight underlying snapshots use Alpaca BOATS data", async ()
   let stockFeed: string | null = null;
   const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
     const url = new URL(String(input));
-    if (url.pathname === "/v2/stocks/snapshots")
-      stockFeed = url.searchParams.get("feed");
+    if (url.pathname === "/v2/stocks/snapshots") {
+      const feed = url.searchParams.get("feed");
+      if (feed) stockFeed = feed;
+    }
     return baseFetcher(input, init);
   }) as typeof fetch;
   // 2026-10-13 22:00 in New York (Wednesday 02:00 in Israel).
@@ -211,6 +213,53 @@ test("portfolio: overnight option estimate falls back to the underlying quote", 
   assert.equal(option.underlyingPriceSource, "quote");
   assert.ok(option.estimatedPrice !== null);
   assert.equal(option.underlyingAsOf, "2026-10-14T02:00:00Z");
+  assert.equal(option.marketDataIssue, null);
+});
+
+test("portfolio: overnight snapshots fall back to regular-feed close and keep Greeks", async () => {
+  const { fetcher: baseFetcher } = fake([order({})]);
+  let regularFeedRequested = false;
+  const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v2/stocks/snapshots") {
+      if (url.searchParams.get("feed") === "boats")
+        return Response.json({ snapshots: {} });
+      regularFeedRequested = true;
+      const response = await baseFetcher(input, init);
+      const body = (await response.json()) as {
+        snapshots: Record<
+          string,
+          {
+            latestTrade?: unknown;
+            latestQuote?: unknown;
+            dailyBar?: unknown;
+            prevDailyBar?: unknown;
+          }
+        >;
+      };
+      body.snapshots.AMD = {
+        dailyBar: { c: 690, t: "2026-10-12T04:00:00Z" },
+        prevDailyBar: { c: 680, t: "2026-10-09T04:00:00Z" },
+      };
+      return Response.json(body);
+    }
+    return baseFetcher(input, init);
+  }) as typeof fetch;
+  const result = await handlePortfolio(
+    keys,
+    false,
+    fetcher,
+    Date.parse("2026-10-14T02:00:00Z"),
+  );
+  const body = result.body as Portfolio;
+  const option = body.positions.find((p) => p.option)!;
+  assert.equal(regularFeedRequested, true);
+  assert.equal(option.underlyingPrice, 690);
+  assert.equal(option.underlyingPriceSource, "close");
+  assert.equal(option.delta, 0.6);
+  assert.equal(option.gamma, 0.02);
+  assert.equal(option.theta, -0.1);
+  assert.ok(option.estimatedPrice !== null);
   assert.equal(option.marketDataIssue, null);
 });
 
