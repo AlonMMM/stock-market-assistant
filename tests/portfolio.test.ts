@@ -263,6 +263,53 @@ test("portfolio: overnight snapshots fall back to regular-feed close and keep Gr
   assert.equal(option.marketDataIssue, null);
 });
 
+test("portfolio: overnight Greeks calculate delta exposure and estimated option price from bars", async () => {
+  const { fetcher: baseFetcher } = fake([order({})]);
+  const requested: string[] = [];
+  const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const url = new URL(String(input));
+    requested.push(`${url.pathname}${url.search}`);
+    if (url.pathname === "/v2/stocks/snapshots")
+      return Response.json({ snapshots: {} });
+    if (url.pathname === "/v2/stocks/bars/latest")
+      return Response.json({
+        bars: { AMD: { c: 705, t: "2026-10-13T23:59:00Z" } },
+      });
+    if (url.pathname === "/v2/stocks/bars")
+      return Response.json({
+        bars: {
+          AMD: [
+            { c: 690, t: "2026-10-12T04:00:00Z" },
+            { c: 680, t: "2026-10-09T04:00:00Z" },
+          ],
+        },
+      });
+    return baseFetcher(input, init);
+  }) as typeof fetch;
+  const result = await handlePortfolio(
+    keys,
+    false,
+    fetcher,
+    Date.parse("2026-10-14T02:00:00Z"),
+  );
+  const body = result.body as Portfolio;
+  const option = body.positions.find((p) => p.option)!;
+  assert.equal(option.underlyingPrice, 705);
+  assert.equal(option.underlyingPriceSource, "bar");
+  assert.equal(option.delta, 0.6);
+  assert.ok(option.estimatedPrice !== null);
+  assert.equal(option.estimatedPrice, 13.2);
+  assert.equal(
+    optionDeltaExposure(option.qty, option.underlyingPrice, option.delta),
+    126900,
+  );
+  assert.equal(option.marketDataIssue, null);
+  assert.ok(
+    requested.some((path) => path.startsWith("/v2/stocks/bars/latest?")),
+  );
+  assert.ok(requested.some((path) => path.startsWith("/v2/stocks/bars?")));
+});
+
 test("portfolio: a stop covering part of a position leaves it unprotected", async () => {
   const { fetcher } = fake([order({ qty: "2" }), order({ side: "buy" })]);
   const body = (await handlePortfolio(keys, false, fetcher, now))
