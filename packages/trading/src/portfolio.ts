@@ -256,7 +256,8 @@ export class PortfolioCache {
 
 interface OptionSnapshot {
   greeks?: { delta?: number; gamma?: number; theta?: number; vega?: number };
-  implied_volatility?: number;
+  impliedVolatility?: number;
+  implied_volatility?: number; // older name
   latestQuote?: { ap?: number; bp?: number; t?: string };
   latestTrade?: { p?: number; t?: string };
 }
@@ -264,9 +265,32 @@ interface StockSnapshot {
   latestTrade?: { p?: number; t?: string };
   latestQuote?: { ap?: number; bp?: number; t?: string };
   latestMinuteBar?: { c?: number; t?: string };
+  minuteBar?: { c?: number; t?: string }; // Alpaca's name in snapshots
   dailyBar?: { c?: number; t?: string };
   prevDailyBar?: { c?: number; t?: string };
   dailyBars?: Array<{ c?: number; t?: string }>;
+}
+
+// Alpaca answers the multi-symbol stock snapshot request with symbols at the
+// top level, not under `snapshots`; both shapes are read. The snapshot's
+// latest minute bar is named `minuteBar`.
+type StockSnapshotsBody =
+  Record<string, StockSnapshot> | { snapshots?: Record<string, StockSnapshot> };
+function stockSnapshotMap(
+  body: StockSnapshotsBody | null | undefined,
+): Record<string, StockSnapshot> {
+  if (!body) return {};
+  const map = (
+    "snapshots" in body && typeof body.snapshots === "object"
+      ? body.snapshots
+      : body
+  ) as Record<string, StockSnapshot>;
+  return Object.fromEntries(
+    Object.entries(map ?? {}).map(([symbol, snap]) => [
+      symbol,
+      { ...snap, latestMinuteBar: snap.latestMinuteBar ?? snap.minuteBar },
+    ]),
+  );
 }
 
 function newer<T extends { t?: string }>(a: T | undefined, b: T | undefined) {
@@ -454,7 +478,8 @@ function estimatedOptionPrice(
   const gamma = option?.greeks?.gamma;
   const theta = option?.greeks?.theta;
   const vega = option?.greeks?.vega;
-  const impliedVolatility = option?.implied_volatility;
+  const impliedVolatility =
+    option?.impliedVolatility ?? option?.implied_volatility;
   const stockPrice = stockMark(stock);
   const current = stockPrice.price;
   const underlyingPriceSource = stockPrice.source;
@@ -783,16 +808,12 @@ export async function handlePortfolio(
                 `/v1beta1/options/snapshots?symbols=${encodeURIComponent(optionSymbols)}`,
               )
             : Promise.resolve({ snapshots: {} }),
-          dataGet<{ snapshots?: Record<string, StockSnapshot> }>(
+          dataGet<StockSnapshotsBody>(
             `/v2/stocks/snapshots?symbols=${encodeURIComponent(symbols)}${feed ? `&feed=${feed}` : ""}`,
           ),
         ]),
         feed
-          ? Promise.allSettled([
-              dataGet<{ snapshots?: Record<string, StockSnapshot> }>(
-                regularStockUrl,
-              ),
-            ])
+          ? Promise.allSettled([dataGet<StockSnapshotsBody>(regularStockUrl)])
           : Promise.resolve(null),
         feed
           ? Promise.allSettled([
@@ -824,11 +845,11 @@ export async function handlePortfolio(
           : {};
       const overnightStockSnapshots: Record<string, StockSnapshot> =
         stockResult.status === "fulfilled"
-          ? (stockResult.value.snapshots ?? {})
+          ? stockSnapshotMap(stockResult.value)
           : {};
       const regularStockSnapshots =
         regularStockResult?.status === "fulfilled"
-          ? (regularStockResult.value?.snapshots ?? {})
+          ? stockSnapshotMap(regularStockResult.value)
           : {};
       stockSnapshots = feed
         ? mergeStockSnapshots(overnightStockSnapshots, regularStockSnapshots)

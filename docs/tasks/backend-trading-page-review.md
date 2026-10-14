@@ -26,6 +26,7 @@ Branch: fix/approx-portfolio-model
   about 93 after a +70 move (it is worth about 41).
 - **Linear theta.** theta × days could take more than the remaining time value
   and ignored the option converging to intrinsic value near expiry.
+- **Stock snapshots never parsed** (found on live data, see below).
 - **Wide extended-hours quotes.** A quote mid was used for the stock however
   wide the spread.
 
@@ -76,9 +77,14 @@ Trade page, `#/trade/<decision id>` instead of the current dialog:
   round-trip, expiry times, bounded big moves, decay to intrinsic, Greeks
   fallback), `tests/trade-journal.test.ts`, and a BOATS-reference regression
   in `tests/portfolio.test.ts`.
-- Not verified against the live account: the session could not read the
-  Alpaca credentials. Check the Approx. now view the next time the market is
-  closed.
+- Verified against Alpaca (paper account, read-only) on 2026-10-14 07:22 New
+  York, pre-market: all 3 option positions priced with the `minute`
+  reference (USO 0.49 → 0.56, ORCL 0.67 → 0.34, INTC expiring today → 0).
+- That run found a pre-existing bug: Alpaca's multi-symbol stock snapshot
+  response has symbols at the top level (no `snapshots` key), and names the
+  fields `minuteBar` and `impliedVolatility`. The site read none of them, so
+  pre-market and after-hours estimates never had a stock price. Both shapes
+  are now read; covered by a test.
 
 ## Limitations and better approaches
 

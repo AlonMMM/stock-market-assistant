@@ -766,3 +766,43 @@ test("portfolio: overnight reference is the regular close, never the BOATS daily
   assert.equal(option.estimateBreakdown?.underlyingReferenceSource, "close");
   assert.equal(option.estimateBreakdown?.underlyingMove, 15);
 });
+
+test("portfolio: reads Alpaca's real snapshot shape (symbols at the top, minuteBar, impliedVolatility)", async () => {
+  const { fetcher: baseFetcher } = fake([order({})], 200, false);
+  const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const url = new URL(String(input));
+    // Pre-market, as Alpaca answered on 2026-10-14 (values synthetic).
+    if (url.pathname === "/v2/stocks/snapshots")
+      return Response.json({
+        AMD: {
+          latestTrade: { p: 704, t: "2026-10-13T11:00:00Z" },
+          minuteBar: { c: 705, t: "2026-10-13T11:20:00Z" },
+          dailyBar: { c: 690, t: "2026-10-12T04:00:00Z" },
+        },
+      });
+    if (url.pathname === "/v2/stocks/bars") return Response.json({ bars: {} });
+    if (url.pathname === "/v1beta1/options/snapshots")
+      return Response.json({
+        snapshots: {
+          AMD261016C00720000: {
+            impliedVolatility: 0.4,
+            latestQuote: { bp: 2, ap: 2.2, t: "2026-10-12T19:59:59Z" },
+          },
+        },
+      });
+    return baseFetcher(input, init);
+  }) as typeof fetch;
+  const result = await handlePortfolio(
+    keys,
+    false,
+    fetcher,
+    Date.parse("2026-10-13T11:22:00Z"),
+  );
+  const option = (result.body as Portfolio).positions.find((p) => p.option)!;
+  assert.equal(option.underlyingPrice, 705);
+  assert.equal(option.underlyingPriceSource, "bar");
+  assert.equal(option.impliedVolatility, 0.4);
+  assert.equal(option.estimateBreakdown?.underlyingReference, 690);
+  assert.equal(option.estimateBreakdown?.model, "black-scholes");
+  assert.equal(option.marketDataIssue, null);
+});
