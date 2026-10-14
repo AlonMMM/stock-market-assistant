@@ -51,9 +51,8 @@ import {
   stateText,
   strongVolume,
   typicalRatio,
-  weightMinutes,
 } from "./chart-model.js";
-import { scoreNote, scoreCell } from "./vs-spy-model.js";
+import { scoreCell } from "./vs-spy-model.js";
 import {
   israelClock,
   israelLabel,
@@ -852,36 +851,6 @@ export function DayChart({
             role="img"
             aria-label={`${ticker} percent change from the ${base} on the right axis${bench ? ` and ${benchName} on the left axis` : ""}${opp ? `, with periods moving opposite to ${benchName}` : ""}, and ${ticker} one-minute volume${hasTypical ? " against typical volume" : ""} on ${date}, times in ${israelLabel}`}
           />
-          <p className="chart-legend-note">
-            Lines: % from the {base}, each axis fitted to its own range (
-            {main.ticker} right, {benchName} left); the price next to a % is
-            that minute&apos;s close.
-            {opp && (
-              <>
-                {" "}
-                <span className="legend-swatch strong" aria-hidden="true" />
-                Green (▲ stronger): over the last {o.window} minutes {benchName}{" "}
-                fell ≥ {Math.abs(o.benchFall)} % points while {main.ticker} held
-                or rose.{" "}
-                <span className="legend-swatch weak" aria-hidden="true" />
-                Red (▼ weaker): {benchName} held or rose (≥ −
-                {Math.abs(o.benchHold)} % points) while {main.ticker} fell ≥{" "}
-                {o.weakMultiple}× its usual {o.window}-minute move. Light bands
-                behind the lines, and the dark strip just above the volume bars,
-                mark these minutes. Regular session only; a display aid, not a
-                signal.
-              </>
-            )}{" "}
-            {hasTypical
-              ? `Volume: solid bars ≥ ${strongVolume}× typical for that minute, faded below; dashed line = typical volume.`
-              : "Typical volume is not available for this chart."}{" "}
-            {!Number.isNaN(alertMs) && "▼ marks the alert. "}
-            {showScore &&
-              (vs
-                ? `vs ${scoreBenchmark} score 0–100: ${scoreNote} (β ${vs.betaAssumed ? "assumed 1" : vs.beta.toFixed(2)}); green ≥ 60 stronger, red ≤ 40 weaker. Header: ${alertEnd ? "in Around alert, the last minute before the alert's window (as on the alert's tag); else " : ""}the latest regular-session minute (the close after hours); readout: that minute, or the score ending at the pointed minute. Marks pane: one bar per marked minute, its ${main.ticker} 5-min move minus β×${scoreBenchmark}'s in % points, green above 0, red below; the shaded ${weightMinutes} minutes up to the header's minute count, newer bars stronger, older ones faded${alertEnd ? "; hatched = the alert's own minutes, excluded" : ""}. `
-                : `vs ${scoreBenchmark} score: not available for this chart. `)}
-            Shaded = pre-market. Times in {israelLabel}.
-          </p>
         </>
       )}
     </figure>

@@ -111,7 +111,8 @@ delay is configurable (`ALPACA_SIP_DELAY_MINUTES`, 0 on Algo Trader Plus). Rollo
 [Spec](features/chart-vs-spy.md). All day charts: no entry/stop marks, price next to
 each %, green = stronger / red = weaker than SPY, and a 0–100 score vs SPY (shared with the
 alert analysis) in the chart and as a watchlist column. Board and day-chart APIs add
-`rsScore`/`beta` and `vsSpy`; β/σ daily history is cached per day.
+`rsScore`/`beta` and `vsSpy`; β/σ daily history is cached per day. The long explanatory
+paragraph below the day chart has been removed for a cleaner view.
 
 ## Backtest page redesign (merged in #35)
 
