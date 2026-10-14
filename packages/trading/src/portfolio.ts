@@ -1,5 +1,6 @@
 import { liveUrl, paperUrl } from "./alpaca-trading.js";
 import { parseOccSymbol, type Right } from "./options.js";
+import { estimateOption } from "./option-estimate.js";
 import { shortRisks } from "./safety.js";
 
 // Read-only view of the Alpaca trading account for the site's Portfolio tab:
@@ -44,14 +45,16 @@ export interface PortfolioPosition extends Contract {
   // Latest available underlying mark when the US options market is closed.
   overnightPrice: number | null;
   estimateBreakdown: {
+    model: "black-scholes" | "greeks";
     optionMark: number;
+    // Underlying price when the option mark was set: the one-minute bar of
+    // that moment, or that day's close when the bar is unavailable.
     underlyingReference: number;
+    underlyingReferenceSource: "live" | "minute" | "close";
     underlyingMove: number;
-    deltaEffect: number;
-    gammaEffect: number;
-    thetaEffect: number;
-    vegaEffect: number | null;
-    impliedVolatilityChange: number | null;
+    moveEffect: number;
+    timeEffect: number;
+    volatility: number | null;
     elapsedDays: number;
   } | null;
   estimateAsOf: string | null;
@@ -338,8 +341,11 @@ function stockMark(stock: StockSnapshot | undefined) {
   const tradePrice = validPrice(stock?.latestTrade?.p);
   const bid = validPrice(stock?.latestQuote?.bp);
   const ask = validPrice(stock?.latestQuote?.ap);
+  // Extended-hours quotes can be very wide; their mid is then no price.
   const quotePrice =
-    bid !== null && ask !== null && ask >= bid ? (bid + ask) / 2 : null;
+    bid !== null && ask !== null && ask >= bid && (ask - bid) / ask <= 0.01
+      ? (bid + ask) / 2
+      : null;
   const tradeTime = stock?.latestTrade?.t
     ? Date.parse(stock.latestTrade.t)
     : Number.NaN;
@@ -441,6 +447,8 @@ function estimatedOptionPrice(
   stock: StockSnapshot | undefined,
   now: number,
   fetchIssues: string[],
+  minuteBars?: Array<{ c?: number; t?: string }>,
+  regular: StockSnapshot | undefined = stock,
 ) {
   const delta = option?.greeks?.delta;
   const gamma = option?.greeks?.gamma;
@@ -488,30 +496,33 @@ function estimatedOptionPrice(
       impliedVolatility: impliedVolatility ?? null,
       marketDataIssue: issues.join(" · ") || null,
     };
-  const sourceTime = option?.latestQuote?.t ?? option?.latestTrade?.t;
-  const sourceDay = sourceTime ? nyDay.format(Date.parse(sourceTime)) : null;
-  const referenceBars = [
-    stock?.dailyBar,
-    stock?.prevDailyBar,
-    ...(stock?.dailyBars ?? []),
-  ];
+  const markAt = markTime(option, position.price);
+  // A fresh mark (open market) sits at the latest underlying price.
   const reference =
-    sourceDay === null
+    markAt === null
       ? null
-      : validPrice(
-          referenceBars.find(
-            (bar) => bar?.t && nyDay.format(Date.parse(bar.t)) === sourceDay,
-          )?.c,
-        );
-  if (
-    delta === undefined ||
-    gamma === undefined ||
-    theta === undefined ||
-    reference === null ||
-    mark === null ||
-    !sourceTime ||
-    !Number.isFinite(Date.parse(sourceTime))
-  )
+      : now - markAt < freshMarkMs
+        ? { price: current, source: "live" as const }
+        : underlyingAt(markAt, minuteBars, regular);
+  const estimate =
+    reference === null || mark === null || markAt === null || !position.option
+      ? null
+      : estimateOption({
+          right: position.option.right,
+          strike: position.option.strike,
+          expiry: position.option.expiry,
+          mark,
+          markAt,
+          reference: reference.price,
+          spot: current,
+          now,
+          impliedVolatility: impliedVolatility ?? null,
+          greeks:
+            delta === undefined || gamma === undefined || theta === undefined
+              ? null
+              : { delta, gamma, theta },
+        });
+  if (estimate === null || reference === null || mark === null)
     return {
       ...position,
       underlyingPrice: current,
@@ -524,45 +535,130 @@ function estimatedOptionPrice(
       impliedVolatility: impliedVolatility ?? null,
       marketDataIssue:
         issues.join(" · ") ||
-        "A matching stock bar is unavailable for this option quote",
+        (reference === null
+          ? "A matching stock price is unavailable for this option quote"
+          : "Neither a volatility nor Greeks are available for this option"),
     };
-  const elapsedDays = Math.max(0, (now - Date.parse(sourceTime)) / 86400000);
-  const move = current - reference;
-  const deltaEffect = delta * move;
-  const gammaEffect = 0.5 * gamma * move * move;
-  const thetaEffect = theta * elapsedDays;
-  const estimate = Math.max(
-    0,
-    round(mark + deltaEffect + gammaEffect + thetaEffect),
-  );
   return {
     ...position,
     underlyingPrice: current,
     underlyingPriceSource,
-    delta,
-    gamma,
-    theta,
+    delta: delta ?? null,
+    gamma: gamma ?? null,
+    theta: theta ?? null,
     vega: vega ?? null,
     impliedVolatility: impliedVolatility ?? null,
-    estimatedPrice: estimate,
+    estimatedPrice: round(estimate.price),
     estimateBreakdown: {
+      model: estimate.model,
       optionMark: mark,
-      underlyingReference: reference,
-      underlyingMove: move,
-      deltaEffect,
-      gammaEffect,
-      thetaEffect,
-      // The snapshot's IV belongs to the latest option quote; Alpaca does not
-      // publish a newer overnight IV observation, so dIV is unknown and the
-      // model assumes IV is unchanged until a new option quote is available.
-      vegaEffect: null,
-      impliedVolatilityChange: null,
-      elapsedDays,
+      underlyingReference: reference.price,
+      underlyingReferenceSource: reference.source,
+      underlyingMove: current - reference.price,
+      moveEffect: estimate.moveEffect,
+      timeEffect: estimate.timeEffect,
+      // Volatility is held at the level of the last option quote: Alpaca
+      // publishes no newer IV while the options market is closed.
+      volatility: estimate.volatility,
+      elapsedDays: estimate.elapsedDays,
     },
-    estimateAsOf: sourceTime,
+    estimateAsOf: new Date(markAt!).toISOString(),
     underlyingAsOf,
     marketDataIssue: null,
   };
+}
+
+// When the option mark was set: its quote when the mark is the quote's
+// mid, else its last trade. Alpaca's own position price has no time.
+function markTime(
+  option: OptionSnapshot | undefined,
+  positionPrice: number | null,
+): number | null {
+  const bid = validPrice(option?.latestQuote?.bp);
+  const ask = validPrice(option?.latestQuote?.ap);
+  const at =
+    bid !== null && ask !== null && ask >= bid
+      ? option?.latestQuote?.t
+      : validPrice(option?.latestTrade?.p) !== null
+        ? option?.latestTrade?.t
+        : positionPrice !== null
+          ? (option?.latestQuote?.t ?? option?.latestTrade?.t)
+          : undefined;
+  const time = at ? Date.parse(at) : Number.NaN;
+  return Number.isFinite(time) ? time : null;
+}
+
+/**
+ * Underlying price at the moment the option mark was set. The one-minute bar
+ * ending at that moment matches the mark exactly; options that quote until
+ * 16:15 (index ETFs) or marks from an earlier day are then still compared
+ * with the right stock price. Without that bar, the regular-session close of
+ * the same New York day is used (never the overnight BOATS bar).
+ */
+function underlyingAt(
+  markAt: number,
+  minuteBars: Array<{ c?: number; t?: string }> | undefined,
+  regular: StockSnapshot | undefined,
+): { price: number; source: "minute" | "close" } | null {
+  let minute: { price: number; t: number } | null = null;
+  for (const bar of minuteBars ?? []) {
+    const t = bar.t ? Date.parse(bar.t) : Number.NaN;
+    const price = validPrice(bar.c);
+    // A bar stamped t holds trades of [t, t + 1 min).
+    if (price === null || !(t <= markAt) || markAt - t > 15 * 60000) continue;
+    if (minute === null || t > minute.t) minute = { price, t };
+  }
+  if (minute) return { price: minute.price, source: "minute" };
+  const day = nyDay.format(markAt);
+  const close = validPrice(
+    [
+      regular?.dailyBar,
+      regular?.prevDailyBar,
+      ...(regular?.dailyBars ?? []),
+    ].find((bar) => bar?.t && nyDay.format(Date.parse(bar.t)) === day)?.c,
+  );
+  return close === null ? null : { price: close, source: "close" };
+}
+
+// One-minute underlying bars around each option mark older than two minutes
+// (a closed options market). Marks are grouped by New York hour, so the usual
+// case, every mark set at the 16:00 close, takes one request. Failures fall
+// back to the daily close.
+const maxMinuteBarRequests = 3;
+const freshMarkMs = 2 * 60000;
+async function underlyingMinuteBars(
+  marks: { underlying: string; at: number | null }[],
+  now: number,
+  dataGet: <T>(path: string) => Promise<T>,
+): Promise<Record<string, Array<{ c?: number; t?: string }>>> {
+  const groups = new Map<number, Set<string>>();
+  for (const { underlying, at } of marks) {
+    if (at === null || now - at < freshMarkMs) continue;
+    const hour = Math.floor(at / 3600000);
+    groups.set(hour, (groups.get(hour) ?? new Set()).add(underlying));
+  }
+  const requests = [...groups.entries()]
+    .sort(([a], [b]) => b - a)
+    .slice(0, maxMinuteBarRequests)
+    .map(async ([hour, symbols]) => {
+      const start = new Date(hour * 3600000 - 15 * 60000).toISOString();
+      const end = new Date((hour + 1) * 3600000).toISOString();
+      const path = `/v2/stocks/bars?symbols=${encodeURIComponent([...symbols].join(","))}&timeframe=1Min&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&limit=10000&sort=asc`;
+      return (
+        (
+          await dataGet<{
+            bars?: Record<string, Array<{ c?: number; t?: string }>>;
+          }>(path)
+        ).bars ?? {}
+      );
+    });
+  const merged: Record<string, Array<{ c?: number; t?: string }>> = {};
+  for (const result of await Promise.allSettled(requests)) {
+    if (result.status !== "fulfilled") continue;
+    for (const [symbol, bars] of Object.entries(result.value))
+      merged[symbol] = [...(merged[symbol] ?? []), ...bars];
+  }
+  return merged;
 }
 
 /**
@@ -782,6 +878,28 @@ export async function handlePortfolio(
           ? [`Historical stock bars: ${errorMessage(dailyBarsResult.reason)}`]
           : []),
       ];
+      // The close reference must come from the regular feed: a BOATS
+      // snapshot's daily bar ends with overnight trading, not at 16:00.
+      const referenceSnapshots: Record<string, StockSnapshot> = feed
+        ? Object.fromEntries(
+            Object.keys(stockSnapshots).map((symbol) => [
+              symbol,
+              {
+                dailyBar: regularStockSnapshots[symbol]?.dailyBar,
+                prevDailyBar: regularStockSnapshots[symbol]?.prevDailyBar,
+                dailyBars: dailyBars[symbol] ?? [],
+              },
+            ]),
+          )
+        : stockSnapshots;
+      const minuteBars = await underlyingMinuteBars(
+        options.map((p) => ({
+          underlying: p.underlying,
+          at: markTime(optionSnapshots[p.symbol], p.price),
+        })),
+        now,
+        dataGet,
+      );
       positions = positions.map((p) =>
         p.option
           ? estimatedOptionPrice(
@@ -790,6 +908,8 @@ export async function handlePortfolio(
               stockSnapshots[p.underlying],
               now,
               fetchIssues,
+              minuteBars[p.underlying],
+              referenceSnapshots[p.underlying],
             )
           : marketClosed
             ? {
