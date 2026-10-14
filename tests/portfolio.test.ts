@@ -171,6 +171,49 @@ test("portfolio: overnight underlying snapshots use Alpaca BOATS data", async ()
   assert.equal(stockFeed, "boats");
 });
 
+test("portfolio: overnight option estimate falls back to the underlying quote", async () => {
+  const { fetcher: baseFetcher } = fake([order({})]);
+  const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const response = await baseFetcher(input, init);
+    const url = new URL(String(input));
+    if (url.pathname !== "/v2/stocks/snapshots") return response;
+    const body = (await response.json()) as {
+      snapshots: Record<
+        string,
+        {
+          latestTrade?: unknown;
+          latestQuote?: unknown;
+          dailyBar?: unknown;
+          prevDailyBar?: unknown;
+        }
+      >;
+    };
+    body.snapshots.AMD = {
+      latestQuote: {
+        bp: 703,
+        ap: 705,
+        t: "2026-10-14T02:00:00Z",
+      },
+      dailyBar: { c: 690, t: "2026-10-12T04:00:00Z" },
+      prevDailyBar: { c: 680, t: "2026-10-09T04:00:00Z" },
+    };
+    return Response.json(body);
+  }) as typeof fetch;
+  const result = await handlePortfolio(
+    keys,
+    false,
+    fetcher,
+    Date.parse("2026-10-14T02:00:00Z"),
+  );
+  const body = result.body as Portfolio;
+  const option = body.positions.find((p) => p.option)!;
+  assert.equal(option.underlyingPrice, 704);
+  assert.equal(option.underlyingPriceSource, "quote");
+  assert.ok(option.estimatedPrice !== null);
+  assert.equal(option.underlyingAsOf, "2026-10-14T02:00:00Z");
+  assert.equal(option.marketDataIssue, null);
+});
+
 test("portfolio: a stop covering part of a position leaves it unprotected", async () => {
   const { fetcher } = fake([order({ qty: "2" }), order({ side: "buy" })]);
   const body = (await handlePortfolio(keys, false, fetcher, now))

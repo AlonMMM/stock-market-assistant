@@ -34,6 +34,7 @@ export interface PortfolioPosition extends Contract {
   sharePct: number | null;
   // Market-data enrichment for options; all may be null when the feed omits it.
   underlyingPrice: number | null;
+  underlyingPriceSource: "trade" | "quote" | null;
   delta: number | null;
   gamma: number | null;
   theta: number | null;
@@ -168,6 +169,7 @@ function position(
     sharePct:
       value === null || !(equity > 0) ? null : round((value / equity) * 100),
     underlyingPrice: null,
+    underlyingPriceSource: null,
     delta: null,
     gamma: null,
     theta: null,
@@ -226,6 +228,7 @@ interface OptionSnapshot {
 }
 interface StockSnapshot {
   latestTrade?: { p?: number; t?: string };
+  latestQuote?: { ap?: number; bp?: number; t?: string };
   dailyBar?: { c?: number; t?: string };
   prevDailyBar?: { c?: number; t?: string };
 }
@@ -281,7 +284,33 @@ function estimatedOptionPrice(
   const delta = option?.greeks?.delta;
   const gamma = option?.greeks?.gamma;
   const theta = option?.greeks?.theta;
-  const current = validPrice(stock?.latestTrade?.p);
+  const tradePrice = validPrice(stock?.latestTrade?.p);
+  const stockBid = validPrice(stock?.latestQuote?.bp);
+  const stockAsk = validPrice(stock?.latestQuote?.ap);
+  const quotePrice =
+    stockBid !== null && stockAsk !== null && stockAsk >= stockBid
+      ? (stockBid + stockAsk) / 2
+      : null;
+  const tradeTime = stock?.latestTrade?.t
+    ? Date.parse(stock.latestTrade.t)
+    : Number.NaN;
+  const quoteTime = stock?.latestQuote?.t
+    ? Date.parse(stock.latestQuote.t)
+    : Number.NaN;
+  const useQuote =
+    quotePrice !== null &&
+    (tradePrice === null ||
+      (Number.isFinite(quoteTime) &&
+        (!Number.isFinite(tradeTime) || quoteTime > tradeTime)));
+  const current = useQuote ? quotePrice : tradePrice;
+  const underlyingPriceSource: "trade" | "quote" | null = useQuote
+    ? "quote"
+    : tradePrice === null
+      ? null
+      : "trade";
+  const underlyingAsOf = useQuote
+    ? (stock?.latestQuote?.t ?? null)
+    : (stock?.latestTrade?.t ?? null);
   const bid = validPrice(option?.latestQuote?.bp);
   const ask = validPrice(option?.latestQuote?.ap);
   const trade = validPrice(option?.latestTrade?.p);
@@ -296,7 +325,7 @@ function estimatedOptionPrice(
     current === null &&
     !fetchIssues.some((issue) => issue.startsWith("Stocks"))
   )
-    issues.push("Underlying latest trade is unavailable");
+    issues.push("Underlying trade and bid/ask quote are unavailable");
   if (
     (delta === undefined || gamma === undefined || theta === undefined) &&
     !fetchIssues.some((issue) => issue.startsWith("Options"))
@@ -333,7 +362,8 @@ function estimatedOptionPrice(
     return {
       ...position,
       underlyingPrice: current,
-      underlyingAsOf: stock?.latestTrade?.t ?? null,
+      underlyingPriceSource,
+      underlyingAsOf,
       delta: delta ?? null,
       gamma: gamma ?? null,
       theta: theta ?? null,
@@ -352,12 +382,13 @@ function estimatedOptionPrice(
   return {
     ...position,
     underlyingPrice: current,
+    underlyingPriceSource,
     delta,
     gamma,
     theta,
     estimatedPrice: estimate,
     estimateAsOf: sourceTime,
-    underlyingAsOf: stock?.latestTrade?.t ?? null,
+    underlyingAsOf,
     marketDataIssue: null,
   };
 }
