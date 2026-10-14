@@ -273,7 +273,7 @@ function Detail({
           </>
         )}
         <div>
-          <dt>Today</dt>
+          <dt>US session</dt>
           <dd className={`num${tone(p.dayPnl)}`}>
             {p.dayPnl === null ? "—" : signedUsd(p.dayPnl)}
           </dd>

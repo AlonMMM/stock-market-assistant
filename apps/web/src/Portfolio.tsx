@@ -403,7 +403,7 @@ function LiveTrades({
               {signedUsd(account.dayChange)}
               {account.dayChangePct !== null &&
                 ` (${signedPct(account.dayChangePct)})`}{" "}
-              today
+              US session
             </span>
           )}
         </div>
