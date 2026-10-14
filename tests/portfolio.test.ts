@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildApp } from "../apps/api/src/app.js";
 import worker from "../apps/api/src/worker.js";
-import { optionDeltaExposure } from "../apps/web/src/positions-model.js";
+import {
+  optionDeltaExposure,
+  positionNumbers,
+} from "../apps/web/src/positions-model.js";
 import {
   closedTrades,
   handlePortfolio,
@@ -390,6 +393,7 @@ test("portfolio: night estimate revalues stock positions from the latest overnig
     pricedPositions: 1,
     totalPositions: 1,
   });
+  assert.equal(body.positions[0]!.overnightPrice, 705);
 });
 
 test("portfolio: a closed market gets an estimate from after-hours snapshots", async () => {
@@ -449,6 +453,65 @@ test("portfolio: a stop covering part of a position leaves it unprotected", asyn
 test("delta exposure converts contracts into equivalent dollars of stock", () => {
   assert.equal(optionDeltaExposure(3, 700, 0.6), 126000);
   assert.equal(optionDeltaExposure(2, 100, -0.25), -5000);
+});
+
+test("portfolio view revalues option price, value, P&L and delta exposure together", () => {
+  const position = {
+    option: { right: "call", strike: 152.5, expiry: "2026-10-16" },
+    qty: 28,
+    entry: 0.51,
+    price: 0.67,
+    value: 1876,
+    cost: 1428,
+    pnl: 448,
+    pnlPct: 31.37,
+    overnightPrice: null,
+    estimatedPrice: 0.56,
+    underlyingPrice: 143.65,
+    estimateBreakdown: { underlyingReference: 143.2 },
+  } as Portfolio["positions"][number];
+  const close = positionNumbers(position, "close", 100_000);
+  assert.equal(close.price, 0.67);
+  assert.equal(close.value, 1876);
+  assert.equal(close.pnl, 448);
+  assert.equal(close.underlyingPrice, 143.2);
+  const overnight = positionNumbers(position, "overnight", 98_000);
+  assert.equal(overnight.price, 0.56);
+  assert.equal(overnight.value, 1568);
+  assert.equal(overnight.pnl, 140);
+  assert.equal(overnight.pnlPct, 9.8);
+  assert.equal(overnight.sharePct, 1.6);
+  assert.equal(overnight.sinceClose, -308);
+  assert.equal(overnight.underlyingPrice, 143.65);
+
+  const unavailable = positionNumbers(
+    { ...position, estimatedPrice: null },
+    "overnight",
+    98_000,
+  );
+  assert.equal(unavailable.price, null);
+  assert.equal(unavailable.value, null);
+  assert.equal(unavailable.pnl, null);
+
+  const stock = positionNumbers(
+    {
+      ...position,
+      option: null,
+      qty: 5,
+      entry: 690,
+      price: 690,
+      value: 3450,
+      cost: 3450,
+      pnl: 0,
+      pnlPct: 0,
+      overnightPrice: 705,
+      estimatedPrice: null,
+    },
+    "overnight",
+    100_575,
+  );
+  assert.equal(stock.value, 3525);
+  assert.equal(stock.pnl, 75);
 });
 
 test("portfolio: sell orders for more than is held are flagged", async () => {

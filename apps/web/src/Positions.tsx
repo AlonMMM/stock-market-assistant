@@ -6,7 +6,12 @@ import { readJson } from "./api.js";
 import { StopMover } from "./OrderControls.js";
 import { followOrder, type Run } from "./order-run.js";
 import { WhyButton } from "./Orders.js";
-import { chartSession, optionDeltaExposure } from "./positions-model.js";
+import {
+  chartSession,
+  optionDeltaExposure,
+  positionNumbers,
+  type PositionView,
+} from "./positions-model.js";
 import { StockChart } from "./StockChart.js";
 
 // Open positions as a dense list, in the manner of a broker's phone app: one
@@ -206,17 +211,24 @@ function Detail({
   p,
   why,
   access,
+  view,
+  equity,
 }: {
   p: PortfolioPosition;
   why?: Decision | undefined;
   access: ControlAccess;
+  view: PositionView;
+  equity: number;
 }) {
+  const numbers = positionNumbers(p, view, equity);
   // How far the current price is above the stop, as a share of the price.
   const away =
-    p.stop && p.price ? ((p.price - p.stop.price) / p.price) * 100 : null;
+    p.stop && numbers.price
+      ? ((numbers.price - p.stop.price) / numbers.price) * 100
+      : null;
   const deltaExposure =
-    p.option && p.delta !== null && p.underlyingPrice !== null
-      ? optionDeltaExposure(p.qty, p.underlyingPrice, p.delta)
+    p.option && p.delta !== null && numbers.underlyingPrice !== null
+      ? optionDeltaExposure(p.qty, numbers.underlyingPrice, p.delta)
       : null;
   return (
     <div className="pos-detail">
@@ -232,7 +244,9 @@ function Detail({
         <div>
           <dt>Of account</dt>
           <dd className="num">
-            {p.sharePct === null ? "—" : `${p.sharePct.toFixed(1)}%`}
+            {numbers.sharePct === null
+              ? "—"
+              : `${numbers.sharePct.toFixed(1)}%`}
           </dd>
         </div>
         {p.option && (
@@ -240,23 +254,15 @@ function Detail({
             <div>
               <dt>Underlying</dt>
               <dd className="num">
-                {p.underlyingPrice === null
+                {numbers.underlyingPrice === null
                   ? "—"
-                  : `$${p.underlyingPrice.toFixed(2)}`}
+                  : `$${numbers.underlyingPrice.toFixed(2)}`}
               </dd>
             </div>
             <div>
               <dt>Delta exposure</dt>
               <dd className="num">
                 {deltaExposure === null ? "—" : signedUsd(deltaExposure)}
-              </dd>
-            </div>
-            <div>
-              <dt>Estimated option price</dt>
-              <dd className="num">
-                {p.estimatedPrice === null
-                  ? "—"
-                  : `$${p.estimatedPrice.toFixed(2)}`}
               </dd>
             </div>
             <div>
@@ -273,13 +279,21 @@ function Detail({
           </>
         )}
         <div>
-          <dt>US session</dt>
-          <dd className={`num${tone(p.dayPnl)}`}>
-            {p.dayPnl === null ? "—" : signedUsd(p.dayPnl)}
+          <dt>{view === "overnight" ? "Vs close" : "US session"}</dt>
+          <dd
+            className={`num${tone(view === "overnight" ? numbers.sinceClose : p.dayPnl)}`}
+          >
+            {view === "overnight"
+              ? numbers.sinceClose === null
+                ? "—"
+                : signedUsd(numbers.sinceClose)
+              : p.dayPnl === null
+                ? "—"
+                : signedUsd(p.dayPnl)}
           </dd>
         </div>
       </dl>
-      {p.option && p.estimateBreakdown && (
+      {view === "overnight" && p.option && p.estimateBreakdown && (
         <p className="muted">
           ${p.estimateBreakdown.optionMark.toFixed(2)} + Δ{" "}
           {signedUsdExact(p.estimateBreakdown.deltaEffect)} + Γ{" "}
@@ -338,16 +352,21 @@ function Row({
   access,
   open,
   onToggle,
+  view,
+  equity,
 }: {
   p: PortfolioPosition;
   why?: Decision | undefined;
   access: ControlAccess;
   open: boolean;
   onToggle: () => void;
+  view: PositionView;
+  equity: number;
 }) {
+  const numbers = positionNumbers(p, view, equity);
   const deltaExposure =
-    p.option && p.delta !== null && p.underlyingPrice !== null
-      ? optionDeltaExposure(p.qty, p.underlyingPrice, p.delta)
+    p.option && p.delta !== null && numbers.underlyingPrice !== null
+      ? optionDeltaExposure(p.qty, numbers.underlyingPrice, p.delta)
       : null;
   const stopText = !p.stop
     ? "no stop"
@@ -384,16 +403,13 @@ function Row({
         <span className="pos-cell">
           <span className="sr-only">Last </span>
           <span className="num">
-            {p.price === null ? "—" : p.price.toFixed(2)}
+            {numbers.price === null
+              ? "—"
+              : `${view === "overnight" ? "~" : ""}${numbers.price.toFixed(2)}`}
           </span>
           <span className={bare ? "pos-sub num warn" : "pos-sub num"}>
             {stopText}
           </span>
-          {p.option && p.estimatedPrice !== null && (
-            <span className="pos-sub num">
-              Est ${p.estimatedPrice.toFixed(2)}
-            </span>
-          )}
           {deltaExposure !== null && (
             <span className="pos-sub num">Δ {signedUsd(deltaExposure)}</span>
           )}
@@ -403,20 +419,24 @@ function Row({
         </span>
         <span className="pos-cell">
           <span className="sr-only">Value </span>
-          <span className="num">{p.value === null ? "—" : usd(p.value)}</span>
+          <span className="num">
+            {numbers.value === null ? "—" : usd(numbers.value)}
+          </span>
           <span className="pos-sub num">at {p.entry.toFixed(2)}</span>
         </span>
-        <span className={`pos-cell pos-pnl${tone(p.pnl)}`}>
+        <span className={`pos-cell pos-pnl${tone(numbers.pnl)}`}>
           <span className="sr-only">Profit and loss </span>
-          <span className="num">{p.pnl === null ? "—" : signedUsd(p.pnl)}</span>
+          <span className="num">
+            {numbers.pnl === null ? "—" : signedUsd(numbers.pnl)}
+          </span>
           <span className="pos-sub num">
-            {p.pnlPct === null ? "—" : signedPct(p.pnlPct)}
+            {numbers.pnlPct === null ? "—" : signedPct(numbers.pnlPct)}
           </span>
         </span>
       </button>
       {open && (
         <div id={`pos-${p.symbol}`}>
-          <Detail p={p} why={why} access={access} />
+          <Detail p={p} why={why} access={access} view={view} equity={equity} />
         </div>
       )}
     </li>
@@ -426,9 +446,13 @@ function Row({
 export function PositionList({
   positions,
   why,
+  view,
+  equity,
 }: {
   positions: PortfolioPosition[];
   why: Map<string, Decision>;
+  view: PositionView;
+  equity: number;
 }) {
   const access = useControlAccess();
   const [open, setOpen] = useState<string | null>(null);
@@ -448,6 +472,8 @@ export function PositionList({
             why={why.get(p.symbol)}
             access={access}
             open={open === p.symbol}
+            view={view}
+            equity={equity}
             onToggle={() => setOpen(open === p.symbol ? null : p.symbol)}
           />
         ))}

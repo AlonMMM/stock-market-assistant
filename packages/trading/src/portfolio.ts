@@ -41,6 +41,8 @@ export interface PortfolioPosition extends Contract {
   vega: number | null;
   impliedVolatility: number | null;
   estimatedPrice: number | null;
+  // Latest available underlying mark when the US options market is closed.
+  overnightPrice: number | null;
   estimateBreakdown: {
     optionMark: number;
     underlyingReference: number;
@@ -200,6 +202,7 @@ function position(
     vega: null,
     impliedVolatility: null,
     estimatedPrice: null,
+    overnightPrice: null,
     estimateBreakdown: null,
     estimateAsOf: null,
     underlyingAsOf: null,
@@ -788,7 +791,12 @@ export async function handlePortfolio(
               now,
               fetchIssues,
             )
-          : p,
+          : marketClosed
+            ? {
+                ...p,
+                overnightPrice: stockMark(stockSnapshots[p.symbol]).price,
+              }
+            : p,
       );
       if (marketClosed)
         overnightEstimate = estimateOvernightPortfolio(
