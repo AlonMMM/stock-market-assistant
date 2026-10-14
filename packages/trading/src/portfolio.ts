@@ -34,7 +34,7 @@ export interface PortfolioPosition extends Contract {
   sharePct: number | null;
   // Market-data enrichment for options; all may be null when the feed omits it.
   underlyingPrice: number | null;
-  underlyingPriceSource: "trade" | "quote" | null;
+  underlyingPriceSource: "trade" | "quote" | "close" | null;
   delta: number | null;
   gamma: number | null;
   theta: number | null;
@@ -233,6 +233,35 @@ interface StockSnapshot {
   prevDailyBar?: { c?: number; t?: string };
 }
 
+function newer<T extends { t?: string }>(a: T | undefined, b: T | undefined) {
+  if (!a) return b;
+  if (!b) return a;
+  const at = a.t ? Date.parse(a.t) : Number.NaN;
+  const bt = b.t ? Date.parse(b.t) : Number.NaN;
+  return Number.isFinite(bt) && (!Number.isFinite(at) || bt > at) ? b : a;
+}
+
+function mergeStockSnapshots(
+  primary: Record<string, StockSnapshot>,
+  fallback: Record<string, StockSnapshot>,
+): Record<string, StockSnapshot> {
+  const merged: Record<string, StockSnapshot> = {};
+  for (const symbol of new Set([
+    ...Object.keys(primary),
+    ...Object.keys(fallback),
+  ])) {
+    const a = primary[symbol];
+    const b = fallback[symbol];
+    merged[symbol] = {
+      latestTrade: newer(a?.latestTrade, b?.latestTrade),
+      latestQuote: newer(a?.latestQuote, b?.latestQuote),
+      dailyBar: a?.dailyBar ?? b?.dailyBar,
+      prevDailyBar: a?.prevDailyBar ?? b?.prevDailyBar,
+    };
+  }
+  return merged;
+}
+
 const nyDay = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/New_York",
   year: "numeric",
@@ -302,15 +331,27 @@ function estimatedOptionPrice(
     (tradePrice === null ||
       (Number.isFinite(quoteTime) &&
         (!Number.isFinite(tradeTime) || quoteTime > tradeTime)));
-  const current = useQuote ? quotePrice : tradePrice;
-  const underlyingPriceSource: "trade" | "quote" | null = useQuote
+  const closePrice = validPrice(stock?.dailyBar?.c);
+  const previousClose = validPrice(stock?.prevDailyBar?.c);
+  const current = useQuote
+    ? quotePrice
+    : (tradePrice ?? closePrice ?? previousClose);
+  const underlyingPriceSource: "trade" | "quote" | "close" | null = useQuote
     ? "quote"
-    : tradePrice === null
-      ? null
-      : "trade";
+    : tradePrice !== null
+      ? "trade"
+      : current !== null
+        ? "close"
+        : null;
   const underlyingAsOf = useQuote
     ? (stock?.latestQuote?.t ?? null)
-    : (stock?.latestTrade?.t ?? null);
+    : tradePrice !== null
+      ? (stock?.latestTrade?.t ?? null)
+      : closePrice !== null
+        ? (stock?.dailyBar?.t ?? null)
+        : previousClose !== null
+          ? (stock?.prevDailyBar?.t ?? null)
+          : null;
   const bid = validPrice(option?.latestQuote?.bp);
   const ask = validPrice(option?.latestQuote?.ap);
   const trade = validPrice(option?.latestTrade?.p);
@@ -337,7 +378,13 @@ function estimatedOptionPrice(
   )
     issues.push("Option mark is unavailable");
   if (current === null)
-    return { ...position, marketDataIssue: issues.join(" · ") || null };
+    return {
+      ...position,
+      delta: delta ?? null,
+      gamma: gamma ?? null,
+      theta: theta ?? null,
+      marketDataIssue: issues.join(" · ") || null,
+    };
   const sourceTime = option?.latestQuote?.t ?? option?.latestTrade?.t;
   const sourceDay = sourceTime ? nyDay.format(Date.parse(sourceTime)) : null;
   const reference =
@@ -481,28 +528,55 @@ export async function handlePortfolio(
         ",",
       );
       const feed = overnightStockFeed(now);
-      const [optionResult, stockResult] = await Promise.allSettled([
-        dataGet<{ snapshots?: Record<string, OptionSnapshot> }>(
-          `/v1beta1/options/snapshots?symbols=${encodeURIComponent(optionSymbols)}`,
-        ),
-        dataGet<{ snapshots?: Record<string, StockSnapshot> }>(
-          `/v2/stocks/snapshots?symbols=${encodeURIComponent(underlyings)}${feed ? `&feed=${feed}` : ""}`,
-        ),
-      ]);
+      const regularStockUrl = `/v2/stocks/snapshots?symbols=${encodeURIComponent(underlyings)}`;
+      const [optionResult, stockResult, regularStockResult] = await Promise.all(
+        [
+          Promise.allSettled([
+            dataGet<{ snapshots?: Record<string, OptionSnapshot> }>(
+              `/v1beta1/options/snapshots?symbols=${encodeURIComponent(optionSymbols)}`,
+            ),
+            dataGet<{ snapshots?: Record<string, StockSnapshot> }>(
+              `${regularStockUrl}${feed ? `&feed=${feed}` : ""}`,
+            ),
+          ]),
+          feed
+            ? Promise.allSettled([
+                dataGet<{ snapshots?: Record<string, StockSnapshot> }>(
+                  regularStockUrl,
+                ),
+              ])
+            : Promise.resolve(null),
+        ],
+      ).then(
+        ([primary, fallback]) =>
+          [primary[0]!, primary[1]!, fallback?.[0] ?? null] as const,
+      );
       const optionSnapshots =
         optionResult.status === "fulfilled"
           ? (optionResult.value.snapshots ?? {})
           : {};
-      const stockSnapshots =
+      const overnightStockSnapshots =
         stockResult.status === "fulfilled"
           ? (stockResult.value.snapshots ?? {})
           : {};
+      const regularStockSnapshots =
+        regularStockResult?.status === "fulfilled"
+          ? (regularStockResult.value?.snapshots ?? {})
+          : {};
+      const stockSnapshots = feed
+        ? mergeStockSnapshots(overnightStockSnapshots, regularStockSnapshots)
+        : overnightStockSnapshots;
       const fetchIssues = [
         ...(optionResult.status === "rejected"
           ? [`Options: ${errorMessage(optionResult.reason)}`]
           : []),
         ...(stockResult.status === "rejected"
-          ? [`Stocks: ${errorMessage(stockResult.reason)}`]
+          ? [
+              `Stocks${feed ? ` ${feed.toUpperCase()}` : ""}: ${errorMessage(stockResult.reason)}`,
+            ]
+          : []),
+        ...(regularStockResult?.status === "rejected"
+          ? [`Stocks regular feed: ${errorMessage(regularStockResult.reason)}`]
           : []),
       ];
       positions = positions.map((p) =>

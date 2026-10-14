@@ -281,7 +281,9 @@ function Detail({
           {p.estimateAsOf &&
             ` Estimated premium uses the last option mark and Greeks from ${israelDateTime(Date.parse(p.estimateAsOf))} ${israelLabel}, adjusted for the underlying move and elapsed theta.`}
           {p.underlyingAsOf &&
-            ` Underlying ${p.underlyingPriceSource === "quote" ? "midpoint quote" : "last trade"}: ${israelDateTime(Date.parse(p.underlyingAsOf))} ${israelLabel}.`}
+            ` Underlying ${p.underlyingPriceSource === "quote" ? "midpoint quote" : p.underlyingPriceSource === "close" ? "last regular-session close" : "last trade"}: ${israelDateTime(Date.parse(p.underlyingAsOf))} ${israelLabel}.`}
+          {p.underlyingPriceSource === "close" &&
+            " No live underlying trade or quote is available; the estimate uses the last regular-session close."}
           {p.estimatedPrice !== null &&
             " This is a model estimate, not an executable after-hours option quote."}
         </p>
