@@ -27,9 +27,13 @@ also shows delta-adjusted exposure (contracts × 100 × underlying price × delt
 source times. This is a model estimate, not an executable option quote. Market-data
 requests are cached for 10 seconds and fail open so the account positions still load.
 
-Validation: typecheck, production build, and portfolio tests. The full suite also reported
-existing collector-startup and session tests failing because their child processes exit
-with status 1 in this sandbox; their code is outside this change.
+When the US market is closed, the compact Close / Approx. now selector changes
+the whole portfolio view. Account equity and open P&L, position marks, values,
+P&L, account share and option delta exposure use the selected view. Approximate
+position values are hidden when a usable estimate is unavailable, and the page
+shows how many positions were priced. Cash and working orders do not change.
+
+Validation: full check, including typecheck, all tests, and production build.
 
 ## Trade tab: stock price in the chain, confirmed stop moves
 

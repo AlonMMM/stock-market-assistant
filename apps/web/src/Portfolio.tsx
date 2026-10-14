@@ -11,6 +11,7 @@ import type { Decision } from "../../../packages/trading/src/explain.js";
 import { usePolling } from "./Live.js";
 import { Orders, useDecisions, WhyButton } from "./Orders.js";
 import { PositionList, useControlAccess } from "./Positions.js";
+import { positionNumbers } from "./positions-model.js";
 import { Trade as TradeTicket } from "./Trade.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
 
@@ -336,8 +337,19 @@ function LiveTrades({
       </p>
     );
   const { account, positions, orders } = value;
-  const openPnl = positions.reduce((sum, p) => sum + (p.pnl ?? 0), 0);
   const useOvernight = value.marketClosed && accountView === "overnight";
+  const selectedView = useOvernight ? "overnight" : "close";
+  const displayEquity =
+    useOvernight && value.overnightEstimate?.equity !== null
+      ? (value.overnightEstimate?.equity ?? account.equity)
+      : account.equity;
+  const openPnlValues = positions.map(
+    (p) => positionNumbers(p, selectedView, displayEquity).pnl,
+  );
+  const openPnl = openPnlValues.reduce<number>(
+    (sum, pnl) => sum + (pnl ?? 0),
+    0,
+  );
   return (
     <div className="portfolio">
       <p className="portfolio-meta">
@@ -351,12 +363,13 @@ function LiveTrades({
         </span>
       </p>
       <div className="account">
-        <div className="account-main">
-          {value.marketClosed && (
+        {value.marketClosed && (
+          <div className="account-view-row">
+            <span className="account-view-label">Show values</span>
             <div
               className="segmented small account-view-toggle"
               role="group"
-              aria-label="Account value view"
+              aria-label="Portfolio value view"
             >
               <button
                 type="button"
@@ -373,7 +386,9 @@ function LiveTrades({
                 Approx. now
               </button>
             </div>
-          )}
+          </div>
+        )}
+        <div className="account-main">
           <span className="account-label">
             {useOvernight
               ? "Approx. account value"
@@ -409,8 +424,17 @@ function LiveTrades({
         </div>
         <dl className="account-stats">
           <div>
-            <dt>Open P&amp;L</dt>
+            <dt>{useOvernight ? "Approx. open P&L" : "Open P&L"}</dt>
             <dd className={`num${tone(openPnl)}`}>{signedUsd(openPnl)}</dd>
+            {useOvernight &&
+              value.overnightEstimate &&
+              value.overnightEstimate.pricedPositions <
+                value.overnightEstimate.totalPositions && (
+                <small className="account-view-note">
+                  {value.overnightEstimate.pricedPositions}/
+                  {value.overnightEstimate.totalPositions} priced
+                </small>
+              )}
           </div>
           <div>
             <dt>Cash</dt>
@@ -420,8 +444,8 @@ function LiveTrades({
             <dt>At risk to stops</dt>
             <dd className="num">
               {usd(value.riskAtStops)}
-              {account.equity > 0 &&
-                ` (${((value.riskAtStops / account.equity) * 100).toFixed(1)}%)`}
+              {displayEquity > 0 &&
+                ` (${((value.riskAtStops / displayEquity) * 100).toFixed(1)}%)`}
             </dd>
           </div>
         </dl>
@@ -446,7 +470,12 @@ function LiveTrades({
       )}
       <h2 className="portfolio-title">Positions</h2>
       {positions.length > 0 ? (
-        <PositionList positions={positions} why={why} />
+        <PositionList
+          positions={positions}
+          why={why}
+          view={selectedView}
+          equity={displayEquity}
+        />
       ) : (
         <p className="notice">No open positions.</p>
       )}
