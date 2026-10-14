@@ -59,36 +59,48 @@ const order = (over: object) => ({
   ...over,
 });
 
-function fake(orders: object[], status = 200) {
+function fake(orders: object[], status = 200, isOpen = true) {
   const seen: string[] = [];
   const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
     const url = new URL(String(input));
     seen.push(`${init?.method ?? "GET"} ${url.host}${url.pathname}`);
     const body =
-      url.pathname === "/v2/account"
-        ? account
-        : url.pathname === "/v2/positions"
-          ? positions
-          : url.pathname === "/v1beta1/options/snapshots"
-            ? {
-                snapshots: {
-                  AMD261016C00660000: {
-                    greeks: { delta: 0.6, gamma: 0.02, theta: -0.1 },
-                    latestQuote: { bp: 2, ap: 2.2, t: "2026-10-12T14:59:00Z" },
-                  },
-                },
-              }
-            : url.pathname === "/v2/stocks/snapshots"
+      url.pathname === "/v2/clock"
+        ? { is_open: isOpen }
+        : url.pathname === "/v2/account"
+          ? account
+          : url.pathname === "/v2/positions"
+            ? positions
+            : url.pathname === "/v1beta1/options/snapshots"
               ? {
                   snapshots: {
-                    AMD: {
-                      latestTrade: { p: 700, t: "2026-10-12T15:00:00Z" },
-                      dailyBar: { c: 690, t: "2026-10-12T04:00:00Z" },
-                      prevDailyBar: { c: 680, t: "2026-10-09T04:00:00Z" },
+                    AMD261016C00660000: {
+                      greeks: {
+                        delta: 0.6,
+                        gamma: 0.02,
+                        theta: -0.1,
+                        vega: 0.05,
+                      },
+                      implied_volatility: 0.35,
+                      latestQuote: {
+                        bp: 2,
+                        ap: 2.2,
+                        t: "2026-10-12T14:59:00Z",
+                      },
                     },
                   },
                 }
-              : orders;
+              : url.pathname === "/v2/stocks/snapshots"
+                ? {
+                    snapshots: {
+                      AMD: {
+                        latestTrade: { p: 700, t: "2026-10-12T15:00:00Z" },
+                        dailyBar: { c: 690, t: "2026-10-12T04:00:00Z" },
+                        prevDailyBar: { c: 680, t: "2026-10-09T04:00:00Z" },
+                      },
+                    },
+                  }
+                : orders;
     return Response.json(body, { status });
   }) as typeof fetch;
   return { fetcher, seen };
@@ -135,7 +147,7 @@ test("portfolio: account totals, positions with their stop, and orders", async (
   // Read-only, on the paper host.
   assert.ok(seen.some((s) => s.startsWith("GET paper-api.alpaca.markets/")));
   assert.ok(seen.some((s) => s.startsWith("GET data.alpaca.markets/")));
-  assert.equal(seen.length, 5);
+  assert.equal(seen.length, 6);
 });
 
 test("portfolio: missing option data explains failed market-data requests", async () => {
@@ -217,7 +229,7 @@ test("portfolio: overnight option estimate falls back to the underlying quote", 
 });
 
 test("portfolio: overnight snapshots fall back to regular-feed close and keep Greeks", async () => {
-  const { fetcher: baseFetcher } = fake([order({})]);
+  const { fetcher: baseFetcher } = fake([order({})], 200, false);
   let regularFeedRequested = false;
   const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
     const url = new URL(String(input));
@@ -259,12 +271,14 @@ test("portfolio: overnight snapshots fall back to regular-feed close and keep Gr
   assert.equal(option.delta, 0.6);
   assert.equal(option.gamma, 0.02);
   assert.equal(option.theta, -0.1);
+  assert.equal(option.vega, 0.05);
+  assert.equal(option.impliedVolatility, 0.35);
   assert.ok(option.estimatedPrice !== null);
   assert.equal(option.marketDataIssue, null);
 });
 
 test("portfolio: overnight Greeks calculate delta exposure and estimated option price from bars", async () => {
-  const { fetcher: baseFetcher } = fake([order({})]);
+  const { fetcher: baseFetcher } = fake([order({})], 200, false);
   const requested: string[] = [];
   const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
     const url = new URL(String(input));
@@ -309,6 +323,8 @@ test("portfolio: overnight Greeks calculate delta exposure and estimated option 
     deltaEffect: 9,
     gammaEffect: 2.25,
     thetaEffect: -0.1 * elapsedDays,
+    vegaEffect: null,
+    impliedVolatilityChange: null,
     elapsedDays,
   });
   assert.equal(
@@ -329,7 +345,7 @@ test("portfolio: overnight Greeks calculate delta exposure and estimated option 
 });
 
 test("portfolio: night estimate revalues stock positions from the latest overnight bar", async () => {
-  const { fetcher: baseFetcher } = fake([]);
+  const { fetcher: baseFetcher } = fake([], 200, false);
   const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
     const url = new URL(String(input));
     if (url.pathname === "/v2/positions")
@@ -371,6 +387,50 @@ test("portfolio: night estimate revalues stock positions from the latest overnig
   assert.deepEqual(body.overnightEstimate, {
     equity: 100575,
     change: 75,
+    pricedPositions: 1,
+    totalPositions: 1,
+  });
+});
+
+test("portfolio: a closed market gets an estimate from after-hours snapshots", async () => {
+  const { fetcher: baseFetcher } = fake([], 200, false);
+  const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v2/positions")
+      return Response.json([
+        {
+          symbol: "SPY",
+          asset_class: "us_equity",
+          qty: "5",
+          avg_entry_price: "690",
+          current_price: "690",
+          market_value: "3450",
+          cost_basis: "3450",
+          unrealized_pl: "0",
+          unrealized_plpc: "0",
+          unrealized_intraday_pl: "0",
+        },
+      ]);
+    if (url.pathname === "/v2/stocks/snapshots")
+      return Response.json({
+        snapshots: {
+          SPY: { latestTrade: { p: 695, t: "2026-10-13T20:30:00Z" } },
+        },
+      });
+    return baseFetcher(input, init);
+  }) as typeof fetch;
+  const body = (
+    await handlePortfolio(
+      keys,
+      false,
+      fetcher,
+      Date.parse("2026-10-13T20:30:00Z"),
+    )
+  ).body as Portfolio;
+  assert.equal(body.marketClosed, true);
+  assert.deepEqual(body.overnightEstimate, {
+    equity: 100525,
+    change: 25,
     pricedPositions: 1,
     totalPositions: 1,
   });
@@ -440,18 +500,18 @@ test("portfolio: answers are reused, orders for longer, and errors are not kept"
     handlePortfolio(keys, false, fetcher, now + ms, cache);
   await at(0);
   await at(500); // everything reused
-  assert.equal(seen.length, 5);
+  assert.equal(seen.length, 6);
   await at(1000); // account and positions again, orders reused
   assert.deepEqual(
-    seen.slice(5).map((s) => s.split("/v2/")[1]),
-    ["account", "positions"],
+    seen.slice(6).map((s) => s.split("/v2/")[1]),
+    ["account", "positions", "clock"],
   );
   const later = await at(6000);
-  assert.equal(seen.length, 10);
+  assert.equal(seen.length, 13);
   assert.equal((later.body as Portfolio).at, "2026-10-12T15:00:06.000Z");
   // The paper and live accounts never share an answer.
   await handlePortfolio(keys, true, fetcher, now + 6000, cache);
-  assert.equal(seen.length, 13);
+  assert.equal(seen.length, 17);
   const failing = new PortfolioCache();
   const down = fake([], 500);
   assert.equal(

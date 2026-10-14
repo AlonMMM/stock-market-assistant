@@ -182,16 +182,6 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
           </button>
         </div>
       </div>
-      <p className="muted">
-        {points.length} closed {points.length === 1 ? "trade" : "trades"} · one
-        dot per trade
-        {showPct
-          ? " · of starting account value"
-          : equityChart
-            ? ` · starts at $${history.baseEquity!.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
-            : ""}{" "}
-        · {israelLabel}
-      </p>
       <div className="trade-pnl-frame" ref={frame}>
         {width > 0 && (
           <svg
@@ -433,11 +423,6 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
           </div>
         )}
       </div>
-      <p className="muted">
-        {pctAvailable
-          ? "% = cumulative realized P&L ÷ account value at the start of the period. Hover, tap or use ← → to inspect trades."
-          : "Percentage unavailable: starting account value is missing. Hover, tap or use ← → to inspect trades."}
-      </p>
     </section>
   );
 }

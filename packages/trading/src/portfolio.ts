@@ -38,6 +38,8 @@ export interface PortfolioPosition extends Contract {
   delta: number | null;
   gamma: number | null;
   theta: number | null;
+  vega: number | null;
+  impliedVolatility: number | null;
   estimatedPrice: number | null;
   estimateBreakdown: {
     optionMark: number;
@@ -46,6 +48,8 @@ export interface PortfolioPosition extends Contract {
     deltaEffect: number;
     gammaEffect: number;
     thetaEffect: number;
+    vegaEffect: number | null;
+    impliedVolatilityChange: number | null;
     elapsedDays: number;
   } | null;
   estimateAsOf: string | null;
@@ -69,6 +73,7 @@ export interface PortfolioOrder extends Contract {
 export interface Portfolio {
   paper: boolean;
   at: string;
+  marketClosed: boolean;
   account: {
     equity: number;
     cash: number;
@@ -100,6 +105,10 @@ interface RawAccount {
   last_equity: string;
   cash: string;
   buying_power: string;
+}
+
+interface RawClock {
+  is_open: boolean;
 }
 
 interface RawPosition {
@@ -188,6 +197,8 @@ function position(
     delta: null,
     gamma: null,
     theta: null,
+    vega: null,
+    impliedVolatility: null,
     estimatedPrice: null,
     estimateBreakdown: null,
     estimateAsOf: null,
@@ -238,7 +249,8 @@ export class PortfolioCache {
 }
 
 interface OptionSnapshot {
-  greeks?: { delta?: number; gamma?: number; theta?: number };
+  greeks?: { delta?: number; gamma?: number; theta?: number; vega?: number };
+  implied_volatility?: number;
   latestQuote?: { ap?: number; bp?: number; t?: string };
   latestTrade?: { p?: number; t?: string };
 }
@@ -430,6 +442,8 @@ function estimatedOptionPrice(
   const delta = option?.greeks?.delta;
   const gamma = option?.greeks?.gamma;
   const theta = option?.greeks?.theta;
+  const vega = option?.greeks?.vega;
+  const impliedVolatility = option?.implied_volatility;
   const stockPrice = stockMark(stock);
   const current = stockPrice.price;
   const underlyingPriceSource = stockPrice.source;
@@ -467,6 +481,8 @@ function estimatedOptionPrice(
       delta: delta ?? null,
       gamma: gamma ?? null,
       theta: theta ?? null,
+      vega: vega ?? null,
+      impliedVolatility: impliedVolatility ?? null,
       marketDataIssue: issues.join(" · ") || null,
     };
   const sourceTime = option?.latestQuote?.t ?? option?.latestTrade?.t;
@@ -501,6 +517,8 @@ function estimatedOptionPrice(
       delta: delta ?? null,
       gamma: gamma ?? null,
       theta: theta ?? null,
+      vega: vega ?? null,
+      impliedVolatility: impliedVolatility ?? null,
       marketDataIssue:
         issues.join(" · ") ||
         "A matching stock bar is unavailable for this option quote",
@@ -521,6 +539,8 @@ function estimatedOptionPrice(
     delta,
     gamma,
     theta,
+    vega: vega ?? null,
+    impliedVolatility: impliedVolatility ?? null,
     estimatedPrice: estimate,
     estimateBreakdown: {
       optionMark: mark,
@@ -529,6 +549,11 @@ function estimatedOptionPrice(
       deltaEffect,
       gammaEffect,
       thetaEffect,
+      // The snapshot's IV belongs to the latest option quote; Alpaca does not
+      // publish a newer overnight IV observation, so dIV is unknown and the
+      // model assumes IV is unchanged until a new option quote is available.
+      vegaEffect: null,
+      impliedVolatilityChange: null,
       elapsedDays,
     },
     estimateAsOf: sourceTime,
@@ -593,14 +618,16 @@ export async function handlePortfolio(
     return (await response.json()) as T;
   };
   try {
-    const [account, rawPositions, rawOrders] = await Promise.all([
+    const [account, rawPositions, rawOrders, clock] = await Promise.all([
       get<RawAccount>("/v2/account", portfolioTtlMs.account),
       get<RawPosition[]>("/v2/positions", portfolioTtlMs.positions),
       get<RawOrder[]>(
         "/v2/orders?status=open&limit=500",
         portfolioTtlMs.orders,
       ),
+      get<RawClock>("/v2/clock", portfolioTtlMs.account).catch(() => null),
     ]);
+    const marketClosed = clock?.is_open === false;
     const equity = Number(account.equity);
     const lastEquity = Number(account.last_equity);
     const orders = rawOrders.map((o): PortfolioOrder => ({
@@ -621,19 +648,19 @@ export async function handlePortfolio(
     const options = positions.filter((p) => p.option !== null);
     const feed = overnightStockFeed(now);
     let overnightEstimate: Portfolio["overnightEstimate"] = null;
-    if (feed && positions.length === 0)
+    if (marketClosed && positions.length === 0)
       overnightEstimate = {
         equity: null,
         change: null,
         pricedPositions: 0,
         totalPositions: 0,
       };
-    if (options.length > 0 || (feed !== null && positions.length > 0)) {
+    if (options.length > 0 || (marketClosed && positions.length > 0)) {
       const optionSymbols = options.map((p) => p.symbol).join(",");
       const symbols = [
         ...new Set([
           ...options.map((p) => p.underlying),
-          ...(feed
+          ...(marketClosed
             ? positions.filter((p) => !p.option).map((p) => p.symbol)
             : []),
         ]),
@@ -763,7 +790,7 @@ export async function handlePortfolio(
             )
           : p,
       );
-      if (feed)
+      if (marketClosed)
         overnightEstimate = estimateOvernightPortfolio(
           equity,
           positions,
@@ -775,6 +802,7 @@ export async function handlePortfolio(
       body: {
         paper: !live,
         at: new Date(now).toISOString(),
+        marketClosed,
         account: {
           equity,
           cash: Number(account.cash),
