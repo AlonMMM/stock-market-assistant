@@ -152,6 +152,25 @@ test("portfolio: missing option data explains failed market-data requests", asyn
   assert.match(option.marketDataIssue ?? "", /Stocks: .*HTTP 403/);
 });
 
+test("portfolio: overnight underlying snapshots use Alpaca BOATS data", async () => {
+  const { fetcher: baseFetcher } = fake([order({})]);
+  let stockFeed: string | null = null;
+  const fetcher = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v2/stocks/snapshots")
+      stockFeed = url.searchParams.get("feed");
+    return baseFetcher(input, init);
+  }) as typeof fetch;
+  // 2026-10-13 22:00 in New York (Wednesday 02:00 in Israel).
+  await handlePortfolio(
+    keys,
+    false,
+    fetcher,
+    Date.parse("2026-10-14T02:00:00Z"),
+  );
+  assert.equal(stockFeed, "boats");
+});
+
 test("portfolio: a stop covering part of a position leaves it unprotected", async () => {
   const { fetcher } = fake([order({ qty: "2" }), order({ side: "buy" })]);
   const body = (await handlePortfolio(keys, false, fetcher, now))
