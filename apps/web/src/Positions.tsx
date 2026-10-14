@@ -8,7 +8,6 @@ import { followOrder, type Run } from "./order-run.js";
 import { WhyButton } from "./Orders.js";
 import { chartSession, optionDeltaExposure } from "./positions-model.js";
 import { StockChart } from "./StockChart.js";
-import { israelDateTime, israelLabel } from "./time.js";
 
 // Open positions as a dense list, in the manner of a broker's phone app: one
 // row per position, and a tap opens the stock's day chart, the position's
@@ -266,6 +265,9 @@ function Detail({
                 {p.delta === null || p.gamma === null || p.theta === null
                   ? "—"
                   : `Δ ${p.delta.toFixed(3)} · Γ ${p.gamma.toFixed(4)} · Θ ${p.theta.toFixed(3)}`}
+                {p.vega !== null && ` · V ${p.vega.toFixed(3)}`}
+                {p.impliedVolatility !== null &&
+                  ` · IV ${(p.impliedVolatility * 100).toFixed(1)}%`}
               </dd>
             </div>
           </>
@@ -277,22 +279,13 @@ function Detail({
           </dd>
         </div>
       </dl>
-      {p.option && (
+      {p.option && p.estimateBreakdown && (
         <p className="muted">
-          Delta exposure = {p.qty} × 100 × underlying price × delta.
-          {p.estimateAsOf &&
-            ` Starting option mark timestamp: ${israelDateTime(Date.parse(p.estimateAsOf))} ${israelLabel}. Alpaca does not provide a separate timestamp for the Greeks.`}
-          {p.estimateBreakdown &&
-            p.underlyingPrice !== null &&
-            ` Estimate math: $${p.estimateBreakdown.optionMark.toFixed(2)} mark + Δ ${signedUsdExact(p.estimateBreakdown.deltaEffect)} + Γ ${signedUsdExact(p.estimateBreakdown.gammaEffect)} + Θ ${signedUsdExact(p.estimateBreakdown.thetaEffect)} = $${p.estimatedPrice!.toFixed(2)}; underlying $${p.estimateBreakdown.underlyingReference.toFixed(2)} → $${p.underlyingPrice.toFixed(2)} over ${p.estimateBreakdown.elapsedDays.toFixed(2)} days.`}
-          {p.underlyingAsOf &&
-            ` Underlying ${p.underlyingPriceSource === "quote" ? "midpoint quote" : p.underlyingPriceSource === "close" ? "last regular-session close" : p.underlyingPriceSource === "bar" ? "latest available minute bar" : "last trade"}: ${israelDateTime(Date.parse(p.underlyingAsOf))} ${israelLabel}.`}
-          {p.underlyingPriceSource === "close" &&
-            " No live underlying trade or quote is available; the estimate uses the last regular-session close."}
-          {p.underlyingPriceSource === "bar" &&
-            " No newer underlying trade or quote is available; the estimate uses the latest available minute bar."}
-          {p.estimatedPrice !== null &&
-            " This is a model estimate, not an executable after-hours option quote."}
+          ${p.estimateBreakdown.optionMark.toFixed(2)} + Δ{" "}
+          {signedUsdExact(p.estimateBreakdown.deltaEffect)} + Γ{" "}
+          {signedUsdExact(p.estimateBreakdown.gammaEffect)} + Θ{" "}
+          {signedUsdExact(p.estimateBreakdown.thetaEffect)} = $
+          {p.estimatedPrice?.toFixed(2)} · V×ΔIV —
         </p>
       )}
       {p.option && p.marketDataIssue && (

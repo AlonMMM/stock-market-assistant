@@ -321,6 +321,9 @@ function LiveTrades({
   // The reasons behind each order; the page works without them.
   const why = useDecisions(() => {});
   const { canTrade } = useControlAccess();
+  const [accountView, setAccountView] = useState<"close" | "overnight">(
+    "close",
+  );
   const { value, at, error } = usePolling<PortfolioData>(
     "/api/portfolio",
     refreshMs,
@@ -334,6 +337,7 @@ function LiveTrades({
     );
   const { account, positions, orders } = value;
   const openPnl = positions.reduce((sum, p) => sum + (p.pnl ?? 0), 0);
+  const useOvernight = value.marketClosed && accountView === "overnight";
   return (
     <div className="portfolio">
       <p className="portfolio-meta">
@@ -348,38 +352,61 @@ function LiveTrades({
       </p>
       <div className="account">
         <div className="account-main">
-          <span className="account-label">Net liquidation</span>
-          <strong className="num">{usd(account.equity)}</strong>
-          <span className={`num account-day${tone(account.dayChange)}`}>
-            {signedUsd(account.dayChange)}
-            {account.dayChangePct !== null &&
-              ` (${signedPct(account.dayChangePct)})`}{" "}
-            today
-          </span>
-        </div>
-        {value.overnightEstimate && (
-          <div className="account-overnight">
-            <div className="account-overnight-main">
-              <span className="account-label">Approx. overnight value</span>
-              <strong className="num">
-                {value.overnightEstimate.equity === null
-                  ? "—"
-                  : `~${usd(value.overnightEstimate.equity)}`}
-              </strong>
-              {value.overnightEstimate.change !== null && (
-                <span
-                  className={`num account-day${tone(value.overnightEstimate.change)}`}
-                >
-                  {signedUsd(value.overnightEstimate.change)} vs broker mark
-                </span>
-              )}
+          {value.marketClosed && (
+            <div
+              className="segmented small account-view-toggle"
+              role="group"
+              aria-label="Account value view"
+            >
+              <button
+                type="button"
+                aria-pressed={!useOvernight}
+                onClick={() => setAccountView("close")}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                aria-pressed={useOvernight}
+                onClick={() => setAccountView("overnight")}
+              >
+                Approx. now
+              </button>
             </div>
-            <span className="muted account-overnight-note">
-              Model estimate for {value.overnightEstimate.pricedPositions} of{" "}
-              {value.overnightEstimate.totalPositions} positions.
+          )}
+          <span className="account-label">
+            {useOvernight
+              ? "Approx. account value"
+              : value.marketClosed
+                ? "Account value at close"
+                : "Net liquidation"}
+          </span>
+          <strong className="num">
+            {useOvernight
+              ? value.overnightEstimate?.equity === null ||
+                value.overnightEstimate?.equity === undefined
+                ? "—"
+                : `~${usd(value.overnightEstimate.equity)}`
+              : usd(account.equity)}
+          </strong>
+          {useOvernight ? (
+            value.overnightEstimate?.change !== null &&
+            value.overnightEstimate?.change !== undefined && (
+              <span
+                className={`num account-day${tone(value.overnightEstimate.change)}`}
+              >
+                {signedUsd(value.overnightEstimate.change)} vs close
+              </span>
+            )
+          ) : (
+            <span className={`num account-day${tone(account.dayChange)}`}>
+              {signedUsd(account.dayChange)}
+              {account.dayChangePct !== null &&
+                ` (${signedPct(account.dayChangePct)})`}{" "}
+              today
             </span>
-          </div>
-        )}
+          )}
+        </div>
         <dl className="account-stats">
           <div>
             <dt>Open P&amp;L</dt>

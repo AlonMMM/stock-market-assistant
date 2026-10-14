@@ -2949,6 +2949,11 @@ dialog.why::backdrop {
   align-items: baseline;
   gap: 2px 12px;
 }
+.account-view-toggle {
+  flex-basis: 100%;
+  width: max-content;
+  margin-bottom: 4px;
+}
 .account-label {
   flex-basis: 100%;
   font-size: 12px;
