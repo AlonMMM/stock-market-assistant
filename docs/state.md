@@ -1,7 +1,7 @@
 # Current state
 
-Updated: 2026-10-14
-Phase: Alpaca live alerts on real-time SIP with Telegram delivery; marked-sections score vs SPY in review.
+Updated: 2026-10-15
+Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
 
 ## History: cumulative P&L at trade closes
 
