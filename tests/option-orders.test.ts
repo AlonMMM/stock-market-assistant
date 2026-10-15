@@ -600,6 +600,35 @@ test("never short: short positions and oversized sell orders are found", () => {
   assert.equal(uncovered(2, "A", [sell("A", 3)]), 0);
 });
 
+test("never short: a stop being changed in place is not counted twice", () => {
+  // MRNA 2026-10-14: moving the stop on 8 held listed the old stop
+  // (pending_replace) and its replacement, and raised OVERSOLD 16 vs 8.
+  const symbol = "MRNA261016C00245000";
+  const stop = (status: string) => ({
+    symbol,
+    side: "sell",
+    qty: 8,
+    filledQty: 0,
+    status,
+  });
+  const orders = [stop("pending_replace"), stop("pending_new")];
+  assert.deepEqual(shortRisks([{ symbol, qty: 8 }], orders), []);
+  assert.equal(uncovered(8, symbol, orders), 0);
+  // Two working stops still count in full.
+  assert.deepEqual(
+    shortRisks([{ symbol, qty: 8 }], [stop("new"), stop("new")]),
+    [`OVERSOLD ${symbol}: open sell orders for 16, 8 held`],
+  );
+  // A replacement larger than what is held is still a risk.
+  assert.deepEqual(
+    shortRisks(
+      [{ symbol, qty: 8 }],
+      [stop("pending_replace"), { ...stop("new"), qty: 10 }],
+    ),
+    [`OVERSOLD ${symbol}: open sell orders for 10, 8 held`],
+  );
+});
+
 test("never short: every sell is close-only, every buy opens", async () => {
   const bodies: Record<string, unknown>[] = [];
   const fetcher = (async (_url: URL | RequestInfo, init?: RequestInit) => {
