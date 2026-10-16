@@ -4,6 +4,7 @@ import type {
   OpenOrder,
   Order,
   Position,
+  StockQuote,
 } from "./broker.js";
 import { parseOccSymbol, type OptionQuote } from "./options.js";
 
@@ -11,6 +12,9 @@ import { parseOccSymbol, type OptionQuote } from "./options.js";
 // a buy at its limit once the limit reaches the ask (or `fillAt`), fills a
 // sell at its limit once the limit is at or below the bid, and, like Alpaca,
 // refuses a sell for more contracts than are free.
+
+const isOption = (symbol: string) => /^[A-Z.]{1,6}\d{6}[CP]\d{8}$/.test(symbol);
+const multiplier = (symbol: string) => (isOption(symbol) ? 100 : 1);
 
 interface SimOrder extends OpenOrder {
   kind: "buy" | "sell" | "stop";
@@ -35,6 +39,7 @@ export class SimBroker implements Broker {
   private quotes = new Map<string, OptionQuote>();
   /** Latest stock prices, by symbol. */
   readonly stocks = new Map<string, number>();
+  private stockQuotes = new Map<string, StockQuote>();
   private nextId = 1;
 
   constructor(equity = 100_000) {
@@ -61,6 +66,17 @@ export class SimBroker implements Broker {
     for (const o of this.orders.values()) this.settle(o);
   }
 
+  /** Sets or moves a stock's bid and ask. */
+  setStockQuote(symbol: string, bid: number | null, ask: number | null) {
+    this.stockQuotes.set(symbol, {
+      symbol,
+      bid,
+      ask,
+      last: this.stocks.get(symbol) ?? null,
+    });
+    for (const o of this.orders.values()) this.settle(o);
+  }
+
   private open(o: SimOrder) {
     return o.status === "new" || o.status === "partially_filled";
   }
@@ -73,7 +89,7 @@ export class SimBroker implements Broker {
         qty: h.qty + qty,
         cost: h.cost + qty * price,
       });
-      this.cash -= qty * price * 100;
+      this.cash -= qty * price * multiplier(o.symbol);
     } else {
       const left = h.qty - qty;
       if (left === 0) this.held.delete(o.symbol);
@@ -82,7 +98,7 @@ export class SimBroker implements Broker {
           qty: left,
           cost: (h.cost / h.qty) * left,
         });
-      this.cash += qty * price * 100;
+      this.cash += qty * price * multiplier(o.symbol);
     }
     o.filledQty = o.qty;
     o.filledAvgPrice = price;
@@ -91,8 +107,12 @@ export class SimBroker implements Broker {
 
   private settle(o: SimOrder) {
     if (!this.open(o)) return;
-    const q = this.quotes.get(o.symbol);
-    if (!q) return;
+    const stock = this.stockQuotes.get(o.symbol);
+    const q = this.quotes.get(o.symbol) ?? {
+      bid: stock?.bid ?? 0,
+      ask: stock?.ask ?? Infinity,
+    };
+    if (!this.quotes.has(o.symbol) && !stock) return;
     if (o.kind === "buy") {
       const at = this.fillAt.get(o.symbol) ?? q.ask;
       if (o.limitPrice! >= at - 1e-9) this.fill(o, o.limitPrice!);
@@ -152,7 +172,12 @@ export class SimBroker implements Broker {
   async equity() {
     let value = this.cash;
     for (const [symbol, h] of this.held)
-      value += h.qty * (this.quotes.get(symbol)?.bid ?? 0) * 100;
+      value +=
+        h.qty *
+        ((isOption(symbol)
+          ? this.quotes.get(symbol)?.bid
+          : this.stockQuotes.get(symbol)?.bid) ?? 0) *
+        multiplier(symbol);
     return value;
   }
   async account() {
@@ -220,12 +245,36 @@ export class SimBroker implements Broker {
     if (!h) throw new Error(`sim: no position in ${symbol}`);
     return { qty: h.qty, avgEntryPrice: h.cost / h.qty };
   }
+  async stockQuote(symbol: string) {
+    const q = this.stockQuotes.get(symbol);
+    if (!q) throw new Error(`No quote for ${symbol}`);
+    return { ...q };
+  }
+  async stockLimit(
+    symbol: string,
+    side: "buy" | "sell",
+    qty: number,
+    limitPrice: number,
+  ) {
+    return this.add(side, symbol, qty, limitPrice, null);
+  }
+  async stockPositions(): Promise<Position[]> {
+    return [...this.held]
+      .filter(([symbol]) => !isOption(symbol))
+      .map(([symbol, h]) => ({
+        symbol,
+        qty: h.qty,
+        avgEntryPrice: h.cost / h.qty,
+      }));
+  }
   async positions(): Promise<Position[]> {
-    return [...this.held].map(([symbol, h]) => ({
-      symbol,
-      qty: h.qty,
-      avgEntryPrice: h.cost / h.qty,
-    }));
+    return [...this.held]
+      .filter(([symbol]) => isOption(symbol))
+      .map(([symbol, h]) => ({
+        symbol,
+        qty: h.qty,
+        avgEntryPrice: h.cost / h.qty,
+      }));
   }
   async openOrders(symbol?: string): Promise<OpenOrder[]> {
     return [...this.orders.values()]

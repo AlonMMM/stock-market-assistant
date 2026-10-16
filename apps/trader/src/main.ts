@@ -124,6 +124,15 @@ api.post("/v1/orders/price", async (request) =>
   service.repriceOrder(body(request.body)),
 );
 api.post("/v1/resize", async (request) => service.resize(body(request.body)));
+api.get("/v1/stock/quote", async (request) =>
+  service.stockQuote(body(request.query)),
+);
+api.post("/v1/stock/buy", async (request) =>
+  service.stockBuy(body(request.body)),
+);
+api.post("/v1/stock/sell", async (request) =>
+  service.stockSell(body(request.body)),
+);
 api.get<{ Params: { id: string } }>("/v1/jobs/:id", async (request) =>
   service.job(request.params.id),
 );

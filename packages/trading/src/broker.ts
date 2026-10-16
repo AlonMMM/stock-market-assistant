@@ -28,6 +28,15 @@ export interface Position {
   avgEntryPrice: number;
 }
 
+/** A stock's latest bid/ask and trade; a missing side is null. */
+export interface StockQuote {
+  symbol: string;
+  bid: number | null;
+  ask: number | null;
+  last: number | null;
+  quotedAt?: number; // ms
+}
+
 export interface Account {
   equity: number;
   lastEquity: number; // at the previous close
@@ -76,6 +85,21 @@ export interface Broker {
   position(symbol: string): Promise<{ qty: number; avgEntryPrice: number }>;
   /** Option positions only. */
   positions(): Promise<Position[]>;
+  // Stocks (user 2026-10-16: bought and sold from the site, long only).
+  /** Latest bid/ask of a stock, including pre/after-hours. */
+  stockQuote?(symbol: string): Promise<StockQuote>;
+  /**
+   * A day limit order for whole shares that may also fill in pre/after-hours.
+   * A sell can only close shares that are held.
+   */
+  stockLimit?(
+    symbol: string,
+    side: "buy" | "sell",
+    qty: number,
+    limitPrice: number,
+  ): Promise<Order>;
+  /** Stock positions only; a short one has a negative quantity. */
+  stockPositions?(): Promise<Position[]>;
   openOrders(symbol?: string): Promise<OpenOrder[]>;
 }
 
