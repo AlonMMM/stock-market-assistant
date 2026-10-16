@@ -101,14 +101,19 @@ export function buildApp(
     );
     return reply.code(result.status).send(result.body);
   });
-  app.get("/api/board", async (_request, reply) => {
-    const list = await loadWatchlist({
-      url: process.env.COLLECTOR_URL,
-      token: process.env.COLLECTOR_TOKEN,
-    });
+  app.get("/api/board", async (request, reply) => {
+    // Sector ETFs (from the collector) only for "vs sector" (?sectors=1).
+    const sectors = (request.query as { sectors?: string }).sectors === "1";
+    const list =
+      sectors || !alpaca.symbols
+        ? await loadWatchlist({
+            url: process.env.COLLECTOR_URL,
+            token: process.env.COLLECTOR_TOKEN,
+          })
+        : null;
     const result = await handleBoard(
-      alpaca.symbols ? (await alpaca.symbols.list()).tickers : list.tickers,
-      list.benchmarks,
+      alpaca.symbols ? (await alpaca.symbols.list()).tickers : list!.tickers,
+      sectors ? list!.benchmarks : {},
       alpaca,
       alpaca.fetcher,
       Date.now(),

@@ -249,3 +249,47 @@ test("removing the final symbol syncs an empty live list", async () => {
   assert.deepEqual(pushed, [[]]);
   assert.deepEqual((result.body as { tickers: string[] }).tickers, []);
 });
+
+test("the board asks the collector for sector ETFs only with ?sectors=1", async (t) => {
+  const db = new SqliteD1(":memory:");
+  await new D1SymbolList(db).change(["NVDA"], [], "stock");
+  const asked: string[] = [];
+  t.mock.method(globalThis, "fetch", (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith("https://collector.test")) {
+      asked.push(url);
+      return Response.json({
+        name: "w",
+        tickers: ["NVDA"],
+        benchmarks: { NVDA: "SMH" },
+      });
+    }
+    return Response.json({ bars: {}, next_page_token: null });
+  }) as typeof fetch);
+  const env = {
+    BARS_CACHE: db,
+    ALPACA_API_KEY: "synthetic",
+    ALPACA_API_SECRET: "synthetic",
+    COLLECTOR_URL: "https://collector.test",
+    COLLECTOR_TOKEN: "synthetic",
+  };
+  const plain = await worker.fetch(
+    new Request("https://example.test/api/board"),
+    env,
+  );
+  assert.equal(plain.status, 200);
+  assert.deepEqual(
+    ((await plain.json()) as { benchmarks: object }).benchmarks,
+    {},
+  );
+  assert.deepEqual(asked, [], "a down collector cannot slow the board");
+  const sectors = await worker.fetch(
+    new Request("https://example.test/api/board?sectors=1"),
+    env,
+  );
+  assert.deepEqual(
+    ((await sectors.json()) as { benchmarks: object }).benchmarks,
+    { NVDA: "SMH" },
+  );
+  assert.equal(asked.length, 1);
+});
