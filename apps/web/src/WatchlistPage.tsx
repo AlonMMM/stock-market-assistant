@@ -3,7 +3,7 @@ import type { Board } from "../../../packages/market-data/src/board.js";
 import type { LiveStatus } from "../../../packages/market-data/src/live.js";
 import { EngineTickers } from "./EngineTickers.js";
 import { boardRefreshMs, liveRefreshMs, usePolling } from "./Live.js";
-import { pillFor } from "./live-model.js";
+import { pillFor, type Compare } from "./live-model.js";
 import { useControlAccess } from "./Positions.js";
 import { StatusPill } from "./StatusPill.js";
 import { WatchTable } from "./WatchTable.js";
@@ -22,7 +22,13 @@ export function WatchlistPage({
   const warn = (message: string) =>
     setWarnings((w) => (w.at(-1) === message ? w : [...w, message]));
   const live = usePolling<LiveStatus>("/api/live", liveRefreshMs, warn);
-  const board = usePolling<Board>("/api/board", boardRefreshMs, warn);
+  // "vs sector" needs the collector's sector ETFs: asked for only then.
+  const [compare, setCompare] = useState<Compare>("SPY");
+  const board = usePolling<Board>(
+    compare === "sector" ? "/api/board?sectors=1" : "/api/board",
+    boardRefreshMs,
+    warn,
+  );
   const { canTrade } = useControlAccess();
   // The collector returns no alerts while unreachable; keep the last ones.
   const kept = useRef<LiveStatus["alerts"]>([]);
@@ -63,6 +69,8 @@ export function WatchlistPage({
           alerts={status ? kept.current : []}
           onShowAlerts={onShowAlerts}
           onTrade={canTrade ? onTrade : undefined}
+          compare={compare}
+          onCompare={setCompare}
         />
       ) : (
         <p className={board.error ? "notice error" : "chart-status"}>

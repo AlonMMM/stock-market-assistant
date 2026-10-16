@@ -309,15 +309,22 @@ export default {
           status: 405,
           headers: { Allow: "GET" },
         });
-      const list = await loadWatchlist({
-        url: env.COLLECTOR_URL,
-        token: env.COLLECTOR_TOKEN,
-      });
+      // Sector ETFs come from the collector and are asked for only when the
+      // page wants "vs sector" (?sectors=1): a slow or down collector must
+      // not hold up the board (user 2026-10-16).
+      const sectors = new URL(request.url).searchParams.get("sectors") === "1";
+      const list =
+        sectors || !env.BARS_CACHE
+          ? await loadWatchlist({
+              url: env.COLLECTOR_URL,
+              token: env.COLLECTOR_TOKEN,
+            })
+          : null;
       const result = await handleBoard(
         env.BARS_CACHE
           ? (await stores(env.BARS_CACHE).symbols.list()).tickers
-          : list.tickers,
-        list.benchmarks,
+          : list!.tickers,
+        sectors ? list!.benchmarks : {},
         credentials,
         fetch,
         Date.now(),

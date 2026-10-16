@@ -209,15 +209,19 @@ export function WatchTable({
   alerts,
   onShowAlerts,
   onTrade,
+  compare,
+  onCompare,
 }: {
   board: Board;
   alerts: FeedAlert[];
   onShowAlerts: (ticker: string) => void;
   // Absent for visitors who cannot trade.
   onTrade?: ((ticker: string) => void) | undefined;
+  // "vs sector" makes the page load the board with sector ETFs.
+  compare: Compare;
+  onCompare: (c: Compare) => void;
 }) {
   const [filter, setFilter] = useState<WatchFilter>("all");
-  const [compare, setCompare] = useState<Compare>("SPY");
   const [find, setFind] = useState("");
   const [sort, setSort] = useState<WatchSort>("change");
   const [descending, setDescending] = useState(true);
@@ -233,7 +237,9 @@ export function WatchTable({
   const asOf = board.series
     .map((s) => statsOf(s)?.asOf ?? 0)
     .reduce((a, b) => Math.max(a, b), 0);
-  const hasSectors = Object.keys(board.benchmarks).length > 0;
+  // Picked, but the board with sector ETFs has not arrived yet.
+  const sectorsLoading =
+    compare === "sector" && Object.keys(board.benchmarks).length === 0;
 
   const pick = (key: WatchSort) => {
     if (key === sort) setDescending(!descending);
@@ -291,31 +297,34 @@ export function WatchTable({
               onChange={(e) => setFind(e.target.value)}
             />
           </label>
-          {hasSectors && (
-            <div
-              className="wl-chips small wl-compare"
-              role="group"
-              aria-label="Compare with"
-            >
-              {(
-                [
-                  ["SPY", "vs SPY"],
-                  ["sector", "vs sector"],
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  type="button"
-                  key={key}
-                  aria-pressed={compare === key}
-                  onClick={() => setCompare(key)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
+          <div
+            className="wl-chips small wl-compare"
+            role="group"
+            aria-label="Compare with"
+          >
+            {(
+              [
+                ["SPY", "vs SPY"],
+                ["sector", "vs sector"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                type="button"
+                key={key}
+                aria-pressed={compare === key}
+                onClick={() => onCompare(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+      {sectorsLoading && (
+        <p className="wl-source" role="status">
+          Loading sector ETFs…
+        </p>
+      )}
 
       <div className="wl-table">
         <div className="wl-head wl-grid" role="group" aria-label="Sort by">
