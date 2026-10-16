@@ -3,6 +3,17 @@
 Updated: 2026-10-15
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
 
+## Watchlist: its own section, one line per stock (2026-10-16)
+
+Sections are Alerts · Watchlist · Portfolio · Backtest: a bottom tab bar on phones
+(≤720px), the header switcher on wider screens; `#alerts`, `#watchlist`, `#portfolio`
+and `#backtest` open a section. The watchlist shows one dense row per stock (IBKR-like):
+symbol, today's line (green above / red below the dashed previous close), last price
+with volume, change %, and Rel vol (orange from 2×). From 760px wide it adds vs
+SPY/sector, the score, the day range and alert counts. Filters: All, Moving, Rel vol ≥2×,
+With alerts. A row opens the day chart, key numbers, and links to its alerts and to Trade.
+The board's load time is unchanged.
+
 ## History: cumulative P&L at trade closes
 
 Cumulative realized P&L as a smooth monotone curve (no overshoot between

@@ -298,3 +298,17 @@ test("source note follows the API's SIP delay; an older API means 15 min", () =>
   assert.equal(sipDelayText(5), "SIP, 5-min delayed");
   assert.equal(sipDelayText(undefined), "SIP, 15-min delayed");
 });
+
+test("watchlist: the Rel vol ≥2× filter keeps unusual volume only", () => {
+  const row = (ticker: string, relVolume: number | null) =>
+    ({ ticker, index: 0, change: 0.2, relVolume, alerts: 0 }) as WatchRow;
+  const rows = [row("A", 2), row("B", 1.9), row("C", null), row("AB", 3)];
+  assert.deepEqual(
+    filterRows(rows, "hot", "").map((r) => r.ticker),
+    ["A", "AB"],
+  );
+  assert.deepEqual(
+    filterRows(rows, "hot", "ab").map((r) => r.ticker),
+    ["AB"],
+  );
+});

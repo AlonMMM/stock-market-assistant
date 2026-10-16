@@ -87,3 +87,70 @@ export function Sparkline({
     </svg>
   );
 }
+
+/**
+ * Watchlist row chart: today's line, green above the previous close and red
+ * below (the dashed line), with the last point marked. The y-range always
+ * includes the previous close, so the line's side of it reads at a glance.
+ */
+export function DaySpark({
+  points,
+  previousClose,
+  width = 64,
+  height = 30,
+}: {
+  points: [number, number][];
+  previousClose: number | null;
+  width?: number;
+  height?: number;
+}) {
+  if (points.length < 2) return <span className="spark-empty">—</span>;
+  let low = Infinity;
+  let high = -Infinity;
+  for (const [, v] of points) {
+    low = Math.min(low, v);
+    high = Math.max(high, v);
+  }
+  if (previousClose !== null) {
+    low = Math.min(low, previousClose);
+    high = Math.max(high, previousClose);
+  }
+  const span = high - low || 1;
+  const pad = 2.5;
+  const from = points[0]![0];
+  const to = points.at(-1)![0];
+  const x = (t: number) =>
+    pad + ((t - from) / (to - from || 1)) * (width - 2 * pad);
+  const y = (v: number) => pad + (1 - (v - low) / span) * (height - 2 * pad);
+  const last = points.at(-1)!;
+  const up = previousClose === null || last[1] >= previousClose;
+  const d = points
+    .map(([t, v], i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(v).toFixed(1)}`)
+    .join("");
+  return (
+    <svg
+      className={`day-spark ${up ? "up" : "down"}`}
+      viewBox={`0 0 ${width} ${height}`}
+      width={width}
+      height={height}
+      aria-hidden="true"
+    >
+      {previousClose !== null && (
+        <line
+          className="day-spark-base"
+          x1={pad}
+          x2={width - pad}
+          y1={y(previousClose)}
+          y2={y(previousClose)}
+        />
+      )}
+      <path className="day-spark-line" d={d} />
+      <circle
+        className="day-spark-dot"
+        cx={x(last[0])}
+        cy={y(last[1])}
+        r={2.2}
+      />
+    </svg>
+  );
+}

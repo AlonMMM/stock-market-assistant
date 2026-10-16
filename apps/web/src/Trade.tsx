@@ -297,8 +297,15 @@ function PriceRow({
 }
 
 /** Pick a stock, see its options, choose a strike, check and buy. */
-export function Trade({ edit }: { edit?: PortfolioOrder | null }) {
-  const [ticker, setTicker] = useState(edit?.underlying ?? "");
+export function Trade({
+  edit,
+  ticker: startTicker,
+}: {
+  edit?: PortfolioOrder | null;
+  // Opens on this stock's options (from the watchlist).
+  ticker?: string | undefined;
+}) {
+  const [ticker, setTicker] = useState(edit?.underlying ?? startTicker ?? "");
   const [right, setRight] = useState<Right>(edit?.option?.right ?? "call");
   // Options, or the stock itself (shares).
   const [mode, setMode] = useState<"options" | "stock">(
@@ -323,6 +330,11 @@ export function Trade({ edit }: { edit?: PortfolioOrder | null }) {
   const [loading, setLoading] = useState(false);
   const request = useRef(0);
   const picked = useRef<HTMLTableRowElement>(null);
+
+  // A stock picked in the watchlist: show its options at once.
+  useEffect(() => {
+    if (!edit && startTicker) void load(startTicker.toUpperCase(), right);
+  }, []);
 
   // An order opened from the list: its stock, side, expiry and strike.
   useEffect(() => {

@@ -235,8 +235,17 @@ const allSections = [
 ] as const;
 
 /** The Portfolio area: open trades, and the account's history. */
-export function Portfolio({ modes }: { modes: ReactNode }) {
-  const [tab, setTab] = useState<(typeof allSections)[number][0]>("live");
+export function Portfolio({
+  modes,
+  tradeSymbol = null,
+}: {
+  modes: ReactNode;
+  // A stock picked elsewhere (the watchlist): the trade ticket opens on it.
+  tradeSymbol?: string | null;
+}) {
+  const [tab, setTab] = useState<(typeof allSections)[number][0]>(
+    tradeSymbol ? "trade" : "live",
+  );
   // The trade ticket is for the account owner only.
   const { canTrade } = useControlAccess();
   // The open order the Trade page was opened on, if any.
@@ -300,7 +309,11 @@ export function Portfolio({ modes }: { modes: ReactNode }) {
             }}
           />
         ) : tab === "trade" && canTrade ? (
-          <TradeTicket key={editing?.id ?? "new"} edit={editing} />
+          <TradeTicket
+            key={editing?.id ?? "new"}
+            edit={editing}
+            ticker={editing ? undefined : (tradeSymbol ?? undefined)}
+          />
         ) : tab === "orders" ? (
           <Orders onError={ignore} />
         ) : (
