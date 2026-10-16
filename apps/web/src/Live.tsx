@@ -8,14 +8,10 @@ import { LiveAlerts } from "./LiveAlerts.js";
 import { MarketStrip } from "./MarketStrip.js";
 import { StatusPill } from "./StatusPill.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
-import { WatchTable } from "./WatchTable.js";
-import { EngineTickers } from "./EngineTickers.js";
 
-const tabs = ["alerts", "watchlist"] as const;
-
-const liveRefreshMs = 30000;
+export const liveRefreshMs = 30000;
 // Board data is SIP in 5-minute bars, delayed by the API's `delayMinutes`.
-const boardRefreshMs = 5 * 60000;
+export const boardRefreshMs = 5 * 60000;
 
 // Polls `path` while the page is visible.
 export function usePolling<T>(
@@ -89,13 +85,15 @@ function useLastVisit(): number | null {
 export function Live({
   modes,
   link = null,
+  initialSymbol = null,
 }: {
   modes: ReactNode;
   link?: AlertLink | null;
+  // A symbol picked in the watchlist: its alerts are shown.
+  initialSymbol?: string | null;
 }) {
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [tab, setTab] = useState<(typeof tabs)[number]>("alerts");
-  const [symbol, setSymbol] = useState<string | null>(null);
+  const [symbol, setSymbol] = useState<string | null>(initialSymbol);
   const since = useLastVisit();
   const warn = (message: string) =>
     setWarnings((w) => (w.at(-1) === message ? w : [...w, message]));
@@ -166,89 +164,26 @@ export function Live({
 
       <MarketStrip board={board.value} failed={!!board.error} now={now} />
 
-      <EngineTickers />
-
-      <div
-        role="tablist"
-        aria-label="Live sections"
-        className="tabs"
-        onKeyDown={(e) => {
-          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-          const step = e.key === "ArrowRight" ? 1 : tabs.length - 1;
-          const next = tabs[(tabs.indexOf(tab) + step) % tabs.length]!;
-          setTab(next);
-          document.getElementById(`tab-${next}`)?.focus();
-        }}
-      >
-        {(
-          [
-            ["alerts", "Alerts", status ? alerts.length : null],
-            ["watchlist", "Watchlist", board.value?.watchlist.length ?? null],
-          ] as const
-        ).map(([key, label, count]) => (
-          <button
-            type="button"
-            role="tab"
-            key={key}
-            id={`tab-${key}`}
-            aria-selected={tab === key}
-            aria-controls={`panel-${key}`}
-            tabIndex={tab === key ? 0 : -1}
-            onClick={() => setTab(key)}
-          >
-            {label}
-            {count !== null && <span className="tab-count">{count}</span>}
-          </button>
-        ))}
-      </div>
-
-      {tab === "alerts" ? (
-        <section
-          role="tabpanel"
-          id="panel-alerts"
-          aria-labelledby="tab-alerts"
-          className="tab-panel"
-        >
-          {linkNotice && <p className="notice">{linkNotice}</p>}
-          {alerts.length > 0 ? (
-            <LiveAlerts
-              alerts={alerts}
-              benchmarks={board.value?.benchmarks}
-              focus={linked ? link.ticker + link.end : undefined}
-              symbol={symbol}
-              onSymbol={setSymbol}
-              since={since}
-              strengthNow={status?.strengthNow}
-            />
-          ) : (
-            <p className="notice">{emptyText}</p>
-          )}
-        </section>
-      ) : (
-        <section
-          role="tabpanel"
-          id="panel-watchlist"
-          aria-labelledby="tab-watchlist"
-          className="tab-panel"
-        >
-          {board.value ? (
-            <WatchTable
-              board={board.value}
-              alerts={alerts}
-              onShowAlerts={(ticker) => {
-                setSymbol(ticker);
-                setTab("alerts");
-              }}
-            />
-          ) : (
-            <p className={board.error ? "notice error" : "chart-status"}>
-              {board.error
-                ? `Watchlist unavailable: ${board.error}`
-                : "Loading watchlist…"}
-            </p>
-          )}
-        </section>
-      )}
+      <h2 className="wl-title">
+        Alerts
+        {status && <span className="count num">{alerts.length}</span>}
+      </h2>
+      <section aria-label="Live alerts">
+        {linkNotice && <p className="notice">{linkNotice}</p>}
+        {alerts.length > 0 ? (
+          <LiveAlerts
+            alerts={alerts}
+            benchmarks={board.value?.benchmarks}
+            focus={linked ? link.ticker + link.end : undefined}
+            symbol={symbol}
+            onSymbol={setSymbol}
+            since={since}
+            strengthNow={status?.strengthNow}
+          />
+        ) : (
+          <p className="notice">{emptyText}</p>
+        )}
+      </section>
     </div>
   );
 }

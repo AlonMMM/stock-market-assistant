@@ -413,6 +413,10 @@ export interface WatchRow {
   rsScore: number | null; // score vs SPY 0–100, always against SPY
   dayLow: number | null;
   dayHigh: number | null;
+  previousClose: number | null;
+  volume: number | null; // regular-session shares so far
+  typicalVolume: number | null; // median by this minute, previous sessions
+  beta: number | null;
   alerts: number;
 }
 
@@ -444,6 +448,10 @@ export function watchRows(
       rsScore: stats?.rsScore ?? null,
       dayLow: stats?.dayLow ?? null,
       dayHigh: stats?.dayHigh ?? null,
+      previousClose: s?.previousClose ?? null,
+      volume: stats ? stats.volume : null,
+      typicalVolume: stats?.typicalVolume ?? null,
+      beta: stats?.beta ?? null,
       alerts: alertCounts.get(ticker) ?? 0,
     };
   });
@@ -455,7 +463,10 @@ export const isMoving = (r: WatchRow) =>
   (r.change !== null && Math.abs(r.change) >= moving.change) ||
   (r.relVolume !== null && r.relVolume >= moving.relVolume);
 
-export type WatchFilter = "all" | "moving" | "alerts";
+export type WatchFilter = "all" | "moving" | "hot" | "alerts";
+/** Rel vol of at least `moving.relVolume`: unusual volume. */
+export const isHot = (r: WatchRow) =>
+  r.relVolume !== null && r.relVolume >= moving.relVolume;
 export function filterRows(
   rows: WatchRow[],
   filter: WatchFilter,
@@ -465,7 +476,12 @@ export function filterRows(
   return rows.filter(
     (r) =>
       (!q || r.ticker.startsWith(q)) &&
-      (filter === "all" || (filter === "moving" ? isMoving(r) : r.alerts > 0)),
+      (filter === "all" ||
+        (filter === "moving"
+          ? isMoving(r)
+          : filter === "hot"
+            ? isHot(r)
+            : r.alerts > 0)),
   );
 }
 
