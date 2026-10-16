@@ -30,8 +30,9 @@ import {
   toneWords,
 } from "./vs-spy-model.js";
 
-const DayChart = lazy(() =>
-  import("./DayChart.js").then((m) => ({ default: m.DayChart })),
+// An opened row shows plain candles only (user 2026-10-16).
+const CandleChart = lazy(() =>
+  import("./CandleChart.js").then((m) => ({ default: m.CandleChart })),
 );
 
 const pct = (n: number) => `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(2)}%`;
@@ -87,14 +88,8 @@ function RowDetail({
   const beta = statsOf(board.series.find((s) => s.ticker === row.ticker))?.beta;
   return (
     <div className="wl-detail">
-      <Suspense fallback={<p className="chart-status">Loading day chart…</p>}>
-        <DayChart
-          key={row.against}
-          ticker={row.ticker}
-          date={board.date}
-          sector={row.sector ?? undefined}
-          against={row.against}
-        />
+      <Suspense fallback={<p className="chart-status">Loading chart…</p>}>
+        <CandleChart ticker={row.ticker} date={board.date} />
       </Suspense>
       <div className="wl-facts">
         <div className="wl-fact">
