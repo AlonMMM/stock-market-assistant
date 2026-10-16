@@ -1347,8 +1347,12 @@ export class TradeEngine {
    * orders for more than is held, is returned and sent as an alert.
    */
   async shortCheck(): Promise<{ problems: string[]; alert?: Sent }> {
+    // Stocks too: the site sells shares (user 2026-10-16), never short.
     const problems = shortRisks(
-      await this.broker.positions(),
+      [
+        ...(await this.broker.positions()),
+        ...((await this.broker.stockPositions?.()) ?? []),
+      ],
       await this.broker.openOrders(),
     );
     if (problems.length === 0) return { problems };

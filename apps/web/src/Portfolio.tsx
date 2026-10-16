@@ -70,7 +70,7 @@ function Order({
       : o.limitPrice !== null
         ? `limit ${o.limitPrice.toFixed(2)}`
         : o.type;
-  const editable = onEdit && o.option;
+  const editable = onEdit !== undefined;
   return (
     <li
       className={editable ? "order-row" : undefined}
@@ -80,7 +80,7 @@ function Order({
         {optionName(o)}
         {o.option && ` · ${expiryLabel(o.option.expiry)}`}
       </strong>
-      {onEdit && o.option && (
+      {onEdit && (
         <button
           type="button"
           className="why-button order-open"

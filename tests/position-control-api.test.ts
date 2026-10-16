@@ -294,3 +294,74 @@ test("trade ticket: chain, check and buy are forwarded for the owner only", asyn
   assert.equal(await refused("price", { orderId: id }), 400);
   assert.equal(seen.length, 6);
 });
+
+test("stock trading: quote, buy and sell are forwarded for the owner only", async () => {
+  const { fetcher, seen } = setup();
+  const call = (
+    method: string,
+    sub: string,
+    body?: unknown,
+    identity: { email: string } | null = owner,
+    query?: URLSearchParams,
+  ) =>
+    handleControl(
+      config,
+      identity,
+      {
+        method,
+        path: `/api/portfolio/control/${sub}`,
+        ...(query ? { query } : {}),
+        body,
+        origin,
+        requestOrigin: origin,
+      },
+      fetcher,
+    );
+  const quote = await call(
+    "GET",
+    "stock/quote",
+    undefined,
+    owner,
+    new URLSearchParams({ symbol: "aapl" }),
+  );
+  assert.equal(quote.status, 200);
+  assert.equal(seen[0]!.url, "https://trader.test/v1/stock/quote?symbol=AAPL");
+  assert.equal(
+    (await call("POST", "stock/buy", { symbol: "aapl", amount: 2500 })).status,
+    200,
+  );
+  assert.deepEqual(seen[1]!.body, {
+    symbol: "AAPL",
+    amount: 2500,
+    via: "site",
+  });
+  assert.equal(
+    (await call("POST", "stock/sell", { symbol: "AAPL", qty: "half" })).status,
+    200,
+  );
+  assert.deepEqual(seen[2]!.body, { symbol: "AAPL", qty: "half", via: "site" });
+  // Nothing is sent for someone else, or for a bad size.
+  assert.equal(
+    (
+      await call(
+        "POST",
+        "stock/buy",
+        { symbol: "AAPL", qty: 1 },
+        { email: "x@y.z" },
+      )
+    ).status,
+    403,
+  );
+  for (const body of [
+    { symbol: "AAPL" },
+    { symbol: "AAPL", qty: 1, amount: 100 },
+    { symbol: "AAPL", qty: 0.5 },
+    { symbol: "AAPL1", qty: 1 },
+  ])
+    assert.equal((await call("POST", "stock/buy", body)).status, 400);
+  assert.equal(
+    (await call("POST", "stock/sell", { symbol: "AAPL", qty: -1 })).status,
+    400,
+  );
+  assert.equal(seen.length, 3);
+});

@@ -13,6 +13,13 @@ import {
   roundToTick,
 } from "../../../packages/trading/src/options.js";
 import type { Notifier } from "../../../packages/trading/src/notifier.js";
+import {
+  sellableShares,
+  sharesFor,
+  stockSellQty,
+  stockStepPrice,
+  workStockOrder,
+} from "../../../packages/trading/src/stock-orders.js";
 import type { JobKind, TradeStore } from "./store.js";
 
 // The trading service behind the Claude connector
@@ -40,6 +47,8 @@ export interface TraderOptions {
   posts?: PostStore;
   now?: () => number;
   log?: (line: string) => void;
+  // Waits between a stock order's price moves; real time when absent.
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /** The stop orders seen open at the last look, and each position's entry. */
@@ -127,6 +136,7 @@ export class TraderService {
   private watching = false;
   private readonly now: () => number;
   private readonly log: (line: string) => void;
+  private readonly sleep: ((ms: number) => Promise<void>) | undefined;
   private readonly running = new Map<string, Promise<void>>();
   // Where each running job stands; lost on a restart, like the job itself.
   private readonly progress = new Map<string, BuyProgress>();
@@ -140,6 +150,7 @@ export class TraderService {
     this.posts = options.posts;
     this.now = options.now ?? Date.now;
     this.log = options.log ?? (() => {});
+    this.sleep = options.sleep;
   }
 
   private record(tool: string, input: unknown, outcome: string) {
@@ -553,7 +564,7 @@ export class TraderService {
       body,
       `canceled ${kind} ${left} ${order.symbol}`,
     );
-    if (kind === "stop") {
+    if (kind === "stop" && occ.test(order.symbol)) {
       const c = parseOccSymbol(order.symbol);
       await this.notifier
         .alert(
@@ -584,12 +595,16 @@ export class TraderService {
     const asked = number(body, "price");
     if (asked === undefined || !(asked > 0))
       throw new RequestError("price must be above zero");
-    if (order.side !== "buy" || order.stopPrice !== null)
+    if (
+      order.stopPrice !== null ||
+      (order.side !== "buy" && occ.test(order.symbol))
+    )
       throw new RequestError(
         "Only a buy order's price can be changed here; a stop is moved on its position",
         409,
       );
     // While the service raises the price itself, two changes would collide.
+    if (!occ.test(order.symbol)) return this.repriceStock(order, asked, body);
     const raising = this.store
       .runningJobs()
       .some(
@@ -782,6 +797,235 @@ export class TraderService {
     };
   }
 
+  // -------------------------------------------------------------------------
+  // Stocks (user 2026-10-16): bought and sold from the site only, whole
+  // shares, long only. No size limit and no automatic stop, by the user's
+  // choice; a sell never goes beyond the shares held.
+
+  private stockBroker() {
+    const { stockQuote, stockLimit, stockPositions } = this.broker;
+    if (!stockQuote || !stockLimit || !stockPositions)
+      throw new RequestError("This broker cannot trade stocks", 501);
+    return {
+      stockQuote: stockQuote.bind(this.broker),
+      stockLimit: stockLimit.bind(this.broker),
+      stockPositions: stockPositions.bind(this.broker),
+      replace: this.broker.replace.bind(this.broker),
+      order: this.broker.order.bind(this.broker),
+    };
+  }
+
+  private stockSymbol(source: Body) {
+    const symbol = text(source, "symbol", ticker);
+    if (!symbol) throw new RequestError("symbol must be a stock ticker");
+    return symbol.toUpperCase();
+  }
+
+  private async heldShares(symbol: string) {
+    const positions = await this.stockBroker().stockPositions();
+    return positions.find((p) => p.symbol === symbol) ?? null;
+  }
+
+  /** `GET /v1/stock/quote?symbol=`: bid, ask, shares held and sellable. */
+  async stockQuote(query: Body) {
+    const symbol = this.stockSymbol(query);
+    const client = this.stockBroker();
+    const [quote, held, open, marketOpen] = await Promise.all([
+      client.stockQuote(symbol).catch((error) => {
+        throw new RequestError(message(error), 502);
+      }),
+      this.heldShares(symbol),
+      this.broker.openOrders(symbol),
+      this.broker.marketOpen().catch(() => null),
+    ]);
+    const qty = held?.qty ?? 0;
+    return {
+      symbol,
+      bid: quote.bid,
+      ask: quote.ask,
+      last: quote.last,
+      quotedAt:
+        quote.quotedAt === undefined
+          ? null
+          : new Date(quote.quotedAt).toISOString(),
+      marketOpen,
+      held: qty,
+      avgEntryPrice: held?.avgEntryPrice ?? null,
+      sellable: sellableShares(qty, symbol, open),
+      // Where a buy and a sell would start.
+      buyPrice: stockStepPrice("buy", quote, 0),
+      sellPrice: stockStepPrice("sell", quote, 0),
+      openOrders: open
+        .filter((o) => o.stopPrice === null)
+        .map((o) => ({
+          orderId: o.id,
+          side: o.side,
+          qty: o.qty,
+          filledQty: o.filledQty,
+          price: o.limitPrice,
+        })),
+    };
+  }
+
+  private busy(symbol: string) {
+    if (this.store.runningJobs().some((j) => j.symbol === symbol))
+      throw new RequestError(
+        `${symbol} already has an order in progress; wait for it`,
+        409,
+      );
+  }
+
+  /**
+   * `POST /v1/stock/buy` `{ symbol, qty }` or `{ symbol, amount }` (dollars,
+   * turned into whole shares at the ask). Answers at once; runs as a job.
+   */
+  async stockBuy(body: Body) {
+    const symbol = this.stockSymbol(body);
+    const client = this.stockBroker();
+    const qtyIn = number(body, "qty");
+    const amount = number(body, "amount");
+    if ((qtyIn === undefined) === (amount === undefined))
+      throw new RequestError("Give a size: qty (shares) or amount (dollars)");
+    if (qtyIn !== undefined && !(Number.isInteger(qtyIn) && qtyIn >= 1))
+      throw new RequestError("qty must be a whole number of shares");
+    if (amount !== undefined && !(amount > 0))
+      throw new RequestError("amount must be above zero");
+    this.busy(symbol);
+    let qty = qtyIn ?? 0;
+    if (amount !== undefined) {
+      const quote = await client.stockQuote(symbol).catch((error) => {
+        throw new RequestError(message(error), 502);
+      });
+      const price = quote.ask ?? quote.last;
+      if (price === null)
+        throw new RequestError(`No price for ${symbol} right now`, 422);
+      qty = sharesFor(amount, price);
+      if (qty < 1)
+        throw new RequestError(
+          `$${amount} does not buy one share of ${symbol} at ${price}`,
+          422,
+        );
+    }
+    const request = { symbol, side: "buy" as const, qty };
+    const jobId = this.start("stock-buy", symbol, request, (id) =>
+      this.runStock(id, request),
+    );
+    this.record("stock-buy", body, `started ${jobId}: ${qty} ${symbol}`);
+    return {
+      status: "started" as const,
+      jobId,
+      paper: this.broker.capabilities.paper,
+      symbol,
+      qty,
+    };
+  }
+
+  /**
+   * `POST /v1/stock/sell` `{ symbol, qty: "all" | "half" | n }`. Only shares
+   * held and not already offered by an open sell; never short.
+   */
+  async stockSell(body: Body) {
+    const symbol = this.stockSymbol(body);
+    this.stockBroker();
+    const asked = typeof body.qty === "number" ? String(body.qty) : body.qty;
+    if (typeof asked !== "string" || !/^(all|half|\d{1,7})$/.test(asked))
+      throw new RequestError("qty must be all, half or a number of shares");
+    this.busy(symbol);
+    const [held, open] = await Promise.all([
+      this.heldShares(symbol),
+      this.broker.openOrders(symbol),
+    ]);
+    if (!held || !(held.qty > 0))
+      throw new RequestError(`No long position in ${symbol}`);
+    let qty: number;
+    try {
+      qty = stockSellQty(asked, sellableShares(held.qty, symbol, open));
+    } catch (error) {
+      throw new RequestError(message(error), 422);
+    }
+    const request = { symbol, side: "sell" as const, qty };
+    const jobId = this.start("stock-sell", symbol, request, (id) =>
+      this.runStock(id, request),
+    );
+    this.record(
+      "stock-sell",
+      body,
+      `started ${jobId}: ${qty} of ${held.qty} ${symbol}`,
+    );
+    return {
+      status: "started" as const,
+      jobId,
+      paper: this.broker.capabilities.paper,
+      symbol,
+      selling: qty,
+      held: held.qty,
+    };
+  }
+
+  private async runStock(
+    id: string,
+    request: { symbol: string; side: "buy" | "sell"; qty: number },
+  ) {
+    this.progress.set(id, { stage: "sending" });
+    const result = await workStockOrder(this.stockBroker(), request, {
+      log: this.log,
+      ...(this.sleep ? { sleep: this.sleep } : {}),
+      onOrder: (order) =>
+        this.progress.set(id, { stage: "moving the price", orderId: order.id }),
+    });
+    return {
+      symbol: request.symbol,
+      side: request.side,
+      qty: request.qty,
+      status: result.status,
+      filledQty: result.order.filledQty,
+      avgPrice: result.order.filledAvgPrice,
+      orderId: result.order.id,
+      prices: result.prices,
+      ...(result.raiseError ? { raiseError: result.raiseError } : {}),
+      // A remainder stays working as a day order, pre/after-hours included.
+      working: result.status === "open" || result.status === "partial",
+    };
+  }
+
+  /** A stock order's new limit price; no size limit (user 2026-10-16). */
+  private async repriceStock(
+    order: {
+      id: string;
+      symbol: string;
+      side: string;
+      qty: number;
+      limitPrice: number | null;
+    },
+    asked: number,
+    body: Body,
+  ) {
+    if (this.store.runningJobs().some((j) => j.symbol === order.symbol))
+      throw new RequestError(
+        "The service is moving this order's price right now; try again in a few seconds",
+        409,
+      );
+    const price = Number(asked.toFixed(asked >= 1 ? 2 : 4));
+    let changed;
+    try {
+      changed = await this.broker.replace(order.id, price);
+    } catch (error) {
+      throw new RequestError(message(error), 502);
+    }
+    this.record(
+      "reprice-order",
+      body,
+      `${order.symbol} ${order.limitPrice ?? "?"} -> ${price}`,
+    );
+    return {
+      contract: order.symbol,
+      orderId: changed.id,
+      price,
+      was: order.limitPrice,
+      qty: order.qty,
+    };
+  }
+
   /**
    * Run once on start. A job still marked running was cut off by a restart:
    * its open order is canceled, what it filled gets a stop, and the user is
@@ -792,6 +1036,29 @@ export class TraderService {
     for (const job of cut) {
       const notes: string[] = [];
       try {
+        if (job.kind === "stock-buy" || job.kind === "stock-sell") {
+          // No stop for stocks: the job's own limit order is left working,
+          // as a finished job would leave it; the user is told.
+          const open = await this.broker.openOrders(job.symbol);
+          const side = job.kind === "stock-buy" ? "buy" : "sell";
+          const left = open.filter(
+            (o) => o.side === side && o.stopPrice === null,
+          );
+          notes.push(
+            left.length > 0
+              ? `${left.length} ${side} order(s) still working`
+              : "no order working",
+          );
+          this.store.finishJob(job.id, "interrupted", { notes }, this.now());
+          this.record("reconcile", { jobId: job.id }, notes.join("; "));
+          await this.notifier
+            .alert(`Trading service restarted during a ${job.kind}`, [
+              job.symbol,
+              ...notes,
+            ])
+            .catch(() => {});
+          continue;
+        }
         const open = await this.broker.openOrders(job.symbol);
         // A buy's own order, or a sale's limit order; stops stay in place.
         const stale = open.filter((o) =>

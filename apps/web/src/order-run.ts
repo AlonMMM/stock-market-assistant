@@ -18,6 +18,12 @@ export type Job = {
       order?: { filledQty: number; filledAvgPrice: number | null } | null;
     };
     stop?: { price?: number; qty?: number; error?: string };
+    // A stock order (Trade → Shares).
+    side?: "buy" | "sell";
+    qty?: number;
+    filledQty?: number;
+    avgPrice?: number | null;
+    working?: boolean;
     canceledQty?: number;
     shortRisks?: string[];
   } | null;
@@ -39,7 +45,7 @@ export function outcome(
 ): { ok: boolean; lines: string[] } {
   const r = job.result ?? {};
   const short = r.shortRisks?.length
-    ? [`Short option risk: ${r.shortRisks.join("; ")}`]
+    ? [`Short position risk: ${r.shortRisks.join("; ")}`]
     : [];
   if (job.state !== "done")
     return {
@@ -51,6 +57,25 @@ export function outcome(
         ...short,
       ],
     };
+  if (r.side) {
+    const did = r.side === "buy" ? "Bought" : "Sold";
+    const got = r.filledQty ?? 0;
+    const left = (r.qty ?? 0) - got;
+    return {
+      ok: got > 0 || r.working === true,
+      lines: [
+        got > 0
+          ? `${did} ${got} at ${r.avgPrice?.toFixed(2) ?? "—"}.`
+          : `Nothing filled yet.`,
+        ...(left > 0 && r.working
+          ? [`${left} still working as a limit order for the day.`]
+          : left > 0
+            ? [`${left} did not fill.`]
+            : []),
+        ...short,
+      ],
+    };
+  }
   if (buying) {
     const got = r.result?.order?.filledQty ?? 0;
     const at = r.result?.order?.filledAvgPrice;

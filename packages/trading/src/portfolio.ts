@@ -100,8 +100,8 @@ export interface Portfolio {
   // are not counted.
   riskAtStops: number;
   unprotected: number; // positions with no stop, or one covering only part
-  // Must stay empty: a short option position, or sell orders for more
-  // contracts than are held (safety.ts).
+  // Must stay empty: a short option or stock position, or sell orders for
+  // more than is held (safety.ts).
   shortRisks: string[];
 }
 
@@ -968,10 +968,8 @@ export async function handlePortfolio(
         riskAtStops: round(
           positions.reduce((sum, p) => sum + (p.stop?.risk ?? 0), 0),
         ),
-        shortRisks: shortRisks(
-          positions.filter((p) => p.option),
-          orders.filter((o) => o.option),
-        ),
+        // Options and stocks: neither may ever be short.
+        shortRisks: shortRisks(positions, orders),
         unprotected: positions.filter(
           (p) => p.qty > 0 && (p.stop?.qty ?? 0) < p.qty,
         ).length,

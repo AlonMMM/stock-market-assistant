@@ -1,4 +1,10 @@
-import type { Account, Broker, BrokerCapabilities, Order } from "./broker.js";
+import type {
+  Account,
+  Broker,
+  BrokerCapabilities,
+  Order,
+  StockQuote,
+} from "./broker.js";
 import { parseOccSymbol, type OptionQuote, type Right } from "./options.js";
 
 type Fetcher = typeof fetch;
@@ -61,6 +67,10 @@ function reason(text: string): string {
   }
   return text.slice(0, 300) || "no reason given";
 }
+
+// Stocks at $1 or more trade in cents; below $1, in 1/100 of a cent.
+const stockPriceText = (price: number) =>
+  price >= 1 ? price.toFixed(2) : price.toFixed(4);
 
 // A daily point is labelled with its New York trading day.
 const tradingDay = new Intl.DateTimeFormat("en-CA", {
@@ -220,6 +230,69 @@ export class AlpacaTrading implements Broker {
     return typeof price === "number" && price > 0 ? price : null;
   }
 
+  async stockQuote(symbol: string): Promise<StockQuote> {
+    // No `feed`: the best one the account has; SIP covers extended hours.
+    const body = await this.call<{
+      latestQuote?: { bp?: number; ap?: number; t?: string };
+      latestTrade?: { p?: number };
+    }>(this.dataUrl, `/v2/stocks/${encodeURIComponent(symbol)}/snapshot`);
+    const positive = (v: unknown) =>
+      typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null;
+    const at = body?.latestQuote?.t ? Date.parse(body.latestQuote.t) : NaN;
+    return {
+      symbol,
+      bid: positive(body?.latestQuote?.bp),
+      ask: positive(body?.latestQuote?.ap),
+      last: positive(body?.latestTrade?.p),
+      ...(Number.isFinite(at) ? { quotedAt: at } : {}),
+    };
+  }
+
+  /**
+   * Whole shares, day limit, `extended_hours` so it can also fill in pre- and
+   * after-hours. Alpaca accepts that only for limit day orders.
+   */
+  async stockLimit(
+    symbol: string,
+    side: "buy" | "sell",
+    qty: number,
+    limitPrice: number,
+  ) {
+    return order(
+      await this.call<RawOrder>(this.tradingUrl, "/v2/orders", {
+        method: "POST",
+        body: {
+          symbol,
+          qty: String(qty),
+          side,
+          type: "limit",
+          time_in_force: "day",
+          extended_hours: true,
+          limit_price: stockPriceText(limitPrice),
+        },
+      }),
+    );
+  }
+
+  /** Stock positions; a short one has a negative quantity. */
+  async stockPositions() {
+    const raw = await this.call<
+      {
+        symbol: string;
+        asset_class: string;
+        qty: string;
+        avg_entry_price: string;
+      }[]
+    >(this.tradingUrl, "/v2/positions");
+    return raw
+      .filter((p) => p.asset_class === "us_equity")
+      .map((p) => ({
+        symbol: p.symbol,
+        qty: Number(p.qty),
+        avgEntryPrice: Number(p.avg_entry_price),
+      }));
+  }
+
   async buyLimit(symbol: string, qty: number, limitPrice: number) {
     return order(
       await this.call<RawOrder>(this.tradingUrl, "/v2/orders", {
@@ -346,7 +419,7 @@ export class AlpacaTrading implements Broker {
     return order(
       await this.call<RawOrder>(this.tradingUrl, `/v2/orders/${id}`, {
         method: "PATCH",
-        body: { limit_price: limitPrice.toFixed(2) },
+        body: { limit_price: stockPriceText(limitPrice) },
       }),
     );
   }

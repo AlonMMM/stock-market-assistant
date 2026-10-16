@@ -90,6 +90,45 @@ function order(body: unknown): Record<string, unknown> | Answer {
   };
 }
 
+const stockTicker = /^[A-Za-z][A-Za-z.]{0,5}$/;
+
+/**
+ * A stock order from the page (user 2026-10-16): buy `qty` shares or
+ * `amount` dollars; sell `qty` shares, "all" or "half". Long only: the
+ * trading service refuses a sale beyond the shares held.
+ */
+function stockOrder(
+  sub: "stock/buy" | "stock/sell",
+  body: unknown,
+): Record<string, unknown> | Answer {
+  const b = (body && typeof body === "object" ? body : {}) as Record<
+    string,
+    unknown
+  >;
+  if (typeof b.symbol !== "string" || !stockTicker.test(b.symbol))
+    return bad("symbol is not a ticker");
+  const symbol = b.symbol.toUpperCase();
+  const whole = (v: unknown) =>
+    typeof v === "number" && Number.isInteger(v) && v >= 1;
+  if (sub === "stock/sell") {
+    if (!(whole(b.qty) || b.qty === "all" || b.qty === "half"))
+      return bad("qty must be all, half or a whole number of shares");
+    return { symbol, qty: b.qty };
+  }
+  const hasQty = b.qty !== undefined;
+  const hasAmount = b.amount !== undefined;
+  if (hasQty === hasAmount)
+    return bad("Give a size: qty (shares) or amount (dollars), not both");
+  if (hasQty && !whole(b.qty))
+    return bad("qty must be a whole number of shares");
+  if (
+    hasAmount &&
+    !(typeof b.amount === "number" && Number.isFinite(b.amount) && b.amount > 0)
+  )
+    return bad("amount must be a number above zero");
+  return { symbol, ...(hasQty ? { qty: b.qty } : { amount: b.amount }) };
+}
+
 /**
  * Everything here is for the owner only, except the first line.
  * `GET  /api/portfolio/control`: whether this person may trade.
@@ -103,6 +142,9 @@ function order(body: unknown): Record<string, unknown> | Answer {
  * `POST …/stop` `{ contract, price }`: moves the position's stop.
  * `POST …/cancel` `{ orderId }`: withdraws one open order.
  * `POST …/price` `{ orderId, price }`: changes a working buy's limit price.
+ * `GET  …/stock/quote?symbol=`: bid, ask, shares held and free to sell.
+ * `POST …/stock/buy` `{ symbol, qty | amount }`: buys whole shares.
+ * `POST …/stock/sell` `{ symbol, qty | "all" | "half" }`: sells held shares.
  */
 export async function handleControl(
   config: ControlConfig,
@@ -138,6 +180,10 @@ export async function handleControl(
         right,
         ...(expiry ? { expiry } : {}),
       })}`;
+    } else if (sub === "stock/quote") {
+      const symbol = request.query?.get("symbol") ?? "";
+      if (!stockTicker.test(symbol)) return bad("symbol is not a ticker");
+      path = `/v1/stock/quote?${new URLSearchParams({ symbol: symbol.toUpperCase() })}`;
     } else return { status: 404, body: { error: "Not found" } };
   } else if (request.method === "POST") {
     if (request.requestOrigin !== request.origin)
@@ -181,6 +227,11 @@ export async function handleControl(
           via: "site",
         };
       }
+    } else if (sub === "stock/buy" || sub === "stock/sell") {
+      const fields = stockOrder(sub, request.body);
+      if ("status" in fields) return fields as Answer;
+      path = `/v1/${sub}`;
+      body = { ...fields, via: "site" };
     } else if (sub === "check" || sub === "buy") {
       const fields = order(request.body);
       if ("status" in fields) return fields as Answer;
