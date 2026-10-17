@@ -7,7 +7,9 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Fastify, { type FastifyRequest } from "fastify";
 import { Vault } from "./secrets.js";
-import { seedOwner } from "./seed.js";
+import { StoqeyTws } from "../../../packages/trading/src/tws-client.js";
+import { ensureOwnerIbkr, seedOwner } from "./seed.js";
+import { ShortWatch } from "./short-watch.js";
 import { RequestError, type TraderService } from "./service.js";
 import { TradeStore } from "./store.js";
 import { Traders } from "./traders.js";
@@ -32,6 +34,8 @@ const log = (line: string) =>
 // On the first start the single trader of before becomes the owner.
 const seeded = seedOwner(store, process.env, Date.now());
 if (seeded) log(`added the owner "${seeded}" from the environment`);
+const ibkr = ensureOwnerIbkr(store, process.env, Date.now());
+if (ibkr) log(`added the owner's IBKR paper account "${ibkr}"`);
 const vaultKey = env("TRADER_VAULT_KEY");
 const traders = new Traders({
   store,
@@ -42,6 +46,14 @@ const traders = new Traders({
   enabled: process.env.TRADING_ENABLED !== "false",
   optionsFeed:
     process.env.ALPACA_OPTIONS_FEED === "indicative" ? "indicative" : "opra",
+  // One client id per Gateway connection; the collector will use another.
+  makeTws: (host, port) =>
+    new StoqeyTws({
+      host,
+      port,
+      clientId: Number(process.env.IBKR_CLIENT_ID ?? 11),
+      log,
+    }),
   log,
 });
 // Fails the start when the owner cannot be built, as a missing key did.
@@ -73,11 +85,20 @@ api.setErrorHandler((error, _request, reply) => {
   log(`request failed: ${text}`);
   return reply.code(502).send({ error: text });
 });
-// The site forwards whom a call is for; without it, the owner's.
+// The site forwards whom a call is for; without it, the owner's. A call may
+// name the broker (`X-Trader-Broker`, or `broker` in the body or query);
+// without it, the trader's default account.
 const service = (request: FastifyRequest): TraderService => {
   const caller = request.headers["x-trader-user"];
+  const named =
+    request.headers["x-trader-broker"] ??
+    body(request.body).broker ??
+    body(request.query).broker;
+  if (named !== undefined && named !== "alpaca" && named !== "ibkr")
+    throw new RequestError("broker must be alpaca or ibkr");
   return traders.forCaller(
     typeof caller === "string" && caller !== "" ? caller : undefined,
+    named as "alpaca" | "ibkr" | undefined,
   ).service;
 };
 const body = (value: unknown) =>
@@ -155,15 +176,29 @@ const watchAll = () =>
           .watchStops()
           .catch((error: unknown) =>
             log(
-              `stop watch of ${t.user.id} failed: ${error instanceof Error ? error.message : String(error)}`,
+              `stop watch of ${t.scope} failed: ${error instanceof Error ? error.message : String(error)}`,
             ),
           ),
       ),
   );
 const stopWatch = setInterval(() => void watchAll(), stopWatchMs);
+// Brokers that would let a sell open a short are checked every minute.
+const shorts = new ShortWatch(log);
+const shortWatch = setInterval(() => {
+  for (const t of traders.all())
+    if (!t.broker.capabilities.closeOnlyOrders)
+      shorts
+        .check(t)
+        .catch((error: unknown) =>
+          log(
+            `short check of ${t.scope} failed: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        );
+}, 60_000);
 
 async function stop() {
   clearInterval(stopWatch);
+  clearInterval(shortWatch);
   await api.close();
   // A job cut off here is settled by `reconcile` on the next start.
   store.close();
@@ -174,8 +209,7 @@ process.once("SIGTERM", () => void stop());
 
 for (const t of traders.all()) {
   const cut = await t.service.reconcile();
-  if (cut > 0)
-    log(`settled ${cut} job(s) of ${t.user.id} cut off by a restart`);
+  if (cut > 0) log(`settled ${cut} job(s) of ${t.scope} cut off by a restart`);
 }
 // Stops that sold while the service was down are reported now.
 await watchAll();

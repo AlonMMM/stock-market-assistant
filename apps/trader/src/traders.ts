@@ -6,6 +6,10 @@ import {
 import type { Broker } from "../../../packages/trading/src/broker.js";
 import { TradeEngine } from "../../../packages/trading/src/engine.js";
 import {
+  IbkrTrading,
+  type TwsClient,
+} from "../../../packages/trading/src/ibkr-trading.js";
+import {
   channelEvents,
   FanOutNotifier,
   type ChannelEvent,
@@ -18,11 +22,18 @@ import {
 import { resolveValidator } from "../../../packages/trading/src/validators.js";
 import { readSecret, type SecretSource } from "./secrets.js";
 import { RequestError, TraderService } from "./service.js";
-import type { BrokerAccount, Channel, TradeStore, User } from "./store.js";
+import type {
+  BrokerAccount,
+  BrokerName,
+  Channel,
+  TradeStore,
+  User,
+} from "./store.js";
 
 // Each trader's broker, channels, validator and service, built from the
-// store (docs/features/multi-user-ibkr.md). One TraderService per user, on
-// that user's default broker account.
+// store (docs/features/multi-user-ibkr.md). One TraderService per broker
+// account. The records of a user's default account keep the user's id, as
+// before; another account's are kept under "<user>/<account>".
 
 export interface TradersOptions {
   store: TradeStore;
@@ -34,6 +45,8 @@ export interface TradersOptions {
   // Tests replace the real brokers and senders.
   makeBroker?: (account: BrokerAccount) => Broker;
   makeNotifier?: (channel: Channel) => Notifier;
+  // The connection to an IB Gateway (main.ts: @stoqey/ib).
+  makeTws?: (host: string, port: number) => TwsClient;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -41,6 +54,8 @@ export interface TradersOptions {
 export interface Trader {
   user: User;
   account: BrokerAccount;
+  scope: string; // whose records: the user's id, or "<user>/<account>"
+  notifier: Notifier;
   broker: Broker;
   engine: TradeEngine;
   service: TraderService;
@@ -68,6 +83,15 @@ export class Traders {
         paperUrl,
         this.options.optionsFeed ?? "opra",
       );
+    }
+    if (account.broker === "ibkr") {
+      // The Gateway holds the login; the account only says where it is.
+      const [host, port] = (account.gatewayUrl ?? "").split(":");
+      if (!host || !port || !this.options.makeTws)
+        throw new Error(`Account ${account.id}: no IB Gateway to connect to`);
+      return new IbkrTrading(this.options.makeTws(host, Number(port)), {
+        paper: true,
+      });
     }
     throw new Error(
       `Account ${account.id}: ${account.broker} is not supported yet`,
@@ -117,29 +141,39 @@ export class Traders {
     return new FanOutNotifier(subscribed, this.options.log);
   }
 
-  /** The trader for one enabled user, built on first use. */
-  get(userId: string): Trader {
-    const cached = this.built.get(userId);
-    if (cached) return cached;
+  /**
+   * The trader of one enabled user on one broker: the default account, or
+   * the user's account at `broker`. Built on first use.
+   */
+  get(userId: string, broker?: BrokerName): Trader {
     const { store, log, now, sleep } = this.options;
-    const clock = { ...(now ? { now } : {}), ...(sleep ? { sleep } : {}) };
     const user = store.findUser(userId);
     if (!user || user.id !== userId || !user.enabled)
       throw new RequestError("This trader is not allowed", 403);
-    const account = store
-      .accounts(user.id)
-      .find((a) => a.enabled && a.isDefault);
+    const accounts = store.accounts(user.id).filter((a) => a.enabled);
+    const account = broker
+      ? accounts.find((a) => a.broker === broker)
+      : accounts.find((a) => a.isDefault);
     if (!account)
-      throw new RequestError("This trader has no broker account", 409);
-    const broker = this.broker(account);
+      throw new RequestError(
+        broker
+          ? `This trader has no ${broker} account`
+          : "This trader has no broker account",
+        409,
+      );
+    const cached = this.built.get(account.id);
+    if (cached) return cached;
+    const scope = account.isDefault ? user.id : `${user.id}/${account.id}`;
+    const clock = { ...(now ? { now } : {}), ...(sleep ? { sleep } : {}) };
+    const built = this.broker(account);
     const notifier = this.channels(user.id);
     const validator = resolveValidator(user.validatorId, user.validatorParams);
     const engine = new TradeEngine({
-      broker,
+      broker: built,
       notifier,
-      posts: store.posts(user.id),
-      buys: store.buys(user.id),
-      decisions: store.decisions(user.id),
+      posts: store.posts(scope),
+      buys: store.buys(scope),
+      decisions: store.decisions(scope),
       limits: validator.limits,
       riskRules: validator.riskRules,
       validate: validator.check,
@@ -148,17 +182,25 @@ export class Traders {
       ...clock,
     });
     const service = new TraderService({
-      userId: user.id,
+      userId: scope,
       store,
       engine,
-      broker,
+      broker: built,
       notifier,
-      posts: store.posts(user.id),
+      posts: store.posts(scope),
       log,
       ...clock,
     });
-    const trader = { user, account, broker, engine, service };
-    this.built.set(user.id, trader);
+    const trader = {
+      user,
+      account,
+      scope,
+      notifier,
+      broker: built,
+      engine,
+      service,
+    };
+    this.built.set(account.id, trader);
     return trader;
   }
 
@@ -167,25 +209,32 @@ export class Traders {
    * site forwards; without one, the request is the owner's (the connector
    * has one person until per-person sign-in, phase 6).
    */
-  forCaller(caller: string | undefined): Trader {
+  forCaller(caller: string | undefined, broker?: BrokerName): Trader {
     const id = caller
       ? this.options.store.findUser(caller)?.id
       : this.options.store.users().find((u) => u.isAdmin && u.enabled)?.id;
     if (!id) throw new RequestError("This trader is not allowed", 403);
-    return this.get(id);
+    return this.get(id, broker);
   }
 
-  /** Every enabled trader that can be built; the others are logged. */
+  /** Every enabled account that can be built; the others are logged. */
   all(): Trader[] {
     const traders: Trader[] = [];
     for (const user of this.options.store.users()) {
       if (!user.enabled) continue;
-      try {
-        traders.push(this.get(user.id));
-      } catch (error) {
-        this.options.log(
-          `trader ${user.id} not started: ${error instanceof Error ? error.message : String(error)}`,
-        );
+      for (const account of this.options.store.accounts(user.id)) {
+        if (!account.enabled) continue;
+        try {
+          traders.push(
+            account.isDefault
+              ? this.get(user.id)
+              : this.get(user.id, account.broker),
+          );
+        } catch (error) {
+          this.options.log(
+            `${user.id}'s ${account.broker} account not started: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
       }
     }
     return traders;
