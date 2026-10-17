@@ -2,8 +2,10 @@ import type {
   Account,
   Broker,
   BrokerCapabilities,
+  OrderChange,
   Order,
   StockQuote,
+  StockTicket,
 } from "./broker.js";
 import { parseOccSymbol, type OptionQuote, type Right } from "./options.js";
 
@@ -274,6 +276,63 @@ export class AlpacaTrading implements Broker {
     );
   }
 
+  /**
+   * A stock order of any type Alpaca offers. The caller has already checked
+   * the ticket (`stockTicket`), including that a sell only closes held shares.
+   */
+  async stockOrder(t: StockTicket) {
+    return order(
+      await this.call<RawOrder>(this.tradingUrl, "/v2/orders", {
+        method: "POST",
+        body: {
+          symbol: t.symbol,
+          qty: String(t.qty),
+          side: t.side,
+          type: t.type,
+          time_in_force: t.timeInForce,
+          ...(t.limitPrice === undefined
+            ? {}
+            : { limit_price: stockPriceText(t.limitPrice) }),
+          ...(t.stopPrice === undefined
+            ? {}
+            : { stop_price: stockPriceText(t.stopPrice) }),
+          ...(t.trailPercent === undefined
+            ? {}
+            : { trail_percent: String(t.trailPercent) }),
+          ...(t.trailPrice === undefined
+            ? {}
+            : { trail_price: stockPriceText(t.trailPrice) }),
+          ...(t.extendedHours ? { extended_hours: true } : {}),
+        },
+      }),
+    );
+  }
+
+  /**
+   * Changes an open order. `trail` is sent as `trail` (Alpaca applies it to
+   * the order's own trail kind). Alpaca answers with a new order id.
+   */
+  async changeOrder(id: string, c: OrderChange) {
+    return order(
+      await this.call<RawOrder>(this.tradingUrl, `/v2/orders/${id}`, {
+        method: "PATCH",
+        body: {
+          ...(c.qty === undefined ? {} : { qty: String(c.qty) }),
+          ...(c.limitPrice === undefined
+            ? {}
+            : { limit_price: stockPriceText(c.limitPrice) }),
+          ...(c.stopPrice === undefined
+            ? {}
+            : { stop_price: stockPriceText(c.stopPrice) }),
+          ...(c.trail === undefined ? {} : { trail: String(c.trail) }),
+          ...(c.timeInForce === undefined
+            ? {}
+            : { time_in_force: c.timeInForce }),
+        },
+      }),
+    );
+  }
+
   /** Stock positions; a short one has a negative quantity. */
   async stockPositions() {
     const raw = await this.call<
@@ -364,7 +423,15 @@ export class AlpacaTrading implements Broker {
   /** Open orders, for one contract or all, with their side and stop price. */
   async openOrders(symbol?: string) {
     const raw = await this.call<
-      (RawOrder & { side: string; stop_price: string | null })[]
+      (RawOrder & {
+        side: string;
+        stop_price: string | null;
+        type: string;
+        time_in_force: string;
+        trail_percent?: string | null;
+        trail_price?: string | null;
+        extended_hours?: boolean;
+      })[]
     >(this.tradingUrl, "/v2/orders", {
       query: {
         status: "open",
@@ -372,10 +439,17 @@ export class AlpacaTrading implements Broker {
         ...(symbol ? { symbols: symbol } : {}),
       },
     });
+    const num = (v: string | null | undefined) =>
+      v === null || v === undefined ? null : Number(v);
     return raw.map((o) => ({
       ...order(o),
       side: o.side,
-      stopPrice: o.stop_price === null ? null : Number(o.stop_price),
+      stopPrice: num(o.stop_price),
+      type: o.type,
+      timeInForce: o.time_in_force,
+      trailPercent: num(o.trail_percent),
+      trailPrice: num(o.trail_price),
+      extendedHours: o.extended_hours === true,
     }));
   }
 

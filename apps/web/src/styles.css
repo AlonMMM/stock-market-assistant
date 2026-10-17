@@ -4071,3 +4071,36 @@ dialog.why::backdrop {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+
+/* Watchlist section: named lists (user 2026-10-17). */
+.wl-lists {
+  display: grid;
+  gap: 8px;
+}
+.wl-chips button.wl-new {
+  background: transparent;
+  border: 1px dashed #b9c3b6;
+  color: #3d4f48;
+}
+.wl-name-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.wl-name-form input {
+  flex: 1 1 180px;
+  min-width: 0;
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 10px;
+  border: 1px solid #d0d6ca;
+  border-radius: 8px;
+}
+.wl-editor {
+  margin-bottom: 0;
+}
+.action.danger {
+  border-color: #c0322b;
+  color: #c0322b;
+}

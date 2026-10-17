@@ -129,6 +129,46 @@ function stockOrder(
   return { symbol, ...(hasQty ? { qty: b.qty } : { amount: b.amount }) };
 }
 
+// The fields of a typed stock order or a change that a page may send; the
+// trading service checks their values (stock-tickets.ts).
+const ticketFields = [
+  "side",
+  "type",
+  "timeInForce",
+  "qty",
+  "amount",
+  "limitPrice",
+  "stopPrice",
+  "trailPercent",
+  "trailPrice",
+  "extendedHours",
+] as const;
+const changeFields = [
+  "qty",
+  "limitPrice",
+  "stopPrice",
+  "trail",
+  "timeInForce",
+] as const;
+
+function pick(
+  b: Record<string, unknown>,
+  names: readonly string[],
+): Record<string, unknown> | Answer {
+  const out: Record<string, unknown> = {};
+  for (const name of names) {
+    const v = b[name];
+    if (v === undefined || v === null) continue;
+    const ok =
+      typeof v === "boolean" ||
+      (typeof v === "number" && Number.isFinite(v)) ||
+      (typeof v === "string" && /^[a-z_]{1,16}$/.test(v));
+    if (!ok) return bad(`${name} is not valid`);
+    out[name] = v;
+  }
+  return out;
+}
+
 /**
  * Everything here is for the owner only, except the first line.
  * `GET  /api/portfolio/control`: whether this person may trade.
@@ -145,6 +185,12 @@ function stockOrder(
  * `GET  …/stock/quote?symbol=`: bid, ask, shares held and free to sell.
  * `POST …/stock/buy` `{ symbol, qty | amount }`: buys whole shares.
  * `POST …/stock/sell` `{ symbol, qty | "all" | "half" }`: sells held shares.
+ * `POST …/stock/order` `{ symbol, side, type, timeInForce, qty | amount,
+ * limitPrice?, stopPrice?, trailPercent? | trailPrice?, extendedHours? }`:
+ * one stock order of any type; `…/stock/check` with the same fields says
+ * what would be sent and sends nothing.
+ * `POST …/change` `{ orderId, qty?, limitPrice?, stopPrice?, trail?,
+ * timeInForce? }`: changes an open stock order.
  */
 export async function handleControl(
   config: ControlConfig,
@@ -227,6 +273,31 @@ export async function handleControl(
           via: "site",
         };
       }
+    } else if (sub === "stock/order" || sub === "stock/check") {
+      const b = (
+        request.body && typeof request.body === "object" ? request.body : {}
+      ) as Record<string, unknown>;
+      if (typeof b.symbol !== "string" || !stockTicker.test(b.symbol))
+        return bad("symbol is not a ticker");
+      const fields = pick(b, ticketFields);
+      if ("status" in fields) return fields as Answer;
+      path = "/v1/stock/order";
+      body = {
+        symbol: b.symbol.toUpperCase(),
+        ...fields,
+        ...(sub === "stock/check" ? { check: true } : {}),
+        via: "site",
+      };
+    } else if (sub === "change") {
+      const b = (
+        request.body && typeof request.body === "object" ? request.body : {}
+      ) as Record<string, unknown>;
+      if (typeof b.orderId !== "string" || !/^[\w-]{1,64}$/.test(b.orderId))
+        return bad("orderId is not valid");
+      const fields = pick(b, changeFields);
+      if ("status" in fields) return fields as Answer;
+      path = "/v1/orders/change";
+      body = { orderId: b.orderId, ...fields, via: "site" };
     } else if (sub === "stock/buy" || sub === "stock/sell") {
       const fields = stockOrder(sub, request.body);
       if ("status" in fields) return fields as Answer;
