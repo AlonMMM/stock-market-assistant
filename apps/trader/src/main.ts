@@ -5,19 +5,12 @@
 import { timingSafeEqual } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import Fastify from "fastify";
-import { TelegramSender } from "../../../packages/notifications/src/telegram.js";
-import {
-  AlpacaTrading,
-  paperUrl,
-} from "../../../packages/trading/src/alpaca-trading.js";
-import { TradeEngine } from "../../../packages/trading/src/engine.js";
-import {
-  NoNotifier,
-  TelegramNotifier,
-} from "../../../packages/trading/src/notifier.js";
-import { RequestError, TraderService } from "./service.js";
+import Fastify, { type FastifyRequest } from "fastify";
+import { Vault } from "./secrets.js";
+import { seedOwner } from "./seed.js";
+import { RequestError, type TraderService } from "./service.js";
 import { TradeStore } from "./store.js";
+import { Traders } from "./traders.js";
 
 const env = (...names: string[]) =>
   names.map((n) => process.env[n]).find((v) => v) ?? "";
@@ -25,10 +18,6 @@ const env = (...names: string[]) =>
 const token = env("TRADER_TOKEN");
 if (token.length < 32)
   throw new Error("Set a random TRADER_TOKEN of at least 32 characters");
-const key = env("ALPACA_API_KEY", "APCA_API_KEY_ID");
-const secret = env("ALPACA_API_SECRET", "APCA_API_SECRET_KEY");
-if (!key || !secret)
-  throw new Error("Set ALPACA_API_KEY and ALPACA_API_SECRET");
 // The live account needs the user's separate authorization and its own switch.
 if (process.env.ALPACA_TRADING_LIVE === "true")
   throw new Error("This service trades the paper account only");
@@ -36,46 +25,27 @@ if (process.env.ALPACA_TRADING_LIVE === "true")
 const dbPath = process.env.TRADER_DB ?? "data/local/trader.sqlite";
 mkdirSync(dirname(dbPath), { recursive: true });
 const store = new TradeStore(dbPath);
-// One trader for now; every record already carries the owner.
-const userId = process.env.TRADER_USER ?? "owner";
 const log = (line: string) =>
   console.log(JSON.stringify({ at: new Date().toISOString(), line }));
 
-const broker = new AlpacaTrading(
-  key,
-  secret,
-  paperUrl,
-  process.env.ALPACA_OPTIONS_FEED === "indicative" ? "indicative" : "opra",
-);
-const telegramToken = process.env.TRADES_TELEGRAM_BOT_TOKEN;
-const telegramChat = process.env.TRADES_TELEGRAM_CHAT_ID;
-const notifier =
-  telegramToken && telegramChat
-    ? new TelegramNotifier(new TelegramSender(telegramToken, telegramChat), {
-        // Also comment under the entry post. The bot must be a member of the
-        // channel's discussion group, and no other process may read this
-        // bot's updates (docs/tasks/backend-trading-service.md).
-        comments: process.env.TRADES_TELEGRAM_COMMENTS === "true",
-      })
-    : new NoNotifier();
-const engine = new TradeEngine({
-  broker,
-  notifier,
-  posts: store.posts(userId),
-  buys: store.buys(userId),
-  decisions: store.decisions(userId),
-  enabled: process.env.TRADING_ENABLED !== "false",
-  log,
-});
-const service = new TraderService({
-  userId,
+// The traders, their accounts and channels (docs/features/multi-user-ibkr.md).
+// On the first start the single trader of before becomes the owner.
+const seeded = seedOwner(store, process.env, Date.now());
+if (seeded) log(`added the owner "${seeded}" from the environment`);
+const vaultKey = env("TRADER_VAULT_KEY");
+const traders = new Traders({
   store,
-  engine,
-  broker,
-  notifier,
-  posts: store.posts(userId),
+  secrets: {
+    env: process.env,
+    ...(vaultKey ? { vault: new Vault(vaultKey) } : {}),
+  },
+  enabled: process.env.TRADING_ENABLED !== "false",
+  optionsFeed:
+    process.env.ALPACA_OPTIONS_FEED === "indicative" ? "indicative" : "opra",
   log,
 });
+// Fails the start when the owner cannot be built, as a missing key did.
+traders.forCaller(undefined);
 
 const api = Fastify({ bodyLimit: 16384 });
 // A second, optional token that can only read: the website shows orders and
@@ -103,59 +73,88 @@ api.setErrorHandler((error, _request, reply) => {
   log(`request failed: ${text}`);
   return reply.code(502).send({ error: text });
 });
+// The site forwards whom a call is for; without it, the owner's.
+const service = (request: FastifyRequest): TraderService => {
+  const caller = request.headers["x-trader-user"];
+  return traders.forCaller(
+    typeof caller === "string" && caller !== "" ? caller : undefined,
+  ).service;
+};
 const body = (value: unknown) =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
 // No account data here: it only says the process is up.
 api.get("/health", async () => ({ ok: true }));
-api.post("/v1/preview", async (request) => service.preview(body(request.body)));
-api.post("/v1/check", async (request) => service.check(body(request.body)));
-api.get("/v1/chain", async (request) => service.chain(body(request.query)));
-api.post("/v1/buy", async (request) => service.buy(body(request.body)));
-api.post("/v1/sell", async (request) => service.sell(body(request.body)));
-api.post("/v1/stop", async (request) => service.stop(body(request.body)));
+api.post("/v1/preview", async (request) =>
+  service(request).preview(body(request.body)),
+);
+api.post("/v1/check", async (request) =>
+  service(request).check(body(request.body)),
+);
+api.get("/v1/chain", async (request) =>
+  service(request).chain(body(request.query)),
+);
+api.post("/v1/buy", async (request) =>
+  service(request).buy(body(request.body)),
+);
+api.post("/v1/sell", async (request) =>
+  service(request).sell(body(request.body)),
+);
+api.post("/v1/stop", async (request) =>
+  service(request).stop(body(request.body)),
+);
 api.post("/v1/stop/move", async (request) =>
-  service.moveStop(body(request.body)),
+  service(request).moveStop(body(request.body)),
 );
 api.post("/v1/orders/cancel", async (request) =>
-  service.cancelOrder(body(request.body)),
+  service(request).cancelOrder(body(request.body)),
 );
 api.post("/v1/orders/price", async (request) =>
-  service.repriceOrder(body(request.body)),
+  service(request).repriceOrder(body(request.body)),
 );
-api.post("/v1/resize", async (request) => service.resize(body(request.body)));
+api.post("/v1/resize", async (request) =>
+  service(request).resize(body(request.body)),
+);
 api.get("/v1/stock/quote", async (request) =>
-  service.stockQuote(body(request.query)),
+  service(request).stockQuote(body(request.query)),
 );
 api.post("/v1/stock/buy", async (request) =>
-  service.stockBuy(body(request.body)),
+  service(request).stockBuy(body(request.body)),
 );
 api.post("/v1/stock/sell", async (request) =>
-  service.stockSell(body(request.body)),
+  service(request).stockSell(body(request.body)),
 );
 api.get<{ Params: { id: string } }>("/v1/jobs/:id", async (request) =>
-  service.job(request.params.id),
+  service(request).job(request.params.id),
 );
 api.post<{ Params: { id: string } }>("/v1/jobs/:id/cancel", async (request) =>
-  service.cancel({ jobId: request.params.id }),
+  service(request).cancel({ jobId: request.params.id }),
 );
-api.post("/v1/cancel", async (request) => service.cancel(body(request.body)));
-api.get("/v1/positions", async () => service.status());
+api.post("/v1/cancel", async (request) =>
+  service(request).cancel(body(request.body)),
+);
+api.get("/v1/positions", async (request) => service(request).status());
 api.get<{ Querystring: { limit?: string } }>("/v1/decisions", async (request) =>
-  service.decisions(Number(request.query.limit)),
+  service(request).decisions(Number(request.query.limit)),
 );
 
 // A stop that sells is reported within this long.
 const stopWatchMs = 15_000;
-const stopWatch = setInterval(() => {
-  service
-    .watchStops()
-    .catch((error: unknown) =>
-      log(
-        `stop watch failed: ${error instanceof Error ? error.message : String(error)}`,
+const watchAll = () =>
+  Promise.all(
+    traders
+      .all()
+      .map((t) =>
+        t.service
+          .watchStops()
+          .catch((error: unknown) =>
+            log(
+              `stop watch of ${t.user.id} failed: ${error instanceof Error ? error.message : String(error)}`,
+            ),
+          ),
       ),
-    );
-}, stopWatchMs);
+  );
+const stopWatch = setInterval(() => void watchAll(), stopWatchMs);
 
 async function stop() {
   clearInterval(stopWatch);
@@ -167,16 +166,17 @@ async function stop() {
 process.once("SIGINT", () => void stop());
 process.once("SIGTERM", () => void stop());
 
-const cut = await service.reconcile();
-if (cut > 0) log(`settled ${cut} job(s) cut off by a restart`);
+for (const t of traders.all()) {
+  const cut = await t.service.reconcile();
+  if (cut > 0)
+    log(`settled ${cut} job(s) of ${t.user.id} cut off by a restart`);
+}
 // Stops that sold while the service was down are reported now.
-await service
-  .watchStops()
-  .catch((error: unknown) => log(`stop watch failed: ${String(error)}`));
+await watchAll();
 await api.listen({
   host: process.env.TRADER_HOST ?? "127.0.0.1",
   port: Number(process.env.PORT ?? 3003),
 });
 log(
-  `trading service listening, trading ${process.env.TRADING_ENABLED === "false" ? "switched off" : "on"}, paper account`,
+  `trading service listening, ${traders.all().length} trader(s), trading ${process.env.TRADING_ENABLED === "false" ? "switched off" : "on"}, paper accounts`,
 );

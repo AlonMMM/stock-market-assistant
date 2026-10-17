@@ -51,6 +51,112 @@ const job = (r: JobRow): Job => ({
   updatedAt: r.updated_at,
 });
 
+// Traders, their broker accounts and where they are notified
+// (docs/features/multi-user-ibkr.md). Secrets inside `credentials` and
+// `config` are references (see secrets.ts), never plain values.
+
+export type BrokerName = "alpaca" | "ibkr";
+export type AccountMode = "paper" | "live";
+export const providers = ["telegram", "whatsapp", "discord", "email"] as const;
+export type Provider = (typeof providers)[number];
+
+export interface User {
+  id: string;
+  email: string | null;
+  name: string;
+  enabled: boolean;
+  isAdmin: boolean;
+  // A pointer into the validator registry; null means the user cannot buy.
+  validatorId: string | null;
+  validatorParams: Record<string, unknown> | null;
+  createdAt: number;
+}
+
+export interface BrokerAccount {
+  id: string;
+  userId: string;
+  broker: BrokerName;
+  mode: AccountMode;
+  isDefault: boolean;
+  credentials: Record<string, unknown>;
+  gatewayUrl: string | null; // ibkr: that user's Gateway on the private network
+  enabled: boolean;
+  createdAt: number;
+}
+
+export interface Channel {
+  id: string;
+  userId: string;
+  provider: Provider;
+  config: Record<string, unknown>;
+  events: string[] | null; // null: every event
+  enabled: boolean;
+  createdAt: number;
+}
+
+interface UserRow {
+  id: string;
+  email: string | null;
+  name: string;
+  enabled: number;
+  is_admin: number;
+  validator_id: string | null;
+  validator_params: string | null;
+  created_at: number;
+}
+interface AccountRow {
+  id: string;
+  user_id: string;
+  broker: BrokerName;
+  mode: AccountMode;
+  is_default: number;
+  credentials: string;
+  gateway_url: string | null;
+  enabled: number;
+  created_at: number;
+}
+interface ChannelRow {
+  id: string;
+  user_id: string;
+  provider: Provider;
+  config: string;
+  events: string | null;
+  enabled: number;
+  created_at: number;
+}
+
+const user = (r: UserRow): User => ({
+  id: r.id,
+  email: r.email,
+  name: r.name,
+  enabled: r.enabled === 1,
+  isAdmin: r.is_admin === 1,
+  validatorId: r.validator_id,
+  validatorParams:
+    r.validator_params === null ? null : JSON.parse(r.validator_params),
+  createdAt: r.created_at,
+});
+const account = (r: AccountRow): BrokerAccount => ({
+  id: r.id,
+  userId: r.user_id,
+  broker: r.broker,
+  mode: r.mode,
+  isDefault: r.is_default === 1,
+  credentials: JSON.parse(r.credentials),
+  gatewayUrl: r.gateway_url,
+  enabled: r.enabled === 1,
+  createdAt: r.created_at,
+});
+const channel = (r: ChannelRow): Channel => ({
+  id: r.id,
+  userId: r.user_id,
+  provider: r.provider,
+  config: JSON.parse(r.config),
+  events: r.events === null ? null : JSON.parse(r.events),
+  enabled: r.enabled === 1,
+  createdAt: r.created_at,
+});
+
 export class TradeStore {
   private db: DatabaseSync;
   constructor(path: string) {
@@ -80,6 +186,19 @@ export class TradeStore {
         id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL,
         user_id TEXT NOT NULL, tool TEXT NOT NULL, input TEXT NOT NULL,
         outcome TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY, email TEXT UNIQUE, name TEXT NOT NULL,
+        enabled INTEGER NOT NULL, is_admin INTEGER NOT NULL,
+        validator_id TEXT, validator_params TEXT, created_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS broker_accounts (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, broker TEXT NOT NULL,
+        mode TEXT NOT NULL, is_default INTEGER NOT NULL,
+        credentials TEXT NOT NULL, gateway_url TEXT,
+        enabled INTEGER NOT NULL, created_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS notification_channels (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, provider TEXT NOT NULL,
+        config TEXT NOT NULL, events TEXT, enabled INTEGER NOT NULL,
+        created_at INTEGER NOT NULL);
     `);
   }
 
@@ -121,14 +240,108 @@ export class TradeStore {
     return row && job(row);
   }
 
-  runningJobs(): Job[] {
+  /** Running jobs of one user, or of every user when none is named. */
+  runningJobs(userId?: string): Job[] {
+    const rows =
+      userId === undefined
+        ? this.db
+            .prepare(
+              "SELECT * FROM jobs WHERE state = 'running' ORDER BY created_at",
+            )
+            .all()
+        : this.db
+            .prepare(
+              "SELECT * FROM jobs WHERE state = 'running' AND user_id = ? ORDER BY created_at",
+            )
+            .all(userId);
+    return (rows as unknown as JobRow[]).map(job);
+  }
+
+  addUser(u: Omit<User, "createdAt">, now: number) {
+    this.db
+      .prepare(
+        "INSERT INTO users (id, email, name, enabled, is_admin, validator_id, validator_params, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        u.id,
+        u.email?.toLowerCase() ?? null,
+        u.name,
+        u.enabled ? 1 : 0,
+        u.isAdmin ? 1 : 0,
+        u.validatorId,
+        u.validatorParams === null ? null : JSON.stringify(u.validatorParams),
+        now,
+      );
+  }
+
+  users(): User[] {
+    return (
+      this.db
+        .prepare("SELECT * FROM users ORDER BY created_at, id")
+        .all() as unknown as UserRow[]
+    ).map(user);
+  }
+
+  /** A user by id or by email (any case). */
+  findUser(idOrEmail: string): User | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM users WHERE id = ? OR email = ?")
+      .get(idOrEmail, idOrEmail.toLowerCase()) as UserRow | undefined;
+    return row && user(row);
+  }
+
+  addAccount(a: Omit<BrokerAccount, "createdAt">, now: number) {
+    this.db
+      .prepare(
+        "INSERT INTO broker_accounts (id, user_id, broker, mode, is_default, credentials, gateway_url, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        a.id,
+        a.userId,
+        a.broker,
+        a.mode,
+        a.isDefault ? 1 : 0,
+        JSON.stringify(a.credentials),
+        a.gatewayUrl,
+        a.enabled ? 1 : 0,
+        now,
+      );
+  }
+
+  accounts(userId: string): BrokerAccount[] {
     return (
       this.db
         .prepare(
-          "SELECT * FROM jobs WHERE state = 'running' ORDER BY created_at",
+          "SELECT * FROM broker_accounts WHERE user_id = ? ORDER BY is_default DESC, created_at, id",
         )
-        .all() as unknown as JobRow[]
-    ).map(job);
+        .all(userId) as unknown as AccountRow[]
+    ).map(account);
+  }
+
+  addChannel(c: Omit<Channel, "createdAt">, now: number) {
+    this.db
+      .prepare(
+        "INSERT INTO notification_channels (id, user_id, provider, config, events, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        c.id,
+        c.userId,
+        c.provider,
+        JSON.stringify(c.config),
+        c.events === null ? null : JSON.stringify(c.events),
+        c.enabled ? 1 : 0,
+        now,
+      );
+  }
+
+  channels(userId: string): Channel[] {
+    return (
+      this.db
+        .prepare(
+          "SELECT * FROM notification_channels WHERE user_id = ? ORDER BY created_at, id",
+        )
+        .all(userId) as unknown as ChannelRow[]
+    ).map(channel);
   }
 
   /** The post of each open trade of one user. */

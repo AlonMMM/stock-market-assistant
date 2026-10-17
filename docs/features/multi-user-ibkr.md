@@ -221,13 +221,13 @@ the owner when the trader's last watch is older than a few minutes.
 
 Now, owner only:
 
-| #   | Task (owner)                            | Done when                                                                                                                                                                      |
-| --- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | Multi-user core, one user (backend)     | Users, scoped store, broker registry with several accounts per user, validator registry with `owner-v1`, channels (telegram), watch in the trader. Owner's behavior unchanged. |
-| 2   | Owner's IBKR Gateway (backend)          | Owner's Gateway runs on the private network, logs in with credentials from the vault, 2FA and down notices reach the channels.                                                 |
-| 3   | `IbkrBroker` (backend)                  | Every trade flow passes on fake TWS and on the owner's IBKR paper account: buy with raises, stop, sell at bid, never-short refusal, stocks. A command picks IBKR or Alpaca.    |
-| 4   | Owner's alerts from IBKR (backend)      | 75 tickers; shadow run of ≥3 sessions matches Alpaca within agreed tolerances; cutover by config.                                                                              |
-| 5   | Owner's IBKR live account (integration) | Approved separately by the owner, with its own switch.                                                                                                                         |
+| #   | Task (owner)                            | Done when                                                                                                                                                                                                             |
+| --- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Multi-user core, one user (backend)     | Users, scoped store, broker registry with several accounts per user, validator registry with `owner-v1`, channels (telegram). Owner's behavior unchanged.                                                             |
+| 2   | Owner's IBKR Gateway (backend)          | Owner's Gateway runs on the private network, logs in with credentials from the vault, 2FA and down notices reach the channels.                                                                                        |
+| 3   | `IbkrBroker` (backend)                  | Every trade flow passes on fake TWS and on the owner's IBKR paper account: buy with raises, stop, sell at bid, never-short refusal, stocks. A command picks IBKR or Alpaca. The never-short watch runs in the trader. |
+| 4   | Owner's alerts from IBKR (backend)      | 75 tickers; shadow run of ≥3 sessions matches Alpaca within agreed tolerances; cutover by config.                                                                                                                     |
+| 5   | Owner's IBKR live account (integration) | Approved separately by the owner, with its own switch.                                                                                                                                                                |
 
 Later, other traders:
 

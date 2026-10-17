@@ -345,7 +345,7 @@ export class TraderService {
     } catch (error) {
       throw new RequestError(message(error));
     }
-    if (this.store.runningJobs().some((j) => j.symbol === symbol))
+    if (this.store.runningJobs(this.userId).some((j) => j.symbol === symbol))
       throw new RequestError(
         `${symbol} already has an order in progress; wait for it`,
         409,
@@ -391,7 +391,7 @@ export class TraderService {
         contract: symbol,
         qty: wanted === 0 ? "all" : String(held.qty - wanted),
       });
-    if (this.store.runningJobs().some((j) => j.symbol === symbol))
+    if (this.store.runningJobs(this.userId).some((j) => j.symbol === symbol))
       throw new RequestError(
         `${symbol} already has an order in progress; wait for it`,
         409,
@@ -499,7 +499,7 @@ export class TraderService {
     const { symbol } = await this.target(body);
     const price = number(body, "price");
     if (price === undefined) throw new RequestError("Need price");
-    if (this.store.runningJobs().some((j) => j.symbol === symbol))
+    if (this.store.runningJobs(this.userId).some((j) => j.symbol === symbol))
       throw new RequestError(
         `${symbol} has an order in progress; wait for it`,
         409,
@@ -606,7 +606,7 @@ export class TraderService {
     // While the service raises the price itself, two changes would collide.
     if (!occ.test(order.symbol)) return this.repriceStock(order, asked, body);
     const raising = this.store
-      .runningJobs()
+      .runningJobs(this.userId)
       .some(
         (j) =>
           j.symbol === order.symbol &&
@@ -718,7 +718,7 @@ export class TraderService {
         throw new RequestError(`This order is already ${job.state}`, 409);
     }
     const jobs = this.store
-      .runningJobs()
+      .runningJobs(this.userId)
       .filter(
         (j) =>
           j.userId === this.userId &&
@@ -776,7 +776,7 @@ export class TraderService {
     return {
       ...status,
       workingOrders: this.store
-        .runningJobs()
+        .runningJobs(this.userId)
         .filter((j) => j.userId === this.userId)
         .map((j) => ({
           jobId: j.id,
@@ -868,7 +868,7 @@ export class TraderService {
   }
 
   private busy(symbol: string) {
-    if (this.store.runningJobs().some((j) => j.symbol === symbol))
+    if (this.store.runningJobs(this.userId).some((j) => j.symbol === symbol))
       throw new RequestError(
         `${symbol} already has an order in progress; wait for it`,
         409,
@@ -1000,7 +1000,9 @@ export class TraderService {
     asked: number,
     body: Body,
   ) {
-    if (this.store.runningJobs().some((j) => j.symbol === order.symbol))
+    if (
+      this.store.runningJobs(this.userId).some((j) => j.symbol === order.symbol)
+    )
       throw new RequestError(
         "The service is moving this order's price right now; try again in a few seconds",
         409,
@@ -1032,7 +1034,9 @@ export class TraderService {
    * told. Nothing is left working without a stop.
    */
   async reconcile() {
-    const cut = this.store.runningJobs().filter((j) => !this.running.has(j.id));
+    const cut = this.store
+      .runningJobs(this.userId)
+      .filter((j) => !this.running.has(j.id));
     for (const job of cut) {
       const notes: string[] = [];
       try {
