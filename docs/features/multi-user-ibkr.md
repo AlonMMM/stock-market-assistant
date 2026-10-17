@@ -18,6 +18,31 @@ Owner: integration (cross-cutting plan); each phase below becomes its own task f
    Only Telegram is implemented first.
 6. The alert system runs only for the owner, on market data from the owner's IBKR
    account. Other traders get trading, not alerts.
+7. The engine is cut to 75 tickers when alerts move to IBKR; no extra market-data lines.
+8. The owner's trading moves to IBKR; Alpaca stays supported, and one user may hold
+   accounts at both brokers.
+9. A trader without a validator cannot buy until theirs is written.
+
+## IBKR terms: blocks path a for other traders
+
+IBKR's client agreements say the customer will not allow anyone to access their account
+unless IBKR is notified and agrees, and will not let others use their username, password
+or security device ([Client Agreement, SEC filing][ibkr-sec]; same rule in the 2023
+margin agreement and the IBIE agreement, which asks for notice to
+help@interactivebrokers.com and IBIE's written consent). Read against path a:
+
+- Owner: the service is the owner's own software on the owner's own account. Allowed.
+- Other traders: this service, run by the owner, would log in with their credentials.
+  That is a third party using a customer's credentials and needs IBKR's written consent
+  first. Not verified for each trader's IBKR entity; the agreement that applies to their
+  account controls.
+
+Consequence for the plan: IBKR for other traders is gated on (1) IBKR's written consent
+after a notice, or (2) IBKR's third-party OAuth. Until then other traders use Alpaca.
+Alpaca's own terms on using another person's API keys are not yet checked; its OAuth
+app flow is the preferred way to connect them.
+
+[ibkr-sec]: https://www.sec.gov/Archives/edgar/data/1948817/000194881723000011/IBKRClientAgreement_Official.txt
 
 ## Interpretations to confirm
 
@@ -59,8 +84,8 @@ users
   validator_params JSON NULL,    -- optional values that validator declares
   created_at, updated_at
 
-broker_accounts                  -- one active per user at first
-  id, user_id, broker ('alpaca' | 'ibkr'), mode ('paper' | 'live'),
+broker_accounts                  -- several per user; one is the default
+  id, user_id, broker ('alpaca' | 'ibkr'), mode ('paper' | 'live'), is_default,
   credentials BLOB,              -- AES-256-GCM, key TRADER_VAULT_KEY (Railway secret)
   gateway_url NULL,              -- ibkr: private host:port of that user's Gateway
   live_approved_by NULL, live_approved_at NULL,
@@ -175,8 +200,9 @@ the owner when the trader's last watch is older than a few minutes.
   Only closed minutes are evaluated, as today; no fallback to delayed or synthetic data.
 - `MARKET_DATA_SOURCE=ibkr | alpaca` selects it. Cutover only after a shadow run of at
   least three sessions in which both sources' bars and alerts are compared.
-- Limits to plan around: about 100 simultaneous market-data lines by default (the engine
-  has 161 tickers) and historical-data pacing during warmup.
+- The engine is cut to 75 tickers (user, 2026-10-17). That fits the default 100
+  market-data lines and leaves room for the owner's trading quotes on the same
+  username. Historical-data pacing still slows the warmup.
 - The watchlist sync stays as it is (Claude routine through the IBKR connector).
 - Alerts are delivered only to the owner's channels with the `alert` event.
 
@@ -187,21 +213,20 @@ the owner when the trader's last watch is older than a few minutes.
 | 1   | Multiple traders on Alpaca (backend)                 | Users, scoped store, broker registry, validator registry with `owner-v1`, channels (telegram), watch in the trader. Owner's behavior unchanged; a second Alpaca paper user is fully isolated in tests. |
 | 2   | Connector sign-in per person (backend + integration) | `/mcp` uses Access OAuth; an unlisted or disabled email is refused; the connector text names the user's broker, not Alpaca.                                                                            |
 | 3   | Setup and admin pages (product-ux → frontend)        | A trader connects a broker and channels; the owner manages the allowlist; site trade pages show only the caller's account.                                                                             |
-| 4   | Gateway per IBKR trader (backend)                    | Owner's Gateway runs on the private network, logs in with credentials from the vault, 2FA and down notices reach the channels.                                                                         |
+| 4   | Owner's IBKR Gateway (backend)                       | Owner's Gateway runs on the private network, logs in with credentials from the vault, 2FA and down notices reach the channels.                                                                         |
 | 5   | `IbkrBroker` (backend)                               | Every trade flow passes on fake TWS and on the owner's IBKR paper account: buy with raises, stop, sell at bid, never-short refusal, stocks.                                                            |
 | 6   | Owner's alerts from IBKR (backend)                   | Shadow run of ≥3 sessions matches Alpaca within agreed tolerances; cutover by config.                                                                                                                  |
 | 7   | Live accounts (integration)                          | Each live account approved separately by the owner, with its own switch.                                                                                                                               |
+| 8   | IBKR for other traders (integration)                 | Only after IBKR's written consent or third-party OAuth (see "IBKR terms"). Then one Gateway per trader, by the owner's script.                                                                         |
 
 Phases 1–2 do not need IBKR. Phase 4 can start in parallel with 2–3.
 
 ## Open questions
 
-1. Market-data lines: buy IBKR quote booster packs, or trim the engine to fewer than 100
-   tickers when alerts move to IBKR?
-2. Does the owner's own trading move to IBKR, stay on Alpaca, or both (two accounts)?
-3. Which rules go in each new trader's first validator? Proposed: none, so they cannot
-   buy until theirs is written.
-4. Confirm the hard-rule split above.
-5. Who pays for each trader's Gateway service on Railway (one Java process each)?
-6. Before onboarding anyone: each trader checks that IBKR's customer agreement allows a
-   service to use their secondary username's credentials. Not verified here.
+1. Confirm the hard-rule split under Validators.
+2. Who pays for each trader's Gateway service on Railway (one Java process, about 1 GB
+   of memory each), once phase 8 is allowed?
+3. Send IBKR the notice and consent request (help@interactivebrokers.com), or apply for
+   third-party OAuth, or both?
+4. Which broker account does a connector command use when a user has two: the default,
+   unless the command names the broker?
