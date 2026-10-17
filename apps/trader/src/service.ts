@@ -1070,7 +1070,9 @@ export class TraderService {
       );
     if (!this.broker.changeOrder)
       throw new RequestError("This broker cannot change orders", 501);
-    if (this.store.runningJobs().some((j) => j.symbol === order.symbol))
+    if (
+      this.store.runningJobs(this.userId).some((j) => j.symbol === order.symbol)
+    )
       throw new RequestError(
         "The service is moving this order's price right now; try again in a few seconds",
         409,
