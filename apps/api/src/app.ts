@@ -33,6 +33,11 @@ import {
   loadWatchlist,
   pushLiveSymbols,
 } from "../../../packages/market-data/src/watchlist.js";
+import {
+  boardTickers,
+  handleWatchlists,
+  type D1Watchlists,
+} from "../../../packages/market-data/src/watchlists.js";
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
 import {
   handlePortfolio,
@@ -51,6 +56,7 @@ export function buildApp(
     sigmas?: MarksSigmaStore; // stored σ curves of the marked-sections score
     results?: ResultCache; // computed backtest parts
     symbols?: D1SymbolList; // the Backtest page's symbol list
+    watchlists?: D1Watchlists; // the user's named watchlists
   } = {
     key: process.env.ALPACA_API_KEY,
     secret: process.env.ALPACA_API_SECRET,
@@ -101,6 +107,30 @@ export function buildApp(
     );
     return reply.code(result.status).send(result.body);
   });
+  const watchlists = async (method: string, sub: string, body: unknown) =>
+    handleWatchlists(method, sub, body, alpaca.watchlists, async () =>
+      alpaca.symbols ? (await alpaca.symbols.list()).tickers : [],
+    );
+  app.route({
+    method: ["GET", "POST"],
+    url: "/api/watchlists",
+    handler: async (request, reply) => {
+      const result = await watchlists(request.method, "", request.body);
+      return reply.code(result.status).send(result.body);
+    },
+  });
+  app.route<{ Params: { sub: string } }>({
+    method: ["GET", "POST", "PATCH", "DELETE"],
+    url: "/api/watchlists/:sub",
+    handler: async (request, reply) => {
+      const result = await watchlists(
+        request.method,
+        request.params.sub,
+        request.body,
+      );
+      return reply.code(result.status).send(result.body);
+    },
+  });
   app.get("/api/board", async (request, reply) => {
     // Sector ETFs (from the collector) only for "vs sector" (?sectors=1).
     const sectors = (request.query as { sectors?: string }).sectors === "1";
@@ -111,8 +141,16 @@ export function buildApp(
             token: process.env.COLLECTOR_TOKEN,
           })
         : null;
+    // ?list=<id>: one watchlist's symbols; the engine list otherwise.
+    const tickers = await boardTickers(
+      (request.query as { list?: string }).list ?? null,
+      alpaca.watchlists,
+      async () =>
+        alpaca.symbols ? (await alpaca.symbols.list()).tickers : list!.tickers,
+    );
+    if (!tickers) return reply.code(404).send({ error: "No such watchlist" });
     const result = await handleBoard(
-      alpaca.symbols ? (await alpaca.symbols.list()).tickers : list!.tickers,
+      tickers,
       sectors ? list!.benchmarks : {},
       alpaca,
       alpaca.fetcher,
