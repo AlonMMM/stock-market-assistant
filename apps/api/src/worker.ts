@@ -30,6 +30,11 @@ import {
   loadWatchlist,
   pushLiveSymbols,
 } from "../../../packages/market-data/src/watchlist.js";
+import {
+  boardTickers,
+  D1Watchlists,
+  handleWatchlists,
+} from "../../../packages/market-data/src/watchlists.js";
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
 import {
   handlePortfolio,
@@ -67,6 +72,7 @@ let cache:
       sigmas: D1MarksSigmaStore;
       results: ResultCache;
       symbols: D1SymbolList;
+      watchlists: D1Watchlists;
     }
   | undefined;
 function stores(db: D1Like) {
@@ -85,6 +91,7 @@ function stores(db: D1Like) {
           : "unbuilt",
       ),
       symbols: new D1SymbolList(db),
+      watchlists: new D1Watchlists(db),
     };
   return cache;
 }
@@ -205,6 +212,36 @@ export default {
         headers: { "Cache-Control": "no-store" },
       });
     }
+    if (path === "/api/watchlists" || path.startsWith("/api/watchlists/")) {
+      let body: unknown;
+      if (request.method === "POST" || request.method === "PATCH")
+        try {
+          const text = await request.text();
+          if (text.length > 65536)
+            return Response.json(
+              { error: "Request too large" },
+              { status: 413 },
+            );
+          body = JSON.parse(text);
+        } catch {
+          return Response.json(
+            { error: "Expected JSON object" },
+            { status: 400 },
+          );
+        }
+      const db = env.BARS_CACHE ? stores(env.BARS_CACHE) : undefined;
+      const result = await handleWatchlists(
+        request.method,
+        path.slice("/api/watchlists/".length),
+        body,
+        db?.watchlists,
+        async () => (db ? (await db.symbols.list()).tickers : []),
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
     if (path === "/api/backtest/symbols") {
       let body: unknown;
       if (request.method === "POST")
@@ -312,7 +349,8 @@ export default {
       // Sector ETFs come from the collector and are asked for only when the
       // page wants "vs sector" (?sectors=1): a slow or down collector must
       // not hold up the board (user 2026-10-16).
-      const sectors = new URL(request.url).searchParams.get("sectors") === "1";
+      const query = new URL(request.url).searchParams;
+      const sectors = query.get("sectors") === "1";
       const list =
         sectors || !env.BARS_CACHE
           ? await loadWatchlist({
@@ -320,10 +358,20 @@ export default {
               token: env.COLLECTOR_TOKEN,
             })
           : null;
+      // ?list=<id>: one watchlist's symbols; the engine list otherwise.
+      const db = env.BARS_CACHE ? stores(env.BARS_CACHE) : undefined;
+      const tickers = await boardTickers(
+        query.get("list"),
+        db?.watchlists,
+        async () => (db ? (await db.symbols.list()).tickers : list!.tickers),
+      );
+      if (!tickers)
+        return Response.json(
+          { error: "No such watchlist" },
+          { status: 404, headers: { "Cache-Control": "no-store" } },
+        );
       const result = await handleBoard(
-        env.BARS_CACHE
-          ? (await stores(env.BARS_CACHE).symbols.list()).tickers
-          : list!.tickers,
+        tickers,
         sectors ? list!.benchmarks : {},
         credentials,
         fetch,

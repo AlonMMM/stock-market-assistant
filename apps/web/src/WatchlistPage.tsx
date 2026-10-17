@@ -7,6 +7,11 @@ import { pillFor, type Compare } from "./live-model.js";
 import { useControlAccess } from "./Positions.js";
 import { StatusPill } from "./StatusPill.js";
 import { WatchTable } from "./WatchTable.js";
+import {
+  useWatchlists,
+  WatchlistEditor,
+  WatchlistSwitcher,
+} from "./WatchlistLists.js";
 
 /** The watchlist as its own section (user 2026-10-16, IBKR-like layout). */
 export function WatchlistPage({
@@ -24,8 +29,13 @@ export function WatchlistPage({
   const live = usePolling<LiveStatus>("/api/live", liveRefreshMs, warn);
   // "vs sector" needs the collector's sector ETFs: asked for only then.
   const [compare, setCompare] = useState<Compare>("SPY");
+  const lists = useWatchlists();
+  const query = new URLSearchParams({
+    ...(lists.chosenId !== "all" ? { list: lists.chosenId } : {}),
+    ...(compare === "sector" ? { sectors: "1" } : {}),
+  }).toString();
   const board = usePolling<Board>(
-    compare === "sector" ? "/api/board?sectors=1" : "/api/board",
+    `/api/board${query ? `?${query}` : ""}`,
     boardRefreshMs,
     warn,
   );
@@ -58,12 +68,22 @@ export function WatchlistPage({
         {modes}
       </header>
       <h2 className="wl-title">
-        Watchlist
+        {lists.current && !lists.current.builtIn
+          ? lists.current.name
+          : "Watchlist"}
         {board.value && (
           <span className="count num">{board.value.watchlist.length}</span>
         )}
       </h2>
-      {board.value ? (
+      <WatchlistSwitcher w={lists} />
+      {board.value &&
+      board.value.watchlist.length === 0 &&
+      lists.current &&
+      !lists.current.builtIn ? (
+        <p className="chart-status">
+          This list is empty. Add tickers under “Edit {lists.current.name}”.
+        </p>
+      ) : board.value ? (
         <WatchTable
           board={board.value}
           alerts={status ? kept.current : []}
@@ -79,6 +99,7 @@ export function WatchlistPage({
             : "Loading watchlist…"}
         </p>
       )}
+      <WatchlistEditor w={lists} onChanged={board.reload} />
       <EngineTickers />
     </div>
   );

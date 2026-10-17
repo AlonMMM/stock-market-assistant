@@ -14,26 +14,47 @@ export const liveRefreshMs = 30000;
 export const boardRefreshMs = 5 * 60000;
 
 // Polls `path` while the page is visible.
+// The last answer per address, kept while the page is open: a section opened
+// again shows it at once and refreshes when it is due (user 2026-10-17: no
+// reload on every tab switch).
+const polled = new Map<string, { value: unknown; at: number }>();
+
 export function usePolling<T>(
   path: string,
   every: number,
   onError: (m: string) => void,
 ) {
-  const [value, setValue] = useState<T | null>(null);
-  const [at, setAt] = useState<number | null>(null);
+  const [value, setValue] = useState<T | null>(
+    () => (polled.get(path)?.value as T | undefined) ?? null,
+  );
+  const [at, setAt] = useState<number | null>(
+    () => polled.get(path)?.at ?? null,
+  );
   const [error, setError] = useState<string | null>(null);
+  // Set by `reload`: load this address now, past its kept answer.
+  const [reloaded, setReloaded] = useState<{ path: string } | null>(null);
   useEffect(() => {
     let active = true;
+    const force = reloaded?.path === path;
+    const kept = force ? undefined : polled.get(path);
+    // A new address (another list, "vs sector") shows its own last answer;
+    // a reload keeps what is shown until the new answer comes.
+    if (!force) {
+      setValue((kept?.value as T | undefined) ?? null);
+      setAt(kept?.at ?? null);
+    }
     const load = async () => {
       if (document.visibilityState !== "visible") return;
       try {
         const next = await readJson<T>(
           await fetch(path, { signal: AbortSignal.timeout(30000) }),
         );
+        const now = Date.now();
+        polled.set(path, { value: next, at: now });
         if (!active) return;
         setValue(next);
         setError(null);
-        setAt(Date.now());
+        setAt(now);
       } catch (e) {
         if (!active) return;
         const message = e instanceof Error ? e.message : `${path} failed`;
@@ -41,17 +62,23 @@ export function usePolling<T>(
         onError(message);
       }
     };
-    void load();
-    const timer = setInterval(load, every);
+    // Fresh enough: the first load waits until the answer is due.
+    const due = kept ? Math.max(0, kept.at + every - Date.now()) : 0;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const first = setTimeout(() => {
+      void load();
+      timer = setInterval(load, every);
+    }, due);
     document.addEventListener("visibilitychange", load);
     return () => {
       active = false;
+      clearTimeout(first);
       clearInterval(timer);
       document.removeEventListener("visibilitychange", load);
     };
     // onError only records warnings; it need not restart polling.
-  }, [path, every]);
-  return { value, at, error };
+  }, [path, every, reloaded]);
+  return { value, at, error, reload: () => setReloaded({ path }) };
 }
 
 // Alerts newer than the viewer's previous visit are marked "New". Stored

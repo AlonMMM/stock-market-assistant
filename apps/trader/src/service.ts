@@ -20,6 +20,11 @@ import {
   stockStepPrice,
   workStockOrder,
 } from "../../../packages/trading/src/stock-orders.js";
+import {
+  stockChange,
+  stockTicket,
+  TicketError,
+} from "../../../packages/trading/src/stock-tickets.js";
 import type { JobKind, TradeStore } from "./store.js";
 
 // The trading service behind the Claude connector
@@ -424,8 +429,10 @@ export class TraderService {
         this.broker.openOrders(),
         this.broker.positions(),
       ]);
+      // Option stops only: stock stops are the user's own orders, with no
+      // trade post to report under (user 2026-10-16).
       const stops = open.filter(
-        (o) => o.side === "sell" && o.stopPrice !== null,
+        (o) => o.side === "sell" && o.stopPrice !== null && occ.test(o.symbol),
       );
       const stillOpen = new Set(stops.map((o) => o.id));
       const held = new Map(positions.map((p) => [p.symbol, p]));
@@ -788,10 +795,13 @@ export class TraderService {
       openOrders: open.map((o) => ({
         contract: o.symbol,
         side: o.side,
-        type: o.stopPrice === null ? "limit" : "stop",
+        type: o.type ?? (o.stopPrice === null ? "limit" : "stop"),
+        ...(o.timeInForce ? { timeInForce: o.timeInForce } : {}),
         qty: o.qty,
         filledQty: o.filledQty,
         price: o.stopPrice ?? o.limitPrice,
+        limitPrice: o.limitPrice,
+        stopPrice: o.stopPrice,
         status: o.status,
       })),
     };
@@ -855,15 +865,21 @@ export class TraderService {
       // Where a buy and a sell would start.
       buyPrice: stockStepPrice("buy", quote, 0),
       sellPrice: stockStepPrice("sell", quote, 0),
-      openOrders: open
-        .filter((o) => o.stopPrice === null)
-        .map((o) => ({
-          orderId: o.id,
-          side: o.side,
-          qty: o.qty,
-          filledQty: o.filledQty,
-          price: o.limitPrice,
-        })),
+      // Every open order of the stock, stops and trailing stops included.
+      openOrders: open.map((o) => ({
+        orderId: o.id,
+        side: o.side,
+        type: o.type ?? (o.stopPrice === null ? "limit" : "stop"),
+        timeInForce: o.timeInForce ?? "day",
+        qty: o.qty,
+        filledQty: o.filledQty,
+        price: o.limitPrice,
+        limitPrice: o.limitPrice,
+        stopPrice: o.stopPrice,
+        trailPercent: o.trailPercent ?? null,
+        trailPrice: o.trailPrice ?? null,
+        extendedHours: o.extendedHours ?? false,
+      })),
     };
   }
 
@@ -959,6 +975,143 @@ export class TraderService {
       symbol,
       selling: qty,
       held: held.qty,
+    };
+  }
+
+  /**
+   * `POST /v1/stock/order`: one stock order of any type, sent as it is (user
+   * 2026-10-17). Fields: `symbol`, `side`, `type` (market, limit, stop,
+   * stop_limit, trailing_stop), `timeInForce` (day, gtc, opg, cls, ioc, fok),
+   * `qty` (shares; `all` or `half` for a sell) or `amount` (dollars, a buy),
+   * `limitPrice`, `stopPrice`, `trailPercent` | `trailPrice`,
+   * `extendedHours`. `check: true` answers what would be sent and sends
+   * nothing. A sell never goes beyond the shares held and not offered.
+   */
+  async stockOrder(body: Body) {
+    const symbol = this.stockSymbol(body);
+    const client = this.stockBroker();
+    if (!this.broker.stockOrder)
+      throw new RequestError("This broker cannot take stock orders", 501);
+    const checkOnly = body.check === true;
+    if (body.check !== undefined && typeof body.check !== "boolean")
+      throw new RequestError("check must be true or false");
+    if (!checkOnly) this.busy(symbol);
+    const [quote, held, open, marketOpen] = await Promise.all([
+      client.stockQuote(symbol).catch((error) => {
+        throw new RequestError(message(error), 502);
+      }),
+      this.heldShares(symbol),
+      this.broker.openOrders(symbol),
+      this.broker.marketOpen().catch(() => null),
+    ]);
+    let checked;
+    try {
+      checked = stockTicket(symbol, body, {
+        quote,
+        held: Math.max(held?.qty ?? 0, 0),
+        open,
+        marketOpen,
+      });
+    } catch (error) {
+      if (error instanceof TicketError)
+        throw new RequestError(error.message, 422);
+      throw error;
+    }
+    const answer = {
+      paper: this.broker.capabilities.paper,
+      ...checked.ticket,
+      held: held?.qty ?? 0,
+      sellable: checked.sellable,
+      bid: quote.bid,
+      ask: quote.ask,
+      last: quote.last,
+      estimatedCost: checked.estimatedCost,
+      notes: checked.notes,
+    };
+    if (checkOnly) return { status: "checked" as const, ...answer };
+    let order;
+    try {
+      order = await this.broker.stockOrder(checked.ticket);
+    } catch (error) {
+      this.record("stock-order", body, `refused: ${message(error)}`);
+      throw new RequestError(message(error), 502);
+    }
+    this.record(
+      "stock-order",
+      body,
+      `sent ${order.id}: ${checked.ticket.side} ${checked.ticket.qty} ${symbol} ${checked.ticket.type} ${checked.ticket.timeInForce}`,
+    );
+    // Whatever the order did, look at the account (never short).
+    const { problems } = await this.engine.shortCheck().catch((error) => ({
+      problems: [`the short check failed: ${message(error)}`],
+    }));
+    return {
+      status: "sent" as const,
+      ...answer,
+      orderId: order.id,
+      orderStatus: order.status,
+      filledQty: order.filledQty,
+      avgPrice: order.filledAvgPrice,
+      shortRisks: problems,
+    };
+  }
+
+  /**
+   * `POST /v1/orders/change` `{ orderId, qty?, limitPrice?, stopPrice?,
+   * trail?, timeInForce? }`: changes an open stock order. A sell may not grow
+   * beyond the shares free for it.
+   */
+  async changeOrder(body: Body) {
+    const order = await this.openOrder(body.orderId);
+    if (occ.test(order.symbol))
+      throw new RequestError(
+        "Option orders are changed with their own controls (price, stop)",
+        409,
+      );
+    if (!this.broker.changeOrder)
+      throw new RequestError("This broker cannot change orders", 501);
+    if (
+      this.store.runningJobs(this.userId).some((j) => j.symbol === order.symbol)
+    )
+      throw new RequestError(
+        "The service is moving this order's price right now; try again in a few seconds",
+        409,
+      );
+    const [held, open] = await Promise.all([
+      this.heldShares(order.symbol),
+      this.broker.openOrders(order.symbol),
+    ]);
+    let change;
+    try {
+      change = stockChange(order, body, {
+        held: Math.max(held?.qty ?? 0, 0),
+        open,
+      });
+    } catch (error) {
+      if (error instanceof TicketError)
+        throw new RequestError(error.message, 422);
+      throw error;
+    }
+    let changed;
+    try {
+      changed = await this.broker.changeOrder(order.id, change);
+    } catch (error) {
+      throw new RequestError(message(error), 502);
+    }
+    this.record(
+      "change-order",
+      body,
+      `${order.symbol} ${order.id} -> ${changed.id}: ${JSON.stringify(change)}`,
+    );
+    const { problems } = await this.engine.shortCheck().catch((error) => ({
+      problems: [`the short check failed: ${message(error)}`],
+    }));
+    return {
+      symbol: order.symbol,
+      orderId: changed.id,
+      was: order.id,
+      change,
+      shortRisks: problems,
     };
   }
 

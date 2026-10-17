@@ -365,3 +365,61 @@ test("stock trading: quote, buy and sell are forwarded for the owner only", asyn
   );
   assert.equal(seen.length, 3);
 });
+
+test("site typed stock orders and changes: only known fields are passed on", async () => {
+  const { fetcher, seen } = setup({ body: { status: "sent" } });
+  const call = (sub: string, body: unknown) =>
+    handleControl(
+      config,
+      owner,
+      {
+        method: "POST",
+        path: `/api/portfolio/control/${sub}`,
+        body,
+        origin,
+        requestOrigin: origin,
+      },
+      fetcher,
+    );
+  const ticket = {
+    symbol: "aapl",
+    side: "sell",
+    type: "trailing_stop",
+    timeInForce: "gtc",
+    qty: "all",
+    trailPercent: 4,
+    extra: "dropped",
+  };
+  assert.equal((await call("stock/check", ticket)).status, 200);
+  assert.equal(seen[0]!.url, "https://trader.test/v1/stock/order");
+  assert.deepEqual(seen[0]!.body, {
+    symbol: "AAPL",
+    side: "sell",
+    type: "trailing_stop",
+    timeInForce: "gtc",
+    qty: "all",
+    trailPercent: 4,
+    check: true,
+    via: "site",
+  });
+  assert.equal((await call("stock/order", ticket)).status, 200);
+  assert.equal((seen[1]!.body as { check?: boolean }).check, undefined);
+  assert.equal(
+    (await call("change", { orderId: "abc-1", stopPrice: 101.5 })).status,
+    200,
+  );
+  assert.equal(seen[2]!.url, "https://trader.test/v1/orders/change");
+  assert.deepEqual(seen[2]!.body, {
+    orderId: "abc-1",
+    stopPrice: 101.5,
+    via: "site",
+  });
+  // Bad shapes never reach the service.
+  assert.equal((await call("stock/order", { symbol: "AAPL1" })).status, 400);
+  assert.equal(
+    (await call("stock/order", { symbol: "AAPL", type: { x: 1 } })).status,
+    400,
+  );
+  assert.equal((await call("change", { orderId: "a b" })).status, 400);
+  assert.equal(seen.length, 3);
+});

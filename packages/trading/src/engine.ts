@@ -246,6 +246,8 @@ export interface BuyPlan extends BuyBase {
   waitMs?: number;
 }
 
+const isOcc = (symbol: string) => /^[A-Z.]{1,6}\d{6}[CP]\d{8}$/.test(symbol);
+
 // How far ahead the trade ticket offers expiries.
 const chainDays = 35;
 
@@ -405,7 +407,7 @@ export class TradeEngine {
   private async account() {
     const now = this.now();
     const day = newYork(now).date;
-    const [account, marketOpen, positions, orders, history, buys] =
+    const [account, marketOpen, positions, orders, history, buys, shares] =
       await Promise.all([
         this.broker.account(),
         this.broker.marketOpen(),
@@ -413,9 +415,14 @@ export class TradeEngine {
         this.broker.openOrders(),
         this.broker.equityHistory(),
         this.buys.list(day),
+        this.broker.stockPositions?.() ?? Promise.resolve([]),
       ]);
+    // Option buys only: a stock order (e.g. a resting stock limit buy) is not
+    // part of any option position.
     const working = orders
-      .filter((o) => o.side === "buy" && o.limitPrice !== null)
+      .filter(
+        (o) => o.side === "buy" && o.limitPrice !== null && isOcc(o.symbol),
+      )
       .map((o) => ({
         symbol: o.symbol,
         qty: o.qty - o.filledQty,
@@ -440,7 +447,9 @@ export class TradeEngine {
       marketOpen,
       held,
       working,
-      shortRisks: shortRisks(positions, orders),
+      // Shares count too: an open stock sell covered by held shares is not
+      // a short risk.
+      shortRisks: shortRisks([...positions, ...shares], orders),
       // Closes before today; today is measured by the day's loss.
       history: history.filter((d) => d.date < day),
       // A buy that ended with nothing filled does not count.
