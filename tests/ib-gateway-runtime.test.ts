@@ -11,18 +11,17 @@ test("IB Gateway uses pinned IBC automation over Railway private networking", ()
   assert.match(dockerfile, /USER root/);
   assert.match(dockerfile, /apt-get install[^\n]*xdotool/);
   assert.match(startup, /install -d -o ibgateway -g ibgateway -m 700/);
-  assert.match(startup, /OverrideTwsApiPort=4001/);
-  assert.match(
-    startup,
-    /sed -i 's\/\^LocalServerPort=\.\*\/LocalServerPort=4001\/'/,
-  );
+  // Paper keeps the Gateway's own port; the bridge serves 4001.
+  assert.match(startup, /gateway_port=4002/);
+  assert.match(startup, /OverrideTwsApiPort=\$\{gateway_port\}/);
+  assert.match(startup, /LocalServerPort=\$\{gateway_port\}/);
   assert.match(
     startup,
     /exec sudo -E -u ibgateway \/home\/ibgateway\/scripts\/run\.sh/,
   );
   assert.match(
     startup,
-    /socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127\.0\.0\.1:4001/,
+    /socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork \\\n\s+"TCP4:127\.0\.0\.1:\$\{gateway_port\}"/,
   );
   assert.match(startup, /--name '\^Login Messages\$'/);
   assert.match(startup, /xdotool windowfocus --sync/);
