@@ -22,6 +22,17 @@ Owner: integration (cross-cutting plan); each phase below becomes its own task f
 8. The owner's trading moves to IBKR; Alpaca stays supported, and one user may hold
    accounts at both brokers.
 9. A trader without a validator cannot buy until theirs is written.
+10. Order of work (user, 2026-10-17): first only the owner trades, on IBKR and Alpaca.
+    Other traders come later. The data model and interfaces above are still built
+    multi-user, so adding a trader later needs no rewrite.
+
+## Does each IBKR user need a dedicated server?
+
+No server per user, but one Gateway process per IBKR username: a Gateway (or a Client
+Portal Gateway) holds exactly one logged-in session. Several Gateway processes can share
+one container or machine on different ports; memory grows by about 0.5-1 GB per user.
+IBKR's third-party OAuth is the only way with no Gateway at all: one service calls the
+Web API for every user. For the owner-only phase this is moot: one Gateway.
 
 ## IBKR terms: blocks path a for other traders
 
@@ -208,25 +219,29 @@ the owner when the trader's last watch is older than a few minutes.
 
 ## Phases
 
-| #   | Task (owner)                                         | Done when                                                                                                                                                                                              |
-| --- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | Multiple traders on Alpaca (backend)                 | Users, scoped store, broker registry, validator registry with `owner-v1`, channels (telegram), watch in the trader. Owner's behavior unchanged; a second Alpaca paper user is fully isolated in tests. |
-| 2   | Connector sign-in per person (backend + integration) | `/mcp` uses Access OAuth; an unlisted or disabled email is refused; the connector text names the user's broker, not Alpaca.                                                                            |
-| 3   | Setup and admin pages (product-ux → frontend)        | A trader connects a broker and channels; the owner manages the allowlist; site trade pages show only the caller's account.                                                                             |
-| 4   | Owner's IBKR Gateway (backend)                       | Owner's Gateway runs on the private network, logs in with credentials from the vault, 2FA and down notices reach the channels.                                                                         |
-| 5   | `IbkrBroker` (backend)                               | Every trade flow passes on fake TWS and on the owner's IBKR paper account: buy with raises, stop, sell at bid, never-short refusal, stocks.                                                            |
-| 6   | Owner's alerts from IBKR (backend)                   | Shadow run of ≥3 sessions matches Alpaca within agreed tolerances; cutover by config.                                                                                                                  |
-| 7   | Live accounts (integration)                          | Each live account approved separately by the owner, with its own switch.                                                                                                                               |
-| 8   | IBKR for other traders (integration)                 | Only after IBKR's written consent or third-party OAuth (see "IBKR terms"). Then one Gateway per trader, by the owner's script.                                                                         |
+Now, owner only:
 
-Phases 1–2 do not need IBKR. Phase 4 can start in parallel with 2–3.
+| #   | Task (owner)                            | Done when                                                                                                                                                                      |
+| --- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Multi-user core, one user (backend)     | Users, scoped store, broker registry with several accounts per user, validator registry with `owner-v1`, channels (telegram), watch in the trader. Owner's behavior unchanged. |
+| 2   | Owner's IBKR Gateway (backend)          | Owner's Gateway runs on the private network, logs in with credentials from the vault, 2FA and down notices reach the channels.                                                 |
+| 3   | `IbkrBroker` (backend)                  | Every trade flow passes on fake TWS and on the owner's IBKR paper account: buy with raises, stop, sell at bid, never-short refusal, stocks. A command picks IBKR or Alpaca.    |
+| 4   | Owner's alerts from IBKR (backend)      | 75 tickers; shadow run of ≥3 sessions matches Alpaca within agreed tolerances; cutover by config.                                                                              |
+| 5   | Owner's IBKR live account (integration) | Approved separately by the owner, with its own switch.                                                                                                                         |
+
+Later, other traders:
+
+| #   | Task (owner)                                  | Done when                                                                                                                  |
+| --- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 6   | Connector sign-in per person (backend)        | `/mcp` uses Access OAuth; an unlisted or disabled email is refused; the connector text names the user's broker.            |
+| 7   | Setup and admin pages (product-ux → frontend) | A trader connects a broker and channels; the owner manages the allowlist; site trade pages show only the caller's account. |
+| 8   | Other traders on Alpaca (backend)             | A second Alpaca paper user is fully isolated in tests and in production.                                                   |
+| 9   | IBKR for other traders (integration)          | Only after IBKR's written consent or third-party OAuth (see "IBKR terms").                                                 |
 
 ## Open questions
 
 1. Confirm the hard-rule split under Validators.
-2. Who pays for each trader's Gateway service on Railway (one Java process, about 1 GB
-   of memory each), once phase 8 is allowed?
-3. Send IBKR the notice and consent request (help@interactivebrokers.com), or apply for
-   third-party OAuth, or both?
-4. Which broker account does a connector command use when a user has two: the default,
-   unless the command names the broker?
+2. When the owner holds both accounts, does a command go to the default (IBKR) unless it
+   names Alpaca?
+3. Later: send IBKR the consent request, apply for third-party OAuth, or both; and who
+   pays for each trader's Gateway.
