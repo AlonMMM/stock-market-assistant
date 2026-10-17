@@ -47,8 +47,18 @@ API uses the same SQLite file as the bar cache). No migration step.
   local server on SQLite with SYNTHETIC empty market data.
 - Not run: the hosted D1 database.
 
+## Frontend (2026-10-17, branch feat/watchlists-ui)
+
+- Watchlist section: list chips above the table ("All tickers" is the engine list), "+ New
+  list", and "Edit <name>" to add/remove tickers, rename or delete (with a confirm step).
+  The chosen list is remembered per browser.
+- Caching (user: no reload on every tab switch): `usePolling` keeps the last answer per
+  address while the page is open; a section opened again shows it at once and loads again
+  only when it is due. Applies to every polled view.
+- Checked in headless Chromium at 390 and 1280 px against the local API with SYNTHETIC
+  lists and live Alpaca prices: switching lists, creating one, and leaving the section and
+  coming back made 0 board requests; no page errors.
+
 ## Next
 
-Frontend: a list switcher on the Watchlist section (remembered per browser), create,
-rename and delete, add/remove symbols from a row, and "Add to watchlist" from a stock's
-detail.
+"Add to watchlist" from a stock's detail, and drag to reorder lists and symbols.
