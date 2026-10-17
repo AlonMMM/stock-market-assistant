@@ -3,8 +3,10 @@ import type {
   BrokerCapabilities,
   OpenOrder,
   Order,
+  OrderChange,
   Position,
   StockQuote,
+  StockTicket,
 } from "./broker.js";
 import { parseOccSymbol, type OptionQuote } from "./options.js";
 
@@ -18,6 +20,12 @@ const multiplier = (symbol: string) => (isOption(symbol) ? 100 : 1);
 
 interface SimOrder extends OpenOrder {
   kind: "buy" | "sell" | "stop";
+  // A stock order of a given type (`stockOrder`): how it fills.
+  ticket?: {
+    type: StockTicket["type"];
+    triggered: boolean; // a stop or trailing stop has been reached
+    mark?: number; // a trailing stop's best price so far
+  };
 }
 
 export class SimBroker implements Broker {
@@ -113,6 +121,7 @@ export class SimBroker implements Broker {
       ask: stock?.ask ?? Infinity,
     };
     if (!this.quotes.has(o.symbol) && !stock) return;
+    if (o.ticket) return this.settleTicket(o, q);
     if (o.kind === "buy") {
       const at = this.fillAt.get(o.symbol) ?? q.ask;
       if (o.limitPrice! >= at - 1e-9) this.fill(o, o.limitPrice!);
@@ -121,12 +130,45 @@ export class SimBroker implements Broker {
     } else if (q.bid <= o.stopPrice! + 1e-9) this.fill(o, q.bid);
   }
 
+  // Stock orders by type: market at the ask or bid; limit at its price once
+  // the market reaches it; a stop becomes market (or its limit) once reached;
+  // a trailing stop follows the best price by its trail.
+  private settleTicket(o: SimOrder, q: { bid: number; ask: number }) {
+    const t = o.ticket!;
+    const buy = o.side === "buy";
+    const here = buy ? q.ask : q.bid;
+    if (!(here > 0) || !Number.isFinite(here)) return;
+    if (t.type === "trailing_stop") {
+      t.mark =
+        t.mark === undefined
+          ? here
+          : buy
+            ? Math.min(t.mark, here)
+            : Math.max(t.mark, here);
+      const trail = o.trailPrice ?? ((o.trailPercent ?? 0) / 100) * t.mark;
+      o.stopPrice = Number((buy ? t.mark + trail : t.mark - trail).toFixed(4));
+    }
+    if (t.type !== "market" && t.type !== "limit" && !t.triggered)
+      t.triggered = buy
+        ? here >= o.stopPrice! - 1e-9
+        : here <= o.stopPrice! + 1e-9;
+    const limited = t.type === "limit" || t.type === "stop_limit";
+    if (t.type !== "market" && t.type !== "limit" && !t.triggered) return;
+    if (!limited) return this.fill(o, here);
+    if (buy ? here <= o.limitPrice! + 1e-9 : here >= o.limitPrice! - 1e-9)
+      this.fill(o, o.limitPrice!);
+  }
+
   private add(
     kind: SimOrder["kind"],
     symbol: string,
     qty: number,
     limitPrice: number | null,
     stopPrice: number | null,
+    typed?: Pick<
+      OpenOrder,
+      "type" | "timeInForce" | "trailPercent" | "trailPrice" | "extendedHours"
+    >,
   ): Order {
     if (kind !== "buy") {
       const selling = [...this.orders.values()]
@@ -157,6 +199,15 @@ export class SimBroker implements Broker {
       stopPrice,
       side: kind === "buy" ? "buy" : "sell",
       kind,
+      ...(typed
+        ? {
+            ...typed,
+            ticket: {
+              type: typed.type as StockTicket["type"],
+              triggered: false,
+            },
+          }
+        : {}),
     };
     this.orders.set(o.id, o);
     this.settle(o);
@@ -257,6 +308,42 @@ export class SimBroker implements Broker {
     limitPrice: number,
   ) {
     return this.add(side, symbol, qty, limitPrice, null);
+  }
+  async stockOrder(t: StockTicket) {
+    const placed = this.add(
+      t.side,
+      t.symbol,
+      t.qty,
+      t.limitPrice ?? null,
+      t.stopPrice ?? null,
+      {
+        type: t.type,
+        timeInForce: t.timeInForce,
+        trailPercent: t.trailPercent ?? null,
+        trailPrice: t.trailPrice ?? null,
+        extendedHours: t.extendedHours === true,
+      },
+    );
+    const o = this.get(placed.id);
+    // Immediate or cancel, fill or kill: what did not fill now is canceled.
+    if ((t.timeInForce === "ioc" || t.timeInForce === "fok") && this.open(o))
+      o.status = "canceled";
+    return { ...o };
+  }
+  async changeOrder(id: string, c: OrderChange) {
+    const o = this.get(id);
+    if (!this.open(o)) throw new Error(`sim: order ${id} is ${o.status}`);
+    if (c.qty !== undefined) o.qty = c.qty;
+    if (c.limitPrice !== undefined) o.limitPrice = c.limitPrice;
+    if (c.stopPrice !== undefined) o.stopPrice = c.stopPrice;
+    if (c.trail !== undefined) {
+      if (o.trailPercent !== null && o.trailPercent !== undefined)
+        o.trailPercent = c.trail;
+      else o.trailPrice = c.trail;
+    }
+    if (c.timeInForce !== undefined) o.timeInForce = c.timeInForce;
+    this.settle(o);
+    return { ...o };
   }
   async stockPositions(): Promise<Position[]> {
     return [...this.held]
