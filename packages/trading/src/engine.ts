@@ -4,7 +4,10 @@ import {
   checkBuy,
   defaultBuyLimits,
   openRisk,
+  type BuyContext,
   type BuyLimits,
+  type BuyVerdict,
+  type CheckResult,
   type HeldPosition,
 } from "./checks.js";
 import { sellAtBid } from "./exit.js";
@@ -147,6 +150,8 @@ export interface EngineOptions {
   decisions?: DecisionLog;
   limits?: BuyLimits;
   riskRules?: RiskRules;
+  // The trader's own checks (validators.ts); a failed one refuses the buy.
+  validate?: (c: BuyContext) => CheckResult[];
   // The kill switch: false refuses every buy. Sells and stops still work.
   enabled?: boolean;
   // The expiry bought when a command names none: the nearest one. The
@@ -251,6 +256,21 @@ const addDays = (date: string, days: number) =>
     .toISOString()
     .slice(0, 10);
 
+/** A verdict with a validator's checks added; a failed one refuses. */
+function withChecks(verdict: BuyVerdict, extra: CheckResult[]): BuyVerdict {
+  if (extra.length === 0) return verdict;
+  const failed = extra.filter((c) => !c.ok);
+  return {
+    ...verdict,
+    ok: verdict.ok && failed.length === 0,
+    checks: [...verdict.checks, ...extra],
+    refused: [
+      ...verdict.refused,
+      ...failed.map((c) => `${c.check}: ${c.detail}`),
+    ],
+  };
+}
+
 export class TradeEngine {
   private readonly broker: Broker;
   private readonly notifier: Notifier;
@@ -259,6 +279,7 @@ export class TradeEngine {
   private readonly decisions: DecisionLog;
   private readonly limits: BuyLimits;
   private readonly riskRules: RiskRules;
+  private readonly validate: (c: BuyContext) => CheckResult[];
   private readonly enabled: boolean;
   private readonly defaultExpiry: "nearest" | "friday";
   private readonly log: (line: string) => void;
@@ -273,6 +294,7 @@ export class TradeEngine {
     this.decisions = options.decisions ?? { put: async () => {} };
     this.limits = options.limits ?? defaultBuyLimits;
     this.riskRules = options.riskRules ?? defaultRiskRules;
+    this.validate = options.validate ?? (() => []);
     this.enabled = options.enabled ?? true;
     this.defaultExpiry = options.defaultExpiry ?? "nearest";
     this.log = options.log ?? (() => {});
@@ -477,31 +499,32 @@ export class TradeEngine {
       },
       this.riskRules,
     );
-    const verdict = checkBuy(
-      {
-        now: a.now,
-        enabled: this.enabled,
-        paper: this.paper,
-        shortRisks: a.shortRisks,
-        marketOpen: a.marketOpen,
-        equity: a.account.equity,
-        lastEquity: a.account.lastEquity,
-        buyingPower: a.account.buyingPower,
-        positions: a.held,
-        buysToday: a.buysToday,
-        working: a.working,
-        order: {
-          quote,
-          qty: sized.qty,
-          ceiling,
-          sizePct,
-          stopPct,
-          ...(force ? { force } : {}),
-          ...(deltaRange ? { deltaRange } : {}),
-        },
-        risk,
+    const context: BuyContext = {
+      now: a.now,
+      enabled: this.enabled,
+      paper: this.paper,
+      shortRisks: a.shortRisks,
+      marketOpen: a.marketOpen,
+      equity: a.account.equity,
+      lastEquity: a.account.lastEquity,
+      buyingPower: a.account.buyingPower,
+      positions: a.held,
+      buysToday: a.buysToday,
+      working: a.working,
+      order: {
+        quote,
+        qty: sized.qty,
+        ceiling,
+        sizePct,
+        stopPct,
+        ...(force ? { force } : {}),
+        ...(deltaRange ? { deltaRange } : {}),
       },
-      this.limits,
+      risk,
+    };
+    const verdict = withChecks(
+      checkBuy(context, this.limits),
+      this.validate(context),
     );
     return { ceiling, ...sized, sizePct, verdict, risk, daysToExpiry };
   }
