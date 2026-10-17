@@ -1,4 +1,33 @@
-# IBKR collector operation
+# IBKR operation
+
+## Trading Gateway (owner, paper) — 2026-10-17
+
+Phase 2 of [listed traders and Interactive Brokers](features/multi-user-ibkr.md). One
+`ib-gateway` Railway service runs the owner's IB Gateway through IBC
+(`Dockerfile.gateway`, `deploy/gateway/start.sh`). The trading service connects to it
+over Railway's private network on port 4001; no public domain points at it.
+
+- Paper only: `start.sh` exits unless `TRADING_MODE=paper`. Live needs the owner's
+  separate approval and a dedicated username (one IBKR username has one brokerage
+  session, so a live Gateway login would disconnect IBKR Mobile).
+- The API is open for orders (`READ_ONLY_API=no`): the trading service sends them.
+- For now it logs in with the paper username of the owner's regular IBKR user. While
+  IBKR Mobile streams live data, the paper account may get delayed or no data.
+
+Setup:
+
+1. Railway: new service `ib-gateway` from this repository, `RAILWAY_DOCKERFILE_PATH=Dockerfile.gateway`,
+   a volume at `/home/gateway`, no public domain.
+2. Variables, entered by the owner in the Railway dashboard only (never in chat, Git or a
+   terminal command that is shown in a conversation): `TWS_USERID` (paper username),
+   `TWS_PASSWORD`, `TRADING_MODE=paper`, `TWS_ACCEPT_INCOMING=accept`,
+   `TWOFA_TIMEOUT_ACTION=restart`, `RELOGIN_AFTER_TWOFA_TIMEOUT=yes`.
+3. The logs show IBC's login and then the API listener; the trading service then reaches
+   `ib-gateway.railway.internal:4001`.
+
+Not built yet: the `IbkrBroker` that uses this Gateway (phase 3).
+
+## History: read-only collector (September 2026, replaced by Alpaca)
 
 Status: Railway waiting-mode collector deployed; automated IB Gateway deployment in progress.
 
