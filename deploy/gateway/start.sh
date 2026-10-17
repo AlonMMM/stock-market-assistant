@@ -13,23 +13,28 @@ export READ_ONLY_API=no
 
 install -d -o ibgateway -g ibgateway -m 700 /home/gateway/automated
 
-# Let IBC apply the live Gateway API port through the Gateway configuration UI
-# after login.
+# The Gateway keeps its own API port for the mode: 4002 for paper. Moving it
+# (to 4001, as in September on the live account) opens a configuration dialog
+# that leaves the API listener closed (2026-10-17: "Connection refused" on
+# 4001 while that dialog stayed open). Clients still connect to 4001: the
+# bridge below forwards it.
+gateway_port=4002
 ibc_template=/home/ibgateway/ibc/config.ini.tmpl
-sed -i 's/^OverrideTwsApiPort=.*/OverrideTwsApiPort=4001/' "$ibc_template"
+sed -i "s/^OverrideTwsApiPort=.*/OverrideTwsApiPort=${gateway_port}/" "$ibc_template"
 
 # Normalize settings left by earlier deployments. IBC repeats this setting via
 # the UI after login, so the persisted file and runtime configuration agree.
 settings_file=/home/gateway/automated/jts.ini
 if [[ -f "$settings_file" ]]; then
-  sed -i 's/^LocalServerPort=.*/LocalServerPort=4001/' "$settings_file"
+  sed -i "s/^LocalServerPort=.*/LocalServerPort=${gateway_port}/" "$settings_file"
   chown ibgateway:ibgateway "$settings_file"
 fi
 
 # Railway service DNS resolves to IPv6. Bridge the project's private IPv6
 # socket directly to Gateway's loopback-only IPv4 API. No public domain targets
 # this port, and Gateway sees the client as trusted localhost traffic.
-socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork TCP4:127.0.0.1:4001 &
+socat TCP6-LISTEN:4001,ipv6only=1,reuseaddr,fork \
+  "TCP4:127.0.0.1:${gateway_port}" &
 bridge_pid=$!
 
 # This account receives a post-login informational modal that Gateway leaves
