@@ -60,3 +60,33 @@ export function seedOwner(store: TradeStore, env: Env, now: number) {
     );
   return id;
 }
+
+/**
+ * The owner's IBKR paper account, next to the default one, once
+ * `IBKR_GATEWAY` (host:port of the Gateway) is set. The Gateway holds the
+ * login, so the account stores no secret. Returns the account id when added.
+ */
+export function ensureOwnerIbkr(store: TradeStore, env: Env, now: number) {
+  const gateway = env.IBKR_GATEWAY;
+  if (!gateway) return null;
+  if (!/^[a-z0-9.-]+:\d+$/i.test(gateway))
+    throw new Error("IBKR_GATEWAY must be host:port");
+  const owner = store.users().find((u) => u.isAdmin);
+  if (!owner) return null;
+  if (store.accounts(owner.id).some((a) => a.broker === "ibkr")) return null;
+  const id = `${owner.id}-ibkr`;
+  store.addAccount(
+    {
+      id,
+      userId: owner.id,
+      broker: "ibkr",
+      mode: "paper",
+      isDefault: false,
+      credentials: {},
+      gatewayUrl: gateway,
+      enabled: true,
+    },
+    now,
+  );
+  return id;
+}

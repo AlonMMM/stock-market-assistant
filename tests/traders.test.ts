@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import test from "node:test";
 import { readSecret, Vault } from "../apps/trader/src/secrets.js";
-import { seedOwner } from "../apps/trader/src/seed.js";
+import { ensureOwnerIbkr, seedOwner } from "../apps/trader/src/seed.js";
+import { ShortWatch, shortRepeatMs } from "../apps/trader/src/short-watch.js";
 import { TradeStore, type Channel } from "../apps/trader/src/store.js";
 import { Traders } from "../apps/trader/src/traders.js";
 import { FanOutNotifier } from "../packages/trading/src/fan-out.js";
@@ -174,7 +175,7 @@ test("validators: no validator, or an unknown one, means no buy", async () => {
   assert.deepEqual(resolveValidator("owner-v1").check({} as never), []);
 });
 
-test("traders: only paper accounts, and only brokers that exist", () => {
+test("traders: only paper accounts; an IBKR account needs its Gateway", () => {
   const store = new TradeStore(":memory:");
   const traders = new Traders({
     store,
@@ -197,7 +198,7 @@ test("traders: only paper accounts, and only brokers that exist", () => {
   );
   assert.throws(
     () => traders.broker({ ...base, broker: "ibkr", mode: "paper" }),
-    /not supported yet/,
+    /no IB Gateway/,
   );
 });
 
@@ -229,4 +230,87 @@ test("fan-out: each channel gets its events; a failure blocks nothing", async ()
   assert.deepEqual(got.sort(), ["a", "b"]);
   const none = new FanOutNotifier([]);
   assert.equal((await none.alert("t", [])).ok, false);
+});
+
+test("seed: the owner's IBKR paper account is added once, next to the default", () => {
+  const store = new TradeStore(":memory:");
+  assert.equal(
+    ensureOwnerIbkr(store, { IBKR_GATEWAY: "gw:4001" }, monday),
+    null,
+  );
+  seedOwner(store, env, monday);
+  assert.equal(ensureOwnerIbkr(store, {}, monday), null);
+  assert.throws(
+    () => ensureOwnerIbkr(store, { IBKR_GATEWAY: "gw" }, monday),
+    /host:port/,
+  );
+  const gw = { IBKR_GATEWAY: "ib-gateway.railway.internal:4001" };
+  assert.equal(ensureOwnerIbkr(store, gw, monday), "owner-ibkr");
+  assert.equal(ensureOwnerIbkr(store, gw, monday), null);
+  const ibkr = store.accounts("owner").find((a) => a.broker === "ibkr")!;
+  assert.deepEqual(
+    [ibkr.mode, ibkr.isDefault, ibkr.gatewayUrl, ibkr.credentials],
+    ["paper", false, "ib-gateway.railway.internal:4001", {}],
+  );
+});
+
+test("traders: a call may name the broker; each account keeps its own records", async () => {
+  const { traders, store, brokers } = setup();
+  ensureOwnerIbkr(store, { IBKR_GATEWAY: "gw:4001" }, monday);
+  const alpaca = traders.forCaller(undefined);
+  const ibkr = traders.forCaller(undefined, "ibkr");
+  assert.deepEqual(
+    [alpaca.scope, ibkr.scope, ibkr.account.broker],
+    ["owner", "owner/owner-ibkr", "ibkr"],
+  );
+  assert.equal(traders.forCaller(undefined, "alpaca"), alpaca);
+  assert.throws(() => traders.forCaller("friend", "ibkr"), /no ibkr account/);
+  const started = await ibkr.service.buy(buyNvda);
+  await ibkr.service.idle();
+  assert.equal(started.status, "started");
+  const jobId = (started as { jobId: string }).jobId;
+  // The IBKR job is not the Alpaca account's.
+  assert.throws(() => alpaca.service.job(jobId), /No such job/);
+  assert.equal(store.runningJobs("owner").length, 0);
+  assert.equal(traders.all().length, 3);
+  assert.ok(brokers.size >= 2);
+});
+
+test("short watch: a short is sent at once, repeated after 15 minutes, and cleared", async () => {
+  const { traders } = setup();
+  const t = traders.get("owner");
+  const alerts: string[] = [];
+  const clock = { now: monday };
+  const watch = new ShortWatch(
+    () => {},
+    () => clock.now,
+  );
+  const trader = {
+    ...t,
+    notifier: {
+      ...t.notifier,
+      alert: async (title: string) => {
+        alerts.push(title);
+        return { ok: true as const };
+      },
+    } as typeof t.notifier,
+  };
+  const short = [{ symbol: friday, qty: -1, avgEntryPrice: 1 }];
+  let held = short;
+  trader.broker = {
+    ...t.broker,
+    capabilities: t.broker.capabilities,
+    positions: async () => held,
+    stockPositions: async () => [],
+    openOrders: async () => [],
+  } as typeof t.broker;
+  assert.match((await watch.check(trader))[0]!, /SHORT/);
+  await watch.check(trader);
+  assert.equal(alerts.length, 1);
+  clock.now += shortRepeatMs;
+  await watch.check(trader);
+  assert.equal(alerts.length, 2);
+  held = [];
+  assert.deepEqual(await watch.check(trader), []);
+  assert.match(alerts[2]!, /gone/);
 });

@@ -25,7 +25,17 @@ Setup:
 3. The logs show IBC's login and then the API listener; the trading service then reaches
    `ib-gateway.railway.internal:4001`.
 
-Not built yet: the `IbkrBroker` that uses this Gateway (phase 3).
+### Trading service connection (phase 3)
+
+- `sma-trader` variables: `IBKR_GATEWAY=ib-gateway.railway.internal:4001` adds the
+  owner's IBKR paper account (not the default) on the next start; `IBKR_CLIENT_ID`
+  (default 11) is the API client id of that connection.
+- A call names the broker with `X-Trader-Broker: ibkr` (or `broker` in the body or
+  query); without it, the default account (Alpaca) is used.
+- IBKR does not refuse a sell that opens a short. `IbkrTrading` checks every sell
+  against what is held and already offered, and the trading service checks the IBKR
+  account for short risk every minute (alerts repeat every 15 minutes).
+- Real-time market data only (`reqMarketDataType(1)`); no delayed or frozen quotes.
 
 ## History: read-only collector (September 2026, replaced by Alpaca)
 
