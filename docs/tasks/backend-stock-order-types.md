@@ -1,6 +1,6 @@
 # Task: Every stock order type a broker offers
 
-Status: backend completed (in review); frontend not started
+Status: backend and frontend completed
 Owner: backend
 Branch: feat/order-types
 
@@ -94,8 +94,18 @@ change, shortRisks }`. Option orders keep their own controls (409 here).
   ("potential wash trade"); its message is shown as it comes.
 - No Telegram post for typed stock orders.
 
-## Next
+## Frontend (Trade → Shares)
 
-Frontend: on Trade → Shares, a side switch (Buy | Sell), order type, time in force,
-the price fields the type needs, extended hours for limit, Check then Confirm; the open
-orders list with change and cancel.
+`apps/web/src/StockTrade.tsx`, rules mirrored in `apps/web/src/stock-ticket-model.ts`
+(a test keeps its time-in-force table equal to the service's):
+
+- Buy | Sell (Sell only when shares are free to sell), order type (the five above plus
+  "Auto (stepped)", the earlier stepped limit), the time in force the type takes, size in
+  shares or dollars (buy) or shares / Half / All (sell), the price fields the type needs,
+  trailing by % or $, and pre/after-hours for a limit with day or gtc.
+- Review calls `…/stock/check` and shows the normalized order, the estimate and the
+  service's notes; Confirm sends `…/stock/order`.
+- Open orders of the stock are listed with Change (shares and the order's own prices)
+  and Cancel.
+- Checked in headless Chromium at 390 and 1280 px with SYNTHETIC answers; no order was
+  sent to Alpaca.
