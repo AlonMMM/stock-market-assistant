@@ -3418,6 +3418,59 @@ dialog.why::backdrop {
   height: 20px;
   accent-color: #142b29;
 }
+/* Trade → Shares: side, order type and time in force, open orders. */
+.ticket-side {
+  justify-self: start;
+}
+.ticket-side button {
+  min-width: 88px;
+  font-size: 15px;
+}
+.ticket-side button.sell[aria-pressed="true"] {
+  background: #9f1a1a;
+}
+.ticket select {
+  height: 44px;
+  padding: 0 10px;
+  border: 1px solid #cdd7ce;
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #142b29;
+}
+.ticket .muted {
+  margin: 0;
+}
+.ticket-explain {
+  grid-column: 1 / -1;
+  font-size: 13px;
+}
+.stock-orders {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.stock-order {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #dfe6dd;
+  font-size: 14px;
+}
+.stock-order:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.stock-order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  grid-column: 1 / -1;
+}
 .ticket-check {
   display: grid;
   gap: 10px;
