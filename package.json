@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.125.0",
+    "@stoqey/ib": "1.6.10",
     "fastify": "5.12.4",
     "lightweight-charts": "5.2.1",
     "react": "19.3.0",
