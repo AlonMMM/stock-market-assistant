@@ -373,3 +373,110 @@ test("chain carries the stock price, or null when the broker has none", async ()
   assert.equal(down.underlyingPrice, null);
   assert.ok(down.quotes.length > 0);
 });
+
+// The option ticket's choices (user 2026-10-17): one limit order at the
+// user's price instead of raising it, and the automatic stop switched off.
+
+test("engine buy at a limit: one order at that price, filled, stop kept", async () => {
+  const { broker, engine } = setup();
+  const out = await engine.buy({
+    contract: friday,
+    qty: 2,
+    ladder: false,
+    limitPrice: 1.03,
+  });
+  assert.ok("result" in out);
+  assert.deepEqual(out.result.prices, [1.03]);
+  assert.equal(out.result.order!.filledQty, 2);
+  assert.equal(out.stop?.price, Number((1.03 * 0.6).toFixed(2)));
+  // One buy order, then the stop.
+  assert.deepEqual(
+    [...broker.orders.values()].map((o) => o.kind),
+    ["buy", "stop"],
+  );
+});
+
+test("engine buy at a limit without a stop: left working for the day", async () => {
+  const { broker, engine } = setup();
+  const out = await engine.buy({
+    contract: friday,
+    qty: 2,
+    ladder: false,
+    limitPrice: 0.9,
+    autoStop: false,
+  });
+  assert.ok("result" in out);
+  assert.equal(out.working, true);
+  assert.equal(out.noStop, true);
+  assert.equal(out.canceledQty, 0);
+  const open = await broker.openOrders(friday);
+  assert.deepEqual(
+    open.map((o) => [o.side, o.qty, o.limitPrice]),
+    [["buy", 2, 0.9]],
+  );
+});
+
+test("engine buy stepped without a stop: fills, no stop is placed", async () => {
+  const { broker, engine } = setup();
+  const out = await engine.buy({ contract: friday, qty: 2, autoStop: false });
+  assert.ok("result" in out);
+  assert.equal(out.result.order!.filledQty, 2);
+  assert.equal(out.stop?.price, undefined);
+  assert.equal((await broker.openOrders(friday)).length, 0);
+});
+
+test("engine check: a limit order is sized at its price; no stop is said plainly", async () => {
+  const { broker, engine } = setup();
+  const c = await engine.checkContract({
+    contract: friday,
+    qty: 2,
+    ladder: false,
+    limitPrice: 0.95,
+    autoStop: false,
+  });
+  assert.equal(c.ceiling, 0.95);
+  assert.equal(c.maxCost, 190);
+  assert.equal(c.ladder, false);
+  assert.equal(c.autoStop, false);
+  assert.equal(c.stopAtCeiling, null);
+  assert.ok(c.checks.find((x) => x.check === "stop")?.ok);
+  assert.ok(c.notes.some((n) => n.startsWith("no automatic stop")));
+  assert.equal(broker.orders.size, 0);
+});
+
+test("engine: the ticket's choices are checked", async () => {
+  const { engine } = setup();
+  await assert.rejects(
+    engine.checkContract({ contract: friday, qty: 1, ladder: false }),
+    /needs limitPrice/,
+  );
+  await assert.rejects(
+    engine.checkContract({
+      contract: friday,
+      qty: 1,
+      ladder: false,
+      limitPrice: 3.12,
+    }),
+    /not on the tick/,
+  );
+  await assert.rejects(
+    engine.checkContract({ contract: friday, qty: 1, limitPrice: 1 }),
+    /set ladder to false/,
+  );
+});
+
+test("engine: adding to a held contract with a stop needs a stop or the stepped buy", async () => {
+  const { broker, engine, clock } = setup();
+  await engine.buy({ contract: friday, qty: 1 });
+  assert.equal((await broker.openOrders(friday)).length, 1); // its stop
+  clock.now += 60 * 60_000; // past the repeat check
+  const out = await engine.buy({
+    contract: friday,
+    qty: 1,
+    ladder: false,
+    limitPrice: 0.9,
+    autoStop: false,
+  });
+  assert.ok("refused" in out);
+  assert.match(out.refused[0]!, /adding without a stop/);
+});

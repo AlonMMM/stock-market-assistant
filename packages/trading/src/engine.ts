@@ -192,6 +192,13 @@ export interface BuyRequest {
   stopPct?: number;
   // Buy whatever the spread is (user 2026-10-12). Every other check applies.
   force?: boolean;
+  // The ticket's choices (user 2026-10-17). `ladder: false` sends one day
+  // limit order at `limitPrice` instead of raising the price from the mid;
+  // `autoStop: false` places no stop on what fills. Both default to the
+  // usual buy.
+  ladder?: boolean;
+  limitPrice?: number;
+  autoStop?: boolean;
   steps?: number;
   intervalMs?: number;
   waitMs?: number; // how long an unfilled order is watched, then canceled
@@ -221,6 +228,9 @@ export interface BuyDone extends BuyBase {
   stop?: ProtectResult["stop"];
   canceledQty?: number;
   cancelError?: string;
+  // A limit order without a stop is left at the broker for the day.
+  working?: boolean;
+  noStop?: boolean;
   post?: Sent; // set when any contract filled
   offHours?: boolean; // the order was sent while the market was closed
 }
@@ -241,9 +251,44 @@ export interface BuyPlan extends BuyBase {
   record: BuyRecord;
   decision: Decision;
   force?: boolean;
+  // One limit order at this price, not raised (`ladder: false`).
+  limitPrice?: number;
+  noStop?: boolean;
   steps?: number;
   intervalMs?: number;
   waitMs?: number;
+}
+
+// A limit order at the user's price, with a stop to keep, is watched this
+// long; what has not filled by then is canceled.
+export const fixedWatchMs = 15 * 60_000;
+
+/** The ticket's choices as the engine uses them; throws on a bad one. */
+export function ticketChoice(request: {
+  ladder?: boolean;
+  limitPrice?: number;
+  autoStop?: boolean;
+}): { limitPrice?: number; noStop?: boolean } {
+  const { limitPrice } = request;
+  if (request.ladder === false) {
+    if (
+      limitPrice === undefined ||
+      !Number.isFinite(limitPrice) ||
+      !(limitPrice > 0)
+    )
+      throw new Error("A limit order needs limitPrice above zero");
+    if (roundToTick(limitPrice, "down") !== Number(limitPrice.toFixed(2)))
+      throw new Error(
+        `limitPrice ${limitPrice} is not on the tick: whole cents below $3, 5 cents from $3`,
+      );
+  } else if (limitPrice !== undefined)
+    throw new Error(
+      "limitPrice is for a single limit order: set ladder to false, or leave the price to the stepped buy",
+    );
+  return {
+    ...(request.ladder === false ? { limitPrice } : {}),
+    ...(request.autoStop === false ? { noStop: true } : {}),
+  };
 }
 
 const isOcc = (symbol: string) => /^[A-Z.]{1,6}\d{6}[CP]\d{8}$/.test(symbol);
@@ -465,8 +510,10 @@ export class TradeEngine {
     stopPct: number,
     deltaRange?: readonly [number, number],
     force = false,
+    fixed: { limitPrice?: number; noStop?: boolean } = {},
   ) {
-    const ceiling = ceilingPrice(quote);
+    // A single limit order costs at most its own price.
+    const ceiling = fixed.limitPrice ?? ceilingPrice(quote);
     const { equity } = a.account;
     // An exact number of contracts is measured as the share it costs.
     const exact =
@@ -517,6 +564,7 @@ export class TradeEngine {
         ceiling,
         sizePct,
         stopPct,
+        ...(fixed.noStop ? { noStop: true } : {}),
         ...(force ? { force } : {}),
         ...(deltaRange ? { deltaRange } : {}),
       },
@@ -700,8 +748,12 @@ export class TradeEngine {
     qty?: number;
     stopPct?: number;
     force?: boolean;
+    ladder?: boolean;
+    limitPrice?: number;
+    autoStop?: boolean;
   }) {
     const stopPct = request.stopPct ?? defaultStopPct;
+    const fixed = ticketChoice(request);
     if (request.sizePct === undefined && request.qty === undefined)
       throw new Error("Need a size: sizePct or qty");
     const [quote, a] = await Promise.all([
@@ -717,6 +769,7 @@ export class TradeEngine {
       stopPct,
       undefined,
       request.force,
+      fixed,
     );
     const spread = spreadCheck(quote);
     return {
@@ -733,8 +786,14 @@ export class TradeEngine {
       maxCost: Number(sized.cost.toFixed(2)),
       sizePct: sized.sizePct,
       stopPct,
+      ladder: fixed.limitPrice === undefined,
+      limitPrice: fixed.limitPrice ?? null,
+      autoStop: !fixed.noStop,
       stopAtCeiling:
-        stopPct > 0 && stopPct <= this.limits.maxStopPct && sized.ceiling > 0
+        !fixed.noStop &&
+        stopPct > 0 &&
+        stopPct <= this.limits.maxStopPct &&
+        sized.ceiling > 0
           ? stopPrice(sized.ceiling, stopPct)
           : null,
       wouldBuy: sized.verdict.ok,
@@ -761,6 +820,7 @@ export class TradeEngine {
    */
   async planBuy(request: BuyRequest): Promise<BuyRefused | BuyPlan> {
     const stopPct = request.stopPct ?? defaultStopPct;
+    const fixed = ticketChoice(request);
     let quote: OptionQuote;
     let deltaRange: readonly [number, number] | undefined;
     let picked: ExplainParts["chosen"];
@@ -829,6 +889,7 @@ export class TradeEngine {
       stopPct,
       deltaRange,
       request.force,
+      fixed,
     );
     const { qty, budget, verdict } = sized;
     const decision: Decision = {
@@ -850,7 +911,10 @@ export class TradeEngine {
         cost: sized.cost,
         stopPct,
         stopAtCeiling:
-          stopPct > 0 && stopPct <= this.limits.maxStopPct && sized.ceiling > 0
+          !fixed.noStop &&
+          stopPct > 0 &&
+          stopPct <= this.limits.maxStopPct &&
+          sized.ceiling > 0
             ? stopPrice(sized.ceiling, stopPct)
             : null,
         daysToExpiry: sized.daysToExpiry,
@@ -882,6 +946,20 @@ export class TradeEngine {
           "adding off hours: this contract is already held with a stop, and adding to it takes the stop off while the order works; add when the market is open",
         ],
       };
+    // An order left at the broker would keep the position's stop off.
+    if (
+      fixed.limitPrice !== undefined &&
+      fixed.noStop &&
+      a.held.some((p) => p.symbol === symbol && p.stopQty > 0)
+    )
+      return {
+        paper: this.paper,
+        contract: symbol,
+        qty,
+        refused: [
+          "adding without a stop: this contract is held with a stop, which must come off while a buy works; a limit order without auto stop would leave it off all day. Turn on auto stop or try to buy and increase",
+        ],
+      };
     const record = {
       id: `${a.now}-${symbol}`,
       day: a.day,
@@ -902,6 +980,7 @@ export class TradeEngine {
       offHours: !a.marketOpen,
       notes: verdict.notes,
       ...(request.force ? { force: true } : {}),
+      ...fixed,
       ...(request.steps === undefined ? {} : { steps: request.steps }),
       ...(request.intervalMs === undefined
         ? {}
@@ -941,11 +1020,13 @@ export class TradeEngine {
           ...plan.decision,
           outcome: failure
             ? "failed"
-            : got === 0
-              ? "not filled"
-              : got < qty
-                ? "partly filled"
-                : "filled",
+            : got === 0 && done?.working
+              ? "working"
+              : got === 0
+                ? "not filled"
+                : got < qty
+                  ? "partly filled"
+                  : "filled",
           result: {
             filledQty: got,
             avgPrice: order?.filledAvgPrice ?? null,
@@ -1037,44 +1118,78 @@ export class TradeEngine {
     const request = plan;
     {
       let waiting: Order | undefined;
-      if (plan.offHours) {
+      const fixed = plan.limitPrice;
+      // A limit order without a stop is simply left at the broker: off
+      // hours it waits for the open there.
+      if (plan.offHours && !(fixed !== undefined && plan.noStop)) {
         const queued = await this.queueOffHours(plan, progress);
         if ("result" in queued) return queued;
         waiting = queued.order;
       }
-      progress({ stage: "raising the price" });
-      const result = await buyWithLadder(this.broker, symbol, qty, {
-        ...(waiting ? { existing: waiting } : {}),
-        ...(plan.force ? { anySpread: true } : {}),
-        ...(request.steps === undefined ? {} : { steps: request.steps }),
-        ...(request.intervalMs === undefined
-          ? {}
-          : { intervalMs: request.intervalMs }),
-        maxPrice: budget / (qty * 100),
-        ...this.timing,
-      });
-      if (
-        result.status === "rejected-spread" ||
-        result.status === "rejected-budget"
-      )
-        return { paper: this.paper, contract: symbol, qty, budget, result };
-      progress({
-        stage: "watching the order, keeping its stop",
-        orderId: result.order!.id,
-      });
-      const guarded = await protectFill(this.broker, result.order!, stopPct, {
-        ...(request.waitMs === undefined ? {} : { waitMs: request.waitMs }),
-        ...this.timing,
-      });
+      let result: LadderResult;
+      if (fixed !== undefined) {
+        progress({ stage: "sending at your limit price" });
+        const quote = await this.broker.quote(symbol);
+        const order =
+          waiting ?? (await this.broker.buyLimit(symbol, qty, fixed));
+        this.log(`limit ${qty} ${symbol} @ ${fixed.toFixed(2)}`);
+        result = {
+          status: order.status === "filled" ? "filled" : "open",
+          quote,
+          spreadRatio: spreadCheck(quote).ratio,
+          prices: [fixed],
+          order,
+        };
+      } else {
+        progress({ stage: "raising the price" });
+        result = await buyWithLadder(this.broker, symbol, qty, {
+          ...(waiting ? { existing: waiting } : {}),
+          ...(plan.force ? { anySpread: true } : {}),
+          ...(request.steps === undefined ? {} : { steps: request.steps }),
+          ...(request.intervalMs === undefined
+            ? {}
+            : { intervalMs: request.intervalMs }),
+          maxPrice: budget / (qty * 100),
+          ...this.timing,
+        });
+        if (
+          result.status === "rejected-spread" ||
+          result.status === "rejected-budget"
+        )
+          return { paper: this.paper, contract: symbol, qty, budget, result };
+      }
+      let guarded: ProtectResult;
+      if (fixed !== undefined && plan.noStop) {
+        // No stop to keep: the order works at the broker for the day.
+        const order = await current(this.broker, result.order!.id);
+        guarded = { order, canceledQty: 0, stop: { pct: stopPct } };
+      } else {
+        progress({
+          stage: plan.noStop
+            ? "watching the order"
+            : "watching the order, keeping its stop",
+          orderId: result.order!.id,
+        });
+        guarded = await protectFill(this.broker, result.order!, stopPct, {
+          ...(request.waitMs !== undefined
+            ? { waitMs: request.waitMs }
+            : fixed !== undefined
+              ? { waitMs: fixedWatchMs }
+              : {}),
+          ...(plan.noStop ? { noStop: true } : {}),
+          ...this.timing,
+        });
+      }
       const order = guarded.order;
       const filled = order.filledQty > 0;
+      const working = !finished.has(order.status);
       const final = {
         ...result,
         order,
         status:
           order.status === "filled"
             ? ("filled" as const)
-            : guarded.cancelError
+            : guarded.cancelError || working
               ? result.status
               : ("closed" as const),
       };
@@ -1089,6 +1204,8 @@ export class TradeEngine {
         canceledQty,
         cancelError,
         ...(plan.offHours ? { offHours: true } : {}),
+        ...(plan.noStop ? { noStop: true } : {}),
+        ...(working ? { working: true } : {}),
       };
       if (!filled) return outcome;
       // A buy that adds to an open trade is posted under that trade's post.
@@ -1164,10 +1281,12 @@ export class TradeEngine {
       this.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
     const quote = await this.broker.quote(symbol);
     const spread = spreadCheck(quote);
-    const price = Math.min(
-      stepPrice(quote, 0, 5),
-      roundToTick(budget / (qty * 100), "down"),
-    );
+    const price =
+      plan.limitPrice ??
+      Math.min(
+        stepPrice(quote, 0, 5),
+        roundToTick(budget / (qty * 100), "down"),
+      );
     let order = await this.broker.buyLimit(symbol, qty, price);
     this.log(
       `off hours: sent ${qty} @ ${price.toFixed(2)}, waiting for the open`,

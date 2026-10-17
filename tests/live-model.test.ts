@@ -312,3 +312,19 @@ test("watchlist: the Rel vol ≥2× filter keeps unusual volume only", () => {
     ["AB"],
   );
 });
+
+test("watch sort by today's volume: most shares first, missing last", () => {
+  const rows = watchRows(board, new Map(), "SPY");
+  const sorted = sortRows(rows, "volume", true);
+  const volumes = sorted.map((r) => r.volume);
+  const known = volumes.filter((v) => v !== null) as number[];
+  assert.deepEqual(
+    known,
+    [...known].sort((a, b) => b - a),
+  );
+  assert.deepEqual(
+    volumes.slice(known.length),
+    volumes.filter((v) => v === null),
+  );
+  assert.equal(sortsDescending("volume"), true);
+});

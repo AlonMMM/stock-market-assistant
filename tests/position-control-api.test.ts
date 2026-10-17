@@ -423,3 +423,42 @@ test("site typed stock orders and changes: only known fields are passed on", asy
   assert.equal((await call("change", { orderId: "a b" })).status, 400);
   assert.equal(seen.length, 3);
 });
+
+test("site option buy: the ticket's limit price, stepping and stop choices are passed on", async () => {
+  const { fetcher, seen } = setup({ body: { status: "started" } });
+  const call = (sub: string, body: unknown) =>
+    handleControl(
+      config,
+      owner,
+      {
+        method: "POST",
+        path: `/api/portfolio/control/${sub}`,
+        body,
+        origin,
+        requestOrigin: origin,
+      },
+      fetcher,
+    );
+  const order = {
+    contract: "NVDA261016C00240000",
+    qty: 2,
+    ladder: false,
+    limitPrice: 1.05,
+    autoStop: false,
+  };
+  assert.equal((await call("check", order)).status, 200);
+  assert.deepEqual(seen[0]!.body, { ...order, via: "site" });
+  // The usual buy sends none of them.
+  assert.equal(
+    (await call("buy", { contract: order.contract, qty: 1 })).status,
+    200,
+  );
+  assert.deepEqual(seen[1]!.body, {
+    contract: order.contract,
+    qty: 1,
+    via: "site",
+  });
+  assert.equal((await call("buy", { ...order, autoStop: "no" })).status, 400);
+  assert.equal((await call("buy", { ...order, limitPrice: "1" })).status, 400);
+  assert.equal(seen.length, 2);
+});

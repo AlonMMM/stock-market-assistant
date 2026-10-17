@@ -3414,10 +3414,108 @@ dialog.why::backdrop {
   color: #142b29;
 }
 .ticket-force input {
+  flex: none;
   width: 20px;
   height: 20px;
   accent-color: #142b29;
 }
+/* Trade → Options: the broker-style buy ticket (user 2026-10-17). */
+.opt-action {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #142b29;
+  color: #fff;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+.opt-quote,
+.opt-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f6f8f4;
+}
+.opt-quote dt,
+.opt-preview dt {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #526461;
+}
+.opt-quote dd,
+.opt-preview dd {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 650;
+  color: #142b29;
+}
+.opt-fixed {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #142b29;
+}
+.opt-fixed.muted {
+  font-weight: 400;
+  color: #526461;
+}
+.opt-limit {
+  grid-column: 1 / -1;
+}
+.opt-stepper {
+  display: inline-flex;
+  gap: 4px;
+}
+.opt-stepper button {
+  width: 40px;
+  min-height: 44px;
+  border: 1px solid #cdd7ce;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 18px;
+  color: #142b29;
+}
+.opt-stop {
+  flex-wrap: wrap;
+}
+.opt-stop > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.opt-stop .opt-stop-pct {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.opt-stop .opt-stop-pct input {
+  width: 72px;
+  height: 40px;
+}
+.opt-submit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 14px;
+}
+.opt-checks summary {
+  cursor: pointer;
+  font-size: 14px;
+}
+@media (max-width: 560px) {
+  .opt-submit > .pos-go {
+    width: 100%;
+  }
+}
+
 /* Trade → Shares: side, order type and time in force, open orders. */
 .ticket-side {
   justify-self: start;
@@ -4024,7 +4122,7 @@ dialog.why::backdrop {
   .wl .wl-grid {
     grid-template-columns:
       minmax(90px, 1.1fr) 120px minmax(84px, 0.9fr) 84px 84px 64px
-      70px minmax(70px, 0.8fr) 52px;
+      70px 88px minmax(70px, 0.8fr) 52px;
   }
   .wl-wide {
     display: block !important;
@@ -4035,7 +4133,8 @@ dialog.why::backdrop {
   .wl-long {
     display: inline !important;
   }
-  .wl-short {
+  .wl-short,
+  .wl-last small.wl-short {
     display: none;
   }
   .wl-detail {
@@ -4119,6 +4218,9 @@ dialog.why::backdrop {
 .wl .range {
   display: block;
   width: 100%;
+}
+.wl-vol {
+  padding-right: 12px;
 }
 .wl-cell.wl-wide.num {
   font-size: 13px;
