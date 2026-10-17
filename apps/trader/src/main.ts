@@ -133,6 +133,12 @@ api.post("/v1/stock/buy", async (request) =>
 api.post("/v1/stock/sell", async (request) =>
   service.stockSell(body(request.body)),
 );
+api.post("/v1/stock/order", async (request) =>
+  service.stockOrder(body(request.body)),
+);
+api.post("/v1/orders/change", async (request) =>
+  service.changeOrder(body(request.body)),
+);
 api.get<{ Params: { id: string } }>("/v1/jobs/:id", async (request) =>
   service.job(request.params.id),
 );

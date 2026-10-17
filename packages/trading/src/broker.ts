@@ -20,6 +20,42 @@ export interface Order {
 export interface OpenOrder extends Order {
   side: string;
   stopPrice: number | null;
+  // Set by brokers that report them; absent from older or simpler ones.
+  type?: string; // market, limit, stop, stop_limit, trailing_stop
+  timeInForce?: string;
+  trailPercent?: number | null;
+  trailPrice?: number | null;
+  extendedHours?: boolean;
+}
+
+// Stock orders with every type a broker offers (user 2026-10-17). Long only:
+// a sell can only close shares that are held (see stock-tickets.ts).
+export type StockOrderType =
+  "market" | "limit" | "stop" | "stop_limit" | "trailing_stop";
+export type TimeInForce = "day" | "gtc" | "opg" | "cls" | "ioc" | "fok";
+
+export interface StockTicket {
+  symbol: string;
+  side: "buy" | "sell";
+  qty: number; // whole shares
+  type: StockOrderType;
+  timeInForce: TimeInForce;
+  limitPrice?: number; // limit, stop_limit
+  stopPrice?: number; // stop, stop_limit
+  // trailing_stop: exactly one of the two.
+  trailPercent?: number;
+  trailPrice?: number;
+  // May also fill in pre- and after-hours; limit orders with day or gtc only.
+  extendedHours?: boolean;
+}
+
+/** What may change on an open order; Alpaca answers with a new order. */
+export interface OrderChange {
+  qty?: number;
+  limitPrice?: number;
+  stopPrice?: number;
+  trail?: number; // trail_percent or trail_price, as the order has it
+  timeInForce?: TimeInForce;
 }
 
 export interface Position {
@@ -100,6 +136,10 @@ export interface Broker {
   ): Promise<Order>;
   /** Stock positions only; a short one has a negative quantity. */
   stockPositions?(): Promise<Position[]>;
+  /** A stock order of any type. A sell must only close shares that are held. */
+  stockOrder?(ticket: StockTicket): Promise<Order>;
+  /** Changes an open order's size, prices or time in force. */
+  changeOrder?(id: string, change: OrderChange): Promise<Order>;
   openOrders(symbol?: string): Promise<OpenOrder[]>;
 }
 
