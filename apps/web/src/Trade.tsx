@@ -8,7 +8,12 @@ import type {
 import { usePolling } from "./Live.js";
 import { OrderActions, StopMover } from "./OrderControls.js";
 import { followOrder, type Run } from "./order-run.js";
-import { inTheMoney, priceRowIndex } from "./chain-model.js";
+import {
+  inTheMoney,
+  onOptionTick,
+  priceRowIndex,
+  stepOptionPrice,
+} from "./chain-model.js";
 import { chartSession } from "./positions-model.js";
 import { StockChart } from "./StockChart.js";
 import { StockTrade } from "./StockTrade.js";
@@ -42,9 +47,18 @@ const clockSeconds = new Intl.DateTimeFormat("en-GB", {
   hourCycle: "h23",
 });
 
+// The ticket reads like a broker's (user 2026-10-17): quantity, a limit price
+// with bid/mid/ask, day only (Alpaca's rule for options), and two choices.
+// "Try to buy and increase" is the usual stepped buy from the mid; off, one
+// limit order at the price given. "Auto stop" keeps a stop on what fills.
 function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
-  const [unit, setUnit] = useState<"pct" | "qty">("pct");
-  const [size, setSize] = useState("0.5");
+  const [unit, setUnit] = useState<"pct" | "qty">("qty");
+  const [size, setSize] = useState("1");
+  const [ladder, setLadder] = useState(true);
+  const [limit, setLimit] = useState(() =>
+    onOptionTick(quote.mid || quote.ask).toFixed(2),
+  );
+  const [autoStop, setAutoStop] = useState(true);
   const [stop, setStop] = useState("40");
   const [force, setForce] = useState(false);
   const [check, setCheck] = useState<Check | null>(null);
@@ -63,20 +77,27 @@ function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
     setCheck(null);
     setError("");
     setRun({ step: "idle" });
-  }, [quote.contract, unit, size, stop, force]);
+  }, [quote.contract, unit, size, stop, force, ladder, limit, autoStop]);
 
   const busy = run.step === "sending" || run.step === "working";
+  const limitPrice = Number(limit);
   const order = {
     contract: quote.contract,
     ...(unit === "pct" ? { sizePct: Number(size) } : { qty: Number(size) }),
-    stopPct: Number(stop),
+    ...(autoStop ? { stopPct: Number(stop) } : { autoStop: false }),
+    ...(ladder ? {} : { ladder: false, limitPrice }),
     ...(force ? { force: true } : {}),
   };
   const sizeOk =
     unit === "pct"
       ? Number(size) > 0
       : Number.isInteger(Number(size)) && Number(size) >= 1;
-  const stopOk = Number(stop) > 0;
+  const stopOk = !autoStop || Number(stop) > 0;
+  const limitOk =
+    ladder || (limitPrice > 0 && onOptionTick(limitPrice) === limitPrice);
+  // What the order costs at the price it would be sent at, before a check.
+  const each = ladder ? quote.ask : limitPrice;
+  const contracts = unit === "qty" && sizeOk ? Number(size) : null;
 
   async function runCheck(event: FormEvent) {
     event.preventDefault();
@@ -102,18 +123,47 @@ function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
   const send = () =>
     followOrder("/api/portfolio/control/buy", order, true, setRun, alive);
   const name = `${chain.underlying} ${quote.strike} ${chain.right === "call" ? "Call" : "Put"} · ${expiryLabel(chain.expiry)}`;
+  const quick: [string, number][] = [
+    ["Bid", quote.bid],
+    ["Mid", quote.mid],
+    ["Ask", quote.ask],
+  ];
 
   return (
-    <form className="ticket" onSubmit={runCheck} aria-label={`Buy ${name}`}>
+    <form
+      className="ticket opt-ticket"
+      onSubmit={runCheck}
+      aria-label={`Buy ${name}`}
+    >
       <h3>
-        Buy {name}
-        <span className="muted num">
-          bid {price(quote.bid)} · ask {price(quote.ask)}
-        </span>
+        <span className="opt-action">BUY</span> {name}
       </h3>
+      <dl className="opt-quote num">
+        <div>
+          <dt>Bid</dt>
+          <dd>{price(quote.bid)}</dd>
+        </div>
+        <div>
+          <dt>Mid</dt>
+          <dd>{price(quote.mid)}</dd>
+        </div>
+        <div>
+          <dt>Ask</dt>
+          <dd>{price(quote.ask)}</dd>
+        </div>
+        <div>
+          <dt>Spread</dt>
+          <dd>{quote.spreadPct === null ? "—" : `${quote.spreadPct}%`}</dd>
+        </div>
+        <div>
+          <dt>Delta</dt>
+          <dd>{quote.delta === null ? "—" : quote.delta.toFixed(2)}</dd>
+        </div>
+      </dl>
+
       <div className="ticket-fields">
         <div className="ticket-field">
-          <span id="ticket-size">Size</span>
+          <span id="ticket-size">Quantity</span>
           <div className="ticket-size">
             <input
               className="num"
@@ -126,17 +176,6 @@ function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
             <div className="segmented" role="group" aria-label="Size unit">
               <button
                 type="button"
-                aria-pressed={unit === "pct"}
-                disabled={busy}
-                onClick={() => {
-                  setUnit("pct");
-                  setSize("0.5");
-                }}
-              >
-                % of account
-              </button>
-              <button
-                type="button"
                 aria-pressed={unit === "qty"}
                 disabled={busy}
                 onClick={() => {
@@ -146,19 +185,137 @@ function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
               >
                 Contracts
               </button>
+              <button
+                type="button"
+                aria-pressed={unit === "pct"}
+                disabled={busy}
+                onClick={() => {
+                  setUnit("pct");
+                  setSize("0.5");
+                }}
+              >
+                % of account
+              </button>
             </div>
           </div>
         </div>
-        <label className="ticket-field">
-          <span>Stop, % below the price paid</span>
+        <div className="ticket-field">
+          <span>Order type · Time in force</span>
+          <p className="opt-fixed">
+            {ladder ? "Limit, stepped" : "Limit"} · Day
+          </p>
+        </div>
+
+        <div className="ticket-field opt-limit">
+          <span id="ticket-limit">Limit price</span>
+          {ladder ? (
+            <p className="opt-fixed muted">
+              From the mid {price(quote.mid)}, raised toward the ask{" "}
+              {price(quote.ask)}
+            </p>
+          ) : (
+            <div className="ticket-size">
+              <div className="opt-stepper">
+                <button
+                  type="button"
+                  aria-label="One tick lower"
+                  disabled={busy || !(limitPrice > 0.01)}
+                  onClick={() =>
+                    setLimit(stepOptionPrice(limitPrice, false).toFixed(2))
+                  }
+                >
+                  −
+                </button>
+                <input
+                  className="num"
+                  inputMode="decimal"
+                  aria-labelledby="ticket-limit"
+                  value={limit}
+                  disabled={busy}
+                  onChange={(e) =>
+                    setLimit(e.target.value.replace(/[^\d.]/g, ""))
+                  }
+                />
+                <button
+                  type="button"
+                  aria-label="One tick higher"
+                  disabled={busy}
+                  onClick={() =>
+                    setLimit(stepOptionPrice(limitPrice || 0, true).toFixed(2))
+                  }
+                >
+                  +
+                </button>
+              </div>
+              <div className="segmented" role="group" aria-label="Set price">
+                {quick.map(([label, value]) => (
+                  <button
+                    type="button"
+                    key={label}
+                    aria-pressed={
+                      value > 0 && onOptionTick(value) === limitPrice
+                    }
+                    disabled={busy || !(value > 0)}
+                    onClick={() => setLimit(onOptionTick(value).toFixed(2))}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {!limitOk && (
+            <span className="pos-problem">
+              Prices go in whole cents below $3 and 5 cents from $3.
+            </span>
+          )}
+        </div>
+
+        <label className="ticket-force">
           <input
-            className="num"
-            inputMode="decimal"
-            value={stop}
+            type="checkbox"
+            checked={ladder}
             disabled={busy}
-            onChange={(e) => setStop(e.target.value.replace(/[^\d.]/g, ""))}
+            onChange={(e) => setLadder(e.target.checked)}
           />
+          <span>
+            Try to buy and increase
+            <span className="muted">
+              {" "}
+              {ladder
+                ? "— starts at the mid and raises the price toward the ask until it fills; what has not filled is canceled after 2 minutes"
+                : "— off: one limit order at your price, as it is"}
+            </span>
+          </span>
         </label>
+        <div className="ticket-force opt-stop">
+          <label>
+            <input
+              type="checkbox"
+              checked={autoStop}
+              disabled={busy}
+              onChange={(e) => setAutoStop(e.target.checked)}
+            />
+            Auto stop
+          </label>
+          {autoStop ? (
+            <label className="opt-stop-pct">
+              <input
+                className="num"
+                inputMode="decimal"
+                aria-label="Stop, % below the price paid"
+                value={stop}
+                disabled={busy}
+                onChange={(e) => setStop(e.target.value.replace(/[^\d.]/g, ""))}
+              />
+              <span className="muted">% below the price paid</span>
+            </label>
+          ) : (
+            <span className="muted">
+              — no stop: the whole premium is at risk
+            </span>
+          )}
+        </div>
         <label className="ticket-force">
           <input
             type="checkbox"
@@ -175,36 +332,69 @@ function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
           </span>
         </label>
       </div>
+      {!ladder && autoStop && (
+        <p className="muted">
+          With auto stop the order is watched for 15 minutes; what has not
+          filled by then is canceled. Without it the order stays for the day.
+        </p>
+      )}
       {!check && (
-        <button
-          type="submit"
-          className="pos-go"
-          disabled={checking || !sizeOk || !stopOk}
-        >
-          {checking ? "Checking…" : "Check the order"}
-        </button>
+        <div className="opt-submit">
+          {contracts !== null && each > 0 && (
+            <span className="num">
+              {contracts} × {each.toFixed(2)} × 100 ≈{" "}
+              <strong>{usd(contracts * each * 100)}</strong>
+              {ladder && " at most"}
+            </span>
+          )}
+          <button
+            type="submit"
+            className="pos-go"
+            disabled={checking || !sizeOk || !stopOk || !limitOk}
+          >
+            {checking ? "Checking…" : "Preview order"}
+          </button>
+        </div>
       )}
       {error && <p className="notice error">{error}</p>}
       {check && (
         <div className="ticket-check">
-          <p className="ticket-summary">
-            {check.qty > 0 ? (
-              <>
-                <strong className="num">
-                  {check.qty} contract{check.qty === 1 ? "" : "s"}
-                </strong>{" "}
-                at up to {check.ceiling.toFixed(2)} each: at most{" "}
-                <strong className="num">{usd(check.maxCost)}</strong>,{" "}
-                {check.sizePct.toFixed(2)}% of the account.
-                {check.stopAtCeiling !== null &&
-                  ` Stop near ${check.stopAtCeiling.toFixed(2)}, set from the price paid.`}
-              </>
-            ) : (
-              "No whole contract fits this size."
-            )}
-            {!check.marketOpen &&
-              " The market is closed: the order would wait for the open."}
-          </p>
+          <dl className="opt-preview num">
+            <div>
+              <dt>Contracts</dt>
+              <dd>{check.qty}</dd>
+            </div>
+            <div>
+              <dt>{check.ladder ? "Up to" : "Limit"}</dt>
+              <dd>{check.ceiling.toFixed(2)}</dd>
+            </div>
+            <div>
+              <dt>Max cost</dt>
+              <dd>{usd(check.maxCost)}</dd>
+            </div>
+            <div>
+              <dt>Of the account</dt>
+              <dd>{check.sizePct.toFixed(2)}%</dd>
+            </div>
+            <div>
+              <dt>Stop</dt>
+              <dd>
+                {!check.autoStop
+                  ? "none"
+                  : check.stopAtCeiling === null
+                    ? "—"
+                    : `≈ ${check.stopAtCeiling.toFixed(2)}`}
+              </dd>
+            </div>
+          </dl>
+          {check.qty === 0 && (
+            <p className="ticket-summary">No whole contract fits this size.</p>
+          )}
+          {!check.marketOpen && (
+            <p className="ticket-summary">
+              The market is closed: the order would wait for the open.
+            </p>
+          )}
           {check.notes.length > 0 && (
             <ul className="ticket-notes">
               {check.notes.map((n) => (
@@ -212,18 +402,25 @@ function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
               ))}
             </ul>
           )}
-          <ul className="why-checks">
-            {check.checks.map((c) => (
-              <li key={c.check + c.detail} className={c.ok ? "ok" : "bad"}>
-                <span aria-hidden="true">{c.ok ? "✓" : "✕"}</span>
-                <strong>{c.check}</strong>
-                <span className="muted">{c.detail}</span>
-              </li>
-            ))}
-          </ul>
+          <details className="opt-checks" open={!check.wouldBuy}>
+            <summary>
+              {check.wouldBuy
+                ? `All ${check.checks.length} checks passed`
+                : `${check.checks.filter((c) => !c.ok).length} check(s) failed`}
+            </summary>
+            <ul className="why-checks">
+              {check.checks.map((c) => (
+                <li key={c.check + c.detail} className={c.ok ? "ok" : "bad"}>
+                  <span aria-hidden="true">{c.ok ? "✓" : "✕"}</span>
+                  <strong>{c.check}</strong>
+                  <span className="muted">{c.detail}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
           {!check.wouldBuy ? (
             <p className="note-amber" role="status">
-              This order would be refused. Change it and check again.
+              This order would be refused. Change it and preview again.
             </p>
           ) : run.step === "confirm" ? (
             <div
@@ -232,8 +429,13 @@ function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
               aria-label="Confirm the order"
             >
               <span>
-                Buy {check.qty} {name} for at most {usd(check.maxCost)}
-                {check.paper ? " on the paper account" : ""}?
+                Buy {check.qty} {name}{" "}
+                {check.ladder
+                  ? `stepped up to ${check.ceiling.toFixed(2)}`
+                  : `at ${check.ceiling.toFixed(2)}`}
+                , at most {usd(check.maxCost)},{" "}
+                {check.autoStop ? "with a stop" : "with no stop"}
+                {check.paper ? ", on the paper account" : ""}?
               </span>
               <button type="button" className="pos-go" onClick={send}>
                 Confirm
@@ -256,7 +458,7 @@ function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
               >
                 {busy
                   ? "Working…"
-                  : `Buy ${check.qty} contract${check.qty === 1 ? "" : "s"}`}
+                  : `Submit: buy ${check.qty} contract${check.qty === 1 ? "" : "s"}`}
               </button>
             )
           )}

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Broker } from "../../../packages/trading/src/broker.js";
 import {
   TradeRefusal,
+  ticketChoice,
   type BuyProgress,
   type BuyRequest,
   type PostStore,
@@ -120,8 +121,26 @@ function buyRequest(body: Body): BuyRequest {
   const stopPct = number(body, "stopPct");
   if (body.force !== undefined && typeof body.force !== "boolean")
     throw new RequestError("force must be true or false");
+  // The ticket's choices: one limit order at limitPrice, and no stop.
+  for (const name of ["ladder", "autoStop"] as const)
+    if (body[name] !== undefined && typeof body[name] !== "boolean")
+      throw new RequestError(`${name} must be true or false`);
+  const limitPrice = number(body, "limitPrice");
+  const choice = {
+    ...(body.ladder === false ? { ladder: false } : {}),
+    ...(limitPrice === undefined ? {} : { limitPrice }),
+    ...(body.autoStop === false ? { autoStop: false } : {}),
+  };
+  try {
+    ticketChoice(choice);
+  } catch (error) {
+    throw new RequestError(message(error));
+  }
+  if (body.ladder === false && !contract)
+    throw new RequestError("A limit order needs a contract");
   return {
     ...(body.force === true ? { force: true } : {}),
+    ...choice,
     ...(contract ? { contract } : { underlying: underlying!, right: right! }),
     ...(qty === undefined ? { sizePct: sizePct! } : { qty }),
     ...(expiry ? { expiry } : {}),
@@ -271,6 +290,11 @@ export class TraderService {
         : { qty: request.qty }),
       ...(request.stopPct === undefined ? {} : { stopPct: request.stopPct }),
       ...(request.force ? { force: true } : {}),
+      ...(request.ladder === false ? { ladder: false } : {}),
+      ...(request.limitPrice === undefined
+        ? {}
+        : { limitPrice: request.limitPrice }),
+      ...(request.autoStop === false ? { autoStop: false } : {}),
     });
   }
 

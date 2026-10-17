@@ -82,11 +82,20 @@ function order(body: unknown): Record<string, unknown> | Answer {
     return bad("stopPct must be a number");
   if (b.force !== undefined && typeof b.force !== "boolean")
     return bad("force must be true or false");
+  for (const name of ["ladder", "autoStop"])
+    if (b[name] !== undefined && typeof b[name] !== "boolean")
+      return bad(`${name} must be true or false`);
+  if (b.limitPrice !== undefined && !num(b.limitPrice))
+    return bad("limitPrice must be a number");
   return {
     contract: b.contract,
     ...(hasPct ? { sizePct: b.sizePct } : { qty: b.qty }),
     ...(b.stopPct === undefined ? {} : { stopPct: b.stopPct }),
     ...(b.force === true ? { force: true } : {}),
+    // The ticket's choices; the trading service checks them.
+    ...(b.ladder === false ? { ladder: false } : {}),
+    ...(b.limitPrice === undefined ? {} : { limitPrice: b.limitPrice }),
+    ...(b.autoStop === false ? { autoStop: false } : {}),
   };
 }
 

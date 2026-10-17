@@ -17,3 +17,19 @@ export const inTheMoney = (
   strike: number,
   price: number | null,
 ) => price !== null && (right === "call" ? strike < price : strike > price);
+
+// Option prices move in ticks: a cent below $3, 5 cents from $3
+// (packages/trading/src/options.ts).
+export const optionTick = (price: number) => (price < 3 ? 0.01 : 0.05);
+
+/** The price on the nearest tick, as the ticket shows it. */
+export function onOptionTick(price: number): number {
+  const t = optionTick(price);
+  return Math.round(Math.round(price / t) * t * 100) / 100;
+}
+
+/** One tick up or down from the price typed, never below one cent. */
+export function stepOptionPrice(price: number, up: boolean): number {
+  const t = optionTick(up ? price : price - 1e-9);
+  return Math.max(0.01, onOptionTick(price + (up ? t : -t)));
+}

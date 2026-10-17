@@ -13,6 +13,8 @@ export type ProtectClient = Pick<
 
 export interface ProtectOptions {
   waitMs?: number; // how long an unfilled order is watched
+  // Watch and cancel only: no stop is placed (the ticket's choice).
+  noStop?: boolean;
   pollMs?: number;
   sleep?: (ms: number) => Promise<void>;
   log?: (line: string) => void;
@@ -50,6 +52,7 @@ export async function protectFill(
 
   // One stop for everything filled so far, priced from the average fill.
   const cover = async () => {
+    if (options.noStop) return;
     if (!(order.filledQty > 0) || !order.filledAvgPrice) return;
     const price = stopPrice(order.filledAvgPrice, stopPct);
     if (placed && placed.qty === order.filledQty && placed.price === price)
