@@ -13,6 +13,7 @@ import {
 } from "../../../packages/market-data/src/backtest.js";
 import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
 import { handleCandles } from "../../../packages/market-data/src/candles.js";
+import { handleChartBars } from "../../../packages/market-data/src/chart-bars.js";
 import type { BarCache } from "../../../packages/market-data/src/bar-cache.js";
 import {
   handleBoard,
@@ -231,6 +232,17 @@ export function buildApp(
   app.get("/api/candles", async (request, reply) => {
     const result = await handleCandles(
       request.query as { ticker?: unknown; date?: unknown },
+      alpaca,
+      alpaca.fetcher,
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.get("/api/bars", async (request, reply) => {
+    const result = await handleChartBars(
+      request.query as Record<string, unknown>,
       alpaca,
       alpaca.fetcher,
     );

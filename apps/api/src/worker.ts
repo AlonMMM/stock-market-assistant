@@ -52,6 +52,7 @@ import { TelegramSender } from "../../../packages/notifications/src/telegram.js"
 
 const portfolio = new PortfolioCache();
 import { handleCandles } from "../../../packages/market-data/src/candles.js";
+import { handleChartBars } from "../../../packages/market-data/src/chart-bars.js";
 import { handleControl } from "../../../packages/trading/src/control-api.js";
 import { verifyAccess, type AccessIdentity } from "./access.js";
 
@@ -294,6 +295,22 @@ export default {
       const query = new URL(request.url).searchParams;
       const result = await handleCandles(
         { ticker: query.get("ticker"), date: query.get("date") },
+        credentials,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path === "/api/bars") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const query = new URL(request.url).searchParams;
+      const result = await handleChartBars(
+        Object.fromEntries(query),
         credentials,
       );
       return Response.json(result.body, {

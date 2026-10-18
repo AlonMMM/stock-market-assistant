@@ -14,6 +14,7 @@ export interface RawBar {
   low: number;
   close: number;
   volume: number;
+  vwap?: number; // the provider's volume-weighted price for the bar, if given
 }
 
 export function normalize(
