@@ -3223,33 +3223,86 @@ dialog.why::backdrop {
 .trade-find .segmented button {
   min-height: 36px;
 }
-.trade-expiries {
+/* Expiry tabs as in IBKR: a flat strip of dates with the days left under
+   each, weeklies marked W, the chosen one boxed, arrows at both ends. */
+.expiry-strip {
   display: flex;
-  gap: 6px;
+  align-items: stretch;
+  border: 1px solid #cdd7ce;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+.expiry-shift {
+  flex: none;
+  width: 32px;
+  border-radius: 0;
+  background: #f4f7f1;
+  color: #142b29;
+  font-size: 22px;
+  line-height: 1;
+}
+.expiry-shift:first-child {
+  border-right: 1px solid #e3e9e1;
+}
+.expiry-shift:last-child {
+  border-left: 1px solid #e3e9e1;
+}
+.trade-expiries {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
   overflow-x: auto;
-  padding-bottom: 4px;
-  scrollbar-width: thin;
-  scrollbar-color: #cdd7ce transparent;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+.trade-expiries::-webkit-scrollbar {
+  display: none;
 }
 .trade-expiries button {
   flex: none;
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid #cdd7ce;
-  border-radius: 999px;
-  background: #fff;
-  font-size: 14px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-width: 78px;
+  min-height: 44px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #526461;
+  line-height: 1.15;
   white-space: nowrap;
+  scroll-snap-align: start;
+}
+.trade-expiries button:hover {
+  background: #f4f7f1;
 }
 .trade-expiries button[aria-pressed="true"] {
   border-color: #142b29;
-  background: #142b29;
-  color: #fff;
-  font-weight: 600;
+  background: #e4efd6;
+  color: #142b29;
 }
+.expiry-date {
+  font-size: 14px;
+  font-weight: 600;
+  color: #142b29;
+}
+.expiry-date sup {
+  margin-left: 1px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #526461;
+}
+/* The table scrolls inside its box both ways, as in IBKR's app; the page
+   does not. Columns past the box's width are reached sideways. */
 .chain {
+  position: relative;
   max-height: min(52vh, 460px);
-  overflow-y: auto;
+  overflow: auto;
+  overscroll-behavior: contain;
   border: 1px solid #cdd7ce;
   border-radius: 12px;
   background: #fff;
@@ -3265,69 +3318,258 @@ dialog.why::backdrop {
   border-collapse: collapse;
   font-size: 15px;
 }
-.chain thead th {
+/* Calls | Strike | Puts, as in IBKR: both header rows stick together. */
+.chain thead {
   position: sticky;
   top: 0;
-  z-index: 1;
-  padding: 8px 12px;
+  z-index: 2;
+}
+.chain thead th {
+  height: 28px;
+  padding: 0 10px;
   background: #eef2ea;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #526461;
+  text-align: center;
+}
+.chain thead tr.chain-sides th {
+  height: 26px;
+  /* A shadow, not a border: collapsed borders do not stick with the header,
+     and the rows scrolling under it would show through. */
+  box-shadow: inset 0 -1px 0 #dde5da;
+  font-size: 12px;
+  font-weight: 700;
+  color: #142b29;
+}
+.chain thead .strike,
+.chain tbody th.strike {
+  background: #e3e9e1;
+}
+/* The strikes stay in view while the sides scroll under them: at the
+   left edge when the puts are scrolled to, at the right for the calls. */
+.chain thead .strike,
+.chain tbody th.strike {
+  position: sticky;
+  left: 0;
+  right: 0;
+  z-index: 1;
+}
+/* Calls | Puts next to the strike, so both names show when scrolled. */
+.chain thead tr.chain-sides th:first-child {
   text-align: right;
 }
-.chain thead th:first-child,
-.chain tbody th {
+.chain thead tr.chain-sides th:last-child {
   text-align: left;
 }
 .chain tbody tr {
   border-top: 1px solid #e3e9e1;
-  cursor: pointer;
-}
-.chain tbody tr:hover {
-  background: #f4f7f1;
-}
-.chain tbody tr.selected {
-  background: #e4efd6;
-  box-shadow: inset 3px 0 0 #142b29;
-}
-.chain tbody tr.dead td {
-  color: #8c9a96;
 }
 .chain td {
-  padding: 0 12px;
-  text-align: right;
+  height: 44px;
+  padding: 0 10px;
+  text-align: center;
+  white-space: nowrap;
+}
+.chain thead th {
+  white-space: nowrap;
+}
+/* Open interest and IV inform; the prices stay the strongest. */
+.chain td.c-oi,
+.chain td.c-iv {
+  color: #526461;
+}
+.chain td.side {
+  cursor: pointer;
+}
+.chain td.side:hover {
+  background: #f4f7f1;
+}
+.chain td.itm {
+  background: #f3f6ee;
+}
+.chain td.itm:hover {
+  background: #eaf0e3;
+}
+.chain td.selected,
+.chain td.selected:hover {
+  background: #e4efd6;
+  box-shadow:
+    inset 0 2px 0 #142b29,
+    inset 0 -2px 0 #142b29;
+}
+.chain td.dead {
+  color: #8c9a96;
 }
 .chain td.wide {
   color: #8a4b06;
   font-weight: 600;
 }
-.chain tbody th {
+.chain td.c-ask {
   padding: 0;
-  font-weight: 700;
 }
-.chain tbody th button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.chain td.c-ask button {
   width: 100%;
-  min-height: 44px;
-  padding: 0 12px;
+  height: 44px;
+  padding: 0 10px;
   border-radius: 0;
   background: transparent;
-  font-weight: inherit;
-  text-align: left;
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
 }
-.chain tbody th button:focus-visible {
+.chain td.c-ask button:focus-visible {
   outline-offset: -3px;
 }
-.chain tbody tr.itm {
-  background: #f3f6ee;
+.chain tbody th.strike {
+  padding: 0 10px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
 }
-.chain tbody tr.itm:hover {
-  background: #eaf0e3;
+.chain tbody tr.selected th.strike {
+  background: #142b29;
+  color: #fff;
+}
+.chain-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: #142b29;
+  vertical-align: middle;
+}
+.chain-legend {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.expiry-days {
+  font-size: 11px;
+  font-weight: 400;
+}
+/* Single or Spread, and what to tap next. */
+.chain-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  font-size: 13px;
+}
+.chain-bar .segmented button {
+  min-height: 36px;
+}
+/* Spread legs: B (bought) and S (sold) on the chain and in the ticket. */
+.chain td.leg-buy,
+.chain td.leg-buy:hover {
+  background: #e4efd6;
+}
+.chain td.leg-sell,
+.chain td.leg-sell:hover {
+  background: #fbefd9;
+  box-shadow:
+    inset 0 2px 0 #8a4b06,
+    inset 0 -2px 0 #8a4b06;
+}
+.leg-tag {
+  display: inline-block;
+  min-width: 16px;
+  margin-right: 4px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  vertical-align: middle;
+  color: #fff;
+}
+.leg-tag.buy {
+  background: #142b29;
+}
+.leg-tag.sell {
+  background: #8a4b06;
+}
+.spread-legs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+}
+.spread-legs > span {
+  white-space: nowrap;
+}
+.spread-legs > span + span {
+  margin-left: 8px;
+}
+.ticket-hint {
+  font-size: 12px;
+  line-height: 1.4;
+}
+/* Portfolio: each held spread, closed as one order. */
+.spread-closers {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #cdd7ce;
+  border-radius: 12px;
+  background: #fff;
+}
+.spread-closers h3,
+.spread-closers p {
+  margin: 0;
+}
+.spread-closers p {
+  font-size: 12px;
+}
+.spread-closers ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.spread-close {
+  display: grid;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid #e3e9e1;
+}
+.spread-close-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 14px;
+}
+.spread-close-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.spread-close-fields label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #526461;
+}
+.spread-close-fields input {
+  width: 96px;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid #cdd7ce;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 650;
+  color: #142b29;
 }
 .chain tbody tr.chain-price {
   border-top: 0;
@@ -3350,7 +3592,11 @@ dialog.why::backdrop {
   border-top: 2px solid #142b29;
 }
 .chain-price-tag {
-  position: relative;
+  /* Sticky, not relative: the price stays in view when scrolled sideways. */
+  position: sticky;
+  left: 8px;
+  right: 8px;
+  z-index: 1;
   display: inline-block;
   padding: 2px 10px;
   border-radius: 6px;
@@ -3497,12 +3743,18 @@ dialog.why::backdrop {
   .ticket-fields {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* Most of the phone's height: the strikes scroll inside, the prices
+     next to the strike in view and the other columns a swipe away. */
+  .chain {
+    max-height: 68vh;
+  }
   .chain table {
     font-size: 14px;
   }
   .chain td,
   .chain thead th,
-  .chain tbody th button {
+  .chain tbody th.strike,
+  .chain td.c-ask button {
     padding-inline: 8px;
   }
   .ticket > .pos-go,

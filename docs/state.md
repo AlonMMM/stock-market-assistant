@@ -48,6 +48,40 @@ shows how many positions were priced. Cash and working orders do not change.
 
 Validation: full check, including typecheck, all tests, and production build.
 
+## Trade tab: own limit price, debit spreads, IBKR-style expiry tabs (2026-10-18)
+
+- One contract can be bought at the owner's own limit (Price: Auto | Limit): one day
+  order at that price, a stop on every fill until it fills or the close.
+- Single | Spread: tap the leg to buy, then the leg to sell (same side and expiry). The
+  spread ticket shows the net mid and natural price; the check shows spreads, max loss,
+  max gain and breakeven. One Alpaca multi-leg day order; no stop, sized on the debit.
+  IBKR answers that it takes no multi-leg orders.
+- Never-short rule amended (decisions, 2026-10-17): a short leg covered by a debit
+  vertical's long leg is allowed. A spread leg is never sold, resized or stopped alone;
+  the portfolio lists Spreads with a Close spread control (one order, net credit) and
+  marks each leg "in a spread". Spread legs do not block buys for missing stops; open
+  risk counts a spread at its net debit.
+- Expiry tabs: a flat strip, "Oct 19 '26" with W on weeklies and the days left, the
+  chosen one boxed, arrows to scroll.
+  Validation: typecheck, 481 tests (478 pass; the IB Gateway and launcher tests fail on
+  this Windows checkout as on main), build, and headless Chrome screenshots with
+  synthetic data. Not yet run against Alpaca: see the
+  [task](tasks/integration-option-limit-and-spreads.md).
+
+## Trade tab: calls and puts side by side (2026-10-17)
+
+The option chain is one IBKR-style table: Calls (Spread, Delta, Bid, Ask) | Strike | Puts
+(Bid, Ask, Delta, Spread), with the stock-price line between strikes and each side's
+in-the-money half shaded. A click on either side picks that contract for the ticket; the
+ask is its keyboard button. The Calls/Puts switch is gone. Expiry tabs show the days left
+(calendar days from today in New York). Phones (≤560px) hide Spread; a wide spread stays
+amber on the ask. The page reads both sides from the unchanged chain endpoint in parallel
+(two requests per 2-second refresh); a side that fails shows a notice while the other
+still shows, and a side that misses one refresh keeps its last quotes.
+Validation: typecheck, all chain-model tests, production build, and headless Chrome
+screenshots at 1100px and 390px with synthetic mocked chain data (also with the puts
+failing), plus scripted put/call clicks. Not yet checked against live Alpaca quotes.
+
 ## Trade tab: stock price in the chain, confirmed stop moves
 
 The option chain shows the stock's latest price as a row between the strikes around it

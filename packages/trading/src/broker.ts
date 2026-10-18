@@ -17,9 +17,28 @@ export interface Order {
   replacedBy?: string | null;
 }
 
+/** One leg of a multi-leg order. */
+export interface SpreadLeg {
+  symbol: string;
+  side: "buy" | "sell";
+  intent: "buy_to_open" | "sell_to_open" | "buy_to_close" | "sell_to_close";
+}
+
+/**
+ * A two-leg order filled as one unit (user 2026-10-17: debit spreads). The
+ * limit is the net price per spread: positive is paid, negative received.
+ */
+export interface SpreadTicket {
+  legs: [SpreadLeg, SpreadLeg];
+  qty: number;
+  limitPrice: number;
+}
+
 export interface OpenOrder extends Order {
   side: string;
   stopPrice: number | null;
+  // A multi-leg order: its legs. Its own symbol and side are then empty.
+  legs?: SpreadLeg[];
   // Set by brokers that report them; absent from older or simpler ones.
   type?: string; // market, limit, stop, stop_limit, trailing_stop
   timeInForce?: string;
@@ -140,6 +159,11 @@ export interface Broker {
   stockOrder?(ticket: StockTicket): Promise<Order>;
   /** Changes an open order's size, prices or time in force. */
   changeOrder?(id: string, change: OrderChange): Promise<Order>;
+  /**
+   * A day limit order for two option legs filled together. Absent on brokers
+   * without multi-leg orders. Fills and price are the spread's, per unit.
+   */
+  spreadOrder?(ticket: SpreadTicket): Promise<Order>;
   openOrders(symbol?: string): Promise<OpenOrder[]>;
 }
 

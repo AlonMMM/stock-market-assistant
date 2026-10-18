@@ -9,6 +9,7 @@ import {
   type OptionQuote,
 } from "./options.js";
 import type { RiskVerdict } from "./risk-manager.js";
+import { covers, pairedQty, spreadPairs } from "./safety.js";
 
 // Every check a buy must pass before any order is sent
 // (docs/tasks/backend-trading-service.md, "Checks before a buy"). The buy is
@@ -115,20 +116,43 @@ const pct = (n: number) => `${Number(n.toFixed(2))}%`;
 const money = (n: number) =>
   `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 
-/** $ lost if every open position is sold at its stop; no stop counts in full. */
+/**
+ * $ lost if every open position is sold at its stop; no stop counts in full.
+ * A spread counts at its net debit, the most it can lose.
+ */
 export function openRisk(positions: HeldPosition[]): number {
+  const pairs = spreadPairs(positions);
+  const entry = new Map(positions.map((p) => [p.symbol, p.avgEntryPrice]));
+  const spreads = pairs.reduce(
+    (sum, s) =>
+      sum +
+      Math.max((entry.get(s.long) ?? 0) - (entry.get(s.short) ?? 0), 0) *
+        s.qty *
+        100,
+    0,
+  );
   return positions
     .filter((p) => p.qty > 0)
     .reduce((sum, p) => {
-      const covered = Math.min(p.stopQty, p.qty);
+      const qty = p.qty - pairedQty(pairs, p.symbol);
+      if (qty <= 0) return sum;
+      const covered = Math.min(p.stopQty, qty);
       const atStop =
         p.stopPrice === null
           ? 0
           : Math.max(p.avgEntryPrice - p.stopPrice, 0) * covered;
       const bare =
-        (p.qty - (p.stopPrice === null ? 0 : covered)) * p.avgEntryPrice;
+        (qty - (p.stopPrice === null ? 0 : covered)) * p.avgEntryPrice;
       return sum + (atStop + bare) * 100;
-    }, 0);
+    }, spreads);
+}
+
+/** Held contracts outside spreads that no stop fully covers. */
+export function withoutStop(positions: HeldPosition[]): HeldPosition[] {
+  const pairs = spreadPairs(positions);
+  return positions.filter(
+    (p) => p.qty > 0 && p.stopQty < p.qty - pairedQty(pairs, p.symbol),
+  );
 }
 
 export function checkBuy(
@@ -189,7 +213,7 @@ export function checkBuy(
     `${money(risk)} at risk with this trade; the limit is ${limits.maxOpenRiskPct}% of the account, ${money(riskLimit)}`,
   );
   if (limits.requireStops) {
-    const bare = c.positions.filter((p) => p.qty > 0 && p.stopQty < p.qty);
+    const bare = withoutStop(c.positions);
     add(
       "positions without a stop",
       bare.length === 0,
@@ -318,6 +342,171 @@ export function checkBuy(
     minutesLeft > limits.lastMinutes,
     minutesLeft > limits.lastMinutes
       ? `expires ${contract.expiry}`
+      : `it stops trading in ${Math.max(0, Math.round(minutesLeft))} minutes`,
+  );
+
+  const refused = checks
+    .filter((r) => !r.ok)
+    .map((r) => `${r.check}: ${r.detail}`);
+  return { ok: refused.length === 0, checks, refused, notes };
+}
+
+/** A two-leg debit spread to check: buy `long`, sell `short`, `qty` of each. */
+export interface SpreadOrder {
+  long: OptionQuote;
+  short: OptionQuote;
+  qty: number;
+  limitPrice: number; // net debit per spread
+  sizePct: number;
+}
+
+/**
+ * Every check a debit spread must pass before its order is sent (user
+ * 2026-10-17). The account-level checks are those of a single buy; the
+ * spread is sized on its net debit, the most it can lose, and has no stop.
+ */
+export function checkSpread(
+  c: Omit<BuyContext, "order"> & { spread: SpreadOrder },
+  limits: BuyLimits = defaultBuyLimits,
+): BuyVerdict {
+  const checks: CheckResult[] = [];
+  const notes: string[] = [];
+  const add = (check: string, ok: boolean, detail: string) =>
+    checks.push({ check, ok, detail });
+  const { long, short, qty, limitPrice, sizePct } = c.spread;
+  const l = parseOccSymbol(long.symbol);
+  const s = parseOccSymbol(short.symbol);
+  const cost = limitPrice * qty * 100;
+
+  add(
+    "trading switched on",
+    c.enabled,
+    c.enabled ? "on" : "trading is switched off",
+  );
+  add(
+    "paper account",
+    c.paper,
+    c.paper ? "paper" : "the live account is not authorized",
+  );
+  add(
+    "no short risk",
+    c.shortRisks.length === 0,
+    c.shortRisks.length === 0 ? "none" : c.shortRisks.join("; "),
+  );
+  if (limits.requireMarketOpen)
+    add(
+      "market open",
+      c.marketOpen,
+      c.marketOpen ? "open" : "the market is closed",
+    );
+  else if (!c.marketOpen)
+    notes.push(
+      "off hours: the market is closed; the order waits at the broker for the open",
+    );
+  add(
+    "buys per day",
+    c.buysToday.length < limits.maxBuysPerDay,
+    `${c.buysToday.length} of ${limits.maxBuysPerDay} used today`,
+  );
+  const dayLossPct =
+    c.lastEquity > 0 ? ((c.lastEquity - c.equity) / c.lastEquity) * 100 : 0;
+  add(
+    "day loss",
+    dayLossPct <= limits.maxDayLossPct,
+    `the account is ${pct(Math.abs(dayLossPct))} ${dayLossPct > 0 ? "down" : "up"} today; no buys beyond ${limits.maxDayLossPct}% down`,
+  );
+  const risk = openRisk(c.positions) + cost;
+  const riskLimit = (c.equity * limits.maxOpenRiskPct) / 100;
+  add(
+    "risk at the same time",
+    risk <= riskLimit + 1e-9,
+    `${money(risk)} at risk with this spread; the limit is ${limits.maxOpenRiskPct}% of the account, ${money(riskLimit)}`,
+  );
+  if (limits.requireStops) {
+    const bare = withoutStop(c.positions);
+    add(
+      "positions without a stop",
+      bare.length === 0,
+      bare.length === 0
+        ? "every position has its stop"
+        : `no full stop on ${bare.map((p) => p.symbol).join(", ")}`,
+    );
+  }
+  add(
+    "buying power",
+    cost <= c.buyingPower + 1e-9,
+    `needs ${money(cost)}, ${money(c.buyingPower)} available`,
+  );
+  add(
+    "risk manager",
+    c.risk.ok,
+    c.risk.ok
+      ? `${c.risk.account.state}: ${money(c.risk.tradeRisk)} of ${money(c.risk.tradeLimit)} per trade, ${money(c.risk.dayRisk)} of ${money(c.risk.dayLimit)} per day`
+      : c.risk.reasons.join("; "),
+  );
+
+  // Spread-level.
+  const sameKind =
+    l.underlying === s.underlying &&
+    l.right === s.right &&
+    l.expiry === s.expiry;
+  add(
+    "legs",
+    sameKind && l.strike !== s.strike && covers(long.symbol, short.symbol),
+    !sameKind
+      ? "both legs must be the same stock, call or put, and expiry"
+      : l.strike === s.strike
+        ? "the two legs are the same strike"
+        : covers(long.symbol, short.symbol)
+          ? `buy ${l.strike}, sell ${s.strike}: a debit ${l.right} spread`
+          : `buying ${l.strike} and selling ${s.strike} is a credit spread; only debit spreads are allowed`,
+  );
+  const width = Math.abs(l.strike - s.strike);
+  add(
+    "net debit",
+    limitPrice > 0 && limitPrice < width - 1e-9,
+    limitPrice > 0 && limitPrice < width - 1e-9
+      ? `${limitPrice.toFixed(2)} of a ${width} wide spread: at most ${money(cost)} lost, ${money((width - limitPrice) * qty * 100)} gained`
+      : `the limit ${limitPrice.toFixed(2)} must be above 0 and below the strike width ${width}`,
+  );
+  add(
+    "size",
+    sizePct > 0 && sizePct <= limits.maxSizePct && qty >= 1,
+    !(sizePct > 0 && sizePct <= limits.maxSizePct)
+      ? `size ${sizePct}% is outside 0–${limits.maxSizePct}% of the account`
+      : qty >= 1
+        ? `${qty} spread${qty === 1 ? "" : "s"}, at most ${money(cost)}`
+        : `${sizePct}% of the account buys no spread at ${limitPrice.toFixed(2)}`,
+  );
+  for (const [name, q] of [
+    ["buy leg", long],
+    ["sell leg", short],
+  ] as const) {
+    const usable = q.bid > 0 && q.ask > q.bid;
+    const age =
+      q.quotedAt === undefined || !c.marketOpen ? null : c.now - q.quotedAt;
+    add(
+      `${name} quote`,
+      usable && (age === null || age <= limits.maxQuoteAgeMs),
+      !usable
+        ? `bid ${q.bid}, ask ${q.ask}`
+        : age === null
+          ? "usable"
+          : `${Math.max(0, Math.round(age / 1000))} s old, at most ${limits.maxQuoteAgeMs / 1000} s`,
+    );
+  }
+  const natural = long.ask - short.bid;
+  if (limitPrice > natural + 1e-9)
+    notes.push(
+      `the limit ${limitPrice.toFixed(2)} is above the natural price ${natural.toFixed(2)} (buy at the ask, sell at the bid): it fills at once`,
+    );
+  const lastTrade = newYorkToUtc(l.expiry, 16 * 60);
+  const minutesLeft = (lastTrade - c.now) / 60000;
+  add(
+    "contract not expiring",
+    minutesLeft > limits.lastMinutes,
+    minutesLeft > limits.lastMinutes
+      ? `expires ${l.expiry}`
       : `it stops trading in ${Math.max(0, Math.round(minutesLeft))} minutes`,
   );
 

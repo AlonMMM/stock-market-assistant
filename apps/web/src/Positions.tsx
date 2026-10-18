@@ -13,6 +13,11 @@ import {
   type PositionView,
 } from "./positions-model.js";
 import { StockChart } from "./StockChart.js";
+import {
+  spreadPairs,
+  type SpreadPair,
+} from "../../../packages/trading/src/safety.js";
+import { parseOccSymbol } from "../../../packages/trading/src/options.js";
 
 // Open positions as a dense list, in the manner of a broker's phone app: one
 // row per position, and a tap opens the stock's day chart, the position's
@@ -213,7 +218,9 @@ function Detail({
   access,
   view,
   equity,
+  inSpread,
 }: {
+  inSpread: boolean;
   p: PortfolioPosition;
   why?: Decision | undefined;
   access: ControlAccess;
@@ -330,7 +337,12 @@ function Detail({
           <span>No stop order is in place.</span>
         )}
       </p>
-      {access.canTrade && p.option && p.qty > 0 ? (
+      {inSpread ? (
+        <p className="muted">
+          A leg of a spread: it has no stop and is closed with its spread, under
+          Spreads above.
+        </p>
+      ) : access.canTrade && p.option && p.qty > 0 ? (
         <>
           <StopMover p={p} />
           <Controls p={p} />
@@ -357,6 +369,7 @@ function Row({
   onToggle,
   view,
   equity,
+  inSpread,
 }: {
   p: PortfolioPosition;
   why?: Decision | undefined;
@@ -365,18 +378,22 @@ function Row({
   onToggle: () => void;
   view: PositionView;
   equity: number;
+  // A leg of a held spread: covered by the spread, not by a stop.
+  inSpread: boolean;
 }) {
   const numbers = positionNumbers(p, view, equity);
   const deltaExposure =
     p.option && p.delta !== null && numbers.underlyingPrice !== null
       ? optionDeltaExposure(p.qty, numbers.underlyingPrice, p.delta)
       : null;
-  const stopText = !p.stop
-    ? "no stop"
-    : p.stop.qty < p.qty
-      ? `stop ${p.stop.price.toFixed(2)} (${p.stop.qty}/${p.qty})`
-      : `stop ${p.stop.price.toFixed(2)}`;
-  const bare = !p.stop || p.stop.qty < p.qty;
+  const stopText = inSpread
+    ? "in a spread"
+    : !p.stop
+      ? "no stop"
+      : p.stop.qty < p.qty
+        ? `stop ${p.stop.price.toFixed(2)} (${p.stop.qty}/${p.qty})`
+        : `stop ${p.stop.price.toFixed(2)}`;
+  const bare = !inSpread && (!p.stop || p.stop.qty < p.qty);
   return (
     <li className={open ? "pos open" : "pos"}>
       <button
@@ -423,7 +440,9 @@ function Row({
         <span className="pos-cell">
           <span className="sr-only">Value </span>
           <span className="num">
-            {numbers.value === null ? "—" : usd(numbers.value)}
+            {numbers.value === null
+              ? "—"
+              : `${numbers.value < 0 ? "−" : ""}${usd(numbers.value)}`}
           </span>
           <span className="pos-sub num">at {p.entry.toFixed(2)}</span>
         </span>
@@ -439,9 +458,153 @@ function Row({
       </button>
       {open && (
         <div id={`pos-${p.symbol}`}>
-          <Detail p={p} why={why} access={access} view={view} equity={equity} />
+          <Detail
+            p={p}
+            why={why}
+            access={access}
+            view={view}
+            equity={equity}
+            inSpread={inSpread}
+          />
         </div>
       )}
+    </li>
+  );
+}
+
+/**
+ * Close one held debit spread with one order (user 2026-10-17): sell the
+ * long leg and buy back the short one for a net credit. A leg alone is
+ * never sold; the trading service refuses it.
+ */
+function SpreadCloser({
+  pair,
+  positions,
+}: {
+  pair: SpreadPair;
+  positions: PortfolioPosition[];
+}) {
+  const mark = (symbol: string) =>
+    positions.find((p) => p.symbol === symbol)?.price ?? null;
+  const longMark = mark(pair.long);
+  const shortMark = mark(pair.short);
+  const net =
+    longMark !== null && shortMark !== null
+      ? Math.max(Math.round((longMark - shortMark) * 100) / 100, 0)
+      : null;
+  const [credit, setCredit] = useState(net === null ? "" : net.toFixed(2));
+  const [qty, setQty] = useState(String(pair.qty));
+  const [run, setRun] = useState<Run>({ step: "idle" });
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const l = parseOccSymbol(pair.long);
+  const s = parseOccSymbol(pair.short);
+  const name = `${l.underlying} ${l.strike}/${s.strike} ${l.right === "call" ? "Call" : "Put"} spread · ${expiryLabel(l.expiry)}`;
+  const busy = run.step === "sending" || run.step === "working";
+  const n = Number(qty);
+  const ok =
+    credit !== "" &&
+    Number(credit) >= 0 &&
+    Number.isInteger(n) &&
+    n >= 1 &&
+    n <= pair.qty;
+  return (
+    <li className="spread-close">
+      <div className="spread-close-head">
+        <strong>{name}</strong>
+        <span className="muted num">
+          {plural(pair.qty, "spread")} held
+          {net !== null && ` · worth about ${net.toFixed(2)} net`}
+        </span>
+      </div>
+      <div className="spread-close-fields">
+        <label>
+          <span>Spreads</span>
+          <input
+            className="num"
+            inputMode="numeric"
+            value={qty}
+            disabled={busy}
+            onChange={(e) => {
+              setQty(e.target.value.replace(/\D/g, ""));
+              setRun({ step: "idle" });
+            }}
+          />
+        </label>
+        <label>
+          <span>Net credit, limit</span>
+          <input
+            className="num"
+            inputMode="decimal"
+            value={credit}
+            disabled={busy}
+            onChange={(e) => {
+              setCredit(e.target.value.replace(/[^\d.]/g, ""));
+              setRun({ step: "idle" });
+            }}
+          />
+        </label>
+        {run.step === "confirm" ? (
+          <div className="pos-confirm" role="group" aria-label="Confirm">
+            <span>
+              Close {plural(n, "spread")} for at least{" "}
+              {Number(credit).toFixed(2)} net?
+            </span>
+            <button
+              type="button"
+              className="pos-go"
+              onClick={() =>
+                void followOrder(
+                  "/api/portfolio/control/spread/close",
+                  {
+                    long: pair.long,
+                    short: pair.short,
+                    qty: n,
+                    limitPrice: Number(credit),
+                  },
+                  false,
+                  setRun,
+                  alive,
+                )
+              }
+            >
+              Confirm
+            </button>
+            <button
+              type="button"
+              className="pos-cancel"
+              onClick={() => setRun({ step: "idle" })}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="pos-go"
+            disabled={!ok || busy}
+            onClick={() => setRun({ step: "confirm" })}
+          >
+            {busy ? "Working…" : "Close spread"}
+          </button>
+        )}
+      </div>
+      <p className="pos-run" role="status">
+        {run.step === "sending" && "Sending…"}
+        {run.step === "working" && `In progress: ${run.stage}.`}
+        {run.step === "ended" && (
+          <span className={run.ok ? "" : "pos-problem"}>
+            {run.lines.map((line) => (
+              <span key={line}>{line}</span>
+            ))}
+          </span>
+        )}
+      </p>
     </li>
   );
 }
@@ -459,8 +622,27 @@ export function PositionList({
 }) {
   const access = useControlAccess();
   const [open, setOpen] = useState<string | null>(null);
+  const pairs = spreadPairs(positions.filter((p) => p.option));
   return (
     <div className="pos-list">
+      {access.canTrade && pairs.length > 0 && (
+        <section className="spread-closers" aria-label="Spreads">
+          <h3>Spreads</h3>
+          <p className="muted">
+            Each leg below is part of a spread and is closed with it, never
+            alone.
+          </p>
+          <ul>
+            {pairs.map((pair) => (
+              <SpreadCloser
+                key={`${pair.long}/${pair.short}`}
+                pair={pair}
+                positions={positions}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
       <div className="pos-head" aria-hidden="true">
         <span>Position</span>
         <span>Last, stop</span>
@@ -477,6 +659,9 @@ export function PositionList({
             open={open === p.symbol}
             view={view}
             equity={equity}
+            inSpread={pairs.some(
+              (s) => s.long === p.symbol || s.short === p.symbol,
+            )}
             onToggle={() => setOpen(open === p.symbol ? null : p.symbol)}
           />
         ))}

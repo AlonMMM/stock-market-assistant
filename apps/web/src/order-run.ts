@@ -26,6 +26,11 @@ export type Job = {
     working?: boolean;
     canceledQty?: number;
     shortRisks?: string[];
+    // A spread (Trade → Spread, Portfolio → Close spread): the net price
+    // is negative for a close, which receives it.
+    long?: string;
+    limitPrice?: number;
+    order?: { filledQty: number; filledAvgPrice: number | null } | null;
   } | null;
 };
 export type Started = { status: "started"; jobId: string };
@@ -57,6 +62,25 @@ export function outcome(
         ...short,
       ],
     };
+  if (r.long) {
+    const got = r.order?.filledQty ?? 0;
+    const closing = (r.limitPrice ?? 0) < 0;
+    const net = Math.abs(r.order?.filledAvgPrice ?? r.limitPrice ?? 0);
+    const left = (r.qty ?? 0) - got;
+    return {
+      ok: got > 0,
+      lines: [
+        got > 0
+          ? `${closing ? "Closed" : "Bought"} ${got} spread${got === 1 ? "" : "s"} at a net ${net.toFixed(2)}.`
+          : "Nothing filled before the order ended.",
+        ...(got > 0 && left > 0 ? [`${left} did not fill.`] : []),
+        ...(got > 0 && !closing
+          ? ["No stop: the net debit is the most it can lose."]
+          : []),
+        ...short,
+      ],
+    };
+  }
   if (r.side) {
     const did = r.side === "buy" ? "Bought" : "Sold";
     const got = r.filledQty ?? 0;
@@ -170,11 +194,12 @@ export async function followOrder(
       }
       return setRun({ step: "ended", ...outcome(job, buying) });
     }
+    // A limit order may work until the close; it goes on without the page.
     setRun({
       step: "ended",
-      ok: false,
+      ok: true,
       lines: [
-        "The order is still running. Its result will show in the position and in Orders.",
+        "The order is still working at its limit. Its result will show in the position and in Orders.",
       ],
     });
   } catch (error) {

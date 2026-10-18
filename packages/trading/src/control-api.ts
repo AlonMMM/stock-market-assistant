@@ -82,11 +82,55 @@ function order(body: unknown): Record<string, unknown> | Answer {
     return bad("stopPct must be a number");
   if (b.force !== undefined && typeof b.force !== "boolean")
     return bad("force must be true or false");
+  if (
+    b.limitPrice !== undefined &&
+    !(num(b.limitPrice) && (b.limitPrice as number) > 0)
+  )
+    return bad("limitPrice must be a number above zero");
   return {
     contract: b.contract,
     ...(hasPct ? { sizePct: b.sizePct } : { qty: b.qty }),
     ...(b.stopPct === undefined ? {} : { stopPct: b.stopPct }),
     ...(b.force === true ? { force: true } : {}),
+    ...(b.limitPrice === undefined ? {} : { limitPrice: b.limitPrice }),
+  };
+}
+
+/**
+ * A two-leg debit spread from the page (user 2026-10-17): `long` bought,
+ * `short` sold, a size (none when closing) and an optional net price.
+ */
+function spread(
+  body: unknown,
+  close: boolean,
+): Record<string, unknown> | Answer {
+  const b = (body && typeof body === "object" ? body : {}) as Record<
+    string,
+    unknown
+  >;
+  for (const leg of ["long", "short"] as const)
+    if (typeof b[leg] !== "string" || !occ.test(b[leg]))
+      return bad(`${leg} is not a valid contract`);
+  const num = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+  const hasPct = b.sizePct !== undefined;
+  const hasQty = b.qty !== undefined;
+  if (hasPct && hasQty) return bad("Give sizePct or qty, not both");
+  if (!close && !hasPct && !hasQty) return bad("Give a size: sizePct or qty");
+  if (close && hasPct) return bad("A close takes qty, not sizePct");
+  if (hasPct && !num(b.sizePct)) return bad("sizePct must be a number");
+  if (hasQty && !(Number.isInteger(b.qty) && (b.qty as number) >= 1))
+    return bad("qty must be a whole number of spreads");
+  if (
+    b.limitPrice !== undefined &&
+    !(num(b.limitPrice) && (b.limitPrice as number) >= 0)
+  )
+    return bad("limitPrice must be a number, 0 or more");
+  return {
+    long: b.long,
+    short: b.short,
+    ...(hasPct ? { sizePct: b.sizePct } : {}),
+    ...(hasQty ? { qty: b.qty } : {}),
+    ...(b.limitPrice === undefined ? {} : { limitPrice: b.limitPrice }),
   };
 }
 
@@ -191,6 +235,10 @@ function pick(
  * what would be sent and sends nothing.
  * `POST …/change` `{ orderId, qty?, limitPrice?, stopPrice?, trail?,
  * timeInForce? }`: changes an open stock order.
+ * `POST …/spread/check` `{ long, short, sizePct | qty, limitPrice? }`: what
+ * a debit spread would be and each check; `…/spread/buy` buys it.
+ * `POST …/spread/close` `{ long, short, qty?, limitPrice? }`: closes a held
+ * spread for a net credit.
  */
 export async function handleControl(
   config: ControlConfig,
@@ -300,6 +348,15 @@ export async function handleControl(
       body = { orderId: b.orderId, ...fields, via: "site" };
     } else if (sub === "stock/buy" || sub === "stock/sell") {
       const fields = stockOrder(sub, request.body);
+      if ("status" in fields) return fields as Answer;
+      path = `/v1/${sub}`;
+      body = { ...fields, via: "site" };
+    } else if (
+      sub === "spread/check" ||
+      sub === "spread/buy" ||
+      sub === "spread/close"
+    ) {
+      const fields = spread(request.body, sub === "spread/close");
       if ("status" in fields) return fields as Answer;
       path = `/v1/${sub}`;
       body = { ...fields, via: "site" };

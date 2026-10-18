@@ -118,6 +118,15 @@ api.get("/v1/chain", async (request) =>
 api.post("/v1/buy", async (request) =>
   service(request).buy(body(request.body)),
 );
+api.post("/v1/spread/check", async (request) =>
+  service(request).spreadCheck(body(request.body)),
+);
+api.post("/v1/spread/buy", async (request) =>
+  service(request).spreadBuy(body(request.body)),
+);
+api.post("/v1/spread/close", async (request) =>
+  service(request).spreadClose(body(request.body)),
+);
 api.post("/v1/sell", async (request) =>
   service(request).sell(body(request.body)),
 );

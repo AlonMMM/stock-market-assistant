@@ -221,6 +221,7 @@ test("ibkr: the chain asks out-of-the-money strikes of expiries in range", async
       bid: 1,
       ask: 1.1,
       delta: 0.2,
+      iv: 0.38,
       at: monday,
     });
   const quotes = await broker.chain("NVDA", "call", "2026-10-12", "2026-10-30");
@@ -232,8 +233,14 @@ test("ibkr: the chain asks out-of-the-money strikes of expiries in range", async
     "NVDA261016C00240000",
   ]);
   assert.deepEqual(
-    [quotes[0]!.expiry, quotes[0]!.right, quotes[0]!.delta],
-    ["2026-10-16", "call", 0.2],
+    [
+      quotes[0]!.expiry,
+      quotes[0]!.right,
+      quotes[0]!.delta,
+      quotes[0]!.iv,
+      quotes[0]!.openInterest,
+    ],
+    ["2026-10-16", "call", 0.2, 0.38, null],
   );
 });
 

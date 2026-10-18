@@ -4,6 +4,8 @@ import type {
   BrokerCapabilities,
   OrderChange,
   Order,
+  SpreadLeg,
+  SpreadTicket,
   StockQuote,
   StockTicket,
 } from "./broker.js";
@@ -19,6 +21,7 @@ export type { Order, TradingClient } from "./broker.js";
 interface Snapshot {
   latestQuote?: { bp?: number; ap?: number; t?: string };
   greeks?: { delta?: number } | null;
+  impliedVolatility?: number;
 }
 
 interface RawOrder {
@@ -47,6 +50,7 @@ const order = (raw: RawOrder): Order => ({
 function quote(symbol: string, s: Snapshot): OptionQuote {
   const parsed = parseOccSymbol(symbol);
   const delta = s.greeks?.delta;
+  const iv = s.impliedVolatility;
   const at = s.latestQuote?.t ? Date.parse(s.latestQuote.t) : undefined;
   return {
     symbol,
@@ -54,6 +58,7 @@ function quote(symbol: string, s: Snapshot): OptionQuote {
     bid: s.latestQuote?.bp ?? 0,
     ask: s.latestQuote?.ap ?? 0,
     delta: typeof delta === "number" && Number.isFinite(delta) ? delta : null,
+    iv: typeof iv === "number" && Number.isFinite(iv) && iv > 0 ? iv : null,
     ...(at !== undefined && Number.isFinite(at) ? { quotedAt: at } : {}),
   };
 }
@@ -177,13 +182,21 @@ export class AlpacaTrading implements Broker {
     });
   }
 
-  /** Quotes and deltas for one side of the chain, expiries in [from, to]. */
+  /**
+   * Quotes, deltas and IV for one side of the chain, expiries in [from, to],
+   * with each contract's open interest when Alpaca lists it.
+   */
   async chain(
     underlying: string,
     right: Right,
     from: string,
     to: string,
   ): Promise<OptionQuote[]> {
+    // Open interest is on the contracts, not the snapshots. It only informs,
+    // so the chain is still shown without it.
+    const interest = this.openInterest(underlying, right, from, to).catch(
+      () => new Map<string, number>(),
+    );
     const quotes: OptionQuote[] = [];
     let pageToken: string | undefined;
     do {
@@ -208,7 +221,44 @@ export class AlpacaTrading implements Broker {
         quotes.push(quote(symbol, s));
       pageToken = body.next_page_token ?? undefined;
     } while (pageToken);
-    return quotes;
+    const open = await interest;
+    return quotes.map((q) => ({
+      ...q,
+      openInterest: open.get(q.symbol) ?? null,
+    }));
+  }
+
+  private async openInterest(
+    underlying: string,
+    right: Right,
+    from: string,
+    to: string,
+  ): Promise<Map<string, number>> {
+    const open = new Map<string, number>();
+    let pageToken: string | undefined;
+    do {
+      const body = await this.call<{
+        option_contracts:
+          { symbol: string; open_interest?: string | null }[] | null;
+        next_page_token?: string | null;
+      }>(this.tradingUrl, "/v2/options/contracts", {
+        query: {
+          underlying_symbols: underlying,
+          type: right,
+          expiration_date_gte: from,
+          expiration_date_lte: to,
+          limit: "10000",
+          ...(pageToken ? { page_token: pageToken } : {}),
+        },
+      });
+      for (const c of body.option_contracts ?? []) {
+        const n = Number(c.open_interest);
+        if (c.open_interest != null && Number.isFinite(n) && n >= 0)
+          open.set(c.symbol, n);
+      }
+      pageToken = body.next_page_token ?? undefined;
+    } while (pageToken);
+    return open;
   }
 
   async quote(symbol: string): Promise<OptionQuote> {
@@ -333,6 +383,31 @@ export class AlpacaTrading implements Broker {
     );
   }
 
+  /**
+   * A multi-leg (`mleg`) day limit order. Alpaca only takes one whose legs
+   * cover each other; `limit_price` is the net price, positive for a debit.
+   */
+  async spreadOrder(t: SpreadTicket) {
+    return order(
+      await this.call<RawOrder>(this.tradingUrl, "/v2/orders", {
+        method: "POST",
+        body: {
+          order_class: "mleg",
+          qty: String(t.qty),
+          type: "limit",
+          time_in_force: "day",
+          limit_price: t.limitPrice.toFixed(2),
+          legs: t.legs.map((l) => ({
+            symbol: l.symbol,
+            ratio_qty: "1",
+            side: l.side,
+            position_intent: l.intent,
+          })),
+        },
+      }),
+    );
+  }
+
   /** Stock positions; a short one has a negative quantity. */
   async stockPositions() {
     const raw = await this.call<
@@ -431,11 +506,16 @@ export class AlpacaTrading implements Broker {
         trail_percent?: string | null;
         trail_price?: string | null;
         extended_hours?: boolean;
+        order_class?: string;
+        legs?:
+          { symbol: string; side: string; position_intent?: string }[] | null;
       })[]
     >(this.tradingUrl, "/v2/orders", {
       query: {
         status: "open",
         limit: "500",
+        // A multi-leg order is listed once, with its legs inside it.
+        nested: "true",
         ...(symbol ? { symbols: symbol } : {}),
       },
     });
@@ -450,6 +530,16 @@ export class AlpacaTrading implements Broker {
       trailPercent: num(o.trail_percent),
       trailPrice: num(o.trail_price),
       extendedHours: o.extended_hours === true,
+      ...(o.order_class === "mleg" && o.legs
+        ? {
+            legs: o.legs.map((l) => ({
+              symbol: l.symbol,
+              side: l.side as SpreadLeg["side"],
+              intent: (l.position_intent ??
+                "buy_to_open") as SpreadLeg["intent"],
+            })),
+          }
+        : {}),
     }));
   }
 

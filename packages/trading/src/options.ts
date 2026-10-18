@@ -13,6 +13,11 @@ export interface OptionQuote {
   bid: number;
   ask: number;
   delta: number | null;
+  // Implied volatility as a fraction (0.32 is 32%); absent or null when the
+  // feed gives none.
+  iv?: number | null;
+  // Contracts open at the broker's last count (Alpaca: the previous close).
+  openInterest?: number | null;
   // When the broker published this quote (ms); absent when it gives no time.
   quotedAt?: number;
 }

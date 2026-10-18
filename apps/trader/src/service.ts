@@ -5,6 +5,7 @@ import {
   type BuyProgress,
   type BuyRequest,
   type PostStore,
+  type SpreadRequest,
   type TradeEngine,
 } from "../../../packages/trading/src/engine.js";
 import { exitQty } from "../../../packages/trading/src/exit.js";
@@ -118,6 +119,14 @@ function buyRequest(body: Body): BuyRequest {
   if (contract && strike !== undefined)
     throw new RequestError("strike cannot be combined with contract");
   const stopPct = number(body, "stopPct");
+  const limitPrice = number(body, "limitPrice");
+  if (limitPrice !== undefined) {
+    if (!contract) throw new RequestError("limitPrice needs a contract");
+    if (!(limitPrice > 0) || roundToTick(limitPrice, "down") !== limitPrice)
+      throw new RequestError(
+        "limitPrice must be above 0, in steps of 0.01 below $3 and 0.05 from $3",
+      );
+  }
   if (body.force !== undefined && typeof body.force !== "boolean")
     throw new RequestError("force must be true or false");
   return {
@@ -128,6 +137,41 @@ function buyRequest(body: Body): BuyRequest {
     ...(delta === undefined ? {} : { delta }),
     ...(strike === undefined ? {} : { strike }),
     ...(stopPct === undefined ? {} : { stopPct }),
+    ...(limitPrice === undefined ? {} : { limitPrice }),
+  };
+}
+
+/** A spread's two legs, its size and its net price, from a request. */
+function spreadRequest(body: Body, close = false): SpreadRequest {
+  const long = text(body, "long", occ)?.toUpperCase();
+  const short = text(body, "short", occ)?.toUpperCase();
+  if (!long || !short)
+    throw new RequestError("Need long and short: the two contracts");
+  if (long === short)
+    throw new RequestError("long and short must be different contracts");
+  const sizePct = number(body, "sizePct");
+  const qty = number(body, "qty");
+  if (qty !== undefined && !(Number.isInteger(qty) && qty >= 1))
+    throw new RequestError("qty must be a whole number of spreads");
+  if (sizePct !== undefined && qty !== undefined)
+    throw new RequestError("sizePct and qty cannot be combined");
+  if (!close && sizePct === undefined && qty === undefined)
+    throw new RequestError("Need a size: sizePct or qty");
+  const limitPrice = number(body, "limitPrice");
+  if (
+    limitPrice !== undefined &&
+    !(
+      limitPrice >= 0 &&
+      Math.abs(limitPrice * 100 - Math.round(limitPrice * 100)) < 1e-6
+    )
+  )
+    throw new RequestError("limitPrice must be 0 or more, in cents");
+  return {
+    long,
+    short,
+    ...(qty === undefined ? {} : { qty }),
+    ...(sizePct === undefined ? {} : { sizePct }),
+    ...(limitPrice === undefined ? {} : { limitPrice }),
   };
 }
 
@@ -271,6 +315,9 @@ export class TraderService {
         : { qty: request.qty }),
       ...(request.stopPct === undefined ? {} : { stopPct: request.stopPct }),
       ...(request.force ? { force: true } : {}),
+      ...(request.limitPrice === undefined
+        ? {}
+        : { limitPrice: request.limitPrice }),
     });
   }
 
@@ -333,6 +380,12 @@ export class TraderService {
       const held = await this.broker.position(symbol).catch(() => null);
       if (!held || !(held.qty > 0))
         throw new Error(`No long position in ${symbol}`);
+      // One leg of a spread is never sold, resized or stopped alone.
+      const pair = await this.engine.spreadOf(symbol);
+      if (pair)
+        throw new Error(
+          `${symbol} is a leg of a spread (buy ${pair.long}, sell ${pair.short}); close the spread instead`,
+        );
       return { symbol, held };
     } catch (error) {
       throw new RequestError(message(error));
@@ -837,6 +890,83 @@ export class TraderService {
   }
 
   /** `GET /v1/stock/quote?symbol=`: bid, ask, shares held and sellable. */
+  /** What a debit spread would be, and each check. Sends nothing. */
+  async spreadCheck(body: Body) {
+    return this.engine.checkSpreadOrder(spreadRequest(body));
+  }
+
+  /** Checks a debit spread and, when it passes, starts it. Answers at once. */
+  async spreadBuy(body: Body) {
+    const request = spreadRequest(body);
+    const busy = this.store
+      .runningJobs(this.userId)
+      .some((j) => j.symbol === request.long || j.symbol === request.short);
+    if (busy)
+      throw new RequestError(
+        "One of these contracts already has an order in progress; wait for it",
+        409,
+      );
+    const plan = await this.engine.planSpread(request);
+    if ("refused" in plan) {
+      this.record("spread", body, `refused: ${plan.refused.join("; ")}`);
+      return { status: "refused" as const, ...plan };
+    }
+    const jobId = this.start("spread", plan.long, request, (id) =>
+      this.engine.runSpread(plan, (p) => this.progress.set(id, p)),
+    );
+    this.record(
+      "spread",
+      body,
+      `started ${jobId}: ${plan.qty} ${plan.long} / ${plan.short} @ ${plan.limitPrice.toFixed(2)}`,
+    );
+    return {
+      status: "started" as const,
+      jobId,
+      paper: plan.paper,
+      long: plan.long,
+      short: plan.short,
+      qty: plan.qty,
+      limitPrice: plan.limitPrice,
+      maxLoss: plan.maxLoss,
+      offHours: plan.offHours,
+      notes: plan.notes,
+    };
+  }
+
+  /** Closes a held spread with one order for a net credit. Answers at once. */
+  async spreadClose(body: Body) {
+    const request = spreadRequest(body, true);
+    const busy = this.store
+      .runningJobs(this.userId)
+      .some((j) => j.symbol === request.long || j.symbol === request.short);
+    if (busy)
+      throw new RequestError(
+        "One of these contracts already has an order in progress; wait for it",
+        409,
+      );
+    let plan;
+    try {
+      plan = await this.engine.planClose(request);
+    } catch (error) {
+      this.record("spread-close", body, `refused: ${message(error)}`);
+      if (error instanceof TradeRefusal)
+        throw new RequestError(
+          [error.detail, error.hint].filter(Boolean).join(". "),
+          422,
+        );
+      throw error;
+    }
+    const jobId = this.start("spread-close", plan.long, request, (id) =>
+      this.engine.closeSpread(plan, (p) => this.progress.set(id, p)),
+    );
+    this.record(
+      "spread-close",
+      body,
+      `started ${jobId}: ${plan.qty} ${plan.long} / ${plan.short} for ${plan.credit.toFixed(2)}`,
+    );
+    return { status: "started" as const, jobId, ...plan };
+  }
+
   async stockQuote(query: Body) {
     const symbol = this.stockSymbol(query);
     const client = this.stockBroker();
@@ -1193,6 +1323,29 @@ export class TraderService {
     for (const job of cut) {
       const notes: string[] = [];
       try {
+        if (job.kind === "spread" || job.kind === "spread-close") {
+          // The job's multi-leg order is withdrawn, like a buy's own order.
+          // A spread has no stop to put back.
+          const open = (await this.broker.openOrders()).filter((o) =>
+            o.legs?.some((l) => l.symbol === job.symbol),
+          );
+          for (const order of open) await this.broker.cancel(order.id);
+          notes.push(
+            open.length > 0
+              ? `canceled ${open.length} open spread order(s)`
+              : "no spread order working",
+          );
+          this.store.finishJob(job.id, "interrupted", { notes }, this.now());
+          this.record("reconcile", { jobId: job.id }, notes.join("; "));
+          await this.notifier
+            .alert(`Trading service restarted during a ${job.kind}`, [
+              job.symbol,
+              ...notes,
+              "Check the spread's legs in the portfolio.",
+            ])
+            .catch(() => {});
+          continue;
+        }
         if (job.kind === "stock-buy" || job.kind === "stock-sell") {
           // No stop for stocks: the job's own limit order is left working,
           // as a finished job would leave it; the user is told.

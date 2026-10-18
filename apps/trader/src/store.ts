@@ -12,7 +12,8 @@ import type {
 // The trading service's records (docs/tasks/backend-trading-service.md).
 // Every row has an owner, so more traders can be added without a rewrite.
 
-export type JobKind = "buy" | "sell" | "stock-buy" | "stock-sell";
+export type JobKind =
+  "buy" | "sell" | "stock-buy" | "stock-sell" | "spread" | "spread-close";
 export type JobState = "running" | "done" | "failed" | "interrupted";
 
 export interface Job {
