@@ -30,7 +30,8 @@ const hashModes: Record<string, Mode> = {
   backtest: "backtest",
 };
 function savedMode(): Mode {
-  const named = hashModes[location.hash.slice(1)];
+  // `#watchlist/NVDA` is a stock's page in the Watchlist section.
+  const named = hashModes[location.hash.slice(1).split("/")[0]!];
   if (named) return named;
   try {
     const saved = localStorage.getItem(modeKey);
@@ -48,6 +49,7 @@ function App() {
   // Where the watchlist sends a symbol: its alerts, or the trade ticket.
   const [alertSymbol, setAlertSymbol] = useState<string | null>(null);
   const [tradeSymbol, setTradeSymbol] = useState<string | null>(null);
+  const [tradeMode, setTradeMode] = useState<"options" | "stock">("options");
   const setMode = (m: Mode) => {
     setModeState(m);
     window.scrollTo(0, 0);
@@ -94,16 +96,18 @@ function App() {
             setAlertSymbol(ticker);
             setMode("live");
           }}
-          onTrade={(ticker) => {
+          onTrade={(ticker, how = "options") => {
             setTradeSymbol(ticker);
+            setTradeMode(how);
             setMode("portfolio");
           }}
         />
       ) : mode === "portfolio" ? (
         <Portfolio
-          key={tradeSymbol ?? ""}
+          key={`${tradeSymbol ?? ""}/${tradeMode}`}
           modes={modes}
           tradeSymbol={tradeSymbol}
+          tradeMode={tradeMode}
         />
       ) : (
         <Backtest modes={modes} />

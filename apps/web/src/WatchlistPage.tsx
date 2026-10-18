@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Board } from "../../../packages/market-data/src/board.js";
 import type { LiveStatus } from "../../../packages/market-data/src/live.js";
 import { EngineTickers } from "./EngineTickers.js";
@@ -6,6 +6,7 @@ import { boardRefreshMs, liveRefreshMs, usePolling } from "./Live.js";
 import { pillFor, type Compare } from "./live-model.js";
 import { useControlAccess } from "./Positions.js";
 import { StatusPill } from "./StatusPill.js";
+import { TickerPage } from "./TickerPage.js";
 import { WatchTable } from "./WatchTable.js";
 import {
   useWatchlists,
@@ -21,8 +22,29 @@ export function WatchlistPage({
 }: {
   modes: ReactNode;
   onShowAlerts: (ticker: string) => void;
-  onTrade: (ticker: string) => void;
+  onTrade: (ticker: string, mode?: "options" | "stock") => void;
 }) {
+  // A stock's own page (user 2026-10-18), `#watchlist/NVDA`; the phone's
+  // Back returns to the list.
+  const fromHash = () => {
+    const m = /^#watchlist\/([A-Z][A-Z.]{0,9})$/.exec(location.hash);
+    return m ? m[1]! : null;
+  };
+  const [page, setPage] = useState<string | null>(fromHash);
+  useEffect(() => {
+    const back = () => setPage(fromHash());
+    addEventListener("popstate", back);
+    return () => removeEventListener("popstate", back);
+  }, []);
+  const open = (ticker: string) => {
+    history.pushState(null, "", `#watchlist/${ticker}`);
+    setPage(ticker);
+    window.scrollTo(0, 0);
+  };
+  const close = () => {
+    if (/^#watchlist\//.test(location.hash)) history.back();
+    else setPage(null);
+  };
   const [warnings, setWarnings] = useState<string[]>([]);
   const warn = (message: string) =>
     setWarnings((w) => (w.at(-1) === message ? w : [...w, message]));
@@ -67,40 +89,55 @@ export function WatchlistPage({
         </div>
         {modes}
       </header>
-      <h2 className="wl-title">
-        {lists.current && !lists.current.builtIn
-          ? lists.current.name
-          : "Watchlist"}
-        {board.value && (
-          <span className="count num">{board.value.watchlist.length}</span>
-        )}
-      </h2>
-      <WatchlistSwitcher w={lists} />
-      {board.value &&
-      board.value.watchlist.length === 0 &&
-      lists.current &&
-      !lists.current.builtIn ? (
-        <p className="chart-status">
-          This list is empty. Add tickers under “Edit {lists.current.name}”.
-        </p>
-      ) : board.value ? (
-        <WatchTable
+      {page ? (
+        <TickerPage
+          key={page}
+          ticker={page}
           board={board.value}
           alerts={status ? kept.current : []}
-          onShowAlerts={onShowAlerts}
-          onTrade={canTrade ? onTrade : undefined}
-          compare={compare}
-          onCompare={setCompare}
+          onBack={close}
+          onShowAlerts={() => onShowAlerts(page)}
+          onTrade={canTrade ? (how) => onTrade(page, how) : undefined}
         />
       ) : (
-        <p className={board.error ? "notice error" : "chart-status"}>
-          {board.error
-            ? `Watchlist unavailable: ${board.error}`
-            : "Loading watchlist…"}
-        </p>
+        <>
+          <h2 className="wl-title">
+            {lists.current && !lists.current.builtIn
+              ? lists.current.name
+              : "Watchlist"}
+            {board.value && (
+              <span className="count num">{board.value.watchlist.length}</span>
+            )}
+          </h2>
+          <WatchlistSwitcher w={lists} />
+          {board.value &&
+          board.value.watchlist.length === 0 &&
+          lists.current &&
+          !lists.current.builtIn ? (
+            <p className="chart-status">
+              This list is empty. Add tickers under “Edit {lists.current.name}”.
+            </p>
+          ) : board.value ? (
+            <WatchTable
+              board={board.value}
+              alerts={status ? kept.current : []}
+              onShowAlerts={onShowAlerts}
+              onTrade={canTrade ? onTrade : undefined}
+              onOpen={open}
+              compare={compare}
+              onCompare={setCompare}
+            />
+          ) : (
+            <p className={board.error ? "notice error" : "chart-status"}>
+              {board.error
+                ? `Watchlist unavailable: ${board.error}`
+                : "Loading watchlist…"}
+            </p>
+          )}
+          <WatchlistEditor w={lists} onChanged={board.reload} />
+          <EngineTickers />
+        </>
       )}
-      <WatchlistEditor w={lists} onChanged={board.reload} />
-      <EngineTickers />
     </div>
   );
 }

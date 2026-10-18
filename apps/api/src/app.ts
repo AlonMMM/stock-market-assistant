@@ -1,3 +1,8 @@
+import { handleTicker } from "../../../packages/market-data/src/ticker.js";
+import {
+  liveUrl,
+  paperUrl,
+} from "../../../packages/trading/src/alpaca-trading.js";
 import Fastify from "fastify";
 import {
   defaults,
@@ -233,6 +238,18 @@ export function buildApp(
     const result = await handleCandles(
       request.query as { ticker?: unknown; date?: unknown },
       alpaca,
+      alpaca.fetcher,
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.get("/api/ticker", async (request, reply) => {
+    const result = await handleTicker(
+      request.query as Record<string, unknown>,
+      alpaca,
+      process.env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
       alpaca.fetcher,
     );
     return reply

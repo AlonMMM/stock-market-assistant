@@ -206,9 +206,12 @@ export function WatchTable({
   alerts,
   onShowAlerts,
   onTrade,
+  onOpen,
   compare,
   onCompare,
 }: {
+  // A row opens the stock's own page (user 2026-10-18).
+  onOpen?: (ticker: string) => void;
   board: Board;
   alerts: FeedAlert[];
   onShowAlerts: (ticker: string) => void;
@@ -382,8 +385,14 @@ export function WatchTable({
                 <button
                   type="button"
                   className="wl-row wl-grid"
-                  aria-expanded={expanded}
-                  onClick={() => setOpen(expanded ? null : r.ticker)}
+                  {...(onOpen
+                    ? { "aria-label": `Open ${r.ticker}` }
+                    : { "aria-expanded": expanded })}
+                  onClick={() =>
+                    onOpen
+                      ? onOpen(r.ticker)
+                      : setOpen(expanded ? null : r.ticker)
+                  }
                 >
                   <span className="wl-cell wl-symbol">
                     <strong>

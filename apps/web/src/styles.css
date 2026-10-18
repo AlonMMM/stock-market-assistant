@@ -4974,3 +4974,250 @@ label.ot-check > span,
     row-gap: 8px;
   }
 }
+
+/* A stock's own page from the watchlist (user 2026-10-18), IBKR-like: the
+   quote, actions, today's chart, then cards of numbers, position and news. */
+.tk {
+  display: grid;
+  gap: 14px;
+}
+.tk-back {
+  justify-self: start;
+  min-height: 40px;
+  padding: 0 12px 0 6px;
+  border-radius: 10px;
+  background: transparent;
+  color: #142b29;
+  font-size: 15px;
+  font-weight: 600;
+}
+.tk-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.tk-name h2 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.01em;
+}
+.tk-name p {
+  margin: 2px 0 0;
+  font-size: 14px;
+}
+.tk-price {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+.tk-price strong {
+  font-size: 30px;
+  line-height: 1;
+}
+.tk-price .up,
+.tk-perf .up,
+.tk-list .up {
+  color: #1d6b3a;
+}
+.tk-price .down,
+.tk-perf .down,
+.tk-list .down {
+  color: #9f1a1a;
+}
+.tk-price span {
+  font-size: 15px;
+  font-weight: 600;
+}
+.tk-price .muted {
+  font-size: 12px;
+  font-weight: 400;
+}
+.tk-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.tk-actions .pos-go.tk-alt {
+  background: #fff;
+  color: #142b29;
+  border: 1px solid #142b29;
+}
+.tk-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: 10px;
+  align-content: start;
+  padding: 14px;
+  border: 1px solid #dfe6dd;
+  border-radius: 14px;
+  background: #fff;
+}
+.tk-card h3 {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #526461;
+}
+.tk-chart {
+  padding: 8px;
+}
+.tk-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+.tk {
+  grid-template-columns: minmax(0, 1fr);
+}
+.tk-perf-box {
+  overflow-x: auto;
+}
+@media (min-width: 900px) {
+  .tk-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tk-news {
+    grid-column: 1 / -1;
+  }
+}
+.tk-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+.tk-stats div {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #eef1ec;
+  font-size: 14px;
+}
+.tk-stats dt {
+  color: #526461;
+}
+.tk-stats dd {
+  margin: 0;
+  font-weight: 650;
+  text-align: right;
+}
+.tk-range {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: #526461;
+}
+.tk-range-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: #e3e9e1;
+}
+.tk-range-bar i {
+  position: absolute;
+  top: -4px;
+  width: 4px;
+  height: 14px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: #142b29;
+}
+.tk-range-ends {
+  display: flex;
+  justify-content: space-between;
+  color: #142b29;
+}
+.tk-year {
+  width: 100%;
+  height: 110px;
+}
+.tk-year polyline {
+  fill: none;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.tk-year.up polyline {
+  stroke: #1d6b3a;
+}
+.tk-year.down polyline {
+  stroke: #9f1a1a;
+}
+.tk-perf {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.tk-perf th,
+.tk-perf td {
+  padding: 6px 2px;
+  text-align: right;
+  white-space: nowrap;
+}
+.tk-perf thead th {
+  font-size: 11px;
+  color: #526461;
+}
+.tk-perf tbody th {
+  text-align: left;
+}
+.tk-list,
+.tk-news ul {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tk-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid #eef1ec;
+  font-size: 14px;
+}
+.tk-list li:first-child,
+.tk-news li:first-child {
+  border-top: 0;
+}
+.tk-news li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 0;
+  border-top: 1px solid #eef1ec;
+}
+.tk-news a {
+  color: #142b29;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-decoration: none;
+}
+.tk-news a:hover {
+  text-decoration: underline;
+}
+.tk-news small {
+  font-size: 12px;
+}
+@media (max-width: 560px) {
+  .tk-name h2,
+  .tk-price strong {
+    font-size: 26px;
+  }
+  .tk-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tk-perf {
+    font-size: 11.5px;
+  }
+  .tk-perf th,
+  .tk-perf td {
+    padding: 5px 1px;
+  }
+}

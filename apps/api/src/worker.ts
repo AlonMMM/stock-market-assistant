@@ -1,3 +1,8 @@
+import { handleTicker } from "../../../packages/market-data/src/ticker.js";
+import {
+  liveUrl,
+  paperUrl,
+} from "../../../packages/trading/src/alpaca-trading.js";
 import {
   defaults,
   replay,
@@ -296,6 +301,22 @@ export default {
       const result = await handleCandles(
         { ticker: query.get("ticker"), date: query.get("date") },
         credentials,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path === "/api/ticker") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const result = await handleTicker(
+        Object.fromEntries(new URL(request.url).searchParams),
+        credentials,
+        env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
       );
       return Response.json(result.body, {
         status: result.status,
