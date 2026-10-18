@@ -500,20 +500,26 @@ function SideCells({
 export function Trade({
   edit,
   ticker: startTicker,
+  startMode = "options",
 }: {
   edit?: PortfolioOrder | null;
-  // Opens on this stock's options (from the watchlist).
+  // Opens on this stock's options, or its shares (from the watchlist).
   ticker?: string | undefined;
+  startMode?: "options" | "stock";
 }) {
   const [ticker, setTicker] = useState(edit?.underlying ?? startTicker ?? "");
   // The side the chain opens on: its default strike is chosen and in view.
   const right: Right = edit?.option?.right ?? "call";
   // Options, or the stock itself (shares).
   const [mode, setMode] = useState<"options" | "stock">(
-    edit && !edit.option ? "stock" : "options",
+    edit ? (edit.option ? "options" : "stock") : startMode,
   );
   const [stockShown, setStockShown] = useState<string | null>(
-    edit && !edit.option ? edit.symbol : null,
+    edit && !edit.option
+      ? edit.symbol
+      : !edit && startMode === "stock" && startTicker
+        ? startTicker.toUpperCase()
+        : null,
   );
   // The account as it is now: the order being edited, and its position.
   const account = usePolling<Portfolio>("/api/portfolio", 1000, () => {});
@@ -545,7 +551,8 @@ export function Trade({
 
   // A stock picked in the watchlist: show its options at once.
   useEffect(() => {
-    if (!edit && startTicker) void load(startTicker.toUpperCase());
+    if (!edit && startTicker && startMode === "options")
+      void load(startTicker.toUpperCase());
   }, []);
 
   // An order opened from the list: its stock, expiry and contract.

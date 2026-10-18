@@ -238,10 +238,13 @@ const allSections = [
 export function Portfolio({
   modes,
   tradeSymbol = null,
+  tradeMode = "options",
 }: {
   modes: ReactNode;
-  // A stock picked elsewhere (the watchlist): the trade ticket opens on it.
+  // A stock picked elsewhere (the watchlist): the trade ticket opens on it,
+  // on its options or its shares.
   tradeSymbol?: string | null;
+  tradeMode?: "options" | "stock";
 }) {
   const [tab, setTab] = useState<(typeof allSections)[number][0]>(
     tradeSymbol ? "trade" : "live",
@@ -313,6 +316,7 @@ export function Portfolio({
             key={editing?.id ?? "new"}
             edit={editing}
             ticker={editing ? undefined : (tradeSymbol ?? undefined)}
+            startMode={tradeMode}
           />
         ) : tab === "orders" ? (
           <Orders onError={ignore} />

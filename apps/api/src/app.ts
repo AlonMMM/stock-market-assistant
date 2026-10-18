@@ -1,3 +1,12 @@
+import {
+  D1PriceAlerts,
+  handlePriceAlerts,
+} from "../../../packages/market-data/src/price-alerts.js";
+import { handleTicker } from "../../../packages/market-data/src/ticker.js";
+import {
+  liveUrl,
+  paperUrl,
+} from "../../../packages/trading/src/alpaca-trading.js";
 import Fastify from "fastify";
 import {
   defaults,
@@ -58,6 +67,7 @@ export function buildApp(
     results?: ResultCache; // computed backtest parts
     symbols?: D1SymbolList; // the Backtest page's symbol list
     watchlists?: D1Watchlists; // the user's named watchlists
+    priceAlerts?: D1PriceAlerts; // the user's own price alerts
   } = {
     key: process.env.ALPACA_API_KEY,
     secret: process.env.ALPACA_API_SECRET,
@@ -128,6 +138,21 @@ export function buildApp(
         request.method,
         request.params.sub,
         request.body,
+      );
+      return reply.code(result.status).send(result.body);
+    },
+  });
+  // The user's price alerts; locally they are kept, the Worker's cron sends.
+  app.route<{ Params: { "*": string }; Querystring: { ticker?: string } }>({
+    method: ["GET", "POST", "DELETE"],
+    url: "/api/price-alerts*",
+    handler: async (request, reply) => {
+      const result = await handlePriceAlerts(
+        request.method,
+        request.params["*"].replace(/^\//, ""),
+        { ticker: request.query.ticker ?? null },
+        request.body,
+        alpaca.priceAlerts,
       );
       return reply.code(result.status).send(result.body);
     },
@@ -233,6 +258,18 @@ export function buildApp(
     const result = await handleCandles(
       request.query as { ticker?: unknown; date?: unknown },
       alpaca,
+      alpaca.fetcher,
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.get("/api/ticker", async (request, reply) => {
+    const result = await handleTicker(
+      request.query as Record<string, unknown>,
+      alpaca,
+      process.env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
       alpaca.fetcher,
     );
     return reply

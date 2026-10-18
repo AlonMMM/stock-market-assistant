@@ -28,7 +28,10 @@
     },
   ],
   // Every minute: check that the trading account is not short an option and
-  // tell the trades channel if it is (packages/trading/src/watch.ts).
+  // tell the trades channel if it is (packages/trading/src/watch.ts); then
+  // send the user's price alerts that are met (price-alerts.ts), to
+  // PRICE_ALERTS_TELEGRAM_BOT_TOKEN / _CHAT_ID when set, else the trades
+  // channel. An optional SITE_URL var adds a link to the stock's page.
   "triggers": { "crons": ["* * * * *"] },
   // ALPACA_API_KEY, ALPACA_API_SECRET, COLLECTOR_TOKEN, and for the check
   // above TRADES_TELEGRAM_BOT_TOKEN and TRADES_TELEGRAM_CHAT_ID, are Worker
