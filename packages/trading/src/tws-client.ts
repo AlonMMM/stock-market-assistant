@@ -314,16 +314,14 @@ export class StoqeyTws implements TwsClient {
           id: number,
           field: number,
           _attrib: number | undefined,
-          _iv?: number,
+          iv?: number,
           delta?: number,
         ) => {
-          if (
-            id === reqId &&
-            field === tick.modelOption &&
-            typeof delta === "number" &&
-            Math.abs(delta) <= 1
-          )
+          if (id !== reqId || field !== tick.modelOption) return;
+          if (typeof delta === "number" && Math.abs(delta) <= 1)
             snap.delta = delta;
+          // TWS sends a huge sentinel when it has no value.
+          if (typeof iv === "number" && iv > 0 && iv < 100) snap.iv = iv;
         };
         const onEnd = (id: number) => id === reqId && finish(snap);
         this.ib.on(EventName.tickPrice, onPrice);

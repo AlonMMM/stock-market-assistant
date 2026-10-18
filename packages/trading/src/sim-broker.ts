@@ -5,6 +5,7 @@ import type {
   Order,
   OrderChange,
   Position,
+  SpreadTicket,
   StockQuote,
   StockTicket,
 } from "./broker.js";
@@ -19,7 +20,7 @@ const isOption = (symbol: string) => /^[A-Z.]{1,6}\d{6}[CP]\d{8}$/.test(symbol);
 const multiplier = (symbol: string) => (isOption(symbol) ? 100 : 1);
 
 interface SimOrder extends OpenOrder {
-  kind: "buy" | "sell" | "stop";
+  kind: "buy" | "sell" | "stop" | "spread";
   // A stock order of a given type (`stockOrder`): how it fills.
   ticket?: {
     type: StockTicket["type"];
@@ -113,8 +114,42 @@ export class SimBroker implements Broker {
     o.status = "filled";
   }
 
+  /**
+   * A spread fills at its limit once that reaches the natural price: each
+   * bought leg at its ask less each sold leg at its bid.
+   */
+  private settleSpread(o: SimOrder) {
+    const legs = o.legs!;
+    const quotes = legs.map((l) => this.quotes.get(l.symbol));
+    if (quotes.some((q) => !q)) return;
+    const natural = legs.reduce(
+      (sum, l, i) =>
+        sum + (l.side === "buy" ? quotes[i]!.ask : -quotes[i]!.bid),
+      0,
+    );
+    if (o.limitPrice! < natural - 1e-9) return;
+    legs.forEach((l, i) => {
+      const price = l.side === "buy" ? quotes[i]!.ask : quotes[i]!.bid;
+      const h = this.held.get(l.symbol) ?? { qty: 0, cost: 0 };
+      const qty = l.side === "buy" ? o.qty : -o.qty;
+      const after = h.qty + qty;
+      // Closing keeps the average entry; opening adds at this price.
+      const cost =
+        Math.sign(h.qty) === -Math.sign(qty) && h.qty !== 0
+          ? (h.cost / h.qty) * after
+          : h.cost + qty * price;
+      if (after === 0) this.held.delete(l.symbol);
+      else this.held.set(l.symbol, { qty: after, cost });
+      this.cash -= qty * price * 100;
+    });
+    o.filledQty = o.qty;
+    o.filledAvgPrice = o.limitPrice;
+    o.status = "filled";
+  }
+
   private settle(o: SimOrder) {
     if (!this.open(o)) return;
+    if (o.kind === "spread") return this.settleSpread(o);
     const stock = this.stockQuotes.get(o.symbol);
     const q = this.quotes.get(o.symbol) ?? {
       bid: stock?.bid ?? 0,
@@ -328,6 +363,24 @@ export class SimBroker implements Broker {
     // Immediate or cancel, fill or kill: what did not fill now is canceled.
     if ((t.timeInForce === "ioc" || t.timeInForce === "fok") && this.open(o))
       o.status = "canceled";
+    return { ...o };
+  }
+  async spreadOrder(t: SpreadTicket) {
+    const o: SimOrder = {
+      id: `sim-${this.nextId++}`,
+      symbol: "",
+      status: "new",
+      qty: t.qty,
+      filledQty: 0,
+      filledAvgPrice: null,
+      limitPrice: t.limitPrice,
+      stopPrice: null,
+      side: "",
+      kind: "spread",
+      legs: t.legs.map((l) => ({ ...l })),
+    };
+    this.orders.set(o.id, o);
+    this.settle(o);
     return { ...o };
   }
   async changeOrder(id: string, c: OrderChange) {

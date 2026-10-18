@@ -1,7 +1,8 @@
 import { newYork } from "../../market-data/src/calendar.js";
-import type { Broker, Order } from "./broker.js";
+import type { Broker, Order, SpreadTicket } from "./broker.js";
 import {
   checkBuy,
+  checkSpread,
   defaultBuyLimits,
   openRisk,
   type BuyContext,
@@ -47,7 +48,13 @@ import {
   defaultRiskRules,
   type RiskRules,
 } from "./risk-manager.js";
-import { shortRisks, uncovered } from "./safety.js";
+import {
+  pairedQty,
+  shortRisks,
+  spreadPairs,
+  uncovered,
+  type SpreadPair,
+} from "./safety.js";
 
 // The trade flow, written against a broker and a notifier
 // (docs/tasks/backend-trading-service.md). The command line and the trading
@@ -192,9 +199,57 @@ export interface BuyRequest {
   stopPct?: number;
   // Buy whatever the spread is (user 2026-10-12). Every other check applies.
   force?: boolean;
+  // The user's own limit price (user 2026-10-17): one day order at this
+  // price instead of the raises from the mid; a stop is kept on every fill
+  // until it fills or ends at the close.
+  limitPrice?: number;
   steps?: number;
   intervalMs?: number;
   waitMs?: number; // how long an unfilled order is watched, then canceled
+}
+
+/** A two-leg debit spread: buy `long`, sell `short` (user 2026-10-17). */
+export interface SpreadRequest {
+  long: string;
+  short: string;
+  // Size as % of equity, measured at the net debit; or `qty` spreads.
+  sizePct?: number;
+  qty?: number;
+  // Net debit per spread; the mid of the two legs when absent.
+  limitPrice?: number;
+}
+
+/** Closing a held spread: `qty` of it (all when absent) for a net credit. */
+export interface SpreadCloseRequest {
+  long: string;
+  short: string;
+  qty?: number;
+  // Net credit per spread received; the mid of the two legs when absent.
+  limitPrice?: number;
+}
+
+/** A spread that passed every check and has not been sent yet. */
+export interface SpreadPlan {
+  paper: boolean;
+  long: string;
+  short: string;
+  qty: number;
+  limitPrice: number;
+  maxLoss: number;
+  offHours: boolean;
+  notes: string[];
+  record: BuyRecord;
+}
+
+/** How a spread order ended: filled, or what is left of it. */
+export interface SpreadDone {
+  paper: boolean;
+  long: string;
+  short: string;
+  qty: number;
+  limitPrice: number;
+  order: Order;
+  post?: Sent;
 }
 
 export interface SellRequest {
@@ -241,6 +296,7 @@ export interface BuyPlan extends BuyBase {
   record: BuyRecord;
   decision: Decision;
   force?: boolean;
+  limitPrice?: number;
   steps?: number;
   intervalMs?: number;
   waitMs?: number;
@@ -250,6 +306,8 @@ const isOcc = (symbol: string) => /^[A-Z.]{1,6}\d{6}[CP]\d{8}$/.test(symbol);
 
 // How far ahead the trade ticket offers expiries.
 const chainDays = 35;
+// The longest a day limit order can wait: placed before a long weekend.
+const limitWatchMs = 4 * 86_400_000;
 
 const addDays = (date: string, days: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000)
@@ -269,6 +327,13 @@ function withChecks(verdict: BuyVerdict, extra: CheckResult[]): BuyVerdict {
       ...failed.map((c) => `${c.check}: ${c.detail}`),
     ],
   };
+}
+
+/** "$NVDA | 240/245 Call 2026-10-16 spread" for posts. */
+function spreadName(long: string, short: string) {
+  const l = parseOccSymbol(long);
+  const s = parseOccSymbol(short);
+  return `$${l.underlying} | ${l.strike}/${s.strike} ${l.right === "call" ? "Call" : "Put"} ${l.expiry} spread`;
 }
 
 export class TradeEngine {
@@ -465,8 +530,11 @@ export class TradeEngine {
     stopPct: number,
     deltaRange?: readonly [number, number],
     force = false,
+    limitPrice?: number,
   ) {
-    const ceiling = ceilingPrice(quote);
+    // The most one contract can cost: the user's limit, else the ceiling of
+    // the raises.
+    const ceiling = limitPrice ?? ceilingPrice(quote);
     const { equity } = a.account;
     // An exact number of contracts is measured as the share it costs.
     const exact =
@@ -685,6 +753,8 @@ export class TradeEngine {
               ? Number((spread.ratio * 100).toFixed(1))
               : null,
             delta: q.delta,
+            iv: q.iv ?? null,
+            openInterest: q.openInterest ?? null,
           };
         }),
     };
@@ -700,6 +770,7 @@ export class TradeEngine {
     qty?: number;
     stopPct?: number;
     force?: boolean;
+    limitPrice?: number;
   }) {
     const stopPct = request.stopPct ?? defaultStopPct;
     if (request.sizePct === undefined && request.qty === undefined)
@@ -717,6 +788,7 @@ export class TradeEngine {
       stopPct,
       undefined,
       request.force,
+      request.limitPrice,
     );
     const spread = spreadCheck(quote);
     return {
@@ -829,6 +901,7 @@ export class TradeEngine {
       stopPct,
       deltaRange,
       request.force,
+      request.limitPrice,
     );
     const { qty, budget, verdict } = sized;
     const decision: Decision = {
@@ -902,6 +975,9 @@ export class TradeEngine {
       offHours: !a.marketOpen,
       notes: verdict.notes,
       ...(request.force ? { force: true } : {}),
+      ...(request.limitPrice === undefined
+        ? {}
+        : { limitPrice: request.limitPrice }),
       ...(request.steps === undefined ? {} : { steps: request.steps }),
       ...(request.intervalMs === undefined
         ? {}
@@ -1036,34 +1112,58 @@ export class TradeEngine {
     const { contract: symbol, qty, budget, stopPct } = plan;
     const request = plan;
     {
-      let waiting: Order | undefined;
-      if (plan.offHours) {
-        const queued = await this.queueOffHours(plan, progress);
-        if ("result" in queued) return queued;
-        waiting = queued.order;
+      let result: LadderResult;
+      if (plan.limitPrice !== undefined) {
+        // One day order at the user's price, off hours too: it waits at the
+        // broker for the open and ends at the close.
+        const quote = await this.broker.quote(symbol);
+        const order = await this.broker.buyLimit(symbol, qty, plan.limitPrice);
+        this.log(`sent ${qty} @ ${plan.limitPrice.toFixed(2)} (own limit)`);
+        result = {
+          status: "open",
+          quote,
+          spreadRatio: spreadCheck(quote).ratio,
+          prices: [plan.limitPrice],
+          order,
+        };
+      } else {
+        let waiting: Order | undefined;
+        if (plan.offHours) {
+          const queued = await this.queueOffHours(plan, progress);
+          if ("result" in queued) return queued;
+          waiting = queued.order;
+        }
+        progress({ stage: "raising the price" });
+        result = await buyWithLadder(this.broker, symbol, qty, {
+          ...(waiting ? { existing: waiting } : {}),
+          ...(plan.force ? { anySpread: true } : {}),
+          ...(request.steps === undefined ? {} : { steps: request.steps }),
+          ...(request.intervalMs === undefined
+            ? {}
+            : { intervalMs: request.intervalMs }),
+          maxPrice: budget / (qty * 100),
+          ...this.timing,
+        });
+        if (
+          result.status === "rejected-spread" ||
+          result.status === "rejected-budget"
+        )
+          return { paper: this.paper, contract: symbol, qty, budget, result };
       }
-      progress({ stage: "raising the price" });
-      const result = await buyWithLadder(this.broker, symbol, qty, {
-        ...(waiting ? { existing: waiting } : {}),
-        ...(plan.force ? { anySpread: true } : {}),
-        ...(request.steps === undefined ? {} : { steps: request.steps }),
-        ...(request.intervalMs === undefined
-          ? {}
-          : { intervalMs: request.intervalMs }),
-        maxPrice: budget / (qty * 100),
-        ...this.timing,
-      });
-      if (
-        result.status === "rejected-spread" ||
-        result.status === "rejected-budget"
-      )
-        return { paper: this.paper, contract: symbol, qty, budget, result };
       progress({
-        stage: "watching the order, keeping its stop",
+        stage:
+          plan.limitPrice === undefined
+            ? "watching the order, keeping its stop"
+            : `working at your limit ${plan.limitPrice.toFixed(2)}${plan.offHours ? " from the open" : ""}, keeping a stop on fills`,
         orderId: result.order!.id,
       });
+      // A limit order is watched for as long as it can fill: a day order
+      // ends at the close (off hours, the next one).
+      const waitMs =
+        request.waitMs ??
+        (plan.limitPrice === undefined ? undefined : limitWatchMs);
       const guarded = await protectFill(this.broker, result.order!, stopPct, {
-        ...(request.waitMs === undefined ? {} : { waitMs: request.waitMs }),
+        ...(waitMs === undefined ? {} : { waitMs }),
         ...this.timing,
       });
       const order = guarded.order;
@@ -1218,6 +1318,7 @@ export class TradeEngine {
   /** Sells at the bid, re-priced every 5 seconds; posts the exit. */
   async sell(request: SellRequest) {
     const symbol = await this.sellTarget(request);
+    await this.refuseLeg(symbol);
     const result = await sellAtBid(this.broker, symbol, request.qty, {
       ...(request.waitMs === undefined ? {} : { maxMs: request.waitMs }),
       stopPct: request.stopPct ?? defaultStopPct,
@@ -1241,9 +1342,11 @@ export class TradeEngine {
     const held = await this.broker.position(symbol);
     if (!(held.qty > 0)) throw new Error(`No long position in ${symbol}`);
     // Only contracts that no open sell order already covers: a second stop
-    // on the same contracts could sell them twice.
+    // on the same contracts could sell them twice. A spread's long leg gets
+    // none: selling it would leave the short leg bare.
+    const legs = pairedQty(spreadPairs(await this.broker.positions()), symbol);
     const qty = uncovered(
-      held.qty,
+      held.qty - legs,
       symbol,
       await this.broker.openOrders(symbol),
     );
@@ -1251,7 +1354,10 @@ export class TradeEngine {
       return {
         paper: this.paper,
         held: held.qty,
-        note: "open sell orders already cover it",
+        note:
+          legs > 0
+            ? "a leg of a spread: it gets no stop"
+            : "open sell orders already cover it",
       };
     const price = stopPrice(held.avgEntryPrice, stopPct);
     const order = await this.broker.sellStop(symbol, qty, price);
@@ -1276,6 +1382,7 @@ export class TradeEngine {
     const held = await this.broker.position(symbol).catch(() => null);
     if (!held || !(held.qty > 0))
       throw new TradeRefusal("position", `no long position in ${symbol}`);
+    await this.refuseLeg(symbol);
     if (!(request.price > 0))
       throw new TradeRefusal("stop", "the stop price must be above zero");
     const price = roundToTick(request.price, "up");
@@ -1336,6 +1443,328 @@ export class TradeEngine {
       throw error;
     }
     return done(free);
+  }
+
+  /** The spread a held contract is a leg of, if any. */
+  async spreadOf(symbol: string): Promise<SpreadPair | undefined> {
+    const pairs = spreadPairs(await this.broker.positions());
+    return pairs.find((p) => p.long === symbol || p.short === symbol);
+  }
+
+  /** Refuses an order on one leg of a spread alone. */
+  private async refuseLeg(symbol: string) {
+    const pair = await this.spreadOf(symbol);
+    if (pair)
+      throw new TradeRefusal(
+        "spread",
+        `${symbol} is a leg of a spread (buy ${pair.long}, sell ${pair.short}); selling or stopping one leg alone could leave the other short`,
+        "Close the spread instead.",
+      );
+  }
+
+  /** Both legs' quotes, the account, and the spread's size and checks. */
+  private async assessSpread(request: SpreadRequest) {
+    const longSymbol = request.long.toUpperCase();
+    const shortSymbol = request.short.toUpperCase();
+    if (request.sizePct === undefined && request.qty === undefined)
+      throw new Error("Need a size: sizePct or qty");
+    const [long, short, a] = await Promise.all([
+      this.broker.quote(longSymbol),
+      this.broker.quote(shortSymbol),
+      this.account(),
+    ]);
+    const mid = (long.bid + long.ask - short.bid - short.ask) / 2;
+    const natural = long.ask - short.bid;
+    const limitPrice = Number(
+      (
+        request.limitPrice ?? Math.max(Math.round(mid * 100) / 100, 0.01)
+      ).toFixed(2),
+    );
+    const { equity } = a.account;
+    const perSpread = limitPrice * 100;
+    const qty =
+      request.qty ??
+      (perSpread > 0 && equity > 0
+        ? Math.floor((equity * request.sizePct!) / 100 / perSpread + 1e-9)
+        : 0);
+    // An exact number of spreads is measured as the share it can lose.
+    const sizePct =
+      request.qty !== undefined
+        ? equity > 0
+          ? Number(((request.qty * perSpread * 100) / equity).toFixed(4))
+          : 0
+        : request.sizePct!;
+    const cost = qty * perSpread;
+    const l = parseOccSymbol(longSymbol);
+    const s = parseOccSymbol(shortSymbol);
+    const daysToExpiry = Math.round(
+      (Date.parse(`${l.expiry}T00:00:00Z`) - Date.parse(`${a.day}T00:00:00Z`)) /
+        86400000,
+    );
+    const risk = checkRisk(
+      {
+        history: a.history,
+        equity,
+        todayLoss: a.account.lastEquity - equity,
+        premium: cost,
+        daysToExpiry,
+      },
+      this.riskRules,
+    );
+    const verdict = checkSpread(
+      {
+        now: a.now,
+        enabled: this.enabled,
+        paper: this.paper,
+        shortRisks: a.shortRisks,
+        marketOpen: a.marketOpen,
+        equity,
+        lastEquity: a.account.lastEquity,
+        buyingPower: a.account.buyingPower,
+        positions: a.held,
+        buysToday: a.buysToday,
+        working: a.working,
+        risk,
+        spread: { long, short, qty, limitPrice, sizePct },
+      },
+      this.limits,
+    );
+    if (!this.broker.spreadOrder) {
+      const detail = `${this.broker.name} takes no multi-leg orders`;
+      verdict.ok = false;
+      verdict.checks.push({ check: "broker", ok: false, detail });
+      verdict.refused.push(`broker: ${detail}`);
+    }
+    const width = Math.abs(l.strike - s.strike);
+    return {
+      a,
+      qty,
+      limitPrice,
+      verdict,
+      summary: {
+        paper: this.paper,
+        long: longSymbol,
+        short: shortSymbol,
+        underlying: l.underlying,
+        right: l.right,
+        expiry: l.expiry,
+        longStrike: l.strike,
+        shortStrike: s.strike,
+        width,
+        mid: Number(mid.toFixed(3)),
+        natural: Number(natural.toFixed(2)),
+        limitPrice,
+        qty,
+        sizePct,
+        maxLoss: Number(cost.toFixed(2)),
+        maxGain: Number(((width - limitPrice) * qty * 100).toFixed(2)),
+        breakeven: Number(
+          (l.right === "call"
+            ? l.strike + limitPrice
+            : l.strike - limitPrice
+          ).toFixed(2),
+        ),
+        marketOpen: a.marketOpen,
+        wouldBuy: verdict.ok,
+        checks: verdict.checks,
+        refused: verdict.refused,
+        notes: verdict.notes,
+      },
+    };
+  }
+
+  /** What a debit spread would be now, with every check. Sends nothing. */
+  async checkSpreadOrder(request: SpreadRequest) {
+    return (await this.assessSpread(request)).summary;
+  }
+
+  /**
+   * The checks of a spread. An accepted one is recorded as one of the day's
+   * buys before its order goes out, like a single buy.
+   */
+  async planSpread(
+    request: SpreadRequest,
+  ): Promise<SpreadPlan | { paper: boolean; refused: string[] }> {
+    const { a, qty, limitPrice, verdict, summary } =
+      await this.assessSpread(request);
+    if (!verdict.ok) return { paper: this.paper, refused: verdict.refused };
+    const record = {
+      id: `${a.now}-${summary.long}-spread`,
+      day: a.day,
+      symbol: summary.long,
+      at: a.now,
+      filled: null as boolean | null,
+    };
+    await this.buys.put(record);
+    return {
+      paper: this.paper,
+      long: summary.long,
+      short: summary.short,
+      qty,
+      limitPrice,
+      maxLoss: summary.maxLoss,
+      offHours: !a.marketOpen,
+      notes: verdict.notes,
+      record,
+    };
+  }
+
+  /**
+   * Sends the spread as one day limit order and watches it until it fills
+   * or ends at the close. No stop: the debit is the most it can lose.
+   */
+  async runSpread(
+    plan: SpreadPlan,
+    progress: (p: BuyProgress) => void = () => {},
+  ): Promise<SpreadDone> {
+    let filled = false;
+    try {
+      const order = await this.workSpread(
+        {
+          legs: [
+            { symbol: plan.long, side: "buy", intent: "buy_to_open" },
+            { symbol: plan.short, side: "sell", intent: "sell_to_open" },
+          ],
+          qty: plan.qty,
+          limitPrice: plan.limitPrice,
+        },
+        `buying at a net ${plan.limitPrice.toFixed(2)}${plan.offHours ? " from the open" : ""}`,
+        progress,
+      );
+      filled = order.filledQty > 0;
+      const done: SpreadDone = {
+        paper: this.paper,
+        long: plan.long,
+        short: plan.short,
+        qty: plan.qty,
+        limitPrice: plan.limitPrice,
+        order,
+      };
+      if (!filled) return done;
+      const paid = order.filledAvgPrice ?? plan.limitPrice;
+      const post = await this.notifier
+        .notice(`Spread bought${this.paper ? " (paper)" : ""}`, [
+          spreadName(plan.long, plan.short),
+          `${order.filledQty} at a net ${paid.toFixed(2)}`,
+          `At most $${Math.round(paid * order.filledQty * 100)} at risk; no stop`,
+        ])
+        .catch(() => undefined);
+      return { ...done, ...(post ? { post } : {}) };
+    } finally {
+      // A spread that bought nothing does not use up one of the day's buys.
+      await this.buys.put({ ...plan.record, filled });
+    }
+  }
+
+  /** What a close would send; refuses one that does not match a held spread. */
+  async planClose(request: SpreadCloseRequest) {
+    const long = request.long.toUpperCase();
+    const short = request.short.toUpperCase();
+    if (!this.broker.spreadOrder)
+      throw new TradeRefusal(
+        "broker",
+        `${this.broker.name} takes no multi-leg orders`,
+      );
+    const held = spreadPairs(await this.broker.positions())
+      .filter((p) => p.long === long && p.short === short)
+      .reduce((sum, p) => sum + p.qty, 0);
+    if (held === 0)
+      throw new TradeRefusal(
+        "spread",
+        `no spread of long ${long} and short ${short} is held`,
+      );
+    const qty = request.qty ?? held;
+    if (!(Number.isInteger(qty) && qty >= 1 && qty <= held))
+      throw new TradeRefusal(
+        "spread",
+        `${qty} is not a number of spreads from 1 to the ${held} held`,
+      );
+    const [l, s] = await Promise.all([
+      this.broker.quote(long),
+      this.broker.quote(short),
+    ]);
+    const mid = (l.bid + l.ask - s.bid - s.ask) / 2;
+    const credit = Number(
+      (request.limitPrice ?? Math.max(Math.round(mid * 100) / 100, 0)).toFixed(
+        2,
+      ),
+    );
+    if (!(credit >= 0))
+      throw new TradeRefusal("price", "the credit must be zero or more");
+    return {
+      paper: this.paper,
+      long,
+      short,
+      qty,
+      held,
+      credit,
+      mid: Number(mid.toFixed(3)),
+      natural: Number((l.bid - s.ask).toFixed(2)),
+    };
+  }
+
+  /**
+   * Closes a held spread with one order: sell the long leg and buy back the
+   * short one, for a net credit. Not subject to the buy checks, like a sale.
+   */
+  async closeSpread(
+    plan: Awaited<ReturnType<TradeEngine["planClose"]>>,
+    progress: (p: BuyProgress) => void = () => {},
+  ): Promise<SpreadDone> {
+    const order = await this.workSpread(
+      {
+        legs: [
+          { symbol: plan.long, side: "sell", intent: "sell_to_close" },
+          { symbol: plan.short, side: "buy", intent: "buy_to_close" },
+        ],
+        qty: plan.qty,
+        // Received: a negative net price.
+        limitPrice: -plan.credit,
+      },
+      `closing for a net ${plan.credit.toFixed(2)}`,
+      progress,
+    );
+    const done: SpreadDone = {
+      paper: this.paper,
+      long: plan.long,
+      short: plan.short,
+      qty: plan.qty,
+      limitPrice: -plan.credit,
+      order,
+    };
+    if (!(order.filledQty > 0)) return done;
+    const post = await this.notifier
+      .notice(`Spread closed${this.paper ? " (paper)" : ""}`, [
+        spreadName(plan.long, plan.short),
+        `${order.filledQty} for a net ${Math.abs(order.filledAvgPrice ?? -plan.credit).toFixed(2)}`,
+      ])
+      .catch(() => undefined);
+    return { ...done, ...(post ? { post } : {}) };
+  }
+
+  /** One multi-leg day order, watched until it fills or ends. */
+  private async workSpread(
+    ticket: SpreadTicket,
+    stage: string,
+    progress: (p: BuyProgress) => void,
+  ): Promise<Order> {
+    const sleep =
+      this.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+    let order = await this.broker.spreadOrder!(ticket);
+    this.log(
+      `spread ${ticket.legs.map((l) => `${l.side} ${l.symbol}`).join(" / ")} ${ticket.qty} @ ${ticket.limitPrice.toFixed(2)}`,
+    );
+    progress({ stage, orderId: order.id });
+    const pollMs = 3000;
+    for (
+      let waited = 0;
+      !finished.has(order.status) && waited < limitWatchMs;
+      waited += pollMs
+    ) {
+      await sleep(pollMs);
+      order = await current(this.broker, order.id);
+    }
+    return order;
   }
 
   /** Positions with their stops, and today's use of each limit. */

@@ -71,6 +71,7 @@ export interface IbSnapshot {
   ask: number | null;
   last: number | null;
   delta: number | null; // options: model delta
+  iv?: number | null; // options: model implied volatility, a fraction
   at: number | null; // ms
 }
 
@@ -313,6 +314,9 @@ export class IbkrTrading implements Broker {
       bid: positive(s.bid) ?? 0,
       ask: positive(s.ask) ?? 0,
       delta: s.delta !== null && Number.isFinite(s.delta) ? s.delta : null,
+      iv: s.iv != null && Number.isFinite(s.iv) && s.iv > 0 ? s.iv : null,
+      // A snapshot has no open interest; TWS sends it only on a stream.
+      openInterest: null,
       ...(s.at !== null ? { quotedAt: s.at } : {}),
     };
   }

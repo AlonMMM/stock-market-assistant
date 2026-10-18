@@ -144,3 +144,14 @@ Status: confirmed by user after validation.
 On 30 symbols, 2026-09-14…25, the 0.5% last-minute gate produced 36 alerts with 17%
 good momentum (baseline 30%); 0.25%: 115 alerts, 26%; off: 210 alerts, 32%. The gate is
 now 0 by default and remains an opt-in setting.
+
+## 2026-10-17 — Debit spreads; never short unless covered by the spread's long leg
+
+Status: confirmed by user.
+
+The never-short rule (2026-10-10) now allows a short option that a long option of the
+same underlying, right and expiry covers as a debit vertical. Only two-leg debit spreads
+are offered (Alpaca multi-leg orders); they are sized on the net debit and have no stop,
+since the debit is the most they can lose. One leg is never sold or stopped alone. A
+single-contract buy may also use the user's own limit price as a day order, with stops
+kept on every fill. See [the task](tasks/integration-option-limit-and-spreads.md).

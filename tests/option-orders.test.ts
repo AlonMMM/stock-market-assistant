@@ -717,3 +717,62 @@ test("stock price comes from Alpaca's latest stock trade", async () => {
   body = { symbol: "NVDA" };
   assert.equal(await alpaca.stockPrice("NVDA"), null);
 });
+
+test("alpaca chain: IV from the snapshots, open interest from the contracts", async () => {
+  const urls: URL[] = [];
+  let contractsFail = false;
+  const fetcher = (async (input: URL | RequestInfo) => {
+    const url = new URL(String(input));
+    urls.push(url);
+    if (url.pathname === "/v2/options/contracts") {
+      if (contractsFail) return new Response("down", { status: 500 });
+      return Response.json({
+        option_contracts: [
+          { symbol: "NVDA261016C00200000", open_interest: "1520" },
+          { symbol: "NVDA261016C00210000", open_interest: null },
+        ],
+        next_page_token: null,
+      });
+    }
+    return Response.json({
+      snapshots: {
+        NVDA261016C00200000: {
+          latestQuote: { bp: 1, ap: 1.1 },
+          greeks: { delta: 0.3 },
+          impliedVolatility: 0.416,
+        },
+        NVDA261016C00210000: { latestQuote: { bp: 0.4, ap: 0.5 } },
+      },
+    });
+  }) as typeof fetch;
+  const alpaca = new AlpacaTrading("k", "s", undefined, "opra", fetcher);
+  const chain = async () =>
+    (await alpaca.chain("NVDA", "call", "2026-10-12", "2026-10-30")).sort(
+      (a, b) => a.strike - b.strike,
+    );
+  const quotes = await chain();
+  assert.deepEqual(
+    quotes.map((q) => [q.strike, q.iv, q.openInterest]),
+    [
+      [200, 0.416, 1520],
+      [210, null, null],
+    ],
+  );
+  const contracts = urls.find((u) => u.pathname === "/v2/options/contracts")!;
+  assert.equal(contracts.origin, "https://paper-api.alpaca.markets");
+  assert.deepEqual(
+    [
+      "underlying_symbols",
+      "type",
+      "expiration_date_gte",
+      "expiration_date_lte",
+    ].map((k) => contracts.searchParams.get(k)),
+    ["NVDA", "call", "2026-10-12", "2026-10-30"],
+  );
+  // Without the contracts, the chain still comes back, with no open interest.
+  contractsFail = true;
+  assert.deepEqual(
+    (await chain()).map((q) => q.openInterest),
+    [null, null],
+  );
+});
