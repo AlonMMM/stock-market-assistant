@@ -7,3 +7,5 @@ artifacts
 .sma-session.json
 docs/features/live-page-mockup
 docs/features/backtest-page-mockup
+# Trade Log artifact page (single file with inline script; Prettier output is not stable)
+scripts/research/indi-tradelog/index.html
