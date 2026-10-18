@@ -492,6 +492,7 @@ export type WatchSort =
   | "excess"
   | "rsScore"
   | "relVolume"
+  | "volume"
   | "range"
   | "alerts";
 
@@ -509,6 +510,7 @@ const sortValue: Record<WatchSort, (r: WatchRow) => number | string | null> = {
   excess: (r) => r.excess,
   rsScore: (r) => r.rsScore,
   relVolume: (r) => r.relVolume,
+  volume: (r) => r.volume,
   range: rangePosition,
   alerts: (r) => r.alerts,
 };

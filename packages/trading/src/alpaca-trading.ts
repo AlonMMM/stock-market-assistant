@@ -1,3 +1,4 @@
+import type { OptionBuyOrder } from "./option-tickets.js";
 import type {
   Account,
   Broker,
@@ -439,6 +440,29 @@ export class AlpacaTrading implements Broker {
           type: "limit",
           time_in_force: "day",
           limit_price: limitPrice.toFixed(2),
+        },
+      }),
+    );
+  }
+
+  /** A long option buy of any type Alpaca takes for options. */
+  async optionBuy(symbol: string, qty: number, o: OptionBuyOrder) {
+    return order(
+      await this.call<RawOrder>(this.tradingUrl, "/v2/orders", {
+        method: "POST",
+        body: {
+          symbol,
+          qty: String(qty),
+          side: "buy",
+          position_intent: "buy_to_open",
+          type: o.type,
+          time_in_force: o.timeInForce,
+          ...(o.limitPrice === undefined
+            ? {}
+            : { limit_price: o.limitPrice.toFixed(2) }),
+          ...(o.stopPrice === undefined
+            ? {}
+            : { stop_price: o.stopPrice.toFixed(2) }),
         },
       }),
     );

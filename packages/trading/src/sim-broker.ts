@@ -1,3 +1,4 @@
+import type { OptionBuyOrder } from "./option-tickets.js";
 import type {
   Broker,
   BrokerCapabilities,
@@ -343,6 +344,22 @@ export class SimBroker implements Broker {
     limitPrice: number,
   ) {
     return this.add(side, symbol, qty, limitPrice, null);
+  }
+  async optionBuy(symbol: string, qty: number, t: OptionBuyOrder) {
+    return this.add(
+      "buy",
+      symbol,
+      qty,
+      t.limitPrice ?? null,
+      t.stopPrice ?? null,
+      {
+        type: t.type,
+        timeInForce: t.timeInForce,
+        trailPercent: null,
+        trailPrice: null,
+        extendedHours: false,
+      },
+    );
   }
   async stockOrder(t: StockTicket) {
     const placed = this.add(

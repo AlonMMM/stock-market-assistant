@@ -19,6 +19,7 @@ import {
 } from "./chain-model.js";
 import { chartSession } from "./positions-model.js";
 import { StockChart } from "./StockChart.js";
+import { OptionTicket } from "./OptionTicket.js";
 import { StockTrade } from "./StockTrade.js";
 
 // The trade ticket (Portfolio → Trade, account owner only): the option chain
@@ -66,290 +67,21 @@ const clockSeconds = new Intl.DateTimeFormat("en-GB", {
   hourCycle: "h23",
 });
 
-function Ticket({ chain, quote }: { chain: Chain; quote: Quote }) {
-  const [unit, setUnit] = useState<"pct" | "qty">("pct");
-  const [size, setSize] = useState("0.5");
-  const [stop, setStop] = useState("40");
-  const [force, setForce] = useState(false);
-  // Auto: raised from the mid toward the ask; limit: the user's own price.
-  const [pricing, setPricing] = useState<"auto" | "limit">("auto");
-  const [limit, setLimit] = useState(() =>
-    toTick(Math.max((quote.bid + quote.ask) / 2, 0.01)),
+// A phone (user 2026-10-18): one side of the chain at a time, every column
+// in view, and the order in a sheet over the bottom of the screen.
+const narrowQuery = "(max-width: 720px)";
+function useNarrow() {
+  const [narrow, setNarrow] = useState(
+    () => typeof matchMedia === "function" && matchMedia(narrowQuery).matches,
   );
-  const [check, setCheck] = useState<Check | null>(null);
-  const [error, setError] = useState("");
-  const [checking, setChecking] = useState(false);
-  const [run, setRun] = useState<Run>({ step: "idle" });
-  const alive = useRef(true);
   useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
+    if (typeof matchMedia !== "function") return;
+    const m = matchMedia(narrowQuery);
+    const on = () => setNarrow(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
   }, []);
-  // Any change makes the last check stale.
-  useEffect(() => {
-    setCheck(null);
-    setError("");
-    setRun({ step: "idle" });
-  }, [quote.contract, unit, size, stop, force, pricing, limit]);
-
-  const busy = run.step === "sending" || run.step === "working";
-  const order = {
-    contract: quote.contract,
-    ...(unit === "pct" ? { sizePct: Number(size) } : { qty: Number(size) }),
-    stopPct: Number(stop),
-    ...(force ? { force: true } : {}),
-    ...(pricing === "limit" ? { limitPrice: Number(limit) } : {}),
-  };
-  const sizeOk =
-    unit === "pct"
-      ? Number(size) > 0
-      : Number.isInteger(Number(size)) && Number(size) >= 1;
-  const stopOk = Number(stop) > 0;
-  const limitOk =
-    pricing === "auto" || (Number(limit) > 0 && onTick(Number(limit)));
-
-  async function runCheck(event: FormEvent) {
-    event.preventDefault();
-    setChecking(true);
-    setError("");
-    try {
-      const result = await readJson<Check>(
-        await fetch("/api/portfolio/control/check", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(order),
-          signal: AbortSignal.timeout(30000),
-        }),
-      );
-      if (alive.current) setCheck(result);
-    } catch (e) {
-      if (alive.current)
-        setError(e instanceof Error ? e.message : "The check failed");
-    } finally {
-      if (alive.current) setChecking(false);
-    }
-  }
-  const send = () =>
-    followOrder("/api/portfolio/control/buy", order, true, setRun, alive);
-  const name = `${chain.underlying} ${quote.strike} ${rightName(chain.right)} · ${expiryLabel(chain.expiry)}`;
-
-  return (
-    <form className="ticket" onSubmit={runCheck} aria-label={`Buy ${name}`}>
-      <h3>
-        Buy {name}
-        <span className="muted num">
-          bid {price(quote.bid)} · ask {price(quote.ask)}
-        </span>
-      </h3>
-      <div className="ticket-fields">
-        <div className="ticket-field">
-          <span id="ticket-size">Size</span>
-          <div className="ticket-size">
-            <input
-              className="num"
-              inputMode="decimal"
-              aria-labelledby="ticket-size"
-              value={size}
-              disabled={busy}
-              onChange={(e) => setSize(e.target.value.replace(/[^\d.]/g, ""))}
-            />
-            <div className="segmented" role="group" aria-label="Size unit">
-              <button
-                type="button"
-                aria-pressed={unit === "pct"}
-                disabled={busy}
-                onClick={() => {
-                  setUnit("pct");
-                  setSize("0.5");
-                }}
-              >
-                % of account
-              </button>
-              <button
-                type="button"
-                aria-pressed={unit === "qty"}
-                disabled={busy}
-                onClick={() => {
-                  setUnit("qty");
-                  setSize("1");
-                }}
-              >
-                Contracts
-              </button>
-            </div>
-          </div>
-        </div>
-        <div className="ticket-field">
-          <span id="ticket-price">Price</span>
-          <div className="ticket-size">
-            {pricing === "limit" && (
-              <input
-                className="num"
-                inputMode="decimal"
-                aria-labelledby="ticket-price"
-                value={limit}
-                disabled={busy}
-                onChange={(e) =>
-                  setLimit(e.target.value.replace(/[^\d.]/g, ""))
-                }
-              />
-            )}
-            <div className="segmented" role="group" aria-label="Pricing">
-              <button
-                type="button"
-                aria-pressed={pricing === "auto"}
-                disabled={busy}
-                onClick={() => setPricing("auto")}
-              >
-                Auto
-              </button>
-              <button
-                type="button"
-                aria-pressed={pricing === "limit"}
-                disabled={busy}
-                onClick={() => setPricing("limit")}
-              >
-                Limit
-              </button>
-            </div>
-          </div>
-          <span className="muted ticket-hint">
-            {pricing === "auto"
-              ? "Starts at the mid and is raised toward the ask; what has not filled after 2 minutes is withdrawn."
-              : !limitOk
-                ? "Above $3 the price goes in steps of 0.05."
-                : "A day order at your price. Every contract that fills gets its stop, until the order fills or the market closes."}
-          </span>
-        </div>
-        <label className="ticket-field">
-          <span>Stop, % below the price paid</span>
-          <input
-            className="num"
-            inputMode="decimal"
-            value={stop}
-            disabled={busy}
-            onChange={(e) => setStop(e.target.value.replace(/[^\d.]/g, ""))}
-          />
-        </label>
-        <label className="ticket-force">
-          <input
-            type="checkbox"
-            checked={force}
-            disabled={busy}
-            onChange={(e) => setForce(e.target.checked)}
-          />
-          <span>
-            Force: buy whatever the spread is
-            <span className="muted">
-              {" "}
-              (otherwise at most {chain.maxSpreadPct}% of the mid)
-            </span>
-          </span>
-        </label>
-      </div>
-      {!check && (
-        <button
-          type="submit"
-          className="pos-go"
-          disabled={checking || !sizeOk || !stopOk || !limitOk}
-        >
-          {checking ? "Checking…" : "Check the order"}
-        </button>
-      )}
-      {error && <p className="notice error">{error}</p>}
-      {check && (
-        <div className="ticket-check">
-          <p className="ticket-summary">
-            {check.qty > 0 ? (
-              <>
-                <strong className="num">
-                  {check.qty} contract{check.qty === 1 ? "" : "s"}
-                </strong>{" "}
-                {pricing === "limit" ? "at" : "at up to"}{" "}
-                {check.ceiling.toFixed(2)} each: at most{" "}
-                <strong className="num">{usd(check.maxCost)}</strong>,{" "}
-                {check.sizePct.toFixed(2)}% of the account.
-                {check.stopAtCeiling !== null &&
-                  ` Stop near ${check.stopAtCeiling.toFixed(2)}, set from the price paid.`}
-              </>
-            ) : (
-              "No whole contract fits this size."
-            )}
-            {!check.marketOpen &&
-              " The market is closed: the order would wait for the open."}
-          </p>
-          {check.notes.length > 0 && (
-            <ul className="ticket-notes">
-              {check.notes.map((n) => (
-                <li key={n}>{n}</li>
-              ))}
-            </ul>
-          )}
-          <ul className="why-checks">
-            {check.checks.map((c) => (
-              <li key={c.check + c.detail} className={c.ok ? "ok" : "bad"}>
-                <span aria-hidden="true">{c.ok ? "✓" : "✕"}</span>
-                <strong>{c.check}</strong>
-                <span className="muted">{c.detail}</span>
-              </li>
-            ))}
-          </ul>
-          {!check.wouldBuy ? (
-            <p className="note-amber" role="status">
-              This order would be refused. Change it and check again.
-            </p>
-          ) : run.step === "confirm" ? (
-            <div
-              className="pos-confirm"
-              role="group"
-              aria-label="Confirm the order"
-            >
-              <span>
-                Buy {check.qty} {name} for at most {usd(check.maxCost)}
-                {check.paper ? " on the paper account" : ""}?
-              </span>
-              <button type="button" className="pos-go" onClick={send}>
-                Confirm
-              </button>
-              <button
-                type="button"
-                className="pos-cancel"
-                onClick={() => setRun({ step: "idle" })}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            run.step !== "ended" && (
-              <button
-                type="button"
-                className="pos-go"
-                disabled={busy}
-                onClick={() => setRun({ step: "confirm" })}
-              >
-                {busy
-                  ? "Working…"
-                  : `Buy ${check.qty} contract${check.qty === 1 ? "" : "s"}`}
-              </button>
-            )
-          )}
-        </div>
-      )}
-      <p className="pos-run" role="status">
-        {run.step === "sending" && "Sending…"}
-        {run.step === "working" && `In progress: ${run.stage}.`}
-        {run.step === "ended" && (
-          <span className={run.ok ? "" : "pos-problem"}>
-            {run.lines.map((line) => (
-              <span key={line}>{line}</span>
-            ))}
-          </span>
-        )}
-      </p>
-    </form>
-  );
+  return narrow;
 }
 
 /** Whether buying `buy` and selling `sell` is a debit spread (user 2026-10-17). */
@@ -626,13 +358,15 @@ function SpreadTicket({
 function PriceRow({
   underlying,
   price,
+  span = callColumns.length + 1 + putColumns.length,
 }: {
   underlying: string;
   price: number;
+  span?: number;
 }) {
   return (
     <tr className="chain-price" aria-label="Stock price">
-      <td colSpan={callColumns.length + 1 + putColumns.length}>
+      <td colSpan={span}>
         <span className="chain-price-tag num">
           {underlying} {price.toFixed(2)}
         </span>
@@ -645,6 +379,8 @@ function PriceRow({
 // prices next to the strike, as in IBKR. A phone scrolls the table sideways.
 const callColumns = ["oi", "iv", "spread", "delta", "bid", "ask"] as const;
 const putColumns = ["bid", "ask", "delta", "spread", "iv", "oi"] as const;
+// A phone shows one side, next to the strike, with every column in view.
+const phoneColumns = ["bid", "ask", "delta", "iv", "oi"] as const;
 const columnName = {
   oi: "OI",
   iv: "IV",
@@ -670,7 +406,10 @@ function SideCells({
   selected,
   legOf,
   onPick,
+  only,
 }: {
+  // The columns to show, in this order (a phone); else the side's own.
+  only?: readonly (keyof typeof columnName)[];
   right: Right;
   chain: Chain | null;
   q: Quote | null;
@@ -680,7 +419,7 @@ function SideCells({
   legOf?: (contract: string) => "buy" | "sell" | null;
   onPick: (contract: string) => void;
 }) {
-  const columns = right === "call" ? callColumns : putColumns;
+  const columns = only ?? (right === "call" ? callColumns : putColumns);
   if (!chain || !q)
     return (
       <>
@@ -799,6 +538,10 @@ export function Trade({
   const request = useRef(0);
   const picked = useRef<HTMLTableRowElement>(null);
   const chainBox = useRef<HTMLDivElement>(null);
+  const narrow = useNarrow();
+  // A phone: the side in view, and whether the order sheet is open.
+  const [phoneSide, setPhoneSide] = useState<Right>(right);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // A stock picked in the watchlist: show its options at once.
   useEffect(() => {
@@ -1001,7 +744,10 @@ export function Trade({
    * next one on the same side the leg to sell; a third starts again.
    */
   const pickContract = (contract: string) => {
-    if (strategy === "single") return setSelected(contract);
+    if (strategy === "single") {
+      setSheetOpen(true);
+      return setSelected(contract);
+    }
     setLegs((prev) =>
       !prev.buy || prev.sell
         ? { buy: contract }
@@ -1069,11 +815,15 @@ export function Trade({
           />
         </label>
         <button type="submit" className="pos-go" disabled={!symbol || loading}>
-          {mode === "stock"
-            ? "Show stock"
-            : loading
-              ? "Loading…"
-              : "Show options"}
+          {narrow
+            ? loading
+              ? "…"
+              : "Show"
+            : mode === "stock"
+              ? "Show stock"
+              : loading
+                ? "Loading…"
+                : "Show options"}
         </button>
       </form>
       {mode === "stock" && edit && !edit.option && (
@@ -1139,262 +889,387 @@ export function Trade({
               {showChart && (
                 <StockChart ticker={base.underlying} date={chartSession()} />
               )}
-              <div className="expiry-strip">
-                <button
-                  type="button"
-                  className="expiry-shift"
-                  aria-label="Earlier expiries"
-                  onClick={() => shiftExpiries(-1)}
-                >
-                  ‹
-                </button>
-                <div
-                  className="trade-expiries"
-                  role="group"
-                  aria-label={`${base.underlying} expiry`}
-                  ref={expiryBar}
-                >
-                  {(expiries.length > 0 ? expiries : [base.expiry]).map(
-                    (date) => (
-                      <button
-                        type="button"
-                        key={date}
-                        aria-pressed={date === base.expiry}
-                        aria-label={`${expiryLabel(date)}, ${isMonthly(date) ? "monthly" : "weekly"}, ${daysLabel(daysToExpiry(date, Date.now()))}`}
-                        onClick={() => void load(base.underlying, date)}
-                      >
-                        <span className="expiry-date num">
-                          {expiryTab(date)}
-                          {!isMonthly(date) && <sup>W</sup>}
-                        </span>
-                        <span className="expiry-days">
-                          {daysLabel(daysToExpiry(date, Date.now()))}
-                        </span>
-                      </button>
-                    ),
-                  )}
-                </div>
-                <button
-                  type="button"
-                  className="expiry-shift"
-                  aria-label="Later expiries"
-                  onClick={() => shiftExpiries(1)}
-                >
-                  ›
-                </button>
-              </div>
-              <div className="chain-bar">
-                <div
-                  className="segmented"
-                  role="group"
-                  aria-label="One contract or a spread"
-                >
-                  {(["single", "spread"] as const).map((k) => (
+              <div className="trade-grid">
+                <div className="trade-main">
+                  <div className="expiry-strip">
                     <button
                       type="button"
-                      key={k}
-                      aria-pressed={strategy === k}
-                      disabled={!!edit}
-                      onClick={() => {
-                        setStrategy(k);
-                        setLegs({});
-                      }}
+                      className="expiry-shift"
+                      aria-label="Earlier expiries"
+                      onClick={() => shiftExpiries(-1)}
                     >
-                      {k === "single" ? "Single" : "Spread"}
+                      ‹
                     </button>
-                  ))}
-                </div>
-                {strategy === "spread" && (
-                  <span className="muted" role="status">
-                    {!legs.buy
-                      ? "Tap the contract to buy."
-                      : !legs.sell
-                        ? `Now tap the ${legSide === "put" ? "put" : "call"} to sell.`
-                        : "Tap a contract to start again."}
-                  </span>
-                )}
-              </div>
-              {sideError && <p className="notice error">{sideError}</p>}
-              <div
-                ref={chainBox}
-                className={loading ? "chain loading" : "chain"}
-              >
-                <table>
-                  <caption className="sr-only">
-                    {base.underlying} calls and puts expiring{" "}
-                    {expiryLabel(base.expiry)}
-                  </caption>
-                  <thead>
-                    <tr className="chain-sides">
-                      <th scope="colgroup" colSpan={callColumns.length}>
-                        Calls
-                      </th>
-                      <th className="strike" />
-                      <th scope="colgroup" colSpan={putColumns.length}>
-                        Puts
-                      </th>
-                    </tr>
-                    <tr>
-                      {callColumns.map((c) => (
-                        <th
-                          scope="col"
-                          key={c}
-                          className={`c-${c}`}
-                          title={columnTitle[c]}
-                        >
-                          {columnName[c]}
-                        </th>
-                      ))}
-                      <th scope="col" className="strike">
-                        Strike
-                      </th>
-                      {putColumns.map((c) => (
-                        <th
-                          scope="col"
-                          key={c}
-                          className={`c-${c}`}
-                          title={columnTitle[c]}
-                        >
-                          {columnName[c]}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r, i) => (
-                      <Fragment key={r.strike}>
-                        {i === priceRow && (
-                          <PriceRow
-                            underlying={base.underlying}
-                            price={stockPrice!}
-                          />
-                        )}
-                        <tr
-                          ref={
-                            scrollTo &&
-                            (r.call?.contract === scrollTo ||
-                              r.put?.contract === scrollTo)
-                              ? picked
-                              : undefined
-                          }
-                          className={
-                            strategy === "single" &&
-                            selected &&
-                            (r.call?.contract === selected ||
-                              r.put?.contract === selected)
-                              ? "selected"
-                              : ""
-                          }
-                        >
-                          <SideCells
-                            right="call"
-                            chain={sides!.call}
-                            q={r.call}
-                            stockPrice={stockPrice}
-                            selected={strategy === "single" ? selected : null}
-                            {...(legOf ? { legOf } : {})}
-                            onPick={pickContract}
-                          />
-                          <th scope="row" className="strike num">
-                            {r.strike}
-                          </th>
-                          <SideCells
-                            right="put"
-                            chain={sides!.put}
-                            q={r.put}
-                            stockPrice={stockPrice}
-                            selected={strategy === "single" ? selected : null}
-                            {...(legOf ? { legOf } : {})}
-                            onPick={pickContract}
-                          />
-                        </tr>
-                      </Fragment>
-                    ))}
-                    {priceRow === rows.length && (
-                      <PriceRow
-                        underlying={base.underlying}
-                        price={stockPrice!}
-                      />
+                    <div
+                      className="trade-expiries"
+                      role="group"
+                      aria-label={`${base.underlying} expiry`}
+                      ref={expiryBar}
+                    >
+                      {(expiries.length > 0 ? expiries : [base.expiry]).map(
+                        (date) => (
+                          <button
+                            type="button"
+                            key={date}
+                            aria-pressed={date === base.expiry}
+                            aria-label={`${expiryLabel(date)}, ${isMonthly(date) ? "monthly" : "weekly"}, ${daysLabel(daysToExpiry(date, Date.now()))}`}
+                            onClick={() => void load(base.underlying, date)}
+                          >
+                            <span className="expiry-date num">
+                              {expiryTab(date)}
+                              {!isMonthly(date) && <sup>W</sup>}
+                            </span>
+                            <span className="expiry-days">
+                              {daysLabel(daysToExpiry(date, Date.now()))}
+                            </span>
+                          </button>
+                        ),
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="expiry-shift"
+                      aria-label="Later expiries"
+                      onClick={() => shiftExpiries(1)}
+                    >
+                      ›
+                    </button>
+                  </div>
+                  <div className="chain-bar">
+                    {narrow && (
+                      <div
+                        className="segmented"
+                        role="group"
+                        aria-label="Calls or puts"
+                      >
+                        {rights.map((r) => (
+                          <button
+                            type="button"
+                            key={r}
+                            aria-pressed={phoneSide === r}
+                            onClick={() => setPhoneSide(r)}
+                          >
+                            {r === "call" ? "Calls" : "Puts"}
+                          </button>
+                        ))}
+                      </div>
                     )}
-                  </tbody>
-                </table>
-              </div>
-              <p className="chain-legend muted">
-                {strategy === "single"
-                  ? "Tap a call or a put to build its order."
-                  : "B: the leg bought, S: the leg sold."}{" "}
-                Shaded: in the money. OI: open interest.{" "}
-                <span className="chain-dot" aria-hidden="true" /> default strike
-                for a buy without one. Amber: spread over {maxSpread}% of the
-                mid.
-              </p>
-              {strategy === "spread" &&
-                (legSide && buyLeg && sellLeg && sides?.[legSide] ? (
-                  <SpreadTicket
-                    key={`${buyLeg.contract}/${sellLeg.contract}`}
-                    chain={sides[legSide]!}
-                    buy={buyLeg}
-                    sell={sellLeg}
-                  />
+                    <div
+                      className="segmented"
+                      role="group"
+                      aria-label="One contract or a spread"
+                    >
+                      {(["single", "spread"] as const).map((k) => (
+                        <button
+                          type="button"
+                          key={k}
+                          aria-pressed={strategy === k}
+                          disabled={!!edit}
+                          onClick={() => {
+                            setStrategy(k);
+                            setLegs({});
+                          }}
+                        >
+                          {k === "single" ? "Single" : "Spread"}
+                        </button>
+                      ))}
+                    </div>
+                    {strategy === "spread" && (
+                      <span className="muted" role="status">
+                        {!legs.buy
+                          ? "Tap the contract to buy."
+                          : !legs.sell
+                            ? `Now tap the ${legSide === "put" ? "put" : "call"} to sell.`
+                            : "Tap a contract to start again."}
+                      </span>
+                    )}
+                  </div>
+                  {sideError && <p className="notice error">{sideError}</p>}
+                  <div
+                    ref={chainBox}
+                    className={loading ? "chain loading" : "chain"}
+                  >
+                    {narrow ? (
+                      <table className={`chain-one ${phoneSide}`}>
+                        <caption className="sr-only">
+                          {base.underlying} {phoneSide}s expiring{" "}
+                          {expiryLabel(base.expiry)}
+                        </caption>
+                        <thead>
+                          <tr>
+                            <th scope="col" className="strike">
+                              Strike
+                            </th>
+                            {phoneColumns.map((c) => (
+                              <th
+                                scope="col"
+                                key={c}
+                                className={`c-${c}`}
+                                title={columnTitle[c]}
+                              >
+                                {columnName[c]}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((r, i) => (
+                            <Fragment key={r.strike}>
+                              {i === priceRow && (
+                                <PriceRow
+                                  underlying={base.underlying}
+                                  price={stockPrice!}
+                                  span={phoneColumns.length + 1}
+                                />
+                              )}
+                              <tr
+                                ref={
+                                  scrollTo &&
+                                  r[phoneSide]?.contract === scrollTo
+                                    ? picked
+                                    : undefined
+                                }
+                                className={
+                                  strategy === "single" &&
+                                  selected &&
+                                  r[phoneSide]?.contract === selected
+                                    ? "selected"
+                                    : ""
+                                }
+                              >
+                                <th scope="row" className="strike num">
+                                  {r.strike}
+                                </th>
+                                <SideCells
+                                  right={phoneSide}
+                                  chain={sides![phoneSide]}
+                                  q={r[phoneSide]}
+                                  stockPrice={stockPrice}
+                                  selected={
+                                    strategy === "single" ? selected : null
+                                  }
+                                  {...(legOf ? { legOf } : {})}
+                                  onPick={pickContract}
+                                  only={phoneColumns}
+                                />
+                              </tr>
+                            </Fragment>
+                          ))}
+                          {priceRow === rows.length && (
+                            <PriceRow
+                              underlying={base.underlying}
+                              price={stockPrice!}
+                              span={phoneColumns.length + 1}
+                            />
+                          )}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <table>
+                        <caption className="sr-only">
+                          {base.underlying} calls and puts expiring{" "}
+                          {expiryLabel(base.expiry)}
+                        </caption>
+                        <thead>
+                          <tr className="chain-sides">
+                            <th scope="colgroup" colSpan={callColumns.length}>
+                              Calls
+                            </th>
+                            <th className="strike" />
+                            <th scope="colgroup" colSpan={putColumns.length}>
+                              Puts
+                            </th>
+                          </tr>
+                          <tr>
+                            {callColumns.map((c) => (
+                              <th
+                                scope="col"
+                                key={c}
+                                className={`c-${c}`}
+                                title={columnTitle[c]}
+                              >
+                                {columnName[c]}
+                              </th>
+                            ))}
+                            <th scope="col" className="strike">
+                              Strike
+                            </th>
+                            {putColumns.map((c) => (
+                              <th
+                                scope="col"
+                                key={c}
+                                className={`c-${c}`}
+                                title={columnTitle[c]}
+                              >
+                                {columnName[c]}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((r, i) => (
+                            <Fragment key={r.strike}>
+                              {i === priceRow && (
+                                <PriceRow
+                                  underlying={base.underlying}
+                                  price={stockPrice!}
+                                />
+                              )}
+                              <tr
+                                ref={
+                                  scrollTo &&
+                                  (r.call?.contract === scrollTo ||
+                                    r.put?.contract === scrollTo)
+                                    ? picked
+                                    : undefined
+                                }
+                                className={
+                                  strategy === "single" &&
+                                  selected &&
+                                  (r.call?.contract === selected ||
+                                    r.put?.contract === selected)
+                                    ? "selected"
+                                    : ""
+                                }
+                              >
+                                <SideCells
+                                  right="call"
+                                  chain={sides!.call}
+                                  q={r.call}
+                                  stockPrice={stockPrice}
+                                  selected={
+                                    strategy === "single" ? selected : null
+                                  }
+                                  {...(legOf ? { legOf } : {})}
+                                  onPick={pickContract}
+                                />
+                                <th scope="row" className="strike num">
+                                  {r.strike}
+                                </th>
+                                <SideCells
+                                  right="put"
+                                  chain={sides!.put}
+                                  q={r.put}
+                                  stockPrice={stockPrice}
+                                  selected={
+                                    strategy === "single" ? selected : null
+                                  }
+                                  {...(legOf ? { legOf } : {})}
+                                  onPick={pickContract}
+                                />
+                              </tr>
+                            </Fragment>
+                          ))}
+                          {priceRow === rows.length && (
+                            <PriceRow
+                              underlying={base.underlying}
+                              price={stockPrice!}
+                            />
+                          )}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                  <p className="chain-legend muted">
+                    {strategy === "single"
+                      ? "Tap a call or a put to build its order."
+                      : "B: the leg bought, S: the leg sold."}{" "}
+                    Shaded: in the money. OI: open interest.{" "}
+                    <span className="chain-dot" aria-hidden="true" /> default
+                    strike for a buy without one. Amber: spread over {maxSpread}
+                    % of the mid.
+                  </p>
+                  {strategy === "spread" &&
+                    (legSide && buyLeg && sellLeg && sides?.[legSide] ? (
+                      <SpreadTicket
+                        key={`${buyLeg.contract}/${sellLeg.contract}`}
+                        chain={sides[legSide]!}
+                        buy={buyLeg}
+                        sell={sellLeg}
+                      />
+                    ) : (
+                      <p className="muted">
+                        A spread buys one contract and sells another of the same
+                        side and expiry. The most it can lose is the net price
+                        paid.
+                      </p>
+                    ))}
+                  {strategy === "single" &&
+                    edit &&
+                    chain &&
+                    selected === edit.symbol && (
+                      <section
+                        className="ticket open-order"
+                        aria-label="Open order"
+                      >
+                        <h3>
+                          {edit.stopPrice !== null ? "Stop" : "Open order"} on{" "}
+                          {chain.underlying} {quote?.strike}{" "}
+                          {rightName(chain.right)}
+                          {quote && (
+                            <span className="muted num">
+                              bid {price(quote.bid)} · ask {price(quote.ask)}
+                            </span>
+                          )}
+                        </h3>
+                        {!account.value ? (
+                          <p className="chart-status">Loading the order…</p>
+                        ) : !order ? (
+                          <p className="note-amber" role="status">
+                            This order is no longer open: it filled, was
+                            canceled or was replaced. Live trades shows what is
+                            held now.
+                          </p>
+                        ) : (
+                          <>
+                            <p className="ticket-summary num">
+                              {order.side === "buy" ? "Buy" : "Sell"}{" "}
+                              {order.qty} ·{" "}
+                              {order.stopPrice !== null
+                                ? `stop ${order.stopPrice.toFixed(2)}`
+                                : `limit ${order.limitPrice?.toFixed(2) ?? "—"}`}
+                              {order.filledQty > 0 &&
+                                ` · ${order.filledQty} filled`}{" "}
+                              · {order.status.replaceAll("_", " ")}
+                            </p>
+                            {order.stopPrice !== null && position && (
+                              <StopMover p={position} />
+                            )}
+                            <OrderActions
+                              key={order.id}
+                              o={order}
+                              quote={quote}
+                            />
+                          </>
+                        )}
+                      </section>
+                    )}
+                </div>
+                {strategy === "spread" ? null : edit &&
+                  selected === edit.symbol &&
+                  order ? null : chain && quote ? (
+                  <aside className="trade-side">
+                    <OptionTicket
+                      key={quote.contract}
+                      chain={chain}
+                      quote={quote}
+                      name={`${chain.underlying} ${quote.strike} ${rightName(chain.right)} · ${expiryLabel(chain.expiry)}`}
+                      {...(narrow
+                        ? {
+                            sheet: {
+                              open: sheetOpen,
+                              toggle: () => setSheetOpen(!sheetOpen),
+                            },
+                          }
+                        : {})}
+                    />
+                  </aside>
                 ) : (
                   <p className="muted">
-                    A spread buys one contract and sells another of the same
-                    side and expiry. The most it can lose is the net price paid.
+                    Choose a call or a put to build the order.
                   </p>
-                ))}
-              {strategy === "single" &&
-                edit &&
-                chain &&
-                selected === edit.symbol && (
-                  <section
-                    className="ticket open-order"
-                    aria-label="Open order"
-                  >
-                    <h3>
-                      {edit.stopPrice !== null ? "Stop" : "Open order"} on{" "}
-                      {chain.underlying} {quote?.strike}{" "}
-                      {rightName(chain.right)}
-                      {quote && (
-                        <span className="muted num">
-                          bid {price(quote.bid)} · ask {price(quote.ask)}
-                        </span>
-                      )}
-                    </h3>
-                    {!account.value ? (
-                      <p className="chart-status">Loading the order…</p>
-                    ) : !order ? (
-                      <p className="note-amber" role="status">
-                        This order is no longer open: it filled, was canceled or
-                        was replaced. Live trades shows what is held now.
-                      </p>
-                    ) : (
-                      <>
-                        <p className="ticket-summary num">
-                          {order.side === "buy" ? "Buy" : "Sell"} {order.qty} ·{" "}
-                          {order.stopPrice !== null
-                            ? `stop ${order.stopPrice.toFixed(2)}`
-                            : `limit ${order.limitPrice?.toFixed(2) ?? "—"}`}
-                          {order.filledQty > 0 &&
-                            ` · ${order.filledQty} filled`}{" "}
-                          · {order.status.replaceAll("_", " ")}
-                        </p>
-                        {order.stopPrice !== null && position && (
-                          <StopMover p={position} />
-                        )}
-                        <OrderActions key={order.id} o={order} quote={quote} />
-                      </>
-                    )}
-                  </section>
                 )}
-              {strategy === "spread" ? null : edit &&
-                selected === edit.symbol &&
-                order ? null : chain && quote ? (
-                <Ticket key={quote.contract} chain={chain} quote={quote} />
-              ) : (
-                <p className="muted">
-                  Choose a call or a put to build the order.
-                </p>
-              )}
+              </div>
             </>
           )}
         </>

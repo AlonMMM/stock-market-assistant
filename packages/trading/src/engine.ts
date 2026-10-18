@@ -41,6 +41,13 @@ import {
   type OptionQuote,
   type Right,
 } from "./options.js";
+import {
+  buyOrder,
+  describeTicket,
+  optionTicket,
+  ticketCeiling,
+  type OptionTicket,
+} from "./option-tickets.js";
 import { protectFill, type ProtectResult } from "./protect.js";
 import {
   accountState,
@@ -203,6 +210,13 @@ export interface BuyRequest {
   // price instead of the raises from the mid; a stop is kept on every fill
   // until it fills or ends at the close.
   limitPrice?: number;
+  // The ticket's order (user 2026-10-18): market, limit, stop or stop limit,
+  // day or good till canceled; `autoStop: false` places no stop on fills.
+  // See option-tickets.ts.
+  orderType?: string;
+  stopPrice?: number;
+  timeInForce?: string;
+  autoStop?: boolean;
   steps?: number;
   intervalMs?: number;
   waitMs?: number; // how long an unfilled order is watched, then canceled
@@ -278,6 +292,9 @@ export interface BuyDone extends BuyBase {
   cancelError?: string;
   post?: Sent; // set when any contract filled
   offHours?: boolean; // the order was sent while the market was closed
+  // No automatic stop: the order is left at the broker, not watched.
+  noStop?: boolean;
+  working?: boolean;
 }
 
 /** Where a running buy stands, for whoever started it. */
@@ -297,6 +314,7 @@ export interface BuyPlan extends BuyBase {
   decision: Decision;
   force?: boolean;
   limitPrice?: number;
+  ticket?: OptionTicket;
   steps?: number;
   intervalMs?: number;
   waitMs?: number;
@@ -530,11 +548,13 @@ export class TradeEngine {
     stopPct: number,
     deltaRange?: readonly [number, number],
     force = false,
-    limitPrice?: number,
+    ticket?: OptionTicket,
   ) {
-    // The most one contract can cost: the user's limit, else the ceiling of
-    // the raises.
-    const ceiling = limitPrice ?? ceilingPrice(quote);
+    // The most one contract can cost: the order's own price (option-tickets
+    // .ts), else the ceiling of the raises.
+    const ceiling = ticket
+      ? ticketCeiling(ticket, quote, ceilingPrice(quote))
+      : ceilingPrice(quote);
     const { equity } = a.account;
     // An exact number of contracts is measured as the share it costs.
     const exact =
@@ -585,6 +605,7 @@ export class TradeEngine {
         ceiling,
         sizePct,
         stopPct,
+        ...(ticket?.noStop ? { noStop: true } : {}),
         ...(force ? { force } : {}),
         ...(deltaRange ? { deltaRange } : {}),
       },
@@ -771,8 +792,13 @@ export class TradeEngine {
     stopPct?: number;
     force?: boolean;
     limitPrice?: number;
+    orderType?: string;
+    stopPrice?: number;
+    timeInForce?: string;
+    autoStop?: boolean;
   }) {
     const stopPct = request.stopPct ?? defaultStopPct;
+    const ticket = optionTicket(request);
     if (request.sizePct === undefined && request.qty === undefined)
       throw new Error("Need a size: sizePct or qty");
     const [quote, a] = await Promise.all([
@@ -788,7 +814,7 @@ export class TradeEngine {
       stopPct,
       undefined,
       request.force,
-      request.limitPrice,
+      ticket,
     );
     const spread = spreadCheck(quote);
     return {
@@ -805,8 +831,16 @@ export class TradeEngine {
       maxCost: Number(sized.cost.toFixed(2)),
       sizePct: sized.sizePct,
       stopPct,
+      orderType: ticket.type ?? null,
+      limitPrice: ticket.limitPrice ?? null,
+      stopPrice: ticket.stopPrice ?? null,
+      timeInForce: ticket.timeInForce,
+      autoStop: !ticket.noStop,
       stopAtCeiling:
-        stopPct > 0 && stopPct <= this.limits.maxStopPct && sized.ceiling > 0
+        !ticket.noStop &&
+        stopPct > 0 &&
+        stopPct <= this.limits.maxStopPct &&
+        sized.ceiling > 0
           ? stopPrice(sized.ceiling, stopPct)
           : null,
       wouldBuy: sized.verdict.ok,
@@ -833,6 +867,12 @@ export class TradeEngine {
    */
   async planBuy(request: BuyRequest): Promise<BuyRefused | BuyPlan> {
     const stopPct = request.stopPct ?? defaultStopPct;
+    const ticket = optionTicket(request);
+    if (ticket.type && ticket.type !== "limit" && !this.broker.optionBuy)
+      throw new TradeRefusal(
+        "order type",
+        `${this.broker.name} takes only limit buys for options here`,
+      );
     let quote: OptionQuote;
     let deltaRange: readonly [number, number] | undefined;
     let picked: ExplainParts["chosen"];
@@ -901,7 +941,7 @@ export class TradeEngine {
       stopPct,
       deltaRange,
       request.force,
-      request.limitPrice,
+      ticket,
     );
     const { qty, budget, verdict } = sized;
     const decision: Decision = {
@@ -923,7 +963,10 @@ export class TradeEngine {
         cost: sized.cost,
         stopPct,
         stopAtCeiling:
-          stopPct > 0 && stopPct <= this.limits.maxStopPct && sized.ceiling > 0
+          !ticket.noStop &&
+          stopPct > 0 &&
+          stopPct <= this.limits.maxStopPct &&
+          sized.ceiling > 0
             ? stopPrice(sized.ceiling, stopPct)
             : null,
         daysToExpiry: sized.daysToExpiry,
@@ -955,6 +998,21 @@ export class TradeEngine {
           "adding off hours: this contract is already held with a stop, and adding to it takes the stop off while the order works; add when the market is open",
         ],
       };
+    // An order left at the broker without a stop would keep the position's
+    // stop off (it comes off while a buy works) for as long as it waits.
+    if (
+      ticket.type &&
+      ticket.noStop &&
+      a.held.some((p) => p.symbol === symbol && p.stopQty > 0)
+    )
+      return {
+        paper: this.paper,
+        contract: symbol,
+        qty,
+        refused: [
+          "adding without a stop: this contract is held with a stop, which comes off while a buy works; with auto stop off it would stay off. Turn on auto stop, or use the stepped buy",
+        ],
+      };
     const record = {
       id: `${a.now}-${symbol}`,
       day: a.day,
@@ -975,9 +1033,10 @@ export class TradeEngine {
       offHours: !a.marketOpen,
       notes: verdict.notes,
       ...(request.force ? { force: true } : {}),
-      ...(request.limitPrice === undefined
-        ? {}
-        : { limitPrice: request.limitPrice }),
+      ...(ticket.type === "limit" && ticket.timeInForce === "day"
+        ? { limitPrice: ticket.limitPrice! }
+        : {}),
+      ticket,
       ...(request.steps === undefined ? {} : { steps: request.steps }),
       ...(request.intervalMs === undefined
         ? {}
@@ -1017,11 +1076,13 @@ export class TradeEngine {
           ...plan.decision,
           outcome: failure
             ? "failed"
-            : got === 0
-              ? "not filled"
-              : got < qty
-                ? "partly filled"
-                : "filled",
+            : got === 0 && done?.working
+              ? "working"
+              : got === 0
+                ? "not filled"
+                : got < qty
+                  ? "partly filled"
+                  : "filled",
           result: {
             filledQty: got,
             avgPrice: order?.filledAvgPrice ?? null,
@@ -1113,17 +1174,21 @@ export class TradeEngine {
     const request = plan;
     {
       let result: LadderResult;
-      if (plan.limitPrice !== undefined) {
-        // One day order at the user's price, off hours too: it waits at the
-        // broker for the open and ends at the close.
+      const ticket = plan.ticket;
+      if (ticket?.type) {
+        // One order of the ticket's type, off hours too: it waits at the
+        // broker for the open. A day limit is the plain limit buy.
         const quote = await this.broker.quote(symbol);
-        const order = await this.broker.buyLimit(symbol, qty, plan.limitPrice);
-        this.log(`sent ${qty} @ ${plan.limitPrice.toFixed(2)} (own limit)`);
+        const order =
+          ticket.type === "limit" && ticket.timeInForce === "day"
+            ? await this.broker.buyLimit(symbol, qty, ticket.limitPrice!)
+            : await this.broker.optionBuy!(symbol, qty, buyOrder(ticket)!);
+        this.log(`sent ${qty} ${symbol}: ${describeTicket(ticket)}`);
         result = {
-          status: "open",
+          status: order.status === "filled" ? "filled" : "open",
           quote,
           spreadRatio: spreadCheck(quote).ratio,
-          prices: [plan.limitPrice],
+          prices: [ticket.limitPrice ?? ticket.stopPrice ?? quote.ask],
           order,
         };
       } else {
@@ -1150,31 +1215,50 @@ export class TradeEngine {
         )
           return { paper: this.paper, contract: symbol, qty, budget, result };
       }
-      progress({
-        stage:
-          plan.limitPrice === undefined
-            ? "watching the order, keeping its stop"
-            : `working at your limit ${plan.limitPrice.toFixed(2)}${plan.offHours ? " from the open" : ""}, keeping a stop on fills`,
-        orderId: result.order!.id,
-      });
-      // A limit order is watched for as long as it can fill: a day order
-      // ends at the close (off hours, the next one).
-      const waitMs =
-        request.waitMs ??
-        (plan.limitPrice === undefined ? undefined : limitWatchMs);
-      const guarded = await protectFill(this.broker, result.order!, stopPct, {
-        ...(waitMs === undefined ? {} : { waitMs }),
-        ...this.timing,
-      });
+      let guarded: ProtectResult;
+      if (ticket?.type && ticket.noStop) {
+        // No stop to keep: the order is left at the broker, as typed.
+        const order = await current(this.broker, result.order!.id);
+        guarded = { order, canceledQty: 0, stop: { pct: stopPct } };
+      } else {
+        progress({
+          stage: !ticket?.type
+            ? ticket?.noStop
+              ? "watching the order"
+              : "watching the order, keeping its stop"
+            : `working: ${describeTicket(ticket)}${plan.offHours ? " from the open" : ""}, keeping a stop on fills`,
+          orderId: result.order!.id,
+        });
+        // An order of the ticket's type is watched for as long as it can
+        // fill: a day order until the close (off hours, the next one), a
+        // GTC one until the contract expires.
+        const waitMs =
+          request.waitMs ??
+          (!ticket?.type
+            ? undefined
+            : ticket.timeInForce === "gtc"
+              ? Math.max(
+                  limitWatchMs,
+                  Date.parse(`${parseOccSymbol(symbol).expiry}T21:00:00Z`) -
+                    this.now(),
+                )
+              : limitWatchMs);
+        guarded = await protectFill(this.broker, result.order!, stopPct, {
+          ...(waitMs === undefined ? {} : { waitMs }),
+          ...(ticket?.noStop ? { noStop: true } : {}),
+          ...this.timing,
+        });
+      }
       const order = guarded.order;
       const filled = order.filledQty > 0;
+      const working = !finished.has(order.status);
       const final = {
         ...result,
         order,
         status:
           order.status === "filled"
             ? ("filled" as const)
-            : guarded.cancelError
+            : guarded.cancelError || working
               ? result.status
               : ("closed" as const),
       };
@@ -1189,6 +1273,8 @@ export class TradeEngine {
         canceledQty,
         cancelError,
         ...(plan.offHours ? { offHours: true } : {}),
+        ...(ticket?.noStop ? { noStop: true } : {}),
+        ...(working ? { working: true } : {}),
       };
       if (!filled) return outcome;
       // A buy that adds to an open trade is posted under that trade's post.
