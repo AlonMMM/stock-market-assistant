@@ -60,6 +60,7 @@ import {
   usSessionDate,
 } from "./time.js";
 import { readJson } from "./api.js";
+import { FullscreenButton } from "./FullscreenButton.js";
 
 // Categorical slots 1–2 of the validated dataviz palette for the lines. Volume
 // follows the trading convention: green for an up minute, red for a down one,
@@ -755,6 +756,13 @@ export function DayChart({
             </button>
           ))}
         </div>
+        <FullscreenButton
+          ticker={ticker}
+          date={date}
+          sector={hasSector ? sector : undefined}
+          alertEnd={alertEnd}
+          window={window}
+        />
       </div>
       {error && <p className="notice error">{error}</p>}
       {!data && !error && <p className="chart-status">Loading day chart…</p>}

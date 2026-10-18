@@ -11,6 +11,7 @@ import {
 } from "lightweight-charts";
 import type { Candles } from "../../../packages/market-data/src/candles.js";
 import { readJson } from "./api.js";
+import { FullscreenButton } from "./FullscreenButton.js";
 import {
   israelClock,
   israelLabel,
@@ -196,6 +197,7 @@ export function CandleChart({
               : "Loading chart…"}
           {tail && data?.last && ` · last trade ${israelClock(data.last.at)}`}
         </span>
+        <FullscreenButton ticker={ticker} date={date} />
       </figcaption>
       <div
         ref={host}
