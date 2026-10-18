@@ -6,7 +6,12 @@ import { readJson } from "./api.js";
 import type { FeedAlert } from "./AlertFeed.js";
 import { usePolling } from "./Live.js";
 import { alertDate, alertDirection, statsOf, watchRows } from "./live-model.js";
-import { PriceAlerts } from "./PriceAlerts.js";
+import {
+  BellIcon,
+  PriceAlertList,
+  PriceAlertSheet,
+  usePriceAlerts,
+} from "./PriceAlerts.js";
 import { israelClock } from "./time.js";
 import { scoreTone, toneWords } from "./vs-spy-model.js";
 
@@ -154,6 +159,10 @@ export function TickerPage({
       clearInterval(timer);
     };
   }, [ticker]);
+  // The user's own price alerts on it, apart from the volume alerts.
+  const priceAlerts = usePriceAlerts(ticker);
+  const mine = priceAlerts.alerts ?? [];
+  const [sheet, setSheet] = useState(false);
   // What is held of it, and its open orders (any visitor sees the portfolio).
   const account = usePolling<Portfolio>("/api/portfolio", 10000, () => {});
 
@@ -229,12 +238,33 @@ export function TickerPage({
             </button>
           </>
         )}
+        <button
+          type="button"
+          className="pos-cancel tk-bell"
+          onClick={() => setSheet(true)}
+        >
+          <BellIcon />
+          Price alert
+        </button>
         <button type="button" className="pos-cancel" onClick={onShowAlerts}>
-          {today.length > 0
-            ? `${today.length} alert${today.length === 1 ? "" : "s"} today`
-            : "Alerts"}
+          Volume alerts{today.length > 0 ? ` · ${today.length}` : ""}
         </button>
       </div>
+      {mine.length > 0 && (
+        <section className="tk-card pa-mine" aria-label="Your price alerts">
+          <h3>Your price alerts</h3>
+          <PriceAlertList alerts={mine} api={priceAlerts} showTicker={false} />
+        </section>
+      )}
+      {sheet && (
+        <PriceAlertSheet
+          ticker={ticker}
+          last={last}
+          previousClose={prev}
+          api={priceAlerts}
+          onClose={() => setSheet(false)}
+        />
+      )}
 
       <section className="tk-card tk-chart" aria-label={`${ticker} today`}>
         {board ? (
@@ -355,8 +385,6 @@ export function TickerPage({
           )}
         </section>
 
-        <PriceAlerts ticker={ticker} last={last} />
-
         {(held.length > 0 || orders.length > 0) && (
           <section className="tk-card" aria-label="Your position">
             <h3>Your position</h3>
@@ -401,8 +429,8 @@ export function TickerPage({
         )}
 
         {today.length > 0 && (
-          <section className="tk-card" aria-label="Alerts today">
-            <h3>Alerts today</h3>
+          <section className="tk-card" aria-label="Volume alerts today">
+            <h3>Volume alerts today</h3>
             <ul className="tk-list num">
               {today.map((a) => (
                 <li key={a.end}>

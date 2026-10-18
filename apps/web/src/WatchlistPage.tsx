@@ -6,6 +6,7 @@ import { boardRefreshMs, liveRefreshMs, usePolling } from "./Live.js";
 import { pillFor, type Compare } from "./live-model.js";
 import { useControlAccess } from "./Positions.js";
 import { StatusPill } from "./StatusPill.js";
+import { BellIcon, PriceAlertsPage, usePriceAlerts } from "./PriceAlerts.js";
 import { TickerPage } from "./TickerPage.js";
 import { WatchTable } from "./WatchTable.js";
 import {
@@ -24,9 +25,10 @@ export function WatchlistPage({
   onShowAlerts: (ticker: string) => void;
   onTrade: (ticker: string, mode?: "options" | "stock") => void;
 }) {
-  // A stock's own page (user 2026-10-18), `#watchlist/NVDA`; the phone's
-  // Back returns to the list.
+  // A stock's own page (user 2026-10-18), `#watchlist/NVDA`, and the price
+  // alerts' page, `#watchlist/alerts`; the phone's Back returns to the list.
   const fromHash = () => {
+    if (location.hash === "#watchlist/alerts") return "alerts";
     const m = /^#watchlist\/([A-Z][A-Z.]{0,9})$/.exec(location.hash);
     return m ? m[1]! : null;
   };
@@ -36,11 +38,16 @@ export function WatchlistPage({
     addEventListener("popstate", back);
     return () => removeEventListener("popstate", back);
   }, []);
+  // `ticker` is a stock, or "alerts" for the price alerts' page.
   const open = (ticker: string) => {
     history.pushState(null, "", `#watchlist/${ticker}`);
     setPage(ticker);
     window.scrollTo(0, 0);
   };
+  const priceAlerts = usePriceAlerts();
+  const armedAlerts = (priceAlerts.alerts ?? []).filter(
+    (a) => a.firedAt === null,
+  ).length;
   const close = () => {
     if (/^#watchlist\//.test(location.hash)) history.back();
     else setPage(null);
@@ -89,7 +96,9 @@ export function WatchlistPage({
         </div>
         {modes}
       </header>
-      {page ? (
+      {page === "alerts" ? (
+        <PriceAlertsPage onBack={close} onOpenTicker={open} />
+      ) : page ? (
         <TickerPage
           key={page}
           ticker={page}
@@ -108,6 +117,15 @@ export function WatchlistPage({
             {board.value && (
               <span className="count num">{board.value.watchlist.length}</span>
             )}
+            <button
+              type="button"
+              className="wl-pa"
+              onClick={() => open("alerts")}
+            >
+              <BellIcon />
+              Price alerts
+              {armedAlerts > 0 && <span className="num">{armedAlerts}</span>}
+            </button>
           </h2>
           <WatchlistSwitcher w={lists} />
           {board.value &&
