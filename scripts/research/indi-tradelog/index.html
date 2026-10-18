@@ -1,372 +1,1395 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
-<title>Indi Trade Log</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Heebo:wght@400;500&display=swap">
-<style>
-/* Layout: a trading blotter — summary strip, daily P&L tape, then one expandable row per trade with its step ladder. */
-:root {
-  --bg: #f4f5f7; --surface: #ffffff; --ink: #14171c; --muted: #5d6572; --rule: #dde0e6;
-  --accent: #2b55c9; --gain: #17805a; --loss: #c43d2c; --gain-soft: #e3f2ea; --loss-soft: #f8e5e1; --chip: #eceef2;
-  --f-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
-  --f-body: "Public Sans", "Heebo", system-ui, sans-serif;
-  --f-data: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --f-he: "Heebo", "Public Sans", system-ui, sans-serif;
-}
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #0f1216; --surface: #171b21; --ink: #e6e9ee; --muted: #9aa3b0; --rule: #2a3039;
-  --accent: #7d9cf0; --gain: #4cc38f; --loss: #f07a66; --gain-soft: #17322a; --loss-soft: #3a211d; --chip: #222832; color-scheme: dark } }
-:root[data-theme="dark"] {
-  --bg: #0f1216; --surface: #171b21; --ink: #e6e9ee; --muted: #9aa3b0; --rule: #2a3039;
-  --accent: #7d9cf0; --gain: #4cc38f; --loss: #f07a66; --gain-soft: #17322a; --loss-soft: #3a211d; --chip: #222832; color-scheme: dark }
-* { box-sizing: border-box }
-body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--f-body); }
-.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 64px; display: grid; gap: 28px; }
-h1, h2 { font-family: var(--f-display); font-stretch: 78%; letter-spacing: .005em; text-wrap: balance; margin: 0; }
-h1 { font-size: clamp(30px, 6vw, 46px); font-weight: 800; line-height: 1.02; }
-h2 { font-size: 22px; font-weight: 700; }
-.eyebrow { font: 600 11px/1 var(--f-data); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
-.lede { color: var(--muted); max-width: 68ch; margin: 8px 0 0; }
-.num { font-family: var(--f-data); font-variant-numeric: tabular-nums; }
-.pos { color: var(--gain) } .neg { color: var(--loss) }
-header { display: grid; gap: 10px }
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); border-block: 1px solid var(--rule); }
-.kpi { padding: 14px 16px 14px 0; display: grid; gap: 4px; min-width: 0 }
-.kpi + .kpi { padding-left: 16px; border-left: 1px solid var(--rule) }
-.kpi b { font: 600 24px/1.1 var(--f-data); font-variant-numeric: tabular-nums }
-.kpi small { color: var(--muted); font-size: 12px }
-@media (max-width: 560px) { .kpi + .kpi { border-left: 0; padding-left: 0 } .kpi { border-bottom: 1px solid var(--rule) } }
-section { display: grid; gap: 12px }
-.sec-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px }
-.legend { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px }
-.legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border-radius: 2px }
-.years { display: flex; gap: 6px; margin: 4px 0 14px }
-.years button { font: 600 13px var(--f-data); padding: 6px 14px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); color: var(--ink); cursor: pointer }
-.years button[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink) }
-.chart-box { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 8px 4px; overflow-x: auto }
-.chart-box svg { display: block; width: 100%; min-width: 960px; height: auto }
-svg text { fill: var(--muted); font: 10px var(--f-data) }
-.filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center }
-.filters button, .tick { font: 500 12px var(--f-body); border: 1px solid var(--rule); background: var(--surface); color: var(--ink); padding: 5px 10px; border-radius: 999px; cursor: pointer }
-.filters button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink) }
-.filters button:focus-visible, .row:focus-visible, .tick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
-.sep { width: 1px; height: 20px; background: var(--rule); margin-inline: 4px }
-.day { display: grid; gap: 0; }
-.day-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 18px 2px 6px; border-bottom: 2px solid var(--ink) }
-.day-head h3 { font: 700 15px var(--f-display); font-stretch: 85%; margin: 0; letter-spacing: .02em; text-transform: uppercase }
-.day-head span { font-size: 12px; color: var(--muted) }
-.trade { border-bottom: 1px solid var(--rule); background: var(--surface) }
-.row { display: grid; grid-template-columns: 56px minmax(150px, 1.4fr) minmax(130px, 1fr) minmax(90px, .8fr) 110px 18px; gap: 12px; align-items: center; padding: 10px 12px; cursor: pointer; width: 100%; text-align: left; border: 0; background: none; color: inherit; font: inherit }
-.row:hover { background: var(--chip) }
-.row .t { font: 12px var(--f-data); color: var(--muted) }
-.ctr { display: flex; align-items: center; gap: 8px; min-width: 0 }
-.ctr strong { font: 700 16px var(--f-display); font-stretch: 85%; white-space: nowrap }
-.ctr .k { font: 12px var(--f-data); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
-.cp { font: 600 10px var(--f-data); letter-spacing: .08em; padding: 2px 6px; border-radius: 3px; border: 1px solid currentColor }
-.cp.C { color: var(--accent) } .cp.P { color: var(--muted) }
-.acct { font: 600 9px var(--f-data); letter-spacing: .08em; color: var(--muted); border: 1px dashed var(--rule); padding: 1px 4px; border-radius: 3px }
-.size { font: 12px var(--f-data); font-variant-numeric: tabular-nums } .size em { font-style: normal; color: var(--muted) }
-.res { justify-self: end; font: 600 13px var(--f-data); font-variant-numeric: tabular-nums; padding: 3px 8px; border-radius: 4px; white-space: nowrap }
-.res.pos { background: var(--gain-soft) } .res.neg { background: var(--loss-soft) } .res.na { color: var(--muted); background: var(--chip); font-weight: 500 }
-.chev { color: var(--muted); transition: transform .15s } .trade.open .chev { transform: rotate(90deg) }
-.steps-dots { display: flex; gap: 3px; flex-wrap: wrap } .steps-dots i { width: 7px; height: 7px; border-radius: 1px; display: block }
-.detail { padding: 4px 12px 18px 80px; display: grid; gap: 14px }
-.detail[hidden] { display: none }
-.ladder { overflow-x: auto; min-width: 0 } .ladder svg { display: block; width: 100%; min-width: 420px; height: auto }
-.viz { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start }
-.pchart { min-width: 0 } .lw { width: 100%; height: 260px }
-.ph { font: 600 10px var(--f-data); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px }
-.ph b { color: var(--ink) }
-.sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px } .sw.a { background: var(--accent) } .sw.b { background: #eb6834 }
-.why { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; border-top: 1px solid var(--rule); padding-top: 12px }
-.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; align-content: start }
-.st { background: var(--chip); border-radius: 4px; padding: 6px 8px; display: grid; gap: 1px; min-width: 0 }
-.st span { font: 600 9px var(--f-data); letter-spacing: .06em; text-transform: uppercase; color: var(--muted) }
-.st b { font-size: 15px } .st small { color: var(--muted); font-size: 11px }
-.reasons { min-width: 0 }
-.quote { font: 13px/1.6 var(--f-he); border-inline-start: 3px solid var(--accent); padding: 4px 10px; margin-top: 6px; background: var(--surface) }
-.quote b { font: 600 10px var(--f-data); color: var(--muted); text-transform: uppercase; letter-spacing: .06em }
-.tag { font: 600 10px var(--f-data); background: var(--accent); color: var(--surface); padding: 2px 6px; border-radius: 999px; text-transform: none; letter-spacing: 0 }
-.none { color: var(--muted); font-size: 13px; margin: 6px 0 }
-.pct { font-weight: 600; color: var(--ink) }
-@media (max-width: 820px) { .viz, .why { grid-template-columns: 1fr } }
-table { border-collapse: collapse; width: 100%; font-size: 13px }
-.tbl { overflow-x: auto }
-th { text-align: left; font: 600 10px var(--f-data); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--rule) }
-td { padding: 7px 8px; border-bottom: 1px solid var(--rule); vertical-align: top }
-td.n { font-family: var(--f-data); font-variant-numeric: tabular-nums; white-space: nowrap }
-.kind { font: 600 10px var(--f-data); letter-spacing: .06em; padding: 2px 6px; border-radius: 3px; white-space: nowrap }
-.kind.open, .kind.add, .kind.re-enter { background: var(--gain-soft); color: var(--gain) }
-.kind.trim, .kind.close, .kind.exit, .kind.expired, .kind.short { background: var(--loss-soft); color: var(--loss) }
-.post { font: 13px/1.6 var(--f-he); color: var(--ink); background: var(--chip); border-radius: 4px; padding: 6px 10px; margin-top: 6px }
-.post b { font: 600 11px var(--f-data); color: var(--muted); display: block }
-.post p, .quote p { margin: 2px 0 0; unicode-bidi: plaintext; text-align: start; white-space: pre-line }
-.notes { color: var(--muted); font-size: 13px; display: grid; gap: 6px; border-top: 1px solid var(--rule); padding-top: 16px }
-.notes p { margin: 0; max-width: 80ch }
-@media (max-width: 720px) {
-  .row { grid-template-columns: 48px 1fr auto 16px; row-gap: 4px }
-  .row .size, .row .steps-dots { grid-column: 2 / 3 }
-  .row .res { grid-column: 3; grid-row: 1 } .row .chev { grid-column: 4; grid-row: 1 }
-  .detail { padding-left: 12px }
-}
-@media (prefers-reduced-motion: reduce) { .chev { transition: none } }
-#chartModal { width: min(1200px, 94vw); max-width: none; border: 1px solid var(--rule); border-radius: 10px; background: var(--bg, Canvas); color: inherit; padding: 16px }
-#chartModal::backdrop { background: rgba(0,0,0,.55) }
-#chartModal .mtop { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; font-family: "JetBrains Mono", monospace; font-size: 12px }
-#chartModal .mx { font-size: 22px; line-height: 1; background: none; border: 0; color: inherit; cursor: pointer }
-#chartModal .mhint { font-size: 11px; color: var(--muted); margin: 6px 0 0 }
-.chartbox { cursor: zoom-in }
-</style>
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        box-sizing: border-box;
+        padding-top: env(safe-area-inset-top, 0px);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
+      html {
+        scroll-padding-top: env(safe-area-inset-top, 0px);
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        font:
+          14px -apple-system,
+          BlinkMacSystemFont,
+          sans-serif;
+        background: #fff;
+        color: #000;
+      }
+      img {
+        max-width: 100%;
+      }
+      [hidden]:not([hidden="until-found" i]) {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <title>Indi Trade Log</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Heebo:wght@400;500&display=swap"
+    />
+    <style>
+      /* Layout: a trading blotter — summary strip, daily P&L tape, then one expandable row per trade with its step ladder. */
+      :root {
+        --bg: #f4f5f7;
+        --surface: #ffffff;
+        --ink: #14171c;
+        --muted: #5d6572;
+        --rule: #dde0e6;
+        --accent: #2b55c9;
+        --gain: #17805a;
+        --loss: #c43d2c;
+        --gain-soft: #e3f2ea;
+        --loss-soft: #f8e5e1;
+        --chip: #eceef2;
+        --f-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+        --f-body: "Public Sans", "Heebo", system-ui, sans-serif;
+        --f-data: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+        --f-he: "Heebo", "Public Sans", system-ui, sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --bg: #0f1216;
+          --surface: #171b21;
+          --ink: #e6e9ee;
+          --muted: #9aa3b0;
+          --rule: #2a3039;
+          --accent: #7d9cf0;
+          --gain: #4cc38f;
+          --loss: #f07a66;
+          --gain-soft: #17322a;
+          --loss-soft: #3a211d;
+          --chip: #222832;
+          color-scheme: dark;
+        }
+      }
+      :root[data-theme="dark"] {
+        --bg: #0f1216;
+        --surface: #171b21;
+        --ink: #e6e9ee;
+        --muted: #9aa3b0;
+        --rule: #2a3039;
+        --accent: #7d9cf0;
+        --gain: #4cc38f;
+        --loss: #f07a66;
+        --gain-soft: #17322a;
+        --loss-soft: #3a211d;
+        --chip: #222832;
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font: 14px/1.5 var(--f-body);
+      }
+      .wrap {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding-inline: 16px;
+        padding-block: 28px 64px;
+        display: grid;
+        gap: 28px;
+      }
+      h1,
+      h2 {
+        font-family: var(--f-display);
+        font-stretch: 78%;
+        letter-spacing: 0.005em;
+        text-wrap: balance;
+        margin: 0;
+      }
+      h1 {
+        font-size: clamp(30px, 6vw, 46px);
+        font-weight: 800;
+        line-height: 1.02;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+      }
+      .eyebrow {
+        font: 600 11px/1 var(--f-data);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .lede {
+        color: var(--muted);
+        max-width: 68ch;
+        margin: 8px 0 0;
+      }
+      .num {
+        font-family: var(--f-data);
+        font-variant-numeric: tabular-nums;
+      }
+      .pos {
+        color: var(--gain);
+      }
+      .neg {
+        color: var(--loss);
+      }
+      header {
+        display: grid;
+        gap: 10px;
+      }
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        border-block: 1px solid var(--rule);
+      }
+      .kpi {
+        padding: 14px 16px 14px 0;
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+      }
+      .kpi + .kpi {
+        padding-left: 16px;
+        border-left: 1px solid var(--rule);
+      }
+      .kpi b {
+        font: 600 24px/1.1 var(--f-data);
+        font-variant-numeric: tabular-nums;
+      }
+      .kpi small {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      @media (max-width: 560px) {
+        .kpi + .kpi {
+          border-left: 0;
+          padding-left: 0;
+        }
+        .kpi {
+          border-bottom: 1px solid var(--rule);
+        }
+      }
+      section {
+        display: grid;
+        gap: 12px;
+      }
+      .sec-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px 16px;
+      }
+      .legend {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .legend i {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        margin-right: 6px;
+        vertical-align: -1px;
+        border-radius: 2px;
+      }
+      .years {
+        display: flex;
+        gap: 6px;
+        margin: 4px 0 14px;
+      }
+      .years button {
+        font: 600 13px var(--f-data);
+        padding: 6px 14px;
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--ink);
+        cursor: pointer;
+      }
+      .years button[aria-pressed="true"] {
+        background: var(--ink);
+        color: var(--surface);
+        border-color: var(--ink);
+      }
+      .chart-box {
+        background: var(--surface);
+        border: 1px solid var(--rule);
+        border-radius: 6px;
+        padding: 12px 8px 4px;
+        overflow-x: auto;
+      }
+      .chart-box svg {
+        display: block;
+        width: 100%;
+        min-width: 960px;
+        height: auto;
+      }
+      svg text {
+        fill: var(--muted);
+        font: 10px var(--f-data);
+      }
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+      }
+      .filters button,
+      .tick {
+        font: 500 12px var(--f-body);
+        border: 1px solid var(--rule);
+        background: var(--surface);
+        color: var(--ink);
+        padding: 5px 10px;
+        border-radius: 999px;
+        cursor: pointer;
+      }
+      .filters button[aria-pressed="true"] {
+        background: var(--ink);
+        color: var(--bg);
+        border-color: var(--ink);
+      }
+      .filters button:focus-visible,
+      .row:focus-visible,
+      .tick:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .sep {
+        width: 1px;
+        height: 20px;
+        background: var(--rule);
+        margin-inline: 4px;
+      }
+      .day {
+        display: grid;
+        gap: 0;
+      }
+      .day-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        padding: 18px 2px 6px;
+        border-bottom: 2px solid var(--ink);
+      }
+      .day-head h3 {
+        font: 700 15px var(--f-display);
+        font-stretch: 85%;
+        margin: 0;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+      .day-head span {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .trade {
+        border-bottom: 1px solid var(--rule);
+        background: var(--surface);
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 56px minmax(150px, 1.4fr) minmax(
+            130px,
+            1fr
+          ) minmax(90px, 0.8fr) 110px 18px;
+        gap: 12px;
+        align-items: center;
+        padding: 10px 12px;
+        cursor: pointer;
+        width: 100%;
+        text-align: left;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+      }
+      .row:hover {
+        background: var(--chip);
+      }
+      .row .t {
+        font: 12px var(--f-data);
+        color: var(--muted);
+      }
+      .ctr {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .ctr strong {
+        font: 700 16px var(--f-display);
+        font-stretch: 85%;
+        white-space: nowrap;
+      }
+      .ctr .k {
+        font: 12px var(--f-data);
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .cp {
+        font: 600 10px var(--f-data);
+        letter-spacing: 0.08em;
+        padding: 2px 6px;
+        border-radius: 3px;
+        border: 1px solid currentColor;
+      }
+      .cp.C {
+        color: var(--accent);
+      }
+      .cp.P {
+        color: var(--muted);
+      }
+      .acct {
+        font: 600 9px var(--f-data);
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        border: 1px dashed var(--rule);
+        padding: 1px 4px;
+        border-radius: 3px;
+      }
+      .size {
+        font: 12px var(--f-data);
+        font-variant-numeric: tabular-nums;
+      }
+      .size em {
+        font-style: normal;
+        color: var(--muted);
+      }
+      .res {
+        justify-self: end;
+        font: 600 13px var(--f-data);
+        font-variant-numeric: tabular-nums;
+        padding: 3px 8px;
+        border-radius: 4px;
+        white-space: nowrap;
+      }
+      .res.pos {
+        background: var(--gain-soft);
+      }
+      .res.neg {
+        background: var(--loss-soft);
+      }
+      .res.na {
+        color: var(--muted);
+        background: var(--chip);
+        font-weight: 500;
+      }
+      .chev {
+        color: var(--muted);
+        transition: transform 0.15s;
+      }
+      .trade.open .chev {
+        transform: rotate(90deg);
+      }
+      .steps-dots {
+        display: flex;
+        gap: 3px;
+        flex-wrap: wrap;
+      }
+      .steps-dots i {
+        width: 7px;
+        height: 7px;
+        border-radius: 1px;
+        display: block;
+      }
+      .detail {
+        padding: 4px 12px 18px 80px;
+        display: grid;
+        gap: 14px;
+      }
+      .detail[hidden] {
+        display: none;
+      }
+      .ladder {
+        overflow-x: auto;
+        min-width: 0;
+      }
+      .ladder svg {
+        display: block;
+        width: 100%;
+        min-width: 420px;
+        height: auto;
+      }
+      .viz {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+        gap: 16px;
+        align-items: start;
+      }
+      .pchart {
+        min-width: 0;
+      }
+      .lw {
+        width: 100%;
+        height: 260px;
+      }
+      .ph {
+        font: 600 10px var(--f-data);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 6px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+      }
+      .ph b {
+        color: var(--ink);
+      }
+      .sw {
+        display: inline-block;
+        width: 14px;
+        height: 3px;
+        border-radius: 2px;
+      }
+      .sw.a {
+        background: var(--accent);
+      }
+      .sw.b {
+        background: #eb6834;
+      }
+      .why {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+        gap: 16px;
+        border-top: 1px solid var(--rule);
+        padding-top: 12px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 8px;
+        align-content: start;
+      }
+      .st {
+        background: var(--chip);
+        border-radius: 4px;
+        padding: 6px 8px;
+        display: grid;
+        gap: 1px;
+        min-width: 0;
+      }
+      .st span {
+        font: 600 9px var(--f-data);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .st b {
+        font-size: 15px;
+      }
+      .st small {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .reasons {
+        min-width: 0;
+      }
+      .quote {
+        font: 13px/1.6 var(--f-he);
+        border-inline-start: 3px solid var(--accent);
+        padding: 4px 10px;
+        margin-top: 6px;
+        background: var(--surface);
+      }
+      .quote b {
+        font: 600 10px var(--f-data);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .tag {
+        font: 600 10px var(--f-data);
+        background: var(--accent);
+        color: var(--surface);
+        padding: 2px 6px;
+        border-radius: 999px;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      .none {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 6px 0;
+      }
+      .pct {
+        font-weight: 600;
+        color: var(--ink);
+      }
+      @media (max-width: 820px) {
+        .viz,
+        .why {
+          grid-template-columns: 1fr;
+        }
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 13px;
+      }
+      .tbl {
+        overflow-x: auto;
+      }
+      th {
+        text-align: left;
+        font: 600 10px var(--f-data);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--rule);
+      }
+      td {
+        padding: 7px 8px;
+        border-bottom: 1px solid var(--rule);
+        vertical-align: top;
+      }
+      td.n {
+        font-family: var(--f-data);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .kind {
+        font: 600 10px var(--f-data);
+        letter-spacing: 0.06em;
+        padding: 2px 6px;
+        border-radius: 3px;
+        white-space: nowrap;
+      }
+      .kind.open,
+      .kind.add,
+      .kind.re-enter {
+        background: var(--gain-soft);
+        color: var(--gain);
+      }
+      .kind.trim,
+      .kind.close,
+      .kind.exit,
+      .kind.expired,
+      .kind.short {
+        background: var(--loss-soft);
+        color: var(--loss);
+      }
+      .post {
+        font: 13px/1.6 var(--f-he);
+        color: var(--ink);
+        background: var(--chip);
+        border-radius: 4px;
+        padding: 6px 10px;
+        margin-top: 6px;
+      }
+      .post b {
+        font: 600 11px var(--f-data);
+        color: var(--muted);
+        display: block;
+      }
+      .post p,
+      .quote p {
+        margin: 2px 0 0;
+        unicode-bidi: plaintext;
+        text-align: start;
+        white-space: pre-line;
+      }
+      .notes {
+        color: var(--muted);
+        font-size: 13px;
+        display: grid;
+        gap: 6px;
+        border-top: 1px solid var(--rule);
+        padding-top: 16px;
+      }
+      .notes p {
+        margin: 0;
+        max-width: 80ch;
+      }
+      @media (max-width: 720px) {
+        .row {
+          grid-template-columns: 48px 1fr auto 16px;
+          row-gap: 4px;
+        }
+        .row .size,
+        .row .steps-dots {
+          grid-column: 2 / 3;
+        }
+        .row .res {
+          grid-column: 3;
+          grid-row: 1;
+        }
+        .row .chev {
+          grid-column: 4;
+          grid-row: 1;
+        }
+        .detail {
+          padding-left: 12px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .chev {
+          transition: none;
+        }
+      }
+      #chartModal {
+        width: min(1200px, 94vw);
+        max-width: none;
+        border: 1px solid var(--rule);
+        border-radius: 10px;
+        background: var(--bg, Canvas);
+        color: inherit;
+        padding: 16px;
+      }
+      #chartModal::backdrop {
+        background: rgba(0, 0, 0, 0.55);
+      }
+      #chartModal .mtop {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+      }
+      #chartModal .mx {
+        font-size: 22px;
+        line-height: 1;
+        background: none;
+        border: 0;
+        color: inherit;
+        cursor: pointer;
+      }
+      #chartModal .mhint {
+        font-size: 11px;
+        color: var(--muted);
+        margin: 6px 0 0;
+      }
+      .chartbox {
+        cursor: zoom-in;
+      }
+    </style>
 
-<main class="wrap">
-  <header>
-    <span class="eyebrow">@ultrawavetrader · Indi · Jan 2023 – Oct 8, 2026</span>
-    <h1>Indi Trade Log</h1>
-    <p class="lede">Every fill from the Order Manager screenshots in his daily summary posts, grouped into trades and steps: open, add, trim, close. Each step carries the post he wrote right after it. Open a trade to see the stock and SPY on the entry day, his reasons, and the position size as a share of his portfolio. Times are Israel time (the US open is 16:30, or 15:30 in the weeks the clocks change on different dates); prices are per option (per share for stock hedges), P&amp;L in dollars.</p>
-  </header>
-  <div class="years" id="years" role="group" aria-label="Year"></div>
-  <div class="kpis" id="kpis"></div>
+    <main class="wrap">
+      <header>
+        <span class="eyebrow"
+          >@ultrawavetrader · Indi · Jan 2023 – Oct 8, 2026</span
+        >
+        <h1>Indi Trade Log</h1>
+        <p class="lede">
+          Every fill from the Order Manager screenshots in his daily summary
+          posts, grouped into trades and steps: open, add, trim, close. Each
+          step carries the post he wrote right after it. Open a trade to see the
+          stock and SPY on the entry day, his reasons, and the position size as
+          a share of his portfolio. Times are Israel time (the US open is 16:30,
+          or 15:30 in the weeks the clocks change on different dates); prices
+          are per option (per share for stock hedges), P&amp;L in dollars.
+        </p>
+      </header>
+      <div class="years" id="years" role="group" aria-label="Year"></div>
+      <div class="kpis" id="kpis"></div>
 
-  <section>
-    <div class="sec-head"><h2>Daily P&amp;L</h2>
-      <div class="legend"><span><i style="background:var(--gain)"></i>His posted day (gain)</span><span><i style="background:var(--loss)"></i>His posted day (loss)</span><span><i style="background:var(--ink);border-radius:50%"></i>Closed in extracted trades</span></div></div>
-    <div class="chart-box"><svg id="daily" viewBox="0 0 1400 280" role="img" aria-label="Daily profit and loss"></svg></div>
-  </section>
+      <section>
+        <div class="sec-head">
+          <h2>Daily P&amp;L</h2>
+          <div class="legend">
+            <span
+              ><i style="background: var(--gain)"></i>His posted day
+              (gain)</span
+            ><span
+              ><i style="background: var(--loss)"></i>His posted day
+              (loss)</span
+            ><span
+              ><i style="background: var(--ink); border-radius: 50%"></i>Closed
+              in extracted trades</span
+            >
+          </div>
+        </div>
+        <div class="chart-box">
+          <svg
+            id="daily"
+            viewBox="0 0 1400 280"
+            role="img"
+            aria-label="Daily profit and loss"
+          ></svg>
+        </div>
+      </section>
 
-  <section>
-    <div class="sec-head"><h2>Trades</h2>
-      <div class="filters" id="filters" role="group" aria-label="Filter trades"></div></div>
-    <div id="list"></div>
-  </section>
+      <section>
+        <div class="sec-head">
+          <h2>Trades</h2>
+          <div
+            class="filters"
+            id="filters"
+            role="group"
+            aria-label="Filter trades"
+          ></div>
+        </div>
+        <div id="list"></div>
+      </section>
 
-  <div class="notes">
-    <p><strong>Exact:</strong> main account (Cboe Silexx). Per contract and day, the summed fills match his Portfolio screen: quantities, average prices, realized P&amp;L. Times are order submit times, seconds from the fill.</p>
-    <p><strong>No times:</strong> on May 6, May 11, Jul 6, Jul 10, Jul 27, Aug 21 and Aug 26 he posted only the Portfolio screen, and on Aug 19 the order list is cut off; those trades are one aggregate step per side. Stock rows are his share hedges (often shorted pre-market against calls).</p>
-    <p><strong>Assumed:</strong> options still held after expiry with no sale shown are closed at 0 (marked EXPIRED). P&amp;L across days uses average cost; his broker matches lots first-in-first-out, so a few multi-day trades differ by a few thousand dollars.</p>
-    <p><strong>Israel time:</strong> all times are converted from the order screens (ET or Israel time) to Israel time; "+1" marks the next calendar day in Israel. <strong>Size %:</strong> the first entry's cost, and the largest cost held, as a share of his portfolio value that morning (from his daily equity chart in 2023–2024 and from the % next to each daily result in 2025–2026). <strong>Entry stats:</strong> from 1-minute bars of the stock (or an ETF proxy for index and futures options) and SPY on the entry day; moves are measured from the 09:30 open, and "vs SPY" is signed in the direction of his bet. <strong>Reasons:</strong> his own posts in the 20 minutes after the entry and the lines of that day's summary that name the stock; the tags are keyword matches and can be wrong.</p>
-    <p><strong>2023 (all of it, from Jan 9) and 2024 (April – Dec so far):</strong> transcribed the same way; 2024 January – March is being added. He was on vacation Apr 15–26, 2024. He paused the challenge Oct 12 – Nov 3, 2023, and traded from a vacation Aug 21 – Oct 2, 2023 (only some of those trades were posted as screens). Where rows were hidden behind his taskbar or off-screen, one inferred fill per contract makes the day match his Portfolio totals.</p>
-    <p><strong>2025:</strong> main account 3OC08824 until Dec 10, then 3OC08910. In January–February and from May 19 his Order Book screens show Jerusalem time on some days; times were converted to ET. A few days used a burst of identical market orders, recorded as one fill at the average; some partial fills were derived from the % filled column. Jan 23: two 0DTE SPX calls finished in the money and are booked at their 16:00 mark. No summaries: Feb 27–28, Mar 17–18; vacation Aug 8–24.</p>
-    <p><strong>Approximate:</strong> trades marked IBKR (futures options, SPX/NDX). Their screenshots show part of the list and no reliable times; P&amp;L includes commissions. <strong>Missing:</strong> days with no summary post or no screenshots (e.g. Jan 16, Jan 21, Jan 27, Sep 29, Sep 30, Oct 6), and vacations (Mar 24 – Apr 10, Aug 5 – 11). His posted daily totals include IBKR and unrealized changes, so they differ from the dots.</p>
-  </div>
-</main>
+      <div class="notes">
+        <p>
+          <strong>Exact:</strong> main account (Cboe Silexx). Per contract and
+          day, the summed fills match his Portfolio screen: quantities, average
+          prices, realized P&amp;L. Times are order submit times, seconds from
+          the fill.
+        </p>
+        <p>
+          <strong>No times:</strong> on May 6, May 11, Jul 6, Jul 10, Jul 27,
+          Aug 21 and Aug 26 he posted only the Portfolio screen, and on Aug 19
+          the order list is cut off; those trades are one aggregate step per
+          side. Stock rows are his share hedges (often shorted pre-market
+          against calls).
+        </p>
+        <p>
+          <strong>Assumed:</strong> options still held after expiry with no sale
+          shown are closed at 0 (marked EXPIRED). P&amp;L across days uses
+          average cost; his broker matches lots first-in-first-out, so a few
+          multi-day trades differ by a few thousand dollars.
+        </p>
+        <p>
+          <strong>Israel time:</strong> all times are converted from the order
+          screens (ET or Israel time) to Israel time; "+1" marks the next
+          calendar day in Israel. <strong>Size %:</strong> the first entry's
+          cost, and the largest cost held, as a share of his portfolio value
+          that morning (from his daily equity chart in 2023–2024 and from the %
+          next to each daily result in 2025–2026).
+          <strong>Entry stats:</strong> from 1-minute bars of the stock (or an
+          ETF proxy for index and futures options) and SPY on the entry day;
+          moves are measured from the 09:30 open, and "vs SPY" is signed in the
+          direction of his bet. <strong>Reasons:</strong> his own posts in the
+          20 minutes after the entry and the lines of that day's summary that
+          name the stock; the tags are keyword matches and can be wrong.
+        </p>
+        <p>
+          <strong
+            >2023 (all of it, from Jan 9) and 2024 (April – Dec so far):</strong
+          >
+          transcribed the same way; 2024 January – March is being added. He was
+          on vacation Apr 15–26, 2024. He paused the challenge Oct 12 – Nov 3,
+          2023, and traded from a vacation Aug 21 – Oct 2, 2023 (only some of
+          those trades were posted as screens). Where rows were hidden behind
+          his taskbar or off-screen, one inferred fill per contract makes the
+          day match his Portfolio totals.
+        </p>
+        <p>
+          <strong>2025:</strong> main account 3OC08824 until Dec 10, then
+          3OC08910. In January–February and from May 19 his Order Book screens
+          show Jerusalem time on some days; times were converted to ET. A few
+          days used a burst of identical market orders, recorded as one fill at
+          the average; some partial fills were derived from the % filled column.
+          Jan 23: two 0DTE SPX calls finished in the money and are booked at
+          their 16:00 mark. No summaries: Feb 27–28, Mar 17–18; vacation Aug
+          8–24.
+        </p>
+        <p>
+          <strong>Approximate:</strong> trades marked IBKR (futures options,
+          SPX/NDX). Their screenshots show part of the list and no reliable
+          times; P&amp;L includes commissions. <strong>Missing:</strong> days
+          with no summary post or no screenshots (e.g. Jan 16, Jan 21, Jan 27,
+          Sep 29, Sep 30, Oct 6), and vacations (Mar 24 – Apr 10, Aug 5 – 11).
+          His posted daily totals include IBKR and unrealized changes, so they
+          differ from the dots.
+        </p>
+      </div>
+    </main>
 
-<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
-<script>
-(async () => {
-const DATA = await (await fetch('data.json')).json();
-const $ = (s, el = document) => el.querySelector(s);
-const fmt$ = (v, sign = true) => v == null ? "—" : (v < 0 ? "−" : sign && v > 0 ? "+" : "") + "$" + Math.abs(Math.round(v)).toLocaleString("en-US");
-const fmtK = v => (v < 0 ? "−" : v > 0 ? "+" : "") + "$" + (Math.abs(v) >= 1e6 ? (Math.abs(v) / 1e6).toFixed(2) + "M" : Math.round(Math.abs(v) / 1e3) + "K");
-const cls = v => v == null ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "";
-const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const dayName = d => new Date(d + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
-const T = DATA.trades;
-const closed = T.filter(t => t.pnl != null);
-const inYear = t => state.year === "all" || t.steps[0].date.startsWith(state.year);
+    <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+    <script>
+      (async () => {
+        const DATA = await (await fetch("data.json")).json();
+        const $ = (s, el = document) => el.querySelector(s);
+        const fmt$ = (v, sign = true) =>
+          v == null
+            ? "—"
+            : (v < 0 ? "−" : sign && v > 0 ? "+" : "") +
+              "$" +
+              Math.abs(Math.round(v)).toLocaleString("en-US");
+        const fmtK = (v) =>
+          (v < 0 ? "−" : v > 0 ? "+" : "") +
+          "$" +
+          (Math.abs(v) >= 1e6
+            ? (Math.abs(v) / 1e6).toFixed(2) + "M"
+            : Math.round(Math.abs(v) / 1e3) + "K");
+        const cls = (v) =>
+          v == null ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "";
+        const esc = (s) =>
+          s.replace(
+            /[&<>"]/g,
+            (c) =>
+              ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+          );
+        const dayName = (d) =>
+          new Date(d + "T12:00:00Z").toLocaleDateString("en-US", {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            timeZone: "UTC",
+          });
+        const T = DATA.trades;
+        const closed = T.filter((t) => t.pnl != null);
+        const inYear = (t) =>
+          state.year === "all" || t.steps[0].date.startsWith(state.year);
 
-// KPIs
-function kpis() {
-  const closed = T.filter(t => t.pnl != null && inYear(t));
-  const net = closed.reduce((a, t) => a + t.pnl, 0), wins = closed.filter(t => t.pnl > 0);
-  const losses = closed.filter(t => t.pnl <= 0), best = closed.reduce((a, t) => t.pnl > a.pnl ? t : a);
-  const same = closed.filter(t => t.steps[0].date === t.steps.at(-1).date).length;
-  const k = [
-    ["Net P&L, closed trades", `<span class="${cls(net)}">${fmt$(net)}</span>`, `${fmt$(net - best.pnl)} without the best trade`],
-    ["Trades", `${closed.length}`, `${wins.length} winners · ${losses.length} losers`],
-    ["Best trade", `<span class="pos">${fmt$(best.pnl)}</span>`, `${best.underlying} ${best.strike}${best.right} · ${best.steps[0].date.slice(5).replace("-", "/")}`],
-    ["Avg win / avg loss", `<span class="pos">${fmtK(wins.reduce((a, t) => a + t.pnl, 0) / wins.length)}</span> / <span class="neg">${fmtK(losses.reduce((a, t) => a + t.pnl, 0) / losses.length)}</span>`, "per trade"],
-    ["Typical entry size", `${(() => { const v = closed.filter(t => t.sizePct != null).map(t => t.sizePct).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] + "%" : "—"; })()}`, "median first entry, % of portfolio"],
-    ["Closed same day", `${same} / ${closed.length}`, `${T.filter(t => inYear(t) && t.steps.some(s => s.kind === "add")).length} trades added to · ${T.filter(t => inYear(t) && t.steps.some(s => s.kind === "trim")).length} trimmed`],
-  ];
-  $("#kpis").innerHTML = k.map(([l, v, s]) => `<div class="kpi"><span class="eyebrow">${l}</span><b>${v}</b><small>${s}</small></div>`).join("");
-}
+        // KPIs
+        function kpis() {
+          const closed = T.filter((t) => t.pnl != null && inYear(t));
+          const net = closed.reduce((a, t) => a + t.pnl, 0),
+            wins = closed.filter((t) => t.pnl > 0);
+          const losses = closed.filter((t) => t.pnl <= 0),
+            best = closed.reduce((a, t) => (t.pnl > a.pnl ? t : a));
+          const same = closed.filter(
+            (t) => t.steps[0].date === t.steps.at(-1).date,
+          ).length;
+          const k = [
+            [
+              "Net P&L, closed trades",
+              `<span class="${cls(net)}">${fmt$(net)}</span>`,
+              `${fmt$(net - best.pnl)} without the best trade`,
+            ],
+            [
+              "Trades",
+              `${closed.length}`,
+              `${wins.length} winners · ${losses.length} losers`,
+            ],
+            [
+              "Best trade",
+              `<span class="pos">${fmt$(best.pnl)}</span>`,
+              `${best.underlying} ${best.strike}${best.right} · ${best.steps[0].date.slice(5).replace("-", "/")}`,
+            ],
+            [
+              "Avg win / avg loss",
+              `<span class="pos">${fmtK(wins.reduce((a, t) => a + t.pnl, 0) / wins.length)}</span> / <span class="neg">${fmtK(losses.reduce((a, t) => a + t.pnl, 0) / losses.length)}</span>`,
+              "per trade",
+            ],
+            [
+              "Typical entry size",
+              `${(() => {
+                const v = closed
+                  .filter((t) => t.sizePct != null)
+                  .map((t) => t.sizePct)
+                  .sort((a, b) => a - b);
+                return v.length ? v[Math.floor(v.length / 2)] + "%" : "—";
+              })()}`,
+              "median first entry, % of portfolio",
+            ],
+            [
+              "Closed same day",
+              `${same} / ${closed.length}`,
+              `${T.filter((t) => inYear(t) && t.steps.some((s) => s.kind === "add")).length} trades added to · ${T.filter((t) => inYear(t) && t.steps.some((s) => s.kind === "trim")).length} trimmed`,
+            ],
+          ];
+          $("#kpis").innerHTML = k
+            .map(
+              ([l, v, s]) =>
+                `<div class="kpi"><span class="eyebrow">${l}</span><b>${v}</b><small>${s}</small></div>`,
+            )
+            .join("");
+        }
 
-// Daily chart
-function chart() {
-  const days = DATA.days.filter(d => state.year === "all" || d.date.startsWith(state.year)), W = 1400, H = 280, L = 64, R = 12, top = 14, bot = 40;
-  const vals = days.flatMap(d => [d.posted ?? 0, d.extracted]);
-  const max = Math.max(...vals, 0), min = Math.min(...vals, 0);
-  const step = 500000, hi = Math.ceil(max / step) * step, lo = Math.floor(min / step) * step;
-  const y = v => top + (hi - v) / (hi - lo) * (H - top - bot);
-  const bw = (W - L - R) / days.length;
-  let g = "";
-  for (let v = lo; v <= hi; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--rule)" ${v === 0 ? 'stroke-width="1.5" stroke="var(--muted)"' : ""}/><text x="${L - 8}" y="${y(v) + 3}" text-anchor="end">${v === 0 ? "0" : fmtK(v)}</text>`;
-  days.forEach((d, i) => {
-    const x = L + i * bw, p = d.posted ?? 0, cx = x + bw / 2;
-    if (d.posted != null) g += `<rect x="${x + bw * .18}" width="${bw * .64}" y="${Math.min(y(p), y(0))}" height="${Math.max(1, Math.abs(y(p) - y(0)))}" fill="${p >= 0 ? "var(--gain)" : "var(--loss)"}" opacity=".85"><title>${dayName(d.date)} · posted ${fmt$(p)} · extracted ${fmt$(d.extracted)}</title></rect>`;
-    g += `<circle cx="${cx}" cy="${y(d.extracted)}" r="3.5" fill="var(--ink)" stroke="var(--surface)" stroke-width="1.5"><title>${dayName(d.date)} · closed in extracted trades ${fmt$(d.extracted)}</title></circle>`;
-    const [, m, dd] = d.date.split("-");
-    if (i === 0 || days[i - 1].date.slice(5, 7) !== d.date.slice(5, 7)) g += `<text x="${x}" y="${H - bot + 16}">${new Date(d.date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })}${state.year === 'all' && d.date.slice(5, 7) === '01' ? ' ' + d.date.slice(0, 4) : ''}</text><line x1="${x}" x2="${x}" y1="${top}" y2="${H - bot}" stroke="var(--rule)" stroke-dasharray="2 3"/>`;
-    if (Math.abs(p) > 400000) g += `<text x="${cx}" y="${p > 0 ? y(p) - 5 : y(p) + 13}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${fmtK(p)}</text>`;
-  });
-  $("#daily").innerHTML = g;
-}
+        // Daily chart
+        function chart() {
+          const days = DATA.days.filter(
+              (d) => state.year === "all" || d.date.startsWith(state.year),
+            ),
+            W = 1400,
+            H = 280,
+            L = 64,
+            R = 12,
+            top = 14,
+            bot = 40;
+          const vals = days.flatMap((d) => [d.posted ?? 0, d.extracted]);
+          const max = Math.max(...vals, 0),
+            min = Math.min(...vals, 0);
+          const step = 500000,
+            hi = Math.ceil(max / step) * step,
+            lo = Math.floor(min / step) * step;
+          const y = (v) => top + ((hi - v) / (hi - lo)) * (H - top - bot);
+          const bw = (W - L - R) / days.length;
+          let g = "";
+          for (let v = lo; v <= hi; v += step)
+            g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--rule)" ${v === 0 ? 'stroke-width="1.5" stroke="var(--muted)"' : ""}/><text x="${L - 8}" y="${y(v) + 3}" text-anchor="end">${v === 0 ? "0" : fmtK(v)}</text>`;
+          days.forEach((d, i) => {
+            const x = L + i * bw,
+              p = d.posted ?? 0,
+              cx = x + bw / 2;
+            if (d.posted != null)
+              g += `<rect x="${x + bw * 0.18}" width="${bw * 0.64}" y="${Math.min(y(p), y(0))}" height="${Math.max(1, Math.abs(y(p) - y(0)))}" fill="${p >= 0 ? "var(--gain)" : "var(--loss)"}" opacity=".85"><title>${dayName(d.date)} · posted ${fmt$(p)} · extracted ${fmt$(d.extracted)}</title></rect>`;
+            g += `<circle cx="${cx}" cy="${y(d.extracted)}" r="3.5" fill="var(--ink)" stroke="var(--surface)" stroke-width="1.5"><title>${dayName(d.date)} · closed in extracted trades ${fmt$(d.extracted)}</title></circle>`;
+            const [, m, dd] = d.date.split("-");
+            if (i === 0 || days[i - 1].date.slice(5, 7) !== d.date.slice(5, 7))
+              g += `<text x="${x}" y="${H - bot + 16}">${new Date(d.date + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", timeZone: "UTC" })}${state.year === "all" && d.date.slice(5, 7) === "01" ? " " + d.date.slice(0, 4) : ""}</text><line x1="${x}" x2="${x}" y1="${top}" y2="${H - bot}" stroke="var(--rule)" stroke-dasharray="2 3"/>`;
+            if (Math.abs(p) > 400000)
+              g += `<text x="${cx}" y="${p > 0 ? y(p) - 5 : y(p) + 13}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${fmtK(p)}</text>`;
+          });
+          $("#daily").innerHTML = g;
+        }
 
-// Filters
-const state = { result: "all", ticker: "all", month: "all", year: "2026" };
-(() => {
-  const tickers = [...new Set(T.map(t => t.underlying.split(" ")[0]))].sort();
-  const btn = (grp, val, label) => `<button data-g="${grp}" data-v="${val}" aria-pressed="${state[grp] === val}">${label}</button>`;
-  $("#filters").innerHTML = btn("result", "all", "All") + btn("result", "win", "Winners") + btn("result", "loss", "Losers") + btn("result", "scaled", "Added or trimmed") +
-    `<span class="sep" aria-hidden="true"></span>` + `<select class="tick" id="month" aria-label="Month"><option value="all">All months</option>${[...new Set(T.map(t => t.steps[0].date.slice(0, 7)))].map(m => `<option value="${m}">${new Date(m + '-15T12:00:00Z').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</option>`).join('')}</select>` + `<select class="tick" id="tick" aria-label="Ticker"><option value="all">All tickers</option>${tickers.map(t => `<option>${t}</option>`).join("")}</select>`;
-  $("#filters").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; state[b.dataset.g] = b.dataset.v; $("#filters").querySelectorAll(`[data-g="${b.dataset.g}"]`).forEach(x => x.setAttribute("aria-pressed", x === b)); render(); });
-  $("#tick").addEventListener("change", e => { state.ticker = e.target.value; render(); });
-  $("#month").addEventListener("change", e => { state.month = e.target.value; render(); });
-})();
+        // Filters
+        const state = {
+          result: "all",
+          ticker: "all",
+          month: "all",
+          year: "2026",
+        };
+        (() => {
+          const tickers = [
+            ...new Set(T.map((t) => t.underlying.split(" ")[0])),
+          ].sort();
+          const btn = (grp, val, label) =>
+            `<button data-g="${grp}" data-v="${val}" aria-pressed="${state[grp] === val}">${label}</button>`;
+          $("#filters").innerHTML =
+            btn("result", "all", "All") +
+            btn("result", "win", "Winners") +
+            btn("result", "loss", "Losers") +
+            btn("result", "scaled", "Added or trimmed") +
+            `<span class="sep" aria-hidden="true"></span>` +
+            `<select class="tick" id="month" aria-label="Month"><option value="all">All months</option>${[...new Set(T.map((t) => t.steps[0].date.slice(0, 7)))].map((m) => `<option value="${m}">${new Date(m + "-15T12:00:00Z").toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}</option>`).join("")}</select>` +
+            `<select class="tick" id="tick" aria-label="Ticker"><option value="all">All tickers</option>${tickers.map((t) => `<option>${t}</option>`).join("")}</select>`;
+          $("#filters").addEventListener("click", (e) => {
+            const b = e.target.closest("button");
+            if (!b) return;
+            state[b.dataset.g] = b.dataset.v;
+            $("#filters")
+              .querySelectorAll(`[data-g="${b.dataset.g}"]`)
+              .forEach((x) => x.setAttribute("aria-pressed", x === b));
+            render();
+          });
+          $("#tick").addEventListener("change", (e) => {
+            state.ticker = e.target.value;
+            render();
+          });
+          $("#month").addEventListener("change", (e) => {
+            state.month = e.target.value;
+            render();
+          });
+        })();
 
-function ladder(t) {
-  // Position size after each step (bars) with the step's price; x is step order, labelled by time.
-  const st = t.steps, n = st.length, W = 760, H = 170, L = 52, R = 16, top = 22, bot = 34;
-  const maxPos = Math.max(...st.map(s => Math.abs(s.pos ?? 0)), ...st.map(s => s.qty));
-  const y = v => top + (1 - v / maxPos) * (H - top - bot);
-  const xw = (W - L - R) / n;
-  let g = `<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--muted)"/>`;
-  [0.5, 1].forEach(f => g += `<line x1="${L}" x2="${W - R}" y1="${y(maxPos * f)}" y2="${y(maxPos * f)}" stroke="var(--rule)" stroke-dasharray="3 3"/><text x="${L - 6}" y="${y(maxPos * f) + 3}" text-anchor="end">${Math.round(maxPos * f).toLocaleString()}</text>`);
-  let prev = st[0].side === "S" ? null : 0, path = "";
-  st.forEach((s, i) => {
-    const x = L + i * xw, cx = x + xw / 2, buy = s.side === "B";
-    const before = prev == null ? s.qty : Math.abs(prev), after = Math.abs(s.pos ?? 0);
-    g += `<rect x="${x + xw * .22}" width="${xw * .56}" y="${y(after)}" height="${Math.max(1, y(0) - y(after))}" fill="var(--chip)" stroke="var(--rule)"/>`;
-    // the change this step made
-    const a = Math.min(before, after), b = Math.max(before, after);
-    g += `<rect x="${x + xw * .22}" width="${xw * .56}" y="${y(b)}" height="${Math.max(2, y(a) - y(b))}" fill="${buy ? "var(--gain)" : "var(--loss)"}" opacity="${buy ? .8 : .55}"/>`;
-    g += `<text x="${cx}" y="${y(b) - 7}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${buy ? "+" : "−"}${s.qty.toLocaleString()} @ ${s.px}</text>`;
-    g += `<text x="${cx}" y="${H - bot + 14}" text-anchor="middle">${s.t || "—"}</text>`;
-    if (i === 0 || s.date !== st[i - 1].date) g += `<text x="${cx}" y="${H - bot + 27}" text-anchor="middle" style="font-weight:600">${s.date.slice(5).replace("-", "/")}</text>`;
-    prev = after;
-  });
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Position size after each step">${g}</svg>`;
-}
+        function ladder(t) {
+          // Position size after each step (bars) with the step's price; x is step order, labelled by time.
+          const st = t.steps,
+            n = st.length,
+            W = 760,
+            H = 170,
+            L = 52,
+            R = 16,
+            top = 22,
+            bot = 34;
+          const maxPos = Math.max(
+            ...st.map((s) => Math.abs(s.pos ?? 0)),
+            ...st.map((s) => s.qty),
+          );
+          const y = (v) => top + (1 - v / maxPos) * (H - top - bot);
+          const xw = (W - L - R) / n;
+          let g = `<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--muted)"/>`;
+          [0.5, 1].forEach(
+            (f) =>
+              (g += `<line x1="${L}" x2="${W - R}" y1="${y(maxPos * f)}" y2="${y(maxPos * f)}" stroke="var(--rule)" stroke-dasharray="3 3"/><text x="${L - 6}" y="${y(maxPos * f) + 3}" text-anchor="end">${Math.round(maxPos * f).toLocaleString()}</text>`),
+          );
+          let prev = st[0].side === "S" ? null : 0,
+            path = "";
+          st.forEach((s, i) => {
+            const x = L + i * xw,
+              cx = x + xw / 2,
+              buy = s.side === "B";
+            const before = prev == null ? s.qty : Math.abs(prev),
+              after = Math.abs(s.pos ?? 0);
+            g += `<rect x="${x + xw * 0.22}" width="${xw * 0.56}" y="${y(after)}" height="${Math.max(1, y(0) - y(after))}" fill="var(--chip)" stroke="var(--rule)"/>`;
+            // the change this step made
+            const a = Math.min(before, after),
+              b = Math.max(before, after);
+            g += `<rect x="${x + xw * 0.22}" width="${xw * 0.56}" y="${y(b)}" height="${Math.max(2, y(a) - y(b))}" fill="${buy ? "var(--gain)" : "var(--loss)"}" opacity="${buy ? 0.8 : 0.55}"/>`;
+            g += `<text x="${cx}" y="${y(b) - 7}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${buy ? "+" : "−"}${s.qty.toLocaleString()} @ ${s.px}</text>`;
+            g += `<text x="${cx}" y="${H - bot + 14}" text-anchor="middle">${s.t || "—"}</text>`;
+            if (i === 0 || s.date !== st[i - 1].date)
+              g += `<text x="${cx}" y="${H - bot + 27}" text-anchor="middle" style="font-weight:600">${s.date.slice(5).replace("-", "/")}</text>`;
+            prev = after;
+          });
+          return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Position size after each step">${g}</svg>`;
+        }
 
-function stepsTable(t) {
-  const rows = t.steps.map(s => `<tr>
+        function stepsTable(t) {
+          const rows = t.steps
+            .map(
+              (s) => `<tr>
     <td class="n">${s.date.slice(5).replace("-", "/")} ${s.t}${s.t2 && s.t2 !== s.t ? "–" + s.t2 : ""}</td>
     <td><span class="kind ${s.kind.split(" ")[0]}">${s.kind.toUpperCase()}</span></td>
     <td class="n">${s.side === "B" ? "Buy" : "Sell"} ${s.qty.toLocaleString()} @ ${s.px}</td>
     <td class="n">${s.pos == null ? "—" : s.pos.toLocaleString()}${s.avg ? ` <span style="color:var(--muted)">@ ${s.avg}</span>` : ""}</td>
     <td class="n ${cls(s.pnl)}">${s.pnl == null ? "" : fmt$(s.pnl)}</td>
-    <td style="min-width:240px">${s.fills} fill${s.fills > 1 ? "s" : ""}${s.posts.map(p => `<div class="post"><b>${p.t}</b><p dir="auto">${esc(p.text.replace(/https:\/\/t\.co\/\S+/g, "").trim())}</p></div>`).join("")}</td></tr>`).join("");
-  return `<div class="tbl"><table><thead><tr><th>Time (Israel)</th><th>Step</th><th>Order</th><th>Position after</th><th>Step P&amp;L</th><th>Fills · his post</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-}
+    <td style="min-width:240px">${s.fills} fill${s.fills > 1 ? "s" : ""}${s.posts.map((p) => `<div class="post"><b>${p.t}</b><p dir="auto">${esc(p.text.replace(/https:\/\/t\.co\/\S+/g, "").trim())}</p></div>`).join("")}</td></tr>`,
+            )
+            .join("");
+          return `<div class="tbl"><table><thead><tr><th>Time (Israel)</th><th>Step</th><th>Order</th><th>Position after</th><th>Step P&amp;L</th><th>Fills · his post</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+        }
 
-
-const fx = (v, d = 2) => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
-function whyBox(t) {
-  const c = t.ctx;
-  const stat = (label, val, note) => `<div class="st"><span>${label}</span><b class="num">${val}</b>${note ? `<small>${note}</small>` : ""}</div>`;
-  const stats = [
-    stat("Size at entry", t.sizePct != null ? t.sizePct + "%" : "—", t.pv ? "of " + fmtK(t.pv).replace("+", "") + " portfolio" : ""),
-    stat("Largest held", t.peakPct != null ? t.peakPct + "%" : "—", "of portfolio"),
-    stat("Result", t.pnlPctPv != null ? fx(t.pnlPctPv) + "%" : "—", "of portfolio"),
-  ];
-  if (c) stats.push(
-    stat("Day vs SPY", fx(c.dayVsSpy) + "%", `stock ${fx(c.dayMove)}% · SPY ${fx(c.spyDay)}%`),
-    stat("15 min vs SPY", fx(c.m15VsSpy) + "%", "before entry"),
-    stat("5 min vs SPY", fx(c.m5VsSpy) + "%", "before entry"),
-    stat("Day range", c.rangePos != null ? Math.round(c.rangePos * 100) + "%" : "—", "0 = low, 100 = high"),
-    stat("New " + (t.right === "P" ? "low" : "high"), c.newExtreme ? "yes" : "no", "in the 5 min before"),
-    stat("Volume 5 min", c.vol5x != null ? c.vol5x + "×" : "—", "vs day's average minute"));
-  const quotes = [...(t.why || []).map(w => ["his posts", w]), ...(t.summary || []).map(w => ["day summary", w])];
-  return `<div class="why"><div class="stats">${stats.join("")}</div>
-    <div class="reasons"><div class="ph">Why he entered — his words ${(t.tags || []).map(g => `<span class="tag">${g}</span>`).join("")}</div>
+        const fx = (v, d = 2) =>
+          v == null
+            ? "—"
+            : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d);
+        function whyBox(t) {
+          const c = t.ctx;
+          const stat = (label, val, note) =>
+            `<div class="st"><span>${label}</span><b class="num">${val}</b>${note ? `<small>${note}</small>` : ""}</div>`;
+          const stats = [
+            stat(
+              "Size at entry",
+              t.sizePct != null ? t.sizePct + "%" : "—",
+              t.pv ? "of " + fmtK(t.pv).replace("+", "") + " portfolio" : "",
+            ),
+            stat(
+              "Largest held",
+              t.peakPct != null ? t.peakPct + "%" : "—",
+              "of portfolio",
+            ),
+            stat(
+              "Result",
+              t.pnlPctPv != null ? fx(t.pnlPctPv) + "%" : "—",
+              "of portfolio",
+            ),
+          ];
+          if (c)
+            stats.push(
+              stat(
+                "Day vs SPY",
+                fx(c.dayVsSpy) + "%",
+                `stock ${fx(c.dayMove)}% · SPY ${fx(c.spyDay)}%`,
+              ),
+              stat("15 min vs SPY", fx(c.m15VsSpy) + "%", "before entry"),
+              stat("5 min vs SPY", fx(c.m5VsSpy) + "%", "before entry"),
+              stat(
+                "Day range",
+                c.rangePos != null ? Math.round(c.rangePos * 100) + "%" : "—",
+                "0 = low, 100 = high",
+              ),
+              stat(
+                "New " + (t.right === "P" ? "low" : "high"),
+                c.newExtreme ? "yes" : "no",
+                "in the 5 min before",
+              ),
+              stat(
+                "Volume 5 min",
+                c.vol5x != null ? c.vol5x + "×" : "—",
+                "vs day's average minute",
+              ),
+            );
+          const quotes = [
+            ...(t.why || []).map((w) => ["his posts", w]),
+            ...(t.summary || []).map((w) => ["day summary", w]),
+          ];
+          return `<div class="why"><div class="stats">${stats.join("")}</div>
+    <div class="reasons"><div class="ph">Why he entered — his words ${(t.tags || []).map((g) => `<span class="tag">${g}</span>`).join("")}</div>
     ${quotes.length ? quotes.map(([src, w]) => `<div class="quote"><b>${src}</b><p dir="auto">${esc(w)}</p></div>`).join("") : `<p class="none">No comment from him at entry beyond the order itself.</p>`}</div></div>`;
-}
-const barCache = {};
-async function bars(month) { return barCache[month] ??= fetch(`bars/${month}.json`).then(r => r.ok ? r.json() : {}).catch(() => ({})); }
-async function drawChart(t, el, big) {
-  const d0 = t.steps[0].date, m = await bars(d0.slice(0, 7));
-  const S0 = m[`${t.chart}|${d0}`], B0 = m[`SPY|${d0}`];
-  if (!S0 || !window.LightweightCharts) { el.innerHTML = `<p class="none">No minute bars for ${t.chart} on ${d0}.</p>`; return; }
-  const css = getComputedStyle(document.documentElement), col = n => css.getPropertyValue(n).trim();
-  const O = S0.o ?? 0, N = S0.c.length;
-  // Ticker on the right axis, SPY dashed on the left: % from the 09:30 open, each fitted to its own range (as in the app's day chart)
-  const chart = LightweightCharts.createChart(el, { height: big ? Math.max(360, Math.round(innerHeight * .72)) : 260,
-    layout: { background: { color: "transparent" }, textColor: col("--muted"), fontFamily: "JetBrains Mono, monospace", fontSize: big ? 11 : 10 },
-    grid: { vertLines: { visible: false }, horzLines: { color: col("--rule") } },
-    rightPriceScale: { borderColor: col("--rule"), textColor: col("--accent") },
-    leftPriceScale: { visible: !!B0, borderColor: col("--rule"), textColor: "#eb6834" },
-    timeScale: { borderColor: col("--rule"), timeVisible: true, secondsVisible: false, minBarSpacing: 0.05 },
-    crosshair: { mode: 0 },
-    handleScroll: { vertTouchDrag: false, mouseWheel: !!big }, handleScale: { mouseWheel: !!big, pinch: true, axisPressedMouseMove: true } });
-  const pct = { type: "custom", formatter: v => (v >= 0 ? "+" : "") + v.toFixed(2) + "%" };
-  const openOf = a => { const o = a.o ?? 0; return a.c.slice(o).find(x => x != null) ?? a.c.find(x => x != null); };
-  const line = a => { const b = openOf(a); return a.c.map((c, i) => c == null ? null : { time: a.t0 + i * 60, value: (c / b - 1) * 100 }).filter(Boolean); };
-  const shade = chart.addHistogramSeries({ priceScaleId: "bg", lastValueVisible: false, priceLineVisible: false, base: 0 });
-  chart.priceScale("bg").applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
-  shade.setData(S0.c.map((_, i) => ({ time: S0.t0 + i * 60, value: 1, color: (i < O || i >= O + 390) ? col("--rule") + "55" : "rgba(0,0,0,0)" })));
-  const vol = chart.addHistogramSeries({ priceScaleId: "v", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
-  chart.priceScale("v").applyOptions({ scaleMargins: { top: .78, bottom: 0 } });
-  vol.setData(S0.c.map((c, i) => c == null ? null : { time: S0.t0 + i * 60, value: S0.v[i], color: (i && S0.c[i - 1] != null && c < S0.c[i - 1]) ? col("--loss") + "66" : col("--gain") + "66" }).filter(Boolean));
-  if (B0) chart.addLineSeries({ color: "#eb6834", lineWidth: 1.5, lineStyle: 2, priceScaleId: "left", priceFormat: pct, priceLineVisible: false }).setData(line(B0));
-  const st = chart.addLineSeries({ color: col("--accent"), lineWidth: 2, priceScaleId: "right", priceLineVisible: false, priceFormat: pct });
-  st.setData(line(S0));
-  const marks = t.steps.filter(s => s.date === d0 && s.et).map(s => { const [h, mi] = s.et.split(":").map(Number); const i = Math.max(0, Math.min(N - 1, h * 60 + mi - (S0.o != null ? 240 : 570)));
-    return { time: S0.t0 + i * 60, position: s.side === "B" ? "belowBar" : "aboveBar", color: s.side === "B" ? col("--gain") : col("--loss"), shape: s.side === "B" ? "arrowUp" : "arrowDown", text: (s.side === "B" ? "+" : "−") + s.qty }; });
-  st.setMarkers(marks.sort((a, b) => a.time - b.time));
-  // open on the regular session; scroll or pinch/wheel out to see pre-market and after-hours
-  if (S0.o != null) chart.timeScale().setVisibleLogicalRange({ from: O, to: O + 389 }); else chart.timeScale().fitContent();
-  new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth })).observe(el);
-  if (!big) { // a click (not a drag) opens the large view
-    let p0 = null; el.classList.add("chartbox");
-    el.addEventListener("pointerdown", e => p0 = [e.clientX, e.clientY, Date.now()]);
-    el.addEventListener("pointerup", e => { if (p0 && Math.hypot(e.clientX - p0[0], e.clientY - p0[1]) < 5 && Date.now() - p0[2] < 400) openChartModal(t); p0 = null; });
-  }
-  return chart;
-}
-function openChartModal(t) {
-  const dlg = document.getElementById("chartModal");
-  dlg.querySelector(".mh").innerHTML = `${esc(t.underlying)} ${esc(t.strike ?? "")}${esc(t.right ?? "")} · ${t.steps[0].date} · <span style="color:var(--accent)">${esc(t.chart)}</span> right axis · <span style="color:#eb6834">SPY</span> left axis · Israel time`;
-  const body = dlg.querySelector(".mb"); body.innerHTML = "";
-  dlg.showModal(); drawChart(t, body, true);
-}
+        }
+        const barCache = {};
+        async function bars(month) {
+          return (barCache[month] ??= fetch(`bars/${month}.json`)
+            .then((r) => (r.ok ? r.json() : {}))
+            .catch(() => ({})));
+        }
+        async function drawChart(t, el, big) {
+          const d0 = t.steps[0].date,
+            m = await bars(d0.slice(0, 7));
+          const S0 = m[`${t.chart}|${d0}`],
+            B0 = m[`SPY|${d0}`];
+          if (!S0 || !window.LightweightCharts) {
+            el.innerHTML = `<p class="none">No minute bars for ${t.chart} on ${d0}.</p>`;
+            return;
+          }
+          const css = getComputedStyle(document.documentElement),
+            col = (n) => css.getPropertyValue(n).trim();
+          const O = S0.o ?? 0,
+            N = S0.c.length;
+          // Ticker on the right axis, SPY dashed on the left: % from the 09:30 open, each fitted to its own range (as in the app's day chart)
+          const chart = LightweightCharts.createChart(el, {
+            height: big ? Math.max(360, Math.round(innerHeight * 0.72)) : 260,
+            layout: {
+              background: { color: "transparent" },
+              textColor: col("--muted"),
+              fontFamily: "JetBrains Mono, monospace",
+              fontSize: big ? 11 : 10,
+            },
+            grid: {
+              vertLines: { visible: false },
+              horzLines: { color: col("--rule") },
+            },
+            rightPriceScale: {
+              borderColor: col("--rule"),
+              textColor: col("--accent"),
+            },
+            leftPriceScale: {
+              visible: !!B0,
+              borderColor: col("--rule"),
+              textColor: "#eb6834",
+            },
+            timeScale: {
+              borderColor: col("--rule"),
+              timeVisible: true,
+              secondsVisible: false,
+              minBarSpacing: 0.05,
+            },
+            crosshair: { mode: 0 },
+            handleScroll: { vertTouchDrag: false, mouseWheel: !!big },
+            handleScale: {
+              mouseWheel: !!big,
+              pinch: true,
+              axisPressedMouseMove: true,
+            },
+          });
+          const pct = {
+            type: "custom",
+            formatter: (v) => (v >= 0 ? "+" : "") + v.toFixed(2) + "%",
+          };
+          const openOf = (a) => {
+            const o = a.o ?? 0;
+            return (
+              a.c.slice(o).find((x) => x != null) ?? a.c.find((x) => x != null)
+            );
+          };
+          const line = (a) => {
+            const b = openOf(a);
+            return a.c
+              .map((c, i) =>
+                c == null
+                  ? null
+                  : { time: a.t0 + i * 60, value: (c / b - 1) * 100 },
+              )
+              .filter(Boolean);
+          };
+          const shade = chart.addHistogramSeries({
+            priceScaleId: "bg",
+            lastValueVisible: false,
+            priceLineVisible: false,
+            base: 0,
+          });
+          chart
+            .priceScale("bg")
+            .applyOptions({
+              scaleMargins: { top: 0, bottom: 0 },
+              visible: false,
+            });
+          shade.setData(
+            S0.c.map((_, i) => ({
+              time: S0.t0 + i * 60,
+              value: 1,
+              color:
+                i < O || i >= O + 390 ? col("--rule") + "55" : "rgba(0,0,0,0)",
+            })),
+          );
+          const vol = chart.addHistogramSeries({
+            priceScaleId: "v",
+            priceFormat: { type: "volume" },
+            lastValueVisible: false,
+            priceLineVisible: false,
+          });
+          chart
+            .priceScale("v")
+            .applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } });
+          vol.setData(
+            S0.c
+              .map((c, i) =>
+                c == null
+                  ? null
+                  : {
+                      time: S0.t0 + i * 60,
+                      value: S0.v[i],
+                      color:
+                        i && S0.c[i - 1] != null && c < S0.c[i - 1]
+                          ? col("--loss") + "66"
+                          : col("--gain") + "66",
+                    },
+              )
+              .filter(Boolean),
+          );
+          if (B0)
+            chart
+              .addLineSeries({
+                color: "#eb6834",
+                lineWidth: 1.5,
+                lineStyle: 2,
+                priceScaleId: "left",
+                priceFormat: pct,
+                priceLineVisible: false,
+              })
+              .setData(line(B0));
+          const st = chart.addLineSeries({
+            color: col("--accent"),
+            lineWidth: 2,
+            priceScaleId: "right",
+            priceLineVisible: false,
+            priceFormat: pct,
+          });
+          st.setData(line(S0));
+          const marks = t.steps
+            .filter((s) => s.date === d0 && s.et)
+            .map((s) => {
+              const [h, mi] = s.et.split(":").map(Number);
+              const i = Math.max(
+                0,
+                Math.min(N - 1, h * 60 + mi - (S0.o != null ? 240 : 570)),
+              );
+              return {
+                time: S0.t0 + i * 60,
+                position: s.side === "B" ? "belowBar" : "aboveBar",
+                color: s.side === "B" ? col("--gain") : col("--loss"),
+                shape: s.side === "B" ? "arrowUp" : "arrowDown",
+                text: (s.side === "B" ? "+" : "−") + s.qty,
+              };
+            });
+          st.setMarkers(marks.sort((a, b) => a.time - b.time));
+          // open on the regular session; scroll or pinch/wheel out to see pre-market and after-hours
+          if (S0.o != null)
+            chart.timeScale().setVisibleLogicalRange({ from: O, to: O + 389 });
+          else chart.timeScale().fitContent();
+          new ResizeObserver(() =>
+            chart.applyOptions({ width: el.clientWidth }),
+          ).observe(el);
+          if (!big) {
+            // a click (not a drag) opens the large view
+            let p0 = null;
+            el.classList.add("chartbox");
+            el.addEventListener(
+              "pointerdown",
+              (e) => (p0 = [e.clientX, e.clientY, Date.now()]),
+            );
+            el.addEventListener("pointerup", (e) => {
+              if (
+                p0 &&
+                Math.hypot(e.clientX - p0[0], e.clientY - p0[1]) < 5 &&
+                Date.now() - p0[2] < 400
+              )
+                openChartModal(t);
+              p0 = null;
+            });
+          }
+          return chart;
+        }
+        function openChartModal(t) {
+          const dlg = document.getElementById("chartModal");
+          dlg.querySelector(".mh").innerHTML =
+            `${esc(t.underlying)} ${esc(t.strike ?? "")}${esc(t.right ?? "")} · ${t.steps[0].date} · <span style="color:var(--accent)">${esc(t.chart)}</span> right axis · <span style="color:#eb6834">SPY</span> left axis · Israel time`;
+          const body = dlg.querySelector(".mb");
+          body.innerHTML = "";
+          dlg.showModal();
+          drawChart(t, body, true);
+        }
 
-function render() {
-  const list = T.filter(t => {
-    if (state.ticker !== "all" && t.underlying.split(" ")[0] !== state.ticker) return false;
-    if (state.month !== "all" && t.steps[0].date.slice(0, 7) !== state.month) return false;
-    if (state.month === "all" && !inYear(t)) return false;
-    if (state.result === "win") return t.pnl > 0;
-    if (state.result === "loss") return t.pnl != null && t.pnl <= 0;
-    if (state.result === "scaled") return t.steps.some(s => s.kind === "add" || s.kind === "trim");
-    return true;
-  });
-  const byDay = {};
-  list.forEach(t => (byDay[(t.entry || t.steps[0].date + " " + t.steps[0].t).slice(0, 10)] ??= []).push(t));
-  $("#list").innerHTML = Object.entries(byDay).map(([d, ts]) => {
-    const net = ts.reduce((a, t) => a + (t.pnl ?? 0), 0);
-    return `<div class="day"><div class="day-head"><h3>${dayName(d)}</h3><span>${ts.length} trade${ts.length > 1 ? "s" : ""} opened · result <span class="num ${cls(net)}">${fmt$(net)}</span></span></div>${ts.map(t => {
-      const i = T.indexOf(t);
-      const res = t.status === "closed" ? `<span class="res ${cls(t.pnl)}">${fmt$(t.pnl)} <small style="opacity:.75">${t.pct > 0 ? "+" : ""}${t.pct}%</small></span>` : `<span class="res na">${t.status === "open" ? "Still open" : "Entry not shown"}</span>`;
-      const size = t.buyQty ? `${t.buyQty.toLocaleString()} @ ${t.buyAvg} <em>→</em> ${t.sellQty ? t.sellAvg : "—"}` : `sold ${t.sellQty.toLocaleString()} @ ${t.sellAvg}`;
-      return `<div class="trade" id="t${i}"><button class="row" aria-expanded="false" data-i="${i}">
+        function render() {
+          const list = T.filter((t) => {
+            if (
+              state.ticker !== "all" &&
+              t.underlying.split(" ")[0] !== state.ticker
+            )
+              return false;
+            if (
+              state.month !== "all" &&
+              t.steps[0].date.slice(0, 7) !== state.month
+            )
+              return false;
+            if (state.month === "all" && !inYear(t)) return false;
+            if (state.result === "win") return t.pnl > 0;
+            if (state.result === "loss") return t.pnl != null && t.pnl <= 0;
+            if (state.result === "scaled")
+              return t.steps.some((s) => s.kind === "add" || s.kind === "trim");
+            return true;
+          });
+          const byDay = {};
+          list.forEach((t) =>
+            (byDay[
+              (t.entry || t.steps[0].date + " " + t.steps[0].t).slice(0, 10)
+            ] ??= []).push(t),
+          );
+          $("#list").innerHTML =
+            Object.entries(byDay)
+              .map(([d, ts]) => {
+                const net = ts.reduce((a, t) => a + (t.pnl ?? 0), 0);
+                return `<div class="day"><div class="day-head"><h3>${dayName(d)}</h3><span>${ts.length} trade${ts.length > 1 ? "s" : ""} opened · result <span class="num ${cls(net)}">${fmt$(net)}</span></span></div>${ts
+                  .map((t) => {
+                    const i = T.indexOf(t);
+                    const res =
+                      t.status === "closed"
+                        ? `<span class="res ${cls(t.pnl)}">${fmt$(t.pnl)} <small style="opacity:.75">${t.pct > 0 ? "+" : ""}${t.pct}%</small></span>`
+                        : `<span class="res na">${t.status === "open" ? "Still open" : "Entry not shown"}</span>`;
+                    const size = t.buyQty
+                      ? `${t.buyQty.toLocaleString()} @ ${t.buyAvg} <em>→</em> ${t.sellQty ? t.sellAvg : "—"}`
+                      : `sold ${t.sellQty.toLocaleString()} @ ${t.sellAvg}`;
+                    return `<div class="trade" id="t${i}"><button class="row" aria-expanded="false" data-i="${i}">
         <span class="t">${(t.entry || t.steps[0].date + " " + t.steps[0].t).slice(11) || "—"}</span>
         <span class="ctr"><strong>${t.underlying.split(" ")[0]}</strong>${t.right === "S" ? '<span class="cp P">SHARES</span>' : `<span class="cp ${t.right}">${t.strike} ${t.right === "C" ? "CALL" : "PUT"}</span><span class="k">exp ${t.expiry.slice(5).replace("-", "/")}</span>`}${t.account === "ibkr" ? '<span class="acct">IBKR</span>' : t.account === "silexx-912" ? '<span class="acct">2ND ACCT</span>' : ""}${t.right === "S" ? '<span class="acct">STOCK</span>' : ""}${t.status === "expired" ? '<span class="acct">EXPIRED</span>' : ""}</span>
         <span class="size">${size}<br><em>${t.cost ? "cost " + fmt$(t.cost, false) + " · " : ""}${t.sizePct != null ? `<b class="pct">${t.sizePct}% of portfolio</b> · ` : ""}${t.steps.length} steps</em></span>
-        <span class="steps-dots" aria-hidden="true">${t.steps.map(s => `<i style="background:${s.side === "B" ? "var(--gain)" : "var(--loss)"};opacity:${s.kind === "open" || s.kind === "close" ? 1 : .5}"></i>`).join("")}</span>
+        <span class="steps-dots" aria-hidden="true">${t.steps.map((s) => `<i style="background:${s.side === "B" ? "var(--gain)" : "var(--loss)"};opacity:${s.kind === "open" || s.kind === "close" ? 1 : 0.5}"></i>`).join("")}</span>
         ${res}<span class="chev" aria-hidden="true">›</span></button>
         <div class="detail" hidden></div></div>`;
-    }).join("")}</div>`;
-  }).join("") || `<p style="color:var(--muted)">No trades match these filters.</p>`;
-}
-$("#list").addEventListener("click", e => {
-  const b = e.target.closest(".row"); if (!b) return;
-  const tr = b.parentElement, det = $(".detail", tr), t = T[+b.dataset.i];
-  const open = det.hidden;
-  if (open && !det.innerHTML) { det.innerHTML = `<div class="viz"><div class="pchart"><div class="ph">Entry day · <b>${t.chart}</b> <i class="sw a"></i> vs <b>SPY</b> <i class="sw b"></i> · % from the 09:30 open · SPY on the left axis · Israel time · click to enlarge, drag to see the rest of the day</div><div class="lw"></div></div><div class="ladder"><div class="ph">Position after each step</div>${ladder(t)}</div></div>${whyBox(t)}${stepsTable(t)}`; drawChart(t, $(".lw", det)); }
-  det.hidden = !open; tr.classList.toggle("open", open); b.setAttribute("aria-expanded", open);
-});
-const yrs = ["2023", "2024", "2025", "2026", "all"];
-$("#years").innerHTML = yrs.map(y => `<button data-y="${y}" aria-pressed="${state.year === y}">${y === "all" ? "All years" : y}</button>`).join("");
-$("#years").addEventListener("click", e => {
-  const b = e.target.closest("button"); if (!b) return;
-  state.year = b.dataset.y; state.month = "all"; $("#month").value = "all";
-  $("#years").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
-  kpis(); chart(); render();
-});
-kpis(); chart();
-render();
-// Open the most instructive trade by default so the page shows a full ladder at rest.
-(() => { const i = T.indexOf(closed.filter(inYear).reduce((a, t) => t.pnl > a.pnl ? t : a)); const b = document.querySelector(`#t${i} .row`); if (b) b.click(); })();
-})();
-</script>
-
-</body></html>
+                  })
+                  .join("")}</div>`;
+              })
+              .join("") ||
+            `<p style="color:var(--muted)">No trades match these filters.</p>`;
+        }
+        $("#list").addEventListener("click", (e) => {
+          const b = e.target.closest(".row");
+          if (!b) return;
+          const tr = b.parentElement,
+            det = $(".detail", tr),
+            t = T[+b.dataset.i];
+          const open = det.hidden;
+          if (open && !det.innerHTML) {
+            det.innerHTML = `<div class="viz"><div class="pchart"><div class="ph">Entry day · <b>${t.chart}</b> <i class="sw a"></i> vs <b>SPY</b> <i class="sw b"></i> · % from the 09:30 open · SPY on the left axis · Israel time · click to enlarge, drag to see the rest of the day</div><div class="lw"></div></div><div class="ladder"><div class="ph">Position after each step</div>${ladder(t)}</div></div>${whyBox(t)}${stepsTable(t)}`;
+            drawChart(t, $(".lw", det));
+          }
+          det.hidden = !open;
+          tr.classList.toggle("open", open);
+          b.setAttribute("aria-expanded", open);
+        });
+        const yrs = ["2023", "2024", "2025", "2026", "all"];
+        $("#years").innerHTML = yrs
+          .map(
+            (y) =>
+              `<button data-y="${y}" aria-pressed="${state.year === y}">${y === "all" ? "All years" : y}</button>`,
+          )
+          .join("");
+        $("#years").addEventListener("click", (e) => {
+          const b = e.target.closest("button");
+          if (!b) return;
+          state.year = b.dataset.y;
+          state.month = "all";
+          $("#month").value = "all";
+          $("#years")
+            .querySelectorAll("button")
+            .forEach((x) => x.setAttribute("aria-pressed", x === b));
+          kpis();
+          chart();
+          render();
+        });
+        kpis();
+        chart();
+        render();
+        // Open the most instructive trade by default so the page shows a full ladder at rest.
+        (() => {
+          const i = T.indexOf(
+            closed.filter(inYear).reduce((a, t) => (t.pnl > a.pnl ? t : a)),
+          );
+          const b = document.querySelector(`#t${i} .row`);
+          if (b) b.click();
+        })();
+      })();
+    </script>
+  </body>
+</html>

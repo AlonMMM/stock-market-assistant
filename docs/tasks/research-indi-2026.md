@@ -108,6 +108,7 @@ the taskbar or scrolled away are inferred from the Portfolio totals (`fill_gap.p
 and side, with a note). Screens are in Israel time (`D <date> <post> ISR`), converted to ET.
 
 Tools (`scripts/research/`):
+
 - `indi-ledger.py` (run inside a year dir): one day's fills (`F`), Portfolio lines (`P`), notes (`N`),
   value (`V`); checks fills against Portfolio. `fill_gap.py`: hidden-row inference helper.
 - `indi-actions.py <dir>`: fills → `actions.csv` / `timeline.md`. `indi-days.py`: summary days and images.
@@ -125,12 +126,12 @@ values partly parsed from his text, a few days without a summary).
 
 Per year (options, main account, from `indi-yearsum.py`; 2024 before Jan–Mar was added):
 
-| Year | Trades | Win % | Net | Top 10 | Last-15-min entries (w/o top 3) |
-|---|---|---|---|---|---|
-| 2023 | 398 | 33% | +$2.41M | +$2.97M | +$0.67M (−$0.26M) |
-| 2024 | 316 | 29% | +$1.51M | +$2.52M | +$0.24M (−$0.31M) |
-| 2025 | 470 | 25% | +$3.30M | +$4.36M | +$1.11M (−$0.32M) |
-| 2026 | 346 | 24% | +$4.41M | +$6.62M | +$2.33M (+$0.28M) |
+| Year | Trades | Win % | Net     | Top 10  | Last-15-min entries (w/o top 3) |
+| ---- | ------ | ----- | ------- | ------- | ------------------------------- |
+| 2023 | 398    | 33%   | +$2.41M | +$2.97M | +$0.67M (−$0.26M)               |
+| 2024 | 316    | 29%   | +$1.51M | +$2.52M | +$0.24M (−$0.31M)               |
+| 2025 | 470    | 25%   | +$3.30M | +$4.36M | +$1.11M (−$0.32M)               |
+| 2026 | 346    | 24%   | +$4.41M | +$6.62M | +$2.33M (+$0.28M)               |
 
 2025 entries vs random minutes (same tests as 2026) repeat the 2026 picture: beats SPY×β over 15 min 70%
 vs 48%, top 20% of the day range 61% vs 39%, on the bet side of VWAP 85% vs 67%.
