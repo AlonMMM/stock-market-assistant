@@ -90,6 +90,9 @@ export interface BuyContext {
     ceiling: number; // the most one contract can cost
     sizePct: number;
     stopPct: number;
+    // No automatic stop (user 2026-10-18, a ticket choice): the whole
+    // premium counts as at risk.
+    noStop?: boolean;
     // A forced buy: the spread is not checked (user 2026-10-12).
     force?: boolean;
     // Set when the strike was picked from a range and not from a target.
@@ -204,7 +207,8 @@ export function checkBuy(
     dayLossPct <= limits.maxDayLossPct,
     `the account is ${pct(Math.abs(dayLossPct))} ${dayLossPct > 0 ? "down" : "up"} today; no buys beyond ${limits.maxDayLossPct}% down`,
   );
-  const tradeRisk = (ceiling * qty * 100 * stopPct) / 100;
+  const tradeRisk =
+    (ceiling * qty * 100 * (c.order.noStop ? 100 : stopPct)) / 100;
   const risk = openRisk(c.positions) + tradeRisk;
   const riskLimit = (c.equity * limits.maxOpenRiskPct) / 100;
   add(
@@ -270,17 +274,25 @@ export function checkBuy(
         : `${sizePct}% of the account buys no contract at ${ceiling.toFixed(2)}`,
   );
   const stopAt = ceiling * (1 - stopPct / 100);
-  add(
-    "stop",
-    stopPct > 0 &&
-      stopPct <= limits.maxStopPct &&
-      stopAt >= tick(ceiling) - 1e-9,
-    !(stopPct > 0 && stopPct <= limits.maxStopPct)
-      ? `stop ${stopPct}% is outside 0–${limits.maxStopPct}% of the premium`
-      : stopAt >= tick(ceiling) - 1e-9
-        ? `${stopPct}% of the premium`
-        : `the premium ${ceiling.toFixed(2)} is too small for a stop price`,
-  );
+  if (c.order.noStop) {
+    add("stop", true, "no automatic stop: the whole premium is at risk");
+    notes.push(
+      limits.requireStops
+        ? "no automatic stop: until this contract has a stop, every other buy is refused (positions without a stop)"
+        : "no automatic stop: the whole premium is at risk",
+    );
+  } else
+    add(
+      "stop",
+      stopPct > 0 &&
+        stopPct <= limits.maxStopPct &&
+        stopAt >= tick(ceiling) - 1e-9,
+      !(stopPct > 0 && stopPct <= limits.maxStopPct)
+        ? `stop ${stopPct}% is outside 0–${limits.maxStopPct}% of the premium`
+        : stopAt >= tick(ceiling) - 1e-9
+          ? `${stopPct}% of the premium`
+          : `the premium ${ceiling.toFixed(2)} is too small for a stop price`,
+    );
   const usable = quote.bid > 0 && quote.ask > quote.bid;
   // While the market is closed every quote is old; its age is not held
   // against an order that waits for the open.

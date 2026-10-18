@@ -87,12 +87,27 @@ function order(body: unknown): Record<string, unknown> | Answer {
     !(num(b.limitPrice) && (b.limitPrice as number) > 0)
   )
     return bad("limitPrice must be a number above zero");
+  // The ticket's order (option-tickets.ts); the trading service checks it.
+  if (
+    b.stopPrice !== undefined &&
+    !(num(b.stopPrice) && (b.stopPrice as number) > 0)
+  )
+    return bad("stopPrice must be a number above zero");
+  for (const name of ["orderType", "timeInForce"])
+    if (b[name] !== undefined && typeof b[name] !== "string")
+      return bad(`${name} must be text`);
+  if (b.autoStop !== undefined && typeof b.autoStop !== "boolean")
+    return bad("autoStop must be true or false");
   return {
     contract: b.contract,
     ...(hasPct ? { sizePct: b.sizePct } : { qty: b.qty }),
     ...(b.stopPct === undefined ? {} : { stopPct: b.stopPct }),
     ...(b.force === true ? { force: true } : {}),
     ...(b.limitPrice === undefined ? {} : { limitPrice: b.limitPrice }),
+    ...(b.orderType === undefined ? {} : { orderType: b.orderType }),
+    ...(b.stopPrice === undefined ? {} : { stopPrice: b.stopPrice }),
+    ...(b.timeInForce === undefined ? {} : { timeInForce: b.timeInForce }),
+    ...(b.autoStop === false ? { autoStop: false } : {}),
   };
 }
 

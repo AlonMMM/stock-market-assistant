@@ -15,9 +15,16 @@ export type Job = {
       price?: number | null;
       remaining?: number;
       // A buy.
-      order?: { filledQty: number; filledAvgPrice: number | null } | null;
+      order?: {
+        qty?: number;
+        filledQty: number;
+        filledAvgPrice: number | null;
+      } | null;
     };
     stop?: { price?: number; qty?: number; error?: string };
+    // An option bought without a stop, by the ticket's choice; with
+    // `working`, its order is left at the broker.
+    noStop?: boolean;
     // A stock order (Trade → Shares).
     side?: "buy" | "sell";
     qty?: number;
@@ -101,22 +108,33 @@ export function outcome(
     };
   }
   if (buying) {
-    const got = r.result?.order?.filledQty ?? 0;
-    const at = r.result?.order?.filledAvgPrice;
+    const order = r.result?.order;
+    const got = order?.filledQty ?? 0;
+    const at = order?.filledAvgPrice;
+    const left = (order?.qty ?? 0) - got;
     return {
-      ok: got > 0,
+      ok: got > 0 || r.working === true,
       lines: [
         got > 0
           ? `Bought ${got} at ${at?.toFixed(2) ?? "—"}.`
-          : "Nothing filled; the order was withdrawn.",
+          : r.working
+            ? "Nothing filled yet."
+            : "Nothing filled; the order was withdrawn.",
+        ...(r.working && left > 0
+          ? [
+              `${left} still working at the broker. Change or cancel it from Orders.`,
+            ]
+          : []),
         ...(got > 0 && r.canceledQty
           ? [`${r.canceledQty} did not fill and were withdrawn.`]
           : []),
         ...(got > 0
           ? [
-              r.stop?.price !== undefined
-                ? `Stop at ${r.stop.price.toFixed(2)} on ${r.stop.qty}.`
-                : `No stop was placed: ${r.stop?.error ?? "unknown reason"}.`,
+              r.noStop
+                ? "No stop, as chosen."
+                : r.stop?.price !== undefined
+                  ? `Stop at ${r.stop.price.toFixed(2)} on ${r.stop.qty}.`
+                  : `No stop was placed: ${r.stop?.error ?? "unknown reason"}.`,
             ]
           : []),
         ...short,

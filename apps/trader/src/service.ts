@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { optionTicket } from "../../../packages/trading/src/option-tickets.js";
 import type { Broker } from "../../../packages/trading/src/broker.js";
 import {
   TradeRefusal,
@@ -120,13 +121,26 @@ function buyRequest(body: Body): BuyRequest {
     throw new RequestError("strike cannot be combined with contract");
   const stopPct = number(body, "stopPct");
   const limitPrice = number(body, "limitPrice");
-  if (limitPrice !== undefined) {
-    if (!contract) throw new RequestError("limitPrice needs a contract");
-    if (!(limitPrice > 0) || roundToTick(limitPrice, "down") !== limitPrice)
-      throw new RequestError(
-        "limitPrice must be above 0, in steps of 0.01 below $3 and 0.05 from $3",
-      );
+  const stopPrice = number(body, "stopPrice");
+  const orderType = text(body, "orderType", /^[a-z_]{1,16}$/);
+  const timeInForce = text(body, "timeInForce", /^[a-z]{1,8}$/);
+  if (body.autoStop !== undefined && typeof body.autoStop !== "boolean")
+    throw new RequestError("autoStop must be true or false");
+  // The ticket's order (option-tickets.ts): types, prices on the tick.
+  const ticket = {
+    ...(orderType === undefined ? {} : { orderType }),
+    ...(limitPrice === undefined ? {} : { limitPrice }),
+    ...(stopPrice === undefined ? {} : { stopPrice }),
+    ...(timeInForce === undefined ? {} : { timeInForce }),
+    ...(body.autoStop === false ? { autoStop: false } : {}),
+  };
+  try {
+    optionTicket(ticket);
+  } catch (error) {
+    throw new RequestError(message(error));
   }
+  if (Object.keys(ticket).length > 0 && !contract)
+    throw new RequestError("An order type or price needs a contract");
   if (body.force !== undefined && typeof body.force !== "boolean")
     throw new RequestError("force must be true or false");
   return {
@@ -137,7 +151,7 @@ function buyRequest(body: Body): BuyRequest {
     ...(delta === undefined ? {} : { delta }),
     ...(strike === undefined ? {} : { strike }),
     ...(stopPct === undefined ? {} : { stopPct }),
-    ...(limitPrice === undefined ? {} : { limitPrice }),
+    ...ticket,
   };
 }
 
@@ -318,6 +332,16 @@ export class TraderService {
       ...(request.limitPrice === undefined
         ? {}
         : { limitPrice: request.limitPrice }),
+      ...(request.orderType === undefined
+        ? {}
+        : { orderType: request.orderType }),
+      ...(request.stopPrice === undefined
+        ? {}
+        : { stopPrice: request.stopPrice }),
+      ...(request.timeInForce === undefined
+        ? {}
+        : { timeInForce: request.timeInForce }),
+      ...(request.autoStop === false ? { autoStop: false } : {}),
     });
   }
 
@@ -1380,7 +1404,12 @@ export class TraderService {
         if (stale.length > 0)
           notes.push(`canceled ${stale.length} open ${job.kind} order(s)`);
         const held = await this.broker.position(job.symbol).catch(() => null);
-        if (held && held.qty > 0) {
+        // A buy made without a stop, by the ticket's choice, gets none.
+        const noStop =
+          job.kind === "buy" &&
+          (job.request as { autoStop?: boolean }).autoStop === false;
+        if (noStop) notes.push("bought without a stop, as chosen");
+        else if (held && held.qty > 0) {
           const stopPct = (job.request as { stopPct?: number }).stopPct;
           const stop = await this.engine.setStop({
             contract: job.symbol,

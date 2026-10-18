@@ -1,3 +1,4 @@
+import type { OptionBuyOrder } from "./option-tickets.js";
 import type { OptionQuote, Right } from "./options.js";
 
 // The trade flow talks to a broker only through this interface, so another
@@ -129,6 +130,15 @@ export interface Broker {
   stockPrice?(symbol: string): Promise<number | null>;
   /** A day limit buy that opens or adds to a long position. */
   buyLimit(symbol: string, qty: number, limitPrice: number): Promise<Order>;
+  /**
+   * A buy that opens or adds to a long option, of any type the broker takes
+   * for options: market, limit, stop or stop limit, day or GTC.
+   */
+  optionBuy?(
+    symbol: string,
+    qty: number,
+    order: OptionBuyOrder,
+  ): Promise<Order>;
   /** A day limit sell that can only close contracts that are held. */
   sellLimit(symbol: string, qty: number, limitPrice: number): Promise<Order>;
   /** A good-till-canceled stop loss that can only close held contracts. */

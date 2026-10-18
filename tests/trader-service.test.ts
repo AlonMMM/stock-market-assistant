@@ -334,3 +334,26 @@ test("service off hours: the order waits at the broker and can be canceled", asy
   ]);
   assert.equal((await broker.openOrders()).length, 0);
 });
+
+test("service: the ticket's order is checked before anything is sent", async () => {
+  const { service, broker } = setup();
+  for (const [body, error] of [
+    [{ orderType: "stop" }, /needs stopPrice/],
+    [{ orderType: "limit", limitPrice: 3.12 }, /steps of 0.01/],
+    [{ timeInForce: "gtc" }, /stepped buy is a day order/],
+    [{ autoStop: "no" }, /autoStop must be true or false/],
+  ] as const)
+    await assert.rejects(
+      service.buy({ contract: friday, qty: 1, ...body }),
+      error,
+    );
+  assert.equal(broker.orders.size, 0);
+  const check = await service.check({
+    contract: friday,
+    qty: 1,
+    orderType: "market",
+    autoStop: false,
+  });
+  assert.equal(check.orderType, "market");
+  assert.equal(check.autoStop, false);
+});

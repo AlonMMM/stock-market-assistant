@@ -64,6 +64,8 @@ const columns: [WatchSort | null, string, "left" | "right", boolean][] = [
   ["excess", "", "right", false], // vs SPY | vs sector
   ["rsScore", "Score", "right", false],
   ["relVolume", "Rel vol", "right", true],
+  // Today's regular-session shares (user 2026-10-17); under Last on phones.
+  ["volume", "Volume", "right", false],
   ["range", "Day range", "left", false],
   ["alerts", "Alerts", "right", false],
 ];
@@ -330,7 +332,7 @@ export function WatchTable({
                   ? "vs sector"
                   : "vs SPY"
                 : label;
-            const cls = `wl-cell ${align}${phone ? "" : " wl-wide"}`;
+            const cls = `wl-cell ${align}${phone ? "" : " wl-wide"}${key === "volume" ? " wl-vol" : ""}`;
             if (!key)
               return (
                 <span key={text} className={cls}>
@@ -404,7 +406,7 @@ export function WatchTable({
                   </span>
                   <span className="wl-cell right wl-last num">
                     {price(r.last)}
-                    <small>{shares(r.volume)}</small>
+                    <small className="wl-short">{shares(r.volume)} vol</small>
                   </span>
                   <span className="wl-cell right">
                     {r.change === null ? (
@@ -438,6 +440,9 @@ export function WatchTable({
                         }}
                       />
                     </i>
+                  </span>
+                  <span className="wl-cell wl-wide num right wl-vol">
+                    {shares(r.volume)}
                   </span>
                   <span className="wl-cell wl-wide">
                     {position === null ? (
@@ -479,11 +484,12 @@ export function WatchTable({
         <summary>How to read the columns</summary>
         <p>
           Today: the day&apos;s price, green above the previous close (dashed)
-          and red below. Last: latest price, with regular-session volume under
-          it. Chg %: since the previous close. vs SPY / vs sector: today&apos;s
-          change minus the benchmark&apos;s, in % points. Score: 0–100, always
-          vs SPY ({scoreNote}), scaled by how large that weighted sum usually is
-          for the stock at this minute over the previous 20 sessions; green ≥{" "}
+          and red below. Last: latest price. Volume: shares traded in
+          today&apos;s regular session so far (under Last on a phone). Chg %:
+          since the previous close. vs SPY / vs sector: today&apos;s change
+          minus the benchmark&apos;s, in % points. Score: 0–100, always vs SPY (
+          {scoreNote}), scaled by how large that weighted sum usually is for the
+          stock at this minute over the previous 20 sessions; green ≥{" "}
           {scoreStrong} stronger, red ≤ {scoreWeak} weaker. Rel vol:
           regular-session volume so far ÷ the median volume by the same New York
           minute over the previous 20 sessions; orange from {moving.relVolume}×;
