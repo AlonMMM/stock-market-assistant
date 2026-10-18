@@ -9,3 +9,5 @@ docs/features/live-page-mockup
 docs/features/backtest-page-mockup
 # Trade Log artifact page (single file with inline script; Prettier output is not stable)
 scripts/research/indi-tradelog/index.html
+docs/features/full-screen-chart-mockup
+docs/features/option-ticket-mockup
