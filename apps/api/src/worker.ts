@@ -1,3 +1,9 @@
+import {
+  alpacaLastPrices,
+  checkPriceAlerts,
+  D1PriceAlerts,
+  handlePriceAlerts,
+} from "../../../packages/market-data/src/price-alerts.js";
 import { handleTicker } from "../../../packages/market-data/src/ticker.js";
 import {
   liveUrl,
@@ -79,6 +85,7 @@ let cache:
       results: ResultCache;
       symbols: D1SymbolList;
       watchlists: D1Watchlists;
+      priceAlerts: D1PriceAlerts;
     }
   | undefined;
 function stores(db: D1Like) {
@@ -98,6 +105,7 @@ function stores(db: D1Like) {
       ),
       symbols: new D1SymbolList(db),
       watchlists: new D1Watchlists(db),
+      priceAlerts: new D1PriceAlerts(db),
     };
   return cache;
 }
@@ -116,6 +124,10 @@ export default {
       BARS_CACHE?: D1Like;
       TRADES_TELEGRAM_BOT_TOKEN?: string;
       TRADES_TELEGRAM_CHAT_ID?: string;
+      // The user's own price alerts go here; the trades channel when unset.
+      PRICE_ALERTS_TELEGRAM_BOT_TOKEN?: string;
+      PRICE_ALERTS_TELEGRAM_CHAT_ID?: string;
+      SITE_URL?: string;
     },
   ): Promise<void> {
     const token = env.TRADES_TELEGRAM_BOT_TOKEN;
@@ -138,6 +150,33 @@ export default {
     console.log(
       `short watch: ${line}${sender ? "" : " (Telegram is not configured)"}`,
     );
+    // The user's price alerts (user 2026-10-18), checked every minute.
+    if (env.BARS_CACHE) {
+      const alertToken = env.PRICE_ALERTS_TELEGRAM_BOT_TOKEN ?? token;
+      const alertChat = env.PRICE_ALERTS_TELEGRAM_CHAT_ID ?? chat;
+      const alertSender =
+        alertToken && alertChat
+          ? new TelegramSender(alertToken, alertChat)
+          : undefined;
+      const result = await checkPriceAlerts({
+        store: stores(env.BARS_CACHE).priceAlerts,
+        prices: (tickers) =>
+          alpacaLastPrices(tickers, {
+            key: env.ALPACA_API_KEY,
+            secret: env.ALPACA_API_SECRET,
+          }),
+        send: async (html) => {
+          if (!alertSender) return false;
+          const sent = await alertSender.send(html);
+          if (!sent.ok) console.error(`price alerts: Telegram: ${sent.error}`);
+          return sent.ok;
+        },
+        ...(env.SITE_URL ? { siteUrl: env.SITE_URL } : {}),
+      }).catch((error: unknown) => `crashed: ${String(error)}`);
+      console.log(
+        `price alerts: ${result}${alertSender ? "" : " (Telegram is not configured)"}`,
+      );
+    }
   },
   async fetch(
     request: Request,
@@ -212,6 +251,35 @@ export default {
           origin: new URL(request.url).origin,
           requestOrigin: request.headers.get("Origin"),
         },
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path === "/api/price-alerts" || path.startsWith("/api/price-alerts/")) {
+      let body: unknown;
+      if (request.method === "POST")
+        try {
+          const text = await request.text();
+          if (text.length > 4096)
+            return Response.json(
+              { error: "Request too large" },
+              { status: 413 },
+            );
+          body = text ? JSON.parse(text) : {};
+        } catch {
+          return Response.json(
+            { error: "Expected JSON object" },
+            { status: 400 },
+          );
+        }
+      const result = await handlePriceAlerts(
+        request.method,
+        path.slice("/api/price-alerts/".length),
+        { ticker: new URL(request.url).searchParams.get("ticker") },
+        body,
+        env.BARS_CACHE ? stores(env.BARS_CACHE).priceAlerts : undefined,
       );
       return Response.json(result.body, {
         status: result.status,

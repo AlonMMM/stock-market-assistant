@@ -1,3 +1,4 @@
+import { D1PriceAlerts } from "../../../packages/market-data/src/price-alerts.js";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { D1BarCache } from "../../../packages/market-data/src/bar-cache.js";
@@ -27,6 +28,7 @@ const app = buildApp(true, {
   results: new ResultCache(db, codeVersion(`${process.cwd()}/`)),
   symbols: new D1SymbolList(db),
   watchlists: new D1Watchlists(db),
+  priceAlerts: new D1PriceAlerts(db),
 });
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {

@@ -1,3 +1,7 @@
+import {
+  D1PriceAlerts,
+  handlePriceAlerts,
+} from "../../../packages/market-data/src/price-alerts.js";
 import { handleTicker } from "../../../packages/market-data/src/ticker.js";
 import {
   liveUrl,
@@ -63,6 +67,7 @@ export function buildApp(
     results?: ResultCache; // computed backtest parts
     symbols?: D1SymbolList; // the Backtest page's symbol list
     watchlists?: D1Watchlists; // the user's named watchlists
+    priceAlerts?: D1PriceAlerts; // the user's own price alerts
   } = {
     key: process.env.ALPACA_API_KEY,
     secret: process.env.ALPACA_API_SECRET,
@@ -133,6 +138,21 @@ export function buildApp(
         request.method,
         request.params.sub,
         request.body,
+      );
+      return reply.code(result.status).send(result.body);
+    },
+  });
+  // The user's price alerts; locally they are kept, the Worker's cron sends.
+  app.route<{ Params: { "*": string }; Querystring: { ticker?: string } }>({
+    method: ["GET", "POST", "DELETE"],
+    url: "/api/price-alerts*",
+    handler: async (request, reply) => {
+      const result = await handlePriceAlerts(
+        request.method,
+        request.params["*"].replace(/^\//, ""),
+        { ticker: request.query.ticker ?? null },
+        request.body,
+        alpaca.priceAlerts,
       );
       return reply.code(result.status).send(result.body);
     },

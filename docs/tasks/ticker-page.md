@@ -44,3 +44,26 @@ Not available from Alpaca: market cap, P/E, earnings dates; not shown.
 - Local server with real Alpaca data (NVDA), headless Chromium at 390 and 1280 px on a
   temporary local list (deleted): the page, `#watchlist/NVDA`, and Back to the list; no
   page errors.
+
+## Addition: the user's own price alerts (user 2026-10-18)
+
+"Regardless of the alerts we built, on a specific stock the user can ask for an alert
+above a price or a % move, then get alerts on the mobile."
+
+- On a stock's page, **Price alerts**: price above / below a level, or up / down today by
+  a % (from the previous close), with an optional note. Listed with Delete; a fired one
+  shows when and at what price, with Arm again. A level already passed fires at the next
+  check, and the card says so.
+- `packages/market-data/src/price-alerts.ts`, D1 table `price_alerts`.
+  `GET/POST /api/price-alerts[?ticker=]`, `DELETE /api/price-alerts/<id>`,
+  `POST /api/price-alerts/<id>/rearm`. At most 100 armed.
+- The Worker's minute cron reads all armed stocks' last trades in one Alpaca
+  `/v2/stocks/snapshots` request (pre/after-hours included) and sends each alert that is
+  met to Telegram once, then marks it fired; one that could not be sent stays armed.
+  Telegram: `PRICE_ALERTS_TELEGRAM_BOT_TOKEN` / `_CHAT_ID` Worker secrets, else the trades
+  channel's. Optional `SITE_URL` var: a link to the stock's page in the message.
+- Locally the alerts are stored but not sent (no cron).
+- Evidence: `tests/price-alerts.test.ts` (CRUD and refusals, sent once, failed send kept
+  armed, re-arm, % kinds, the message, one snapshots request, the hosted route); the card
+  on the local server at 390 and 1280 px. Not yet seen end to end: a message from the
+  deployed cron.

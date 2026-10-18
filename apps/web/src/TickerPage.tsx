@@ -6,6 +6,7 @@ import { readJson } from "./api.js";
 import type { FeedAlert } from "./AlertFeed.js";
 import { usePolling } from "./Live.js";
 import { alertDate, alertDirection, statsOf, watchRows } from "./live-model.js";
+import { PriceAlerts } from "./PriceAlerts.js";
 import { israelClock } from "./time.js";
 import { scoreTone, toneWords } from "./vs-spy-model.js";
 
@@ -353,6 +354,8 @@ export function TickerPage({
             <p className="chart-status">{info ? "No history." : "Loading…"}</p>
           )}
         </section>
+
+        <PriceAlerts ticker={ticker} last={last} />
 
         {(held.length > 0 || orders.length > 0) && (
           <section className="tk-card" aria-label="Your position">
