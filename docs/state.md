@@ -3,6 +3,18 @@
 Updated: 2026-10-15
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
 
+## Full-screen chart with SPY, bar sizes, VWAP and volume (2026-10-18)
+
+Every stock chart (alert rows on Alerts and Backtest, the market chart, Watchlist rows,
+Positions and Trade) has an expand button. It opens a dark, full-window chart. The stock
+is drawn on the right price axis and SPY (or the sector ETF) on the left, each in
+dollars. Bar sizes are 1m (yesterday and today), 5m, 15m, 1h and 1D; drag left for older
+bars. There is an optional session VWAP, off by default. Volume is compared with the
+last 20 sessions: a chip, a dashed average line, and the average and percentile per bar.
+A legend, a data window and a crosshair show prices on both axes. Close with ✕, Esc or
+Back. Data comes from `GET /api/bars` (regular hours, split-adjusted). See the
+[spec](features/fullscreen-chart.md).
+
 ## Watchlist: its own section, one line per stock (2026-10-16)
 
 Sections are Alerts · Watchlist · Portfolio · Backtest: a bottom tab bar on phones

@@ -9,6 +9,7 @@ interface AlpacaBar {
   l: number;
   c: number;
   v: number;
+  vw?: number; // the bar's volume-weighted average price
 }
 
 interface HistoryResponse {
@@ -40,6 +41,7 @@ interface SocketLike {
 }
 
 type Fetcher = typeof fetch;
+export type Timeframe = "1Min" | "5Min" | "15Min" | "30Min" | "1Day";
 type SocketFactory = (url: string) => SocketLike;
 
 function raw(bar: AlpacaBar): RawBar {
@@ -53,6 +55,7 @@ function raw(bar: AlpacaBar): RawBar {
     low: bar.l,
     close: bar.c,
     volume: bar.v,
+    ...(typeof bar.vw === "number" && bar.vw > 0 ? { vwap: bar.vw } : {}),
   };
 }
 
@@ -75,7 +78,7 @@ export class AlpacaFeed {
     ticker: string,
     start: string,
     end: string,
-    timeframe: "1Min" | "1Day" = "1Min",
+    timeframe: Timeframe = "1Min",
     adjustment: "raw" | "split" = "raw",
   ): Promise<RawBar[]> {
     const rows: RawBar[] = [];

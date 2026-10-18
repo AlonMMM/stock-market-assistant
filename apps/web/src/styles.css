@@ -4409,3 +4409,205 @@ dialog.why::backdrop {
   border-color: #c0322b;
   color: #c0322b;
 }
+
+/* Full-screen chart (docs/features/fullscreen-chart.md): the expand button on
+   every stock chart, and a dark terminal-style layer over the whole window,
+   the same in both themes. */
+.expand-chart {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #cdd7ce;
+  border-radius: 8px;
+  background: #fafbf8;
+  color: #142b29;
+  cursor: pointer;
+}
+.expand-chart svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+.expand-chart:hover {
+  border-color: #142b29;
+}
+.candle-chart figcaption {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.candle-chart figcaption > span {
+  grid-column: 1;
+}
+.candle-chart figcaption .expand-chart {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
+}
+.fullscreen-chart {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: env(safe-area-inset-top, 0px)
+    max(8px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px)
+    max(8px, env(safe-area-inset-left, 0px));
+  background: #0b0d0d;
+  color: #e3e8e6;
+  color-scheme: dark;
+}
+.fs-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 4px;
+  border-bottom: 1px solid #2c3533;
+}
+.fs-id {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+  margin-right: auto;
+}
+.fs-id strong {
+  font-size: 19px;
+}
+.fs-id .num {
+  font-variant-numeric: tabular-nums;
+}
+.fs-id .up {
+  color: #22c55e;
+}
+.fs-id .down {
+  color: #ef4444;
+}
+.fs-sub {
+  color: #8d9996;
+  font-size: 12px;
+}
+.fs-chip {
+  padding: 3px 9px;
+  border: 1px solid #2c3533;
+  border-radius: 999px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fullscreen-chart .segmented {
+  border-color: #2c3533;
+  background: #151a19;
+}
+.fullscreen-chart .segmented button {
+  color: #e3e8e6;
+}
+.fullscreen-chart .segmented button[aria-pressed="true"] {
+  background: #e3e8e6;
+  color: #0b0d0d;
+}
+.fullscreen-chart .segmented button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.fs-close {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #2c3533;
+  border-radius: 8px;
+  background: #151a19;
+  color: #e3e8e6;
+  font-size: 13px;
+  cursor: pointer;
+}
+.fullscreen-chart button:focus-visible {
+  outline: 2px solid #f5b82e;
+  outline-offset: 2px;
+}
+.fs-body {
+  position: relative;
+  min-height: 0;
+  font-family: Arial, Helvetica, sans-serif;
+}
+.fs-canvas {
+  position: absolute;
+  inset: 0;
+}
+.fs-status,
+.fs-legend,
+.fs-volume-key,
+.fs-window {
+  z-index: 3;
+}
+.fs-status {
+  position: absolute;
+  top: 40%;
+  left: 0;
+  right: 0;
+  margin: 0;
+  text-align: center;
+  color: #8d9996;
+}
+.fs-legend {
+  position: absolute;
+  top: 6px;
+  left: 72px;
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  white-space: pre;
+}
+/* The time axis is about 28px high; the volume pane is a fifth of the rest. */
+.fs-volume-key {
+  position: absolute;
+  top: calc((100% - 28px) * 0.8 + 6px);
+  left: 72px;
+  margin: 0;
+  color: #8d9996;
+  font-size: 12px;
+  pointer-events: none;
+}
+.fs-window {
+  position: absolute;
+  left: 72px;
+  bottom: calc((100% - 28px) * 0.2 + 36px);
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0 18px;
+  min-width: 180px;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+  background: rgba(30, 52, 70, 0.82);
+  font-size: 12.5px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.fs-window dd {
+  margin: 0;
+  text-align: right;
+}
+.fs-window .fs-head {
+  margin-top: 4px;
+  font-weight: 700;
+}
+@media (max-width: 600px) {
+  .fs-window {
+    display: none;
+  }
+  .fs-legend {
+    left: 8px;
+    font-size: 11px;
+  }
+  .fs-volume-key {
+    left: 8px;
+  }
+}

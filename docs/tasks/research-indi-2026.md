@@ -98,3 +98,40 @@ trade (IBIT 40.5C, Aug 19–21).
 - Review charts with the user: https://claude.ai/artifact/NeV7hJpG1d2CBZtYhDitak
 - Dig into the end-of-day entries: what the stock and SPY did into the close, and the next open.
 - Rule test (step 7): stalling exit + fast cut + late-day entry, on 2 years of bars, holdout = last 2 months.
+
+## All years, 2023–2026 (2026-10-18)
+
+Data (outside Git, `data/local/x/ultrawavetrader-<year>`): every daily summary transcribed by hand
+from his Order Book / Portfolio screenshots and checked against the Portfolio totals per day.
+2023 (from Jan 9), 2024 (Jan 31 → Dec; Jan 2–30 still to do), 2025, 2026 to Oct 9. Rows hidden behind
+the taskbar or scrolled away are inferred from the Portfolio totals (`fill_gap.py`, one fill per contract
+and side, with a note). Screens are in Israel time (`D <date> <post> ISR`), converted to ET.
+
+Tools (`scripts/research/`):
+
+- `indi-ledger.py` (run inside a year dir): one day's fills (`F`), Portfolio lines (`P`), notes (`N`),
+  value (`V`); checks fills against Portfolio. `fill_gap.py`: hidden-row inference helper.
+- `indi-actions.py <dir>`: fills → `actions.csv` / `timeline.md`. `indi-days.py`: summary days and images.
+- `indi-tradelog/build.py <out> <daybars.sqlite> <year dirs>`: data for the Trade Log page
+  (`indi-tradelog/index.html`, published at https://claude.ai/artifact/Xxu7MtakANMEkBY3F6CUKC).
+- `indi-yearsum.py <years>` (cwd `data/local/x`): per-year P&L summary.
+- Analysis per year as for 2026: `indi-bars.ts <dir>` then `indi-features.py`, `indi-manage.py`,
+  `indi-report.py`, `indi-triggers.py`, `indi-exits.py`.
+
+Reconciliation: fills add up to about +$12.6M gross for 2023–Oct 2026, while the account went from
+$0.49M to $8.3M. His posted daily P&L equals the fills minus $0.60–0.64 per option contract
+(commissions; ~3.6M contracts ≈ $2.2M). He sets money aside for taxes each January (his post of
+2026-01-05; about $1.6M left between Dec 31 2025 and Jan 6 2026). About $0.9M is unexplained (account
+values partly parsed from his text, a few days without a summary).
+
+Per year (options, main account, from `indi-yearsum.py`; 2024 before Jan–Mar was added):
+
+| Year | Trades | Win % | Net     | Top 10  | Last-15-min entries (w/o top 3) |
+| ---- | ------ | ----- | ------- | ------- | ------------------------------- |
+| 2023 | 398    | 33%   | +$2.41M | +$2.97M | +$0.67M (−$0.26M)               |
+| 2024 | 316    | 29%   | +$1.51M | +$2.52M | +$0.24M (−$0.31M)               |
+| 2025 | 470    | 25%   | +$3.30M | +$4.36M | +$1.11M (−$0.32M)               |
+| 2026 | 346    | 24%   | +$4.41M | +$6.62M | +$2.33M (+$0.28M)               |
+
+2025 entries vs random minutes (same tests as 2026) repeat the 2026 picture: beats SPY×β over 15 min 70%
+vs 48%, top 20% of the day range 61% vs 39%, on the bet side of VWAP 85% vs 67%.
