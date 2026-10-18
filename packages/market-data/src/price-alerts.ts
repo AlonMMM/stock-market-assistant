@@ -229,27 +229,24 @@ export function priceAlertMessage(
     p.previousClose && p.previousClose > 0
       ? ((p.last - p.previousClose) / p.previousClose) * 100
       : null;
-  const today =
-    move === null
-      ? ""
-      : ` · ${move >= 0 ? "+" : "−"}${Math.abs(move).toFixed(2)}% today`;
-  const rule =
+  const rising = a.kind === "above" || a.kind === "up";
+  const what =
     a.kind === "above"
-      ? `at or above ${a.value.toFixed(2)}`
+      ? `crossed above $${a.value.toFixed(2)}`
       : a.kind === "below"
-        ? `at or below ${a.value.toFixed(2)}`
-        : a.kind === "up"
-          ? `up ${a.value}% or more today`
-          : `down ${a.value}% or more today`;
+        ? `fell below $${a.value.toFixed(2)}`
+        : `is ${a.kind} ${a.value}% today`;
+  // One look: what happened, the price now, the note, a link to the stock.
   return [
-    `<b>Price alert: $${escape(a.ticker)}</b>`,
-    `${p.last.toFixed(2)}, ${rule}${today}`,
-    ...(a.note ? [escape(a.note)] : []),
+    `🔔 <b>$${escape(a.ticker)} ${what}</b>`,
+    `${rising ? "▲" : "▼"} <b>$${p.last.toFixed(2)}</b> now${move === null ? "" : ` · ${move >= 0 ? "+" : "−"}${Math.abs(move).toFixed(2)}% today`}`,
+    ...(a.note ? [`<i>${escape(a.note)}</i>`] : []),
     ...(siteUrl
       ? [
-          `<a href="${escape(`${siteUrl.replace(/\/+$/, "")}/#watchlist/${a.ticker}`)}">Open ${escape(a.ticker)}</a>`,
+          `<a href="${escape(`${siteUrl.replace(/\/+$/, "")}/#watchlist/${a.ticker}`)}">Open ${escape(a.ticker)} →</a>`,
         ]
       : []),
+    "<i>Your price alert · sent once</i>",
   ].join("\n");
 }
 

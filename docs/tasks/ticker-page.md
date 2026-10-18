@@ -67,3 +67,19 @@ above a price or a % move, then get alerts on the mobile."
   armed, re-arm, % kinds, the message, one snapshots request, the hosted route); the card
   on the local server at 390 and 1280 px. Not yet seen end to end: a message from the
   deployed cron.
+
+## Revision: price alerts on their own (user 2026-10-18)
+
+"The alert looks very bad; it should not be related to the volume alert system, it
+should be separate and by price / % move configured by the user."
+
+- A stock's page: **Price alert** (bell) opens a sheet: the price now, Price level (a big
+  field, ±1/2/5% chips, ▲ above / ▼ below set from the level) or % move today (▲ Up /
+  ▼ Down, 1–10% chips), a note, and a sentence saying exactly when it fires. The volume
+  alerts' button is now **Volume alerts**. The stock's own price alerts are listed under
+  the buttons.
+- **Price alerts** page (`#watchlist/alerts`, the bell in the Watchlist title): every
+  price alert, armed and fired, each with its stock, rule, note, Arm again and Delete.
+- Telegram: "🔔 $NVDA crossed above $220.00", the price now and today's move, the note,
+  a link when `SITE_URL` is set, and "Your price alert · sent once".
+- Checked at 390 and 1280 px on the local server (test alerts deleted).

@@ -98,7 +98,7 @@ test("price alerts: each is sent once when met; a failed send stays armed", asyn
   assert.equal(sent.length, 2);
   assert.match(
     sent[0]!,
-    /Price alert: \$NVDA[\s\S]*221.00, at or above 220.00/,
+    /\$NVDA crossed above \$220.00[\s\S]*\$221.00<\/b> now/,
   );
   assert.match(sent[0]!, /href="https:\/\/site.test\/#watchlist\/NVDA"/);
   // Sent once: the next minute they are not sent again.
@@ -132,7 +132,7 @@ test("price alert message: the rule, today's move and the note, escaped", () => 
   );
   assert.equal(
     html,
-    "<b>Price alert: $AAPL</b>\n96.50, down 3% or more today · −3.50% today\n&lt;earnings&gt;",
+    "🔔 <b>$AAPL is down 3% today</b>\n▼ <b>$96.50</b> now · −3.50% today\n<i>&lt;earnings&gt;</i>\n<i>Your price alert · sent once</i>",
   );
 });
 
