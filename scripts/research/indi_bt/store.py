@@ -152,15 +152,21 @@ def bs(S, K, T, v, r, call):
     return K * math.exp(-r * T) * _n(-d2) - S * _n(-d1), _n(d1) - 1
 
 
-def delta(price, S, K, T, r, call):
-    """|delta| from the implied volatility of a price, None when the price is outside the model's range."""
+def iv_delta(price, S, K, T, r, call):
+    """(implied volatility, |delta|) of a price, or None when the price is outside the model's range."""
     lo, hi = 0.01, 6.0
     if not (bs(S, K, T, lo, r, call)[0] < price < bs(S, K, T, hi, r, call)[0]): return None
     for _ in range(60):
         m = (lo + hi) / 2
         if bs(S, K, T, m, r, call)[0] < price: lo = m
         else: hi = m
-    return abs(bs(S, K, T, m, r, call)[1])
+    return m, abs(bs(S, K, T, m, r, call)[1])
+
+
+def delta(price, S, K, T, r, call):
+    """|delta| from the implied volatility of a price, None when the price is outside the model's range."""
+    x = iv_delta(price, S, K, T, r, call)
+    return x[1] if x else None
 
 
 def years_to_expiry(date, minute, expiry):

@@ -48,6 +48,24 @@ def line(name, R, unit):
             f"{st.median(R) * 100:+.0f}% | {100 * sum(r > 0 for r in R) / len(R):.0f}% |")
 
 
+_cal = None
+
+
+def big(t):
+    """A very good entry with low implied volatility: sized up (params size.big)."""
+    global _cal
+    G = S["big"]
+    if not t.get("iv") or float(t["iv"]) >= G["iv_max"]: return False
+    from signals import Day, calendar
+    _cal = _cal or calendar()
+    d = Day(t["sym"], t["date"], 1 if t["right"] == "C" else -1, _cal, _cal.index(t["date"]))
+    if not d.ok: return False
+    m, w = int(t["minute"]), P["entry"]["event_window"]
+    win = range(max(0, m - w + 1), m + 1)
+    if max((d.rs[i] or -9) for i in win) < G["rs_min"]: return False
+    return not G["need_prev_break"] or any("prev_break" in d.kinds[i] for i in win)
+
+
 def risk_share(dte):
     s = S["risk_share"][0][1]
     for d, v in S["risk_share"]:
@@ -62,7 +80,7 @@ def portfolio(ok, rets):
         for o in [o for o in open_ if (o[0], o[1]) <= now]:
             eq += o[2]; open_.remove(o); peak = max(peak, eq); dd = max(dd, 1 - eq / peak)
         if len(open_) >= P["entry"]["max_open"]: out.append(None); continue
-        prem = eq * S["risk_pct"] / risk_share(int(t["dte"]))
+        prem = eq * (S["big"]["risk_pct"] if t.get("_big") else S["risk_pct"]) / risk_share(int(t["dte"]))
         n = int(min(prem / (float(t["entry"]) * 100), S["max_vol_share"] * float(t["vol30"])))
         if n < 1: out.append(None); continue
         pnl = n * float(t["entry"]) * 100 * rets[t["_i"]]

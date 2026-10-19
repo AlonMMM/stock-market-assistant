@@ -11,7 +11,7 @@ close of each 1-min bar (session minute m, 09:30 = 0):
 The first minute in [first_minute, last_minute] that meets all three is the signal; one per stock per day.
 The trade is entered on the next minute's option bar (sim.py).
 
-  python3 signals.py [start] [end]     -> data/local/x/bt/signals.csv
+  python3 signals.py [start] [end] [calm|retest]   -> data/local/x/bt/signals[_mode].csv
 """
 import csv, os, sys, statistics as st
 from store import P, DATA, day, calendar
@@ -125,7 +125,10 @@ class Day:
         out += f", {'above' if self.vwap_ok[m] == up else 'below'} VWAP" if up else f", {'below' if self.vwap_ok[m] else 'above'} VWAP"
         return out
 
-    def signal(self):
+    def signal(self, mode=None):
+        """First entry minute of the day, or None. mode: None (enter on the signal), "calm" or "retest"
+        (see params.json entry_variants)."""
+        V = P["entry_variants"].get(mode, {})
         w = E["event_window"]
         for m in range(E["first_minute"], E["last_minute"] + 1):
             win = range(max(0, m - w + 1), m + 1)
@@ -134,11 +137,27 @@ class Day:
             if E["vwap_side"] and not self.vwap_ok[m]: continue
             if (self.range_pos[m] or 0) < E["range_pos_min"]: continue
             if (self.ex_open[m] or -9) < E["ex_open_min"] or (self.ex15[m] or -9) < E["ex15_min"]: continue
+            if mode == "calm" and self.c[m - 15] and self.bet * (self.c[m] / self.c[m - 15] - 1) * 100 > V["max_move15"]: continue
+            if mode == "retest": return self.retest(m, V)
             return m
         return None
 
+    def retest(self, s, V):
+        """After a signal at s: the first turn back after a pullback of retest_frac of the run-up."""
+        c, b = self.c, self.bet
+        base = min((x for x in c[s - 15:s + 1] if x), key=lambda x: b * x)  # the run-up's start
+        ext, pulled = c[s], False
+        for m in range(s + 1, min(s + V["retest_window"], E["last_minute"]) + 1):
+            if c[m] is None: continue
+            if b * (c[m] - ext) > 0: ext = c[m]
+            run = b * (ext - base)
+            if run > 0 and b * (ext - c[m]) >= V["retest_frac"] * run: pulled = True
+            if pulled and c[m - 1] and b * (c[m] - c[m - 1]) > 0 and self.vwap_ok[m] and b * (c[m] - base) > 0:
+                return m
+        return None
 
-def main(start, end):
+
+def main(start, end, mode=None):
     cal = calendar()
     out = []
     for i, date in enumerate(cal):
@@ -148,7 +167,7 @@ def main(start, end):
             for bet in (1, -1):
                 d = Day(sym, date, bet, cal, i)
                 if not d.ok: continue
-                m = d.signal()
+                m = d.signal(mode)
                 if m is not None and (best is None or m < best[1]): best = (bet, m, d)
             if best:
                 bet, m, d = best
@@ -156,10 +175,11 @@ def main(start, end):
                                 time=f"{(570 + m) // 60:02d}:{(570 + m) % 60:02d}", price=d.c[m],
                                 rs=round(d.rs[m] or 0, 2), ex15=round(d.ex15[m], 2), ex_open=round(d.ex_open[m], 2), range_pos=round(d.range_pos[m], 2), beta=round(d.beta, 2)))
         print(date, len(out), flush=True) if date.endswith("-01") or date == end else None
-    with open(os.path.join(DATA, "signals.csv"), "w") as f:
+    with open(os.path.join(DATA, f"signals{'_' + mode if mode else ''}.csv"), "w") as f:
         w = csv.DictWriter(f, fieldnames=list(out[0])); w.writeheader(); w.writerows(out)
     print(len(out), "signals ->", os.path.join(DATA, "signals.csv"))
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else P["train"][0], sys.argv[2] if len(sys.argv) > 2 else P["train"][1])
+    main(sys.argv[1] if len(sys.argv) > 1 else P["train"][0], sys.argv[2] if len(sys.argv) > 2 else P["train"][1],
+         sys.argv[3] if len(sys.argv) > 3 else None)

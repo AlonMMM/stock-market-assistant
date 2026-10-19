@@ -75,7 +75,8 @@
     "max_strikes": 16,
     "min_price": 0.2,
     "min_vol30": 200,
-    "bar_max_age": 10
+    "bar_max_age": 10,
+    "limit_minutes": 5
   },
   "size": {
     "start_equity": 1000000,
@@ -112,7 +113,15 @@
       ]
     ],
     "max_vol_share": 0.1,
-    "commission": 0.62
+    "commission": 0.62,
+    "big": {
+      "risk_pct": 0.04,
+      "fixed_premium": 20000,
+      "iv_max": 0.4,
+      "rs_min": -99,
+      "need_prev_break": false,
+      "_note": "double size when the option's implied volatility is under 40%. The 'very good entry' part (yesterday's level broken + 5-min >= 1%) fired once in Feb-Jun 2024, and among low-IV trades the stronger moves at entry did worse, so it is off (rs_min -99, need_prev_break false)"
+    }
   },
   "exit": {
     "cut1": -0.17,
@@ -163,7 +172,7 @@
           0.25
         ]
       ],
-      "fast_minutes": 30,
+      "fast_minutes": 10,
       "fast_takes": [
         [
           2.0,
@@ -174,7 +183,18 @@
           0.25
         ]
       ],
-      "_note": "25% at +100% (or, if +100% came within 30 minutes of entry, first 25% at +200%), another 25% at +300%; the rest by the runner rule"
+      "_note": "25% at +100% (or, if +100% came within 10 minutes of entry, first 25% at +200%), another 25% at +300%; the rest by the runner rule"
+    }
+  },
+  "entry_variants": {
+    "calm": {
+      "max_move15": 1.0,
+      "_note": "skip the signal minute when the stock already moved more than 1% its way in the last 15 minutes (keep looking later)"
+    },
+    "retest": {
+      "retest_window": 30,
+      "retest_frac": 0.4,
+      "_note": "after the signal, wait up to 30 min for a pullback of >= 40% of the run-up (from the 15-min-before low to the high since), then enter when a 1-min close beats the prior bar's high, still on the bet side of VWAP"
     }
   }
 }

@@ -4,7 +4,9 @@ Contract   nearest expiry dte_min..dte_max calendar days out; the out-of-the-mon
            (Black-Scholes, implied vol of the last bar price within bar_max_age minutes) is closest to
            `delta`; skipped when that contract has < min_vol30 contracts in the last 30 minutes or costs
            < min_price. Never falls back to another contract.
-Fills      decided on one option bar, filled on the next bar of that contract at the bar middle
+Fills      (BT_LIMIT set: the buy is a limit at the last option price seen at the signal, + BT_LIMIT,
+           filled at the limit on the first bar within limit_minutes that trades at or below it.)
+           decided on one option bar, filled on the next bar of that contract at the bar middle
            (high+low)/2 + spread_half (buy) or - spread_half (sell), plus commission per contract.
 Exits      (gain g = option bar close / entry fill - 1, checked on every option bar)
   L3 floor     g <= floor                                  -> sell all
@@ -30,13 +32,15 @@ Each trade's result is a return on the premium paid (`ret`, after costs); sizing
   report.py reads all shards of a prefix)
 """
 import csv, datetime as dt, json, os, sys
-from store import P, DATA, day, calendar, chain, expiries, fetch_bars, occ, delta, years_to_expiry
+from store import P, DATA, day, calendar, chain, expiries, fetch_bars, occ, iv_delta, years_to_expiry
 from signals import Day
 
 C, X, SH = P["contract"], dict(P["exit"]), P["cost"]["spread_half"]
 VARIANT = os.environ.get("BT_VARIANT")  # an exit variant from params.json "exit_variants"
 if VARIANT: X.update({k: v for k, v in P["exit_variants"][VARIANT].items() if not k.startswith("_")})
 if os.environ.get("BT_EXIT"): X.update(json.loads(os.environ["BT_EXIT"]))  # ad-hoc overrides for sweeps
+LIMIT = os.environ.get("BT_LIMIT") is not None  # buy with a limit at the last option price seen (+ BT_LIMIT, e.g. 0.01)
+LIMIT_PAD = float(os.environ.get("BT_LIMIT") or 0)
 COMM = P["size"]["commission"]
 _exp = {}
 
@@ -57,7 +61,7 @@ def last_bar(bars, minute, age):
 
 
 def pick(und, date, minute, right, spot):
-    """-> (symbol, expiry, strike, delta, price, vol30) or (None, reason)."""
+    """-> (symbol, expiry, strike, delta, price, vol30, implied vol) or (None, reason)."""
     exp = expiry_for(und, date)
     if not exp: return None, "no_expiry"
     call = right == "C"
@@ -71,10 +75,11 @@ def pick(und, date, minute, right, spot):
     for k, s in zip(ks, syms):
         b = last_bar(day(s, date), minute, C["bar_max_age"])
         if not b: continue
-        d = delta(b[4], spot, k, T, C["rate"], call)
-        if d is None: continue
+        x = iv_delta(b[4], spot, k, T, C["rate"], call)
+        if x is None: continue
+        iv, d = x
         if best is None or abs(d - C["delta"]) < abs(best[3] - C["delta"]):
-            best = (s, exp, k, d, b[4], sum(x[5] for x in day(s, date) if minute - 30 < x[0] <= minute))
+            best = (s, exp, k, d, b[4], sum(y[5] for y in day(s, date) if minute - 30 < y[0] <= minute), iv)
     if not best: return None, "no_prices"
     if best[4] < C["min_price"]: return None, "too_cheap"
     if best[5] < C["min_vol30"]: return None, "illiquid"
@@ -84,7 +89,7 @@ def pick(und, date, minute, right, spot):
 def mid(b): return (b[2] + b[3]) / 2
 
 
-def walk(und, date, minute, right, sym, exp, cal):
+def walk(und, date, minute, right, sym, exp, cal, limit=None):
     """Walks one contract from the signal minute to the last sale. -> (entry, steps, flags)."""
     bet = 1 if right == "C" else -1
     i0 = cal.index(date)
@@ -103,9 +108,15 @@ def walk(und, date, minute, right, sym, exp, cal):
             t = b[0]
             if t <= start: continue
             if cost is None:
-                if t > minute + 3: return None, [], "no_fill"
-                cost = mid(b) * (1 + SH); peak = b[4]
-                steps.append((d, t, "buy", 1.0, round(cost, 4), "entry"))
+                if limit is not None:  # a limit at the price seen at the signal
+                    if t > minute + C["limit_minutes"]: return None, [], "limit_not_filled"
+                    if b[3] > limit: continue
+                    cost = limit
+                else:
+                    if t > minute + 3: return None, [], "no_fill"
+                    cost = mid(b) * (1 + SH)
+                peak = b[4]
+                steps.append((d, t, "buy", 1.0, round(cost, 4), "entry_limit" if limit is not None else "entry"))
                 continue
             if pending:
                 share, rule = pending
@@ -183,15 +194,21 @@ def run(signals, prefix, shard=0, shards=1):
         m = int(s["minute"])
         if s.get("contract"):  # a given contract (his entries): no pick
             exp = s["expiry"]
-            picked, why = (s["contract"], exp, float(s["contract"][-8:]) / 1000, 0.0, None, 1e9), None
+            picked, why = (s["contract"], exp, float(s["contract"][-8:]) / 1000, 0.0, None, 1e9, None), None
         else:
             picked, why = pick(s["sym"], s["date"], m, s["right"], float(s["price"]))
         row = dict(s, id=n)
         if not picked:
             row.update(status=why); trades.append(row); continue
-        sym, exp, k, dl, px, v30 = picked
-        cost, steps, flag = walk(s["sym"], s["date"], m, s["right"], sym, exp, cal)
-        row.update(contract=sym, expiry=exp, strike=k, delta=round(dl, 3), signal_price=px, vol30=v30,
+        sym, exp, k, dl, px, v30, iv = picked
+        limit = None
+        if LIMIT:
+            lb = last_bar(day(sym, s["date"]), m, C["bar_max_age"])
+            limit = lb[4] * (1 + LIMIT_PAD) if lb else None
+            if limit is None:
+                row.update(status="no_prices"); trades.append(row); continue
+        cost, steps, flag = walk(s["sym"], s["date"], m, s["right"], sym, exp, cal, limit)
+        row.update(contract=sym, expiry=exp, strike=k, delta=round(dl, 3), iv=round(iv, 3) if iv else "", signal_price=px, vol30=v30,
                    dte=(dt.date.fromisoformat(exp) - dt.date.fromisoformat(s["date"])).days)
         if cost is None:
             row.update(status=flag); trades.append(row); continue

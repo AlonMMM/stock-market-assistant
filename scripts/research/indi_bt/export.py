@@ -31,6 +31,7 @@ for run, prefixes in runs.items():
         trades += t; steps.update(s)
     ok = [t for t in trades if t["status"] == "ok"]
     rets = {t["_i"]: report.ret_at(steps[t["_i"]], report.SH) for t in ok}
+    for t in ok: t["_big"] = report.big(t)
     for t in sorted(ok, key=lambda t: (t["date"], int(t["minute"]))):
         r = rets[t["_i"]]
         key = f"{run}-{len(T)}"
@@ -38,7 +39,8 @@ for run, prefixes in runs.items():
         why = dd.why(int(t["minute"])) if dd.ok else ""
         T.append(dict(key=key, run=run, date=t["date"], month=t["date"][:7], sym=t["sym"], right=t["right"], time=t["time"],
                       contract=t["contract"], strike=t["strike"], expiry=t["expiry"], dte=t["dte"], delta=t.get("delta", ""),
-                      entry=t["entry"], ret=round(r, 4), pnl=round(r * U), carried=t["carried"], exit_rule=t["exit_rule"],
+                      entry=t["entry"], iv=t.get("iv", ""), big=int(t["_big"]), ret=round(r, 4),
+                      pnl=round(r * (P["size"]["big"]["fixed_premium"] if t["_big"] else U)), carried=t["carried"], exit_rule=t["exit_rule"],
                       exit_date=t["exit_date"], why=why))
         st = steps[t["_i"]]
         for x in st:
