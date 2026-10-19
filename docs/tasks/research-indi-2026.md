@@ -4,6 +4,8 @@ Status: active
 Owner: research (unattended role assumption: Integration / Review, read-only study)
 Branch: research/oltrawave-x
 
+Final summary of all years: [research-indi-summary.md](research-indi-summary.md).
+
 ## Outcome
 
 Understand why the trader enters, adds, trims and exits, and whether any part is a repeatable
