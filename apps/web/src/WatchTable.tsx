@@ -7,16 +7,13 @@ import {
   alertDirection,
   filterRows,
   isHot,
-  isMoving,
   moving,
   rangePosition,
-  sipDelayText,
   sortRows,
   sortsDescending,
   statsOf,
   watchRows,
   type Compare,
-  type WatchFilter,
   type WatchRow,
   type WatchSort,
 } from "./live-model.js";
@@ -225,7 +222,6 @@ export function WatchTable({
   compare: Compare;
   onCompare: (c: Compare) => void;
 }) {
-  const [filter, setFilter] = useState<WatchFilter>("all");
   const [find, setFind] = useState("");
   const [sort, setSort] = useState<WatchSort>("change");
   const [descending, setDescending] = useState(true);
@@ -236,11 +232,8 @@ export function WatchTable({
   const counts = new Map<string, number>();
   for (const a of today) counts.set(a.ticker, (counts.get(a.ticker) ?? 0) + 1);
   const all = watchRows(board, counts, compare);
-  const rows = sortRows(filterRows(all, filter, find), sort, descending);
+  const rows = sortRows(filterRows(all, "all", find), sort, descending);
   const bySymbol = new Map(board.series.map((s) => [s.ticker, s]));
-  const asOf = board.series
-    .map((s) => statsOf(s)?.asOf ?? 0)
-    .reduce((a, b) => Math.max(a, b), 0);
   // Picked, but the board with sector ETFs has not arrived yet.
   const sectorsLoading =
     compare === "sector" && Object.keys(board.benchmarks).length === 0;
@@ -255,37 +248,7 @@ export function WatchTable({
 
   return (
     <div className="wl">
-      <p className="wl-source">
-        {sipDelayText(board.delayMinutes)} · 5-min bars
-        {livePrices === "live" && " · prices live, every second"}
-        {livePrices === "waiting" && " · prices: reconnecting…"}
-        {asOf > 0 &&
-          ` · Rel vol as of ${israelClock(asOf * 1000)} ${israelLabel}`}
-      </p>
       <div className="wl-toolbar">
-        <div className="wl-chips" role="group" aria-label="Show">
-          {(
-            [
-              ["all", "All", all.length],
-              ["moving", "Moving", all.filter(isMoving).length],
-              [
-                "hot",
-                `Rel vol ≥${moving.relVolume}×`,
-                all.filter(isHot).length,
-              ],
-              ["alerts", "With alerts", all.filter((r) => r.alerts).length],
-            ] as const
-          ).map(([key, label, n]) => (
-            <button
-              type="button"
-              key={key}
-              aria-pressed={filter === key}
-              onClick={() => setFilter(key)}
-            >
-              {label} <span className="count num">{n}</span>
-            </button>
-          ))}
-        </div>
         <div className="wl-tools">
           <label className="wl-find">
             <span className="sr-only">Find a symbol</span>
@@ -374,7 +337,7 @@ export function WatchTable({
                   text
                 )}
                 <span aria-hidden="true" className="wl-arrow">
-                  {active ? (descending ? "▼" : "▲") : ""}
+                  {active ? (descending ? "▼" : "▲") : "↕"}
                 </span>
               </button>
             );
@@ -509,8 +472,7 @@ export function WatchTable({
           regular-session volume so far ÷ the median volume by the same New York
           minute over the previous 20 sessions; orange from {moving.relVolume}×;
           “—” before the {israelClock(board.open * 1000)} open or with too
-          little history. Moving: |change| ≥ {moving.change}% or Rel vol ≥{" "}
-          {moving.relVolume}×. An orange dot: a live alert today. Times in{" "}
+          little history. An orange dot: a live alert today. Times in{" "}
           {israelLabel}.
         </p>
       </details>
