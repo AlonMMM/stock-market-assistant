@@ -151,10 +151,7 @@ export function WatchlistPage({
               {armedAlerts > 0 && <span className="num">{armedAlerts}</span>}
             </button>
           </h2>
-          <div className="wl-lists-row">
-            <WatchlistSwitcher w={lists} />
-            <AddTicker w={lists} onAdded={board.reload} />
-          </div>
+          <WatchlistSwitcher w={lists} />
           {board.value &&
           board.value.watchlist.length === 0 &&
           lists.current &&
@@ -170,6 +167,7 @@ export function WatchlistPage({
               onShowAlerts={onShowAlerts}
               onTrade={canTrade ? onTrade : undefined}
               onOpen={open}
+              tools={<AddTicker w={lists} onAdded={board.reload} />}
               compare={compare}
               onCompare={setCompare}
             />

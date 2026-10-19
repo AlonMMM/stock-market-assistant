@@ -1,5 +1,5 @@
 import type { LivePriceState } from "./live-prices.js";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import type { Board } from "../../../packages/market-data/src/board.js";
 import type { FeedAlert } from "./AlertFeed.js";
 import {
@@ -62,8 +62,9 @@ const columns: [WatchSort | null, string, "left" | "right", boolean][] = [
   ["excess", "", "right", false], // vs SPY | vs sector
   ["rsScore", "Score", "right", false],
   ["relVolume", "Rel vol", "right", true],
-  // Today's regular-session shares (user 2026-10-17); under Last on phones.
-  ["volume", "Volume", "right", false],
+  // Today's regular-session shares (user 2026-10-17); a column on phones too
+  // (user 2026-10-19).
+  ["volume", "Volume", "right", true],
   ["range", "Day range", "left", false],
   ["alerts", "Alerts", "right", false],
 ];
@@ -208,7 +209,10 @@ export function WatchTable({
   compare,
   onCompare,
   livePrices,
+  tools,
 }: {
+  // Shown at the start of the toolbar, on Find's line ("+ Add ticker").
+  tools?: ReactNode;
   // Whether Last and Change % follow each trade (live-prices.ts).
   livePrices?: LivePriceState;
   // A row opens the stock's own page (user 2026-10-18).
@@ -249,6 +253,7 @@ export function WatchTable({
   return (
     <div className="wl">
       <div className="wl-toolbar">
+        {tools}
         <div className="wl-tools">
           <label className="wl-find">
             <span className="sr-only">Find a symbol</span>
@@ -326,10 +331,10 @@ export function WatchTable({
                 aria-label={`Sort by ${text}${key === "change" ? " (size of move)" : ""}${active ? (descending ? ", highest first" : ", lowest first") : ""}`}
                 onClick={() => pick(key)}
               >
-                {key === "relVolume" ? (
+                {key === "relVolume" || key === "volume" ? (
                   <>
                     <span className="wl-short" aria-hidden="true">
-                      RVol
+                      {key === "volume" ? "Vol" : "RVol"}
                     </span>
                     <span className="wl-long">{text}</span>
                   </>
@@ -384,7 +389,6 @@ export function WatchTable({
                   </span>
                   <span className="wl-cell right wl-last num">
                     {price(r.last)}
-                    <small className="wl-short">{shares(r.volume)} vol</small>
                   </span>
                   <span className="wl-cell right">
                     {r.change === null ? (
@@ -419,7 +423,7 @@ export function WatchTable({
                       />
                     </i>
                   </span>
-                  <span className="wl-cell wl-wide num right wl-vol">
+                  <span className="wl-cell num right wl-vol">
                     {shares(r.volume)}
                   </span>
                   <span className="wl-cell wl-wide">

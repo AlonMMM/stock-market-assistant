@@ -5609,7 +5609,48 @@ button.pa-ticker {
   opacity: 0.8;
 }
 .wl-toolbar {
-  justify-content: flex-end;
+  justify-content: space-between;
+}
+.wl-toolbar > .wl-add-form {
+  flex: 1 1 260px;
+}
+.wl .wl-vol {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+/* A phone: symbol, today, last, change, Rel vol and volume in one row. */
+@media (max-width: 759px) {
+  .wl .wl-grid {
+    grid-template-columns: minmax(46px, 1fr) 44px 58px 62px 32px 46px;
+    column-gap: 6px;
+    padding: 0 8px 0 10px;
+  }
+  .wl .wl-vol {
+    padding-right: 0;
+    font-size: 12.5px;
+  }
+  .wl .wl-head {
+    font-size: 10px;
+    letter-spacing: 0.03em;
+  }
+  .wl .wl-head .wl-vol {
+    font-size: inherit;
+  }
+  /* Only the column it is sorted by shows its arrow on a phone. */
+  .wl-head button:not(.active) .wl-arrow {
+    display: none;
+  }
+  .wl .wl-spark .day-spark {
+    width: 44px;
+  }
+  .wl .wl-last {
+    font-size: 14px;
+  }
+  .wl .wl-chg {
+    min-width: 0;
+    font-size: 12.5px;
+    padding-inline: 5px;
+  }
 }
 .wl-add {
   min-height: 36px;

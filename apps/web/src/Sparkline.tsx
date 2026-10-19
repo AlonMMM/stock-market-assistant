@@ -98,11 +98,15 @@ export function DaySpark({
   previousClose,
   width = 64,
   height = 30,
+  tight = false,
 }: {
   points: [number, number][];
   previousClose: number | null;
   width?: number;
   height?: number;
+  // Scaled to the day's own range and stretched to its box (the SPY/QQQ
+  // cards): the previous close is drawn only when it falls inside.
+  tight?: boolean;
 }) {
   if (points.length < 2) return <span className="spark-empty">—</span>;
   let low = Infinity;
@@ -111,7 +115,7 @@ export function DaySpark({
     low = Math.min(low, v);
     high = Math.max(high, v);
   }
-  if (previousClose !== null) {
+  if (previousClose !== null && !tight) {
     low = Math.min(low, previousClose);
     high = Math.max(high, previousClose);
   }
@@ -133,17 +137,20 @@ export function DaySpark({
       viewBox={`0 0 ${width} ${height}`}
       width={width}
       height={height}
+      {...(tight ? { preserveAspectRatio: "none" } : {})}
       aria-hidden="true"
     >
-      {previousClose !== null && (
-        <line
-          className="day-spark-base"
-          x1={pad}
-          x2={width - pad}
-          y1={y(previousClose)}
-          y2={y(previousClose)}
-        />
-      )}
+      {previousClose !== null &&
+        previousClose >= low &&
+        previousClose <= high && (
+          <line
+            className="day-spark-base"
+            x1={pad}
+            x2={width - pad}
+            y1={y(previousClose)}
+            y2={y(previousClose)}
+          />
+        )}
       <path className="day-spark-line" d={d} />
       <circle
         className="day-spark-dot"

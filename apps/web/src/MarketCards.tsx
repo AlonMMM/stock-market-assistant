@@ -51,8 +51,9 @@ function MarketCard({
           <DaySpark
             points={points}
             previousClose={prev}
-            width={1000}
-            height={80}
+            width={600}
+            height={72}
+            tight
           />
         ) : (
           <small>{value ? "No trades yet today" : "Loading…"}</small>

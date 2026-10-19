@@ -22,6 +22,14 @@ Branch: feat/watchlist-v3
    list switch, then read again behind them; the other lists' boards are read ahead one
    by one after the first one loads.
 
+## Follow-up (user 2026-10-19)
+
+- A phone shows Volume as its own column ("Vol"), next to Rel vol; only the sorted
+  column shows its arrow there.
+- "+ Add ticker" is on Find's line.
+- SPY / QQQ lines are scaled to the day's own range and stretched to the card (the
+  previous close only when inside it), so a 0.5% day reads as a real line.
+
 ## Verification evidence
 
 - `npm run typecheck`, `npm test` (536: 535 pass, 1 skipped), `npm run build`, Prettier.
