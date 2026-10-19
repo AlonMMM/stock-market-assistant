@@ -33,6 +33,17 @@ for y in ys:
         if b in tod: r[f"entries {b}"] = f"{tod[b]['n']} · {tod[b]['wins'] / tod[b]['n']:.0%} win · {tod[b]['pnl'] / 1e6:+.2f}M"
     late = sorted([m["pnl"] for m in M if m["time"] >= "15:45:00"], reverse=True); rest = sorted([m["pnl"] for m in M if m["time"] < "15:45:00"], reverse=True)
     r["last 15 min w/o top 3"] = f"{sum(late[3:]) / 1e6:+.2f}M"; r["rest w/o top 3"] = f"{sum(rest[3:]) / 1e6:+.2f}M"
+    # entry type: chart event within 5 min before (breakout = new day high/low, prior-day or opening-range break; strength = 5m jump vs SPY)
+    pnl = {m["trade"]: m["pnl"] for m in M}; near = lambda v: v not in ("", None) and float(v) <= 5; et = {}
+    for e in csv.DictReader(open(f"{d}/triggers_entries.csv")):
+        if e["trade"] not in pnl: continue
+        pnl_e = pnl.pop(e["trade"])  # first entry of each trade only
+        br = near(e["new_high"]) or near(e["prev_break"]) or near(e["or_break"]); sj = near(e["rs_jump"])
+        k = "last 15 min" if e["late"] == "1" else "breakout + strength" if br and sj else "breakout only" if br else "strength only" if sj else "no event"
+        et.setdefault(k, []).append(pnl_e)
+    for k in ["breakout + strength", "breakout only", "strength only", "no event", "last 15 min"]:
+        v = sorted(et.get(k, []), reverse=True)
+        if v: r[f"entry type: {k}"] = f"{len(v)} · {sum(x > 0 for x in v) / len(v):.0%} win · {sum(v) / 1e6:+.2f}M ({sum(v[2:]) / 1e6:+.2f}M w/o top 2)"
     try:
         t = open(f"analysis/triggers-{y}.txt").read()
         for e, lab in [("new_high", "new day high/low"), ("or_break", "opening-range break"), ("prev_break", "prior-day break"), ("rs_jump", "5m jump vs SPY")]:

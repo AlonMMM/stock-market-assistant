@@ -42,7 +42,7 @@ trades with an entry time (313). Exploratory; no multiple-comparison correction.
 4. **His stated exit reason is the stock stalling** (62 posts: stuck, too calm, didn't break out), then
    the stock turning (38), rolling the strike (35), profit (26), the market folding (15). Measured: adds
    come with the stock moving his way and above VWAP; closes after it turned (−0.14% in 5 min) near VWAP.
-5. **End-of-day entries carry the year**: 36 entries in the last 15 minutes (overnight bets) won 15 times
+5. **End-of-day entries carry the year** (2026 only; it does not repeat in 2023–2025, see the rules below): 36 entries in the last 15 minutes (overnight bets) won 15 times
    for +$2.33M; +$0.28M without their top 3. All other entries: +$1.39M, and −$0.56M without their top 3.
 6. Results are fat-tailed: 76 of 311 entries won; average win ≈ +$126K vs loss ≈ −$25K.
 
@@ -96,8 +96,8 @@ trade (IBIT 40.5C, Aug 19–21).
 ## Next
 
 - Review charts with the user: https://claude.ai/artifact/NeV7hJpG1d2CBZtYhDitak
-- Dig into the end-of-day entries: what the stock and SPY did into the close, and the next open.
-- Rule test (step 7): stalling exit + fast cut + late-day entry, on 2 years of bars, holdout = last 2 months.
+- Rule test: breakout + strength entry, fast cut, let winners run (rules 1–3 below), on 2024–2025 option
+  bars, holdout = 2026. The late-day entry is dropped from the test (it did not repeat in 2023–2025).
 
 ## All years, 2023–2026 (2026-10-18)
 
@@ -186,3 +186,39 @@ Findings:
 What could be copied: the exit discipline (cut at about −17% within 15 minutes; let a winner run
 while it is +25% to +100%), and entering only after a level breaks, in a stock already beating SPY.
 What can't: picking which of those entries becomes a large overnight winner.
+
+## Rules, all years combined (2026-10-19)
+
+The 2026 findings checked against 2023–2025 (`indi-compare.py`, entry type = chart event within 5 minutes
+before his first entry; "w/o top 2" removes each group's two best trades):
+
+| Entry type          | 2023              | 2024              | 2025              | 2026              |
+| ------------------- | ----------------- | ----------------- | ----------------- | ----------------- |
+| Breakout + strength | 55, 31%, +$0.03M  | 73, 32%, +$0.10M  | 79, 38%, +$0.17M  | 46, 30%, +$0.16M  |
+| Breakout only       | 47, 43%, −$0.03M  | 49, 29%, −$0.53M  | 75, 25%, −$0.27M  | 36, 11%, −$0.76M  |
+| Strength only       | 38, 34%, −$0.01M  | 49, 20%, −$0.45M  | 64, 22%, −$0.30M  | 40, 25%, +$0.10M  |
+| No chart event      | 203, 30%, +$0.25M | 180, 30%, +$0.47M | 206, 20%, −$0.44M | 154, 21%, −$1.38M |
+| Last 15 minutes     | 41, 37%, −$0.21M  | 30, 30%, −$0.15M  | 40, 35%, −$0.14M  | 35, 43%, +$0.80M  |
+
+(trades, win rate, P&L without the top 2. Breakout = new day high/low, first break of yesterday's
+high/low or of the 15-min opening range; strength = 5-min move vs SPY×β ≥ +0.5%.)
+
+Rules that held in all four years:
+
+1. **Enter on a breakout in a stock already beating SPY.** It is the only entry type still positive
+   without its top 2 trades every year, and it has the best or near-best win rate (30–38%). A breakout
+   without the strength lost money every year once its top 2 are removed; strength without a breakout
+   lost in three of four. Enter about a minute after the break; he does not wait for a pullback.
+2. **Cut a loser fast:** first sale at about −17% of the premium within about 15 minutes, half the size
+   first, the rest when the stock stalls or turns. After his last sale the option lost ~95% by expiry
+   (2024–2026), so the cuts were right on average.
+3. **Let a winner run** while the option is +25% to +100% (he almost never sells there), and scale out
+   above +100%. Never add money to a loser; a roll is paid from what is left.
+4. **Size so a full loss of the premium fits the risk budget** (from his posts): risk share of the
+   premium by days to expiry (50% a month out → 100% at 4 hours), 5% per trade / 7% per day at highs,
+   cut to 2% / 3% after a 12.5–25% drawdown or two daily stops in a row.
+5. **Expect a fat tail:** 24–33% winners, average win 4–6× the average loss; a few overnight holds make
+   the year. Nothing at entry tells which trade will be one of them.
+
+Rules dropped: the last-15-minute entry (positive only in 2026 once the top trades are removed) and
+any winner-vs-loser entry filter (none repeated across years).
