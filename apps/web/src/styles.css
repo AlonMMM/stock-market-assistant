@@ -2547,15 +2547,50 @@ dd > .stop-missing {
   gap: 10px;
   flex-wrap: wrap;
 }
+.trade-pnl-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5c6460;
+}
 .trade-pnl-total {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 700;
+  color: #142b29;
+}
+.trade-pnl-change {
+  font-size: 15px;
+  font-weight: 650;
+}
+.trade-pnl-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin: 4px 0 12px;
+}
+.trade-pnl-stats div {
+  display: grid;
+  gap: 1px;
+}
+.trade-pnl-stats dt {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #5c6460;
+}
+.trade-pnl-stats dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  color: #142b29;
 }
 .trade-pnl-frame {
   position: relative;
   min-width: 0;
-  background: #fafbf8;
-  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #eef1ec;
+  border-radius: 10px;
 }
 .trade-pnl-svg {
   display: block;
