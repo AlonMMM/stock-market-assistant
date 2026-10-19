@@ -135,3 +135,54 @@ Per year (options, main account, from `indi-yearsum.py`; 2024 before Jan–Mar w
 
 2025 entries vs random minutes (same tests as 2026) repeat the 2026 picture: beats SPY×β over 15 min 70%
 vs 48%, top 20% of the day range 61% vs 39%, on the bet side of VWAP 85% vs 67%.
+
+## The 2026 study repeated on 2023–2025 (2026-10-19)
+
+Same scripts and settings on every year: `indi-bars.ts`, `indi-features.py`, `indi-manage.py`,
+`indi-report.py`, `indi-triggers.py`, `indi-exits.py`, then `indi-compare.py` (text outputs of the
+trigger and exit scripts in `data/local/x/analysis/`). Main account, option trades with an entry time.
+2024 covers Jan 31 → Dec. 2023 has no option bars (the data source starts in Feb 2024), so the
+measures taken on the option's own price are missing for it.
+
+|                                                      | 2023              | 2024              | 2025              | 2026              |
+| ---------------------------------------------------- | ----------------- | ----------------- | ----------------- | ----------------- |
+| Timed trades, win rate                               | 386, 33%          | 381, 29%          | 466, 25%          | 312, 24%          |
+| P&L of those trades                                  | +$2.81M           | +$1.91M           | +$3.29M           | +$3.72M           |
+| Average win / loss                                   | +$40K / −$9K      | +$55K / −$15K     | +$82K / −$18K     | +$121K / −$23K    |
+| Entry beats SPY×β over 15 min (random minutes)       | 57% (41%)         | 71% (47%)         | 70% (48%)         | 63% (48%)         |
+| Entry in the top 20% of the day range, bet direction | 52% (37%)         | 58% (35%)         | 61% (39%)         | 52% (36%)         |
+| Entry on the bet side of VWAP                        | 77% (65%)         | 80% (65%)         | 85% (67%)         | 75% (65%)         |
+| New day high/low in the 10 min before (lift)         | 1.98×             | 2.44×             | 2.33×             | 2.19×             |
+| First break of yesterday's high/low (lift)           | 3.29×             | 4.62×             | 3.81×             | 4.33×             |
+| Losers: first sale                                   | −16%, 15 min      | −17%, 15 min      | −18%, 17 min      | −18%, 14 min      |
+| Winners: first sale                                  | +31%, 34 min      | +15%, 28 min      | +28%, 31 min      | +35%, 16 min      |
+| Losers: worst point while held                       | –                 | −39%              | −40%              | −48%              |
+| Winners: best point while held                       | –                 | +127%             | +142%             | +234%             |
+| Option after his last sale, to expiry                | –                 | −96%              | −96%              | −95%              |
+| Held overnight / same day, P&L                       | +$2.75M / +$0.05M | +$1.51M / +$0.40M | +$3.35M / −$0.06M | +$1.51M / +$2.21M |
+| Last-15-min entries, w/o their top 3                 | −$0.26M           | −$0.30M           | −$0.32M           | +$0.28M           |
+| Other entries, w/o their top 3                       | +$0.62M           | +$0.54M           | +$0.72M           | −$0.56M           |
+
+Findings:
+
+1. **The entry habit is stable for four years.** He buys a stock that is already beating SPY, near the
+   day's extreme in his direction, on the right side of VWAP, about a minute after a new high/low or
+   the first break of yesterday's level. Each is 1.2–1.7× as common as at random minutes of the same
+   stock and day, every year. It is a tendency, not a filter: about a fifth of entries have none of these chart events.
+2. **No entry feature predicts winners.** Winners vs losers at entry: 2023 losers had more volume,
+   2025 winners had more, 2026 only the gap differed, 2024 nothing. Nothing repeats.
+3. **The management rule is the most stable part.** A losing trade is cut at about −17% within about
+   15 minutes, half the size first, every year. Winners are held while the option is +25% to +100%
+   and trimmed above that. After his last sale the options lose ~95% by expiry, so his exits were right
+   on average (they often bounce first).
+4. **Results come from a few large overnight holds.** Trades held overnight made most of the profit in
+   2023–2025; same-day trades were about flat. Average win grows from $40K to $121K as size grew;
+   the win rate fell from 33% to 24%.
+5. **The 2026 "end-of-day edge" does not repeat.** Last-15-minute entries were positive every year
+   but only because of their top 3; without them they lost money in 2023, 2024 and 2025. 2026 is the
+   exception, not the rule.
+6. **Commissions matter at his size**: about $0.62 per contract, ~$2.2M over the four years.
+
+What could be copied: the exit discipline (cut at about −17% within 15 minutes; let a winner run
+while it is +25% to +100%), and entering only after a level breaks, in a stock already beating SPY.
+What can't: picking which of those entries becomes a large overnight winner.
