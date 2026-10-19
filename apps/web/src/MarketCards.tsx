@@ -7,6 +7,9 @@ import { DaySpark } from "./Sparkline.js";
 
 const marketTickers = ["SPY", "QQQ"] as const;
 const refreshMs = 60_000;
+// The last two hours of 1-minute closes (user 2026-10-19: "more sharp, take
+// less time if you need"): a small move fills the card.
+const windowMinutes = 120;
 const ignore = () => {};
 
 function MarketCard({
@@ -25,7 +28,9 @@ function MarketCard({
   );
   const regular = (value?.candles ?? []).filter((c) => c.session === "regular");
   const shown = regular.length > 1 ? regular : (value?.candles ?? []);
-  const points = shown.map((c) => [c.start, c.close] as [number, number]);
+  const points = shown
+    .slice(-windowMinutes)
+    .map((c) => [c.start, c.close] as [number, number]);
   const last = value?.last?.price ?? shown.at(-1)?.close ?? null;
   const prev = value?.previousClose ?? null;
   const change = last !== null && prev ? ((last - prev) / prev) * 100 : null;
@@ -36,7 +41,9 @@ function MarketCard({
       aria-label={`Open ${ticker}`}
       onClick={() => onOpen(ticker)}
     >
-      <b>{ticker}</b>
+      <b>
+        {ticker} <small>last 2 h</small>
+      </b>
       <span className="num">
         {last === null ? "—" : last.toFixed(2)}{" "}
         {change !== null && (
@@ -52,7 +59,7 @@ function MarketCard({
             points={points}
             previousClose={prev}
             width={600}
-            height={72}
+            height={84}
             tight
           />
         ) : (

@@ -27,7 +27,7 @@ Branch: feat/watchlist-v3
 - A phone shows Volume as its own column ("Vol"), next to Rel vol; only the sorted
   column shows its arrow there.
 - "+ Add ticker" is on Find's line.
-- SPY / QQQ lines are scaled to the day's own range and stretched to the card (the
+- SPY / QQQ lines show the last 2 hours of 1-minute closes, are scaled to their own range and stretched to the card (the
   previous close only when inside it), so a 0.5% day reads as a real line.
 
 ## Verification evidence

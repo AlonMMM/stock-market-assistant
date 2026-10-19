@@ -5735,11 +5735,11 @@ button.pa-ticker {
 }
 .mkt-card .mkt-spark {
   grid-column: 1 / -1;
-  height: 56px;
+  height: 84px;
 }
 .mkt-card .mkt-spark .day-spark {
   width: 100%;
-  height: 56px;
+  height: 84px;
 }
 .mkt-card small {
   color: #526461;
@@ -5758,5 +5758,11 @@ button.pa-ticker {
 .mkt-card .day-spark-line,
 .mkt-card .day-spark-base {
   vector-effect: non-scaling-stroke;
-  stroke-width: 1.8;
+}
+.mkt-card .day-spark-line {
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+}
+.mkt-card b small {
+  font-weight: 400;
 }
