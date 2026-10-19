@@ -49,6 +49,7 @@ import {
   type D1Watchlists,
 } from "../../../packages/market-data/src/watchlists.js";
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
+import { handleLatestPrices } from "../../../packages/market-data/src/latest-prices.js";
 import {
   handlePortfolio,
   handlePortfolioHistory,
@@ -156,6 +157,14 @@ export function buildApp(
       );
       return reply.code(result.status).send(result.body);
     },
+  });
+  app.get("/api/prices", async (request, reply) => {
+    const result = await handleLatestPrices(
+      (request.query as { symbols?: string }).symbols ?? null,
+      alpaca,
+      alpaca.fetcher,
+    );
+    return reply.code(result.status).send(result.body);
   });
   app.get("/api/board", async (request, reply) => {
     // Sector ETFs (from the collector) only for "vs sector" (?sectors=1).

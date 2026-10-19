@@ -47,6 +47,7 @@ import {
   handleWatchlists,
 } from "../../../packages/market-data/src/watchlists.js";
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
+import { handleLatestPrices } from "../../../packages/market-data/src/latest-prices.js";
 import {
   handlePortfolio,
   handlePortfolioHistory,
@@ -445,6 +446,21 @@ export default {
               db?.sigmas,
             );
       return Response.json(result.body, { status: result.status });
+    }
+    if (path === "/api/prices") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const result = await handleLatestPrices(
+        new URL(request.url).searchParams.get("symbols"),
+        credentials,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
     }
     if (path === "/api/board") {
       if (request.method !== "GET")

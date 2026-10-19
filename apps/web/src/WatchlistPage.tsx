@@ -3,7 +3,8 @@ import type { Board } from "../../../packages/market-data/src/board.js";
 import type { LiveStatus } from "../../../packages/market-data/src/live.js";
 import { EngineTickers } from "./EngineTickers.js";
 import { boardRefreshMs, liveRefreshMs, usePolling } from "./Live.js";
-import { pillFor, type Compare } from "./live-model.js";
+import { pillFor, withLivePrices, type Compare } from "./live-model.js";
+import { useLivePrices } from "./live-prices.js";
 import { useControlAccess } from "./Positions.js";
 import { StatusPill } from "./StatusPill.js";
 import { BellIcon, PriceAlertsPage, usePriceAlerts } from "./PriceAlerts.js";
@@ -68,6 +69,9 @@ export function WatchlistPage({
     boardRefreshMs,
     warn,
   );
+  // Last, Change % and the day line follow each trade (every second).
+  const prices = useLivePrices(board.value ?? null);
+  const shown = board.value ? withLivePrices(board.value, prices.prices) : null;
   const { canTrade } = useControlAccess();
   // The collector returns no alerts while unreachable; keep the last ones.
   const kept = useRef<LiveStatus["alerts"]>([]);
@@ -137,7 +141,8 @@ export function WatchlistPage({
             </p>
           ) : board.value ? (
             <WatchTable
-              board={board.value}
+              board={shown!}
+              livePrices={prices.state}
               alerts={status ? kept.current : []}
               onShowAlerts={onShowAlerts}
               onTrade={canTrade ? onTrade : undefined}

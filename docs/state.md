@@ -3,6 +3,18 @@
 Updated: 2026-10-15
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
 
+## Watchlist prices every second (2026-10-19)
+
+The Watchlist reads `GET /api/prices?symbols=…` (Alpaca's latest SIP trade for every
+symbol in one request) once a second while the page is visible and the board's session
+is trading (04:00–20:00 New York), and applies each price as the close of its 5-minute
+bar. Last, Change %, vs SPY/sector, the day line and the day range follow every trade;
+Rel vol, volume and the score still come from the 5-minute board. Without real-time
+SIP (`ALPACA_SIP_DELAY_MINUTES` > 0) the route answers 409 and the page stops asking.
+Cost: one Worker request and one Alpaca request per second per open Watchlist tab.
+Validation: unit and Worker-route tests; headless Chromium with mocked responses showed
+one request per second and the Last column changing each second.
+
 ## Full-screen chart with SPY, bar sizes, VWAP and volume (2026-10-18)
 
 Every stock chart (alert rows on Alerts and Backtest, the market chart, Watchlist rows,

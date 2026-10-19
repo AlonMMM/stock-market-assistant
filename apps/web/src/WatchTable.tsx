@@ -1,3 +1,4 @@
+import type { LivePriceState } from "./live-prices.js";
 import { lazy, Suspense, useState } from "react";
 import type { Board } from "../../../packages/market-data/src/board.js";
 import type { FeedAlert } from "./AlertFeed.js";
@@ -209,7 +210,10 @@ export function WatchTable({
   onOpen,
   compare,
   onCompare,
+  livePrices,
 }: {
+  // Whether Last and Change % follow each trade (live-prices.ts).
+  livePrices?: LivePriceState;
   // A row opens the stock's own page (user 2026-10-18).
   onOpen?: (ticker: string) => void;
   board: Board;
@@ -253,6 +257,8 @@ export function WatchTable({
     <div className="wl">
       <p className="wl-source">
         {sipDelayText(board.delayMinutes)} · 5-min bars
+        {livePrices === "live" && " · prices live, every second"}
+        {livePrices === "waiting" && " · prices: reconnecting…"}
         {asOf > 0 &&
           ` · Rel vol as of ${israelClock(asOf * 1000)} ${israelLabel}`}
       </p>
