@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Option ticket, stacked</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#142b29}a:hover{color:#0b1817}
+</style>
+</helmet>
+<div style="width: 620px; height: 980px; box-sizing: border-box; padding: 28px; background: #f4f5f0; font-family: 'IBM Plex Sans', sans-serif; color: #142b29">
+<form style="display: flex; flex-direction: column; gap: 16px; padding: 20px; background: #fff; border: 1px solid #cdd7ce; border-radius: 12px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="padding: 3px 9px; border-radius: 6px; background: {{ink}}; color: #fff; font-size: 13px; font-weight: 700; letter-spacing: 0.06em">BUY</span>
+<span style="font-size: 18px; font-weight: 700">NVDA 190 Call · Fri, 23 Oct</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 10px 12px; background: #f6f8f4; border-radius: 10px">
+<div><div style="font-size: 11px; letter-spacing: 0.06em; color: #526461">BID</div><div style="font: 600 16px 'IBM Plex Mono', monospace">1.02</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.06em; color: #526461">MID</div><div style="font: 600 16px 'IBM Plex Mono', monospace">1.04</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.06em; color: #526461">ASK</div><div style="font: 600 16px 'IBM Plex Mono', monospace">1.06</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.06em; color: #526461">SPREAD</div><div style="font: 600 16px 'IBM Plex Mono', monospace">3.8%</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.06em; color: #526461">DELTA</div><div style="font: 600 16px 'IBM Plex Mono', monospace">0.14</div></div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526461">Quantity
+<span style="display: flex; gap: 8px">
+<input value="2" style="width: 80px; height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #cdd7ce; border-radius: 10px; font: 600 16px 'IBM Plex Mono', monospace; color: #142b29">
+<span style="display: inline-flex; padding: 3px; gap: 2px; border: 1px solid #cdd7ce; border-radius: 10px; background: #fafbf8">
+<button type="button" style="border: 0; border-radius: 7px; padding: 0 12px; background: {{ink}}; color: #fff; font: 600 13px 'IBM Plex Sans', sans-serif">Contracts</button>
+<button type="button" style="border: 0; border-radius: 7px; padding: 0 12px; background: transparent; color: #142b29; font: 13px 'IBM Plex Sans', sans-serif">% of account</button>
+</span>
+</span>
+</label>
+<div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #526461">Order type · Time in force
+<span style="height: 44px; display: flex; align-items: center; font-size: 15px; font-weight: 600; color: #142b29">Limit · Day</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #526461">Limit price
+<div style="display: flex; gap: 8px; flex-wrap: wrap">
+<button type="button" aria-label="One tick lower" style="width: 40px; height: 44px; border: 1px solid #cdd7ce; border-radius: 10px; background: #fff; font-size: 18px; color: #142b29">−</button>
+<input value="1.03" aria-label="Limit price" style="width: 92px; height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #cdd7ce; border-radius: 10px; font: 600 16px 'IBM Plex Mono', monospace; color: #142b29">
+<button type="button" aria-label="One tick higher" style="width: 40px; height: 44px; border: 1px solid #cdd7ce; border-radius: 10px; background: #fff; font-size: 18px; color: #142b29">+</button>
+<span style="display: inline-flex; padding: 3px; gap: 2px; border: 1px solid #cdd7ce; border-radius: 10px; background: #fafbf8">
+<button type="button" style="border: 0; border-radius: 7px; padding: 0 14px; background: transparent; font: 13px 'IBM Plex Sans', sans-serif; color: #142b29">Bid</button>
+<button type="button" style="border: 0; border-radius: 7px; padding: 0 14px; background: transparent; font: 13px 'IBM Plex Sans', sans-serif; color: #142b29">Mid</button>
+<button type="button" style="border: 0; border-radius: 7px; padding: 0 14px; background: transparent; font: 13px 'IBM Plex Sans', sans-serif; color: #142b29">Ask</button>
+</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding-top: 4px">
+<label style="display: flex; gap: 10px; align-items: flex-start; font-size: 14px">
+<input type="checkbox" style="width: 20px; height: 20px; margin: 0; flex: none; accent-color: #142b29">
+<span><b style="font-weight: 600">Try to buy and increase</b><span style="color: #526461"> — off: one limit order at your price, as it is</span></span>
+</label>
+<div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 14px">
+<label style="display: flex; gap: 10px; align-items: center"><input type="checkbox" checked style="width: 20px; height: 20px; margin: 0; accent-color: #142b29"><b style="font-weight: 600">Auto stop</b></label>
+<input value="40" aria-label="Stop percent" style="width: 64px; height: 40px; box-sizing: border-box; padding: 0 10px; border: 1px solid #cdd7ce; border-radius: 10px; font: 600 15px 'IBM Plex Mono', monospace; color: #142b29">
+<span style="color: #526461">% below the price paid</span>
+</div>
+<label style="display: flex; gap: 10px; align-items: flex-start; font-size: 14px">
+<input type="checkbox" style="width: 20px; height: 20px; margin: 0; flex: none; accent-color: #142b29">
+<span>Force: buy whatever the spread is<span style="color: #526461"> (otherwise at most 12% of the mid)</span></span>
+</label>
+</div>
+<p style="margin: 0; font-size: 13px; color: #526461">With auto stop the order is watched for 15 minutes; what has not filled by then is canceled.</p>
+<div style="display: flex; flex-direction: column; gap: 12px; padding-top: 14px; border-top: 1px solid #dfe6dd">
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 10px 12px; background: #f6f8f4; border-radius: 10px">
+<div><div style="font-size: 11px; letter-spacing: 0.06em; color: #526461">CONTRACTS</div><div style="font: 600 16px 'IBM Plex Mono', monospace">2</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.06em; color: #526461">LIMIT</div><div style="font: 600 16px 'IBM Plex Mono', monospace">1.03</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.06em; color: #526461">MAX COST</div><div style="font: 600 16px 'IBM Plex Mono', monospace">$206</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.06em; color: #526461">OF ACCOUNT</div><div style="font: 600 16px 'IBM Plex Mono', monospace">0.21%</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.06em; color: #526461">STOP</div><div style="font: 600 16px 'IBM Plex Mono', monospace">≈ 0.62</div></div>
+</div>
+<div style="padding: 12px 14px; border: 1px solid #cdd7ce; border-radius: 10px; font-size: 14px; font-weight: 600">▸ All 14 checks passed</div>
+<button type="button" style="height: 48px; border: 0; border-radius: 10px; background: {{ink}}; color: #fff; font: 650 15px 'IBM Plex Sans', sans-serif">Submit: buy 2 contracts</button>
+</div>
+</form>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"ink":{"editor":"color","default":"#142b29","options":["#142b29","#1d4ed8","#7c2d12"]},"$preview":{"width":620,"height":980}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { ink: this.props.ink ?? '#142b29' };
+  }
+}
+</script>
+</body>
+</html>

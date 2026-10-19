@@ -1,0 +1,476 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Full-Screen Chart</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: the app's own 940px column with one row chart; the button opens a dark, terminal-style layer over the whole window. */
+:root {
+  --bg: #f4f5ef; --panel: #ffffff; --ink: #142b29; --muted: #5d6b68; --line: #dfe3d8;
+  --accent: #9cdc52; --ticker: #2a78d6; --bench: #eb6834; --up: #16a34a; --down: #dc2626;
+  --upf: rgba(22,163,74,.35); --downf: rgba(220,38,38,.35); --band: rgba(42,120,214,.10);
+  --grid: rgba(20,43,41,.07); --note: #fff7d6;
+  /* The full-screen layer keeps one dark look in both themes, like a trading terminal. */
+  --term-bg: #0b0d0d; --term-panel: #151a19; --term-ink: #e3e8e6; --term-muted: #8d9996; --term-line: #2c3533;
+  --term-grid: rgba(255,255,255,.13); --term-stock: #3ddc5a; --term-vwap: #f5b82e; --term-bench: #f4f4f4;
+  --term-up: #22c55e; --term-down: #ef4444; --term-band: rgba(255,255,255,.07); --term-box: rgba(30,52,70,.82);
+  --sans: Inter, ui-sans-serif, system-ui, sans-serif; --serif: Georgia, serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1716; --panel: #172220; --ink: #e6ece9; --muted: #9aa8a4; --line: #2a3734;
+  --ticker: #5b9cf0; --bench: #f08a5c; --band: rgba(91,156,240,.16); --grid: rgba(230,236,233,.07);
+  --note: #2b2a1a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1716; --panel: #172220; --ink: #e6ece9; --muted: #9aa8a4; --line: #2a3734;
+  --ticker: #5b9cf0; --bench: #f08a5c; --band: rgba(91,156,240,.16); --grid: rgba(230,236,233,.07);
+  --note: #2b2a1a; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font-family: var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px; }
+body.locked { overflow: hidden; }
+.wrap { max-width: 940px; margin: auto; display: grid; gap: 20px; }
+h1 { font-family: var(--serif); letter-spacing: -1px; font-size: clamp(28px, 5vw, 42px); margin: 0; text-wrap: balance; }
+.lede { color: var(--muted); margin: 0; max-width: 65ch; line-height: 1.5; }
+.tag { display: inline-block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; background: var(--note); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; }
+.from { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.from span { color: var(--muted); font-size: 13px; margin-right: 4px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--ticker); outline-offset: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: transparent; padding: 6px 12px; font-size: 13px; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.row { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; }
+.row-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.row-head b { font-size: 18px; }
+.row-head small { color: var(--muted); }
+.chart-tools { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.expand { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; height: 31px; width: 34px; display: grid; place-items: center; }
+.expand svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+.expand.pulse { box-shadow: 0 0 0 3px var(--accent); }
+.callout { font-size: 12px; color: var(--muted); }
+.small-chart { height: 220px; }
+.small-chart svg, .fs-chart svg { display: block; width: 100%; height: 100%; }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.notes div { border-top: 2px solid var(--ink); padding-top: 8px; font-size: 13px; line-height: 1.5; min-width: 0; }
+.notes b { display: block; margin-bottom: 2px; }
+
+/* Full-screen layer: the page tokens are remapped to the terminal ones inside it. */
+.fs { --bg: var(--term-bg); --panel: var(--term-panel); --ink: var(--term-ink); --muted: var(--term-muted); --line: var(--term-line);
+  color-scheme: dark; position: fixed; inset: 0; z-index: 20; background: var(--bg); color: var(--ink); display: grid; grid-template-rows: auto 1fr;
+  padding: env(safe-area-inset-top, 0px) max(8px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(8px, env(safe-area-inset-left, 0px)); }
+.fs-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+.fs-id { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; margin-right: auto; }
+.fs-id b { font-size: 19px; }
+.fs-id .num { font-variant-numeric: tabular-nums; }
+.fs-id .chg { font-weight: 600; }
+.up { color: var(--term-up); } .down { color: var(--term-down); }
+.fs-id small { color: var(--muted); font-size: 12px; }
+.score { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; font-variant-numeric: tabular-nums; }
+.close { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
+.fs-chart { position: relative; min-height: 0; font-family: Arial, Helvetica, sans-serif; }
+.dw { position: absolute; left: 70px; bottom: 30px; background: var(--term-box); border: 1px solid rgba(255,255,255,.18); border-radius: 3px;
+  padding: 6px 10px; font-size: 12.5px; line-height: 1.45; color: var(--term-ink); min-width: 170px; pointer-events: none; font-variant-numeric: tabular-nums; }
+.dw dl { margin: 0; display: grid; grid-template-columns: auto auto; gap: 0 18px; }
+.dw dt { color: var(--term-ink); } .dw dd { margin: 0; text-align: right; }
+.dw h4 { margin: 4px 0 0; font-size: 12.5px; grid-column: 1 / -1; }
+@media (max-width: 560px) { .fs-id b { font-size: 17px; } .small-chart { height: 180px; } .dw { display: none; } }
+@media (prefers-reduced-motion: no-preference) { .fs:not([hidden]) { animation: rise .14s ease-out; } @keyframes rise { from { opacity: 0; transform: scale(.985); } } }
+</style>
+
+<div class="wrap">
+  <div style="display:grid;gap:8px">
+    <span class="tag">Mockup · synthetic data</span>
+    <h1>Full screen, with SPY</h1>
+    <p class="lede">Every stock chart gets an expand button at its top right. It opens a dark, full-window chart that overlays the stock and SPY on their own price axes: SPY on the left, the stock on the right. Pick the bar size: 1m (yesterday and today), 5m, 15m, 1h or 1D. Point at the chart to see the crosshair and data window. Use the buttons below to open it from each place in the app.</p>
+  </div>
+
+  <div class="from" role="group" aria-label="Open from">
+    <span>Open from:</span>
+    <div class="seg" id="ctx">
+      <button type="button" data-ctx="watch" aria-pressed="true">Watchlist</button>
+      <button type="button" data-ctx="alert" aria-pressed="false">Alerts</button>
+      <button type="button" data-ctx="trade" aria-pressed="false">Trade</button>
+      <button type="button" data-ctx="market" aria-pressed="false">Market</button>
+    </div>
+  </div>
+
+  <section class="row" aria-label="Example row">
+    <div class="row-head"><b id="rowTitle">NVDA</b><small id="rowSub">Watchlist row · session 2026-10-16 · SIP · 15 min delayed</small></div>
+    <div class="chart-tools">
+      <div class="seg" id="rowKind" role="group" aria-label="Chart type">
+        <button type="button" data-k="candles" aria-pressed="true">Candles</button>
+        <button type="button" data-k="spy" aria-pressed="false">vs SPY</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="callout">new →</span>
+        <button type="button" class="expand pulse" id="open" aria-label="Full screen" title="Full screen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="small-chart" id="small"></div>
+  </section>
+
+  <div class="notes">
+    <div><b>Two price axes</b>SPY on the left in white, the stock on the right in green, each scaled to its own day range. The lines show real prices, not %. The data window gives % from the open for both.</div>
+    <div><b>Crosshair and data window</b>The crosshair shows the price on both axes and the time below. The two legend lines at the top and the data window show each symbol's open, high, low and close for that minute.</div>
+    <div><b>Keeps the context</b>From an alert, the alert window stays shaded. From the market chart, it shows QQQ vs SPY. A sector ETF can replace SPY. Candles is one tap away.</div>
+    <div><b>Volume vs the last month</b>The top bar shows today's volume so far, how many times the 20-session average by this time it is, and its percentile. The volume pane has a dashed average line. The data window rates each bar the same way.</div>
+    <div><b>VWAP</b>A yellow line on the stock's axis shows the session VWAP. It starts again at each day's open. Its tag, the legend and the data window say how far the stock is above or below it. It's off by default; press VWAP to show it on 1m to 1h.</div>
+    <div><b>Bar sizes</b>1m shows yesterday and today. 5m shows 5 sessions, 15m 10 sessions, 1h 30 sessions, and 1D a year. A bold dashed line marks where each day (or month, on 1D) starts. You can drag to see more and zoom with the wheel or a pinch.</div>
+    <div><b>Easy to leave</b>Close it with ✕, Esc or Back. You return to the same row in the same place. The small chart in the row doesn't change.</div>
+  </div>
+</div>
+
+<div class="fs" id="fs" hidden role="dialog" aria-modal="true" aria-labelledby="fsTicker">
+  <div class="fs-bar">
+    <div class="fs-id">
+      <b id="fsTicker">NVDA</b>
+      <span class="num" id="fsLast">$131.62</span>
+      <span class="num chg up" id="fsChg">+2.31%</span>
+      <small id="fsSub">session 2026-10-16 · SIP · 15 min delayed</small>
+    </div>
+    <span class="score" id="fsVol" title=""></span>
+    <span class="score" id="fsScore"></span>
+    <div class="seg" id="fsTf" role="group" aria-label="Bar size">
+      <button type="button" data-tf="1m" aria-pressed="true">1m</button>
+      <button type="button" data-tf="5m" aria-pressed="false">5m</button>
+      <button type="button" data-tf="15m" aria-pressed="false">15m</button>
+      <button type="button" data-tf="1h" aria-pressed="false">1h</button>
+      <button type="button" data-tf="1D" aria-pressed="false">1D</button>
+    </div>
+    <div class="seg"><button type="button" id="fsVwap" aria-pressed="false" title="Session VWAP of the stock (1m to 1h)">VWAP</button></div>
+    <div class="seg" id="fsKind" role="group" aria-label="Chart type">
+      <button type="button" data-k="candles" aria-pressed="false">Candles</button>
+      <button type="button" data-k="spy" aria-pressed="true">vs SPY</button>
+    </div>
+    <div class="seg" id="fsBench" role="group" aria-label="Benchmark">
+      <button type="button" data-b="SPY" aria-pressed="true">SPY</button>
+      <button type="button" data-b="SMH" aria-pressed="false">SMH</button>
+    </div>
+    <button type="button" class="close" id="close">✕ Close</button>
+  </div>
+  <div class="fs-chart" id="big"></div>
+</div>
+
+<script>
+// Synthetic minute bars, 16:30–23:00 Israel time (the US regular session).
+function rng(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
+function makeDay(seed, base, drift, beta) {
+  const r = rng(seed), n = 390, bars = [];
+  let b = 0, s = 0, trend = 0;
+  for (let i = 0; i < n; i++) {
+    if (i % 40 === 0) trend = (r() - .5) * .03;
+    const db = (r() - .5) * .05 + trend * .5;
+    const ps = s, pb = b;
+    b += db; s += beta * db + (r() - .5) * .12 + drift + trend * .4;
+    const vol = (r() * .8 + .3) * (i < 20 || i > 370 ? 2.4 : 1) * (r() > .975 ? 4 : 1);
+    bars.push({ i, s, b, ps: i ? ps : s, pb: i ? pb : b,
+      sh: Math.max(ps, s) + r() * .04, sl: Math.min(ps, s) - r() * .04,
+      bh: Math.max(pb, b) + r() * .012, bl: Math.min(pb, b) - r() * .012, vol });
+  }
+  return { bars, base };
+}
+const benchBase = { SPY: 571.30, SMH: 283.45 };
+const contexts = {
+  watch:  { t: "NVDA", bench: ["SPY", "SMH"], sub: "Watchlist row · session 2026-10-16 · SIP · 15 min delayed", fsSub: "SIP · 15 min delayed", day: makeDay(7, 128.65, .006, 1.9), rowKind: "candles" },
+  alert:  { t: "AMD", bench: ["SPY", "SMH"], sub: "Alert row · ended 18:12 · window 15 min", fsSub: "alert at 18:12, 15 min window · live", day: makeDay(19, 158.20, .004, 1.7), alert: [87, 102], rowKind: "spy" },
+  trade:  { t: "TSLA", bench: ["SPY"], sub: "Trade chain · underlying · session 2026-10-16", fsSub: "SIP · 15 min delayed", day: makeDay(31, 241.90, -.003, 2.0), rowKind: "candles" },
+  market: { t: "QQQ", bench: ["SPY"], sub: "Market chart · Nasdaq-100 vs S&P 500", fsSub: "SIP · 15 min delayed", day: makeDay(43, 492.40, .001, 1.15), rowKind: "spy" },
+};
+let ctx = contexts.watch, rowKind = "candles", fsKind = "spy", bench = "SPY", tf = "1m", showVwap = false, opener = null;
+
+const pct = (v) => (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
+const clock = (i) => { const m = 16 * 60 + 30 + i; return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent && parent.appendChild(e); return e; }
+function niceStep(range, count) { const raw = range / count, mag = 10 ** Math.floor(Math.log10(raw)); return [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw); }
+const scoreOf = (b) => Math.max(5, Math.min(95, Math.round(50 + (b.s - b.b) * 9)));
+
+// The row chart as it is today (unchanged by this feature).
+function drawRow(host, kind) {
+  host.textContent = "";
+  const W = host.clientWidth || 600, H = host.clientHeight || 220;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `${ctx.t} day chart` }, host);
+  const padL = 8, padR = 52, padT = 10, axisH = 18, volH = Math.max(28, H * .16);
+  const plotH = H - padT - axisH - volH - 6, x0 = padL, x1 = W - padR;
+  const bars = ctx.day.bars, n = bars.length, xs = (i) => x0 + (i / (n - 1)) * (x1 - x0);
+  const vals = kind === "spy" ? bars.flatMap((b) => [b.s, b.b, 0]) : bars.map((b) => b.s);
+  let lo = Math.min(...vals), hi = Math.max(...vals); const pv = (hi - lo) * .08; lo -= pv; hi += pv;
+  const ys = (v) => padT + (1 - (v - lo) / (hi - lo)) * plotH, step = niceStep(hi - lo, 4);
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+    el("line", { x1: x0, x2: x1, y1: ys(v), y2: ys(v), stroke: css("--grid") }, svg);
+    el("text", { x: x1 + 6, y: ys(v) + 4, fill: css("--muted"), "font-size": 11 }, svg).textContent = kind === "spy" ? pct(v) : "$" + (ctx.day.base * (1 + v / 100)).toFixed(2);
+  }
+  for (let i = 0; i < n; i += 60) el("text", { x: xs(i), y: H - 4, fill: css("--muted"), "font-size": 11, "text-anchor": i ? "middle" : "start" }, svg).textContent = clock(i);
+  if (ctx.alert) el("rect", { x: xs(ctx.alert[0]), y: padT, width: xs(ctx.alert[1]) - xs(ctx.alert[0]), height: plotH, fill: css("--band") }, svg);
+  const vmax = Math.max(...bars.map((b) => b.vol)), vy = padT + plotH + 6, bw = Math.max(1, (x1 - x0) / n - .3);
+  bars.forEach((b) => { const up = b.s >= b.ps, h = (b.vol / vmax) * volH;
+    el("rect", { x: xs(b.i) - bw / 2, y: vy + volH - h, width: bw, height: h, fill: css(up ? "--upf" : "--downf") }, svg); });
+  if (kind === "spy") {
+    el("line", { x1: x0, x2: x1, y1: ys(0), y2: ys(0), stroke: css("--muted"), "stroke-dasharray": "3 3" }, svg);
+    const path = (k) => bars.map((b, i) => (i ? "L" : "M") + xs(i).toFixed(1) + " " + ys(b[k]).toFixed(1)).join("");
+    el("path", { d: path("b"), fill: "none", stroke: css("--bench"), "stroke-width": 1.4 }, svg);
+    el("path", { d: path("s"), fill: "none", stroke: css("--ticker"), "stroke-width": 1.8 }, svg);
+  } else {
+    for (let i = 0; i < n; i += 5) {
+      const g = bars.slice(i, i + 5), o = g[0].ps, c = g[g.length - 1].s, h = Math.max(...g.map((b) => b.sh)), l = Math.min(...g.map((b) => b.sl));
+      const col = css(c >= o ? "--up" : "--down"), cx = xs(i + 2.5), w = Math.max(1.5, ((x1 - x0) / n) * 3.5);
+      el("line", { x1: cx, x2: cx, y1: ys(h), y2: ys(l), stroke: col }, svg);
+      el("rect", { x: cx - w / 2, y: ys(Math.max(o, c)), width: w, height: Math.max(1, Math.abs(ys(o) - ys(c))), fill: col }, svg);
+    }
+  }
+}
+
+// Full screen bars for a timeframe: sessions back from 2026-10-16, regular hours only.
+const frames = {
+  "1m":  { min: 1,   days: 2,   range: "yesterday and today" },
+  "5m":  { min: 5,   days: 5,   range: "last 5 sessions" },
+  "15m": { min: 15,  days: 10,  range: "last 10 sessions" },
+  "1h":  { min: 60,  days: 30,  range: "last 30 sessions" },
+  "1D":  { min: 390, days: 250, range: "last 12 months" },
+};
+const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function sessions(count) {
+  const out = [], d = new Date(Date.UTC(2026, 9, 16));
+  while (out.length < count) { if (d.getUTCDay() % 6) out.unshift(new Date(d)); d.setUTCDate(d.getUTCDate() - 1); }
+  return out;
+}
+const seriesCache = {};
+function makeSeries(tf) {
+  const key = ctx.t + bench + tf; if (seriesCache[key]) return seriesCache[key];
+  const f = frames[tf], per = tf === "1D" ? 1 : Math.ceil(390 / f.min), days = sessions(f.days);
+  const r = rng(ctx.day.bars.length * 7 + ctx.t.charCodeAt(0) * 131 + tf.length * 977 + bench.length);
+  const beta = ctx.t === "QQQ" ? 1.15 : 1.8, sigB = .045 * Math.sqrt(f.min), sigS = .08 * Math.sqrt(f.min);
+  const bars = []; let sc = 100, bc = 100, prevS = 100, prevB = 100;
+  days.forEach((day, di) => {
+    const dayOpenS = sc, dayOpenB = bc;
+    for (let k = 0; k < per; k++) {
+      const gap = k === 0 && di > 0 && tf !== "1D" ? 2.2 : 1;
+      const db = (r() - .5) * 2 * sigB * gap, ds = beta * db + (r() - .5) * 2 * sigS * gap;
+      const so = sc, bo = bc; sc *= 1 + ds / 100; bc *= 1 + db / 100;
+      const wick = (o, c, sig) => [Math.max(o, c) * (1 + r() * sig * .004), Math.min(o, c) * (1 - r() * sig * .004)];
+      const [sh, sl] = wick(so, sc, sigS), [bh, bl] = wick(bo, bc, sigB);
+      const edge = tf !== "1D" && (k === 0 || k === per - 1) ? 2.3 : 1;
+      bars.push({ day, first: k === 0, min: k * f.min, s: [so, sh, sl, sc], b: [bo, bh, bl, bc], prevS, prevB,
+        vol: (r() * .9 + .3) * edge * (r() > .97 ? 3.5 : 1) * f.min * 52000 });
+    }
+    if (tf !== "1D") { prevS = sc; prevB = bc; }
+  });
+  if (tf === "1D") bars.forEach((b, i) => { b.prevS = i ? bars[i - 1].s[3] : b.s[0]; b.prevB = i ? bars[i - 1].b[3] : b.b[0]; });
+  // Scale so the last close is the stock's (and the benchmark's) price in the row.
+  const ks = (ctx.day.base * (1 + ctx.day.bars.at(-1).s / 100)) / sc, kb = benchBase[bench] * (1 + ctx.day.bars.at(-1).b / 100) / bc;
+  bars.forEach((b) => { b.s = b.s.map((v) => v * ks); b.b = b.b.map((v) => v * kb); b.prevS *= ks; b.prevB *= kb; });
+  // Session VWAP of the stock: Σ(typical price × volume) ÷ Σ volume from 09:30 ET, reset each session.
+  let pv = 0, vv = 0;
+  bars.forEach((b) => { if (b.first) pv = vv = 0; pv += ((b.s[1] + b.s[2] + b.s[3]) / 3) * b.vol; vv += b.vol; b.vwap = tf === "1D" ? null : pv / vv; });
+  // Volume vs the last month (20 sessions): the average for this bar (same time of day,
+  // or the previous 20 days on 1D) and the percentile among those 20 values.
+  bars.forEach((b, i) => {
+    let past;
+    if (tf === "1D") past = bars.slice(Math.max(0, i - 20), i).map((x) => x.vol);
+    else { const edge = b.min === 0 || b.min + f.min >= 390 ? 2.3 : 1, mid = .75 * edge * f.min * 52000; // synthetic same-time history
+      past = Array.from({ length: 20 }, (_, k) => mid * (.55 + ((k * 37 + i * 11) % 20) / 22)); }
+    b.avg = past.length ? past.reduce((a, v) => a + v, 0) / past.length : null;
+    b.pct = past.length ? Math.round((past.filter((v) => v < b.vol).length / past.length) * 100) : null;
+    b.n = past.length;
+  });
+  // The alert window, in today's bars (1m and 5m only, where it is wider than a bar).
+  if (ctx.alert && f.min <= 5) { const t0 = bars.length - per; bars.alert = [t0 + Math.floor(ctx.alert[0] / f.min), t0 + Math.ceil(ctx.alert[1] / f.min)]; }
+  return (seriesCache[key] = bars);
+}
+const ord = (p) => p + (p % 100 >= 11 && p % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][p % 10] || "th");
+const dayName = (d) => `${weekday[d.getUTCDay()]} ${d.getUTCDate()}`;
+const isoDay = (d) => d.toISOString().slice(0, 10);
+
+// Full screen: the stock on the right axis, the benchmark on the left axis, each in dollars.
+function drawOverlay(host, kind, tf) {
+  host.textContent = "";
+  const bars = makeSeries(tf), daily = tf === "1D";
+  const W = host.clientWidth || 900, H = host.clientHeight || 600, phone = W < 560;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `${ctx.t} ${kind === "spy" ? "and " + bench + " prices" : "candles"}, ${tf} bars, full screen` }, host);
+  const font = { "font-size": phone ? 10.5 : 12, "font-family": "Arial, Helvetica, sans-serif" };
+  const axL = kind === "spy" ? (phone ? 48 : 62) : 0, axR = phone ? 48 : 62, timeH = 22, volH = Math.round(H * .2), gap = 4;
+  const x0 = axL, x1 = W - axR, plotT = 4, plotB = H - timeH - volH - gap, volB = H - timeH;
+  const n = bars.length, xs = (i) => x0 + 4 + (i / (n - 1)) * (x1 - x0 - 10);
+  const range = (lo, hi) => { const p = (hi - lo) * .06; return [lo - p, hi + p]; };
+  const sv = (b) => kind === "spy" ? [b.s[3], b.s[3]] : [b.s[2], b.s[1]];
+  const [sLo, sHi] = range(Math.min(...bars.map((b) => sv(b)[0])), Math.max(...bars.map((b) => sv(b)[1])));
+  const [bLo, bHi] = range(Math.min(...bars.map((b) => b.b[3])), Math.max(...bars.map((b) => b.b[3])));
+  const yS = (v) => plotT + (1 - (v - sLo) / (sHi - sLo)) * (plotB - plotT);
+  const yB = (v) => plotT + (1 - (v - bLo) / (bHi - bLo)) * (plotB - plotT);
+  const vOf = (y, lo, hi) => hi - ((y - plotT) / (plotB - plotT)) * (hi - lo);
+  const T = { bg: css("--term-bg"), grid: css("--term-grid"), ink: css("--term-ink"), muted: css("--term-muted"), stock: css("--term-stock"), bench: css("--term-bench"), up: css("--term-up"), down: css("--term-down") };
+  el("rect", { x: 0, y: 0, width: W, height: H, fill: T.bg }, svg);
+
+  // grid from the stock axis, labels on both axes
+  const sStep = niceStep(sHi - sLo, phone ? 6 : 10);
+  for (let v = Math.ceil(sLo / sStep) * sStep; v <= sHi; v += sStep) {
+    el("line", { x1: x0, x2: x1, y1: yS(v), y2: yS(v), stroke: T.grid, "stroke-dasharray": "3 4" }, svg);
+    el("text", { x: x1 + 6, y: yS(v) + 4, fill: T.ink, ...font }, svg).textContent = v.toFixed(2);
+  }
+  if (kind === "spy") {
+    const bStep = niceStep(bHi - bLo, phone ? 6 : 10);
+    for (let v = Math.ceil(bLo / bStep) * bStep; v <= bHi; v += bStep)
+      el("text", { x: x0 - 6, y: yB(v) + 4, fill: T.ink, "text-anchor": "end", ...font }, svg).textContent = v.toFixed(2);
+  }
+  // time axis: a new session (or month, on 1D) is a dashed line with a bold label; hours fill the gaps
+  let lastX = -1e9;
+  bars.forEach((b, i) => {
+    const x = xs(i), newMonth = daily && (i === 0 || b.day.getUTCMonth() !== bars[i - 1].day.getUTCMonth());
+    const strong = daily ? newMonth : b.first, hour = !daily && (b.min + 30) % 60 === 0;
+    if (!strong && !hour) return;
+    if (strong) el("line", { x1: x, x2: x, y1: plotT, y2: volB, stroke: T.grid, "stroke-dasharray": "3 4" }, svg);
+    if (x - lastX < (phone ? 52 : 64) || x > x1 - 20) return;
+    lastX = x;
+    const label = daily ? (b.day.getUTCMonth() ? month[b.day.getUTCMonth()] : String(b.day.getUTCFullYear())) : b.first ? dayName(b.day) : clock(b.min);
+    el("text", { x, y: H - 6, fill: T.ink, "text-anchor": i ? "middle" : "start", "font-weight": strong ? 700 : 400, ...font }, svg).textContent = label;
+  });
+  if (bars.alert) el("rect", { x: xs(bars.alert[0]), y: plotT, width: Math.max(2, xs(bars.alert[1]) - xs(bars.alert[0])), height: plotB - plotT, fill: css("--term-band") }, svg);
+  for (const x of [x0, x1]) el("line", { x1: x, x2: x, y1: 0, y2: volB, stroke: T.muted, "stroke-width": .6 }, svg);
+  el("line", { x1: 0, x2: W, y1: plotB + gap / 2, y2: plotB + gap / 2, stroke: T.muted, "stroke-width": 1 }, svg);
+  el("line", { x1: 0, x2: W, y1: volB, y2: volB, stroke: T.muted, "stroke-width": .6 }, svg);
+
+  // volume of the stock, own axis on the right
+  const vmax = Math.max(...bars.map((b) => b.vol)), vStep = niceStep(vmax, 2);
+  const yV = (v) => volB - (v / (vmax * 1.05)) * (volH - 4), bw = Math.max(1, (x1 - x0) / n - .6);
+  const short = (v) => v >= 1e9 ? +(v / 1e9).toFixed(1) + "B" : v >= 1e6 ? +(v / 1e6).toFixed(1) + "M" : v >= 1e3 ? +(v / 1e3).toFixed(0) + "K" : String(Math.round(v));
+  for (let v = vStep; v <= vmax; v += vStep) el("text", { x: x1 + 6, y: yV(v) + 4, fill: T.ink, ...font }, svg).textContent = short(v);
+  bars.forEach((b, i) => el("rect", { x: xs(i) - bw / 2, y: yV(b.vol), width: bw, height: volB - yV(b.vol), fill: b.s[3] >= b.s[0] ? T.up : T.down }, svg));
+  el("path", { d: bars.map((b, i) => b.avg === null ? "" : (i && bars[i - 1].avg !== null ? "L" : "M") + xs(i).toFixed(1) + " " + yV(Math.min(b.avg, vmax * 1.05)).toFixed(1)).join(""), fill: "none", stroke: T.ink, "stroke-width": 1.2, "stroke-dasharray": "5 3" }, svg);
+  el("text", { x: x0 + 8, y: plotB + gap + 14, fill: T.muted, ...font }, svg).textContent = `${ctx.t} volume · dashed: avg of last 20 sessions${daily ? "" : " at this time"}`;
+
+  // price marks
+  const path = (f, y) => bars.map((b, i) => (i ? "L" : "M") + xs(i).toFixed(1) + " " + y(f(b)).toFixed(1)).join("");
+  if (kind === "spy") {
+    el("path", { d: path((b) => b.b[3], yB), fill: "none", stroke: T.bench, "stroke-width": 1.3, "stroke-linejoin": "round" }, svg);
+    el("path", { d: path((b) => b.s[3], yS), fill: "none", stroke: T.stock, "stroke-width": 1.5, "stroke-linejoin": "round" }, svg);
+  } else {
+    const w = Math.max(1, (x1 - x0) / n * .65);
+    bars.forEach((b, i) => { const [o, h, l, c] = b.s, col = c >= o ? T.up : T.down;
+      el("line", { x1: xs(i), x2: xs(i), y1: yS(h), y2: yS(l), stroke: col, "stroke-width": .8 }, svg);
+      el("rect", { x: xs(i) - w / 2, y: yS(Math.max(o, c)), width: w, height: Math.max(1, Math.abs(yS(o) - yS(c))), fill: col }, svg); });
+  }
+
+  if (showVwap && !daily) el("path", { d: bars.map((b, i) => (b.first || !i ? "M" : "L") + xs(i).toFixed(1) + " " + yS(b.vwap).toFixed(1)).join(""), fill: "none", stroke: css("--term-vwap"), "stroke-width": 1.4 }, svg);
+
+  // value tags on the axes
+  const tag = (x, y, text, fill, color, anchor) => {
+    const w = phone ? 46 : 58, h = 17, g = el("g", {}, svg);
+    el("rect", { x: anchor === "end" ? x - w : x, y: y - h / 2, width: w, height: h, fill }, g);
+    const t = el("text", { x: anchor === "end" ? x - 4 : x + 4, y: y + 4.5, fill: color, "text-anchor": anchor, "font-weight": 700, ...font }, g); t.textContent = text;
+    return { g, set(y2, txt) { g.firstChild.setAttribute("y", y2 - h / 2); t.setAttribute("y", y2 + 4.5); t.textContent = txt; } };
+  };
+  const last = bars[n - 1];
+  tag(x1 + 1, yS(last.s[3]), last.s[3].toFixed(2), T.stock, T.bg, "start");
+  if (kind === "spy") tag(x0 - 1, yB(last.b[3]), last.b[3].toFixed(2), T.bench, T.bg, "end");
+  if (showVwap && !daily) { const vt = tag(x1 + 1, yS(last.vwap), last.vwap.toFixed(2), css("--term-vwap"), T.bg, "start");
+    if (Math.abs(yS(last.vwap) - yS(last.s[3])) < 18) vt.set(yS(last.vwap) + (yS(last.vwap) > yS(last.s[3]) ? 18 : -18) * .6, last.vwap.toFixed(2)); }
+
+  // legend: OHLC of the pointed (or latest) bar
+  const legS = el("text", { x: x0 + 8, y: plotT + 16, fill: T.stock, ...font }, svg);
+  const legB = kind === "spy" ? el("text", { x: x0 + 8, y: plotT + 34, fill: T.bench, ...font }, svg) : null;
+  const legV = showVwap && !daily ? el("text", { x: x0 + 8, y: plotT + (legB ? 52 : 34), fill: css("--term-vwap"), ...font }, svg) : null;
+
+  // crosshair
+  const cross = el("g", { visibility: "hidden" }, svg);
+  const vl = el("line", { y1: plotT, y2: volB, stroke: T.ink, "stroke-dasharray": "3 3", "stroke-width": .8 }, cross);
+  const hl = el("line", { x1: x0, x2: x1, stroke: T.ink, "stroke-dasharray": "3 3", "stroke-width": .8 }, cross);
+  const rTag = tag(x1 + 1, 0, "", "#5f6a68", T.ink, "start"); cross.appendChild(rTag.g);
+  const lTag = kind === "spy" ? tag(x0 - 1, 0, "", "#5f6a68", T.ink, "end") : null; lTag && cross.appendChild(lTag.g);
+  const tW = phone ? 96 : 128, tG = el("g", {}, cross);
+  el("rect", { y: volB + 2, width: tW, height: timeH - 4, fill: "#5f6a68" }, tG);
+  const tT = el("text", { y: volB + 15, fill: T.ink, "text-anchor": "middle", ...font }, tG);
+
+  const dw = document.createElement("div"); dw.className = "dw"; dw.style.left = (x0 + 8) + "px"; dw.style.bottom = (H - plotB + 8) + "px"; host.appendChild(dw);
+  const f2 = (v) => v.toFixed(2), chg = (c, p) => pct((c / p - 1) * 100);
+  const vsWhat = daily ? "vs prev. day" : "vs prev. close";
+  function show(i, y) {
+    const b = bars[i], [so, sh, sl, sc] = b.s, [bo, bh, bl, bc] = b.b;
+    legS.textContent = `${ctx.t} · ${tf} · O ${f2(so)}  H ${f2(sh)}  L ${f2(sl)}  C ${f2(sc)}`;
+    if (legV) legV.textContent = `VWAP ${f2(b.vwap)} · ${ctx.t} ${sc >= b.vwap ? "above" : "below"} by ${Math.abs((sc / b.vwap - 1) * 100).toFixed(2)}%`;
+    if (legB) legB.textContent = `${bench} · ${tf} · O ${f2(bo)}  H ${f2(bh)}  L ${f2(bl)}  C ${f2(bc)}`;
+    dw.innerHTML = `<dl><dt>Date</dt><dd>${isoDay(b.day)}</dd>` + (daily ? "" : `<dt>Time</dt><dd>${clock(b.min)} Israel</dd>`) +
+      `<h4 style="color:${T.stock}">${ctx.t}, ${tf}</h4><dt>Open</dt><dd>${f2(so)}</dd><dt>High</dt><dd>${f2(sh)}</dd><dt>Low</dt><dd>${f2(sl)}</dd><dt>Close</dt><dd>${f2(sc)}</dd><dt>${vsWhat}</dt><dd>${chg(sc, b.prevS)}</dd>` + (showVwap && !daily ? `<dt>VWAP</dt><dd>${f2(b.vwap)}</dd><dt>vs VWAP</dt><dd>${pct((sc / b.vwap - 1) * 100)}</dd>` : "") + `<dt>Volume</dt><dd>${Math.round(b.vol).toLocaleString("en-US")}</dd>` +
+      (b.avg === null ? "" : `<dt>vs 20-session avg</dt><dd>${(b.vol / b.avg).toFixed(1)}×</dd><dt>Percentile</dt><dd>${ord(b.pct)}</dd>`) +
+      (kind === "spy" ? `<h4 style="color:${T.bench}">${bench}, ${tf}</h4><dt>Open</dt><dd>${f2(bo)}</dd><dt>High</dt><dd>${f2(bh)}</dd><dt>Low</dt><dd>${f2(bl)}</dd><dt>Close</dt><dd>${f2(bc)}</dd><dt>${vsWhat}</dt><dd>${chg(bc, b.prevB)}</dd>` : "") + `</dl>`;
+    if (y === null) { cross.setAttribute("visibility", "hidden"); return; }
+    cross.setAttribute("visibility", "visible");
+    const x = xs(i); vl.setAttribute("x1", x); vl.setAttribute("x2", x);
+    const inPlot = y >= plotT && y <= plotB;
+    hl.setAttribute("visibility", inPlot ? "visible" : "hidden"); hl.setAttribute("y1", y); hl.setAttribute("y2", y);
+    rTag.g.setAttribute("visibility", inPlot ? "visible" : "hidden"); rTag.set(y, f2(vOf(y, sLo, sHi)));
+    if (lTag) { lTag.g.setAttribute("visibility", inPlot ? "visible" : "hidden"); lTag.set(y, f2(vOf(y, bLo, bHi))); }
+    const tx = Math.max(x0 + tW / 2, Math.min(x1 - tW / 2, x));
+    tG.firstChild.setAttribute("x", tx - tW / 2); tT.setAttribute("x", tx);
+    tT.textContent = daily ? isoDay(b.day) : `${dayName(b.day)} · ${clock(b.min)}`;
+  }
+  show(n - 1, null);
+  svg.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) * (W / r.width), y = (e.clientY - r.top) * (H / r.height);
+    show(Math.max(0, Math.min(n - 1, Math.round(((x - x0 - 4) / (x1 - x0 - 10)) * (n - 1)))), y);
+  });
+  svg.addEventListener("pointerleave", () => show(n - 1, null));
+}
+
+function setPressed(group, attr, val) { group.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset[attr] === val))); }
+function renderRow() {
+  document.getElementById("rowTitle").textContent = ctx.t;
+  document.getElementById("rowSub").textContent = ctx.sub;
+  setPressed(document.getElementById("rowKind"), "k", rowKind);
+  drawRow(document.getElementById("small"), rowKind);
+}
+function renderFs() {
+  const bars = ctx.day.bars, last = bars[bars.length - 1];
+  document.getElementById("fsTicker").textContent = ctx.t;
+  document.getElementById("fsLast").textContent = "$" + (ctx.day.base * (1 + last.s / 100)).toFixed(2);
+  const chg = document.getElementById("fsChg"); chg.textContent = pct(last.s); chg.className = "num chg " + (last.s >= 0 ? "up" : "down");
+  document.getElementById("fsSub").textContent = `${frames[tf].range} · ${ctx.fsSub}`;
+  setPressed(document.getElementById("fsTf"), "tf", tf);
+  const vw = document.getElementById("fsVwap"); vw.setAttribute("aria-pressed", String(showVwap)); vw.disabled = tf === "1D"; vw.style.opacity = tf === "1D" ? .45 : 1;
+  const today = makeSeries("1D").at(-1), vEl = document.getElementById("fsVol"), sh = (v) => v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : Math.round(v / 1e3) + "K";
+  vEl.innerHTML = `Vol ${sh(today.vol)} · <b>${(today.vol / today.avg).toFixed(1)}×</b> avg · ${ord(today.pct)} pct`;
+  vEl.title = `Today's volume so far vs the average by this time over the last 20 sessions; higher than ${Math.round(today.pct / 5)} of those 20 sessions`;
+  const sc = scoreOf(last), scEl = document.getElementById("fsScore");
+  scEl.innerHTML = `vs SPY score <b class="${sc >= 60 ? "up" : sc <= 40 ? "down" : ""}">${sc}</b> / 100`;
+  setPressed(document.getElementById("fsKind"), "k", fsKind);
+  const bg = document.getElementById("fsBench"), alt = bg.querySelector("button:last-child");
+  bg.hidden = fsKind !== "spy" || ctx.bench.length < 2;
+  if (ctx.bench[1]) { alt.dataset.b = ctx.bench[1]; alt.textContent = ctx.bench[1]; }
+  setPressed(bg, "b", bench);
+  drawOverlay(document.getElementById("big"), fsKind, tf);
+}
+
+const fs = document.getElementById("fs");
+function openFs() {
+  opener = document.activeElement; fsKind = "spy"; bench = "SPY"; tf = "1m";
+  fs.hidden = false; document.body.classList.add("locked"); renderFs();
+  document.getElementById("close").focus();
+}
+function closeFs() { fs.hidden = true; document.body.classList.remove("locked"); (opener || document.getElementById("open")).focus(); }
+
+document.getElementById("open").addEventListener("click", () => { document.getElementById("open").classList.remove("pulse"); openFs(); });
+document.getElementById("close").addEventListener("click", closeFs);
+document.addEventListener("keydown", (e) => {
+  if (fs.hidden) return;
+  if (e.key === "Escape") closeFs();
+  if (e.key === "Tab") { // keep focus inside the layer
+    const f = [...fs.querySelectorAll("button")].filter((b) => b.offsetParent);
+    if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  }
+});
+document.getElementById("ctx").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  ctx = contexts[b.dataset.ctx]; rowKind = ctx.rowKind;
+  setPressed(document.getElementById("ctx"), "ctx", b.dataset.ctx); renderRow();
+});
+document.getElementById("rowKind").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { rowKind = b.dataset.k; renderRow(); } });
+document.getElementById("fsKind").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { fsKind = b.dataset.k; renderFs(); } });
+document.getElementById("fsVwap").addEventListener("click", () => { showVwap = !showVwap; renderFs(); });
+document.getElementById("fsTf").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { tf = b.dataset.tf; renderFs(); } });
+document.getElementById("fsBench").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { bench = b.dataset.b; renderFs(); } });
+let t; addEventListener("resize", () => { clearTimeout(t); t = setTimeout(() => { renderRow(); if (!fs.hidden) renderFs(); }, 80); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { renderRow(); if (!fs.hidden) renderFs(); });
+renderRow();
+</script>
+
+</body></html>

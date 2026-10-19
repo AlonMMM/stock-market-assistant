@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Option ticket, broker split</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#142b29}a:hover{color:#0b1817}
+</style>
+</helmet>
+<div style="width: 1180px; height: 720px; box-sizing: border-box; padding: 28px; background: #f4f5f0; font-family: 'IBM Plex Sans', sans-serif; color: #142b29; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 20px">
+<section style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+<span style="font-size: 22px; font-weight: 700">NVDA</span>
+<span style="font: 600 18px 'IBM Plex Mono', monospace">182.40</span>
+<span style="font: 600 14px 'IBM Plex Mono', monospace; color: #9f1a1a">−1.60%</span>
+<span style="flex-grow: 1"></span>
+<span style="display: inline-flex; padding: 3px; gap: 2px; border: 1px solid #cdd7ce; border-radius: 10px; background: #fff">
+<button type="button" style="border: 0; border-radius: 7px; padding: 8px 14px; background: #142b29; color: #fff; font: 600 13px 'IBM Plex Sans', sans-serif">Calls</button>
+<button type="button" style="border: 0; border-radius: 7px; padding: 8px 14px; background: transparent; color: #142b29; font: 13px 'IBM Plex Sans', sans-serif">Puts</button>
+</span>
+<span style="display: inline-flex; gap: 6px">
+<button type="button" style="border: 0; border-radius: 999px; padding: 8px 14px; background: #142b29; color: #fff; font: 600 13px 'IBM Plex Sans', sans-serif">Fri 23 Oct</button>
+<button type="button" style="border: 1px solid #cdd7ce; border-radius: 999px; padding: 8px 14px; background: #fff; color: #142b29; font: 13px 'IBM Plex Sans', sans-serif">Fri 30 Oct</button>
+</span>
+</div>
+<div style="background: #fff; border: 1px solid #cdd7ce; border-radius: 12px; overflow: hidden">
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); padding: 10px 16px; background: #f6f8f4; font-size: 11px; letter-spacing: 0.06em; color: #526461">
+<span>STRIKE</span><span style="text-align: right">BID</span><span style="text-align: right">MID</span><span style="text-align: right">ASK</span><span style="text-align: right">SPREAD</span><span style="text-align: right">DELTA</span>
+</div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+<div style="{{r.style}}">
+<span style="font-weight: 600">{{r.strike}}</span><span style="text-align: right">{{r.bid}}</span><span style="text-align: right">{{r.mid}}</span><span style="text-align: right">{{r.ask}}</span><span style="text-align: right">{{r.spread}}</span><span style="text-align: right">{{r.delta}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+<form style="display: flex; flex-direction: column; gap: 14px; padding: 18px; background: #fff; border: 1px solid #cdd7ce; border-radius: 12px; align-self: start">
+<div style="display: flex; justify-content: space-between; align-items: baseline">
+<span style="font-size: 16px; font-weight: 700">NVDA 23 Oct 190 C</span>
+<span style="font: 500 13px 'IBM Plex Mono', monospace; color: #526461">1.02 × 1.06</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 3px; gap: 2px; border: 1px solid #cdd7ce; border-radius: 10px; background: #fafbf8">
+<button type="button" style="height: 40px; border: 0; border-radius: 7px; background: #1d4ed8; color: #fff; font: 700 14px 'IBM Plex Sans', sans-serif; letter-spacing: 0.06em">BUY</button>
+<button type="button" disabled style="height: 40px; border: 0; border-radius: 7px; background: transparent; color: #8c9a96; font: 600 14px 'IBM Plex Sans', sans-serif; letter-spacing: 0.06em">SELL · in Live trades</button>
+</div>
+<div style="display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px 12px; align-items: center; font-size: 13px">
+<label for="sq" style="color: #526461">Quantity</label>
+<span style="display: flex; gap: 6px"><button type="button" aria-label="One fewer" style="width: 40px; height: 40px; border: 1px solid #cdd7ce; border-radius: 8px; background: #fff">−</button><input id="sq" value="2" style="width: 64px; height: 40px; box-sizing: border-box; text-align: center; border: 1px solid #cdd7ce; border-radius: 8px; font: 600 15px 'IBM Plex Mono', monospace"><button type="button" aria-label="One more" style="width: 40px; height: 40px; border: 1px solid #cdd7ce; border-radius: 8px; background: #fff">+</button></span>
+<label for="st" style="color: #526461">Order type</label>
+<select id="st" style="height: 40px; border: 1px solid #cdd7ce; border-radius: 8px; background: #fff; padding: 0 10px; font: 600 14px 'IBM Plex Sans', sans-serif; color: #142b29"><option>LMT · one order at my price</option><option>LMT · stepped, mid → ask</option></select>
+<label for="sp" style="color: #526461">Limit price</label>
+<span style="display: flex; gap: 6px; flex-wrap: wrap"><input id="sp" value="1.03" style="width: 80px; height: 40px; box-sizing: border-box; padding: 0 10px; border: 1px solid #cdd7ce; border-radius: 8px; font: 600 15px 'IBM Plex Mono', monospace"><button type="button" style="height: 40px; padding: 0 10px; border: 1px solid #cdd7ce; border-radius: 8px; background: #fff; font: 13px 'IBM Plex Sans', sans-serif">Bid</button><button type="button" style="height: 40px; padding: 0 10px; border: 1px solid #cdd7ce; border-radius: 8px; background: #fff; font: 13px 'IBM Plex Sans', sans-serif">Mid</button><button type="button" style="height: 40px; padding: 0 10px; border: 1px solid #cdd7ce; border-radius: 8px; background: #fff; font: 13px 'IBM Plex Sans', sans-serif">Ask</button></span>
+<span style="color: #526461">Time in force</span>
+<span style="font-weight: 600">DAY</span>
+</div>
+<div style="display: flex; flex-direction: column; border-top: 1px solid #dfe6dd; border-bottom: 1px solid #dfe6dd">
+<label style="display: flex; align-items: center; gap: 12px; min-height: 48px; font-size: 14px"><input type="checkbox" style="width: 20px; height: 20px; margin: 0; accent-color: #142b29"><span style="flex-grow: 1">Try to buy and increase</span><span style="font-size: 12px; color: #526461">off</span></label>
+<label style="display: flex; align-items: center; gap: 12px; min-height: 48px; font-size: 14px; border-top: 1px solid #eef1ec"><input type="checkbox" checked style="width: 20px; height: 20px; margin: 0; accent-color: #142b29"><span style="flex-grow: 1">Auto stop</span><input value="40%" aria-label="Stop percent" style="width: 64px; height: 36px; box-sizing: border-box; text-align: right; padding: 0 8px; border: 1px solid #cdd7ce; border-radius: 8px; font: 600 14px 'IBM Plex Mono', monospace"></label>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; font-size: 13px">
+<span style="color: #526461">Est. cost</span><span style="font: 600 14px 'IBM Plex Mono', monospace; text-align: right">$206.00</span>
+<span style="color: #526461">Of the account</span><span style="font: 600 14px 'IBM Plex Mono', monospace; text-align: right">0.21%</span>
+<span style="color: #526461">Stop at</span><span style="font: 600 14px 'IBM Plex Mono', monospace; text-align: right">≈ 0.62</span>
+<span style="color: #526461">Checks</span><span style="font-weight: 600; text-align: right; color: #1d6b3a">14 / 14 pass</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button type="button" style="height: 46px; border: 1px solid #cdd7ce; border-radius: 10px; background: #fff; font: 600 14px 'IBM Plex Sans', sans-serif; color: #142b29">Preview</button>
+<button type="button" style="height: 46px; border: 0; border-radius: 10px; background: #1d4ed8; color: #fff; font: 700 14px 'IBM Plex Sans', sans-serif">Submit BUY</button>
+</div>
+</form>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const data = [
+      [180, '3.90', '3.98', '4.05', '3.8%', '0.55'],
+      [182.5, '2.88', '2.93', '2.98', '3.4%', '0.47'],
+      [185, '2.10', '2.13', '2.16', '2.8%', '0.38'],
+      [187.5, '1.48', '1.51', '1.54', '4.0%', '0.24'],
+      [190, '1.02', '1.04', '1.06', '3.8%', '0.14'],
+      [192.5, '0.66', '0.68', '0.70', '5.9%', '0.10'],
+      [195, '0.40', '0.41', '0.42', '4.9%', '0.07']
+    ];
+    const base = "display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); padding: 0 16px; height: 52px; align-items: center; border-top: 1px solid #eef1ec; font: 500 15px 'IBM Plex Mono', monospace;";
+    return {
+      rows: data.map(([strike, bid, mid, ask, spread, delta]) => ({
+        strike, bid, mid, ask, spread, delta,
+        style: strike === 190 ? base + ' background: #e5f0dc; box-shadow: inset 3px 0 0 #142b29;' : base
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Watchlist with a volume column</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#142b29}a:hover{color:#0b1817}
+</style>
+</helmet>
+<div style="width: 1120px; height: 430px; box-sizing: border-box; padding: 28px; background: #f4f5f0; font-family: 'IBM Plex Sans', sans-serif; color: #142b29">
+<div style="background: #fff; border: 1px solid #dfe6dd; border-radius: 14px; overflow: hidden">
+<div style="display: grid; grid-template-columns: 120px minmax(0, 1fr) 110px 100px 90px 120px 160px; gap: 8px; padding: 10px 16px; font-size: 11px; letter-spacing: 0.06em; color: #8c9a96; border-bottom: 1px solid #dfe6dd">
+<span>SYMBOL</span><span>TODAY</span><span style="text-align: right">LAST</span><span style="text-align: right">CHG %</span><span style="text-align: right">REL VOL</span><span style="text-align: right; color: #142b29; font-weight: 600">VOLUME ▼</span><span style="padding-left: 16px">DAY RANGE</span>
+</div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<div style="display: grid; grid-template-columns: 120px minmax(0, 1fr) 110px 100px 90px 120px 160px; gap: 8px; padding: 0 16px; height: 58px; align-items: center; border-top: 1px solid #eef1ec">
+<span style="font-size: 16px; font-weight: 700">{{r.t}}</span>
+<span style="height: 2px; background: {{r.spark}}; opacity: 0.6; margin-right: 40%"></span>
+<span style="text-align: right; font: 500 15px 'IBM Plex Mono', monospace">{{r.last}}</span>
+<span style="justify-self: end; padding: 4px 8px; border-radius: 6px; background: {{r.chgBg}}; color: {{r.chgFg}}; font: 600 14px 'IBM Plex Mono', monospace">{{r.chg}}</span>
+<span style="text-align: right; font: 500 14px 'IBM Plex Mono', monospace">{{r.rv}}</span>
+<span style="text-align: right; font: 600 15px 'IBM Plex Mono', monospace">{{r.vol}}</span>
+<span style="padding-left: 16px; display: flex; align-items: center"><span style="width: 100%; height: 3px; background: #dfe6dd; position: relative"><span style="position: absolute; top: -6px; left: {{r.pos}}; width: 4px; height: 15px; border-radius: 2px; background: #142b29"></span></span></span>
+</div>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1120,"height":430}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const data = [
+      ['NVDA', '213.75', -1.6, '1.2×', '98.84M', '8%'],
+      ['PLUG', '1.39', -6.46, '1.3×', '53.84M', '22%'],
+      ['TSLA', '352.46', -2.75, '2.0×', '53.32M', '10%'],
+      ['AAPL', '342.62', 0.18, '1.8×', '43.74M', '22%'],
+      ['AMD', '527.09', -6.25, '1.2×', '18.28M', '4%']
+    ];
+    return {
+      rows: data.map(([t, last, c, rv, vol, pos]) => ({
+        t, last, rv, vol, pos,
+        chg: (c > 0 ? '+' : '−') + Math.abs(c).toFixed(2) + '%',
+        chgBg: c >= 0 ? '#e1f2e4' : '#fbe3e3',
+        chgFg: c >= 0 ? '#1d6b3a' : '#9f1a1a',
+        spark: c >= 0 ? '#1d6b3a' : '#9f1a1a'
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>
