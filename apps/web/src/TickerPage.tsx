@@ -20,8 +20,8 @@ import { scoreTone, toneWords } from "./vs-spy-model.js";
 // shows it, buttons to its options, shares and alerts, the day's and the
 // year's numbers next to SPY, what is held of it, and its news.
 
-const CandleChart = lazy(() =>
-  import("./CandleChart.js").then((m) => ({ default: m.CandleChart })),
+const ChartPanel = lazy(() =>
+  import("./ChartPanel.js").then((m) => ({ default: m.ChartPanel })),
 );
 
 const infoRefreshMs = 15000;
@@ -269,7 +269,11 @@ export function TickerPage({
       <section className="tk-card tk-chart" aria-label={`${ticker} today`}>
         {board ? (
           <Suspense fallback={<p className="chart-status">Loading chart…</p>}>
-            <CandleChart ticker={ticker} date={board.date} />
+            <ChartPanel
+              ticker={ticker}
+              date={board.date}
+              sector={board.benchmarks[ticker]}
+            />
           </Suspense>
         ) : (
           <p className="chart-status">Loading chart…</p>

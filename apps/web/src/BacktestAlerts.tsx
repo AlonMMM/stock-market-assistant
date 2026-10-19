@@ -24,8 +24,8 @@ import {
 import { israelClock, israelLabel } from "./time.js";
 import { scoreNote, scoreStrong, scoreWeak } from "./vs-spy-model.js";
 
-const DayChart = lazy(() =>
-  import("./DayChart.js").then((m) => ({ default: m.DayChart })),
+const ChartPanel = lazy(() =>
+  import("./ChartPanel.js").then((m) => ({ default: m.ChartPanel })),
 );
 
 const sessionTag = { pre: "Pre", regular: "", post: "After" };
@@ -302,7 +302,7 @@ export function BacktestAlerts({
                                       </p>
                                     }
                                   >
-                                    <DayChart
+                                    <ChartPanel
                                       ticker={a.ticker}
                                       alertEnd={a.end}
                                       window={a.config.window}

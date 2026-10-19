@@ -77,7 +77,11 @@ export interface FullscreenChartProps {
   sector?: string | undefined; // sector benchmark ETF, if the symbol has one
   alertEnd?: string | undefined; // ISO end of the alert window, from an alert row
   window?: number | undefined; // alert window in minutes
-  onClose: () => void;
+  onClose?: () => void;
+  // Drawn in the page instead of over it (user 2026-10-19: the one chart
+  // wherever a day chart was), with a button to open it full screen.
+  inline?: boolean;
+  onExpand?: () => void;
 }
 
 type Kind = "spy" | "candles";
@@ -151,7 +155,9 @@ export function FullscreenChart({
   sector,
   alertEnd,
   window: alertWindow = 0,
-  onClose,
+  onClose = () => {},
+  inline = false,
+  onExpand,
 }: FullscreenChartProps) {
   const hasSector = !!sector && sector !== ticker && sector !== "SPY";
   const [bar, setBar] = useState<BarSize>("1m");
@@ -216,6 +222,7 @@ export function FullscreenChart({
 
   // Open as a layer over the page: no page scroll, focus inside, Esc and Back close.
   useEffect(() => {
+    if (inline) return;
     const before = document.activeElement as HTMLElement | null;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -628,12 +635,16 @@ export function FullscreenChart({
     [shown, daily],
   );
 
-  return createPortal(
+  const layer = (
     <div
-      className="fullscreen-chart"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${ticker} chart, full screen`}
+      className={inline ? "fullscreen-chart inline" : "fullscreen-chart"}
+      {...(inline
+        ? { role: "region", "aria-label": `${ticker} chart` }
+        : {
+            role: "dialog",
+            "aria-modal": true,
+            "aria-label": `${ticker} chart, full screen`,
+          })}
       ref={dialog}
       // React passes portal events up to the row that opened the layer.
       onClick={(e) => e.stopPropagation()}
@@ -725,14 +736,27 @@ export function FullscreenChart({
             ))}
           </div>
         )}
-        <button
-          type="button"
-          className="fs-close"
-          ref={closeButton}
-          onClick={requestClose}
-        >
-          ✕ Close
-        </button>
+        {inline ? (
+          onExpand && (
+            <button
+              type="button"
+              className="fs-close"
+              aria-label={`${ticker} chart, full screen`}
+              onClick={onExpand}
+            >
+              ⛶ Full screen
+            </button>
+          )
+        ) : (
+          <button
+            type="button"
+            className="fs-close"
+            ref={closeButton}
+            onClick={requestClose}
+          >
+            ✕ Close
+          </button>
+        )}
       </div>
       <div className="fs-body">
         <div ref={host} className="fs-canvas" />
@@ -828,7 +852,7 @@ export function FullscreenChart({
           {last && ` · last ${compactVolume(last.stock.volume)}`}
         </p>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
+  return inline ? layer : createPortal(layer, document.body);
 }
