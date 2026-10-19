@@ -1001,6 +1001,16 @@ export interface ClosedTrade extends Contract {
   pnl: number;
   pnlPct: number | null;
   expired: boolean; // closed by expiry instead of a sale
+  // Each buy, sale and expiry of the trade, oldest first (user 2026-10-19:
+  // "show the breakdown when I click on it").
+  fills?: TradeFill[];
+}
+
+export interface TradeFill {
+  side: "buy" | "sell" | "expired";
+  at: string;
+  qty: number;
+  price: number; // 0 for an expiry
 }
 
 export interface PortfolioHistory {
@@ -1075,6 +1085,7 @@ export function closedTrades(activities: RawActivity[]): ClosedTrade[] {
       cost: number;
       sold: number;
       openedAt: string;
+      fills: TradeFill[];
     }
   >();
   const trades: ClosedTrade[] = [];
@@ -1090,9 +1101,17 @@ export function closedTrades(activities: RawActivity[]): ClosedTrade[] {
     if (a.activity_type === "FILL" && a.side === "buy") {
       if (!(qty > 0)) continue;
       if (!p) {
-        p = { held: 0, bought: 0, cost: 0, sold: 0, openedAt: time(a) };
+        p = {
+          held: 0,
+          bought: 0,
+          cost: 0,
+          sold: 0,
+          openedAt: time(a),
+          fills: [],
+        };
         open.set(symbol, p);
       }
+      p.fills.push({ side: "buy", at: time(a), qty, price });
       p.held += qty;
       p.bought += qty;
       p.cost += qty * price;
@@ -1103,6 +1122,13 @@ export function closedTrades(activities: RawActivity[]): ClosedTrade[] {
     const closing = expiry ? p.held : Math.min(qty, p.held);
     p.held -= closing;
     if (!expiry) p.sold += closing * price;
+    if (closing > 0)
+      p.fills.push({
+        side: expiry ? "expired" : "sell",
+        at: time(a),
+        qty: closing,
+        price: expiry ? 0 : price,
+      });
     if (p.held > 1e-9) continue;
     open.delete(symbol);
     const named = contract(symbol);
@@ -1117,6 +1143,7 @@ export function closedTrades(activities: RawActivity[]): ClosedTrade[] {
       pnl: round((p.sold - p.cost) * multiplier),
       pnlPct: p.cost > 0 ? round(((p.sold - p.cost) / p.cost) * 100, 1) : null,
       expired: expiry,
+      fills: p.fills,
     });
   }
   return trades.reverse();

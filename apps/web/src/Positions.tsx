@@ -149,12 +149,18 @@ function Controls({ p }: { p: PortfolioPosition }) {
         <div className="pos-quick">
           <button
             type="button"
+            className="pos-half"
             onClick={() => set(Math.floor(p.qty / 2))}
             disabled={busy || p.qty < 2}
           >
             Half
           </button>
-          <button type="button" onClick={() => set(0)} disabled={busy}>
+          <button
+            type="button"
+            className="pos-close"
+            onClick={() => set(0)}
+            disabled={busy}
+          >
             Close
           </button>
         </div>

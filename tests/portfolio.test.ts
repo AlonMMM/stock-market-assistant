@@ -659,7 +659,23 @@ test("history: fills pair into closed trades, expiry closes at zero", () => {
   );
   assert.equal(trades[0]!.pnlPct, -100);
   assert.equal(trades[1]!.openedAt, "2026-10-05T14:00:00Z");
-  assert.equal(trades[1]!.closedAt, "2026-10-07T15:00:00Z");
+  assert.equal(trades[1]!.closedAt, "2026-10-07T15:00:00Z"); // Each fill of the trade, for its breakdown.
+  assert.deepEqual(
+    trades[1]!.fills!.map((f) => [f.side, f.qty, f.price]),
+    [
+      ["buy", 2, 1.6],
+      ["buy", 1, 1.9],
+      ["sell", 1, 2.5],
+      ["sell", 2, 1.0],
+    ],
+  );
+  assert.deepEqual(
+    trades[0]!.fills!.map((f) => [f.side, f.qty, f.price, f.at]),
+    [
+      ["buy", 4, 0.5, "2026-10-08T14:00:00Z"],
+      ["expired", 4, 0, "2026-10-09T20:00:00Z"],
+    ],
+  );
 });
 
 test("history: daily profit and loss with the period's closed trades", async () => {
