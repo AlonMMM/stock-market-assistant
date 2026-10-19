@@ -3,6 +3,29 @@
 Updated: 2026-10-15
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
 
+## Live prices every second: Watchlist and charts (2026-10-19)
+
+`GET /api/prices?symbols=…` answers Alpaca's latest SIP trade for every symbol in one
+request. The page reads it once a second, one request shared by everything on screen,
+while the tab is visible and the session shown is trading (04:00–20:00 New York):
+
+- Watchlist: each price is the close of its 5-minute bar, so Last, Change %, vs
+  SPY/sector, the day line and the day range follow every trade; Rel vol, volume and
+  the score still come from the 5-minute board.
+- Candle chart (Watchlist rows, stock page) and full screen: the trades build the
+  forming bar in the browser (first trade = open, then high, low, close), merged into
+  the server's bar of that slot or added after it. Full screen is regular hours only;
+  1D moves today's bar. A new bar stays in view while the newest bars are shown.
+- Day chart (alert rows, market strip): the stock and benchmark lines and the numbers
+  over the chart move with the newest minute (not in "Around alert").
+
+The charts' own reads (3 s, 15 s, 30 s) are unchanged and bring volume, VWAP and scores.
+Without real-time SIP (`ALPACA_SIP_DELAY_MINUTES` > 0) the route answers 409 and the
+page stops asking. Cost: one Worker request and one Alpaca request per second per open
+tab during the session. Validation: unit and Worker-route tests; headless Chromium with
+mocked, synthetic prices on the Watchlist, candle, full-screen and day charts (one
+request per second; prices, forming bars and lines moving each second).
+
 ## Full-screen chart with SPY, bar sizes, VWAP and volume (2026-10-18)
 
 Every stock chart (alert rows on Alerts and Backtest, the market chart, Watchlist rows,

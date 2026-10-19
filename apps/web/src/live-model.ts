@@ -534,3 +534,57 @@ export function sortRows(
     return (descending ? -c : c) || a.index - b.index;
   });
 }
+
+// Live prices on the Watchlist (user 2026-10-19): read every second while the
+// board's session is trading, 04:00–20:00 New York.
+export const livePriceMs = 1000;
+const barSeconds = 300;
+const preMarketSeconds = 5.5 * 3600; // 04:00 is 5½ hours before the 09:30 open
+const afterHoursSeconds = 4 * 3600; // 20:00 is 4 hours after a 16:00 close
+
+/** Whether prices can still change in the session the board shows. */
+export function boardTrading(board: Board, now = Date.now()) {
+  const s = now / 1000;
+  return (
+    s >= board.open - preMarketSeconds && s < board.close + afterHoursSeconds
+  );
+}
+
+/**
+ * The board with each symbol's latest trade applied: it becomes the close of
+ * the 5-minute bar it falls in (a new bar when it starts one), and widens the
+ * day's range. A trade not newer than the last bar is ignored, so a late
+ * answer never moves a price back.
+ */
+export function withLivePrices(
+  board: Board,
+  prices: Record<string, { price: number; at: number }>,
+): Board {
+  return {
+    ...board,
+    series: board.series.map((s) => {
+      const live = prices[s.ticker];
+      const lastBar = s.points.at(-1);
+      if (!live || !lastBar) return s;
+      const at = Math.floor(live.at / 1000);
+      if (at < lastBar[0]) return s;
+      const start = Math.floor(at / barSeconds) * barSeconds;
+      const points: [number, number][] =
+        start <= lastBar[0]
+          ? [...s.points.slice(0, -1), [lastBar[0], live.price]]
+          : [...s.points, [start, live.price]];
+      const stats = s.stats && {
+        ...s.stats,
+        dayLow:
+          s.stats.dayLow === null
+            ? live.price
+            : Math.min(s.stats.dayLow, live.price),
+        dayHigh:
+          s.stats.dayHigh === null
+            ? live.price
+            : Math.max(s.stats.dayHigh, live.price),
+      };
+      return { ...s, points, ...(stats ? { stats } : {}) };
+    }),
+  };
+}

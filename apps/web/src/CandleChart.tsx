@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CandlestickSeries,
   ColorType,
@@ -11,6 +11,8 @@ import {
 } from "lightweight-charts";
 import type { Candles } from "../../../packages/market-data/src/candles.js";
 import { readJson } from "./api.js";
+import { chartTrading, minuteSlot, withLiveCandles } from "./chart-live.js";
+import { useLatestPrices, useRunningBar } from "./live-prices.js";
 import { FullscreenButton } from "./FullscreenButton.js";
 import {
   israelClock,
@@ -21,7 +23,8 @@ import {
 
 // A plain price chart: one candle per minute and the volume under it, with no
 // benchmark. Today's session is read again every few seconds, and the last
-// trade moves the candle of the minute that is still forming.
+// trade, read every second, moves the candle of the minute that is still
+// forming.
 
 const refreshMs = 3000;
 const colors = {
@@ -55,8 +58,21 @@ export function CandleChart({
     volume: ISeriesApi<"Histogram">;
     fitted: boolean;
   } | null>(null);
-  const [data, setData] = useState<Candles | null>(null);
+  const [loaded, setData] = useState<Candles | null>(null);
   const [error, setError] = useState("");
+  const latest = useLatestPrices(
+    date === usSessionDate(Date.now()) ? [ticker] : [],
+    () => chartTrading(date),
+  );
+  const run = useRunningBar(
+    latest.prices[ticker],
+    minuteSlot,
+    `${ticker}/${date}`,
+  );
+  const data = useMemo(
+    () => (loaded ? withLiveCandles(loaded, run) : null),
+    [loaded, run],
+  );
 
   useEffect(() => {
     let live = true;
@@ -145,6 +161,10 @@ export function CandleChart({
     if (!p || !data) return;
     // Times are shown on the Israel clock, like every other chart here.
     const time = (start: number) => israelWallSeconds(start) as UTCTimestamp;
+    // Following the newest candle: a new minute's candle stays in view.
+    const range = p.chart.timeScale().getVisibleLogicalRange();
+    const before = p.candles.data().length;
+    const following = !range || range.to >= before - 1.5;
     p.candles.setData(
       data.candles.map((c) => ({
         time: time(c.start),
@@ -165,7 +185,8 @@ export function CandleChart({
     if (!p.fitted && data.candles.length > 0) {
       p.chart.timeScale().fitContent();
       p.fitted = true;
-    }
+    } else if (following && before > 0 && data.candles.length > before)
+      p.chart.timeScale().scrollToRealTime();
   }, [data]);
 
   const tail = data?.candles.at(-1);

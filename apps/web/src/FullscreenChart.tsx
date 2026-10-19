@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { barSlot, chartTrading, withLiveRows } from "./chart-live.js";
+import { useLatestPrices, useRunningBar } from "./live-prices.js";
 import { createPortal } from "react-dom";
 import {
   CandlestickSeries,
@@ -65,6 +67,8 @@ const colors = {
   average: "rgba(227, 232, 230, 0.8)",
 };
 // Today's bars are read again this often while the chart is open.
+// Bars are read again every 15 s; the latest trade moves the forming bar
+// every second in between.
 const refreshMs = 15000;
 
 export interface FullscreenChartProps {
@@ -161,7 +165,6 @@ export function FullscreenChart({
     bar: "1m",
     rows: [],
   });
-  const rows = view.rows;
   // Older bars load only after the viewer drags or zooms the chart.
   const moved = useRef(false);
   const [error, setError] = useState("");
@@ -181,6 +184,35 @@ export function FullscreenChart({
   onCloseRef.current = onClose;
   const live = date === usSessionDate(Date.now());
   const daily = bar === "1D";
+  // The latest trades, every second, as the forming bar (chart-live.ts).
+  const benchSymbol = hasSector ? against : "SPY";
+  const latest = useLatestPrices(live ? [ticker, benchSymbol] : [], () =>
+    chartTrading(date),
+  );
+  const slot = (at: number) => barSlot(view.bar, at);
+  const stockRun = useRunningBar(
+    latest.prices[ticker],
+    slot,
+    `${ticker}/${date}/${view.bar}`,
+  );
+  const benchRun = useRunningBar(
+    latest.prices[benchSymbol],
+    slot,
+    `${benchSymbol}/${date}/${view.bar}`,
+  );
+  const liveRows = useMemo(
+    () =>
+      live
+        ? withLiveRows(
+            view.rows,
+            view.bar,
+            stockRun,
+            data?.against ? benchRun : null,
+          )
+        : view.rows,
+    [view, live, stockRun, benchRun, data?.against],
+  );
+  const rows = liveRows;
 
   // Open as a layer over the page: no page scroll, focus inside, Esc and Back close.
   useEffect(() => {
@@ -487,11 +519,13 @@ export function FullscreenChart({
     const spy = kind === "spy";
     const bar = view.bar;
     const daily = bar === "1D";
-    const rows = view.bar === barRef.current ? view.rows : [];
+    const rows = view.bar === barRef.current ? liveRows : [];
     const time = (r: ChartBarsRow) => chartTime(r, bar) as UTCTimestamp;
     const band = new Set(alertBars(rows, bar, alertEnd, alertWindow));
     const range = p.chart.timeScale().getVisibleLogicalRange();
     const firstBefore = p.stock.data()[0]?.time;
+    const lastBefore = p.stock.data().at(-1)?.time;
+    const countBefore = p.stock.data().length;
     p.chart.applyOptions({
       leftPriceScale: { visible: spy },
       timeScale: { timeVisible: !daily },
@@ -554,8 +588,19 @@ export function FullscreenChart({
           from: range.from + added,
           to: range.to + added,
         });
+      // A new bar at the end (the forming one): follow it when the newest
+      // bars were in view.
+      const newer =
+        rows.length - 1 - rows.findIndex((r) => time(r) === lastBefore);
+      if (
+        added <= 0 &&
+        newer > 0 &&
+        newer < rows.length &&
+        range.to >= countBefore - 1.5
+      )
+        p.chart.timeScale().scrollToRealTime();
     }
-  }, [view, kind, showVwap, data?.against]);
+  }, [view, liveRows, kind, showVwap, data?.against]);
 
   const last = rows.at(-1);
   const shown = hover !== null && rows[hover] ? rows[hover]! : last;
