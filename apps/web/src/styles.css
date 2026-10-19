@@ -5863,6 +5863,8 @@ button.pa-ticker {
 }
 .ot-sheet {
   transition: transform 160ms ease-out;
+}
+
 /* The full-screen chart drawn in the page (ChartPanel, user 2026-10-19): the
    same dark chart and controls, a card's height. */
 .fullscreen-chart.inline {
