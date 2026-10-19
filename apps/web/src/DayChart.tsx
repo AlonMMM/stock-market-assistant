@@ -60,6 +60,8 @@ import {
   usSessionDate,
 } from "./time.js";
 import { readJson } from "./api.js";
+import { chartTrading, liveMinute, type Trade } from "./chart-live.js";
+import { useLatestPrices } from "./live-prices.js";
 import { FullscreenButton } from "./FullscreenButton.js";
 
 // Categorical slots 1–2 of the validated dataviz palette for the lines. Volume
@@ -174,6 +176,8 @@ function excludedBand(
 
 const cache = new Map<string, Promise<DayChartData>>();
 // Today's chart is read again this often; the request is a heavy one.
+// The chart is read again every 30 s; the latest trade moves the lines every
+// second in between.
 const refreshMs = 30000;
 function load(
   ticker: string,
@@ -300,6 +304,13 @@ export function DayChart({
     m: Point[];
     marks: MarksPane | null;
     readoutAt: (p: Point) => Readout;
+    // The two lines, to move their newest point with each trade.
+    lines: {
+      ticker: ISeriesApi<"Line">;
+      tickerBase: number;
+      bench: ISeriesApi<"Line"> | null;
+      benchBase: number | null;
+    };
   } | null>(null);
   const [data, setData] = useState<DayChartData | null>(null);
   const [error, setError] = useState("");
@@ -446,8 +457,9 @@ export function DayChart({
       crosshairMarkerRadius: 4,
     });
     tickerLine.setData(m.map((p) => ({ time: p.time, value: p.percent })));
+    let benchLine: ISeriesApi<"Line"> | null = null;
     if (b) {
-      const benchLine = chart.addSeries(LineSeries, {
+      benchLine = chart.addSeries(LineSeries, {
         color: colors.benchmark,
         lineWidth: 2,
         lineStyle: LineStyle.Dashed,
@@ -652,7 +664,18 @@ export function DayChart({
       score: vs?.scores[p.index] ?? null,
     });
     const byTime = new Map(m.map((p) => [p.time, p]));
-    chartRef.current = { chart, m, marks, readoutAt };
+    chartRef.current = {
+      chart,
+      m,
+      marks,
+      readoutAt,
+      lines: {
+        ticker: tickerLine,
+        tickerBase: percentBase(main),
+        bench: benchLine,
+        benchBase: bench ? percentBase(bench) : null,
+      },
+    };
     setLatest(
       endReadout(m, main.bars, rangeRef.current, alertEnd, window, readoutAt),
     );
@@ -669,6 +692,51 @@ export function DayChart({
     };
     // `opp`, `main`, `bench` and the flags derive from `data`.
   }, [data, alertMs, window]);
+
+  // The latest trades, every second, as each line's newest minute: only
+  // the two lines move; the rest follows the next read of the chart.
+  const today = date === usSessionDate(Date.now());
+  const trades = useLatestPrices(
+    today ? [ticker, bench?.ticker ?? benchmark] : [],
+    () => chartTrading(date),
+  );
+  const stockTrade = trades.prices[ticker];
+  const benchTrade = bench ? trades.prices[bench.ticker] : undefined;
+  useEffect(() => {
+    const c = chartRef.current;
+    if (!c || !main) return;
+    const move = (
+      line: ISeriesApi<"Line"> | null,
+      base: number | null,
+      series: ChartSeries | undefined,
+      trade: Trade | undefined,
+    ) => {
+      const minute = series ? liveMinute(series, date, trade) : null;
+      if (!line || !base || !minute) return null;
+      const time = israelWallSeconds(minute.start + 60) as UTCTimestamp;
+      const newest = line.data().at(-1)?.time as number | undefined;
+      if (newest !== undefined && time < newest) return null;
+      const percent = (minute.close / base - 1) * 100;
+      line.update({ time, value: percent });
+      return { at: (minute.start + 60) * 1000, percent, close: minute.close };
+    };
+    const own = move(c.lines.ticker, c.lines.tickerBase, main, stockTrade);
+    const other = move(c.lines.bench, c.lines.benchBase, bench, benchTrade);
+    // The numbers over the chart follow the newest minute, except around an
+    // alert, where they stay on the alert's minute.
+    if (rangeRef.current === "alert" || (!own && !other)) return;
+    setLatest((r) =>
+      r
+        ? {
+            ...r,
+            ...(own
+              ? { time: own.at, ticker: own.percent, close: own.close }
+              : {}),
+            ...(other ? { bench: other.percent, benchClose: other.close } : {}),
+          }
+        : r,
+    );
+  }, [data, stockTrade, benchTrade]);
 
   useEffect(() => {
     const c = chartRef.current;
