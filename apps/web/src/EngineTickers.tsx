@@ -41,7 +41,9 @@ export function EngineTickers() {
   );
   return (
     <details className="engine-tickers">
-      <summary>Manage engine tickers ({list?.tickers.length ?? "…"})</summary>
+      <summary>
+        Volume-alert pool ({list?.tickers.length ?? "…"}): every list's tickers
+      </summary>
       <p className="preview">
         Add or remove tickers for live alerts and backtests. Removed tickers
         stop producing new alerts; past alerts stay visible.

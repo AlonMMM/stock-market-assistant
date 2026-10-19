@@ -46,6 +46,7 @@ import {
 import {
   boardTickers,
   handleWatchlists,
+  syncPool,
   type D1Watchlists,
 } from "../../../packages/market-data/src/watchlists.js";
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
@@ -119,10 +120,24 @@ export function buildApp(
     );
     return reply.code(result.status).send(result.body);
   });
-  const watchlists = async (method: string, sub: string, body: unknown) =>
-    handleWatchlists(method, sub, body, alpaca.watchlists, async () =>
-      alpaca.symbols ? (await alpaca.symbols.list()).tickers : [],
+  const watchlists = async (method: string, sub: string, body: unknown) => {
+    const result = await handleWatchlists(
+      method,
+      sub,
+      body,
+      alpaca.watchlists,
+      async () => (alpaca.symbols ? (await alpaca.symbols.list()).tickers : []),
     );
+    // A symbol added to a list joins the engine pool (as on the Worker).
+    if (
+      method !== "GET" &&
+      result.status < 300 &&
+      alpaca.watchlists &&
+      alpaca.symbols
+    )
+      await syncPool(alpaca.watchlists, alpaca.symbols).catch(() => []);
+    return result;
+  };
   app.route({
     method: ["GET", "POST"],
     url: "/api/watchlists",

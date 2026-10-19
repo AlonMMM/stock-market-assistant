@@ -9,6 +9,7 @@ import {
   D1Watchlists,
   handleWatchlists,
   maxWatchlists,
+  syncPool,
   type Watchlist,
 } from "../packages/market-data/src/watchlists.js";
 
@@ -161,13 +162,15 @@ test("the board shows one watchlist with ?list=, locally and hosted", async (t) 
     ((await hosted.json()) as { watchlist: string[] }).watchlist,
     ["NVDA", "AMD"],
   );
-  // No list, or "all": the engine list, as before.
+  // No list, or "all": the engine list, which took the new list's symbols.
   const all = await worker.fetch(
     new Request("https://example.test/api/board?list=all"),
     env,
   );
   assert.deepEqual(((await all.json()) as { watchlist: string[] }).watchlist, [
     "AAPL",
+    "AMD",
+    "NVDA",
     "PLUG",
   ]);
   const missing = await worker.fetch(
@@ -188,6 +191,35 @@ test("the board shows one watchlist with ?list=, locally and hosted", async (t) 
     env,
   );
   const lists = ((await listed.json()) as { lists: Watchlist[] }).lists;
-  assert.deepEqual(lists[0]!.tickers, ["AAPL", "PLUG"]);
+  // Taken off a list, a symbol stays in the pool.
+  assert.deepEqual(lists[0]!.tickers, ["AAPL", "AMD", "NVDA", "PLUG"]);
   assert.deepEqual(lists[1]!.tickers, ["NVDA"]);
+});
+
+test("a symbol on any list joins the engine pool; nothing is removed", async () => {
+  const db = new SqliteD1(":memory:");
+  const symbols = new D1SymbolList(db);
+  await symbols.change(["AAPL", "ONLYPOOL"], [], "stock");
+  const lists = new D1Watchlists(db);
+  await lists.create("aaaaaaaaaaaaaaaa", "Chips", ["NVDA", "AAPL"], 1);
+  await lists.create("bbbbbbbbbbbbbbbb", "Soft", ["CRM", "NVDA"], 2);
+  assert.deepEqual(await syncPool(lists, symbols), ["NVDA", "CRM"]);
+  assert.deepEqual((await symbols.list()).tickers, [
+    "AAPL",
+    "CRM",
+    "NVDA",
+    "ONLYPOOL",
+  ]);
+  assert.deepEqual(await syncPool(lists, symbols), []);
+  // Through the hosted site: a ticker added to a list is in the pool.
+  const env = { BARS_CACHE: db };
+  const patched = await worker.fetch(
+    new Request("https://example.test/api/watchlists/aaaaaaaaaaaaaaaa", {
+      method: "PATCH",
+      body: JSON.stringify({ add: ["AMD"] }),
+    }),
+    env,
+  );
+  assert.equal(patched.status, 200);
+  assert.ok((await symbols.list()).tickers.includes("AMD"));
 });

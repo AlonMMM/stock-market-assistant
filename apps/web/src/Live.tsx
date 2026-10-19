@@ -19,29 +19,94 @@ export const boardRefreshMs = 5 * 60000;
 // reload on every tab switch).
 const polled = new Map<string, { value: unknown; at: number }>();
 
+// The watchlist's answers are also kept in this browser (user 2026-10-19:
+// "cache! seeing the loader each time is frustrating"): a visit, a reload or
+// another list shows the last answer at once and reads a new one behind it.
+const storedPrefix = "sma.poll.v1:";
+const storedMax = 1_500_000; // characters per answer
+const storedKeep = 12; // answers kept; the oldest goes first
+const persisted = (path: string) =>
+  path.startsWith("/api/board") || path.startsWith("/api/candles");
+function readStored(path: string) {
+  try {
+    const raw = localStorage.getItem(storedPrefix + path);
+    return raw ? (JSON.parse(raw) as { value: unknown; at: number }) : null;
+  } catch {
+    return null;
+  }
+}
+function writeStored(path: string, entry: { value: unknown; at: number }) {
+  try {
+    const raw = JSON.stringify(entry);
+    if (raw.length > storedMax) return;
+    localStorage.setItem(storedPrefix + path, raw);
+    const keys = Object.keys(localStorage).filter((k) =>
+      k.startsWith(storedPrefix),
+    );
+    if (keys.length > storedKeep)
+      keys
+        .map(
+          (k) =>
+            [k, readStored(k.slice(storedPrefix.length))?.at ?? 0] as const,
+        )
+        .sort((a, b) => a[1] - b[1])
+        .slice(0, keys.length - storedKeep)
+        .forEach(([k]) => localStorage.removeItem(k));
+  } catch {
+    // Full or blocked storage: kept for this visit only.
+  }
+}
+/** The last answer for `path`: this visit's, else this browser's. */
+function kept(path: string) {
+  const memory = polled.get(path);
+  if (memory || !persisted(path)) return memory;
+  const stored = readStored(path);
+  if (stored) polled.set(path, stored);
+  return stored ?? undefined;
+}
+function keep(path: string, value: unknown, at: number) {
+  polled.set(path, { value, at });
+  if (persisted(path)) writeStored(path, { value, at });
+}
+
+/**
+ * Reads `path` ahead (another watchlist) when it has no answer younger than
+ * `every`, so switching to it shows its rows at once.
+ */
+export async function prefetch(path: string, every: number) {
+  const known = kept(path);
+  if (known && Date.now() - known.at < every) return;
+  try {
+    const value = await readJson<unknown>(
+      await fetch(path, { signal: AbortSignal.timeout(30000) }),
+    );
+    keep(path, value, Date.now());
+  } catch {
+    // It is read when it is opened.
+  }
+}
+
 export function usePolling<T>(
   path: string,
   every: number,
   onError: (m: string) => void,
 ) {
   const [value, setValue] = useState<T | null>(
-    () => (polled.get(path)?.value as T | undefined) ?? null,
+    () => (kept(path)?.value as T | undefined) ?? null,
   );
-  const [at, setAt] = useState<number | null>(
-    () => polled.get(path)?.at ?? null,
-  );
+  const [at, setAt] = useState<number | null>(() => kept(path)?.at ?? null);
   const [error, setError] = useState<string | null>(null);
   // Set by `reload`: load this address now, past its kept answer.
   const [reloaded, setReloaded] = useState<{ path: string } | null>(null);
   useEffect(() => {
     let active = true;
     const force = reloaded?.path === path;
-    const kept = force ? undefined : polled.get(path);
+    const last = force ? undefined : kept(path);
     // A new address (another list, "vs sector") shows its own last answer;
     // a reload keeps what is shown until the new answer comes.
     if (!force) {
-      setValue((kept?.value as T | undefined) ?? null);
-      setAt(kept?.at ?? null);
+      setValue((last?.value as T | undefined) ?? null);
+      setAt(last?.at ?? null);
     }
     const load = async () => {
       if (document.visibilityState !== "visible") return;
@@ -50,7 +115,7 @@ export function usePolling<T>(
           await fetch(path, { signal: AbortSignal.timeout(30000) }),
         );
         const now = Date.now();
-        polled.set(path, { value: next, at: now });
+        keep(path, next, now);
         if (!active) return;
         setValue(next);
         setError(null);
@@ -63,7 +128,7 @@ export function usePolling<T>(
       }
     };
     // Fresh enough: the first load waits until the answer is due.
-    const due = kept ? Math.max(0, kept.at + every - Date.now()) : 0;
+    const due = last ? Math.max(0, last.at + every - Date.now()) : 0;
     let timer: ReturnType<typeof setInterval> | undefined;
     const first = setTimeout(() => {
       void load();

@@ -45,6 +45,7 @@ import {
   boardTickers,
   D1Watchlists,
   handleWatchlists,
+  syncPool,
 } from "../../../packages/market-data/src/watchlists.js";
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
 import { handleLatestPrices } from "../../../packages/market-data/src/latest-prices.js";
@@ -129,6 +130,8 @@ export default {
       PRICE_ALERTS_TELEGRAM_BOT_TOKEN?: string;
       PRICE_ALERTS_TELEGRAM_CHAT_ID?: string;
       SITE_URL?: string;
+      COLLECTOR_URL?: string;
+      COLLECTOR_TOKEN?: string;
     },
   ): Promise<void> {
     const token = env.TRADES_TELEGRAM_BOT_TOKEN;
@@ -151,6 +154,26 @@ export default {
     console.log(
       `short watch: ${line}${sender ? "" : " (Telegram is not configured)"}`,
     );
+    // Lists changed outside the site (or before the pool followed them): the
+    // pool takes their symbols, and the collector is told.
+    if (env.BARS_CACHE) {
+      const db = stores(env.BARS_CACHE);
+      const added = await syncPool(db.watchlists, db.symbols).catch(
+        (error: unknown) => {
+          console.error(`pool sync: ${String(error)}`);
+          return [] as string[];
+        },
+      );
+      if (added.length) {
+        const pushed = await pushLiveSymbols(
+          { url: env.COLLECTOR_URL, token: env.COLLECTOR_TOKEN },
+          (await db.symbols.list()).tickers,
+        ).catch((error: unknown) => ({ synced: false, error: String(error) }));
+        console.log(
+          `pool sync: added ${added.join(", ")}; collector ${pushed.synced ? "updated" : `not updated: ${pushed.error}`}`,
+        );
+      }
+    }
     // The user's price alerts (user 2026-10-18), checked every minute.
     if (env.BARS_CACHE) {
       const alertToken = env.PRICE_ALERTS_TELEGRAM_BOT_TOKEN ?? token;
@@ -312,6 +335,15 @@ export default {
         db?.watchlists,
         async () => (db ? (await db.symbols.list()).tickers : []),
       );
+      // A symbol added to a list joins the pool the collector streams.
+      if (db && request.method !== "GET" && result.status < 300) {
+        const added = await syncPool(db.watchlists, db.symbols).catch(() => []);
+        if (added.length)
+          await pushLiveSymbols(
+            { url: env.COLLECTOR_URL, token: env.COLLECTOR_TOKEN },
+            (await db.symbols.list()).tickers,
+          ).catch(() => undefined);
+      }
       return Response.json(result.body, {
         status: result.status,
         headers: { "Cache-Control": "no-store" },

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Board } from "../../../packages/market-data/src/board.js";
 import type { LiveStatus } from "../../../packages/market-data/src/live.js";
 import { EngineTickers } from "./EngineTickers.js";
-import { boardRefreshMs, liveRefreshMs, usePolling } from "./Live.js";
+import { boardRefreshMs, liveRefreshMs, prefetch, usePolling } from "./Live.js";
+import { MarketCards } from "./MarketCards.js";
 import { pillFor, withLivePrices, type Compare } from "./live-model.js";
 import { useLivePrices } from "./live-prices.js";
 import { useControlAccess } from "./Positions.js";
@@ -11,6 +12,7 @@ import { BellIcon, PriceAlertsPage, usePriceAlerts } from "./PriceAlerts.js";
 import { TickerPage } from "./TickerPage.js";
 import { WatchTable } from "./WatchTable.js";
 import {
+  AddTicker,
   useWatchlists,
   WatchlistEditor,
   WatchlistSwitcher,
@@ -73,6 +75,23 @@ export function WatchlistPage({
   const prices = useLivePrices(board.value ?? null);
   const shown = board.value ? withLivePrices(board.value, prices.prices) : null;
   const { canTrade } = useControlAccess();
+  // The other lists are read behind this one, one by one, so a switch to
+  // any of them shows its rows at once (user 2026-10-19).
+  const ownIds = lists.own.map((l) => l.id).join(",");
+  const loaded = board.value !== null;
+  useEffect(() => {
+    if (!loaded) return;
+    let live = true;
+    void (async () => {
+      for (const id of ownIds.split(",")) {
+        if (!live || !id || id === lists.chosenId) continue;
+        await prefetch(`/api/board?list=${id}`, boardRefreshMs);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [loaded, ownIds, lists.chosenId]);
   // The collector returns no alerts while unreachable; keep the last ones.
   const kept = useRef<LiveStatus["alerts"]>([]);
   const status = live.value;
@@ -114,6 +133,7 @@ export function WatchlistPage({
         />
       ) : (
         <>
+          {board.value && <MarketCards date={board.value.date} onOpen={open} />}
           <h2 className="wl-title">
             {lists.current && !lists.current.builtIn
               ? lists.current.name
@@ -137,7 +157,7 @@ export function WatchlistPage({
           lists.current &&
           !lists.current.builtIn ? (
             <p className="chart-status">
-              This list is empty. Add tickers under “Edit {lists.current.name}”.
+              This list is empty. Add tickers with “+ Add ticker”.
             </p>
           ) : board.value ? (
             <WatchTable
@@ -147,6 +167,7 @@ export function WatchlistPage({
               onShowAlerts={onShowAlerts}
               onTrade={canTrade ? onTrade : undefined}
               onOpen={open}
+              tools={<AddTicker w={lists} onAdded={board.reload} />}
               compare={compare}
               onCompare={setCompare}
             />

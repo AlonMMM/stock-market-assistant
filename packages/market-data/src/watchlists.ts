@@ -303,3 +303,25 @@ export async function boardTickers(
   if (!store || !idPattern.test(list)) return null;
   return (await store.get(list))?.tickers ?? null;
 }
+
+/**
+ * Every symbol on any watchlist is also on the engine list, the pool the
+ * collector streams and alerts on (user 2026-10-19: "if I add to one of the
+ * lists it goes to the pool of tickers"). Adds the missing ones and answers
+ * them; it never removes: the pool may hold symbols of its own.
+ */
+export async function syncPool(
+  lists: D1Watchlists,
+  pool: {
+    list(): Promise<{ tickers: string[] }>;
+    change(add: string[], remove: string[], kind: "stock"): Promise<unknown>;
+  },
+): Promise<string[]> {
+  const [all, current] = await Promise.all([lists.lists(), pool.list()]);
+  const have = new Set(current.tickers);
+  const missing = [
+    ...new Set(all.flatMap((l) => l.tickers).filter((t) => !have.has(t))),
+  ];
+  if (missing.length) await pool.change(missing, [], "stock");
+  return missing;
+}

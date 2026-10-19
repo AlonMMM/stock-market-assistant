@@ -8,8 +8,17 @@ import { parseSymbols } from "./backtest-model.js";
 // engine tickers. The chosen list is remembered per browser.
 
 const chosenKey = "sma.watchlist.chosen.v1";
-// Kept while the page is open, like the board: no reload on a tab switch.
-let keptLists: Watchlist[] | null = null;
+const listsKey = "sma.watchlists.v1";
+// Kept while the page is open, like the board, and across visits in this
+// browser: the lists show at once and are read again behind them.
+let keptLists: Watchlist[] | null = (() => {
+  try {
+    const raw = localStorage.getItem(listsKey);
+    return raw ? (JSON.parse(raw) as Watchlist[]) : null;
+  } catch {
+    return null;
+  }
+})();
 
 function readChosen(): string {
   try {
@@ -45,6 +54,11 @@ export function useWatchlists() {
   const keep = (next: Watchlist[]) => {
     keptLists = next;
     setLists(next);
+    try {
+      localStorage.setItem(listsKey, JSON.stringify(next));
+    } catch {
+      // Kept for this visit only.
+    }
   };
   useEffect(() => {
     let active = true;
@@ -67,9 +81,13 @@ export function useWatchlists() {
       // Without storage the choice lasts until the page is closed.
     }
   };
-  // A list deleted elsewhere falls back to "All".
+  // "All" is no longer a list to pick (user 2026-10-19): every list's
+  // symbols join that pool. The first list stands in for one deleted
+  // elsewhere; "All" only while there is no list of one's own.
+  const own = (lists ?? []).filter((l) => !l.builtIn);
   const current =
-    lists?.find((l) => l.id === chosen) ??
+    own.find((l) => l.id === chosen) ??
+    own[0] ??
     lists?.find((l) => l.id === "all") ??
     null;
   const replace = (list: Watchlist) =>
@@ -78,7 +96,8 @@ export function useWatchlists() {
     lists,
     error,
     current,
-    chosenId: current?.id ?? (lists ? "all" : chosen),
+    chosenId: current?.id ?? chosen,
+    own,
     choose,
     async create(name: string) {
       const list = (await send("POST", "/api/watchlists", {
@@ -99,8 +118,9 @@ export function useWatchlists() {
     },
     async remove(id: string) {
       await send("DELETE", `/api/watchlists/${id}`);
-      keep((lists ?? []).filter((l) => l.id !== id));
-      choose("all");
+      const next = (lists ?? []).filter((l) => l.id !== id);
+      keep(next);
+      choose(next.find((l) => !l.builtIn)?.id ?? "all");
     },
   };
 }
@@ -122,16 +142,14 @@ export function WatchlistSwitcher({ w }: { w: Watchlists }) {
   return (
     <div className="wl-lists">
       <div className="wl-chips" role="group" aria-label="Watchlist">
-        {w.lists.map((l) => (
+        {w.own.map((l) => (
           <button
             type="button"
             key={l.id}
             aria-pressed={w.chosenId === l.id}
             onClick={() => w.choose(l.id)}
           >
-            {/* The filter chips below start with "All" too. */}
-            {l.builtIn ? "All tickers" : l.name}{" "}
-            <span className="count num">{l.tickers.length}</span>
+            {l.name} <span className="count num">{l.tickers.length}</span>
           </button>
         ))}
         {!naming && (
@@ -288,8 +306,7 @@ export function WatchlistEditor({
         </button>
       </form>
       <p className="preview">
-        Watchlists are for viewing. Live alerts come only from the engine
-        tickers.
+        Every ticker on a list is also watched for volume alerts.
       </p>
       <div className="chips" aria-label={`${list.name} tickers`}>
         {list.tickers.map((t) => (
@@ -367,5 +384,100 @@ export function WatchlistEditor({
         </p>
       )}
     </details>
+  );
+}
+
+/** "+ Add ticker" at the top of the chosen list (user 2026-10-19). */
+export function AddTicker({
+  w,
+  onAdded,
+}: {
+  w: Watchlists;
+  onAdded: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const list = w.current;
+  if (!list || list.builtIn) return null;
+  if (!open)
+    return (
+      <button
+        type="button"
+        className="wl-add"
+        onClick={() => {
+          setOpen(true);
+          setMessage("");
+        }}
+      >
+        + Add ticker
+      </button>
+    );
+  const typed = parseSymbols(input);
+  return (
+    <form
+      className="wl-add-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (busy) return;
+        if (typed.invalid.length) {
+          setMessage(`Not US symbols: ${typed.invalid.join(", ")}.`);
+          return;
+        }
+        const add = typed.valid.filter((t) => !list.tickers.includes(t));
+        if (!add.length) {
+          setMessage(
+            typed.valid.length ? "Already in the list." : "Type a ticker.",
+          );
+          return;
+        }
+        setBusy(true);
+        setMessage("");
+        w.change(list.id, { add })
+          .then(() => {
+            setInput("");
+            setOpen(false);
+            onAdded();
+          })
+          .catch((err: unknown) => setMessage((err as Error).message))
+          .finally(() => setBusy(false));
+      }}
+    >
+      <input
+        autoFocus
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="NVDA, AMD"
+        aria-label={`Add tickers to ${list.name}`}
+        autoCapitalize="characters"
+        autoComplete="off"
+        spellCheck={false}
+        disabled={busy}
+      />
+      <button
+        type="submit"
+        className="action primary"
+        disabled={busy || !input.trim()}
+      >
+        {busy ? "Adding…" : `Add to ${list.name}`}
+      </button>
+      <button
+        type="button"
+        className="action"
+        onClick={() => {
+          setOpen(false);
+          setInput("");
+          setMessage("");
+        }}
+      >
+        Cancel
+      </button>
+      {message && (
+        <p className="notice error" role="alert">
+          {message}
+        </p>
+      )}
+    </form>
   );
 }
