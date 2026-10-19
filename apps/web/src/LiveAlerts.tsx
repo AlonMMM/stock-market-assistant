@@ -25,8 +25,8 @@ import {
   type StrengthNow,
 } from "./vs-spy-model.js";
 
-const DayChart = lazy(() =>
-  import("./DayChart.js").then((m) => ({ default: m.DayChart })),
+const ChartPanel = lazy(() =>
+  import("./ChartPanel.js").then((m) => ({ default: m.ChartPanel })),
 );
 
 const signedPct = (n: number, digits = 2) =>
@@ -315,7 +315,7 @@ export function LiveAlerts({
                                       </p>
                                     }
                                   >
-                                    <DayChart
+                                    <ChartPanel
                                       ticker={a.ticker}
                                       alertEnd={a.end}
                                       window={a.config.window}

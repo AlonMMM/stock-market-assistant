@@ -5766,3 +5766,25 @@ button.pa-ticker {
 .mkt-card b small {
   font-weight: 400;
 }
+
+/* The full-screen chart drawn in the page (ChartPanel, user 2026-10-19): the
+   same dark chart and controls, a card's height. */
+.fullscreen-chart.inline {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  height: 520px;
+  padding: 0 8px 4px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+@media (max-width: 720px) {
+  .fullscreen-chart.inline {
+    height: 540px;
+  }
+}
+.tk-chart:has(.fullscreen-chart.inline) {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}

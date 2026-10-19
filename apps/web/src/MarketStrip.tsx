@@ -10,8 +10,8 @@ import {
 import { Sparkline } from "./Sparkline.js";
 import { israelClock, israelLabel } from "./time.js";
 
-const DayChart = lazy(() =>
-  import("./DayChart.js").then((m) => ({ default: m.DayChart })),
+const ChartPanel = lazy(() =>
+  import("./ChartPanel.js").then((m) => ({ default: m.ChartPanel })),
 );
 
 const names: Record<string, string> = { QQQ: "Nasdaq-100", SPY: "S&P 500" };
@@ -159,7 +159,7 @@ export function MarketStrip({
           </p>
           {board ? (
             <Suspense fallback={<p className="chart-status">Loading chart…</p>}>
-              <DayChart ticker="QQQ" date={board.date} />
+              <ChartPanel ticker="QQQ" date={board.date} />
             </Suspense>
           ) : (
             <p className="chart-status">Loading market…</p>
