@@ -168,14 +168,55 @@ export function OptionTicket({
       alive,
     );
   const folded = sheet && !sheet.open;
+  // A phone: the title bar is dragged down to fold the sheet, up to open it
+  // (user 2026-10-19: "the drag for option buy does not go down").
+  const drag = useRef<{ y: number; moved: boolean } | null>(null);
+  const [pull, setPull] = useState(0);
+  const dragProps = sheet
+    ? {
+        onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => {
+          drag.current = { y: e.clientY, moved: false };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        },
+        onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => {
+          if (!drag.current) return;
+          const dy = e.clientY - drag.current.y;
+          if (Math.abs(dy) > 8) drag.current.moved = true;
+          if (sheet.open) setPull(Math.max(0, dy));
+        },
+        onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => {
+          const start = drag.current;
+          drag.current = null;
+          setPull(0);
+          if (!start) return;
+          const dy = e.clientY - start.y;
+          if ((sheet.open && dy > 50) || (!sheet.open && dy < -30))
+            sheet.toggle();
+          // A drag is not also a tap on the bar's buttons.
+          if (start.moved) {
+            const swallow = (c: Event) => {
+              c.stopPropagation();
+              c.preventDefault();
+            };
+            addEventListener("click", swallow, { capture: true, once: true });
+            setTimeout(() => removeEventListener("click", swallow, true), 0);
+          }
+        },
+        onPointerCancel: () => {
+          drag.current = null;
+          setPull(0);
+        },
+      }
+    : {};
 
   return (
     <form
-      className={`ot${sheet ? " ot-sheet" : ""}${folded ? " folded" : ""}`}
+      className={`ot${sheet ? " ot-sheet" : ""}${folded ? " folded" : ""}${pull ? " dragging" : ""}`}
+      style={pull ? { transform: `translateY(${pull}px)` } : undefined}
       onSubmit={preview}
       aria-label={`Buy ${name}`}
     >
-      <div className="ot-head">
+      <div className="ot-head" {...dragProps}>
         {sheet && (
           <button
             type="button"

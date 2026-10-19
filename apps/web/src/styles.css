@@ -5766,3 +5766,101 @@ button.pa-ticker {
 .mkt-card b small {
   font-weight: 400;
 }
+
+/* Live trades (user 2026-10-19): Close in red, Half in orange; a stop or an
+   order opens in place. */
+.pos-quick button.pos-half {
+  border-color: #e7b56a;
+  background: #fbefd9;
+  color: #8a4b06;
+}
+.pos-quick button.pos-half:hover:not(:disabled) {
+  background: #f7e2bd;
+}
+.pos-quick button.pos-close {
+  border-color: #9f1a1a;
+  background: #9f1a1a;
+  color: #fff;
+}
+.pos-quick button.pos-close:hover:not(:disabled) {
+  background: #861515;
+}
+.order-row.open {
+  background: #f6f8f4;
+}
+.order-inline {
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+  width: 100%;
+  padding-top: 10px;
+  border-top: 1px solid #dfe6dd;
+  cursor: default;
+}
+/* History: a trade opens to its fills. */
+.trade-row .trade-toggle {
+  all: unset;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+}
+.trade-row .trade-toggle:disabled {
+  cursor: default;
+}
+.trade-row .trade-toggle:focus-visible {
+  outline: 2px solid #142b29;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.trade-more {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
+.trade-fills {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.trade-fills th,
+.trade-fills td {
+  padding: 6px 4px;
+  border-top: 1px solid #eef1ec;
+  text-align: right;
+  white-space: nowrap;
+}
+.trade-fills th:first-child,
+.trade-fills td:first-child {
+  text-align: left;
+}
+.trade-fills thead th {
+  font-size: 11px;
+  font-weight: 600;
+  color: #526461;
+}
+.trade-fills tr.buy td:nth-child(2) {
+  color: #1d6b3a;
+  font-weight: 600;
+}
+.trade-fills tr.sell td:nth-child(2),
+.trade-fills tr.expired td:nth-child(2) {
+  color: #9f1a1a;
+  font-weight: 600;
+}
+.trade-fills tfoot th,
+.trade-fills tfoot td {
+  font-weight: 700;
+}
+/* The phone order sheet follows a drag on its title bar. */
+.ot-sheet .ot-head {
+  touch-action: none;
+  cursor: grab;
+}
+.ot-sheet.dragging {
+  transition: none;
+}
+.ot-sheet {
+  transition: transform 160ms ease-out;
+}

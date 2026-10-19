@@ -6,9 +6,11 @@ import type {
   Portfolio as PortfolioData,
   PortfolioHistory,
   PortfolioOrder,
+  PortfolioPosition,
 } from "../../../packages/trading/src/portfolio.js";
 import type { Decision } from "../../../packages/trading/src/explain.js";
 import { usePolling } from "./Live.js";
+import { OrderActions, StopMover } from "./OrderControls.js";
 import { Orders, useDecisions, WhyButton } from "./Orders.js";
 import { PositionList, useControlAccess } from "./Positions.js";
 import { positionNumbers } from "./positions-model.js";
@@ -58,12 +60,17 @@ function Order({
   o,
   why,
   onEdit,
+  position,
 }: {
   o: PortfolioOrder;
   why?: Decision | undefined;
   // Opens the order on the Trade page; absent for visitors who cannot trade.
   onEdit?: ((o: PortfolioOrder) => void) | undefined;
+  // The position a stop protects: the stop is moved here, in place (user
+  // 2026-10-19: "move stop should open in the same window").
+  position?: PortfolioPosition | undefined;
 }) {
+  const [open, setOpen] = useState(false);
   const price =
     o.stopPrice !== null
       ? `stop ${o.stopPrice.toFixed(2)}`
@@ -73,8 +80,8 @@ function Order({
   const editable = onEdit !== undefined;
   return (
     <li
-      className={editable ? "order-row" : undefined}
-      onClick={editable ? () => onEdit(o) : undefined}
+      className={editable ? `order-row${open ? " open" : ""}` : undefined}
+      onClick={editable ? () => setOpen(!open) : undefined}
     >
       <strong>
         {optionName(o)}
@@ -102,6 +109,12 @@ function Order({
           ` · ${israelDateTime(Date.parse(o.submittedAt))} ${israelLabel}`}
       </span>
       {why && o.side === "buy" && <WhyButton decision={why} />}
+      {editable && open && (
+        <div className="order-inline" onClick={(e) => e.stopPropagation()}>
+          {o.stopPrice !== null && position ? <StopMover p={position} /> : null}
+          <OrderActions o={o} />
+        </div>
+      )}
     </li>
   );
 }
@@ -110,30 +123,92 @@ function Trade({ t }: { t: ClosedTrade }) {
   const opened = israelDateTime(Date.parse(t.openedAt));
   // An expiry has a date but no time of day.
   const closed = t.expired ? "expiry" : israelDateTime(Date.parse(t.closedAt));
+  // A tap shows each buy, sale and expiry (user 2026-10-19).
+  const [open, setOpen] = useState(false);
+  const multiplier = t.option ? 100 : 1;
+  const fills = t.fills ?? [];
   return (
-    <li className="position">
-      <div className="position-head">
-        <strong>{optionName(t)}</strong>
-        <span className="muted">
-          {t.option ? `${expiryLabel(t.option.expiry)} · ` : ""}
-          {t.qty} {t.option ? "contract" : "share"}
-          {t.qty === 1 ? "" : "s"}
-        </span>
-        <span className={`position-pnl num${tone(t.pnl)}`}>
-          {signedUsd(t.pnl)}
-          {t.pnlPct !== null && ` (${signedPct(t.pnlPct)})`}
-        </span>
-      </div>
-      <dl>
-        <dt>Bought → sold</dt>
-        <dd className="num">
-          {t.entry.toFixed(2)} → {t.expired ? "expired" : t.exit.toFixed(2)}
-        </dd>
-        <dt>Held</dt>
-        <dd>
-          {opened} → {closed} · {israelLabel}
-        </dd>
-      </dl>
+    <li className={`position trade-row${open ? " open" : ""}`}>
+      <button
+        type="button"
+        className="trade-toggle"
+        aria-expanded={open}
+        disabled={fills.length === 0}
+        onClick={() => setOpen(!open)}
+      >
+        <div className="position-head">
+          <strong>{optionName(t)}</strong>
+          <span className="muted">
+            {t.option ? `${expiryLabel(t.option.expiry)} · ` : ""}
+            {t.qty} {t.option ? "contract" : "share"}
+            {t.qty === 1 ? "" : "s"}
+          </span>
+          <span className={`position-pnl num${tone(t.pnl)}`}>
+            {signedUsd(t.pnl)}
+            {t.pnlPct !== null && ` (${signedPct(t.pnlPct)})`}
+          </span>
+        </div>
+        <dl>
+          <dt>Bought → sold</dt>
+          <dd className="num">
+            {t.entry.toFixed(2)} → {t.expired ? "expired" : t.exit.toFixed(2)}
+          </dd>
+          <dt>Held</dt>
+          <dd>
+            {opened} → {closed} · {israelLabel}
+          </dd>
+        </dl>
+        {fills.length > 0 && (
+          <span className="trade-more muted" aria-hidden="true">
+            {open ? "Hide the fills ▴" : `${fills.length} fills ▾`}
+          </span>
+        )}
+      </button>
+      {open && (
+        <table className="trade-fills num">
+          <thead>
+            <tr>
+              <th scope="col">When ({israelLabel})</th>
+              <th scope="col">Side</th>
+              <th scope="col">Qty</th>
+              <th scope="col">Price</th>
+              <th scope="col">Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fills.map((f, i) => (
+              <tr key={i} className={f.side}>
+                <td>
+                  {f.side === "expired"
+                    ? f.at.slice(0, 10)
+                    : israelDateTime(Date.parse(f.at))}
+                </td>
+                <td>
+                  {f.side === "buy"
+                    ? "Buy"
+                    : f.side === "sell"
+                      ? "Sell"
+                      : "Expired"}
+                </td>
+                <td>{f.qty}</td>
+                <td>{f.side === "expired" ? "—" : f.price.toFixed(2)}</td>
+                <td>
+                  {f.side === "buy" ? "−" : "+"}
+                  {usd(f.qty * f.price * multiplier)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row" colSpan={4}>
+                Result
+              </th>
+              <td className={tone(t.pnl).trim()}>{signedUsd(t.pnl)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      )}
     </li>
   );
 }
@@ -505,6 +580,7 @@ function LiveTrades({
               o={o}
               why={why.get(o.symbol)}
               onEdit={canTrade ? onEdit : undefined}
+              position={positions.find((p) => p.symbol === o.symbol)}
             />
           ))}
         </ul>
