@@ -8,17 +8,22 @@
 
   python3 report.py [prefix]     (default data/local/x/bt/bot)
 """
-import csv, collections, os, statistics as st, sys
+import csv, collections, glob, os, statistics as st, sys
 from store import P, DATA
 
 S = P["size"]; SH = P["cost"]["spread_half"]
 
 
 def load(prefix):
-    trades = list(csv.DictReader(open(f"{prefix}_trades.csv")))
-    steps = collections.defaultdict(list)
-    for s in csv.DictReader(open(f"{prefix}_steps.csv")): steps[int(s["id"])].append(s)
-    return trades, steps
+    """Trades and their steps of a run, all shards (<prefix>_*.csv or <prefix>.<n>_*.csv)."""
+    files = sorted(glob.glob(f"{prefix}_trades.csv") + glob.glob(f"{prefix}.[0-9]*_trades.csv"))
+    trades, steps = [], collections.defaultdict(list)
+    for f in files:
+        for t in csv.DictReader(open(f)):
+            t["_i"] = (f, int(t["id"])); trades.append(t)
+        for s in csv.DictReader(open(f.replace("_trades.csv", "_steps.csv"))):
+            steps[(f, int(s["id"]))].append(s)
+    return trades, steps, files
 
 
 def ret_at(steps, sh):
@@ -67,8 +72,7 @@ def portfolio(ok, rets):
 
 
 def main(prefix):
-    trades, steps = load(prefix)
-    for i, t in enumerate(trades): t["_i"] = i
+    trades, steps, files = load(prefix)
     ok = [t for t in trades if t["status"] == "ok"]
     rets = {t["_i"]: ret_at(steps[t["_i"]], SH) for t in ok}
     rets2 = {t["_i"]: ret_at(steps[t["_i"]], 2 * SH) for t in ok}

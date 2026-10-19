@@ -13,6 +13,7 @@ P = json.load(open(os.path.join(HERE, "params.json")))
 DATA = os.environ.get("BT_DATA", "data/local/x/bt")
 os.makedirs(DATA, exist_ok=True)
 db = sqlite3.connect(os.path.join(DATA, "market.sqlite"), timeout=120)
+_cache = {}
 db.executescript("""
 CREATE TABLE IF NOT EXISTS bars (symbol TEXT, date TEXT, bars TEXT, PRIMARY KEY (symbol, date));
 CREATE TABLE IF NOT EXISTS done (key TEXT PRIMARY KEY);
@@ -45,15 +46,18 @@ def session_utc(date):
     return a.strftime("%Y-%m-%dT%H:%M:%SZ"), b.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def fetch_bars(kind, symbols, start, end, key=None):
+def fetch_bars(kind, symbols, start, end, key=None, end_minute=None):
     """Regular-session 1-min bars for symbols between two dates (inclusive), stored per symbol and day.
-    kind: 'stocks' (SIP, raw prices) or 'options' (OCC symbols)."""
+    kind: 'stocks' (SIP, raw prices) or 'options' (OCC symbols). end_minute stops early on the last day."""
     key = key or f"{kind}|{','.join(symbols)}|{start}|{end}"
     if db.execute("SELECT 1 FROM done WHERE key=?", (key,)).fetchone(): return
     base = "https://data.alpaca.markets/v2/stocks/bars" if kind == "stocks" else "https://data.alpaca.markets/v1beta1/options/bars"
     got, token = {}, None
     while True:
-        q = dict(symbols=",".join(symbols), timeframe="1Min", start=session_utc(start)[0], end=session_utc(end)[1], limit=10000, sort="asc")
+        stop = session_utc(end)[1]
+        if end_minute is not None:
+            stop = (dt.datetime.fromisoformat(session_utc(end)[0].replace("Z", "+00:00")) + dt.timedelta(minutes=end_minute + 1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        q = dict(symbols=",".join(symbols), timeframe="1Min", start=session_utc(start)[0], end=stop, limit=10000, sort="asc")
         if kind == "stocks": q.update(feed="sip", adjustment="raw")
         if token: q["page_token"] = token
         j = _get(base + "?" + urllib.parse.urlencode(q))
@@ -65,7 +69,11 @@ def fetch_bars(kind, symbols, start, end, key=None):
                     got.setdefault((s, t.date().isoformat()), []).append([m, b["o"], b["h"], b["l"], b["c"], b["v"]])
         token = j.get("next_page_token")
         if not token: break
-    db.executemany("INSERT OR REPLACE INTO bars VALUES (?,?,?)", [(s, d, json.dumps(v)) for (s, d), v in got.items()])
+    for (s, d), v in got.items():  # keep whichever copy of a day has more bars (a pick downloads only up to its minute)
+        r = db.execute("SELECT bars FROM bars WHERE symbol=? AND date=?", (s, d)).fetchone()
+        if r is None or len(json.loads(r[0])) < len(v):
+            db.execute("INSERT OR REPLACE INTO bars VALUES (?,?,?)", (s, d, json.dumps(v)))
+            _cache.pop((s, d), None)
     db.execute("INSERT OR REPLACE INTO done VALUES (?)", (key,))
     db.commit()
 
@@ -116,7 +124,6 @@ def occ(und, expiry, strike, right):
 
 
 # ---- bars ----
-_cache = {}
 
 
 def day(sym, date):

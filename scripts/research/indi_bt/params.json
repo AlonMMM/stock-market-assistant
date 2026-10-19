@@ -1,34 +1,180 @@
 {
-  "universe": ["TSLA", "NVDA", "PLTR", "AAPL", "GOOGL", "META", "SMCI", "MSTR", "COIN", "APP",
-               "AMD", "GME", "MSFT", "IBIT", "MRNA", "HIMS", "ASTS", "ARM", "QS", "AMZN",
-               "CVNA", "AVGO", "HOOD", "CRCL", "BIDU", "BA", "FSLR", "AFRM", "SOFI", "ROKU",
-               "RBLX", "IBM", "QCOM", "PDD", "ORCL", "MU", "UPST", "NBIS", "CRWV", "AI"],
-  "train": ["2024-02-01", "2025-12-31"],
-  "test": ["2026-01-01", "2026-10-09"],
-
+  "universe": [
+    "TSLA",
+    "NVDA",
+    "PLTR",
+    "AAPL",
+    "GOOGL",
+    "META",
+    "SMCI",
+    "MSTR",
+    "COIN",
+    "APP",
+    "AMD",
+    "GME",
+    "MSFT",
+    "IBIT",
+    "MRNA",
+    "HIMS",
+    "ASTS",
+    "ARM",
+    "QS",
+    "AMZN",
+    "CVNA",
+    "AVGO",
+    "HOOD",
+    "CRCL",
+    "BIDU",
+    "BA",
+    "FSLR",
+    "AFRM",
+    "SOFI",
+    "ROKU",
+    "RBLX",
+    "IBM",
+    "QCOM",
+    "PDD",
+    "ORCL",
+    "MU",
+    "UPST",
+    "NBIS",
+    "CRWV",
+    "AI"
+  ],
+  "train": [
+    "2024-02-01",
+    "2025-12-31"
+  ],
+  "test": [
+    "2026-01-01",
+    "2026-10-09"
+  ],
   "entry": {
-    "first_minute": 15, "last_minute": 374,
-    "breakouts": ["new_high", "or_break", "prev_break"], "event_window": 5,
-    "rs_jump": 0.5, "ex_open_min": 1.0, "ex15_min": 0.25, "range_pos_min": 0.8, "vwap_side": true,
-    "one_per_stock_day": true, "max_open": 3
+    "first_minute": 15,
+    "last_minute": 374,
+    "breakouts": [
+      "new_high",
+      "or_break",
+      "prev_break"
+    ],
+    "event_window": 5,
+    "rs_jump": 0.5,
+    "ex_open_min": 1.0,
+    "ex15_min": 0.25,
+    "range_pos_min": 0.8,
+    "vwap_side": true,
+    "one_per_stock_day": true,
+    "max_open": 3
   },
   "contract": {
-    "dte_min": 1, "dte_max": 7, "delta": 0.15, "rate": 0.045,
-    "otm_scan_max": 0.2, "min_price": 0.20, "min_vol30": 200, "bar_max_age": 10
+    "dte_min": 1,
+    "dte_max": 7,
+    "delta": 0.15,
+    "rate": 0.045,
+    "otm_scan_max": 0.2,
+    "max_strikes": 16,
+    "min_price": 0.2,
+    "min_vol30": 200,
+    "bar_max_age": 10
   },
   "size": {
-    "start_equity": 1000000, "risk_pct": 0.02, "fixed_premium": 10000,
-    "risk_share": [[0, 1.0], [1, 0.9], [2, 0.85], [3, 0.8], [5, 0.75], [7, 0.7], [30, 0.5]],
-    "max_vol_share": 0.1, "commission": 0.62
+    "start_equity": 1000000,
+    "risk_pct": 0.02,
+    "fixed_premium": 10000,
+    "risk_share": [
+      [
+        0,
+        1.0
+      ],
+      [
+        1,
+        0.9
+      ],
+      [
+        2,
+        0.85
+      ],
+      [
+        3,
+        0.8
+      ],
+      [
+        5,
+        0.75
+      ],
+      [
+        7,
+        0.7
+      ],
+      [
+        30,
+        0.5
+      ]
+    ],
+    "max_vol_share": 0.1,
+    "commission": 0.62
   },
   "exit": {
-    "cut1": -0.17, "cut1_share": 0.5, "floor": -0.5,
-    "stall_min": 10, "rs_drop": -0.3,
-    "win_arm": 0.25, "take1": 1.0, "take2": 2.0, "take_share": 0.3333,
-    "trail": 0.4, "runner_stall_min": 20,
-    "eod_minute": 380, "carry_min_gain": 0.25, "carry_range_pos": 0.9, "carry_min_dte": 2, "carry_no_friday": true,
-    "morning_minute": 10, "gap_keep": 0.5, "gap_sell_share": 0.5,
-    "expiry_last_minute": 360
+    "cut1": -0.17,
+    "cut1_share": 0.5,
+    "floor": -0.5,
+    "stall_min": 10,
+    "rs_drop": -0.3,
+    "win_arm": 0.25,
+    "trail": 0.4,
+    "runner_stall_min": 20,
+    "eod_minute": 380,
+    "carry_min_gain": 0.25,
+    "carry_range_pos": 0.9,
+    "carry_min_dte": 2,
+    "carry_no_friday": true,
+    "morning_minute": 10,
+    "gap_keep": 0.5,
+    "gap_sell_share": 0.5,
+    "expiry_last_minute": 360,
+    "takes": [
+      [
+        1.0,
+        0.3333
+      ],
+      [
+        2.0,
+        0.3333
+      ]
+    ],
+    "fast_minutes": null,
+    "fast_takes": [],
+    "cut1_confirm": 1,
+    "min_hold": 0,
+    "l2_on": true
   },
-  "cost": { "spread_half": 0.02 }
+  "cost": {
+    "spread_half": 0.02
+  },
+  "exit_variants": {
+    "v2": {
+      "takes": [
+        [
+          1.0,
+          0.25
+        ],
+        [
+          3.0,
+          0.25
+        ]
+      ],
+      "fast_minutes": 30,
+      "fast_takes": [
+        [
+          2.0,
+          0.25
+        ],
+        [
+          3.0,
+          0.25
+        ]
+      ],
+      "_note": "25% at +100% (or, if +100% came within 30 minutes of entry, first 25% at +200%), another 25% at +300%; the rest by the runner rule"
+    }
+  }
 }

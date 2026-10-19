@@ -1,7 +1,8 @@
 """Control runs for the backtest (same exits as the bot, different entries).
 
-  random  for every bot signal: one random minute in [first_minute, last_minute] on the same stock,
-          day and direction (seed 7) -> is the entry signal better than chance?
+  random  for every bot signal: one random minute after the signal, up to last_minute, on the same
+          stock, day and direction (seed 7) -> is the entry signal better than chance? (A minute before
+          the signal would trade a direction the day had not shown yet.)
   his     his own main-account entries on universe stocks (2024+): his contract, entered on the bar after
           his minute -> are the bot's exits as good as his?
 
@@ -24,7 +25,8 @@ def rand(src, out):
     E = P["entry"]
     rows = []
     for s in csv.DictReader(open(src)):
-        m = rng.randint(E["first_minute"], E["last_minute"])
+        if int(s["minute"]) >= E["last_minute"]: continue
+        m = rng.randint(int(s["minute"]) + 1, E["last_minute"])
         b = [x for x in day(s["sym"], s["date"]) if x[0] <= m]
         if not b: continue
         rows.append(dict(date=s["date"], sym=s["sym"], right=s["right"], minute=m,

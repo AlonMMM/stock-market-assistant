@@ -8,11 +8,14 @@ Fills      decided on one option bar, filled on the next bar of that contract at
            (high+low)/2 + spread_half (buy) or - spread_half (sell), plus commission per contract.
 Exits      (gain g = option bar close / entry fill - 1, checked on every option bar)
   L3 floor     g <= floor                                  -> sell all
-  L1 first cut g <= cut1, once                             -> sell cut1_share of what is left
+  L1 first cut g <= cut1 on cut1_confirm bars in a row, after min_hold minutes, once
+                                                           -> sell cut1_share of what is left
   L2 stall     after L1, g < 0 and the stock made no new extreme for stall_min minutes
                or fell rs_drop % vs SPY x beta in 5 minutes -> sell all
   W1 even      g reached win_arm, then g <= 0              -> sell all
-  W2/W3 takes  g >= take1 / take2                          -> sell take_share of the original
+  W2 takes     each [gain, share] of `takes` in turn: g >= gain -> sell that share of the original;
+               when `fast_minutes` is set and the first take's gain came within that many minutes of
+               the entry, the `fast_takes` plan is used instead (it starts higher)
   W4 runner    after W2: 'trail' off the peak price, or no new stock extreme for runner_stall_min
                minutes                                     -> sell all
   EOD 15:50    carry only if g >= carry_min_gain, stock at >= carry_range_pos of the day range,
@@ -22,13 +25,18 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
   expiry day   sell all at 09:30 + expiry_last_minute
 Each trade's result is a return on the premium paid (`ret`, after costs); sizing is in report.py.
 
-  python3 sim.py [signals.csv] [out prefix]  -> <prefix>_trades.csv, <prefix>_steps.csv
+  python3 sim.py [signals.csv] [out prefix] [shard/shards]  -> <prefix>_trades.csv, <prefix>_steps.csv
+  (with a shard, only every shards-th signal from `shard`, written to <prefix>.<shard>_*.csv;
+  report.py reads all shards of a prefix)
 """
-import csv, datetime as dt, os, sys
+import csv, datetime as dt, json, os, sys
 from store import P, DATA, day, calendar, chain, expiries, fetch_bars, occ, delta, years_to_expiry
 from signals import Day
 
-C, X, SH = P["contract"], P["exit"], P["cost"]["spread_half"]
+C, X, SH = P["contract"], dict(P["exit"]), P["cost"]["spread_half"]
+VARIANT = os.environ.get("BT_VARIANT")  # an exit variant from params.json "exit_variants"
+if VARIANT: X.update({k: v for k, v in P["exit_variants"][VARIANT].items() if not k.startswith("_")})
+if os.environ.get("BT_EXIT"): X.update(json.loads(os.environ["BT_EXIT"]))  # ad-hoc overrides for sweeps
 COMM = P["size"]["commission"]
 _exp = {}
 
@@ -54,10 +62,10 @@ def pick(und, date, minute, right, spot):
     if not exp: return None, "no_expiry"
     call = right == "C"
     ks = [k for k in chain(und, exp, right) if (spot <= k <= spot * (1 + C["otm_scan_max"]) if call else spot * (1 - C["otm_scan_max"]) <= k <= spot)]
-    ks = sorted(ks, key=lambda k: abs(k - spot))[:30]
+    ks = sorted(ks, key=lambda k: abs(k - spot))[:C["max_strikes"]]
     if not ks: return None, "no_strikes"
     syms = [occ(und, exp, k, right) for k in ks]
-    fetch_bars("options", syms, date, date, key=f"cand|{und}|{exp}|{right}|{date}|{ks[0]}|{ks[-1]}")
+    fetch_bars("options", syms, date, date, key=f"cand|{und}|{exp}|{right}|{date}|{ks[0]}|{ks[-1]}|{minute}", end_minute=minute)
     T = years_to_expiry(date, minute, exp)
     best = None
     for k, s in zip(ks, syms):
@@ -83,7 +91,7 @@ def walk(und, date, minute, right, sym, exp, cal):
     dates = [d for d in cal[i0:] if d <= exp]
     fetch_bars("options", [sym], date, exp)
     steps, rem, cost, peak = [], 1.0, None, None
-    st = dict(cut1=False, armed=False, t1=False, t2=False)
+    st = dict(cut1=False, armed=False, t1=False, plan=None, k=0)
     pending = None  # (share of original or 'all', rule)
     for k, d in enumerate(dates):
         bars = day(sym, d)
@@ -128,12 +136,20 @@ def walk(und, date, minute, right, sym, exp, cal):
                 continue
             if t >= X["eod_minute"]: continue
             if g <= X["floor"]: pending = ("all", "L3_floor"); continue
-            if not st["cut1"] and g <= X["cut1"]: st["cut1"] = True; pending = (rem * X["cut1_share"], "L1_cut"); continue
-            if st["cut1"] and g < 0 and (stall or rsd): pending = ("all", "L2_stall" if stall else "L2_rs_drop"); continue
+            held = t - minute if k == 0 else 999
+            st["below"] = st.get("below", 0) + 1 if g <= X["cut1"] else 0
+            if not st["cut1"] and st["below"] >= X["cut1_confirm"] and held >= X["min_hold"]:
+                st["cut1"] = True; pending = (rem * X["cut1_share"], "L1_cut"); continue
+            if X["l2_on"] and st["cut1"] and g < 0 and (stall or rsd): pending = ("all", "L2_stall" if stall else "L2_rs_drop"); continue
             if g >= X["win_arm"]: st["armed"] = True
             if st["armed"] and not st["t1"] and g <= 0: pending = ("all", "W1_even"); continue
-            if not st["t1"] and g >= X["take1"]: st["t1"] = True; pending = (X["take_share"], "W2_take"); continue
-            if st["t1"] and not st["t2"] and g >= X["take2"]: st["t2"] = True; pending = (X["take_share"], "W3_take"); continue
+            if st["plan"] is None and X["takes"] and g >= X["takes"][0][0]:
+                fast = X["fast_minutes"] is not None and k == 0 and t - minute <= X["fast_minutes"]
+                st["plan"] = X["fast_takes"] if fast else X["takes"]
+                st["fast"] = fast
+            if st["plan"] is not None and st["k"] < len(st["plan"]) and g >= st["plan"][st["k"]][0]:
+                gain, share = st["plan"][st["k"]]; st["k"] += 1; st["t1"] = True
+                pending = (share, f"W2_take{int(gain * 100)}{'_fast' if st.get('fast') else ''}"); continue
             if st["t1"] and (c <= peak * (1 - X["trail"]) or (sd.ok and t - sd.last_ext[min(t, 389)] >= X["runner_stall_min"])):
                 pending = ("all", "W4_runner"); continue
         if cost is None: return None, [], "no_fill"
@@ -159,17 +175,18 @@ def result(cost, steps):
     return sold / cost - 1 - comm
 
 
-def run(signals, prefix):
+def run(signals, prefix, shard=0, shards=1):
     cal = calendar()
     trades, allsteps = [], []
     for n, s in enumerate(signals):
+        if n % shards != shard: continue
         m = int(s["minute"])
         if s.get("contract"):  # a given contract (his entries): no pick
             exp = s["expiry"]
             picked, why = (s["contract"], exp, float(s["contract"][-8:]) / 1000, 0.0, None, 1e9), None
         else:
             picked, why = pick(s["sym"], s["date"], m, s["right"], float(s["price"]))
-        row = dict(s)
+        row = dict(s, id=n)
         if not picked:
             row.update(status=why); trades.append(row); continue
         sym, exp, k, dl, px, v30 = picked
@@ -184,16 +201,18 @@ def run(signals, prefix):
                    exit_rule=last[5], rules="|".join(x[5] for x in steps[1:]))
         trades.append(row)
         for x in steps: allsteps.append(dict(id=n, contract=sym, date=x[0], minute=x[1], side=x[2], share=x[3], price=x[4], rule=x[5]))
-        if n % 50 == 0: print(n, s["date"], s["sym"], row.get("ret"), flush=True)
+        if n % 100 == 0: print(n, s["date"], s["sym"], row.get("status"), flush=True)
     keys = list(dict.fromkeys(k for r in trades for k in r))
     with open(f"{prefix}_trades.csv", "w") as f:
         w = csv.DictWriter(f, fieldnames=keys); w.writeheader(); w.writerows(trades)
     with open(f"{prefix}_steps.csv", "w") as f:
-        w = csv.DictWriter(f, fieldnames=list(allsteps[0])); w.writeheader(); w.writerows(allsteps)
+        w = csv.DictWriter(f, fieldnames=["id", "contract", "date", "minute", "side", "share", "price", "rule"]); w.writeheader(); w.writerows(allsteps)
     ok = [t for t in trades if t["status"] == "ok"]
     print(len(trades), "signals,", len(ok), "trades ->", f"{prefix}_trades.csv")
 
 
 if __name__ == "__main__":
     src = sys.argv[1] if len(sys.argv) > 1 else os.path.join(DATA, "signals.csv")
-    run(list(csv.DictReader(open(src))), sys.argv[2] if len(sys.argv) > 2 else os.path.join(DATA, "bot"))
+    prefix = sys.argv[2] if len(sys.argv) > 2 else os.path.join(DATA, "bot")
+    shard, shards = map(int, sys.argv[3].split("/")) if len(sys.argv) > 3 else (0, 1)
+    run(list(csv.DictReader(open(src))), f"{prefix}.{shard}" if shards > 1 else prefix, shard, shards)

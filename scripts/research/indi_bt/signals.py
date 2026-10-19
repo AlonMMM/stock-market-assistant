@@ -73,23 +73,25 @@ class Day:
         self.c = c
         orh = max(x for x in h[:15] if x) if any(h[:15]) else None
         orl = min(x for x in l[:15] if x) if any(l[:15]) else None
+        self.kinds = []
         self.ex15, self.ex_open, self.breakout, self.rs, self.vwap_ok, self.range_pos, self.last_ext = [], [], [], [], [], [], []
         hi, lo, pv, vv, or_done, prev_done, last_ext = -1e18, 1e18, 0.0, 0.0, False, False, 0
         for m in range(390):
             x = c[m]
             if x is None:
-                self.ex15.append(None); self.ex_open.append(None); self.breakout.append(False); self.rs.append(None); self.vwap_ok.append(False); self.range_pos.append(None); self.last_ext.append(last_ext)
+                self.kinds.append(set()); self.ex15.append(None); self.ex_open.append(None); self.breakout.append(False); self.rs.append(None); self.vwap_ok.append(False); self.range_pos.append(None); self.last_ext.append(last_ext)
                 continue
             pv += (h[m] + l[m] + x) / 3 * v[m]; vv += v[m]
             vw = pv / vv if vv else x
             beyond = x > hi if bet > 0 else x < lo
             bo = m >= 5 and beyond
+            kinds = {"new_high"} if bo else set()
             if beyond: last_ext = m
             hi, lo = max(hi, h[m]), min(lo, l[m])
             if m >= 15 and not or_done and orh and (x > orh if bet > 0 else x < orl):
-                bo = True; or_done = True
+                bo = True; or_done = True; kinds.add("or_break")
             if prev_hi and not prev_done and (x > prev_hi if bet > 0 else x < prev_lo):
-                bo = True; prev_done = True
+                bo = True; prev_done = True; kinds.add("prev_break")
             rs = ex15 = exo = None
             if self.beta is not None and spy[m]:
                 if m >= 15 and c[m - 15] and spy[m - 15]:
@@ -98,10 +100,30 @@ class Day:
                     exo = bet * ((x / self.open - 1) - self.beta * (spy[m] / spy[0] - 1)) * 100
             if m >= 5 and c[m - 5] and spy[m] and spy[m - 5] and self.beta is not None:
                 rs = bet * ((x / c[m - 5] - 1) - self.beta * (spy[m] / spy[m - 5] - 1)) * 100
-            self.breakout.append(bo); self.rs.append(rs); self.ex15.append(ex15); self.ex_open.append(exo)
+            self.kinds.append(kinds); self.breakout.append(bo); self.rs.append(rs); self.ex15.append(ex15); self.ex_open.append(exo)
             self.vwap_ok.append(x > vw if bet > 0 else x < vw)
             self.range_pos.append(((x - lo) / (hi - lo) if bet > 0 else (hi - x) / (hi - lo)) if hi > lo else None)
             self.last_ext.append(last_ext)
+
+    def why(self, m):
+        """Plain-words reasons for an entry at minute m (what the rules saw)."""
+        w = E["event_window"]; up = self.bet > 0
+        hm = lambda i: f"{(570 + i) // 60:02d}:{(570 + i) % 60:02d}"
+        names = {"prev_break": f"broke yesterday's {'high' if up else 'low'}", "or_break": f"broke the 15-minute opening {'high' if up else 'low'}",
+                 "new_high": f"made a new day {'high' if up else 'low'}"}
+        ev = {}
+        for i in range(max(0, m - w + 1), m + 1):
+            for k in self.kinds[i]: ev[k] = i
+        parts = [f"{names[k]} at {hm(i)}" for k, i in sorted(ev.items(), key=lambda x: x[1])]
+        rs = max((self.rs[i] for i in range(max(0, m - w + 1), m + 1) if self.rs[i] is not None), default=None)
+        out = (", ".join(parts) or "no breakout in the last 5 minutes").capitalize()
+        if rs is not None: out += f"; {'up' if up else 'down'} {abs(rs):.1f}% vs SPY×β in 5 minutes"
+        word = lambda v: f"{abs(v):.1f}% {'stronger' if (v >= 0) == up else 'weaker'} than SPY×β"
+        if self.ex_open[m] is not None: out += f"; {word(self.ex_open[m] if up else -self.ex_open[m])} since the open"
+        if self.ex15[m] is not None: out += f", {word(self.ex15[m] if up else -self.ex15[m])} over 15 minutes"
+        if self.range_pos[m] is not None: out += f"; at {self.range_pos[m]:.2f} of the day range"
+        out += f", {'above' if self.vwap_ok[m] == up else 'below'} VWAP" if up else f", {'below' if self.vwap_ok[m] else 'above'} VWAP"
+        return out
 
     def signal(self):
         w = E["event_window"]
