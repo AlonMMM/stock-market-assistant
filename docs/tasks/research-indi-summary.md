@@ -1,6 +1,7 @@
 # Summary: what @ultrawavetrader (Indi) does, 2023–2026
 
-Status: done (2026-10-19). Final write-up of the trader study. Details, tables and method are in
+Status: done (2026-10-19). Final write-up of the trader study. Full research report with overnight, opening and end-of-day analysis:
+https://claude.ai/code/artifact/50f7263c-8a6a-4b52-b798-9ee70c5c40d7 (trade table from `indi-deep.py`). Details, tables and method are in
 [research-indi-2026.md](research-indi-2026.md); this page is the conclusion.
 
 ## In one paragraph
