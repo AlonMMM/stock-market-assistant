@@ -19,7 +19,7 @@ ENV = dict(os.environ, BT_VARIANT="v2", **({"BT_UNIVERSE": "wide"} if UNI == "wi
 
 H = {"carry_min_gain": 99, "win_arm": 99, "takes": [], "fast_minutes": None, "runner_stall_min": 999, "trail": 1.0, "cut1": -1.0, "floor": -1.0,
      "user_stop": {"checks": [[10, 0.5], [20, 1.0]], "out": -0.30}}
-roll = lambda gain, within: dict(H, roll={"gain": gain, "within": within, "share": 0.5, "rest_take": 5.0})
+roll = lambda gain, within, cap=5.0: dict(H, roll={"gain": gain, "within": within, "share": 0.5, "rest_take": cap})
 # name -> (script, signal file kind, exit overrides, extra env)
 RUNS = {
     "full":       ("tiers.py", "tiers", roll(3.0, 60), {}),
@@ -28,8 +28,11 @@ RUNS = {
     "roll100_30": ("tiers.py", "tiers", roll(1.0, 30), {}),
     "roll200_60": ("tiers.py", "tiers", roll(2.0, 60), {}),
     "roll300_120": ("tiers.py", "tiers", roll(3.0, 120), {}),
+    "roll100_30_run": ("tiers.py", "tiers", roll(1.0, 30, 999), {}),   # the rest after a roll runs (no +500% take)
+    "roll200_60_run": ("tiers.py", "tiers", roll(2.0, 60, 999), {}),
     "astart":     ("tiers.py", "astart", H, {}),          # only days where A is true at the first minute, 3%
     "astart_roll": ("tiers.py", "astart", roll(2.0, 60), {}),
+    "astart_roll_run": ("tiers.py", "astart", roll(2.0, 60, 999), {}),
     "atA":        ("tiers.py", "atA", H, {}),             # enter at the first A minute, whenever it comes, 3%
     "his":        ("sim.py", "his", H, {}),               # his entries and contracts, same exits, $10K each
 }
