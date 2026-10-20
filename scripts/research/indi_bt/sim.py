@@ -243,7 +243,8 @@ def run(signals, prefix, shard=0, shards=1):
             exp = s["expiry"]
             picked, why = (s["contract"], exp, float(s["contract"][-8:]) / 1000, 0.0, None, 1e9, None), None
         else:
-            picked, why = pick(s["sym"], s["date"], m, s["right"], float(s["price"]))
+            try: picked, why = pick(s["sym"], s["date"], m, s["right"], float(s["price"]))
+            except RuntimeError: picked, why = None, "data_error"  # Alpaca kept failing for this request: count it, go on
         row = dict(s, id=n)
         if not picked:
             row.update(status=why); trades.append(row); continue
@@ -254,7 +255,8 @@ def run(signals, prefix, shard=0, shards=1):
             limit = lb[4] * (1 + LIMIT_PAD) if lb else None
             if limit is None:
                 row.update(status="no_prices"); trades.append(row); continue
-        cost, steps, flag = walk(s["sym"], s["date"], m, s["right"], sym, exp, cal, limit)
+        try: cost, steps, flag = walk(s["sym"], s["date"], m, s["right"], sym, exp, cal, limit)
+        except RuntimeError: cost, steps, flag = None, [], "data_error"
         row.update(contract=sym, expiry=exp, strike=k, delta=round(dl, 3), iv=round(iv, 3) if iv else "", signal_price=px, vol30=v30,
                    dte=(dt.date.fromisoformat(exp) - dt.date.fromisoformat(s["date"])).days)
         if cost is None:
