@@ -146,3 +146,43 @@ export function monotonePath(points: [number, number][]) {
   }
   return path;
 }
+
+const israelDay = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Jerusalem",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/**
+ * One point per day with closed trades (user 2026-10-20, option A): the
+ * running realized P&L at the day's last close, the day's own P&L and how
+ * many trades closed that day. Days in Israel time, oldest first.
+ */
+export function dailyCloses(points: ReturnType<typeof cumulativeTrades>) {
+  const days: {
+    day: string; // YYYY-MM-DD
+    time: number; // the day's last close (ms)
+    pnl: number; // running total at the day's end
+    dayPnl: number;
+    trades: number;
+  }[] = [];
+  for (const p of points) {
+    const day = israelDay.format(p.time);
+    const last = days.at(-1);
+    if (last && last.day === day) {
+      last.time = p.time;
+      last.pnl = p.pnl;
+      last.dayPnl = Math.round((last.dayPnl + p.trade.pnl) * 100) / 100;
+      last.trades += 1;
+    } else
+      days.push({
+        day,
+        time: p.time,
+        pnl: p.pnl,
+        dayPnl: p.trade.pnl,
+        trades: 1,
+      });
+  }
+  return days;
+}
