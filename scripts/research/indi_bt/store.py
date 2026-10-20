@@ -111,7 +111,11 @@ def expiries(und, start, end):
         while True:
             q = dict(underlying_symbols=und, expiration_date_gte=start, expiration_date_lte=end, type="call", status=status, limit=10000)
             if token: q["page_token"] = token
-            j = _get("https://paper-api.alpaca.markets/v2/options/contracts?" + urllib.parse.urlencode(q))
+            try:
+                j = _get("https://paper-api.alpaca.markets/v2/options/contracts?" + urllib.parse.urlencode(q))
+            except urllib.error.HTTPError as e:  # 422: the API rejects this underlying (e.g. a class share); no options
+                if e.code != 422: raise
+                j = {}
             out |= {c["expiration_date"] for c in j.get("option_contracts") or [] if c["root_symbol"] == und}
             token = j.get("next_page_token")
             if not token: break
