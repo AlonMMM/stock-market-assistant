@@ -20,6 +20,16 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                the entry, the `fast_takes` plan is used instead (it starts higher)
   W4 runner    after W2: 'trail' off the peak price, or no new stock extreme for runner_stall_min
                minutes                                     -> sell all
+  R roll (roll {gain, within, share, rest_take}): the option at +gain within `within` minutes of the
+               entry -> sell `share` (tiers.py buys a new contract with half the profit); the rest is
+               sold at +rest_take
+  U your stop (user_stop {checks: [[10, 0.5], [20, 1.0]], out} or {check_from, check_to, share, out}):
+               at each checkpoint (minutes after the entry, once), the stock on the wrong side of the entry
+               price -> sell that share of what is left. Older form: 10-20 minutes after the entry, the stock
+               on the wrong side of the entry price -> sell `share` (once); option at `out` (e.g. -35%)
+               with the stock on the wrong side of the entry price -> sell all
+  S stock stop (stock_stop "vwap" / "prev", entry day): the stock closes back on the wrong side of
+               VWAP, or back inside yesterday's range                    -> sell all
   EOD 15:50    carry only if g >= carry_min_gain, stock at >= carry_range_pos of the day range,
                not Friday, >= carry_min_dte days to expiry -> else sell all
   morning      after a carry, at 09:30 + morning_minute: gap in the bet direction >= gap_keep %
@@ -66,11 +76,20 @@ def pick(und, date, minute, right, spot):
     exp = expiry_for(und, date)
     if not exp: return None, "no_expiry"
     call = right == "C"
-    ks = [k for k in chain(und, exp, right) if (spot <= k <= spot * (1 + C["otm_scan_max"]) if call else spot * (1 - C["otm_scan_max"]) <= k <= spot)]
+    allk = chain(und, exp, right)
+    ks = [k for k in allk if (spot <= k <= spot * (1 + C["otm_scan_max"]) if call else spot * (1 - C["otm_scan_max"]) <= k <= spot)]
     ks = sorted(ks, key=lambda k: abs(k - spot))[:C["max_strikes"]]
     if not ks: return None, "no_strikes"
     syms = [occ(und, exp, k, right) for k in ks]
-    fetch_bars("options", syms, date, date, key=f"cand|{und}|{exp}|{right}|{date}|{ks[0]}|{ks[-1]}|{minute}", end_minute=minute)
+    # Download once per stock, expiry, side and day: every strike within 30% of the open, the whole day,
+    # so any later test (another minute, delta or roll) reads it from the cache.
+    sb = day(und, date)
+    o = sb[0][1] if sb else spot
+    wide = [occ(und, exp, k, right) for k in allk if abs(k / o - 1) <= 0.30]
+    for i in range(0, len(wide), 80):  # the API takes up to 100 symbols a request
+        fetch_bars("options", wide[i:i + 80], date, date, key=f"day|{und}|{exp}|{right}|{date}|{i}")
+    if any(not day(s, date) for s in syms[:3]):  # spot far from the open: the nearest strikes up to this minute
+        fetch_bars("options", syms, date, date, key=f"cand|{und}|{exp}|{right}|{date}|{ks[0]}|{ks[-1]}|{minute}", end_minute=minute)
     T = years_to_expiry(date, minute, exp)
     best = None
     for k, s in zip(ks, syms):
@@ -148,6 +167,32 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 continue
             if t >= X["eod_minute"]: continue
             if g <= X["floor"]: pending = ("all", "L3_floor"); continue
+            R_ = X.get("roll")
+            if R_ and not st.get("rolled") and k == 0 and t - minute <= R_["within"] and g >= R_["gain"]:
+                st["rolled"] = True; pending = (rem * R_["share"], "R_roll"); continue
+            if R_ and st.get("rolled") and g >= R_["rest_take"]: pending = ("all", "R_take"); continue
+            if X.get("user_stop") and sd.ok and k == 0:
+                U = X["user_stop"]; tt = min(t, 389)
+                if st.get("sp0") is None: st["sp0"] = sd.c[minute]
+                against = sd.c[tt] is not None and st["sp0"] and bet * (sd.c[tt] - st["sp0"]) < 0
+                if "checks" in U:  # checkpoints [[minutes after entry, share of what is left], ...], each once
+                    done = st.setdefault("checks_done", set())
+                    hit = next((i for i, (mins, _) in enumerate(U["checks"]) if i not in done and t - minute >= mins), None)
+                    if hit is not None:
+                        done.add(hit)
+                        if against:
+                            share = U["checks"][hit][1]
+                            pending = ("all" if share >= 1 else rem * share, f"U_check{U['checks'][hit][0]}"); continue
+                elif not st.get("half") and U["check_from"] <= t - minute <= U["check_to"] and against:
+                    st["half"] = True; pending = (rem * U["share"], "U_half"); continue
+                if g <= U["out"] and against: pending = ("all", "U_out"); continue
+            if X.get("user_stop") and sd.ok and k > 0 and g <= X["user_stop"]["out"]:
+                pending = ("all", "U_out"); continue
+            if X.get("stock_stop") and sd.ok and k == 0 and t > minute:
+                tt = min(t, 389); px = sd.c[tt]
+                if X["stock_stop"] == "vwap" and not sd.vwap_ok[tt]: pending = ("all", "S_vwap"); continue
+                if X["stock_stop"] == "prev" and px is not None and sd.prev_hi and (px <= sd.prev_hi if bet > 0 else px >= sd.prev_lo):
+                    pending = ("all", "S_prev"); continue
             held = t - minute if k == 0 else 999
             st["below"] = st.get("below", 0) + 1 if g <= X["cut1"] else 0
             if not st["cut1"] and st["below"] >= X["cut1_confirm"] and held >= X["min_hold"]:

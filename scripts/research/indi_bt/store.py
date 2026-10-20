@@ -4,12 +4,14 @@
 Data lives in data/local/x/bt (not in Git). Credentials come from ALPACA_API_KEY / ALPACA_API_SECRET;
 run the scripts through `node --env-file=.env` (see README.md) so the keys never touch a file here.
 """
-import json, math, os, sqlite3, time, urllib.parse, urllib.request, urllib.error, datetime as dt
+import http.client, json, math, os, sqlite3, time, urllib.parse, urllib.request, urllib.error, datetime as dt
 from zoneinfo import ZoneInfo
 
 NY = ZoneInfo("America/New_York")
 HERE = os.path.dirname(os.path.abspath(__file__))
 P = json.load(open(os.path.join(HERE, "params.json")))
+if os.environ.get("BT_UNIVERSE") == "wide":  # his 40 + S&P 100 + Nasdaq-100 (members as of Jan 2024)
+    P["universe"] = P["universe_wide"]
 DATA = os.environ.get("BT_DATA", "data/local/x/bt")
 os.makedirs(DATA, exist_ok=True)
 db = sqlite3.connect(os.path.join(DATA, "market.sqlite"), timeout=120)
@@ -32,7 +34,7 @@ def _get(url):
             return out
         except urllib.error.HTTPError as e:
             if e.code != 429 and e.code < 500: raise
-        except (urllib.error.URLError, TimeoutError):
+        except (urllib.error.URLError, TimeoutError, http.client.HTTPException, ConnectionError, OSError):
             pass
         time.sleep(3 * (attempt + 1))
     raise RuntimeError("Alpaca keeps failing: " + url)

@@ -68,6 +68,7 @@ class Day:
         prev_hi = max((b[2] for b in pb), default=None)
         prev_lo = min((b[3] for b in pb), default=None)
         self.prev_close = pb[-1][4] if pb else None
+        self.prev_hi, self.prev_lo = prev_hi, prev_lo
         self.open = bars[0][1] if bars[0][0] <= 5 else None
         self.close = c[-1]
         self.beta = beta(sym, date, cal_idx, cal)
@@ -147,28 +148,74 @@ class Day:
         steps = []
         pb = day(self.sym, cal[cal_idx - 1])
         phi, plo = max(x[2] for x in pb), min(x[3] for x in pb)
-        for m in range(5, E["last_minute"] + 1):
-            if m % 5 == 0 and c[m] and c[m - 5] and spy[m] and spy[m - 5]:
-                steps.append(bet * ((c[m] / c[m - 5] - 1) - self.beta * (spy[m] / spy[m - 5] - 1)))
-            if m < V["first_minute"] or len(steps) < 6 or c[m] is None: continue
+        k_ = V.get("step", 5)
+        for m in range(k_, min(V.get("last_minute", E["last_minute"]), E["last_minute"]) + 1):
+            if m % k_ == 0 and c[m] and c[m - k_] and spy[m] and spy[m - k_]:
+                steps.append(bet * ((c[m] / c[m - k_] - 1) - self.beta * (spy[m] / spy[m - k_] - 1)))
+            if m < V["first_minute"] or len(steps) < V.get("min_steps", 6) or c[m] is None: continue
             sd = st.pstdev(steps)
             if not sd or st.fmean(steps) / sd * math.sqrt(len(steps)) < V["strength_t"]: continue
             if (self.range_pos[m] or 0) < V["range_pos"]: continue
             if V["need_prev_out"] and not (c[m] > phi if bet > 0 else c[m] < plo): continue
             med_cum = st.median(h[m] for h in hist)
-            med_15 = st.median(h[m] - h[m - 15] for h in hist)
+            med_15 = st.median(h[m] - h[m - 15] if m >= 15 else h[m] for h in hist)
             if not med_cum or cum[m] / med_cum < V["rvol_day"]: continue
-            if not med_15 or (cum[m] - cum[m - 15]) / med_15 < V["rvol_15"]: continue
-            self.rv = dict(rvol_day=round(cum[m] / med_cum, 2), rvol_15=round((cum[m] - cum[m - 15]) / med_15, 2),
+            v15 = cum[m] - (cum[m - 15] if m >= 15 else 0)
+            if V["rvol_15"] and (not med_15 or v15 / med_15 < V["rvol_15"]): continue
+            self.rv = dict(rvol_day=round(cum[m] / med_cum, 2), rvol_15=round(v15 / med_15, 2) if med_15 else 0,
                            strength=round(st.fmean(steps) / sd * math.sqrt(len(steps)), 2))
             return m
         return None
+
+    def tiers(self, V):
+        """Per minute from first_minute: which of conditions 1-5 hold. -> {"C": m, "B": m, "A": m} first minutes
+        (B and A only at or after C), or None when C never happens."""
+        import math
+        cal, i0 = self.cal, self.cal_idx
+        vol = [0] * 390
+        for b in day(self.sym, self.date): vol[b[0]] = b[5]
+        cum, s_ = [0] * 390, 0
+        for m in range(390): s_ += vol[m]; cum[m] = s_
+        hist = []
+        for d in cal[max(0, i0 - 20):i0]:
+            v = [0] * 390
+            for b in day(self.sym, d): v[b[0]] = b[5]
+            c_, t_ = [0] * 390, 0
+            for m in range(390): t_ += v[m]; c_[m] = t_
+            if c_[-1] > 0: hist.append(c_)
+        if len(hist) < 10 or self.beta is None: return None
+        spy = series(day("SPY", self.date))[0]
+        c, bet, k_ = self.c, self.bet, V["step"]
+        pb = day(self.sym, cal[i0 - 1]); phi, plo = max(x[2] for x in pb), min(x[3] for x in pb)
+        steps, out, conds = [], {}, {}
+        for m in range(k_, E["last_minute"] + 1):
+            if m % k_ == 0 and c[m] and c[m - k_] and spy[m] and spy[m - k_]:
+                steps.append(bet * ((c[m] / c[m - k_] - 1) - self.beta * (spy[m] / spy[m - k_] - 1)))
+            if m < V["first_minute"] or len(steps) < V["min_steps"] or c[m] is None: continue
+            sd = st.pstdev(steps)
+            t = st.fmean(steps) / sd * math.sqrt(len(steps)) if sd else 0
+            med_cum = st.median(h[m] for h in hist)
+            med_15 = st.median(h[m] - (h[m - 15] if m >= 15 else 0) for h in hist)
+            rv = cum[m] / med_cum if med_cum else 0
+            r15 = (cum[m] - (cum[m - 15] if m >= 15 else 0)) / med_15 if med_15 else 0
+            c1, c2 = t >= V["strength_t"], rv >= V["rvol_day"]
+            c3, c4 = r15 >= V["rvol_15"], (self.range_pos[m] or 0) >= V["range_pos"]
+            c5 = c[m] > phi if bet > 0 else c[m] < plo
+            if not (c1 and c2): continue
+            n = c3 + c4 + c5
+            for tier, ok in (("C", True), ("B", n >= 1), ("A", n == 3)):
+                if ok and tier not in out:
+                    out[tier] = m; conds[tier] = dict(t=round(t, 2), rvol=round(rv, 2), rvol15=round(r15, 2), ext=int(c4), prev=int(c5), burst=int(c3))
+            if "A" in out: break
+        if "C" not in out: return None
+        self.tier_conds = conds
+        return out
 
     def signal(self, mode=None):
         """First entry minute of the day, or None. mode: None (enter on the signal), "calm" or "retest"
         (see params.json entry_variants)."""
         V = P["entry_variants"].get(mode, {})
-        if mode == "rv": return self.rv_signal(V, self.cal, self.cal_idx)
+        if mode in ("rv", "early"): return self.rv_signal(V, self.cal, self.cal_idx)
         w = E["event_window"]
         for m in range(E["first_minute"], E["last_minute"] + 1):
             win = range(max(0, m - w + 1), m + 1)
@@ -197,7 +244,35 @@ class Day:
         return None
 
 
+def main_tiers(start, end):
+    """One row per stock and day: the first C minute (direction where C came first) and the B / A minutes."""
+    V = P["entry_variants"]["tiers"]
+    cal = calendar(); out = []
+    for i, date in enumerate(cal):
+        if not (start <= date <= end): continue
+        for sym in P["universe"]:
+            best = None
+            for bet in (1, -1):
+                d = Day(sym, date, bet, cal, i)
+                if not d.ok: continue
+                tr = d.tiers(V)
+                if tr and (best is None or tr["C"] < best[1]["C"]): best = (bet, tr, d)
+            if best:
+                bet, tr, d = best; m = tr["C"]
+                row = dict(date=date, sym=sym, right="C" if bet > 0 else "P", minute=m, time=f"{(570 + m) // 60:02d}:{(570 + m) % 60:02d}",
+                           price=d.c[m], range_pos=round(d.range_pos[m] or 0, 2), beta=round(d.beta, 2),
+                           b_minute=tr.get("B", ""), a_minute=tr.get("A", ""))
+                for k, v in d.tier_conds.get("C", {}).items(): row[f"c_{k}"] = v
+                out.append(row)
+        if date.endswith("-01"): print(date, len(out), flush=True)
+    path = os.path.join(DATA, "signals_tiers.csv")
+    with open(path, "w") as f:
+        w = csv.DictWriter(f, fieldnames=list(out[0])); w.writeheader(); w.writerows(out)
+    print(len(out), "stock-days with a C entry ->", path)
+
+
 def main(start, end, mode=None):
+    if mode == "tiers": return main_tiers(start, end)
     cal = calendar()
     out = []
     for i, date in enumerate(cal):
@@ -213,7 +288,8 @@ def main(start, end, mode=None):
                 bet, m, d = best
                 out.append(dict(**(d.rv or {}), date=date, sym=sym, right="C" if bet > 0 else "P", minute=m,
                                 time=f"{(570 + m) // 60:02d}:{(570 + m) % 60:02d}", price=d.c[m],
-                                rs=round(d.rs[m] or 0, 2), ex15=round(d.ex15[m], 2), ex_open=round(d.ex_open[m], 2), range_pos=round(d.range_pos[m], 2), beta=round(d.beta, 2)))
+                                rs=round(d.rs[m] or 0, 2), ex15=round(d.ex15[m], 2) if d.ex15[m] is not None else "",
+                                ex_open=round(d.ex_open[m], 2) if d.ex_open[m] is not None else "", range_pos=round(d.range_pos[m], 2), beta=round(d.beta, 2)))
         print(date, len(out), flush=True) if date.endswith("-01") or date == end else None
     with open(os.path.join(DATA, f"signals{'_' + mode if mode else ''}.csv"), "w") as f:
         w = csv.DictWriter(f, fieldnames=list(out[0])); w.writeheader(); w.writerows(out)
