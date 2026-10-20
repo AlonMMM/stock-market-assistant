@@ -13,7 +13,7 @@ The trade is entered on the next minute's option bar (sim.py).
 
   python3 signals.py [start] [end] [calm|retest]   -> data/local/x/bt/signals[_mode].csv
 """
-import csv, os, sys, statistics as st
+import csv, json, os, sys, statistics as st
 from store import P, DATA, day, calendar
 
 E = P["entry"]
@@ -246,7 +246,7 @@ class Day:
 
 def main_tiers(start, end):
     """One row per stock and day: the first C minute (direction where C came first) and the B / A minutes."""
-    V = P["entry_variants"]["tiers"]
+    V = dict(P["entry_variants"]["tiers"], **json.loads(os.environ.get("BT_TIERS", "{}")))  # e.g. {"rvol_day": 1.1}
     cal = calendar(); out = []
     for i, date in enumerate(cal):
         if not (start <= date <= end): continue
@@ -265,7 +265,7 @@ def main_tiers(start, end):
                 for k, v in d.tier_conds.get("C", {}).items(): row[f"c_{k}"] = v
                 out.append(row)
         if date.endswith("-01"): print(date, len(out), flush=True)
-    path = os.path.join(DATA, "signals_tiers.csv")
+    path = os.environ.get("BT_SIG_OUT") or os.path.join(DATA, "signals_tiers.csv")
     with open(path, "w") as f:
         w = csv.DictWriter(f, fieldnames=list(out[0])); w.writeheader(); w.writerows(out)
     print(len(out), "stock-days with a C entry ->", path)

@@ -13,7 +13,7 @@ R = os.path.join(HERE, "run.mjs")
 B = "data/local/x/bt"
 UNI = sys.argv[1] if len(sys.argv) > 1 else "narrow"
 YEARS = sys.argv[2:] or ["2024", "2025", "2026"]
-TAG = "t" if UNI == "narrow" else "w"
+TAG = ("t" if UNI == "narrow" else "w") + os.environ.get("BT_TAG", "")  # BT_TAG + BT_TIERS: a variant of the tier conditions
 SPAN = {"2024": ("2024-02-01", "2024-12-31"), "2025": ("2025-01-02", "2025-12-31"), "2026": ("2026-01-02", "2026-10-12")}
 ENV = dict(os.environ, BT_VARIANT="v2", **({"BT_UNIVERSE": "wide"} if UNI == "wide" else {}))
 
@@ -46,8 +46,7 @@ def signals(y):
     a, b = SPAN[y]
     src = f"{B}/{TAG}_sig_tiers_{y}.csv"
     if not os.path.exists(src):
-        sh(["python3", os.path.join(HERE, "signals.py"), a, b, "tiers"], f"{B}/{TAG}_tiers{y}.log").wait()
-        os.replace(f"{B}/signals_tiers.csv", src)
+        sh(["python3", os.path.join(HERE, "signals.py"), a, b, "tiers"], f"{B}/{TAG}_tiers{y}.log", dict(ENV, BT_SIG_OUT=src)).wait()
     sys.path.insert(0, HERE)
     if UNI == "wide": os.environ["BT_UNIVERSE"] = "wide"
     from store import day
@@ -62,6 +61,8 @@ def signals(y):
         with open(f"{B}/{TAG}_sig_{kind}_{y}.csv", "w") as f:
             w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(data)
     his = f"{B}/{TAG}_sig_his_{y}.csv"
+    base_his = f"{B}/{TAG[0]}_sig_his_{y}.csv"
+    if not os.path.exists(his) and os.path.exists(base_his): import shutil; shutil.copy(base_his, his)
     if not os.path.exists(his):
         sh(["python3", os.path.join(HERE, "controls.py"), "his", a, b, his], his + ".log").wait()
 
@@ -69,7 +70,9 @@ def signals(y):
 def main():
     for y in YEARS: signals(y)
     jobs = []
+    only = os.environ.get("BT_RUNS", "").split(",") if os.environ.get("BT_RUNS") else None
     for name, (script, kind, ex, extra) in RUNS.items():
+        if only and name not in only: continue
         for y in YEARS:
             out = f"{B}/{TAG}_{name}_{y}"
             if all(os.path.exists(f"{out}.{i}_trades.csv") for i in range(4)): continue
