@@ -32,6 +32,7 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                VWAP, or back inside yesterday's range                    -> sell all
   EOD 15:50    carry only if g >= carry_min_gain, stock at >= carry_range_pos of the day range,
                not Friday, >= carry_min_dte days to expiry -> else sell all
+  carry_max_days  nights a position may be carried (default: no limit)
   morning      after a carry, at 09:30 + morning_minute: gap in the bet direction >= gap_keep %
                -> sell gap_sell_share, keep the rest under the rules; otherwise sell all
   expiry day   sell all at 09:30 + expiry_last_minute
@@ -160,7 +161,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 dte = (dt.date.fromisoformat(exp) - dt.date.fromisoformat(d)).days
                 rp = sd.range_pos[min(t, 389)] if sd.ok else None
                 fri = dt.date.fromisoformat(d).weekday() == 4
-                if g >= X["carry_min_gain"] and (rp or 0) >= X["carry_range_pos"] and dte >= X["carry_min_dte"] and not (fri and X["carry_no_friday"]) and k + 1 < len(dates):
+                if g >= X["carry_min_gain"] and (rp or 0) >= X["carry_range_pos"] and dte >= X["carry_min_dte"] and not (fri and X["carry_no_friday"]) and k + 1 < len(dates) and k < X.get("carry_max_days", 99):
                     steps.append((d, t, "carry", round(rem, 4), round(c, 4), "eod_carry"))
                 else:
                     pending = ("all", "eod_close")
