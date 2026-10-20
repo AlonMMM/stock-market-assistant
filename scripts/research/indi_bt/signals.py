@@ -58,6 +58,7 @@ class Day:
 
     def __init__(self, sym, date, bet, cal, cal_idx):
         self.sym, self.date, self.bet = sym, date, bet
+        self.cal, self.cal_idx, self.rv = cal, cal_idx, None
         bars = day(sym, date)
         self.ok = len(bars) > 300 and cal_idx > 0
         if not self.ok: return
@@ -125,10 +126,49 @@ class Day:
         out += f", {'above' if self.vwap_ok[m] == up else 'below'} VWAP" if up else f", {'below' if self.vwap_ok[m] else 'above'} VWAP"
         return out
 
+    def rv_signal(self, V, cal, cal_idx):
+        """First minute with strength + relative volume + breakout (entry_variants.rv)."""
+        import math
+        bars = day(self.sym, self.date)
+        vol = [0] * 390
+        for b in bars: vol[b[0]] = b[5]
+        cum = [0] * 390; s_ = 0
+        for m in range(390): s_ += vol[m]; cum[m] = s_
+        hist = []
+        for d in cal[max(0, cal_idx - 20):cal_idx]:
+            v = [0] * 390
+            for b in day(self.sym, d): v[b[0]] = b[5]
+            c_ = [0] * 390; t_ = 0
+            for m in range(390): t_ += v[m]; c_[m] = t_
+            if c_[-1] > 0: hist.append(c_)
+        if len(hist) < 10 or self.beta is None: return None
+        spy = series(day("SPY", self.date))[0]
+        c, bet = self.c, self.bet
+        steps = []
+        pb = day(self.sym, cal[cal_idx - 1])
+        phi, plo = max(x[2] for x in pb), min(x[3] for x in pb)
+        for m in range(5, E["last_minute"] + 1):
+            if m % 5 == 0 and c[m] and c[m - 5] and spy[m] and spy[m - 5]:
+                steps.append(bet * ((c[m] / c[m - 5] - 1) - self.beta * (spy[m] / spy[m - 5] - 1)))
+            if m < V["first_minute"] or len(steps) < 6 or c[m] is None: continue
+            sd = st.pstdev(steps)
+            if not sd or st.fmean(steps) / sd * math.sqrt(len(steps)) < V["strength_t"]: continue
+            if (self.range_pos[m] or 0) < V["range_pos"]: continue
+            if V["need_prev_out"] and not (c[m] > phi if bet > 0 else c[m] < plo): continue
+            med_cum = st.median(h[m] for h in hist)
+            med_15 = st.median(h[m] - h[m - 15] for h in hist)
+            if not med_cum or cum[m] / med_cum < V["rvol_day"]: continue
+            if not med_15 or (cum[m] - cum[m - 15]) / med_15 < V["rvol_15"]: continue
+            self.rv = dict(rvol_day=round(cum[m] / med_cum, 2), rvol_15=round((cum[m] - cum[m - 15]) / med_15, 2),
+                           strength=round(st.fmean(steps) / sd * math.sqrt(len(steps)), 2))
+            return m
+        return None
+
     def signal(self, mode=None):
         """First entry minute of the day, or None. mode: None (enter on the signal), "calm" or "retest"
         (see params.json entry_variants)."""
         V = P["entry_variants"].get(mode, {})
+        if mode == "rv": return self.rv_signal(V, self.cal, self.cal_idx)
         w = E["event_window"]
         for m in range(E["first_minute"], E["last_minute"] + 1):
             win = range(max(0, m - w + 1), m + 1)
@@ -171,7 +211,7 @@ def main(start, end, mode=None):
                 if m is not None and (best is None or m < best[1]): best = (bet, m, d)
             if best:
                 bet, m, d = best
-                out.append(dict(date=date, sym=sym, right="C" if bet > 0 else "P", minute=m,
+                out.append(dict(**(d.rv or {}), date=date, sym=sym, right="C" if bet > 0 else "P", minute=m,
                                 time=f"{(570 + m) // 60:02d}:{(570 + m) % 60:02d}", price=d.c[m],
                                 rs=round(d.rs[m] or 0, 2), ex15=round(d.ex15[m], 2), ex_open=round(d.ex_open[m], 2), range_pos=round(d.range_pos[m], 2), beta=round(d.beta, 2)))
         print(date, len(out), flush=True) if date.endswith("-01") or date == end else None

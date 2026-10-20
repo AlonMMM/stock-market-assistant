@@ -35,7 +35,8 @@ import csv, datetime as dt, json, os, sys
 from store import P, DATA, day, calendar, chain, expiries, fetch_bars, occ, iv_delta, years_to_expiry
 from signals import Day
 
-C, X, SH = P["contract"], dict(P["exit"]), P["cost"]["spread_half"]
+C, X, SH = dict(P["contract"]), dict(P["exit"]), P["cost"]["spread_half"]
+if os.environ.get("BT_CONTRACT"): C.update(json.loads(os.environ["BT_CONTRACT"]))  # e.g. {"delta": 0.3}
 VARIANT = os.environ.get("BT_VARIANT")  # an exit variant from params.json "exit_variants"
 if VARIANT: X.update({k: v for k, v in P["exit_variants"][VARIANT].items() if not k.startswith("_")})
 if os.environ.get("BT_EXIT"): X.update(json.loads(os.environ["BT_EXIT"]))  # ad-hoc overrides for sweeps

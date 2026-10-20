@@ -49,21 +49,33 @@ def line(name, R, unit):
 
 
 _cal = None
+_ivh = None
+
+
+def iv_history(rows):
+    """IVs seen at entries, per stock, in time order: used for 'low for this stock'."""
+    global _ivh
+    _ivh = {}
+    for t in sorted(rows, key=lambda t: (t["date"], int(t["minute"]))):
+        if t.get("iv"): _ivh.setdefault(t["sym"], []).append((t["date"], float(t["iv"])))
 
 
 def big(t):
-    """A very good entry with low implied volatility: sized up (params size.big)."""
+    """Low implied volatility at entry: absolute (iv_max) or low for this stock (iv_pct_max percentile of
+    the previous iv_lookback_days trading days' entry IVs). Sized up (params size.big)."""
     global _cal
     G = S["big"]
-    if not t.get("iv") or float(t["iv"]) >= G["iv_max"]: return False
-    from signals import Day, calendar
+    if not t.get("iv"): return False
+    iv = float(t["iv"])
+    if iv < G["iv_max"]: return True
+    if _ivh is None: return False
+    from store import calendar
     _cal = _cal or calendar()
-    d = Day(t["sym"], t["date"], 1 if t["right"] == "C" else -1, _cal, _cal.index(t["date"]))
-    if not d.ok: return False
-    m, w = int(t["minute"]), P["entry"]["event_window"]
-    win = range(max(0, m - w + 1), m + 1)
-    if max((d.rs[i] or -9) for i in win) < G["rs_min"]: return False
-    return not G["need_prev_break"] or any("prev_break" in d.kinds[i] for i in win)
+    i = _cal.index(t["date"])
+    start = _cal[max(0, i - G["iv_lookback_days"])]
+    prior = sorted(v for d, v in _ivh.get(t["sym"], []) if start <= d < t["date"])
+    if len(prior) < G["iv_min_obs"]: return False
+    return iv <= prior[int(G["iv_pct_max"] * (len(prior) - 1))]
 
 
 def risk_share(dte):

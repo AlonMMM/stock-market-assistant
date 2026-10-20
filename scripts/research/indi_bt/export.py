@@ -31,12 +31,20 @@ for run, prefixes in runs.items():
         trades += t; steps.update(s)
     ok = [t for t in trades if t["status"] == "ok"]
     rets = {t["_i"]: report.ret_at(steps[t["_i"]], report.SH) for t in ok}
+    report.iv_history(ok)
     for t in ok: t["_big"] = report.big(t)
     for t in sorted(ok, key=lambda t: (t["date"], int(t["minute"]))):
         r = rets[t["_i"]]
         key = f"{run}-{len(T)}"
         dd = Day(t["sym"], t["date"], 1 if t["right"] == "C" else -1, cal, cal.index(t["date"]))
-        why = dd.why(int(t["minute"])) if dd.ok else ""
+        if t.get("rvol_day"):  # the strength + volume + breakout signal
+            up = t["right"] == "C"
+            why = (f"Beating SPY×β steadily since the open (consistency t {float(t['strength']):.1f}, {abs(float(t['ex_open'])):.1f}% "
+                   f"{'stronger' if up else 'weaker'} than SPY×β); volume {float(t['rvol_day']):.1f}× normal for the day and "
+                   f"{float(t['rvol_15']):.1f}× in the last 15 minutes; at {float(t['range_pos']):.2f} of the day range, "
+                   f"{'above' if up else 'below'} yesterday's {'high' if up else 'low'}")
+        else:
+            why = dd.why(int(t["minute"])) if dd.ok else ""
         T.append(dict(key=key, run=run, date=t["date"], month=t["date"][:7], sym=t["sym"], right=t["right"], time=t["time"],
                       contract=t["contract"], strike=t["strike"], expiry=t["expiry"], dte=t["dte"], delta=t.get("delta", ""),
                       entry=t["entry"], iv=t.get("iv", ""), big=int(t["_big"]), ret=round(r, 4),

@@ -80,7 +80,7 @@
   },
   "size": {
     "start_equity": 1000000,
-    "risk_pct": 0.02,
+    "risk_pct": 0.01,
     "fixed_premium": 10000,
     "risk_share": [
       [
@@ -115,12 +115,13 @@
     "max_vol_share": 0.1,
     "commission": 0.62,
     "big": {
-      "risk_pct": 0.04,
+      "risk_pct": 0.02,
       "fixed_premium": 20000,
       "iv_max": 0.4,
-      "rs_min": -99,
-      "need_prev_break": false,
-      "_note": "double size when the option's implied volatility is under 40%. The 'very good entry' part (yesterday's level broken + 5-min >= 1%) fired once in Feb-Jun 2024, and among low-IV trades the stronger moves at entry did worse, so it is off (rs_min -99, need_prev_break false)"
+      "iv_pct_max": 0.25,
+      "iv_lookback_days": 60,
+      "iv_min_obs": 10,
+      "_note": "low IV doubles the size: IV under 40%, or IV in the lowest 25% of the IVs seen at entries on the same stock over the previous 60 trading days (at least 10 of them)"
     }
   },
   "exit": {
@@ -195,6 +196,15 @@
       "retest_window": 30,
       "retest_frac": 0.4,
       "_note": "after the signal, wait up to 30 min for a pullback of >= 40% of the run-up (from the 15-min-before low to the high since), then enter when a 1-min close beats the prior bar's high, still on the bet side of VWAP"
+    },
+    "rv": {
+      "first_minute": 30,
+      "strength_t": 2.0,
+      "rvol_day": 1.5,
+      "rvol_15": 3.0,
+      "range_pos": 0.9,
+      "need_prev_out": true,
+      "_note": "strength + relative volume + breakout: consistent excess vs SPY x beta since the open (t >= 2 over 5-minute steps), volume since the open >= 1.5x the 20-session median of the same span, last-15-minute volume >= 3x, at >= 0.9 of the day range, beyond yesterday's high/low; from 10:00. Scored in rv_research.py (2024 +57 bp, 2025 +29 bp vs SPY to the close)"
     }
   }
 }
