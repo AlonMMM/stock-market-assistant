@@ -12,7 +12,7 @@ CARRY = dict(H, carry_min_gain=-1.0, carry_range_pos=0.0, carry_min_dte=1, carry
 EXITS = {"n1": dict(CARRY, carry_max_days=1), "run": CARRY}
 jobs = []
 for y in ("2024", "2025", "2026"):
-    for sig in ("eod", "eodtop2", "hiseod"):
+    for sig in ("hold", "hiseod", "eodtop2", "eod"):
         for ex, X in EXITS.items():
             o = f"{B}/e_{sig}_{ex}_{y}"
             if all(os.path.exists(f"{o}.{i}_trades.csv") for i in range(4)): continue
