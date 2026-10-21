@@ -25,6 +25,15 @@ export interface EntryNote {
   note?: string; // an extra line, such as "Ordered off hours"
   // What the whole position cost, as % of the account (user 2026-10-12).
   sharePct?: number;
+  tag?: string; // a first line, such as "🤖 Bot" (docs/tasks/backend-indi-bot.md)
+}
+
+/** What an exit post says besides the sale itself. */
+export interface ExitNote {
+  symbol: string;
+  paper: boolean;
+  tag?: string;
+  note?: string; // why it sold, such as "10-min check: the stock is against the entry"
 }
 
 /**
@@ -44,6 +53,7 @@ export function formatEntry(note: EntryNote, result: LadderResult): string {
   const stop = note.stop;
   const lines = [
     ...(note.paper ? ["🧪 PAPER"] : []),
+    ...(note.tag ? [escape(note.tag)] : []),
     `<b>$${escape(c.underlying)} | ${c.strike} ${c.right === "call" ? "Call" : "Put"} ${shortDate(c.expiry)}</b>`,
     bought
       ? `Bought at ${order.filledAvgPrice!.toFixed(2)}`
@@ -84,10 +94,7 @@ const dollars = (n: number) =>
  *   Profit $2,500 (+12%)
  *   Stop at 1.32 on the remaining 125
  */
-export function formatExit(
-  note: { symbol: string; paper: boolean },
-  result: ExitResult,
-): string {
+export function formatExit(note: ExitNote, result: ExitResult): string {
   const c = parseOccSymbol(note.symbol);
   const pnl =
     result.price === null
@@ -99,6 +106,7 @@ export function formatExit(
       : ((result.price - result.entry) / result.entry) * 100;
   const lines = [
     ...(note.paper ? ["🧪 PAPER"] : []),
+    ...(note.tag ? [escape(note.tag)] : []),
     `<b>$${escape(c.underlying)} | ${c.strike} ${c.right === "call" ? "Call" : "Put"} ${shortDate(c.expiry)}</b>`,
     result.remaining === 0
       ? `Out, sold ${result.sold} at ${result.price?.toFixed(2) ?? "—"}`
@@ -108,6 +116,7 @@ export function formatExit(
       : [
           `${pnl >= 0 ? "Profit" : "Loss"} ${dollars(pnl)}${pct === null ? "" : ` (${pct >= 0 ? "+" : "-"}${Math.abs(pct).toFixed(0)}%)`}`,
         ]),
+    ...(note.note ? [escape(note.note)] : []),
     ...(result.stop
       ? [
           result.stop.error

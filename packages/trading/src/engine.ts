@@ -220,6 +220,10 @@ export interface BuyRequest {
   steps?: number;
   intervalMs?: number;
   waitMs?: number; // how long an unfilled order is watched, then canceled
+  // A first line for the posts, such as "🤖 Bot", and a line of why
+  // (docs/tasks/backend-indi-bot.md).
+  tag?: string;
+  note?: string;
 }
 
 /** A two-leg debit spread: buy `long`, sell `short` (user 2026-10-17). */
@@ -272,6 +276,8 @@ export interface SellRequest {
   qty: string; // all, half or a number of contracts
   stopPct?: number; // for a remainder that had no stop before
   waitMs?: number;
+  tag?: string; // as in BuyRequest
+  note?: string;
 }
 
 interface BuyBase {
@@ -318,6 +324,8 @@ export interface BuyPlan extends BuyBase {
   steps?: number;
   intervalMs?: number;
   waitMs?: number;
+  tag?: string;
+  note?: string;
 }
 
 const isOcc = (symbol: string) => /^[A-Z.]{1,6}\d{6}[CP]\d{8}$/.test(symbol);
@@ -1042,6 +1050,8 @@ export class TradeEngine {
         ? {}
         : { intervalMs: request.intervalMs }),
       ...(request.waitMs === undefined ? {} : { waitMs: request.waitMs }),
+      ...(request.tag === undefined ? {} : { tag: request.tag }),
+      ...(request.note === undefined ? {} : { note: request.note }),
     };
   }
 
@@ -1296,6 +1306,7 @@ export class TradeEngine {
       const earlier =
         known && total !== null && total > order.filledQty ? known : undefined;
       const notes = [
+        ...(plan.note ? [plan.note] : []),
         ...(plan.offHours ? ["Ordered off hours"] : []),
         ...(earlier ? [`Added to the position, ${total} held now`] : []),
       ];
@@ -1304,6 +1315,7 @@ export class TradeEngine {
           symbol,
           paper: this.paper,
           stop,
+          ...(plan.tag ? { tag: plan.tag } : {}),
           ...(sharePct === undefined ? {} : { sharePct }),
           ...(notes.length > 0 ? { note: notes.join(". ") } : {}),
         },
@@ -1413,7 +1425,12 @@ export class TradeEngine {
     const outcome = { paper: this.paper, symbol, result };
     if (!(result.sold > 0)) return outcome;
     const post = await this.notifier.exit(
-      { symbol, paper: this.paper },
+      {
+        symbol,
+        paper: this.paper,
+        ...(request.tag ? { tag: request.tag } : {}),
+        ...(request.note ? { note: request.note } : {}),
+      },
       result,
       await this.posts.get(symbol),
     );

@@ -3,6 +3,19 @@
 Updated: 2026-10-15
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
 
+## Indi bot on the paper account (2026-10-21, in review)
+
+The backtested Indi rules trade the owner's Alpaca paper account from the trading service.
+
+- **Signal:** C signal on the stocks he traded in the past year.
+- **Contract and size:** delta 0.15, 2% a trade.
+- **Exits:** your stop, plus the overnight hold.
+- **Where it shows:** posts marked 🤖 Bot in the same Telegram chat; a 🤖 Bot tab and Bot chips in Portfolio.
+- **Switches:** off and dry-run by default (`BOT_ENABLED`, `BOT_MODE`).
+- **Parity:** signal and exits match the Python backtest exactly (26,049 stock-days, 875 trades).
+
+See the [task](tasks/backend-indi-bot.md).
+
 ## Live prices every second: Watchlist and charts (2026-10-19)
 
 `GET /api/prices?symbols=…` answers Alpaca's latest SIP trade for every symbol in one

@@ -11,6 +11,7 @@ import type {
 import type { Decision } from "../../../packages/trading/src/explain.js";
 import { usePolling } from "./Live.js";
 import { OrderActions, StopMover } from "./OrderControls.js";
+import { BotChip, BotPanel, useBotContracts } from "./BotPanel.js";
 import { Orders, useDecisions, WhyButton } from "./Orders.js";
 import { PositionList, useControlAccess } from "./Positions.js";
 import { positionNumbers } from "./positions-model.js";
@@ -119,7 +120,7 @@ function Order({
   );
 }
 
-function Trade({ t }: { t: ClosedTrade }) {
+function Trade({ t, bot }: { t: ClosedTrade; bot: boolean }) {
   const opened = israelDateTime(Date.parse(t.openedAt));
   // An expiry has a date but no time of day.
   const closed = t.expired ? "expiry" : israelDateTime(Date.parse(t.closedAt));
@@ -138,6 +139,7 @@ function Trade({ t }: { t: ClosedTrade }) {
       >
         <div className="position-head">
           <strong>{optionName(t)}</strong>
+          {bot && <BotChip />}
           <span className="muted">
             {t.option ? `${expiryLabel(t.option.expiry)} · ` : ""}
             {t.qty} {t.option ? "contract" : "share"}
@@ -215,6 +217,7 @@ function Trade({ t }: { t: ClosedTrade }) {
 
 function History({ onError }: { onError: (m: string) => void }) {
   const [period, setPeriod] = useState<HistoryPeriod>("1M");
+  const bot = useBotContracts();
   const { value, error } = usePolling<PortfolioHistory>(
     `/api/portfolio/history?period=${period}`,
     historyRefreshMs,
@@ -284,7 +287,11 @@ function History({ onError }: { onError: (m: string) => void }) {
           {value.trades.length > 0 ? (
             <ul className="positions">
               {value.trades.map((t) => (
-                <Trade key={t.symbol + t.closedAt} t={t} />
+                <Trade
+                  key={t.symbol + t.closedAt}
+                  t={t}
+                  bot={bot.has(t.symbol)}
+                />
               ))}
             </ul>
           ) : (
@@ -307,6 +314,7 @@ const allSections = [
   ["trade", "Trade"],
   ["orders", "Orders"],
   ["history", "History"],
+  ["bot", "🤖 Bot"],
 ] as const;
 
 /** The Portfolio area: open trades, and the account's history. */
@@ -395,6 +403,8 @@ export function Portfolio({
           />
         ) : tab === "orders" ? (
           <Orders onError={ignore} />
+        ) : tab === "bot" ? (
+          <BotPanel />
         ) : (
           <History onError={ignore} />
         )}
@@ -413,6 +423,7 @@ function LiveTrades({
 }) {
   // The reasons behind each order; the page works without them.
   const why = useDecisions(() => {});
+  const bot = useBotContracts();
   const { canTrade } = useControlAccess();
   const [accountView, setAccountView] = useState<"close" | "overnight">(
     "close",
@@ -567,6 +578,7 @@ function LiveTrades({
           why={why}
           view={selectedView}
           equity={displayEquity}
+          bot={bot}
         />
       ) : (
         <p className="notice">No open positions.</p>

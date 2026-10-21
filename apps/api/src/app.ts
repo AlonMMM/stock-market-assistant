@@ -56,6 +56,7 @@ import {
   handlePortfolioHistory,
   PortfolioCache,
 } from "../../../packages/trading/src/portfolio.js";
+import { handleBotStatus } from "../../../packages/trading/src/bot-api.js";
 import { handleOrderDecisions } from "../../../packages/trading/src/decisions-api.js";
 
 export function buildApp(
@@ -226,6 +227,16 @@ export function buildApp(
   });
   app.get("/api/portfolio/orders", async (_request, reply) => {
     const result = await handleOrderDecisions({
+      url: process.env.TRADER_URL,
+      token: process.env.TRADER_READ_TOKEN,
+    });
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.get("/api/bot", async (_request, reply) => {
+    const result = await handleBotStatus({
       url: process.env.TRADER_URL,
       token: process.env.TRADER_READ_TOKEN,
     });

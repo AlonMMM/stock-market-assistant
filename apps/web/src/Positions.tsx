@@ -1,3 +1,4 @@
+import { BotChip } from "./BotPanel.js";
 import { useEffect, useRef, useState } from "react";
 import type { ControlAccess } from "../../../packages/trading/src/control-api.js";
 import type { Decision } from "../../../packages/trading/src/explain.js";
@@ -376,6 +377,7 @@ function Row({
   view,
   equity,
   inSpread,
+  bot,
 }: {
   p: PortfolioPosition;
   why?: Decision | undefined;
@@ -386,6 +388,7 @@ function Row({
   equity: number;
   // A leg of a held spread: covered by the spread, not by a stop.
   inSpread: boolean;
+  bot: boolean;
 }) {
   const numbers = positionNumbers(p, view, equity);
   const deltaExposure =
@@ -417,6 +420,7 @@ function Row({
                 {p.option.strike} {p.option.right === "call" ? "C" : "P"}
               </span>
             )}
+            {bot && <BotChip />}
           </strong>
           <span className="pos-sub">
             {p.option ? `${expiryLabel(p.option.expiry)} · ` : ""}
@@ -620,11 +624,14 @@ export function PositionList({
   why,
   view,
   equity,
+  bot,
 }: {
   positions: PortfolioPosition[];
   why: Map<string, Decision>;
   view: PositionView;
   equity: number;
+  // Contracts the Indi bot opened (docs/tasks/backend-indi-bot.md).
+  bot?: ReadonlySet<string>;
 }) {
   const access = useControlAccess();
   const [open, setOpen] = useState<string | null>(null);
@@ -665,6 +672,7 @@ export function PositionList({
             open={open === p.symbol}
             view={view}
             equity={equity}
+            bot={bot?.has(p.symbol) ?? false}
             inSpread={pairs.some(
               (s) => s.long === p.symbol || s.short === p.symbol,
             )}

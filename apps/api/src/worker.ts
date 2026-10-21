@@ -54,6 +54,12 @@ import {
   handlePortfolioHistory,
   PortfolioCache,
 } from "../../../packages/trading/src/portfolio.js";
+import {
+  favoritesList,
+  handleBotStatus,
+  pushFavorites,
+} from "../../../packages/trading/src/bot-api.js";
+import { newYork } from "../../../packages/market-data/src/calendar.js";
 import { handleOrderDecisions } from "../../../packages/trading/src/decisions-api.js";
 import {
   D1WatchStore,
@@ -132,6 +138,10 @@ export default {
       SITE_URL?: string;
       COLLECTOR_URL?: string;
       COLLECTOR_TOKEN?: string;
+      TRADER_URL?: string;
+      TRADER_TOKEN?: string;
+      // The watchlist the Indi bot also trades; else the one named "favorite".
+      BOT_WATCHLIST?: string;
     },
   ): Promise<void> {
     const token = env.TRADES_TELEGRAM_BOT_TOKEN;
@@ -173,6 +183,21 @@ export default {
           `pool sync: added ${added.join(", ")}; collector ${pushed.synced ? "updated" : `not updated: ${pushed.error}`}`,
         );
       }
+    }
+    // The Indi bot trades the user's favorites list too
+    // (docs/tasks/backend-indi-bot.md): it is sent every minute from 08:30 to
+    // 09:24 New York, before the bot warms up at 09:25.
+    const ny = newYork(Date.now());
+    if (env.BARS_CACHE && ny.minute >= 510 && ny.minute < 565) {
+      const lists = await stores(env.BARS_CACHE).watchlists.lists();
+      const fav = favoritesList(lists, env.BOT_WATCHLIST);
+      const line = fav
+        ? await pushFavorites(
+            { url: env.TRADER_URL, token: env.TRADER_TOKEN },
+            fav,
+          ).catch((error: unknown) => `failed: ${String(error)}`)
+        : "no favorites list";
+      console.log(`bot favorites: ${line}`);
     }
     // The user's price alerts (user 2026-10-18), checked every minute.
     if (env.BARS_CACHE) {
@@ -534,6 +559,21 @@ export default {
         env.BARS_CACHE ? stores(env.BARS_CACHE).strengths : undefined,
         env.BARS_CACHE ? stores(env.BARS_CACHE).sigmas : undefined,
       );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path === "/api/bot") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const result = await handleBotStatus({
+        url: env.TRADER_URL,
+        token: env.TRADER_READ_TOKEN,
+      });
       return Response.json(result.body, {
         status: result.status,
         headers: { "Cache-Control": "no-store" },

@@ -1,0 +1,163 @@
+// The bot's exit rules (docs/tasks/backend-indi-bot.md), ported from `walk` in
+// scripts/research/indi_bt/sim.py with the backtest's winning exit: "your
+// stop" plus the overnight hold.
+//
+// Entry day:
+//   - 10 minutes after the entry, if the stock is against the entry price, sell half;
+//   - 20 minutes after, if it is still against, sell the rest;
+//   - the option at -30% while the stock is against: sell all.
+// 15:50: hold overnight what is up >= +100% (a next session before expiry, at
+//   most 2 nights); sell the rest.
+// A carried day: nothing before 09:40. On the first carried day at 09:40, a gap
+//   of >= 0.5% our way sells half, otherwise all. The option at -30% sells all.
+//   Expiry day: all out at 15:30.
+//
+// The bot only ever sells contracts it bought and still holds: every quantity
+// here is a share of `position.qty`.
+
+export interface ExitRules {
+  checks: readonly (readonly [minutes: number, share: number])[];
+  stopOut: number; // option return that sells all (with the stock against on the entry day)
+  eodMinute: number; // 15:50
+  carryMinGain: number; // hold overnight from this option return
+  carryMaxNights: number;
+  morningMinute: number; // 09:40
+  gapKeep: number; // % gap our way that keeps half
+  expiryLastMinute: number; // 15:30
+}
+
+export const defaultExitRules: ExitRules = {
+  checks: [
+    [10, 0.5],
+    [20, 1],
+  ],
+  stopOut: -0.3,
+  eodMinute: 380,
+  carryMinGain: 1,
+  carryMaxNights: 2,
+  morningMinute: 10,
+  gapKeep: 0.5,
+  expiryLastMinute: 360,
+};
+
+export interface BotPositionState {
+  right: "C" | "P";
+  qty: number; // contracts the bot holds
+  cost: number; // average price paid per contract
+  entryMinute: number; // session minute of the signal
+  entryStock: number; // the stock's close at the signal minute
+  nights: number; // sessions carried so far (0 on the entry day)
+  checksDone: number[]; // indexes of `checks` already looked at
+  morningDone: boolean;
+}
+
+export interface ExitMarket {
+  minute: number; // session minute now
+  stock: number | null; // the stock's last close
+  option: number | null; // the option's mark (mid)
+  isExpiryDay: boolean;
+  // A session after today on or before the expiry date (a carry is possible).
+  sessionBeforeExpiry: boolean;
+  // Today's open and the previous close, for the morning gap.
+  open: number | null;
+  prevClose: number | null;
+}
+
+export type ExitReason =
+  | "check-10"
+  | "check-20"
+  | "stop-30"
+  | "close-1550"
+  | "carry"
+  | "morning-gap-keep"
+  | "morning-gap-against"
+  | "expiry-day";
+
+export interface ExitDecision {
+  sell: number; // contracts to sell now; 0 = hold
+  reason: ExitReason | null;
+  // Changes to the position state; the caller stores them with the sale.
+  update: Partial<
+    Pick<BotPositionState, "checksDone" | "morningDone" | "nights">
+  >;
+}
+
+const hold: ExitDecision = { sell: 0, reason: null, update: {} };
+
+function share(qty: number, part: number): number {
+  return part >= 1 ? qty : Math.min(qty, Math.ceil(qty * part));
+}
+
+/**
+ * What to do with one bot position at a closed minute. `carryDone` is true
+ * when the 15:50 decision was already taken today (the caller asks once).
+ */
+export function nextAction(
+  p: BotPositionState,
+  mk: ExitMarket,
+  r: ExitRules = defaultExitRules,
+  carryDone = false,
+): ExitDecision {
+  if (p.qty <= 0 || mk.option === null) return hold;
+  // After today's 15:50 decision nothing happens until the next session (a
+  // position just carried must not meet its morning rule the same evening).
+  if (carryDone && mk.minute >= r.eodMinute) return hold;
+  const bet = p.right === "C" ? 1 : -1;
+  const carried = p.nights > 0;
+  if (carried && mk.minute < r.morningMinute) return hold;
+  const g = mk.option / p.cost - 1;
+
+  if (carried && p.nights === 1 && !p.morningDone) {
+    const gap =
+      mk.open !== null && mk.prevClose
+        ? bet * (mk.open / mk.prevClose - 1) * 100
+        : null;
+    if (gap !== null && gap >= r.gapKeep)
+      return {
+        sell: share(p.qty, 0.5),
+        reason: "morning-gap-keep",
+        update: { morningDone: true },
+      };
+    return {
+      sell: p.qty,
+      reason: "morning-gap-against",
+      update: { morningDone: true },
+    };
+  }
+  if (mk.isExpiryDay && mk.minute >= r.expiryLastMinute)
+    return { sell: p.qty, reason: "expiry-day", update: {} };
+  if (mk.minute >= r.eodMinute) {
+    const canCarry =
+      g >= r.carryMinGain &&
+      mk.sessionBeforeExpiry &&
+      p.nights < r.carryMaxNights;
+    if (canCarry)
+      return { sell: 0, reason: "carry", update: { nights: p.nights + 1 } };
+    return { sell: p.qty, reason: "close-1550", update: {} };
+  }
+  if (carried) {
+    if (g <= r.stopOut) return { sell: p.qty, reason: "stop-30", update: {} };
+    return hold;
+  }
+  // The entry day: your stop.
+  const against = mk.stock !== null && bet * (mk.stock - p.entryStock) < 0;
+  const held = mk.minute - p.entryMinute;
+  const due = r.checks.findIndex(
+    ([mins], i) => !p.checksDone.includes(i) && held >= mins,
+  );
+  if (due >= 0) {
+    const checksDone = [...p.checksDone, due];
+    if (against) {
+      const [mins, part] = r.checks[due]!;
+      return {
+        sell: share(p.qty, part),
+        reason: mins === 10 ? "check-10" : "check-20",
+        update: { checksDone },
+      };
+    }
+    return { sell: 0, reason: null, update: { checksDone } };
+  }
+  if (g <= r.stopOut && against)
+    return { sell: p.qty, reason: "stop-30", update: {} };
+  return hold;
+}

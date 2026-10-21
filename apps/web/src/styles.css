@@ -602,6 +602,9 @@ button.market-tile[aria-expanded="true"] {
   display: flex;
   gap: 4px;
   border-bottom: 1px solid #cdd7ce;
+  /* Five Portfolio tabs (with Bot) can be wider than a phone. */
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .tabs button {
   display: inline-flex;
@@ -5885,4 +5888,111 @@ button.pa-ticker {
   padding: 0;
   border: 0;
   background: transparent;
+}
+
+/* The Indi bot (docs/tasks/backend-indi-bot.md) */
+.bot-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border: 1px solid #c9d0c9;
+  border-radius: 999px;
+  background: #eef0ec;
+  color: #33413e;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.bot-panel h3 {
+  margin: 18px 0 6px;
+  font-size: 14px;
+}
+.bot-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+.bot-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bot-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid #e3e6e1;
+}
+.bot-scan-wrap {
+  overflow-x: auto;
+}
+.bot-scan {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.bot-scan th,
+.bot-scan td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e3e6e1;
+  text-align: left;
+  white-space: nowrap;
+}
+.bot-scan th {
+  color: #5b6762;
+  font-weight: 600;
+}
+.bot-scan tr.hot td {
+  background: #eaf5ec;
+}
+.bot-meter {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.bot-meter-bar {
+  display: inline-block;
+  width: 80px;
+  height: 6px;
+  border-radius: 3px;
+  background: #e3e6e1;
+  overflow: hidden;
+}
+.bot-meter-fill {
+  display: block;
+  height: 100%;
+  background: #8aa597;
+}
+.bot-meter-fill.full {
+  background: #2f7d4b;
+}
+.bot-activity {
+  max-height: 360px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  font-size: 13px;
+}
+.bot-activity li {
+  display: grid;
+  grid-template-columns: auto 1.2em 1fr;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid #eef0ec;
+}
+.bot-ev-time {
+  color: #5b6762;
+  white-space: nowrap;
+}
+.bot-ev.order .bot-ev-kind {
+  color: #14532d;
+  font-weight: 700;
+}
+.bot-ev.signal .bot-ev-kind {
+  color: #7a4307;
+}
+.bot-ev.error {
+  color: #8a1c14;
 }
