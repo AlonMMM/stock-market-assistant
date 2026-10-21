@@ -21,6 +21,10 @@ GUARDS = {
     "nt40": {"night_trail": 0.40},
     "nt50": {"night_trail": 0.50},
     "mall": {"gap_sell_share": 1.0},                         # morning gap our way: sell all, not half
+    # half at the first minute the stock is against the entry, then the rest at +20 if still against
+    "e1": {"user_stop": {"every": {"from": 1, "to": 10, "share": 0.5}, "checks": [[20, 1.0]], "out": -0.30}},
+    "e2": {"user_stop": {"every": {"from": 1, "to": 20, "share": 0.5}, "checks": [[20, 1.0]], "out": -0.30}},
+    "e3": {"user_stop": {"every": {"from": 1, "to": 5, "share": 0.5}, "checks": [[10, 0.5], [20, 1.0]], "out": -0.30}},
     "t150_250": {"takes": [[1.5, 0.25], [2.5, 0.25]]},       # the user's: a quarter at +150%, a quarter at +250%, the rest as V1
     "t150_250_lock500": {"takes": [[1.5, 0.25], [2.5, 0.25]], "guard": {"arm": 5.0, "floor": 2.0}},  # + the guard
 }

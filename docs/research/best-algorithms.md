@@ -55,8 +55,20 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   blend, speeding-up boost, 5-minute burst): none better on both lists.
 - Selling 25% at +150% and 25% at +250%: $142,572 / 20%. Carried-day trailing stops (25 / 40 / 50%): worse.
 - False alarms (the stock or SPY against the bet at the signal): only 3 of 820 trades; filters do not help.
+- 0DTE allowed in the champion: worse (doubles the worst drop; loses 2025 and 2026).
+- Selling half at the first minute the stock is against the entry (instead of the +10 / +20 checks): $183K – $207K.
+- Overnight caps: 5% and 10% cost a lot; 15–20% cost nothing at 0.15 but do not cut the worst drop (kept as a safety idea).
 
 ## Candidates
+
+- Scale in, D (half at the signal, the other half at minute 5 only if the stock is our way): at the same nominal size
+  it ends lower ($267,990 / 14% vs $297,160 / 16% at 1%), but at equal worst drop it beats the champion on both lists
+  (fair at 2%: $597,796 / 25% vs the champion at 1.6%, $504,560 / 25%; unseen at 2%: $138,725 / 14% vs $121,443 / 11%
+  at 1% and $129,966 / 17% at 1.5%), and it is positive every year on the unseen (+370 / +948 / +1,280).
+- Scale in, A (add at the first minute 1-5 the stock is our way): fair list better ($306,316 / 14%; $741,653 / 27% at
+  2%), unseen worse ($109,776 / 9%).
+- Buying on the signal bar's close instead of the next bar's middle: $516,519 / 13% (champion $297,160 / 16%); an
+  optimistic upper bound (a bar's close is its last trade, not the ask). The live bot should be faster.
 
 - Entry score ≥ 2.5 (t/2 + volume/1.5, floors t 1.5, volume 1×): fair list $490,168 / 11%, but unseen $82,370 / 30%.
 - Sell everything at the morning gap (not half): about 27% more at the same worst drop on the fair list at 0.15, but

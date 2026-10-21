@@ -27,7 +27,8 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                sell all when the gain falls to `floor`, or the price falls `trail` from its peak
   N night trail (night_trail x): on a carried day, after the morning rule kept a part, sell it when the option
                closes x under its highest close since the morning
-  U your stop (user_stop {checks: [[10, 0.5], [20, 1.0]], out} or {check_from, check_to, share, out}):
+  U your stop (user_stop {every: {from, to, share}} sells `share` at the first minute in the window the stock is
+               against the entry, once; then {checks: [[10, 0.5], [20, 1.0]], out} or {check_from, check_to, share, out}):
                at each checkpoint (minutes after the entry, once), the stock on the wrong side of the entry
                price -> sell that share of what is left. Older form: 10-20 minutes after the entry, the stock
                on the wrong side of the entry price -> sell `share` (once); option at `out` (e.g. -35%)
@@ -57,6 +58,7 @@ if VARIANT: X.update({k: v for k, v in P["exit_variants"][VARIANT].items() if no
 if os.environ.get("BT_EXIT"): X.update(json.loads(os.environ["BT_EXIT"]))  # ad-hoc overrides for sweeps
 LIMIT = os.environ.get("BT_LIMIT") is not None  # buy with a limit at the last option price seen (+ BT_LIMIT, e.g. 0.01)
 LIMIT_PAD = float(os.environ.get("BT_LIMIT") or 0)
+FILL = os.environ.get("BT_FILL")  # "close" / "mid": fill the buy on the signal bar, not the next one
 COMM = P["size"]["commission"]
 _exp = {}
 
@@ -132,6 +134,11 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
     dates = [d for d in cal[i0:] if d <= exp]
     fetch_bars("options", [sym], date, exp)
     steps, rem, cost, peak = [], 1.0, None, None
+    if FILL and limit is None:  # BT_FILL: buy on the signal bar itself, at its close ("close") or its middle ("mid", looks ahead)
+        b0 = last_bar(day(sym, date), minute, C["bar_max_age"])
+        if b0:
+            cost = (b0[4] if FILL == "close" else mid(b0)) * (1 + SH); peak = b0[4]
+            steps.append((date, minute, "buy", 1.0, round(cost, 4), f"entry_{FILL}"))
     st = dict(cut1=False, armed=False, t1=False, plan=None, k=0)
     pending = None  # (share of original or 'all', rule)
     for k, d in enumerate(dates):
@@ -199,6 +206,9 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 U = X["user_stop"]; tt = min(t, 389)
                 if st.get("sp0") is None: st["sp0"] = sd.c[minute]
                 against = sd.c[tt] is not None and st["sp0"] and bet * (sd.c[tt] - st["sp0"]) < 0
+                E = U.get("every")  # every minute in [from, to] after the entry: the first one against sells `share`, once
+                if E and not st.get("every_done") and E["from"] <= t - minute <= E["to"] and against:
+                    st["every_done"] = True; pending = (rem * E["share"], "U_every"); continue
                 if "checks" in U:  # checkpoints [[minutes after entry, share of what is left], ...], each once
                     done = st.setdefault("checks_done", set())
                     hit = next((i for i, (mins, _) in enumerate(U["checks"]) if i not in done and t - minute >= mins), None)
