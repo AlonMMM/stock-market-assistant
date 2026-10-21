@@ -39,6 +39,10 @@ RUNS = {
     "flat_n100":  ("tiers.py", "tiers", dict(H, **NIGHT), {"BT_FLAT": "1"}),          # flat + hold winners up >= +100% overnight
     "flat_q200k": ("tiers.py", "tiers", dict(H, **NIGHT, takes=[[2.0, 0.25]], gap_sell_share=0.0), {"BT_FLAT": "1"}),  # + a quarter at +200%, keep the rest on a good gap               # his entries and contracts, same exits, $10K each
 }
+for _d in (10, 20, 30, 40):  # the flat entries at other contract deltas (default 0.15), both exits
+    _c = {"BT_FLAT": "1", "BT_CONTRACT": json.dumps({"delta": _d / 100})}
+    RUNS[f"flat_d{_d}"] = ("tiers.py", "tiers", H, _c)
+    RUNS[f"flat_n100_d{_d}"] = ("tiers.py", "tiers", dict(H, **NIGHT), _c)
 
 
 def sh(args, log, env=ENV):
