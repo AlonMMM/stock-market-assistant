@@ -18,17 +18,32 @@ A version beats the champion only when **all** hold, on the same period (Feb 202
 
 ## Champion
 
-| Since      | Version                                                                                                            | Fair list: end / worst drop / years | 151 unseen: end / worst drop |
-| ---------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------- | ---------------------------- |
-| 2026-10-21 | **V1**: C signal (t ≥ 2 vs SPY × β, day volume ≥ 1.5×), delta 0.15, your stop + overnight hold for winners ≥ +100% | $257,698 / 26% / +33% +34% +44%     | $107,869 / 21%               |
+| Since      | Version                                                                                                                          | Fair list: end / worst drop / years           | 151 unseen: end / worst drop |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ---------------------------- |
+| 2026-10-21 | **V1 + give-back guard 500 → 200**: V1, and once the option has been up +500%, sell all if it falls back to +200% (any day held) | $278,941 / 25% / +1,543 +1,154 +1,816 a trade | $109,188 / 20%               |
 
-Delta 0.10 ends higher ($495,349, 23%) but the user chose 0.15 for the paper bot; both are tracked.
+At 2% a trade: $584,770 / 44% worst drop (V1 $499,412 / 46%). Only 11 trades on the fair list hit the guard; 9 made
+more, 1 the same, 1 less (SMCI 2024-02-05, $26.9K → $22.2K). Picked as the best of 7 guards tested together (thresholds
+set before the run): the tighter locks and the trails lose, so the gain is small and rests on 11 trades. Delta 0.10
+recheck running. Not in the paper bot yet.
+
+V1 (C signal t ≥ 2 vs SPY × β, day volume ≥ 1.5×, delta 0.15, your stop + overnight hold for winners ≥ +100%) is the
+paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
-| Date       | Version    | Fair list: end / worst drop / years | 151 unseen     | vs champion | Status                               |
-| ---------- | ---------- | ----------------------------------- | -------------- | ----------- | ------------------------------------ |
-| 2026-10-21 | V1 (above) | $257,698 / 26%                      | $107,869 / 21% | —           | champion, paper bot (deploy pending) |
+| Date       | Version              | Fair list: end / worst drop | 151 unseen     | vs champion                    | Status                      |
+| ---------- | -------------------- | --------------------------- | -------------- | ------------------------------ | --------------------------- |
+| 2026-10-21 | V1                   | $257,698 / 26%              | $107,869 / 21% | —                              | paper bot (deploy pending)  |
+| 2026-10-21 | V1 + guard 500 → 200 | $278,941 / 25%              | $109,188 / 20% | +$21K, −1 pt drop; unseen +$1K | 🏆 champion (backtest only) |
+
+## Tested, not better (V2, 2026-10-21)
+
+- IV filters (own IV rank, low-IV stocks, IV / realized vol): about the same as trading less; fail at 0.10 and unseen.
+- Rolling out when the stock nears the strike fast (to delta 0.15 or 0.30): $161K – $206K; it sells the big winners.
+- Overnight: no hold after a 5/10-minute premium drop; a 3–5% cap on what goes into the night: all worse or mixed.
+- Give-back locks 200 → 50 and 300 → 100, trails 100/50, 200/40, 300/50, the ladder: worse or worse on the unseen.
+- End-of-day entries for tomorrow (volume-free strength vs SPY, near the high): lose 2024 and 2025.
 
 ## Waiting for the unseen check
 

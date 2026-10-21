@@ -20,9 +20,11 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                the entry, the `fast_takes` plan is used instead (it starts higher)
   W4 runner    after W2: 'trail' off the peak price, or no new stock extreme for runner_stall_min
                minutes                                     -> sell all
-  R roll (roll {gain, within, share, rest_take}): the option at +gain within `within` minutes of the
-               entry -> sell `share` (tiers.py buys a new contract with half the profit); the rest is
-               sold at +rest_take
+  R roll (roll {gain | near, within, share, rest_take}): the option at +gain (or the stock close to the
+               strike, see roll_hit) within `within` minutes of the entry -> sell `share` (tiers.py buys a
+               new contract); the rest is sold at +rest_take
+  G guard (guard {arm, floor | trail}): once the option has been up `arm` (peak close vs the entry fill),
+               sell all when the gain falls to `floor`, or the price falls `trail` from its peak
   U your stop (user_stop {checks: [[10, 0.5], [20, 1.0]], out} or {check_from, check_to, share, out}):
                at each checkpoint (minutes after the entry, once), the stock on the wrong side of the entry
                price -> sell that share of what is left. Older form: 10-20 minutes after the entry, the stock
@@ -110,6 +112,17 @@ def pick(und, date, minute, right, spot):
 def mid(b): return (b[2] + b[3]) / 2
 
 
+def roll_hit(R_, g, sd, t, minute, sym, bet):
+    """The roll trigger: the option up R_["gain"], or with R_["near"] the stock has come close to the strike: what is
+    left of the way from the entry price to the strike is at most `near` of it (0 = at the money)."""
+    if "near" not in R_: return g >= R_["gain"]
+    if not sd.ok: return False
+    s0, s = sd.c[minute], sd.c[min(t, 389)]
+    k = float(sym[-8:]) / 1000
+    if not s0 or not s or bet * (k - s0) <= 0: return False
+    return bet * (k - s) / (bet * (k - s0)) <= R_["near"]
+
+
 def walk(und, date, minute, right, sym, exp, cal, limit=None):
     """Walks one contract from the signal minute to the last sale. -> (entry, steps, flags)."""
     bet = 1 if right == "C" else -1
@@ -168,8 +181,12 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 continue
             if t >= X["eod_minute"]: continue
             if g <= X["floor"]: pending = ("all", "L3_floor"); continue
+            G = X.get("guard")  # give-back guard: once the option has been up `arm`, protect the gain (every day held)
+            if G and peak / cost - 1 >= G["arm"]:
+                if "floor" in G and g <= G["floor"]: pending = ("all", "G_floor"); continue
+                if "trail" in G and c <= peak * (1 - G["trail"]): pending = ("all", "G_trail"); continue
             R_ = X.get("roll")
-            if R_ and not st.get("rolled") and k == 0 and t - minute <= R_["within"] and g >= R_["gain"]:
+            if R_ and not st.get("rolled") and k == 0 and t - minute <= R_["within"] and roll_hit(R_, g, sd, t, minute, sym, bet):
                 st["rolled"] = True; pending = (rem * R_["share"], "R_roll"); continue
             if R_ and st.get("rolled") and g >= R_["rest_take"]: pending = ("all", "R_take"); continue
             if X.get("user_stop") and sd.ok and k == 0:

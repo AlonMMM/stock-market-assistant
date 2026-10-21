@@ -6,8 +6,9 @@
 A trade starts at the tier of its first minute. When the stock reaches a higher tier later the same
 day, the position is topped up to that tier's size in the same contract, only if it is winning then
 (option above the first entry's cost) and not yet sold. 1% risk = $10K of premium (fixed dollars).
-Roll: when the first entry is up `roll.gain` within `roll.within` minutes, half of it is sold and
-half of its profit so far buys a new contract at delta `roll_delta`; the rest is sold at +rest_take.
+Roll: when the first entry is up `roll.gain` (or, with `roll.near`, the stock is close to the strike) within
+`roll.within` minutes, `roll.share` of it is sold and a new contract at delta BT_ROLL_DELTA (default 0.20) is bought
+with half its profit so far (BT_ROLL_FUND=premium: with what the sold part cost); the rest is sold at +rest_take.
 Exits for every part: params exit_variants["user"] style overrides from BT_EXIT (your stop, then 15:50).
 
   python3 tiers.py <signals_tiers.csv> <out prefix> [shard/shards]  -> <prefix>_legs.csv, <prefix>_trades.csv
@@ -20,7 +21,8 @@ V = P["entry_variants"]["tiers"]
 RISK = dict(V["risk"])
 if os.environ.get("BT_FLAT"): RISK = {"C": 0.01, "B": 0.01, "A": 0.01}  # baseline: every trade at 1%, no adds
 UNIT = 10000 / 0.01  # dollars of premium per 1.0 of risk
-ROLL_DELTA = 0.20
+ROLL_DELTA = float(os.environ.get("BT_ROLL_DELTA", "0.20"))
+ROLL_FUND = os.environ.get("BT_ROLL_FUND", "profit")  # "profit": half the profit so far; "premium": the sold part's original cost
 
 
 def leg(t, minute, sym, exp, cal):
@@ -65,8 +67,12 @@ def run(rows, prefix, shard=0, shards=1):
                 rp, _ = sim.pick(t["sym"], roll[0], roll[1], t["right"], spot[-1][4])
                 sim.C["delta"] = old
                 if rp:
+                    saved = sim.X.pop("roll")  # the new contract does not roll again
                     rl = leg(dict(t, date=roll[0]), roll[1], rp[0], rp[1], cal)
-                    if rl: L.append(dict(kind="roll", minute=roll[1], contract=rp[0], premium=0.5 * profit, **rl))
+                    sim.X["roll"] = saved
+                    fund = 0.5 * profit
+                    if ROLL_FUND == "premium": fund = L[0]["premium"] * roll[3]
+                    if rl: L.append(dict(kind="roll", minute=roll[1], contract=rp[0], premium=fund, **rl))
         pnl = sum(l["premium"] * l["ret"] for l in L)
         prem = sum(l["premium"] for l in L)
         trades.append(dict(t, id=n, status="ok", contract=sym, expiry=exp, delta=round(dl, 3), iv=round(iv, 3) if iv else "",
