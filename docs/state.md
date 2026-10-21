@@ -10,9 +10,15 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
 - **Signal:** C signal on the stocks he traded in the past year.
 - **Contract and size:** delta 0.15, 2% a trade.
 - **Exits:** your stop, plus the overnight hold.
+- **News filter (V2 champion, `feat/indi-bot-news-filter`, not merged):** no new entry on a stock's earnings
+  reaction day (Nasdaq calendar) or with pre-market volume 4× its 20-session median. Fails open if a source fails.
+  Backtest at 1%: $297,160 / worst drop 16% (V1 $257,698 / 26%).
 - **Where it shows:** posts marked 🤖 Bot in the same Telegram chat; a 🤖 Bot tab and Bot chips in Portfolio.
+  The Bot tab names contracts in words ("Put 75 · 2DTE").
 - **Switches:** off and dry-run by default (`BOT_ENABLED`, `BOT_MODE`).
 - **Parity:** signal and exits match the Python backtest exactly (26,049 stock-days, 875 trades).
+- **Fixed on the news-filter branch:** the live bars reader took Alpaca's start times (seconds) as milliseconds, so
+  the deployed bot on `main` would read no bars and never signal.
 
 See the [task](tasks/backend-indi-bot.md).
 

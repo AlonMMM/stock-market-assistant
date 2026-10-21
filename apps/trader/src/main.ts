@@ -15,6 +15,7 @@ import { TradeStore } from "./store.js";
 import { Traders } from "./traders.js";
 import botUniverse from "../../../config/bot-universe.json" with { type: "json" };
 import { IndiBot } from "./bot.js";
+import { nasdaqEarnings } from "./bot-news.js";
 import { AlpacaBotMarket } from "./bot-market.js";
 import { BotStore } from "./bot-store.js";
 
@@ -206,6 +207,7 @@ const bot = (() => {
     },
     notify: (title, lines) => owner().notifier.notice(title, lines),
     universe: botUniverse.symbols,
+    earnings: (date) => nasdaqEarnings(date),
     mode: process.env.BOT_MODE === "live" ? "live" : "dry",
     enabled: process.env.BOT_ENABLED === "true",
     log,

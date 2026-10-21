@@ -12,6 +12,14 @@ import {
   type ExitRules,
 } from "../../../packages/trading/src/bot/exits.js";
 import {
+  premarketBlocks,
+  premarketRatio,
+  reactionReport,
+  reportDates,
+  type EarningsReport,
+  type NewsCalendar,
+} from "../../../packages/trading/src/bot/news.js";
+import {
   defaultPickRules,
   expiryWindow,
   pickContract,
@@ -24,7 +32,10 @@ import {
   type MinuteBar,
   type Prior,
 } from "../../../packages/trading/src/bot/signal.js";
-import type { OptionQuote } from "../../../packages/trading/src/options.js";
+import {
+  contractWords,
+  type OptionQuote,
+} from "../../../packages/trading/src/options.js";
 import type { BotEventKind, BotPosition, BotStore } from "./bot-store.js";
 
 // The Indi bot (docs/tasks/backend-indi-bot.md): the backtested C signal on
@@ -46,6 +57,15 @@ export interface BotMarket {
     symbols: string[],
     dates: string[],
   ): Promise<Map<string, Map<string, MinuteBar[]>>>;
+  /**
+   * Pre-market volume (04:00–09:30 New York, SIP 5-minute bars) by symbol and
+   * date; a date without bars is left out. Optional: without it there is no
+   * pre-market filter.
+   */
+  premarket?(
+    symbols: string[],
+    dates: string[],
+  ): Promise<Map<string, Map<string, number>>>;
   /** Contracts traded in the 30 minutes up to `minute`. */
   optionVolume30(
     contract: string,
@@ -85,6 +105,8 @@ export interface BotOptions {
   trading: BotTrading;
   notify: (title: string, lines: string[]) => Promise<unknown>;
   universe: string[];
+  /** The earnings calendar's reports listed on a date (Nasdaq). Without it there is no earnings filter. */
+  earnings?: (date: string) => Promise<EarningsReport[]>;
   mode: "dry" | "live";
   enabled: boolean; // the default until someone switches it
   sizePct?: number;
@@ -120,7 +142,17 @@ const outcomeText: Record<string, string> = {
   thin: "skipped, too few contracts traded",
   held: "skipped, you hold this contract",
   refused: "refused by the risk rules",
+  earnings: "skipped, earnings reaction day",
+  premarket: "skipped, pre-market volume 4× normal or more",
   error: "failed",
+};
+
+// How a news source stands today: not configured, read, or failed (no filter).
+type NewsState = "off" | "pending" | "ok" | "failed";
+
+const reportTimeText: Record<string, string> = {
+  "time-pre-market": "before the open",
+  "time-after-hours": "after the close",
 };
 
 function nextSession(date: string): string {
@@ -133,13 +165,19 @@ function nextSession(date: string): string {
   return d;
 }
 
+const newsCalendar: NewsCalendar = {
+  isSession: (date) => coreClose(date) !== null,
+  nextSession,
+};
+
 const expiryOf = (contract: string) => {
   const m = /(\d{2})(\d{2})(\d{2})[CP]\d{8}$/.exec(contract);
   return m ? `20${m[1]}-${m[2]}-${m[3]}` : "";
 };
 
 export class IndiBot {
-  private readonly o: Required<Omit<BotOptions, "now" | "log">> & {
+  private readonly o: Required<Omit<BotOptions, "now" | "log" | "earnings">> & {
+    earnings?: BotOptions["earnings"];
     now: () => number;
     log: (line: string) => void;
   };
@@ -158,6 +196,13 @@ export class IndiBot {
     { side: "C" | "P"; t: number; rvol: number; minute: number }
   >();
   private lastWork: number | null = null;
+  // The news filter's data for today (docs/tasks/backend-indi-bot.md).
+  private priorDays: string[] = [];
+  private openClose = new Map<string, Map<string, { o: number; c: number }>>();
+  private reports: EarningsReport[] | null = null; // null: no calendar today
+  private earningsState: NewsState = "off";
+  private preRatio = new Map<string, number | null>();
+  private preState: NewsState = "off";
 
   constructor(options: BotOptions) {
     this.o = {
@@ -214,6 +259,11 @@ export class IndiBot {
     ];
   }
 
+  /** A contract in words for the activity feed, e.g. "Put 75 · 2DTE" (days from today). */
+  private words(contract: string): string {
+    return contractWords(contract, newYork(this.o.now()).date);
+  }
+
   private event(kind: BotEventKind, text: string) {
     this.o.store.addEvent(this.o.now(), kind, text);
     this.o.log(`bot: ${text}`);
@@ -262,6 +312,9 @@ export class IndiBot {
     if (wall < 565 || wall > close + 15) return;
     this.lastWork = now;
     if (this.day !== date) await this.warmUp(date);
+    // Pre-market volume is final at 09:30; read once, before the first entry at 09:40.
+    if (this.preState === "pending" && wall >= 570)
+      await this.loadPremarket(date);
     // A minute's bar is complete once the next minute has started.
     const last = Math.min(wall - 570 - 1, closeMinute - 1);
     await this.settle();
@@ -287,8 +340,14 @@ export class IndiBot {
     const spy = bars.get("SPY") ?? new Map<string, MinuteBar[]>();
     this.prior.clear();
     this.priorClose.clear();
+    this.openClose.clear();
+    this.priorDays = days;
     for (const s of symbols) {
       const byDay = bars.get(s) ?? new Map<string, MinuteBar[]>();
+      const oc = new Map<string, { o: number; c: number }>();
+      for (const [d, list] of byDay)
+        if (list.length) oc.set(d, { o: list[0]!.o, c: list.at(-1)!.c });
+      this.openClose.set(s, oc);
       this.prior.set(
         s,
         priorFrom(
@@ -311,6 +370,116 @@ export class IndiBot {
       "info",
       `Ready for ${date}: watching ${this.symbols.length} stocks (${this.o.universe.length} from Indi's list${fav ? `, ${extra} more from "${fav.name}"` : ""})`,
     );
+    this.preRatio.clear();
+    this.preState = this.o.market.premarket ? "pending" : "off";
+    await this.loadEarnings(date);
+  }
+
+  // ---- the news filter: earnings reaction day, pre-market volume ----
+
+  /** Reports listed from the previous session through today, for today's stocks. Fails open. */
+  private async loadEarnings(date: string) {
+    this.reports = null;
+    if (!this.o.earnings) {
+      this.earningsState = "off";
+      return;
+    }
+    const dates = reportDates(date, previousSessions(date, 1)[0]!);
+    try {
+      const rows: EarningsReport[] = [];
+      for (const d of dates) rows.push(...(await this.o.earnings(d)));
+      const watched = new Set(this.symbols);
+      this.reports = rows.filter((r) => watched.has(r.symbol));
+      this.earningsState = "ok";
+      const names = [...new Set(this.reports.map((r) => r.symbol))];
+      this.event(
+        "info",
+        `Earnings calendar ${dates[0]} to ${date}: ${names.length ? `reports for ${names.join(", ")}` : "no reports for these stocks"}`,
+      );
+    } catch (error) {
+      this.earningsState = "failed";
+      const why = error instanceof Error ? error.message : String(error);
+      this.event(
+        "error",
+        `Earnings calendar failed (${why}): trading today without the earnings filter`,
+      );
+    }
+  }
+
+  /** Today's pre-market volume vs the prior 20 sessions'. Fails open. */
+  private async loadPremarket(date: string) {
+    try {
+      const got = await this.o.market.premarket!(this.symbols, [
+        ...this.priorDays,
+        date,
+      ]);
+      const high: string[] = [];
+      for (const s of this.symbols) {
+        const byDay = got.get(s);
+        const ratio = premarketRatio(
+          byDay?.get(date),
+          this.priorDays.map((d) => byDay?.get(d)),
+        );
+        this.preRatio.set(s, ratio);
+        if (premarketBlocks(ratio)) high.push(`${s} ${ratio!.toFixed(1)}×`);
+      }
+      this.preState = "ok";
+      this.event(
+        "info",
+        `Pre-market volume read: ${high.length ? `4× normal or more, no entry today: ${high.join(", ")}` : "no stock at 4× normal"}`,
+      );
+    } catch (error) {
+      this.preState = "failed";
+      const why = error instanceof Error ? error.message : String(error);
+      this.event(
+        "error",
+        `Pre-market volume failed (${why}): trading today without the pre-market filter`,
+      );
+    }
+  }
+
+  /** A session's absolute open gap vs the session before (a fraction), or null. */
+  private gap(symbol: string, date: string, today: string): number | null {
+    if (date === today) {
+      const open = this.barsOf(symbol)[0]?.o;
+      const before = this.priorClose.get(symbol);
+      if (open === undefined || before === undefined) return null;
+      return Math.abs(open / before - 1);
+    }
+    const oc = this.openClose.get(symbol);
+    const day = oc?.get(date);
+    const before = oc?.get(previousSessions(date, 1)[0]!);
+    if (!day || !before) return null;
+    return Math.abs(day.o / before.c - 1);
+  }
+
+  /** Why the news filter keeps the bot out of a stock today, or null. */
+  private newsBlock(
+    date: string,
+    symbol: string,
+  ): { outcome: "earnings" | "premarket"; detail: string } | null {
+    if (this.reports) {
+      const report = reactionReport(
+        this.reports.filter((r) => r.symbol === symbol),
+        date,
+        newsCalendar,
+        (d) => this.gap(symbol, d, date),
+      );
+      if (report) {
+        const when = reportTimeText[report.time] ?? "time not given";
+        return {
+          outcome: "earnings",
+          detail: `report listed ${report.date}, ${when}`,
+        };
+      }
+    }
+    const ratio = this.preRatio.get(symbol) ?? null;
+    if (premarketBlocks(ratio))
+      return {
+        outcome: "premarket",
+        detail: `pre-market volume ${ratio!.toFixed(1)}× normal`,
+      };
+    return null;
   }
 
   private async refresh(date: string, from: number, to: number) {
@@ -393,6 +562,10 @@ export class IndiBot {
     t: number,
     rvol: number,
   ) {
+    // The news filter: no new entry on an earnings reaction day or a busy pre-market.
+    const blocked = this.newsBlock(date, symbol);
+    if (blocked)
+      return this.outcome(date, symbol, blocked.outcome, blocked.detail);
     const spot = this.lastClose(symbol, minute);
     if (spot === null)
       return this.outcome(date, symbol, "no_prices", "no stock price");
@@ -413,7 +586,7 @@ export class IndiBot {
         date,
         symbol,
         "thin",
-        `${contract}: ${volume} contracts in 30 minutes`,
+        `${this.words(contract)}: ${volume} contracts in 30 minutes`,
       );
     // A contract the account already holds is the user's; the bot leaves it alone.
     if (await this.o.trading.held(contract))
@@ -421,7 +594,7 @@ export class IndiBot {
         date,
         symbol,
         "held",
-        `${contract} is already in the account`,
+        `${this.words(contract)} is already in the account`,
       );
     const why = `Signal ${side} at ${clock(minute)}: strength t ${t.toFixed(1)}, volume ${rvol.toFixed(1)}× normal`;
     const base: BotPosition = {
@@ -456,14 +629,14 @@ export class IndiBot {
           date,
           symbol,
           "too_small",
-          `${contract} at ${picked.mid.toFixed(2)}`,
+          `${this.words(contract)} at ${picked.mid.toFixed(2)}`,
         );
       this.o.store.savePosition({ ...base, qty, bought: qty, status: "open" });
       this.outcome(
         date,
         symbol,
         "would-buy",
-        `${qty} ${contract} at ${picked.mid.toFixed(2)}`,
+        `${qty} ${this.words(contract)} at ${picked.mid.toFixed(2)}`,
       );
       await this.o.notify(`${botTag} (dry run): would buy`, [
         `$${symbol} ${contractLabel(contract)}`,
@@ -487,7 +660,12 @@ export class IndiBot {
         (answer.refused ?? []).join("; "),
       );
     this.o.store.savePosition({ ...base, jobId: answer.jobId });
-    this.outcome(date, symbol, "bought", `${answer.qty ?? "?"} ${contract}`);
+    this.outcome(
+      date,
+      symbol,
+      "bought",
+      `${answer.qty ?? "?"} ${this.words(contract)}`,
+    );
   }
 
   // ---- buys and sales that are still working ----
@@ -507,7 +685,7 @@ export class IndiBot {
           });
           this.event(
             "skip",
-            `${p.symbol} ${contractLabel(p.contract)}: the buy did not fill`,
+            `${p.symbol} ${this.words(p.contract)}: the buy did not fill`,
           );
           continue;
         }
@@ -521,7 +699,7 @@ export class IndiBot {
         });
         this.event(
           "order",
-          `Bought ${held.qty} ${p.symbol} ${contractLabel(p.contract)} at ${held.avgEntryPrice.toFixed(2)}`,
+          `Bought ${held.qty} ${p.symbol} ${this.words(p.contract)} at ${held.avgEntryPrice.toFixed(2)}`,
         );
         continue;
       }
@@ -537,7 +715,7 @@ export class IndiBot {
         );
         this.event(
           "order",
-          `Sold ${sold} ${p.symbol} ${contractLabel(p.contract)} (${reasonText[pending.reason as ExitReason] ?? pending.reason}); ${qty} left`,
+          `Sold ${sold} ${p.symbol} ${this.words(p.contract)} (${reasonText[pending.reason as ExitReason] ?? pending.reason}); ${qty} left`,
         );
         this.o.store.savePosition({
           ...p,
@@ -556,7 +734,7 @@ export class IndiBot {
         if (qty < p.qty)
           this.event(
             "info",
-            `${p.symbol} ${contractLabel(p.contract)}: the account holds ${qty}, so the bot counts ${qty} (was ${p.qty}): a stop or a sale by hand`,
+            `${p.symbol} ${this.words(p.contract)}: the account holds ${qty}, so the bot counts ${qty} (was ${p.qty}): a stop or a sale by hand`,
           );
         if (qty < p.qty)
           this.o.store.savePosition({
@@ -617,7 +795,7 @@ export class IndiBot {
         this.o.store.savePosition(next);
         this.event(
           "order",
-          `Holding ${p.qty} ${p.symbol} ${contractLabel(p.contract)} overnight (up 100% or more)`,
+          `Holding ${p.qty} ${p.symbol} ${this.words(p.contract)} overnight (up 100% or more)`,
         );
         await this.o.notify(`${botTag}: held overnight`, [
           `$${p.symbol} ${contractLabel(p.contract)}`,
@@ -664,7 +842,7 @@ export class IndiBot {
         mid === null ? "" : ` (${((mid / p.cost - 1) * 100).toFixed(0)}%)`;
       this.event(
         "order",
-        `Would sell ${ask} of ${p.qty} ${p.symbol} ${contractLabel(p.contract)} at ${mid?.toFixed(2) ?? "—"}${pnl}: ${reasonText[reason]}`,
+        `Would sell ${ask} of ${p.qty} ${p.symbol} ${this.words(p.contract)} at ${mid?.toFixed(2) ?? "—"}${pnl}: ${reasonText[reason]}`,
       );
       await this.o.notify(`${botTag} (dry run): would sell`, [
         `$${p.symbol} ${contractLabel(p.contract)}`,
@@ -688,7 +866,7 @@ export class IndiBot {
     if (answer.status !== "started" || !("jobId" in answer) || !answer.jobId) {
       this.event(
         "error",
-        `Selling ${p.symbol} ${contractLabel(p.contract)} failed: ${"error" in answer ? answer.error : answer.status}`,
+        `Selling ${p.symbol} ${this.words(p.contract)} failed: ${"error" in answer ? answer.error : answer.status}`,
       );
       this.o.store.savePosition(p);
       return;
@@ -702,7 +880,7 @@ export class IndiBot {
     });
     this.event(
       "order",
-      `Selling ${ask} of ${p.qty} ${p.symbol} ${contractLabel(p.contract)}: ${reasonText[reason]}`,
+      `Selling ${ask} of ${p.qty} ${p.symbol} ${this.words(p.contract)}: ${reasonText[reason]}`,
     );
   }
 
@@ -715,14 +893,18 @@ export class IndiBot {
       .filter((p) => p.day === date || p.status !== "closed");
     if (signals.length === 0 && positions.length === 0) return;
     const count = (o: string) => signals.filter((s) => s.outcome === o).length;
+    const head = `${signals.length} signals: ${count("bought") + count("would-buy")} entered, ${signals.length - count("bought") - count("would-buy")} skipped`;
     const lines = [
-      `${signals.length} signals: ${count("bought") + count("would-buy")} entered, ${signals.length - count("bought") - count("would-buy")} skipped`,
+      head,
       ...positions.map(
         (p) =>
           `$${p.symbol} ${contractLabel(p.contract)}: ${standing(p, date)}`,
       ),
     ];
-    this.event("info", `Day summary: ${lines.join("; ")}`);
+    const words = positions.map(
+      (p) => `${p.symbol} ${this.words(p.contract)}: ${standing(p, date)}`,
+    );
+    this.event("info", `Day summary: ${[head, ...words].join("; ")}`);
     await this.o.notify(`${botTag}: day summary ${date}`, lines);
   }
 
@@ -740,8 +922,16 @@ export class IndiBot {
       watching: this.symbols.length ? this.symbols : this.universe(),
       lastRun: this.lastWork,
       day,
+      news: { earnings: this.earningsState, premarket: this.preState },
       scan: [...this.scan]
-        .map(([symbol, v]) => ({ symbol, ...v }))
+        .map(([symbol, v]) => ({
+          symbol,
+          ...v,
+          blocked:
+            this.day === day
+              ? (this.newsBlock(day, symbol)?.outcome ?? null)
+              : null,
+        }))
         // Closest to a signal first: the weaker of the two conditions.
         .sort((a, b) => closeness(b) - closeness(a)),
       signals: this.o.store.signals(day),
@@ -780,7 +970,7 @@ function contractLabel(contract: string): string {
   return `${Number(m[5]) / 1000} ${m[4] === "C" ? "Call" : "Put"} ${Number(m[2])}/${Number(m[3])}`;
 }
 
-/** Session minute bars from raw provider bars (start time in ms). */
+/** Session minute bars from raw provider bars (start time in seconds, as `RawBar`). */
 export function toSessionBars(
   rows: readonly {
     start: number;
@@ -793,7 +983,7 @@ export function toSessionBars(
 ) {
   const byDay = new Map<string, MinuteBar[]>();
   for (const r of rows) {
-    const { date, minute } = newYork(r.start);
+    const { date, minute } = newYork(r.start * 1000);
     const m = minute - 570;
     if (m < 0 || m >= 390) continue;
     let list = byDay.get(date);
