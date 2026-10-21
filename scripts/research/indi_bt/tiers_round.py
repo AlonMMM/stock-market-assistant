@@ -19,6 +19,7 @@ ENV = dict(os.environ, BT_VARIANT="v2", **({"BT_UNIVERSE": "wide"} if UNI == "wi
 
 H = {"carry_min_gain": 99, "win_arm": 99, "takes": [], "fast_minutes": None, "runner_stall_min": 999, "trail": 1.0, "cut1": -1.0, "floor": -1.0,
      "user_stop": {"checks": [[10, 0.5], [20, 1.0]], "out": -0.30}}
+NIGHT = dict(carry_min_gain=1.0, carry_range_pos=0.0, carry_min_dte=1, carry_no_friday=False, carry_max_days=2)  # hold winners up >= +100% overnight
 roll = lambda gain, within, cap=5.0: dict(H, roll={"gain": gain, "within": within, "share": 0.5, "rest_take": cap})
 # name -> (script, signal file kind, exit overrides, extra env)
 RUNS = {
@@ -34,7 +35,9 @@ RUNS = {
     "astart_roll": ("tiers.py", "astart", roll(2.0, 60), {}),
     "astart_roll_run": ("tiers.py", "astart", roll(2.0, 60, 999), {}),
     "atA":        ("tiers.py", "atA", H, {}),             # enter at the first A minute, whenever it comes, 3%
-    "his":        ("sim.py", "his", H, {}),               # his entries and contracts, same exits, $10K each
+    "his":        ("sim.py", "his", H, {}),
+    "flat_n100":  ("tiers.py", "tiers", dict(H, **NIGHT), {"BT_FLAT": "1"}),          # flat + hold winners up >= +100% overnight
+    "flat_q200k": ("tiers.py", "tiers", dict(H, **NIGHT, takes=[[2.0, 0.25]], gap_sell_share=0.0), {"BT_FLAT": "1"}),  # + a quarter at +200%, keep the rest on a good gap               # his entries and contracts, same exits, $10K each
 }
 
 
