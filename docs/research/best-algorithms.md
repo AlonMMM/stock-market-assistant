@@ -26,9 +26,9 @@ Delta 0.10 ends higher ($495,349, 23%) but the user chose 0.15 for the paper bot
 
 ## Log
 
-| Date       | Version    | Fair list: end / worst drop / years | 151 unseen     | vs champion | Status                            |
-| ---------- | ---------- | ----------------------------------- | -------------- | ----------- | --------------------------------- |
-| 2026-10-21 | V1 (above) | $257,698 / 26%                      | $107,869 / 21% | —           | champion, live in paper (dry run) |
+| Date       | Version    | Fair list: end / worst drop / years | 151 unseen     | vs champion | Status                               |
+| ---------- | ---------- | ----------------------------------- | -------------- | ----------- | ------------------------------------ |
+| 2026-10-21 | V1 (above) | $257,698 / 26%                      | $107,869 / 21% | —           | champion, paper bot (deploy pending) |
 
 ## Waiting for the unseen check
 
