@@ -21,6 +21,10 @@ Preserve unrelated changes and use a task branch for implementation.
 - Do not force-push, discard unrelated changes, trade, or deploy without authorization for that action. Honor authorization already given in the session.
 - Deploy only what is on `main`: merge first, then deploy from a clean checkout of `origin/main`. Never deploy a pull request's branch or uncommitted changes. This applies to every deploy target (the website Worker, the connector Worker, the Railway services).
 - Add dependencies and automation to meet concrete needs, not to fill out a scaffold.
+- Trading research: whenever a backtested algorithm beats the current champion by the test in
+  [best algorithms](docs/research/best-algorithms.md), log it there (and in the report doc), and give the user a big
+  signal: a 🏆 NEW CHAMPION banner at the top of the reply plus a push notification. A result that only beats it on
+  some of the test is reported as a candidate, without the banner.
 
 ## Verify and finish
 

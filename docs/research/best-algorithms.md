@@ -18,17 +18,17 @@ A version beats the champion only when **all** hold, on the same period (Feb 202
 
 ## Champion
 
-| Since | Version | Fair list: end / worst drop / years | 151 unseen: end / worst drop |
-| ----- | ------- | ----------------------------------- | ---------------------------- |
-| 2026-10-21 | **V1**: C signal (t ≥ 2 vs SPY × β, day volume ≥ 1.5×), delta 0.15, your stop + overnight hold for winners ≥ +100% | $257,698 / 26% / +33% +34% +44% | $107,869 / 21% |
+| Since      | Version                                                                                                            | Fair list: end / worst drop / years | 151 unseen: end / worst drop |
+| ---------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------- | ---------------------------- |
+| 2026-10-21 | **V1**: C signal (t ≥ 2 vs SPY × β, day volume ≥ 1.5×), delta 0.15, your stop + overnight hold for winners ≥ +100% | $257,698 / 26% / +33% +34% +44%     | $107,869 / 21%               |
 
 Delta 0.10 ends higher ($495,349, 23%) but the user chose 0.15 for the paper bot; both are tracked.
 
 ## Log
 
-| Date | Version | Fair list: end / worst drop / years | 151 unseen | vs champion | Status |
-| ---- | ------- | ----------------------------------- | ---------- | ----------- | ------ |
-| 2026-10-21 | V1 (above) | $257,698 / 26% | $107,869 / 21% | — | champion, live in paper (dry run) |
+| Date       | Version    | Fair list: end / worst drop / years | 151 unseen     | vs champion | Status                            |
+| ---------- | ---------- | ----------------------------------- | -------------- | ----------- | --------------------------------- |
+| 2026-10-21 | V1 (above) | $257,698 / 26%                      | $107,869 / 21% | —           | champion, live in paper (dry run) |
 
 ## Waiting for the unseen check
 
