@@ -24,8 +24,9 @@ A version beats the champion only when **all** hold, on the same period (Feb 202
 
 At 2% a trade: $584,770 / 44% worst drop (V1 $499,412 / 46%). Only 11 trades on the fair list hit the guard; 9 made
 more, 1 the same, 1 less (SMCI 2024-02-05, $26.9K → $22.2K). Picked as the best of 7 guards tested together (thresholds
-set before the run): the tighter locks and the trails lose, so the gain is small and rests on 11 trades. Delta 0.10
-recheck running. Not in the paper bot yet.
+set before the run): the tighter locks and the trails lose, so the gain is small and rests on 11 trades. At delta 0.10
+it does not hold: $475,138 / 22% vs $495,349 / 23% without it (lock 300 → 100 is better there, $524,752, but
+worse on the unseen). So the gain is noise-sized: treat it as fragile. Not in the paper bot yet.
 
 V1 (C signal t ≥ 2 vs SPY × β, day volume ≥ 1.5×, delta 0.15, your stop + overnight hold for winners ≥ +100%) is the
 paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
