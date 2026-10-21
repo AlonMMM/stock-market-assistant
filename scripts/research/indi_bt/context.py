@@ -99,6 +99,12 @@ def build():
     by_day = collections.defaultdict(list)
     for e in H:
         if e["sym"] in P["universe"]: by_day[e["date"]].append(e)
+    import glob
+    bot_day = collections.defaultdict(list)  # the bot's flat 1% C entries (tiers_round "flat"), P&L at $10K
+    for f in sorted(glob.glob(f"{B}/t_flat_20*_trades.csv")):
+        for x in csv.DictReader(open(f)):
+            if x["status"] == "ok": bot_day[x["date"]].append(dict(date=x["date"], sym=x["sym"], right=x["right"], minute=int(x["minute"]),
+                                                                   his=2, real=round(float(x["pnl"])), trade=""))
     his_days = collections.defaultdict(set); his_pnl_day = collections.Counter()
     for e in H: his_days[e["sym"]].add(e["date"]); his_pnl_day[e["date"]] += e["real"]
     mins = [e["minute"] for e in H if e["sym"] in P["universe"]]
@@ -113,7 +119,7 @@ def build():
         def pcl(x):
             pb = day(x, cal[i - 1]); return pb[-1][4] if pb else None
         if not S("SPY"): continue
-        todo = [dict(e, his=1) for e in by_day.get(d, [])]
+        todo = [dict(e, his=1) for e in by_day.get(d, [])] + bot_day.get(d, [])
         for s in P["universe"]:
             if (s, d) in summ: todo.append(dict(date=d, sym=s, minute=random.choice(mins), right=None, his=0, real="", trade=""))
         for e in todo:
@@ -142,7 +148,7 @@ def build():
             third_fri = dt.date.fromisoformat(d).weekday() == 4 and 15 <= int(d[8:]) <= 21
             spy_o = summ.get(("SPY", d))
             row = dict(year=d[:4], date=d, sym=s, right=e["right"], minute=m, his=e["his"], trade=e["trade"], real=e["real"],
-                       dte=e.get("dte", ""), stop_pnl=stop.get((d, s, m), "") if e["his"] else "", group=g,
+                       dte=e.get("dte", ""), stop_pnl=stop.get((d, s, m), "") if e["his"] == 1 else "", group=g,
                        move=bet * (c[m] / pc - 1) * 100, gap=bet * sm["gap"],
                        spy=spy, spy_bet=bet * spy if spy is not None else None, spy_day=(spy_o["c"] / spy_o["pc"] - 1) * 100 if spy_o else None,
                        spy_gap=spy_o["gap"] if spy_o else None, qqq=mv("QQQ"), vixy=mv("VIXY"),
@@ -227,11 +233,11 @@ TESTS = [
 
 def report():
     R = list(csv.DictReader(open(f"{B}/context_rows.csv")))
-    his = [r for r in R if r["his"] == "1"]; base = [r for r in R if r["his"] == "0"]
+    his = [r for r in R if r["his"] == "1"]; base = [r for r in R if r["his"] == "0"]; bot = [r for r in R if r["his"] == "2"]
     tot = sum(float(r["real"]) for r in his)
     print(f"{len(his)} entries of his on the 40 stocks (real {tot/1e6:+.2f}M), {len(base)} base stock-days\n")
     for title, k, f in TESTS:
-        print(f"### {title}\n\n| | Base | His | Lift | His entries | His real | Per trade | Win | Years 23-26 | Our exit $10K | Stock to close: base / his |\n|---|---|---|---|---|---|---|---|---|---|---|")
+        print(f"### {title}\n\n| | Base | His | Lift | His entries | His real | Per trade | Win | Years 23-26 | Our exit $10K | Bot: trades, 2024 / 2025-26 $10K |\n|---|---|---|---|---|---|---|---|---|---|---|")
         gb = collections.Counter(f(r, k) for r in base); gh = collections.defaultdict(list)
         for r in his: gh[f(r, k)].append(r)
         nb = sum(v for x, v in gb.items() if x is not None); nh = sum(len(v) for x, v in gh.items() if x is not None)
@@ -239,11 +245,12 @@ def report():
         for lab in labs:
             g = gh.get(lab, []); p = [float(r["real"]) for r in g]; sp = [float(r["stop_pnl"]) for r in g if r["stop_pnl"]]
             yrs = "".join("+" if sum(float(r["real"]) for r in g if r["year"] == y) > 0 else ("-" if any(r["year"] == y for r in g) else ".") for y in ("2023", "2024", "2025", "2026"))
-            fb = [float(r["fwd_close"]) for r in base if f(r, k) == lab]; fh = [float(r["fwd_close"]) for r in g]
+            gb_ = [r for r in bot if f(r, k) == lab]
+            b4 = sum(float(r["real"]) for r in gb_ if r["year"] == "2024"); b56 = sum(float(r["real"]) for r in gb_ if r["year"] > "2024")
             sb, sh = 100 * gb.get(lab, 0) / max(1, nb), 100 * len(g) / max(1, nh)
             print(f"| {lab} | {sb:.0f}% | {sh:.0f}% | {sh/sb if sb else 0:.1f}x | {len(g)} | {sum(p)/1e6:+.2f}M | {st.fmean(p)/1e3 if p else 0:+.1f}K | "
                   f"{100*sum(x>0 for x in p)/len(p) if p else 0:.0f}% | {yrs} | {sum(sp)/1e3:+,.0f}K ({len(sp)}) | "
-                  f"{st.fmean(fb) if fb else 0:+.2f}% / {st.fmean(fh) if fh else 0:+.2f}% |")
+                  f"{len(gb_)}, {b4/1e3:+,.0f}K / {b56/1e3:+,.0f}K |")
         print()
 
 
