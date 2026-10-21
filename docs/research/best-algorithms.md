@@ -18,25 +18,31 @@ A version beats the champion only when **all** hold, on the same period (Feb 202
 
 ## Champion
 
-| Since      | Version                                                                                                                          | Fair list: end / worst drop / years           | 151 unseen: end / worst drop |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ---------------------------- |
-| 2026-10-21 | **V1 + give-back guard 500 → 200**: V1, and once the option has been up +500%, sell all if it falls back to +200% (any day held) | $278,941 / 25% / +1,543 +1,154 +1,816 a trade | $109,188 / 20%               |
+| Since      | Version                                                                                                                                          | Fair list: end / worst drop / years           | 151 unseen: end / worst drop |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------- | ---------------------------- |
+| 2026-10-21 | **V1 + news filter**: V1, but no entry on the stock's earnings reaction day, and none when its pre-market volume is 4× or more its 20-day median | $297,160 / 16% / +2,637 +1,687 +1,448 a trade | $121,443 / 11%               |
 
-At 2% a trade: $584,770 / 44% worst drop (V1 $499,412 / 46%). Only 11 trades on the fair list hit the guard; 9 made
-more, 1 the same, 1 less (SMCI 2024-02-05, $26.9K → $22.2K). Picked as the best of 7 guards tested together (thresholds
-set before the run): the tighter locks and the trails lose, so the gain is small and rests on 11 trades. At delta 0.10
-it does not hold: $475,138 / 22% vs $495,349 / 23% without it (lock 300 → 100 is better there, $524,752, but
-worse on the unseen). So the gain is noise-sized: treat it as fragile. Not in the paper bot yet.
+- At 2% a trade: $688,039 / 30% worst drop (V1 $499,412 / 46%).
+- It holds at delta 0.10 too: fair list $503,674 / 15% (V1 $495,349 / 23%), unseen $102,663 / 9% (V1 $86,369 / 20%).
+- Each half alone also helps on both lists and both deltas. The cut-offs (reaction day, pre-market 4×) are the
+  buckets of the entry-context study of his trades, set before these runs; the unseen stocks and delta 0.10 were
+  not used to pick them.
+- With the give-back guard 500 → 200 on top: $317,326 / 15%, unseen $122,929 / 11%; the guard stays fragile (it
+  does not hold at 0.10 on its own).
+- Also skipping a pre-market move of 3% or more our way does more at 0.15 ($311,994 / 15%) but fails at 0.10
+  ($300,367 vs $503,674), so it is left out.
+- Needs in the bot: the earnings calendar and pre-market 5-minute bars before 09:30. Not in the paper bot yet.
 
 V1 (C signal t ≥ 2 vs SPY × β, day volume ≥ 1.5×, delta 0.15, your stop + overnight hold for winners ≥ +100%) is the
 paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
-| Date       | Version              | Fair list: end / worst drop | 151 unseen     | vs champion                    | Status                      |
-| ---------- | -------------------- | --------------------------- | -------------- | ------------------------------ | --------------------------- |
-| 2026-10-21 | V1                   | $257,698 / 26%              | $107,869 / 21% | —                              | paper bot (deploy pending)  |
-| 2026-10-21 | V1 + guard 500 → 200 | $278,941 / 25%              | $109,188 / 20% | +$21K, −1 pt drop; unseen +$1K | 🏆 champion (backtest only) |
+| Date       | Version                                                                | Fair list: end / worst drop | 151 unseen     | vs champion                                             | Status                                          |
+| ---------- | ---------------------------------------------------------------------- | --------------------------- | -------------- | ------------------------------------------------------- | ----------------------------------------------- |
+| 2026-10-21 | V1                                                                     | $257,698 / 26%              | $107,869 / 21% | —                                                       | paper bot (deploy pending)                      |
+| 2026-10-21 | V1 + guard 500 → 200                                                   | $278,941 / 25%              | $109,188 / 20% | +$21K, −1 pt drop; unseen +$1K                          | champion until the news filter; fragile at 0.10 |
+| 2026-10-21 | V1 + news filter (no earnings reaction day, no pre-market volume ≥ 4×) | $297,160 / 16%              | $121,443 / 11% | +$18K, −9 pts drop; unseen +$12K, −9 pts; holds at 0.10 | 🏆 champion (backtest only)                     |
 
 ## Tested, not better (V2, 2026-10-21)
 
@@ -45,12 +51,13 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 - Overnight: no hold after a 5/10-minute premium drop; a 3–5% cap on what goes into the night: all worse or mixed.
 - Give-back locks 200 → 50 and 300 → 100, trails 100/50, 200/40, 300/50, the ladder: worse or worse on the unseen.
 - End-of-day entries for tomorrow (volume-free strength vs SPY, near the high): lose 2024 and 2025.
+- Score and moving-volume entries (t ≥ 3 with 1×, t ≥ 2.5 with 1.2×, t ≥ 1.5 with 2.5×, scores 2.0 / 3.0, moving-volume
+  blend, speeding-up boost, 5-minute burst): none better on both lists.
+- Selling 25% at +150% and 25% at +250%: $142,572 / 20%. Carried-day trailing stops (25 / 40 / 50%): worse.
+- False alarms (the stock or SPY against the bet at the signal): only 3 of 820 trades; filters do not help.
 
-## Waiting for the unseen check
+## Candidates
 
-Better on the fair list, not yet checked on the 151 unseen stocks; not a champion until they pass:
-
-- V1 + skip a pre-market move of 3% or more our way: $316,819 / 19% (pre-market data for the 151 is downloading).
-- V1 + skip pre-market volume ≥ 4×: $286,606 / 17%.
-- V1 + skip the earnings reaction day: $287,937 / 26% (it also lost 2 of 3 years on the unseen stocks, so the
-  reaction day looks bad there too; the full check is pending).
+- Entry score ≥ 2.5 (t/2 + volume/1.5, floors t 1.5, volume 1×): fair list $490,168 / 11%, but unseen $82,370 / 30%.
+- Sell everything at the morning gap (not half): about 27% more at the same worst drop on the fair list at 0.15, but
+  worse at 0.10 and on the unseen.

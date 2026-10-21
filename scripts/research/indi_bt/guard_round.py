@@ -17,6 +17,10 @@ GUARDS = {
     "trail200_40": {"guard": {"arm": 2.0, "trail": 0.4}},
     "trail300_50": {"guard": {"arm": 3.0, "trail": 0.5}},
     "ladder": {"takes": [[2.0, 0.25], [4.0, 0.25]], "trail": 0.4},  # a quarter at +200%, a quarter at +400%, the rest trails 40%
+    "nt25": {"night_trail": 0.25},                           # carried day: the rest out 25% under the day's high
+    "nt40": {"night_trail": 0.40},
+    "nt50": {"night_trail": 0.50},
+    "mall": {"gap_sell_share": 1.0},                         # morning gap our way: sell all, not half
     "t150_250": {"takes": [[1.5, 0.25], [2.5, 0.25]]},       # the user's: a quarter at +150%, a quarter at +250%, the rest as V1
     "t150_250_lock500": {"takes": [[1.5, 0.25], [2.5, 0.25]], "guard": {"arm": 5.0, "floor": 2.0}},  # + the guard
 }

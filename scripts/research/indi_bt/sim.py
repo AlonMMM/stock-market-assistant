@@ -25,6 +25,8 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                new contract); the rest is sold at +rest_take
   G guard (guard {arm, floor | trail}): once the option has been up `arm` (peak close vs the entry fill),
                sell all when the gain falls to `floor`, or the price falls `trail` from its peak
+  N night trail (night_trail x): on a carried day, after the morning rule kept a part, sell it when the option
+               closes x under its highest close since the morning
   U your stop (user_stop {checks: [[10, 0.5], [20, 1.0]], out} or {check_from, check_to, share, out}):
                at each checkpoint (minutes after the entry, once), the stock on the wrong side of the entry
                price -> sell that share of what is left. Older form: 10-20 minutes after the entry, the stock
@@ -168,6 +170,10 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 gap = bet * (sd.open / sd.prev_close - 1) * 100 if sd.ok and sd.open and sd.prev_close else None
                 pending = (rem * X["gap_sell_share"], "morning_gap_keep") if gap is not None and gap >= X["gap_keep"] else ("all", "morning_gap_against")
                 continue
+            NT = X.get("night_trail")  # carried days, after the morning sale: the rest out `NT` under the option's high since then
+            if NT and carry_day and st.get("morning"):
+                st["npeak"] = max(st.get("npeak", c), c)
+                if c <= st["npeak"] * (1 - NT): pending = ("all", "N_trail"); continue
             if d == exp and t >= X["expiry_last_minute"]: pending = ("all", "expiry_day"); continue
             if t >= X["eod_minute"] and not eod_done:
                 eod_done = True
