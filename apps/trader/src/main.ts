@@ -13,6 +13,10 @@ import { ShortWatch } from "./short-watch.js";
 import { RequestError, type TraderService } from "./service.js";
 import { TradeStore } from "./store.js";
 import { Traders } from "./traders.js";
+import botUniverse from "../../../config/bot-universe.json" with { type: "json" };
+import { IndiBot } from "./bot.js";
+import { AlpacaBotMarket } from "./bot-market.js";
+import { BotStore } from "./bot-store.js";
 
 const env = (...names: string[]) =>
   names.map((n) => process.env[n]).find((v) => v) ?? "";
@@ -174,6 +178,53 @@ api.get<{ Querystring: { limit?: string } }>("/v1/decisions", async (request) =>
   service(request).decisions(Number(request.query.limit)),
 );
 
+// The Indi bot (docs/tasks/backend-indi-bot.md): on the owner's Alpaca paper
+// account, through the owner's service. Off unless BOT_ENABLED=true; a dry run
+// unless BOT_MODE=live.
+const botStore = new BotStore(dbPath);
+const bot = (() => {
+  const key = env("ALPACA_API_KEY", "APCA_API_KEY_ID");
+  const secret = env("ALPACA_API_SECRET", "APCA_API_SECRET_KEY");
+  if (!key || !secret) return null;
+  const owner = () => traders.forCaller(undefined, "alpaca");
+  return new IndiBot({
+    store: botStore,
+    market: new AlpacaBotMarket(key, secret, "sip"),
+    trading: {
+      chain: (u, right, from, to) => owner().broker.chain(u, right, from, to),
+      quote: (c) => owner().broker.quote(c),
+      held: async (c) => {
+        const p = await owner()
+          .broker.position(c)
+          .catch(() => null);
+        return p && p.qty > 0 ? p : null;
+      },
+      equity: () => owner().broker.equity(),
+      buy: (b) => owner().service.buy(b),
+      sell: (b) => owner().service.sell(b),
+      job: (id) => owner().service.job(id),
+    },
+    notify: (title, lines) => owner().notifier.notice(title, lines),
+    universe: botUniverse.symbols,
+    mode: process.env.BOT_MODE === "live" ? "live" : "dry",
+    enabled: process.env.BOT_ENABLED === "true",
+    log,
+  });
+})();
+const botTimer = bot ? setInterval(() => void bot.tick(), 15_000) : null;
+api.get("/v1/bot", async () => {
+  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  return bot.status();
+});
+api.post("/v1/bot", async (request) => {
+  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  const on = body(request.body).enabled;
+  if (typeof on !== "boolean")
+    throw new RequestError("enabled must be true or false");
+  bot.setEnabled(on);
+  return bot.status();
+});
+
 // A stop that sells is reported within this long.
 const stopWatchMs = 15_000;
 const watchAll = () =>
@@ -208,6 +259,8 @@ const shortWatch = setInterval(() => {
 async function stop() {
   clearInterval(stopWatch);
   clearInterval(shortWatch);
+  if (botTimer) clearInterval(botTimer);
+  botStore.close();
   await api.close();
   // A job cut off here is settled by `reconcile` on the next start.
   store.close();

@@ -9,6 +9,7 @@ import {
   formatExit,
   formatStopOut,
   type EntryNote,
+  type ExitNote,
   type StopFill,
 } from "./message.js";
 
@@ -28,11 +29,7 @@ export interface Notifier {
     result: LadderResult,
     entryRef?: string,
   ): Promise<Sent>;
-  exit(
-    note: { symbol: string; paper: boolean },
-    result: ExitResult,
-    entryRef?: string,
-  ): Promise<Sent>;
+  exit(note: ExitNote, result: ExitResult, entryRef?: string): Promise<Sent>;
   /** A stop order sold contracts: nobody asked for it, so it must be seen. */
   stopped(
     note: { symbol: string; paper: boolean },
@@ -134,11 +131,7 @@ export class TelegramNotifier implements Notifier {
     return copy === null ? sent : { ...sent, ref: `${sent.ref}/${copy}` };
   }
 
-  exit(
-    note: { symbol: string; paper: boolean },
-    result: ExitResult,
-    entryRef?: string,
-  ) {
+  exit(note: ExitNote, result: ExitResult, entryRef?: string) {
     const replyTo = parseRef(entryRef).post;
     return this.post(
       formatExit(note, result),

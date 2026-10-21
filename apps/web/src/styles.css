@@ -602,6 +602,9 @@ button.market-tile[aria-expanded="true"] {
   display: flex;
   gap: 4px;
   border-bottom: 1px solid #cdd7ce;
+  /* Five Portfolio tabs (with Bot) can be wider than a phone. */
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .tabs button {
   display: inline-flex;
@@ -5885,4 +5888,39 @@ button.pa-ticker {
   padding: 0;
   border: 0;
   background: transparent;
+}
+
+/* The Indi bot (docs/tasks/backend-indi-bot.md) */
+.bot-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border: 1px solid #c9d0c9;
+  border-radius: 999px;
+  background: #eef0ec;
+  color: #33413e;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.bot-panel h3 {
+  margin: 18px 0 6px;
+  font-size: 14px;
+}
+.bot-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+.bot-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bot-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid #e3e6e1;
 }

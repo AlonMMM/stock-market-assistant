@@ -152,6 +152,17 @@ function buyRequest(body: Body): BuyRequest {
     ...(strike === undefined ? {} : { strike }),
     ...(stopPct === undefined ? {} : { stopPct }),
     ...ticket,
+    ...postLines(body),
+  };
+}
+
+// The bot's first line and reason for the posts (docs/tasks/backend-indi-bot.md).
+function postLines(body: Body): { tag?: string; note?: string } {
+  const tag = text(body, "tag", /^[^<>\n]{1,40}$/u);
+  const note = text(body, "note", /^[^<>\n]{1,200}$/u);
+  return {
+    ...(tag === undefined ? {} : { tag }),
+    ...(note === undefined ? {} : { note }),
   };
 }
 
@@ -437,6 +448,7 @@ export class TraderService {
       contract: symbol,
       qty,
       ...(stopPct === undefined ? {} : { stopPct }),
+      ...postLines(body),
     };
     const jobId = this.start("sell", symbol, request, () =>
       this.engine.sell(request),

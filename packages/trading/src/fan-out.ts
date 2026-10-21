@@ -1,6 +1,6 @@
 import type { ExitResult } from "./exit.js";
 import type { LadderResult } from "./ladder.js";
-import type { EntryNote, StopFill } from "./message.js";
+import type { EntryNote, ExitNote, StopFill } from "./message.js";
 import { NoNotifier, type Notifier, type Sent } from "./notifier.js";
 
 // One trader's notification channels as one Notifier
@@ -59,11 +59,7 @@ export class FanOutNotifier implements Notifier {
       n.entry(note, result, first ? entryRef : undefined),
     );
   }
-  exit(
-    note: { symbol: string; paper: boolean },
-    result: ExitResult,
-    entryRef?: string,
-  ) {
+  exit(note: ExitNote, result: ExitResult, entryRef?: string) {
     return this.send("exit", (n, first) =>
       n.exit(note, result, first ? entryRef : undefined),
     );

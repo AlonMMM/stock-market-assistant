@@ -54,6 +54,7 @@ import {
   handlePortfolioHistory,
   PortfolioCache,
 } from "../../../packages/trading/src/portfolio.js";
+import { handleBotStatus } from "../../../packages/trading/src/bot-api.js";
 import { handleOrderDecisions } from "../../../packages/trading/src/decisions-api.js";
 import {
   D1WatchStore,
@@ -534,6 +535,21 @@ export default {
         env.BARS_CACHE ? stores(env.BARS_CACHE).strengths : undefined,
         env.BARS_CACHE ? stores(env.BARS_CACHE).sigmas : undefined,
       );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path === "/api/bot") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const result = await handleBotStatus({
+        url: env.TRADER_URL,
+        token: env.TRADER_READ_TOKEN,
+      });
       return Response.json(result.body, {
         status: result.status,
         headers: { "Cache-Control": "no-store" },
