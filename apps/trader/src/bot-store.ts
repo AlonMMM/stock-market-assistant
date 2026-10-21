@@ -29,6 +29,15 @@ export interface BotSale {
 
 export type BotStatus = "buying" | "open" | "closed";
 
+// info: warm-up, lists, checks passed; signal; skip; order: buys and sales; error
+export type BotEventKind = "info" | "signal" | "skip" | "order" | "error";
+
+export interface BotEvent {
+  at: number;
+  kind: BotEventKind;
+  text: string;
+}
+
 export interface BotPosition {
   id: string;
   day: string; // the entry day
@@ -74,7 +83,28 @@ export class BotStore {
         data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS bot_settings (
         name TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS bot_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL,
+        kind TEXT NOT NULL, text TEXT NOT NULL);
     `);
+  }
+
+  /** One line of what the bot did, for the app's activity feed; the last 2,000 are kept. */
+  addEvent(at: number, kind: BotEventKind, text: string) {
+    this.db
+      .prepare("INSERT INTO bot_events (at, kind, text) VALUES (?, ?, ?)")
+      .run(at, kind, text);
+    this.db
+      .prepare(
+        "DELETE FROM bot_events WHERE id <= (SELECT MAX(id) FROM bot_events) - 2000",
+      )
+      .run();
+  }
+
+  events(limit: number): BotEvent[] {
+    return this.db
+      .prepare("SELECT at, kind, text FROM bot_events ORDER BY id DESC LIMIT ?")
+      .all(limit) as unknown as BotEvent[];
   }
 
   close() {

@@ -67,6 +67,109 @@ function statusPill(v: BotView) {
   return <span className="pill green">On · trading the paper account</span>;
 }
 
+// How near a stock is to the signal: both bars full means a signal.
+const nearness = (r: { t: number; rvol: number }) =>
+  Math.min(r.t / 2, r.rvol / 1.5);
+
+function Meter({
+  value,
+  of,
+  label,
+}: {
+  value: number;
+  of: number;
+  label: string;
+}) {
+  const share = Math.min(1, value / of);
+  return (
+    <span className="bot-meter" title={label}>
+      <span className="bot-meter-bar">
+        <span
+          className={share >= 1 ? "bot-meter-fill full" : "bot-meter-fill"}
+          style={{ width: `${share * 100}%` }}
+        />
+      </span>
+      <span className="num">{label}</span>
+    </span>
+  );
+}
+
+/** Each stock's two conditions now, closest to a signal first. */
+function LiveScan({ scan }: { scan: BotView["scan"] }) {
+  if (scan.length === 0)
+    return (
+      <p className="muted">
+        The scan starts 10 minutes after the US open on trading days.
+      </p>
+    );
+  return (
+    <div className="bot-scan-wrap">
+      <table className="bot-scan">
+        <thead>
+          <tr>
+            <th>Stock</th>
+            <th>Leaning</th>
+            <th>Strength vs SPY (need t 2)</th>
+            <th>Volume vs normal (need 1.5×)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {scan.slice(0, 25).map((r) => (
+            <tr key={r.symbol} className={nearness(r) >= 1 ? "hot" : ""}>
+              <td>
+                <strong>{r.symbol}</strong>
+              </td>
+              <td>{r.side === "C" ? "up (call)" : "down (put)"}</td>
+              <td>
+                <Meter value={r.t} of={2} label={`t ${r.t.toFixed(1)}`} />
+              </td>
+              <td>
+                <Meter
+                  value={r.rvol}
+                  of={1.5}
+                  label={`${r.rvol.toFixed(1)}×`}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted small">
+        At {sessionTime(scan[0]!.minute)}. A stock signals the first minute both
+        bars are full; one signal per stock a day.
+      </p>
+    </div>
+  );
+}
+
+const kindLabel: Record<BotView["activity"][number]["kind"], string> = {
+  info: "•",
+  signal: "⚡",
+  skip: "–",
+  order: "$",
+  error: "!",
+};
+
+/** What the bot did, newest first. */
+function Activity({ items }: { items: BotView["activity"] }) {
+  if (items.length === 0) return <p className="muted">Nothing yet.</p>;
+  return (
+    <ul className="bot-activity">
+      {items.map((e, i) => (
+        <li key={`${e.at}-${i}`} className={`bot-ev ${e.kind}`}>
+          <span className="bot-ev-time num">
+            {israelShortDate(e.at)} {israelClock(e.at)}
+          </span>
+          <span className="bot-ev-kind" aria-hidden="true">
+            {kindLabel[e.kind]}
+          </span>
+          <span>{e.text}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function BotPanel() {
   const { value, error } = usePolling<BotView>("/api/bot", refreshMs, ignore);
   if (!value)
@@ -84,10 +187,21 @@ export function BotPanel() {
         {statusPill(value)}
       </div>
       <p className="muted">
-        C signal on {value.universe.length} stocks Indi traded in the past year
-        · delta {value.delta} · {value.sizePct}% of the account a trade · your
-        stop, winners up 100% held overnight.
+        Watching {value.watching.length} stocks: {value.universe.length} Indi
+        traded in the past year
+        {value.favorites
+          ? ` and your "${value.favorites.name}" list (${value.favorites.tickers.length})`
+          : " (no favorites list received yet)"}
+        . C signal · delta {value.delta} · {value.sizePct}% of the account a
+        trade · your stop, winners up 100% held overnight.
+        {value.lastRun !== null && ` Last check ${israelClock(value.lastRun)}.`}
       </p>
+
+      <h3>Live scan</h3>
+      <LiveScan scan={value.scan} />
+
+      <h3>Activity</h3>
+      <Activity items={value.activity} />
 
       <h3>Today's signals</h3>
       {value.signals.length === 0 ? (

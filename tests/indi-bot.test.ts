@@ -532,3 +532,34 @@ test("runner: when contracts leave the account by hand or by stop, the bot sells
   assert.equal(sells.length, 1);
   assert.equal(sells[0]!.body.qty, "13");
 });
+
+test("favorites: the named list, else the one called favorite; the bot adds it to its stocks", async () => {
+  const { favoritesList } = await import("../packages/trading/src/bot-api.js");
+  const lists = [
+    { name: "all", tickers: ["X"], builtIn: true as const },
+    { name: "Tech", tickers: ["MSFT"] },
+    { name: "⭐ Favorites", tickers: ["NVDA", "AMD", "spy"] },
+  ];
+  assert.equal(favoritesList(lists)?.name, "⭐ Favorites");
+  assert.equal(favoritesList(lists, "tech")?.name, "Tech");
+  assert.equal(favoritesList([{ name: "Tech", tickers: [] }]), undefined);
+  const h = harness("dry");
+  assert.deepEqual(
+    h.bot.setWatchlist("⭐ Favorites", ["nvda", "AMD", "SPY", "bad ticker!"]),
+    ["NVDA", "AMD"],
+  );
+  await h.run(DAY, 565, 600);
+  const s = h.bot.status();
+  assert.deepEqual(s.watching, ["NVDA", "AMD"]);
+  assert.equal(s.favorites?.name, "⭐ Favorites");
+  // The live scan has NVDA's numbers, and the activity feed tells the story.
+  assert.ok(s.scan.some((r) => r.symbol === "NVDA" && r.t >= 2));
+  const texts = s.activity.map((e) => e.text).join("\n");
+  assert.match(texts, /Favorites list "⭐ Favorites" received: 2 stocks/);
+  assert.match(
+    texts,
+    /Ready for 2026-10-21: watching 2 stocks \(1 from Indi's list, 1 more from "⭐ Favorites"\)/,
+  );
+  assert.match(texts, /NVDA call signal at/);
+  assert.match(texts, /NVDA call: would buy \(dry run\)/);
+});

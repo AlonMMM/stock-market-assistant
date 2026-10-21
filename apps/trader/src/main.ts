@@ -216,6 +216,19 @@ api.get("/v1/bot", async () => {
   if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
   return bot.status();
 });
+// The site sends the user's favorites list before each session.
+api.post("/v1/bot/watchlist", async (request) => {
+  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  const b = body(request.body);
+  if (typeof b.name !== "string" || !Array.isArray(b.tickers))
+    throw new RequestError("Need name and tickers");
+  return {
+    tickers: bot.setWatchlist(
+      b.name.slice(0, 40),
+      b.tickers.map(String).slice(0, 200),
+    ),
+  };
+});
 api.post("/v1/bot", async (request) => {
   if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
   const on = body(request.body).enabled;

@@ -177,3 +177,32 @@ function median(xs: readonly number[]): number {
   const mid = Math.floor(v.length / 2);
   return v.length % 2 ? v[mid]! : (v[mid - 1]! + v[mid]!) / 2;
 }
+
+/** Where a stock stands at minute `m` (for the live scan): signed t-stat and volume ratio. */
+export function cState(
+  day: readonly MinuteBar[],
+  spy: readonly MinuteBar[],
+  prior: Prior,
+  m: number,
+): { t: number; rvol: number } | null {
+  if (prior.curves.length < 10 || prior.beta === null || m < 1) return null;
+  const c = closes(day);
+  const s = closes(spy);
+  const steps: number[] = [];
+  for (let k = 1; k <= Math.min(m, SESSION - 1); k++) {
+    const ck = c[k],
+      c0 = c[k - 1],
+      sk = s[k],
+      s0 = s[k - 1];
+    if (ck && c0 && sk && s0)
+      steps.push(ck / c0 - 1 - prior.beta * (sk / s0 - 1));
+  }
+  if (steps.length < 2) return null;
+  const sd = pstdev(steps);
+  const t = sd ? (mean(steps) / sd) * Math.sqrt(steps.length) : 0;
+  const usual = median(
+    prior.curves.map((curve) => curve[Math.min(m, SESSION - 1)]!),
+  );
+  const cum = cumulativeVolume(day)[Math.min(m, SESSION - 1)]!;
+  return { t, rvol: usual ? cum / usual : 0 };
+}

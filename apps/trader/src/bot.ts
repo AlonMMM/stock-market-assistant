@@ -19,12 +19,13 @@ import {
 } from "../../../packages/trading/src/bot/picker.js";
 import {
   cSignal,
+  cState,
   priorFrom,
   type MinuteBar,
   type Prior,
 } from "../../../packages/trading/src/bot/signal.js";
 import type { OptionQuote } from "../../../packages/trading/src/options.js";
-import type { BotPosition, BotStore } from "./bot-store.js";
+import type { BotEventKind, BotPosition, BotStore } from "./bot-store.js";
 
 // The Indi bot (docs/tasks/backend-indi-bot.md): the backtested C signal on
 // the stocks Indi traded in the past year, a 0.15-delta contract 1–7 days out,
@@ -107,6 +108,21 @@ const reasonText: Record<ExitReason, string> = {
   "expiry-day": "Expiry day, out by 15:30",
 };
 
+// A signal's outcome in words (the app's Bot tab has the same list).
+const outcomeText: Record<string, string> = {
+  bought: "buying",
+  "would-buy": "would buy (dry run)",
+  no_expiry: "skipped, no expiry 1–7 days out",
+  no_strikes: "skipped, no strikes",
+  no_prices: "skipped, no prices",
+  too_cheap: "skipped, contract under $0.20",
+  too_small: "skipped, 2% buys less than one contract",
+  thin: "skipped, too few contracts traded",
+  held: "skipped, you hold this contract",
+  refused: "refused by the risk rules",
+  error: "failed",
+};
+
 function nextSession(date: string): string {
   let d = date;
   do
@@ -134,6 +150,14 @@ export class IndiBot {
   private done = -1; // the last session minute processed today
   private summarized: string | null = null;
   private busy = false;
+  // Today's stocks: the configured list and the user's favorites list.
+  private symbols: string[] = [];
+  // Where each stock stands at the last minute, for the live scan.
+  private scan = new Map<
+    string,
+    { side: "C" | "P"; t: number; rvol: number; minute: number }
+  >();
+  private lastWork: number | null = null;
 
   constructor(options: BotOptions) {
     this.o = {
@@ -154,7 +178,63 @@ export class IndiBot {
 
   setEnabled(on: boolean) {
     this.o.store.setSetting("enabled", String(on));
-    this.o.log(`bot switched ${on ? "on" : "off"}`);
+    this.event("info", `Switched ${on ? "on" : "off"}`);
+  }
+
+  /** The user's favorites list, sent by the site before each session. */
+  setWatchlist(name: string, tickers: string[]) {
+    const clean = [
+      ...new Set(
+        tickers
+          .map((t) => t.toUpperCase())
+          .filter((t) => /^[A-Z.]{1,6}$/.test(t) && t !== "SPY"),
+      ),
+    ];
+    const before = this.o.store.setting("watchlist");
+    const value = JSON.stringify({ name, tickers: clean, at: this.o.now() });
+    this.o.store.setSetting("watchlist", value);
+    const was = before ? (JSON.parse(before) as { tickers: string[] }) : null;
+    if (!was || was.tickers.join() !== clean.join())
+      this.event(
+        "info",
+        `Favorites list "${name}" received: ${clean.length} stocks (${clean.join(", ")})`,
+      );
+    return clean;
+  }
+
+  private watchlist(): { name: string; tickers: string[]; at: number } | null {
+    const saved = this.o.store.setting("watchlist");
+    return saved ? JSON.parse(saved) : null;
+  }
+
+  /** The configured stocks and the favorites list, without duplicates. */
+  private universe(): string[] {
+    return [
+      ...new Set([...this.o.universe, ...(this.watchlist()?.tickers ?? [])]),
+    ];
+  }
+
+  private event(kind: BotEventKind, text: string) {
+    this.o.store.addEvent(this.o.now(), kind, text);
+    this.o.log(`bot: ${text}`);
+  }
+
+  /** A signal's outcome, also written to the activity feed. */
+  private outcome(
+    date: string,
+    symbol: string,
+    outcome: string,
+    detail: string,
+  ) {
+    this.o.store.updateSignal(date, symbol, outcome, detail);
+    const s = this.o.store.signal(date, symbol);
+    const what = outcomeText[outcome] ?? outcome;
+    const kind: BotEventKind =
+      outcome === "bought" || outcome === "would-buy" ? "order" : "skip";
+    this.event(
+      kind,
+      `${symbol} ${s?.right === "P" ? "put" : "call"}: ${what}${detail ? ` (${detail})` : ""}`,
+    );
   }
 
   /** Called every few seconds; does each closed minute's work once. */
@@ -164,8 +244,9 @@ export class IndiBot {
     try {
       await this.work();
     } catch (error) {
-      this.o.log(
-        `bot tick failed: ${error instanceof Error ? error.message : String(error)}`,
+      this.event(
+        "error",
+        `Tick failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     } finally {
       this.busy = false;
@@ -179,6 +260,7 @@ export class IndiBot {
     if (close === null) return;
     const closeMinute = close - 570; // session minutes in today's session
     if (wall < 565 || wall > close + 15) return;
+    this.lastWork = now;
     if (this.day !== date) await this.warmUp(date);
     // A minute's bar is complete once the next minute has started.
     const last = Math.min(wall - 570 - 1, closeMinute - 1);
@@ -198,7 +280,8 @@ export class IndiBot {
   }
 
   private async warmUp(date: string) {
-    const symbols = [...this.o.universe, "SPY"];
+    this.symbols = this.universe();
+    const symbols = [...this.symbols, "SPY"];
     const days = previousSessions(date, 20);
     const bars = await this.o.market.sessions(symbols, days);
     const spy = bars.get("SPY") ?? new Map<string, MinuteBar[]>();
@@ -219,13 +302,19 @@ export class IndiBot {
       if (lastDay?.length) this.priorClose.set(s, lastDay.at(-1)!.c);
     }
     this.today.clear();
+    this.scan.clear();
     this.done = -1;
     this.day = date;
-    this.o.log(`bot warmed up for ${date}: ${symbols.length} symbols`);
+    const fav = this.watchlist();
+    const extra = this.symbols.length - this.o.universe.length;
+    this.event(
+      "info",
+      `Ready for ${date}: watching ${this.symbols.length} stocks (${this.o.universe.length} from Indi's list${fav ? `, ${extra} more from "${fav.name}"` : ""})`,
+    );
   }
 
   private async refresh(date: string, from: number, to: number) {
-    const symbols = [...this.o.universe, "SPY"];
+    const symbols = [...this.symbols, "SPY"];
     const got = await this.o.market.bars(symbols, date, from, to);
     for (const [s, list] of got) {
       let byMinute = this.today.get(s);
@@ -250,10 +339,18 @@ export class IndiBot {
   private async entries(date: string, m: number, closeMinute: number) {
     if (m < 10 || m > Math.min(374, closeMinute - 16)) return;
     const spy = this.barsOf("SPY");
-    for (const symbol of this.o.universe) {
-      if (this.o.store.signal(date, symbol)) continue;
+    for (const symbol of this.symbols) {
       const prior = this.prior.get(symbol);
       if (!prior) continue;
+      const now = cState(this.barsOf(symbol), spy, prior, m);
+      if (now)
+        this.scan.set(symbol, {
+          side: now.t < 0 ? "P" : "C",
+          t: Math.abs(now.t),
+          rvol: now.rvol,
+          minute: m,
+        });
+      if (this.o.store.signal(date, symbol)) continue;
       const sig = cSignal(this.barsOf(symbol), spy, prior, m);
       // Only a signal of this minute (or one missed by a slow minute) trades.
       if (!sig || sig.minute < m - 2) continue;
@@ -269,6 +366,11 @@ export class IndiBot {
         at: this.o.now(),
       });
       if (added)
+        this.event(
+          "signal",
+          `${symbol} ${sig.right === "C" ? "call" : "put"} signal at ${clock(sig.minute)}: strength t ${sig.t.toFixed(1)}, volume ${sig.rvol.toFixed(1)}× normal`,
+        );
+      if (added)
         await this.enter(
           date,
           symbol,
@@ -278,8 +380,7 @@ export class IndiBot {
           sig.rvol,
         ).catch((error) => {
           const why = error instanceof Error ? error.message : String(error);
-          this.o.store.updateSignal(date, symbol, "error", why);
-          this.o.log(`bot entry ${symbol} failed: ${why}`);
+          this.outcome(date, symbol, "error", why);
         });
     }
   }
@@ -294,12 +395,7 @@ export class IndiBot {
   ) {
     const spot = this.lastClose(symbol, minute);
     if (spot === null)
-      return this.o.store.updateSignal(
-        date,
-        symbol,
-        "no_prices",
-        "no stock price",
-      );
+      return this.outcome(date, symbol, "no_prices", "no stock price");
     const side = right === "C" ? "call" : "put";
     const [from, to] = expiryWindow(date, this.o.pick);
     const picked = pickContract(
@@ -309,12 +405,11 @@ export class IndiBot {
       date,
       this.o.pick,
     );
-    if (!picked.ok)
-      return this.o.store.updateSignal(date, symbol, picked.reason, "");
+    if (!picked.ok) return this.outcome(date, symbol, picked.reason, "");
     const contract = picked.quote.symbol;
     const volume = await this.o.market.optionVolume30(contract, date, minute);
     if (volume < this.o.pick.minVolume30)
-      return this.o.store.updateSignal(
+      return this.outcome(
         date,
         symbol,
         "thin",
@@ -322,7 +417,7 @@ export class IndiBot {
       );
     // A contract the account already holds is the user's; the bot leaves it alone.
     if (await this.o.trading.held(contract))
-      return this.o.store.updateSignal(
+      return this.outcome(
         date,
         symbol,
         "held",
@@ -357,14 +452,14 @@ export class IndiBot {
         (equity * this.o.sizePct) / 100 / (picked.mid * 100),
       );
       if (qty < 1)
-        return this.o.store.updateSignal(
+        return this.outcome(
           date,
           symbol,
           "too_small",
           `${contract} at ${picked.mid.toFixed(2)}`,
         );
       this.o.store.savePosition({ ...base, qty, bought: qty, status: "open" });
-      this.o.store.updateSignal(
+      this.outcome(
         date,
         symbol,
         "would-buy",
@@ -385,19 +480,14 @@ export class IndiBot {
       note: why,
     });
     if (answer.status !== "started" || !answer.jobId)
-      return this.o.store.updateSignal(
+      return this.outcome(
         date,
         symbol,
         "refused",
         (answer.refused ?? []).join("; "),
       );
     this.o.store.savePosition({ ...base, jobId: answer.jobId });
-    this.o.store.updateSignal(
-      date,
-      symbol,
-      "bought",
-      `${answer.qty ?? "?"} ${contract}`,
-    );
+    this.outcome(date, symbol, "bought", `${answer.qty ?? "?"} ${contract}`);
   }
 
   // ---- buys and sales that are still working ----
@@ -415,6 +505,10 @@ export class IndiBot {
             status: "closed",
             closedAt: this.o.now(),
           });
+          this.event(
+            "skip",
+            `${p.symbol} ${contractLabel(p.contract)}: the buy did not fill`,
+          );
           continue;
         }
         this.o.store.savePosition({
@@ -425,6 +519,10 @@ export class IndiBot {
           cost: held.avgEntryPrice,
           jobId: null,
         });
+        this.event(
+          "order",
+          `Bought ${held.qty} ${p.symbol} ${contractLabel(p.contract)} at ${held.avgEntryPrice.toFixed(2)}`,
+        );
         continue;
       }
       const pending = p.sales.find((s) => s.jobId !== null && !s.settled);
@@ -436,6 +534,10 @@ export class IndiBot {
         const qty = Math.max(0, Math.min(p.qty - sold, held?.qty ?? 0));
         const sales = p.sales.map((s) =>
           s === pending ? { ...s, qty: sold, settled: true } : s,
+        );
+        this.event(
+          "order",
+          `Sold ${sold} ${p.symbol} ${contractLabel(p.contract)} (${reasonText[pending.reason as ExitReason] ?? pending.reason}); ${qty} left`,
         );
         this.o.store.savePosition({
           ...p,
@@ -451,6 +553,11 @@ export class IndiBot {
       if (p.status === "open") {
         const held = await this.o.trading.held(p.contract);
         const qty = Math.min(p.qty, held?.qty ?? 0);
+        if (qty < p.qty)
+          this.event(
+            "info",
+            `${p.symbol} ${contractLabel(p.contract)}: the account holds ${qty}, so the bot counts ${qty} (was ${p.qty}): a stop or a sale by hand`,
+          );
         if (qty < p.qty)
           this.o.store.savePosition({
             ...p,
@@ -508,6 +615,10 @@ export class IndiBot {
       };
       if (decision.reason === "carry") {
         this.o.store.savePosition(next);
+        this.event(
+          "order",
+          `Holding ${p.qty} ${p.symbol} ${contractLabel(p.contract)} overnight (up 100% or more)`,
+        );
         await this.o.notify(`${botTag}: held overnight`, [
           `$${p.symbol} ${contractLabel(p.contract)}`,
           `${p.qty} contracts, ${mid === null ? "" : `up ${((mid / p.cost - 1) * 100).toFixed(0)}%`}`,
@@ -517,6 +628,12 @@ export class IndiBot {
       if (decision.sell <= 0 || !decision.reason) {
         if (Object.keys(decision.update).length)
           this.o.store.savePosition(next);
+        const passed = decision.update.checksDone?.at(-1);
+        if (passed !== undefined)
+          this.event(
+            "info",
+            `${rules.checks[passed]![0]}-min check: ${p.symbol} is with the entry, holding ${p.qty}`,
+          );
         continue;
       }
       await this.sell(next, decision.sell, decision.reason, mid);
@@ -545,6 +662,10 @@ export class IndiBot {
       });
       const pnl =
         mid === null ? "" : ` (${((mid / p.cost - 1) * 100).toFixed(0)}%)`;
+      this.event(
+        "order",
+        `Would sell ${ask} of ${p.qty} ${p.symbol} ${contractLabel(p.contract)} at ${mid?.toFixed(2) ?? "—"}${pnl}: ${reasonText[reason]}`,
+      );
       await this.o.notify(`${botTag} (dry run): would sell`, [
         `$${p.symbol} ${contractLabel(p.contract)}`,
         `${ask} of ${p.qty} at ${mid?.toFixed(2) ?? "—"}${pnl}`,
@@ -565,7 +686,10 @@ export class IndiBot {
         error: error instanceof Error ? error.message : String(error),
       }));
     if (answer.status !== "started" || !("jobId" in answer) || !answer.jobId) {
-      this.o.log(`bot sell ${p.contract} failed: ${JSON.stringify(answer)}`);
+      this.event(
+        "error",
+        `Selling ${p.symbol} ${contractLabel(p.contract)} failed: ${"error" in answer ? answer.error : answer.status}`,
+      );
       this.o.store.savePosition(p);
       return;
     }
@@ -576,6 +700,10 @@ export class IndiBot {
         { at: this.o.now(), qty: ask, reason, jobId: answer.jobId },
       ],
     });
+    this.event(
+      "order",
+      `Selling ${ask} of ${p.qty} ${p.symbol} ${contractLabel(p.contract)}: ${reasonText[reason]}`,
+    );
   }
 
   // ---- reporting ----
@@ -594,6 +722,7 @@ export class IndiBot {
           `$${p.symbol} ${contractLabel(p.contract)}: ${standing(p, date)}`,
       ),
     ];
+    this.event("info", `Day summary: ${lines.join("; ")}`);
     await this.o.notify(`${botTag}: day summary ${date}`, lines);
   }
 
@@ -607,11 +736,24 @@ export class IndiBot {
       sizePct: this.o.sizePct,
       delta: this.o.pick.delta,
       universe: this.o.universe,
+      favorites: this.watchlist(),
+      watching: this.symbols.length ? this.symbols : this.universe(),
+      lastRun: this.lastWork,
       day,
+      scan: [...this.scan]
+        .map(([symbol, v]) => ({ symbol, ...v }))
+        // Closest to a signal first: the weaker of the two conditions.
+        .sort((a, b) => closeness(b) - closeness(a)),
       signals: this.o.store.signals(day),
       positions: this.o.store.recentPositions(since),
+      activity: this.o.store.events(150),
     };
   }
+}
+
+// How near a stock is to the signal: 1 means both conditions hold.
+function closeness(v: { t: number; rvol: number }): number {
+  return Math.min(v.t / 2, v.rvol / 1.5);
 }
 
 // How a position ends the day, for the summary.

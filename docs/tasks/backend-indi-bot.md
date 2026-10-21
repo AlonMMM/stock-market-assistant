@@ -18,6 +18,13 @@ own, marked 🤖 Bot. The point is the paper test: real fills, real drawdown, ne
 - 2% of the current account per trade.
 - Telegram: the same chat, posts marked 🤖 Bot.
 
+## User-confirmed (2026-10-21, second round)
+
+- The bot's buys go through the same validation and risk manager as the user's (they do: below).
+- The platform auto stop at −50% stays on besides the strategy's own exits.
+- The bot also trades the user's favorites watchlist, updated before each session.
+- The app shows what the bot does live, not only its trades.
+
 ## Rules (as backtested; parity checked)
 
 - **Stocks:** `config/bot-universe.json`, stocks Indi opened options on at least twice in the past 12 months, without
@@ -51,6 +58,44 @@ own, marked 🤖 Bot. The point is the paper test: real fills, real drawdown, ne
   backtest filled them late or forced them out.
 - Both scripts need the local cache (`data/local/x/bt`, not in Git).
 
+## Risk management and validation
+
+Every bot buy is an ordinary `TraderService.buy`, so it passes the owner's validator (`owner-v1`) and the engine's
+checks, exactly like a buy from the Trade page or Claude. Any of them can refuse it. The signal then shows
+"refused by the risk rules", with the reason, in the Bot tab and its activity feed.
+
+- **Buy limits (`defaultBuyLimits`):**
+  - at most 10 buys a day (shared with the user's);
+  - open risk at most 10% of equity;
+  - one position at most 5%;
+  - no buys after a 5% day loss;
+  - spread at most 25% of the mid;
+  - quotes no older than 2 minutes.
+- **Indi's risk manager:**
+  - risk per trade 5% and per day 7% (premium × the share lost by days to expiry, so 1.4–1.8% for a 2% buy);
+  - after a 12.5% drop from the high, the brake: 2% / 3%; in recovery, 3% / 5%.
+- **Engine checks:** paper account only, the global switch, never short.
+
+## Universe: Indi's list and the favorites
+
+- `config/bot-universe.json` plus the user's favorites watchlist. That is the list named in the Worker's
+  `BOT_WATCHLIST`, or else the first list whose name has "fav" or a star; SPY is dropped.
+- The site's cron sends it to `POST /v1/bot/watchlist` every minute from 08:30 to 09:24 New York. The bot reads
+  it when it warms up at 09:25, so a list changed during the session counts from the next session.
+
+## What the app shows live
+
+The Portfolio → 🤖 Bot tab refreshes every 15 seconds and shows:
+
+- status and the last check time;
+- the stocks watched and where they come from;
+- a **live scan**: each stock's leaning, strength t (2 needed) and volume ratio (1.5× needed), as bars, closest to
+  a signal first;
+- today's signals and what came of them;
+- holdings and closed trades;
+- an **activity feed** (`bot_events`, last 2,000): warm-up, lists received, every signal, every skip and why, every
+  check passed, buys, sales, overnight holds, the day summary, errors.
+
 ## Design
 
 - `apps/trader/src/bot.ts` (`IndiBot`) runs inside the trading service and ticks every 15 seconds.
@@ -80,7 +125,8 @@ own, marked 🤖 Bot. The point is the paper test: real fills, real drawdown, ne
 
 ## Verification evidence
 
-- `tests/indi-bot.test.ts` (synthetic data) covers:
+- `tests/indi-bot.test.ts` (synthetic data) covers the favorites (pick, merge, cleaning), the live scan and the
+  activity feed, and:
   - the signal: call, put, normal volume, too few prior days;
   - every exit rule;
   - the picker;
