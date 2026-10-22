@@ -12,6 +12,7 @@ import type { Decision } from "../../../packages/trading/src/explain.js";
 import { usePolling } from "./Live.js";
 import { OrderActions, StopMover } from "./OrderControls.js";
 import { BotChip, BotPanel, useBotContracts } from "./BotPanel.js";
+import { BotSettingsPage } from "./BotSettings.js";
 import { Orders, useDecisions, WhyButton } from "./Orders.js";
 import { PositionList, useControlAccess } from "./Positions.js";
 import { positionNumbers } from "./positions-model.js";
@@ -404,13 +405,21 @@ export function Portfolio({
         ) : tab === "orders" ? (
           <Orders onError={ignore} />
         ) : tab === "bot" ? (
-          <BotPanel />
+          <BotTab canChange={canTrade} />
         ) : (
           <History onError={ignore} />
         )}
       </section>
     </div>
   );
+}
+
+/** The Bot tab; the account owner can open the bot's settings from it. */
+function BotTab({ canChange }: { canChange: boolean }) {
+  const [settings, setSettings] = useState(false);
+  if (!canChange) return <BotPanel />;
+  if (settings) return <BotSettingsPage onBack={() => setSettings(false)} />;
+  return <BotPanel onSettings={() => setSettings(true)} />;
 }
 
 /** The Alpaca account now: totals, open positions and working orders. */
