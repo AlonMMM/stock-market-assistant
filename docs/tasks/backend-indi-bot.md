@@ -133,16 +133,20 @@ checks, exactly like a buy from the Trade page or Claude. Any of them can refuse
 
 ## What the app shows live
 
-The Portfolio → 🤖 Bot tab refreshes every 15 seconds and shows:
+The Portfolio → 🤖 Bot tab is read-only and shown to every signed-in user (only the Trade tab is
+owner-only). It refreshes every 15 seconds and shows:
 
-- status and the last check time;
-- the stocks watched and where they come from;
-- a **live scan**: each stock's leaning, strength t (2 needed) and volume ratio (1.5× needed), as bars, closest to
-  a signal first;
-- today's signals and what came of them;
-- holdings and closed trades;
-- an **activity feed** (`bot_events`, last 2,000): warm-up, lists received, every signal, every skip and why, every
-  check passed, buys, sales, overnight holds, the day summary, errors.
+- status, settings and how long ago the bot last checked;
+- **today's session**: a strip from the open to the close in Israel time with the entry window, the day
+  exit, a mark per signal and a now line, plus what the bot is doing at this moment;
+- a **funnel**: stocks watched → close to a signal (75%+ of both checks) → signals → bought;
+- **what the bot sees**: a signal map with every stock placed by volume vs normal (x) and strength vs
+  SPY (y, up for a call and down for a put), the two signal corners shaded, today's signals ringed and
+  news-blocked stocks hollow; a tap shows the stock's two meters and what it still needs. Beside it, the
+  stocks as rows with the same two meters, closest first;
+- **holding**: each open position with its exits ahead (10- and 20-minute checks or the morning rule, the
+  day exit, the standing −30% rule), each marked done, next or later;
+- today's signals and their outcome, the activity feed (`bot_events`), closed trades and the rules.
 
 ## Design
 
