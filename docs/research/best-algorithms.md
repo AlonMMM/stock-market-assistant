@@ -47,6 +47,10 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 - IV filters (own IV rank, low-IV stocks, IV / realized vol): about the same as trading less; fail at 0.10 and unseen.
 - Rolling out when the stock nears the strike fast (to delta 0.15 or 0.30): $161K – $206K; it sells the big winners.
+- Rolling again on t >= 1.8 (`roll2.py`): "fast" as a share of the time to expiry (10% / 25%), the stock 50% / 25% of
+  the way left to the strike, sell 25% / 50% of the contract into a delta 0.30 roll funded by its cost or its
+  proceeds (16 versions): $335K – $509K vs $585,592, and worse on the unseen in every version. The fast movers are
+  the future +1000% trades; the 0.30 contract makes a smaller % on the same move.
 - Overnight: no hold after a 5/10-minute premium drop; a 3–5% cap on what goes into the night: all worse or mixed.
 - Give-back locks 200 → 50 and 300 → 100, trails 100/50, 200/40, 300/50, the ladder: worse or worse on the unseen.
 - End-of-day entries for tomorrow (volume-free strength vs SPY, near the high): lose 2024 and 2025.
