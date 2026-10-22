@@ -29,7 +29,7 @@ def day(d):
 
 
 def main(a="2022-12-01", b="2026-12-31"):
-    want = set(P["universe_wide"]) | set(P["universe"]); out = {}
+    want = set(P["universe_wide"]) | set(P["universe"]) | set(P.get("universe_fav", [])); out = {}
     d = dt.date.fromisoformat(a)
     while d.isoformat() <= b:
         if d.weekday() < 5:

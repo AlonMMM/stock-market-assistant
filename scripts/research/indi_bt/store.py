@@ -12,6 +12,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 P = json.load(open(os.path.join(HERE, "params.json")))
 if os.environ.get("BT_UNIVERSE") == "wide":  # his 40 + S&P 100 + Nasdaq-100 (members as of Jan 2024)
     P["universe"] = P["universe_wide"]
+if os.environ.get("BT_UNIVERSE") == "fav":  # the user's favorites watchlist in the app (2026-10-22)
+    P["universe"] = P["universe_fav"]
 DATA = os.environ.get("BT_DATA", "data/local/x/bt")
 os.makedirs(DATA, exist_ok=True)
 db = sqlite3.connect(os.path.join(DATA, "market.sqlite"), timeout=120)

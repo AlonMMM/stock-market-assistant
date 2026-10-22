@@ -18,20 +18,18 @@ A version beats the champion only when **all** hold, on the same period (Feb 202
 
 ## Champion
 
-| Since      | Version                                                                                                                                          | Fair list: end / worst drop / years           | 151 unseen: end / worst drop |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------- | ---------------------------- |
-| 2026-10-21 | **V1 + news filter**: V1, but no entry on the stock's earnings reaction day, and none when its pre-market volume is 4× or more its 20-day median | $297,160 / 16% / +2,637 +1,687 +1,448 a trade | $121,443 / 11%               |
+| Since      | Version                                                                                                                                                                                         | Fair list: end / worst drop / years           | 151 unseen: end / worst drop |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ---------------------------- |
+| 2026-10-22 | **News filter + t ≥ 1.8**: the C signal with t ≥ 1.8 (not 2.0) and day volume ≥ 1.5×, no entry on earnings reaction days or with pre-market volume ≥ 4×, delta 0.15, your stop + overnight hold | $585,592 / 11% / +2,762 +2,039 +2,699 a trade | $123,028 / 11%               |
 
-- At 2% a trade: $688,039 / 30% worst drop (V1 $499,412 / 46%).
-- It holds at delta 0.10 too: fair list $503,674 / 15% (V1 $495,349 / 23%), unseen $102,663 / 9% (V1 $86,369 / 20%).
-- Each half alone also helps on both lists and both deltas. The cut-offs (reaction day, pre-market 4×) are the
-  buckets of the entry-context study of his trades, set before these runs; the unseen stocks and delta 0.10 were
-  not used to pick them.
-- With the give-back guard 500 → 200 on top: $317,326 / 15%, unseen $122,929 / 11%; the guard stays fragile (it
-  does not hold at 0.10 on its own).
-- Also skipping a pre-market move of 3% or more our way does more at 0.15 ($311,994 / 15%) but fails at 0.10
-  ($300,367 vs $503,674), so it is left out.
-- Needs in the bot: the earnings calendar and pre-market 5-minute bars before 09:30. Not in the paper bot yet.
+- At 2% a trade: $2,444,629 / 21% (news filter at t ≥ 2: $688,039 / 30%).
+- It holds at delta 0.10: $808,028 / 13% (t ≥ 2: $503,674 / 15%), unseen $104,830 / 6% (t ≥ 2: $102,663 / 9%).
+- Without the 5 best trades a year it is better in 2025 and 2026 (+$39K / -$139K vs -$167K / -$350K).
+- Picked from a 4 × 5 grid (t 1.7-2.0 × volume 1.2-1.7). Its neighbour t ≥ 1.9 also beats t ≥ 2 on both lists at both
+  deltas ($426,571 / $128,979 at 0.15), so the gain is a band, not one cell. Lower volume cut-offs (1.2-1.3) do more on
+  the fair list but worse on the unseen; t ≥ 1.7 falls on the unseen.
+
+The previous champion, the news filter at t ≥ 2: $297,160 / 16%, unseen $121,443 / 11%.
 
 V1 (C signal t ≥ 2 vs SPY × β, day volume ≥ 1.5×, delta 0.15, your stop + overnight hold for winners ≥ +100%) is the
 paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
@@ -42,7 +40,8 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 | ---------- | ---------------------------------------------------------------------- | --------------------------- | -------------- | ------------------------------------------------------- | ----------------------------------------------- |
 | 2026-10-21 | V1                                                                     | $257,698 / 26%              | $107,869 / 21% | —                                                       | paper bot (deploy pending)                      |
 | 2026-10-21 | V1 + guard 500 → 200                                                   | $278,941 / 25%              | $109,188 / 20% | +$21K, −1 pt drop; unseen +$1K                          | champion until the news filter; fragile at 0.10 |
-| 2026-10-21 | V1 + news filter (no earnings reaction day, no pre-market volume ≥ 4×) | $297,160 / 16%              | $121,443 / 11% | +$18K, −9 pts drop; unseen +$12K, −9 pts; holds at 0.10 | 🏆 champion (backtest only)                     |
+| 2026-10-21 | V1 + news filter (no earnings reaction day, no pre-market volume ≥ 4×) | $297,160 / 16%              | $121,443 / 11% | +$18K, −9 pts drop; unseen +$12K, −9 pts; holds at 0.10 | champion until t ≥ 1.8                          |
+| 2026-10-22 | News filter + t ≥ 1.8 (volume ≥ 1.5×)                                  | $585,592 / 11%              | $123,028 / 11% | +$288K, −5 pts drop; unseen +$2K; holds at 0.10         | 🏆 champion (backtest only)                     |
 
 ## Tested, not better (V2, 2026-10-21)
 
@@ -68,6 +67,9 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Candidates
 
+- Sector-relaxed thresholds (t 1.5 / volume 1.2, or 1.7 / 1.3, when the sector ETF is 0.3% our way): worse or worse on
+  the unseen ($264,568 / $380,820 / $297,768 fair; $119,808 / $103,173 / $122,185 unseen, with bigger drops).
+- A $0.10 minimum price: worse at 0.15; better-looking at 0.10 but the backtest's 2% cost is far too low for $0.10 options.
 - 0DTE in Indi's range (delta 0.20 / 0.25 / 0.30, first hour or 14:30-15:30 New York, SPY filter at ±0.5%; 352 strategy
   results): the SPY filter helps a little (median fair end $98,672 vs $96,028; 5 of the 6 steady ones use it); the late
   window does not work for us (median $93,720, none steady); 0.30 is the only delta with steady results; Fridays make

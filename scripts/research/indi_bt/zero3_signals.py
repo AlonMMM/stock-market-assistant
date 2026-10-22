@@ -97,7 +97,7 @@ def main():
         rows = sorted((r for p in parts for r in p[name]), key=lambda r: (r["date"], r["sym"]))
         for y in SPAN:
             ys = [r for r in rows if r["date"][:4] == y]
-            with open(f"{B}/z3_sig_{name}_{WIN}_{y}.csv", "w") as f:
+            with open(f"{B}/z3{os.environ.get('Z_TAG', '')}_sig_{name}_{WIN}_{y}.csv", "w") as f:
                 w = csv.DictWriter(f, fieldnames=list(ys[0])); w.writeheader(); w.writerows(ys)
             print(name, y, len(ys), flush=True)
 

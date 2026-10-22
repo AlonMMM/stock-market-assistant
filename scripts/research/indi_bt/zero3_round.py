@@ -17,10 +17,12 @@ EXITS = {
     "X11": dict(H, expiry_last_minute=385, floor=-0.4, takes=[[0.5, 1 / 3], [1.0, 1 / 3]], trail=0.3,  # his way: out at -25% from minute 5, + thirds
                 user_stop={"every": {"from": 5, "to": 400, "share": 1.0, "opt": -0.25}, "checks": [], "out": -0.4}),
 }
-ENTRIES = ["E1", "E2", "E5", "E6"]
-WINS = ["early", "late"]
-DELTAS = [0.20, 0.25, 0.30]
-FILLS = ["close", "open"]
+ENTRIES = os.environ.get("ZR_ENTRIES", "E1,E2,E5,E6").split(",")
+WINS = os.environ.get("ZR_WINS", "early,late").split(",")
+DELTAS = [float(x) for x in os.environ.get("ZR_DELTAS", "0.20,0.25,0.30").split(",")]
+FILLS = os.environ.get("ZR_FILLS", "close,open").split(",")
+TAG = os.environ.get("Z_TAG", "")  # another stock list: its signals and results carry this tag
+UNI = os.environ.get("BT_UNIVERSE", "wide")
 
 
 def main():
@@ -30,13 +32,13 @@ def main():
             for x, X in EXITS.items():
                 for d in DELTAS:
                     for fill in FILLS:
-                        env = dict(os.environ, BT_VARIANT="v2", BT_UNIVERSE="wide", BT_FLAT="1", BT_EXIT=json.dumps(X), BT_FILL=fill,
+                        env = dict(os.environ, BT_VARIANT="v2", BT_UNIVERSE=UNI, BT_FLAT="1", BT_EXIT=json.dumps(X), BT_FILL=fill,
                                    BT_CONTRACT=json.dumps({"dte_min": 0, "dte_max": 0, "delta": d}))
                         for y in ("2024", "2025", "2026"):
-                            out = f"{B}/z3_{e}_{w}_{x}_d{int(d * 100)}_{fill}_{y}"
+                            out = f"{B}/z3{TAG}_{e}_{w}_{x}_d{int(d * 100)}_{fill}_{y}"
                             if all(os.path.exists(f"{out}.{i}_trades.csv") for i in range(4)): continue
                             for i in range(4):
-                                jobs.append((["node", "--env-file=.env", R, "tiers.py", f"{B}/z3_sig_{e}_{w}_{y}.csv", out, f"{i}/4"], f"{out}.{i}.log", env))
+                                jobs.append((["node", "--env-file=.env", R, "tiers.py", f"{B}/z3{TAG}_sig_{e}_{w}_{y}.csv", out, f"{i}/4"], f"{out}.{i}.log", env))
     print(len(jobs), "jobs", flush=True)
     running = []
     while jobs or running:
