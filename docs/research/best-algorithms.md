@@ -62,6 +62,9 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   it, or a new day extreme), on t >= 1.8: $507K-$555K vs $585,592, worse on the unseen; the false recoveries cost more
   than the real ones bring. Each bought-back part runs as a new entry (its own +10 / +20 checks, -30%, overnight hold);
   up to 3 buy-back cycles: $510K and $556K, no better.
+- No trade when the contract's IV at entry is >= 100% (`iv_cap.py`), on t >= 1.8: fair list $560,872 / 11% vs $585,592
+  (cuts 119 trades, 28 winners, net +$398 per trade thanks to ASTS); unseen $126,141 vs $123,028; delta 0.10 $789K vs
+  $808K. Caps at 80-200%: none clearly better; 150% looks good at 0.10 only (fragile).
 - 0DTE allowed in the champion: worse (doubles the worst drop; loses 2025 and 2026).
 - A separate 0DTE strategy (expiry days only, entries 09:40-12:30 New York, V1 or lower thresholds, with or without a
   breakout; exits checked every minute: option stops, trails, half at +100%, your stop + trail, F4; delta 0.15 / 0.30;
