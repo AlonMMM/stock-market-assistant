@@ -85,8 +85,15 @@ def run(rows, prefix, shard=0, shards=1):
             add = leg(t, tm, sym, exp, cal)
             if add:
                 L.append(dict(kind="add_" + nt, minute=tm, contract=sym, premium=(RISK[nt] - size) * UNIT, **add)); size = RISK[nt]
-        rb = rebuy(t, m, base, sym, exp, cal)  # BT_REBUY: buy back what a stock check sold once the stock turns our way
-        if rb: L.append(dict(kind="rebuy", minute=rb[0], contract=sym, premium=L[0]["premium"] * rb[1], **rb[2]))
+        # BT_REBUY: buy back what a stock check sold once the stock turns our way; the bought-back part is a new
+        # entry with its own checks, and (with "cycles") may be bought back again after its own checks sell it
+        src, src_m, src_prem = base, m, L[0]["premium"]
+        for _ in range((REBUY or {}).get("cycles", 1)):
+            rb = rebuy(t, src_m, src, sym, exp, cal)
+            if not rb: break
+            src_prem *= rb[1]
+            L.append(dict(kind="rebuy", minute=rb[0], contract=sym, premium=src_prem, **rb[2]))
+            src, src_m = rb[2], rb[0]
         roll = next((s for s in base["steps"] if s[5] == "R_roll"), None)
         if roll:
             profit = L[0]["premium"] * (roll[4] / base["cost"] - 1)
