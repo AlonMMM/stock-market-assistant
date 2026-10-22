@@ -56,6 +56,13 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 - Selling 25% at +150% and 25% at +250%: $142,572 / 20%. Carried-day trailing stops (25 / 40 / 50%): worse.
 - False alarms (the stock or SPY against the bet at the signal): only 3 of 820 trades; filters do not help.
 - 0DTE allowed in the champion: worse (doubles the worst drop; loses 2025 and 2026).
+- A separate 0DTE strategy (expiry days only, entries 09:40-12:30 New York, V1 or lower thresholds, with or without a
+  breakout; exits checked every minute: option stops, trails, half at +100%, your stop + trail, F4; delta 0.15 / 0.30;
+  32 + 6 runs): the best balanced one makes $109,397 / 11% on the fair list over 2.7 years and loses 2025; the 151
+  unseen lose with every version. F4 + breakout ($152,567) rests on a few 2024 trades with 12% winners.
+- Wait 5 minutes, then check every minute for the half (F1-F4): F1 / F3 (stock against) help the unseen ($133,098 /
+  8%) but cost about 20% on the fair list; F4 (option -15%) ends higher at the same size ($315,345 / 19%) but loses at
+  equal worst drop (F4 at 1.75% $630,783 / 31% vs the champion at 2% $688,039 / 30%) and on the unseen.
 - Selling half at the first minute the stock is against the entry (instead of the +10 / +20 checks): $183K – $207K.
 - Overnight caps: 5% and 10% cost a lot; 15–20% cost nothing at 0.15 but do not cut the worst drop (kept as a safety idea).
 

@@ -14,15 +14,22 @@ EXITS = {
     "s30t25": dict(NO_USER, floor=-0.3, guard={"arm": 0.3, "trail": 0.25}),  # tighter
     "half100": dict(NO_USER, floor=-0.5, takes=[[1.0, 0.5]], trail=0.3),       # half at +100%, the rest trails 30%; -50% out
     "user_t35": dict(H, guard={"arm": 0.5, "trail": 0.35}),                    # your stop (stock checks) + trail after +50%
+    # wait 5 minutes, then every minute: half out on the option's own drop (F4) or the stock against (F1)
+    "f4": dict(H, user_stop={"every": {"from": 5, "to": 60, "share": 0.5, "opt": -0.15}, "checks": [], "out": -0.30}, floor=-0.30),
+    "f4t30": dict(H, user_stop={"every": {"from": 5, "to": 60, "share": 0.5, "opt": -0.15}, "checks": [], "out": -0.30}, floor=-0.30,
+                  guard={"arm": 0.5, "trail": 0.3}),
+    "f1t30": dict(H, user_stop={"every": {"from": 5, "to": 20, "share": 0.5}, "checks": [[20, 1.0]], "out": -0.30}, guard={"arm": 0.5, "trail": 0.3}),
 }
-ENTRIES = ["v1", "low", "v1_bo", "low_bo"]
-DELTAS = [0.15, 0.30]
+ENTRIES = os.environ.get("ZR_ENTRIES", "v1,low,v1_bo,low_bo").split(",")
+DELTAS = [float(x) for x in os.environ.get("ZR_DELTAS", "0.15,0.30").split(",")]
+ONLY = os.environ.get("ZR_EXITS")
 
 
 def main():
     jobs = []
     for e in ENTRIES:
         for x, X in EXITS.items():
+            if ONLY and x not in ONLY.split(","): continue
             for d in DELTAS:
                 env = dict(os.environ, BT_VARIANT="v2", BT_UNIVERSE="wide", BT_FLAT="1", BT_EXIT=json.dumps(X),
                            BT_CONTRACT=json.dumps({"dte_min": 0, "dte_max": 0, "delta": d}))

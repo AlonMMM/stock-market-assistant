@@ -207,7 +207,8 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 if st.get("sp0") is None: st["sp0"] = sd.c[minute]
                 against = sd.c[tt] is not None and st["sp0"] and bet * (sd.c[tt] - st["sp0"]) < 0
                 E = U.get("every")  # every minute in [from, to] after the entry: the first one against sells `share`, once
-                if E and not st.get("every_done") and E["from"] <= t - minute <= E["to"] and against:
+                hit_e = E and ((g <= E["opt"]) if "opt" in E else against)  # "opt": the option at that gain or worse, else the stock against
+                if E and not st.get("every_done") and E["from"] <= t - minute <= E["to"] and hit_e:
                     st["every_done"] = True; pending = (rem * E["share"], "U_every"); continue
                 if "checks" in U:  # checkpoints [[minutes after entry, share of what is left], ...], each once
                     done = st.setdefault("checks_done", set())
