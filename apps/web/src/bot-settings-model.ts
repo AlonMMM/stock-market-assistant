@@ -1,94 +1,31 @@
 import type { BotView } from "../../../packages/trading/src/bot-api.js";
+import {
+  defaultSettings,
+  neverWatched,
+  type BotSettings,
+} from "../../../packages/trading/src/bot/settings.js";
 
-// The bot's settings page (docs/tasks/frontend-bot-settings.md): the values the
-// owner can change, their defaults, and the stocks the bot would watch. The
-// shape is the proposed `GET/PUT /api/bot/settings` contract; until the
-// trading service serves it, the page starts from what `GET /api/bot` reports.
+// The bot's settings page (docs/tasks/frontend-bot-settings.md): the stocks
+// the bot would watch and the page's checks. The settings themselves, their
+// defaults and limits are shared with the bot (packages/trading/src/bot/settings.ts).
+// A trading service without `/api/bot/settings` gets the page's fallback: what
+// `GET /api/bot` reports.
 
-export interface BotSettings {
-  enabled: boolean;
-  mode: "live" | "dry";
-  // Stocks: the core list and the favorites list, plus the owner's own.
-  followFavorites: boolean;
-  added: string[];
-  off: string[];
-  // Trade size
-  sizePct: number;
-  maxBuysPerDay: number;
-  maxOpen: number;
-  // Losses
-  stopPct: number;
-  safetyStopPct: number;
-  dayLossPct: number;
-  drawdownPausePct: number;
-  checks: boolean;
-  // Profits and holding
-  holdFromPct: number;
-  maxNights: number;
-  // Contract
-  delta: number;
-  maxDte: number;
-  minPrice: number;
-  minVolume: number;
-  // Signal (advanced)
-  minT: number;
-  minRvol: number;
-  firstEntryMin: number;
-  skipEarnings: boolean;
-  skipPremarket: boolean;
-}
-
-export type NumberKey = {
-  [K in keyof BotSettings]: BotSettings[K] extends number ? K : never;
-}[keyof BotSettings];
+export {
+  defaultSettings,
+  neverWatched,
+  untested,
+  type BotSettings,
+  type NumberKey,
+} from "../../../packages/trading/src/bot/settings.js";
 export type SwitchKey = "checks" | "skipEarnings" | "skipPremarket";
-
-// What the bot runs today (docs/tasks/backend-indi-bot.md). The index ETFs
-// start off: the backtest left them out.
-export const defaultSettings: BotSettings = {
-  enabled: true,
-  mode: "live",
-  followFavorites: true,
-  added: [],
-  off: ["QQQ", "SQQQ"],
-  sizePct: 2,
-  maxBuysPerDay: 5,
-  maxOpen: 4,
-  stopPct: 30,
-  safetyStopPct: 50,
-  dayLossPct: 5,
-  drawdownPausePct: 15,
-  checks: true,
-  holdFromPct: 100,
-  maxNights: 2,
-  delta: 0.15,
-  maxDte: 7,
-  minPrice: 0.2,
-  minVolume: 200,
-  minT: 2,
-  minRvol: 1.5,
-  firstEntryMin: 10,
-  skipEarnings: true,
-  skipPremarket: true,
-};
-
-// Values the backtest never ran; their hint says "Default", not "Backtest".
-export const untested: ReadonlySet<keyof BotSettings> = new Set([
-  "maxBuysPerDay",
-  "maxOpen",
-  "safetyStopPct",
-  "dayLossPct",
-  "drawdownPausePct",
-]);
-
-// SPY is the benchmark; the futures have no options the bot buys.
-export const neverWatched = ["SPY", "CL", "GC", "SI"];
 
 /**
  * The settings as far as the bot reports them, the defaults for the rest.
  * Stocks the bot reports but does not watch today start off.
  */
 export function fromBotView(v: BotView): BotSettings {
+  if (v.settings) return v.settings;
   const listed = candidates(v.universe, v.favorites?.tickers ?? [], []);
   const watching = new Set(v.watching);
   let off = defaultSettings.off.slice();

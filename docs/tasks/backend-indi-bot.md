@@ -27,6 +27,9 @@ own, marked 🤖 Bot. The point is the paper test: real fills, real drawdown, ne
 
 ## Rules (as backtested; parity checked)
 
+These are the defaults. Since 2026-10-22 the owner can change each one on the site's Bot settings page; see
+`docs/tasks/backend-bot-settings.md`.
+
 - **Stocks:** `config/bot-universe.json`, stocks Indi opened options on at least twice in the past 12 months, without
   index and macro ETFs. It is refreshed by hand.
 - **Signal (C):** the t-stat of the 1-minute moves vs SPY × beta (beta from 5-minute returns, prior 20 sessions)

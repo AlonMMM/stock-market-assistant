@@ -18,6 +18,7 @@ import { IndiBot } from "./bot.js";
 import { nasdaqEarnings } from "./bot-news.js";
 import { AlpacaBotMarket } from "./bot-market.js";
 import { BotStore } from "./bot-store.js";
+import { parseSettings } from "../../../packages/trading/src/bot/settings.js";
 
 const env = (...names: string[]) =>
   names.map((n) => process.env[n]).find((v) => v) ?? "";
@@ -238,6 +239,18 @@ api.post("/v1/bot", async (request) => {
     throw new RequestError("enabled must be true or false");
   bot.setEnabled(on);
   return bot.status();
+});
+
+// The owner's settings from the site's Bot settings page (docs/tasks/backend-bot-settings.md).
+api.get("/v1/bot/settings", async () => {
+  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  return bot.settings();
+});
+api.put("/v1/bot/settings", async (request) => {
+  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  const parsed = parseSettings(request.body);
+  if (!parsed.ok) throw new RequestError(parsed.error);
+  return bot.setSettings(parsed.value);
 });
 
 // A stop that sells is reported within this long.

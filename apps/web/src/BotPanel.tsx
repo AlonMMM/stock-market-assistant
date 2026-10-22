@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import {
   coreClose,
   newYork,
   newYorkToUtc,
 } from "../../../packages/market-data/src/calendar.js";
 import type { BotView } from "../../../packages/trading/src/bot-api.js";
+import {
+  defaultSettings,
+  type BotSettings,
+} from "../../../packages/trading/src/bot/settings.js";
 import {
   contractWords,
   contractsInWords,
@@ -21,9 +25,10 @@ import { israelClock, israelLabel, israelShortDate } from "./time.js";
 const refreshMs = 15000;
 const ignore = () => {};
 
-// The signal's two conditions (packages/trading/src/bot/signal.ts).
-const needT = 2;
-const needVolume = 1.5;
+// The bot's settings as it reports them (the defaults from a trading service
+// before settings): the signal's two conditions, the exits' numbers.
+const RulesContext = createContext<BotSettings>(defaultSettings);
+const useRules = () => useContext(RulesContext);
 // From this share of both conditions, a stock counts as close to a signal.
 const closeShare = 0.75;
 
@@ -34,16 +39,19 @@ type Position = BotView["positions"][number];
 const outcomeText: Record<string, string> = {
   bought: "Bought",
   "would-buy": "Would buy (dry run)",
-  no_expiry: "Skipped: no expiry 1–7 days out",
+  no_expiry: "Skipped: no expiry in the window",
   no_strikes: "Skipped: no strikes",
   no_prices: "Skipped: no prices",
-  too_cheap: "Skipped: contract under $0.20",
-  too_small: "Skipped: 2% buys less than one contract",
+  too_cheap: "Skipped: contract under the cheapest price",
+  too_small: "Skipped: the trade size buys less than one contract",
   thin: "Skipped: too few contracts traded",
   held: "Skipped: you hold this contract",
   refused: "Refused by the risk rules",
   earnings: "Skipped: earnings reaction day",
   premarket: "Skipped: pre-market volume 4× normal or more",
+  max_buys: "Skipped: the most bot buys for today",
+  max_open: "Skipped: the most open positions",
+  day_loss: "Skipped: the daily loss limit",
   error: "Failed",
   new: "Working",
 };
@@ -59,7 +67,7 @@ function outcomeTone(outcome: string): "good" | "warn" | "bad" | "quiet" {
 const reasonText: Record<string, string> = {
   "check-10": "10-min check",
   "check-20": "20-min check",
-  "stop-30": "−30% stop",
+  "stop-30": "stop",
   "close-1550": "end-of-day close",
   "morning-gap-keep": "morning, gap our way",
   "morning-gap-against": "morning, no gap",
@@ -96,7 +104,7 @@ function israelAt(day: string, nyMinute: number): string {
 }
 
 /** The session's key minutes in New York time; an early close moves the end. */
-function sessionPlan(day: string) {
+function sessionPlan(day: string, rules: BotSettings) {
   let close = 960;
   try {
     close = coreClose(day) ?? 960;
@@ -105,7 +113,7 @@ function sessionPlan(day: string) {
   }
   return {
     open: 570,
-    firstEntry: 580,
+    firstEntry: 570 + rules.firstEntryMin,
     lastEntry: Math.min(944, close - 16),
     dayExit: close - 10,
     close,
@@ -113,8 +121,8 @@ function sessionPlan(day: string) {
 }
 
 // How near a stock is to the signal: both conditions full means a signal.
-const nearness = (r: { t: number; rvol: number }) =>
-  Math.min(r.t / needT, r.rvol / needVolume);
+const nearness = (r: { t: number; rvol: number }, rules: BotSettings) =>
+  Math.min(r.t / rules.minT, r.rvol / rules.minRvol);
 
 const blockedText: Record<string, string> = {
   earnings: "earnings reaction day",
@@ -122,8 +130,9 @@ const blockedText: Record<string, string> = {
 };
 
 /** What a stock still lacks, in words. */
-function lacking(r: ScanRow): string {
+function lacking(r: ScanRow, rules: BotSettings): string {
   if (r.blocked) return `Blocked today: ${blockedText[r.blocked]}`;
+  const { minT: needT, minRvol: needVolume } = rules;
   const strong = r.t >= needT;
   const heavy = r.rvol >= needVolume;
   if (strong && heavy) return "Both conditions met";
@@ -161,18 +170,20 @@ function useNow(everyMs: number): number {
 // ---------------------------------------------------------------------------
 // The session: where today stands against the bot's own clock
 
-function sessionPhase(day: string, now: number): string {
-  const plan = sessionPlan(day);
+function sessionPhase(day: string, now: number, rules: BotSettings): string {
+  const plan = sessionPlan(day, rules);
   const ny = newYork(now);
   if (ny.date !== day || ny.minute > plan.close)
-    return "Closed. The scan starts 10 minutes after the next open.";
+    return `Closed. The scan starts ${rules.firstEntryMin} minutes after the next open.`;
   if (ny.minute < plan.open)
     return "Before the open: warming up with 20 sessions of bars.";
-  if (ny.minute < plan.firstEntry) return "Open. Entries start 10 minutes in.";
+  if (ny.minute < plan.firstEntry)
+    return `Open. Entries start ${rules.firstEntryMin} minutes in.`;
   if (ny.minute <= plan.lastEntry) return "Scanning every minute for a signal.";
   if (ny.minute < plan.dayExit)
     return "No new entries. Holdings run their exits.";
-  return "Day exit: winners up 100%+ stay overnight, the rest are sold.";
+  if (rules.maxNights === 0) return "Day exit: everything is sold.";
+  return `Day exit: winners up ${rules.holdFromPct}%+ stay overnight, the rest are sold.`;
 }
 
 function SessionStrip({
@@ -184,13 +195,14 @@ function SessionStrip({
   signals: Signal[];
   now: number;
 }) {
-  const plan = sessionPlan(day);
+  const rules = useRules();
+  const plan = sessionPlan(day, rules);
   const span = plan.close - plan.open;
   const at = (minute: number) => `${((minute - plan.open) / span) * 100}%`;
   const ny = newYork(now);
   const inSession =
     ny.date === day && ny.minute >= plan.open && ny.minute <= plan.close;
-  const phase = sessionPhase(day, now);
+  const phase = sessionPhase(day, now, rules);
   // Whole Israel hours under the track (Israel's offset is whole hours).
   const openMs = newYorkToUtc(day, plan.open);
   const hours: number[] = [];
@@ -277,7 +289,10 @@ function SessionStrip({
 // The funnel: from the watched stocks to today's buys
 
 function Funnel({ v }: { v: BotView }) {
-  const close = v.scan.filter((r) => !r.blocked && nearness(r) >= closeShare);
+  const rules = useRules();
+  const close = v.scan.filter(
+    (r) => !r.blocked && nearness(r, rules) >= closeShare,
+  );
   const bought = v.signals.filter(
     (s) => s.outcome === "bought" || s.outcome === "would-buy",
   ).length;
@@ -353,6 +368,8 @@ function SignalMap({
   selected: string | null;
   onSelect: (symbol: string) => void;
 }) {
+  const rules = useRules();
+  const { minT: needT, minRvol: needVolume } = rules;
   const box = useBoxWidth(640);
   const mapW = Math.max(300, Math.min(760, box.width));
   const mapH = mapW < 520 ? 320 : 340;
@@ -480,7 +497,7 @@ function SignalMap({
               className={`bot-dot ${tone}${isSelected ? " selected" : ""}`}
               onClick={() => onSelect(r.symbol)}
             >
-              <title>{`${r.symbol}: t ${r.t.toFixed(1)}, volume ${r.rvol.toFixed(1)}×. ${lacking(r)}`}</title>
+              <title>{`${r.symbol}: t ${r.t.toFixed(1)}, volume ${r.rvol.toFixed(1)}×. ${lacking(r, rules)}`}</title>
               {fired.has(r.symbol) && (
                 <circle className="bot-dot-ring" cx={cx} cy={cy} r={10} />
               )}
@@ -531,8 +548,10 @@ function StockFocus({
   signal: Signal | undefined;
   day: string;
 }) {
+  const rules = useRules();
+  const { minT: needT, minRvol: needVolume } = rules;
   const lean = r.side === "C" ? "up vs SPY → a call" : "down vs SPY → a put";
-  let state = lacking(r);
+  let state = lacking(r, rules);
   if (signal)
     state = `Signaled at ${israelAt(day, 570 + signal.minute)}: ${outcomeText[signal.outcome] ?? signal.outcome}. No second signal today.`;
   return (
@@ -574,6 +593,8 @@ function StockList({
   selected: string | null;
   onSelect: (symbol: string) => void;
 }) {
+  const rules = useRules();
+  const { minT: needT, minRvol: needVolume } = rules;
   const [all, setAll] = useState(false);
   const fired = new Map(signals.map((s) => [s.symbol, s]));
   const rows = all ? scan : scan.slice(0, 12);
@@ -587,7 +608,7 @@ function StockList({
       <ul>
         {rows.map((r) => {
           const s = fired.get(r.symbol);
-          let state = lacking(r);
+          let state = lacking(r, rules);
           if (s) state = `Signaled · ${outcomeText[s.outcome] ?? s.outcome}`;
           return (
             <li key={r.symbol}>
@@ -652,6 +673,8 @@ function newsNote(news: BotView["news"]) {
 }
 
 function WhatItSees({ v }: { v: BotView }) {
+  const rules = useRules();
+  const { minT: needT, minRvol: needVolume } = rules;
   const [picked, setPicked] = useState<string | null>(null);
   const selected = picked ?? v.scan[0]?.symbol ?? null;
   const row = v.scan.find((r) => r.symbol === selected);
@@ -676,7 +699,8 @@ function WhatItSees({ v }: { v: BotView }) {
       {newsNote(v.news)}
       {v.scan.length === 0 ? (
         <p className="notice">
-          The scan starts 10 minutes after the US open on trading days.
+          The scan starts {rules.firstEntryMin} minutes after the US open on
+          trading days.
         </p>
       ) : (
         <div className="bot-sees">
@@ -711,11 +735,21 @@ interface ExitStep {
   note: string | null;
 }
 
+function dayExitLabel(rules: BotSettings): string {
+  if (rules.maxNights === 0) return "Day exit: all out";
+  return `Day exit: only winners up ${rules.holdFromPct}%+ stay`;
+}
+
 /** The exit rules ahead of an open position (packages/trading/src/bot/exits.ts). */
-function exitPlan(p: Position, day: string, now: number): ExitStep[] {
-  const plan = sessionPlan(day);
+function exitPlan(
+  p: Position,
+  day: string,
+  now: number,
+  rules: BotSettings,
+): ExitStep[] {
+  const plan = sessionPlan(day, rules);
   const steps: { label: string; ms: number; reasons: string[] }[] = [];
-  if (p.nights === 0) {
+  if (p.nights === 0 && rules.checks) {
     steps.push(
       {
         label: "10-min check: half out if the stock is against",
@@ -728,7 +762,7 @@ function exitPlan(p: Position, day: string, now: number): ExitStep[] {
         reasons: ["check-20"],
       },
     );
-  } else {
+  } else if (p.nights > 0) {
     steps.push({
       label: "Morning: half if it gapped our way, else all",
       ms: newYorkToUtc(day, plan.firstEntry),
@@ -736,7 +770,7 @@ function exitPlan(p: Position, day: string, now: number): ExitStep[] {
     });
   }
   steps.push({
-    label: "Day exit: only winners up 100%+ stay",
+    label: dayExitLabel(rules),
     ms: newYorkToUtc(day, plan.dayExit),
     reasons: ["close-1550"],
   });
@@ -766,6 +800,7 @@ function Holdings({
   day: string;
   now: number;
 }) {
+  const rules = useRules();
   return (
     <section className="bot-card" aria-labelledby="bot-hold-title">
       <div className="bot-card-head">
@@ -794,7 +829,7 @@ function Holdings({
               </div>
               {p.status === "open" && (
                 <ol className="bot-plan" aria-label="Exits ahead">
-                  {exitPlan(p, day, now).map((s) => (
+                  {exitPlan(p, day, now, rules).map((s) => (
                     <li key={s.label} className={s.state}>
                       <span className="num">{s.at}</span>
                       <span>{s.label}</span>
@@ -803,7 +838,9 @@ function Holdings({
                   ))}
                   <li className="always">
                     <span className="num">any time</span>
-                    <span>−30% with the stock against: all out</span>
+                    <span>
+                      −{rules.stopPct}% with the stock against: all out
+                    </span>
                   </li>
                 </ol>
               )}
@@ -952,40 +989,57 @@ function Closed({ closed }: { closed: Position[] }) {
 }
 
 function Rules({ v }: { v: BotView }) {
+  const r = useRules();
+  let stocks = " (no favorites list received yet)";
+  if (v.favorites && r.followFavorites)
+    stocks = `, and your "${v.favorites.name}" list (${v.favorites.tickers.length})`;
+  if (!r.followFavorites) stocks = ", not following your favorites";
+  const news: string[] = [];
+  if (r.skipEarnings) news.push("on the stock's earnings reaction day");
+  if (r.skipPremarket)
+    news.push("when its pre-market volume is 4× normal or more");
+  let checks = "No 10- and 20-minute checks; ";
+  if (r.checks)
+    checks =
+      "Half at +10 min and the rest at +20 min if the stock is against; ";
+  let carry = `at the day exit only winners up ${r.holdFromPct}%+ stay overnight (${r.maxNights} night${r.maxNights === 1 ? "" : "s"} at most)`;
+  if (r.maxNights === 0) carry = "everything is sold at the day exit";
   return (
     <details className="bot-card bot-rules">
       <summary>How the bot decides</summary>
       <ol>
         <li>
           <b>Stocks.</b> {v.universe.length} core stocks from the backtested
-          list
-          {v.favorites
-            ? `, and your "${v.favorites.name}" list (${v.favorites.tickers.length})`
-            : " (no favorites list received yet)"}
-          .
+          list{stocks}
+          {r.added.length > 0 && `, ${r.added.length} added by you`}
+          {r.off.length > 0 && `; ${r.off.length} turned off`}.
         </li>
         <li>
-          <b>Signal.</b> From 10 minutes after the open to 16 minutes before the
-          close: strength t {needT}+ and volume {needVolume}×+. One per stock a
-          day, on the side that comes first.
+          <b>Signal.</b> From {r.firstEntryMin} minutes after the open to 16
+          minutes before the close: strength t {r.minT}+ and volume {r.minRvol}
+          ×+. One per stock a day, on the side that comes first.
         </li>
         <li>
-          <b>News filter.</b> No entry on the stock's earnings reaction day, or
-          when its pre-market volume is 4× normal or more.
+          <b>News filter.</b>{" "}
+          {news.length ? `No entry ${news.join(", or ")}.` : "Off."}
         </li>
         <li>
-          <b>Contract.</b> Nearest expiry 1–7 days out, delta closest to{" "}
-          {v.delta}; skipped under $0.20 or when few contracts trade.
+          <b>Contract.</b> Nearest expiry 1–{r.maxDte} days out, delta closest
+          to {r.delta}; skipped under ${r.minPrice.toFixed(2)} or under{" "}
+          {r.minVolume} contracts traded in 30 minutes.
         </li>
         <li>
-          <b>Size.</b> {v.sizePct}% of the account, through the same risk rules
-          as your own buys.
+          <b>Size.</b> {r.sizePct}% of the account, at most {r.maxBuysPerDay}{" "}
+          buys a day and {r.maxOpen} open; no new buys after a {r.dayLossPct}%
+          day loss. The same risk rules as your own buys apply.
         </li>
         <li>
-          <b>Exits.</b> Half at +10 min and the rest at +20 min if the stock is
-          against; all out at −30% with the stock against; at the day exit only
-          winners up 100%+ stay overnight (2 nights at most). A broker stop at
-          −50% backs it up.
+          <b>Exits.</b> {checks}all out at −{r.stopPct}% with the stock against;{" "}
+          {carry}. A broker stop at −{r.safetyStopPct}% backs it up.
+        </li>
+        <li>
+          <b>Pause.</b> The bot switches itself off when its trades are down{" "}
+          {r.drawdownPausePct}% of the account from their best.
         </li>
       </ol>
     </details>
@@ -1004,40 +1058,42 @@ export function BotPanel({ onSettings }: { onSettings?: () => void }) {
   const open = value.positions.filter((p) => p.status !== "closed");
   const closed = value.positions.filter((p) => p.status === "closed").reverse();
   return (
-    <div className="bot-panel">
-      <div className="bot-head">
-        <div>
-          <h2 className="portfolio-title">🤖 Bot</h2>
-          <p className="muted small">
-            Delta {value.delta} · {value.sizePct}% a trade · paper account
-            {value.lastRun !== null &&
-              ` · last check ${ago(value.lastRun, now)}`}
+    <RulesContext.Provider value={value.settings ?? defaultSettings}>
+      <div className="bot-panel">
+        <div className="bot-head">
+          <div>
+            <h2 className="portfolio-title">🤖 Bot</h2>
+            <p className="muted small">
+              Delta {value.delta} · {value.sizePct}% a trade · paper account
+              {value.lastRun !== null &&
+                ` · last check ${ago(value.lastRun, now)}`}
+            </p>
+          </div>
+          <div className="bot-head-side">
+            {statusPill(value)}
+            {onSettings && (
+              <button type="button" className="bot-more" onClick={onSettings}>
+                Settings
+              </button>
+            )}
+          </div>
+        </div>
+        {error && (
+          <p className="bot-warn small">
+            Could not refresh; showing the last answer.
           </p>
+        )}
+        <SessionStrip day={value.day} signals={value.signals} now={now} />
+        <Funnel v={value} />
+        <WhatItSees v={value} />
+        <div className="bot-two">
+          <Holdings open={open} day={value.day} now={now} />
+          <Signals v={value} />
         </div>
-        <div className="bot-head-side">
-          {statusPill(value)}
-          {onSettings && (
-            <button type="button" className="bot-more" onClick={onSettings}>
-              Settings
-            </button>
-          )}
-        </div>
+        <Activity items={value.activity} />
+        <Closed closed={closed} />
+        <Rules v={value} />
       </div>
-      {error && (
-        <p className="bot-warn small">
-          Could not refresh; showing the last answer.
-        </p>
-      )}
-      <SessionStrip day={value.day} signals={value.signals} now={now} />
-      <Funnel v={value} />
-      <WhatItSees v={value} />
-      <div className="bot-two">
-        <Holdings open={open} day={value.day} now={now} />
-        <Signals v={value} />
-      </div>
-      <Activity items={value.activity} />
-      <Closed closed={closed} />
-      <Rules v={value} />
-    </div>
+    </RulesContext.Provider>
   );
 }

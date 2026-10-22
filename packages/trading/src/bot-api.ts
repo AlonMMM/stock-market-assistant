@@ -1,11 +1,20 @@
 // The bot's state for the website (docs/tasks/backend-indi-bot.md): what the
 // trading service answers at GET /v1/bot, read with the read-only token.
 
+import type { BotSettings } from "./bot/settings.js";
+import {
+  controlAccess,
+  type ControlConfig,
+  type Identity,
+} from "./control-api.js";
+
 export interface BotView {
   enabled: boolean;
   mode: "dry" | "live";
   sizePct: number;
   delta: number;
+  // All the owner's settings (absent from a trading service before them).
+  settings?: BotSettings;
   universe: string[];
   favorites: { name: string; tickers: string[]; at: number } | null;
   watching: string[]; // today's stocks: the list and the favorites
@@ -122,4 +131,70 @@ export async function pushFavorites(
   });
   if (!response.ok) return `the trading service answered ${response.status}`;
   return `sent "${list.name}" (${list.tickers.length} stocks)`;
+}
+
+/**
+ * The bot's settings for the site (docs/tasks/backend-bot-settings.md). GET
+ * reads them with the read-only token; PUT is the account owner's only, from
+ * the site itself, and is passed on with the full token. The trading service
+ * checks every value again.
+ */
+export async function handleBotSettings(
+  config: ControlConfig & { readToken?: string | undefined },
+  identity: Identity,
+  request: {
+    method: string;
+    body?: unknown;
+    origin: string;
+    requestOrigin: string | null;
+  },
+  fetcher: typeof fetch = fetch,
+): Promise<{ status: number; body: unknown }> {
+  const reading = request.method === "GET";
+  if (!reading && request.method !== "PUT")
+    return { status: 405, body: { error: "Method not allowed" } };
+  let token = config.readToken ?? config.token;
+  if (!reading) {
+    const access = controlAccess(config, identity);
+    if (!access.canTrade)
+      return { status: 403, body: { error: access.reason } };
+    if (request.requestOrigin !== request.origin)
+      return {
+        status: 403,
+        body: { error: "This request did not come from the site itself" },
+      };
+    token = config.token;
+  }
+  if (!config.url || !token)
+    return {
+      status: 503,
+      body: { error: "The trading service is not configured for this site" },
+    };
+  try {
+    const response = await fetcher(new URL("/v1/bot/settings", config.url), {
+      method: request.method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(reading ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(reading ? {} : { body: JSON.stringify(request.body ?? {}) }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = (await response.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    if (response.ok) return { status: 200, body };
+    // A refused value comes back as the trading service's own words.
+    if (response.status === 400)
+      return { status: 400, body: { error: body?.error ?? "Not valid" } };
+    return {
+      status: 502,
+      body: { error: `The trading service answered ${response.status}` },
+    };
+  } catch {
+    return {
+      status: 502,
+      body: { error: "The trading service is unreachable" },
+    };
+  }
 }
