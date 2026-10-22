@@ -54,6 +54,7 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   blend, speeding-up boost, 5-minute burst): none better on both lists.
 - Selling 25% at +150% and 25% at +250%: $142,572 / 20%. Carried-day trailing stops (25 / 40 / 50%): worse.
 - False alarms (the stock or SPY against the bet at the signal): only 3 of 820 trades; filters do not help.
+- Scale-in on the t >= 1.8 champion: worse (A $476,299 / 12% vs $585,592 / 11% at 1%; unseen $115,967 vs $123,028).
 - 0DTE allowed in the champion: worse (doubles the worst drop; loses 2025 and 2026).
 - A separate 0DTE strategy (expiry days only, entries 09:40-12:30 New York, V1 or lower thresholds, with or without a
   breakout; exits checked every minute: option stops, trails, half at +100%, your stop + trail, F4; delta 0.15 / 0.30;
@@ -66,6 +67,10 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 - Overnight caps: 5% and 10% cost a lot; 15–20% cost nothing at 0.15 but do not cut the worst drop (kept as a safety idea).
 
 ## Candidates
+
+- 0DTE on the user's favorites list (50 stocks, first hour, news filter): 21 of 96 results positive every year. Best
+  cluster: a new day-high breakout (t >= 2, volume >= 1.5x), the -40% stop only, delta 0.20-0.30: about $158-162K / 8-10%
+  at 1% over 2.7 years ($112-122K in 2026 alone), only 15-16% winners. The list is today's, so it carries hindsight.
 
 - Sector-relaxed thresholds (t 1.5 / volume 1.2, or 1.7 / 1.3, when the sector ETF is 0.3% our way): worse or worse on
   the unseen ($264,568 / $380,820 / $297,768 fair; $119,808 / $103,173 / $122,185 unseen, with bigger drops).

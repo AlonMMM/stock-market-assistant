@@ -23,6 +23,7 @@ from low_delta import HIS40, PRIOR
 from score_sum import account
 
 B = "data/local/x/bt"
+PREFIX = (sys.argv[1:] or ["w_flat_n100"])[0]  # the trades to scale in (default: the C signal at t >= 2)
 CAL = calendar()
 sim.X.update(dict(H, **NIGHT))
 
@@ -59,7 +60,7 @@ def run(t):
 
 
 def main():
-    T = sorted((t for f in glob.glob(f"{B}/w_flat_n100_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] == "ok"),
+    T = sorted((t for f in glob.glob(f"{B}/{PREFIX}_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] == "ok"),
                key=lambda t: (t["date"], int(t["minute"])))
     nf.features(T)
     with mp.Pool(6) as pool: R = {r["key"]: r for r in pool.map(run, T, chunksize=10) if r}
