@@ -56,7 +56,10 @@ import {
   handlePortfolioHistory,
   PortfolioCache,
 } from "../../../packages/trading/src/portfolio.js";
-import { handleBotStatus } from "../../../packages/trading/src/bot-api.js";
+import {
+  handleBotSettings,
+  handleBotStatus,
+} from "../../../packages/trading/src/bot-api.js";
 import { handleOrderDecisions } from "../../../packages/trading/src/decisions-api.js";
 
 export function buildApp(
@@ -245,6 +248,26 @@ export function buildApp(
       .header("Cache-Control", "no-store")
       .send(result.body);
   });
+  // Saving settings needs the hosted site's sign-in; here they can be read only.
+  app.get("/api/bot/settings", async (_request, reply) => {
+    const result = await handleBotSettings(
+      {
+        url: process.env.TRADER_URL,
+        readToken: process.env.TRADER_READ_TOKEN,
+      },
+      null,
+      { method: "GET", origin: "", requestOrigin: null },
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.put("/api/bot/settings", async (_request, reply) =>
+    reply
+      .code(403)
+      .send({ error: "Saving settings works on the hosted site only" }),
+  );
   // Position controls need the hosted site's sign-in; here nobody is
   // verified, so the page is told it cannot trade.
   app.get("/api/portfolio/control", async () => ({

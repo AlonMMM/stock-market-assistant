@@ -56,6 +56,7 @@ import {
 } from "../../../packages/trading/src/portfolio.js";
 import {
   favoritesList,
+  handleBotSettings,
   handleBotStatus,
   pushFavorites,
 } from "../../../packages/trading/src/bot-api.js";
@@ -558,6 +559,43 @@ export default {
         env.BARS_CACHE ? stores(env.BARS_CACHE).baselines : undefined,
         env.BARS_CACHE ? stores(env.BARS_CACHE).strengths : undefined,
         env.BARS_CACHE ? stores(env.BARS_CACHE).sigmas : undefined,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path === "/api/bot/settings") {
+      let body: unknown;
+      if (request.method === "PUT")
+        try {
+          const text = await request.text();
+          if (text.length > 16384)
+            return Response.json(
+              { error: "Request too large" },
+              { status: 413 },
+            );
+          body = JSON.parse(text);
+        } catch {
+          return Response.json(
+            { error: "Expected JSON object" },
+            { status: 400 },
+          );
+        }
+      const result = await handleBotSettings(
+        {
+          owner: env.TRADE_OWNER_EMAIL,
+          url: env.TRADER_URL,
+          token: env.TRADER_TOKEN,
+          readToken: env.TRADER_READ_TOKEN,
+        },
+        identity,
+        {
+          method: request.method,
+          body,
+          origin: new URL(request.url).origin,
+          requestOrigin: request.headers.get("Origin"),
+        },
       );
       return Response.json(result.body, {
         status: result.status,

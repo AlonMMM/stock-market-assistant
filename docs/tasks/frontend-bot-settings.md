@@ -1,6 +1,6 @@
 # Task: Bot settings page (owner only)
 
-Status: active (frontend done; needs the backend settings API)
+Status: completed; the API is in docs/tasks/backend-bot-settings.md
 Owner: frontend
 Branch: feat/bot-settings
 Spec: the "Bot settings" design canvas, https://claude.ai/artifact/Eiqn3j2yjUJ9KYaXWBCJWo
@@ -21,8 +21,7 @@ itself. Everyone else still sees only the read-only Bot tab.
 
 `GET /api/bot/settings` → `BotSettings`; `PUT /api/bot/settings` with a whole `BotSettings` → the saved
 `BotSettings`. PUT needs the owner's sign-in, like the position controls (403 otherwise). The type is
-`BotSettings` in `apps/web/src/bot-settings-model.ts`; move it to `packages/trading/src/bot-api.ts` when the backend
-adopts it. Fields missing from a GET answer fall back to `defaultSettings`.
+`BotSettings` in `apps/web/src/bot-settings-model.ts`; now shared as `packages/trading/src/bot/settings.ts`. Fields missing from a GET answer fall back to `defaultSettings`.
 
 - Stocks: `followFavorites`, `added` (the owner's own tickers), `off` (tickers turned off). The watched set is
   core ∪ added ∪ (favorites if followed), minus `off`, minus SPY and the futures CL, GC, SI. Stocks apply from
@@ -32,8 +31,7 @@ adopts it. Fields missing from a GET answer fall back to `defaultSettings`.
   `minRvol` 1.5, `firstEntryMin` 10, `skipEarnings`, `skipPremarket`.
 - New bot behaviour the design asks for: `maxBuysPerDay` (default 5), `maxOpen` (4), `dayLossPct` (5, a
   bot-only limit beside the owner's 5% rule), `drawdownPausePct` (15, turns the bot off). These are not in the
-  backtest; the page labels them "Default", not "Backtest". **Their defaults come from the design and need the
-  user's confirmation.**
+  backtest; the page labels them "Default", not "Backtest". The user confirmed the design's defaults (2026-10-22).
 
 ## Behaviour without the API
 

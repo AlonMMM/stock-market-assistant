@@ -6,7 +6,6 @@ import {
   previousSessions,
 } from "../../../packages/market-data/src/calendar.js";
 import {
-  defaultExitRules,
   nextAction,
   type ExitReason,
   type ExitRules,
@@ -20,11 +19,19 @@ import {
   type NewsCalendar,
 } from "../../../packages/trading/src/bot/news.js";
 import {
-  defaultPickRules,
   expiryWindow,
   pickContract,
-  type PickRules,
 } from "../../../packages/trading/src/bot/picker.js";
+import {
+  defaultSettings,
+  drawdown,
+  exitRules,
+  pickRules,
+  signalParams,
+  watchedStocks,
+  withDefaults,
+  type BotSettings,
+} from "../../../packages/trading/src/bot/settings.js";
 import {
   cSignal,
   cState,
@@ -107,45 +114,52 @@ export interface BotOptions {
   universe: string[];
   /** The earnings calendar's reports listed on a date (Nasdaq). Without it there is no earnings filter. */
   earnings?: (date: string) => Promise<EarningsReport[]>;
+  // The defaults until the owner saves settings (docs/tasks/backend-bot-settings.md).
   mode: "dry" | "live";
-  enabled: boolean; // the default until someone switches it
-  sizePct?: number;
-  stopPct?: number; // the broker stop kept as a safety net
-  pick?: PickRules;
-  exits?: ExitRules;
+  enabled: boolean;
   now?: () => number;
   log?: (line: string) => void;
 }
 
 export const botTag = "🤖 Bot";
 
-const reasonText: Record<ExitReason, string> = {
-  "check-10": "10-min check: the stock is against the entry",
-  "check-20": "20-min check: the stock is still against the entry",
-  "stop-30": "Down 30% with the stock against the entry",
-  "close-1550": "Sold at 15:50",
-  carry: "Held overnight (up 100% or more)",
-  "morning-gap-keep": "Morning: gapped our way, sold half",
-  "morning-gap-against": "Morning: no gap our way, sold all",
-  "expiry-day": "Expiry day, out by 15:30",
-};
+/** Why the bot sold, in words, with the settings' numbers. */
+function reasonText(reason: ExitReason, s: BotSettings): string {
+  const words: Record<ExitReason, string> = {
+    "check-10": "10-min check: the stock is against the entry",
+    "check-20": "20-min check: the stock is still against the entry",
+    "stop-30": `Down ${s.stopPct}% with the stock against the entry`,
+    "close-1550": "Sold at 15:50",
+    carry: `Held overnight (up ${s.holdFromPct}% or more)`,
+    "morning-gap-keep": "Morning: gapped our way, sold half",
+    "morning-gap-against": "Morning: no gap our way, sold all",
+    "expiry-day": "Expiry day, out by 15:30",
+  };
+  return words[reason] ?? reason;
+}
 
-// A signal's outcome in words (the app's Bot tab has the same list).
-const outcomeText: Record<string, string> = {
-  bought: "buying",
-  "would-buy": "would buy (dry run)",
-  no_expiry: "skipped, no expiry 1–7 days out",
-  no_strikes: "skipped, no strikes",
-  no_prices: "skipped, no prices",
-  too_cheap: "skipped, contract under $0.20",
-  too_small: "skipped, 2% buys less than one contract",
-  thin: "skipped, too few contracts traded",
-  held: "skipped, you hold this contract",
-  refused: "refused by the risk rules",
-  earnings: "skipped, earnings reaction day",
-  premarket: "skipped, pre-market volume 4× normal or more",
-  error: "failed",
-};
+/** A signal's outcome in words (the app's Bot tab has the same list). */
+function outcomeText(outcome: string, s: BotSettings): string {
+  const words: Record<string, string> = {
+    bought: "buying",
+    "would-buy": "would buy (dry run)",
+    no_expiry: `skipped, no expiry 1–${s.maxDte} days out`,
+    no_strikes: "skipped, no strikes",
+    no_prices: "skipped, no prices",
+    too_cheap: `skipped, contract under $${s.minPrice.toFixed(2)}`,
+    too_small: `skipped, ${s.sizePct}% buys less than one contract`,
+    thin: "skipped, too few contracts traded",
+    held: "skipped, you hold this contract",
+    refused: "refused by the risk rules",
+    earnings: "skipped, earnings reaction day",
+    premarket: "skipped, pre-market volume 4× normal or more",
+    max_buys: "skipped, the most bot buys for today",
+    max_open: "skipped, the most open positions",
+    day_loss: "skipped, the daily loss limit",
+    error: "failed",
+  };
+  return words[outcome] ?? outcome;
+}
 
 // How a news source stands today: not configured, read, or failed (no filter).
 type NewsState = "off" | "pending" | "ok" | "failed";
@@ -203,13 +217,11 @@ export class IndiBot {
   private earningsState: NewsState = "off";
   private preRatio = new Map<string, number | null>();
   private preState: NewsState = "off";
+  // The account at warm-up, for the daily loss limit; null until read.
+  private dayStartEquity: number | null = null;
 
   constructor(options: BotOptions) {
     this.o = {
-      sizePct: 2,
-      stopPct: 50,
-      pick: defaultPickRules,
-      exits: defaultExitRules,
       now: Date.now,
       log: () => {},
       ...options,
@@ -223,7 +235,30 @@ export class IndiBot {
 
   setEnabled(on: boolean) {
     this.o.store.setSetting("enabled", String(on));
+    // Switched back on, the drawdown pause counts from here.
+    if (on) this.o.store.setSetting("countFrom", String(this.o.now()));
     this.event("info", `Switched ${on ? "on" : "off"}`);
+  }
+
+  /** The owner's settings over the defaults; on/off and the mode as set. */
+  settings(): BotSettings {
+    const base = { ...defaultSettings, mode: this.o.mode };
+    const saved = this.o.store.setting("settings");
+    let s = base;
+    if (saved) s = withDefaults(JSON.parse(saved), base);
+    return { ...s, enabled: this.enabled };
+  }
+
+  /** Saves the owner's settings; stocks count from the next warm-up. */
+  setSettings(next: BotSettings): BotSettings {
+    const before = this.settings();
+    const { enabled, ...rest } = next;
+    this.o.store.setSetting("settings", JSON.stringify(rest));
+    const changed = settingsChanges(before, next);
+    if (changed.length)
+      this.event("info", `Settings changed: ${changed.join("; ")}`);
+    if (enabled !== before.enabled) this.setEnabled(enabled);
+    return this.settings();
   }
 
   /** The user's favorites list, sent by the site before each session. */
@@ -252,11 +287,13 @@ export class IndiBot {
     return saved ? JSON.parse(saved) : null;
   }
 
-  /** The configured stocks and the favorites list, without duplicates. */
+  /** The configured stocks, the owner's and the favorites list, less those turned off. */
   private universe(): string[] {
-    return [
-      ...new Set([...this.o.universe, ...(this.watchlist()?.tickers ?? [])]),
-    ];
+    return watchedStocks(
+      this.settings(),
+      this.o.universe,
+      this.watchlist()?.tickers ?? [],
+    );
   }
 
   /** A contract in words for the activity feed, e.g. "Put 75 · 2DTE" (days from today). */
@@ -278,7 +315,7 @@ export class IndiBot {
   ) {
     this.o.store.updateSignal(date, symbol, outcome, detail);
     const s = this.o.store.signal(date, symbol);
-    const what = outcomeText[outcome] ?? outcome;
+    const what = outcomeText(outcome, this.settings());
     const kind: BotEventKind =
       outcome === "bought" || outcome === "would-buy" ? "order" : "skip";
     this.event(
@@ -318,6 +355,7 @@ export class IndiBot {
     // A minute's bar is complete once the next minute has started.
     const last = Math.min(wall - 570 - 1, closeMinute - 1);
     await this.settle();
+    await this.watchDrawdown();
     if (last > this.done && last >= 0) {
       await this.refresh(date, Math.max(0, this.done - 2), last);
       for (let m = Math.max(this.done + 1, last - 2); m <= last; m++) {
@@ -365,11 +403,20 @@ export class IndiBot {
     this.done = -1;
     this.day = date;
     const fav = this.watchlist();
-    const extra = this.symbols.length - this.o.universe.length;
+    const s = this.settings();
+    const core = this.symbols.filter((t) => this.o.universe.includes(t));
+    const own = this.symbols.filter(
+      (t) => s.added.includes(t) && !core.includes(t),
+    );
+    const extra = this.symbols.length - core.length - own.length;
+    let parts = `${core.length} from Indi's list`;
+    if (fav && extra > 0) parts += `, ${extra} more from "${fav.name}"`;
+    if (own.length) parts += `, ${own.length} added by you`;
     this.event(
       "info",
-      `Ready for ${date}: watching ${this.symbols.length} stocks (${this.o.universe.length} from Indi's list${fav ? `, ${extra} more from "${fav.name}"` : ""})`,
+      `Ready for ${date}: watching ${this.symbols.length} stocks (${parts})`,
     );
+    this.dayStartEquity = await this.o.trading.equity().catch(() => null);
     this.preRatio.clear();
     this.preState = this.o.market.premarket ? "pending" : "off";
     await this.loadEarnings(date);
@@ -458,7 +505,8 @@ export class IndiBot {
     date: string,
     symbol: string,
   ): { outcome: "earnings" | "premarket"; detail: string } | null {
-    if (this.reports) {
+    const s = this.settings();
+    if (this.reports && s.skipEarnings) {
       const report = reactionReport(
         this.reports.filter((r) => r.symbol === symbol),
         date,
@@ -474,7 +522,7 @@ export class IndiBot {
       }
     }
     const ratio = this.preRatio.get(symbol) ?? null;
-    if (premarketBlocks(ratio))
+    if (s.skipPremarket && premarketBlocks(ratio))
       return {
         outcome: "premarket",
         detail: `pre-market volume ${ratio!.toFixed(1)}× normal`,
@@ -506,7 +554,8 @@ export class IndiBot {
   // ---- entries ----
 
   private async entries(date: string, m: number, closeMinute: number) {
-    if (m < 10 || m > Math.min(374, closeMinute - 16)) return;
+    const params = signalParams(this.settings());
+    if (m < params.firstMinute || m > Math.min(374, closeMinute - 16)) return;
     const spy = this.barsOf("SPY");
     for (const symbol of this.symbols) {
       const prior = this.prior.get(symbol);
@@ -520,7 +569,7 @@ export class IndiBot {
           minute: m,
         });
       if (this.o.store.signal(date, symbol)) continue;
-      const sig = cSignal(this.barsOf(symbol), spy, prior, m);
+      const sig = cSignal(this.barsOf(symbol), spy, prior, m, params);
       // Only a signal of this minute (or one missed by a slow minute) trades.
       if (!sig || sig.minute < m - 2) continue;
       const added = this.o.store.addSignal({
@@ -566,22 +615,27 @@ export class IndiBot {
     const blocked = this.newsBlock(date, symbol);
     if (blocked)
       return this.outcome(date, symbol, blocked.outcome, blocked.detail);
+    const s = this.settings();
+    const limited = await this.limit(date, s);
+    if (limited)
+      return this.outcome(date, symbol, limited.outcome, limited.detail);
+    const pick = pickRules(s);
     const spot = this.lastClose(symbol, minute);
     if (spot === null)
       return this.outcome(date, symbol, "no_prices", "no stock price");
     const side = right === "C" ? "call" : "put";
-    const [from, to] = expiryWindow(date, this.o.pick);
+    const [from, to] = expiryWindow(date, pick);
     const picked = pickContract(
       await this.o.trading.chain(symbol, side, from, to),
       spot,
       side,
       date,
-      this.o.pick,
+      pick,
     );
     if (!picked.ok) return this.outcome(date, symbol, picked.reason, "");
     const contract = picked.quote.symbol;
     const volume = await this.o.market.optionVolume30(contract, date, minute);
-    if (volume < this.o.pick.minVolume30)
+    if (volume < pick.minVolume30)
       return this.outcome(
         date,
         symbol,
@@ -614,16 +668,14 @@ export class IndiBot {
       decidedOn: null,
       status: "buying",
       jobId: null,
-      dry: this.o.mode === "dry",
+      dry: s.mode === "dry",
       sales: [],
       openedAt: this.o.now(),
       closedAt: null,
     };
-    if (this.o.mode === "dry") {
+    if (s.mode === "dry") {
       const equity = await this.o.trading.equity();
-      const qty = Math.floor(
-        (equity * this.o.sizePct) / 100 / (picked.mid * 100),
-      );
+      const qty = Math.floor((equity * s.sizePct) / 100 / (picked.mid * 100));
       if (qty < 1)
         return this.outcome(
           date,
@@ -647,8 +699,8 @@ export class IndiBot {
     }
     const answer = await this.o.trading.buy({
       contract,
-      sizePct: this.o.sizePct,
-      stopPct: this.o.stopPct,
+      sizePct: s.sizePct,
+      stopPct: s.safetyStopPct,
       tag: botTag,
       note: why,
     });
@@ -666,6 +718,70 @@ export class IndiBot {
       "bought",
       `${answer.qty ?? "?"} ${this.words(contract)}`,
     );
+  }
+
+  // ---- the owner's limits on new buys ----
+
+  /** Why a new buy waits: today's buys, open positions or the day's loss; null when none. */
+  private async limit(
+    date: string,
+    s: BotSettings,
+  ): Promise<{ outcome: string; detail: string } | null> {
+    const dry = s.mode === "dry";
+    const entered = this.o.store
+      .signals(date)
+      .filter((x) => x.outcome === "bought" || x.outcome === "would-buy");
+    if (entered.length >= s.maxBuysPerDay)
+      return { outcome: "max_buys", detail: `${entered.length} today` };
+    const open = this.o.store
+      .openPositions()
+      .filter((p) => p.dry === dry && p.status !== "closed");
+    if (open.length >= s.maxOpen)
+      return { outcome: "max_open", detail: `${open.length} open` };
+    if (this.dayStartEquity === null)
+      this.dayStartEquity = await this.o.trading.equity().catch(() => null);
+    const start = this.dayStartEquity;
+    if (start && start > 0) {
+      const equity = await this.o.trading.equity();
+      const down = ((start - equity) / start) * 100;
+      if (down >= s.dayLossPct)
+        return {
+          outcome: "day_loss",
+          detail: `the account is down ${down.toFixed(1)}% today`,
+        };
+    }
+    return null;
+  }
+
+  /**
+   * Turns the bot off when its trades since it was last switched on are down
+   * `drawdownPausePct` of the account from their best. The owner switches it
+   * back on. Sales without a price (before prices were kept) do not count.
+   */
+  private async watchDrawdown() {
+    if (!this.enabled) return;
+    const s = this.settings();
+    const dry = s.mode === "dry";
+    const from = Number(this.o.store.setting("countFrom") ?? 0);
+    const sales = this.o.store
+      .recentPositions("0000-00-00")
+      .filter((p) => p.dry === dry)
+      .flatMap((p) =>
+        p.sales
+          .filter((x) => x.at >= from && typeof x.price === "number")
+          .map((x) => ({ at: x.at, pnl: (x.price! - p.cost) * x.qty * 100 })),
+      )
+      .sort((a, b) => a.at - b.at);
+    const down = drawdown(sales.map((x) => x.pnl));
+    if (down <= 0) return;
+    const equity = await this.o.trading.equity().catch(() => null);
+    if (!equity || equity <= 0) return;
+    const pct = (down / equity) * 100;
+    if (pct < s.drawdownPausePct) return;
+    this.setEnabled(false);
+    const text = `Paused: the bot's trades are down $${down.toFixed(0)} (${pct.toFixed(1)}% of the account) from their best, past the ${s.drawdownPausePct}% limit. Turn it back on in Bot settings.`;
+    this.event("error", text);
+    await this.o.notify(`${botTag}: paused`, [text]);
   }
 
   // ---- buys and sales that are still working ----
@@ -708,14 +824,17 @@ export class IndiBot {
         const job = this.o.trading.job(pending.jobId);
         if (job.state === "running") continue;
         const sold = soldOf(job.result);
+        const price = priceOf(job.result);
         const held = await this.o.trading.held(p.contract);
         const qty = Math.max(0, Math.min(p.qty - sold, held?.qty ?? 0));
         const sales = p.sales.map((s) =>
-          s === pending ? { ...s, qty: sold, settled: true } : s,
+          s === pending
+            ? { ...s, qty: sold, settled: true, ...(price ? { price } : {}) }
+            : s,
         );
         this.event(
           "order",
-          `Sold ${sold} ${p.symbol} ${this.words(p.contract)} (${reasonText[pending.reason as ExitReason] ?? pending.reason}); ${qty} left`,
+          `Sold ${sold} ${p.symbol} ${this.words(p.contract)} (${reasonText(pending.reason as ExitReason, this.settings())}); ${qty} left`,
         );
         this.o.store.savePosition({
           ...p,
@@ -751,13 +870,12 @@ export class IndiBot {
   // ---- exits ----
 
   private async exits(date: string, m: number, closeMinute: number) {
+    const s = this.settings();
+    const base = exitRules(s);
     const rules: ExitRules = {
-      ...this.o.exits,
-      eodMinute: Math.min(this.o.exits.eodMinute, closeMinute - 10),
-      expiryLastMinute: Math.min(
-        this.o.exits.expiryLastMinute,
-        closeMinute - 30,
-      ),
+      ...base,
+      eodMinute: Math.min(base.eodMinute, closeMinute - 10),
+      expiryLastMinute: Math.min(base.expiryLastMinute, closeMinute - 30),
     };
     for (const p of this.o.store.openPositions()) {
       if (p.status !== "open" || p.qty <= 0) continue;
@@ -795,7 +913,7 @@ export class IndiBot {
         this.o.store.savePosition(next);
         this.event(
           "order",
-          `Holding ${p.qty} ${p.symbol} ${this.words(p.contract)} overnight (up 100% or more)`,
+          `Holding ${p.qty} ${p.symbol} ${this.words(p.contract)} overnight (up ${s.holdFromPct}% or more)`,
         );
         await this.o.notify(`${botTag}: held overnight`, [
           `$${p.symbol} ${contractLabel(p.contract)}`,
@@ -814,7 +932,7 @@ export class IndiBot {
           );
         continue;
       }
-      await this.sell(next, decision.sell, decision.reason, mid);
+      await this.sell(next, decision.sell, decision.reason, mid, s);
     }
   }
 
@@ -823,8 +941,10 @@ export class IndiBot {
     qty: number,
     reason: ExitReason,
     mid: number | null,
+    s: BotSettings,
   ) {
     const ask = Math.min(qty, p.qty);
+    const why = reasonText(reason, s);
     if (p.dry) {
       const left = p.qty - ask;
       this.o.store.savePosition({
@@ -832,7 +952,13 @@ export class IndiBot {
         qty: left,
         sales: [
           ...p.sales,
-          { at: this.o.now(), qty: ask, reason, jobId: null },
+          {
+            at: this.o.now(),
+            qty: ask,
+            reason,
+            jobId: null,
+            ...(mid === null ? {} : { price: mid }),
+          },
         ],
         ...(left === 0
           ? { status: "closed" as const, closedAt: this.o.now() }
@@ -842,12 +968,12 @@ export class IndiBot {
         mid === null ? "" : ` (${((mid / p.cost - 1) * 100).toFixed(0)}%)`;
       this.event(
         "order",
-        `Would sell ${ask} of ${p.qty} ${p.symbol} ${this.words(p.contract)} at ${mid?.toFixed(2) ?? "—"}${pnl}: ${reasonText[reason]}`,
+        `Would sell ${ask} of ${p.qty} ${p.symbol} ${this.words(p.contract)} at ${mid?.toFixed(2) ?? "—"}${pnl}: ${why}`,
       );
       await this.o.notify(`${botTag} (dry run): would sell`, [
         `$${p.symbol} ${contractLabel(p.contract)}`,
         `${ask} of ${p.qty} at ${mid?.toFixed(2) ?? "—"}${pnl}`,
-        reasonText[reason],
+        why,
       ]);
       return;
     }
@@ -855,9 +981,9 @@ export class IndiBot {
       .sell({
         contract: p.contract,
         qty: String(ask),
-        stopPct: this.o.stopPct,
+        stopPct: s.safetyStopPct,
         tag: botTag,
-        note: reasonText[reason],
+        note: why,
       })
       .catch((error: unknown) => ({
         status: "error",
@@ -880,7 +1006,7 @@ export class IndiBot {
     });
     this.event(
       "order",
-      `Selling ${ask} of ${p.qty} ${p.symbol} ${this.words(p.contract)}: ${reasonText[reason]}`,
+      `Selling ${ask} of ${p.qty} ${p.symbol} ${this.words(p.contract)}: ${why}`,
     );
   }
 
@@ -912,11 +1038,13 @@ export class IndiBot {
   status() {
     const day = newYork(this.o.now()).date;
     const since = previousSessions(day, 5)[0]!;
+    const s = this.settings();
     return {
-      enabled: this.enabled,
-      mode: this.o.mode,
-      sizePct: this.o.sizePct,
-      delta: this.o.pick.delta,
+      enabled: s.enabled,
+      mode: s.mode,
+      sizePct: s.sizePct,
+      delta: s.delta,
+      settings: s,
       universe: this.o.universe,
       favorites: this.watchlist(),
       watching: this.symbols.length ? this.symbols : this.universe(),
@@ -933,7 +1061,7 @@ export class IndiBot {
               : null,
         }))
         // Closest to a signal first: the weaker of the two conditions.
-        .sort((a, b) => closeness(b) - closeness(a)),
+        .sort((a, b) => closeness(b, s) - closeness(a, s)),
       signals: this.o.store.signals(day),
       positions: this.o.store.recentPositions(since),
       activity: this.o.store.events(150),
@@ -942,8 +1070,20 @@ export class IndiBot {
 }
 
 // How near a stock is to the signal: 1 means both conditions hold.
-function closeness(v: { t: number; rvol: number }): number {
-  return Math.min(v.t / 2, v.rvol / 1.5);
+function closeness(v: { t: number; rvol: number }, s: BotSettings): number {
+  return Math.min(v.t / s.minT, v.rvol / s.minRvol);
+}
+
+/** What changed between two settings, in words for the activity feed. */
+function settingsChanges(a: BotSettings, b: BotSettings): string[] {
+  const out: string[] = [];
+  for (const key of Object.keys(b) as (keyof BotSettings)[]) {
+    if (key === "enabled") continue;
+    const was = JSON.stringify(a[key]);
+    const now = JSON.stringify(b[key]);
+    if (was !== now) out.push(`${key} ${was} → ${now}`);
+  }
+  return out;
 }
 
 // How a position ends the day, for the summary.
@@ -952,6 +1092,11 @@ function standing(p: BotPosition, date: string): string {
   const overnight = p.nights > 0 || p.decidedOn === date;
   if (overnight) return `${p.qty} held overnight`;
   return `${p.qty} held`;
+}
+
+function priceOf(result: unknown): number | null {
+  const r = result as { result?: { price?: unknown } } | null;
+  return typeof r?.result?.price === "number" ? r.result.price : null;
 }
 
 function soldOf(result: unknown): number {

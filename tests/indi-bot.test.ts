@@ -423,6 +423,7 @@ function harness(mode: "dry" | "live", news: NewsFakes = {}) {
     ...(news.premarket ? { premarket: news.premarket } : {}),
   };
   let mid = 0.6;
+  let equity = 100000;
   const held = new Map<string, number>();
   const jobs = new Map<string, { state: string; result: unknown }>();
   const calls: { kind: string; body: Record<string, unknown> }[] = [];
@@ -439,7 +440,7 @@ function harness(mode: "dry" | "live", news: NewsFakes = {}) {
       return n > 0 ? { qty: n, avgEntryPrice: 0.6 } : null;
     },
     async equity() {
-      return 100000;
+      return equity;
     },
     async buy(body) {
       calls.push({ kind: "buy", body });
@@ -490,6 +491,7 @@ function harness(mode: "dry" | "live", news: NewsFakes = {}) {
     notes,
     held,
     setMid: (v: number) => (mid = v),
+    setEquity: (v: number) => (equity = v),
   };
 }
 
@@ -813,4 +815,98 @@ test("runner: the news filter blocks entries only; a held position still exits o
   assert.equal(sells[0]!.body.qty, "33");
   assert.equal(h.store.openPositions().length, 0);
   assert.equal(h.bot.status().news.earnings, "ok");
+});
+
+// ---- the owner's settings (docs/tasks/backend-bot-settings.md) ----
+
+test("settings: size, safety stop and stop words reach the buy and the feed", async () => {
+  const h = harness("live");
+  const saved = h.bot.setSettings({
+    ...h.bot.settings(),
+    sizePct: 1,
+    safetyStopPct: 60,
+  });
+  assert.equal(saved.sizePct, 1);
+  await h.run(DAY, 565, 600);
+  const buy = h.calls.find((c) => c.kind === "buy");
+  assert.equal(buy?.body.sizePct, 1);
+  assert.equal(buy?.body.stopPct, 60);
+  const texts = h.bot
+    .status()
+    .activity.map((e) => e.text)
+    .join("\n");
+  assert.match(texts, /Settings changed: sizePct 2 → 1; safetyStopPct 50 → 60/);
+  assert.equal(h.bot.status().settings.sizePct, 1);
+});
+
+test("settings: a stock turned off is not watched; a stricter signal does not fire", async () => {
+  const off = harness("live");
+  off.bot.setSettings({ ...off.bot.settings(), off: ["NVDA"] });
+  await off.run(DAY, 565, 600);
+  assert.equal(off.calls.length, 0);
+  assert.deepEqual(off.bot.status().watching, []);
+  const strict = harness("live");
+  strict.bot.setSettings({ ...strict.bot.settings(), minT: 4, minRvol: 3 });
+  await strict.run(DAY, 565, 600);
+  assert.equal(strict.store.signals(DAY).length, 0);
+});
+
+test("settings: the most open positions and the daily loss limit hold new buys", async () => {
+  const full = harness("live");
+  full.bot.setSettings({ ...full.bot.settings(), maxOpen: 1 });
+  full.store.savePosition({
+    id: "x",
+    day: DAY,
+    symbol: "AMD",
+    contract: "AMD261023C00200000",
+    right: "C",
+    qty: 2,
+    bought: 2,
+    cost: 1,
+    entryMinute: 0,
+    entryStock: 1,
+    nights: 0,
+    checksDone: [],
+    morningDone: false,
+    decidedOn: null,
+    status: "open",
+    jobId: null,
+    dry: false,
+    sales: [],
+    openedAt: 0,
+    closedAt: null,
+  });
+  full.held.set("AMD261023C00200000", 2);
+  await full.run(DAY, 565, 600);
+  assert.equal(full.calls.filter((c) => c.kind === "buy").length, 0);
+  assert.equal(full.store.signals(DAY)[0]!.outcome, "max_open");
+
+  const loss = harness("live");
+  await loss.run(DAY, 565, 575); // warm-up reads the account at 100,000
+  loss.setEquity(94000); // down 6% today, past the 5% limit
+  await loss.run(DAY, 576, 600);
+  assert.equal(loss.calls.filter((c) => c.kind === "buy").length, 0);
+  const [s] = loss.store.signals(DAY);
+  assert.equal(s!.outcome, "day_loss");
+  assert.match(s!.detail, /down 6\.0% today/);
+});
+
+test("settings: the drawdown pause switches the bot off and says so", async () => {
+  const h = harness("dry");
+  h.bot.setSettings({ ...h.bot.settings(), drawdownPausePct: 5 });
+  await h.run(DAY, 565, 600); // would buy 33 at 0.60
+  h.setMid(0.3);
+  h.setEquity(10000);
+  await h.run(DAY, 601, 960); // sold at 15:50 at 0.30: −$990, 9.9% of 10,000
+  const status = h.bot.status();
+  assert.equal(status.enabled, false);
+  assert.ok(h.notes.some((n) => n.includes("paused")));
+  assert.match(
+    status.activity.map((e) => e.text).join("\n"),
+    /Paused: the bot's trades are down \$990/,
+  );
+  // Switched back on, the pause counts from then.
+  h.bot.setEnabled(true);
+  await h.run(DAY, 961, 965);
+  assert.equal(h.bot.status().enabled, true);
 });

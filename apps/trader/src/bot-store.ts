@@ -25,6 +25,7 @@ export interface BotSale {
   reason: string;
   jobId: string | null; // null in a dry run
   settled?: boolean; // the sale's job has ended and `qty` is what sold
+  price?: number; // average fill (the mid in a dry run), for the drawdown pause
 }
 
 export type BotStatus = "buying" | "open" | "closed";
