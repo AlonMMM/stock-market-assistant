@@ -27,7 +27,7 @@ itself. Everyone else still sees only the read-only Bot tab.
   core ∪ added ∪ (favorites if followed), minus `off`, minus SPY and the futures CL, GC, SI. Stocks apply from
   the next session, the rest from the next minute.
 - Values the bot already runs: `enabled`, `mode`, `sizePct`, `delta`, `stopPct` 30, `safetyStopPct` 50,
-  `checks`, `holdFromPct` 100, `maxNights` 2, `maxDte` 7, `minPrice` 0.20, `minVolume` 200, `minT` 2,
+  `checks`, `holdFromPct` 100, `maxNights` 2, `nightCapPct` 10 (V2: "Most held overnight", 0 = no cap), `maxDte` 7, `minPrice` 0.20, `minVolume` 200, `minT` 1.8 (step 0.1),
   `minRvol` 1.5, `firstEntryMin` 10, `skipEarnings`, `skipPremarket`.
 - New bot behaviour the design asks for: `maxBuysPerDay` (default 5), `maxOpen` (4), `dayLossPct` (5, a
   bot-only limit beside the owner's 5% rule), `drawdownPausePct` (15, turns the bot off). These are not in the

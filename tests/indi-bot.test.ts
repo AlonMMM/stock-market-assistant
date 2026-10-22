@@ -22,12 +22,14 @@ import {
 } from "../packages/trading/src/bot/news.js";
 import {
   nextAction,
+  nightCapSell,
   type BotPositionState,
   type ExitMarket,
 } from "../packages/trading/src/bot/exits.js";
 import { pickContract } from "../packages/trading/src/bot/picker.js";
 import {
   cSignal,
+  defaultSignalParams,
   priorFrom,
   type MinuteBar,
   type PriorDay,
@@ -114,6 +116,35 @@ test("signal: a steady fall is a put; normal volume or too few prior days is not
   );
   assert.equal(cSignal(quiet, spy, prior), null);
   assert.equal(cSignal(down, spy, priorFrom(days.slice(0, 5))), null);
+});
+
+test("signal (V2): the threshold is t 1.8; a slow climb signals earlier than it would at t 2", () => {
+  assert.equal(defaultSignalParams.strengthT, 1.8);
+  assert.equal(defaultSignalParams.rvolDay, 1.5);
+  const prior = priorFrom(priorDays());
+  const spy = session(500, wiggle, () => 50000);
+  // A slow, noisy climb: its t-stat passes 1.8 before it passes 2.
+  const climb = (m: number) =>
+    wiggle(m) * prior.beta! + 0.0001 + (m % 3 === 0 ? 0.0005 : -0.00025);
+  const day = session(100, climb, () => 2000);
+  const at18 = cSignal(day, spy, prior);
+  const at20 = cSignal(day, spy, prior, 374, {
+    ...defaultSignalParams,
+    strengthT: 2,
+  });
+  assert.ok(at18 && at20);
+  assert.equal(at18.right, "C");
+  assert.ok(at18.t >= 1.8 && at18.t < 2);
+  assert.ok(at18.minute < at20.minute);
+  // Normal volume still gives nothing at 1.8.
+  assert.equal(
+    cSignal(
+      session(100, climb, () => 1000),
+      spy,
+      prior,
+    ),
+    null,
+  );
 });
 
 // ---- exits ----
@@ -424,6 +455,7 @@ function harness(mode: "dry" | "live", news: NewsFakes = {}) {
   };
   let mid = 0.6;
   let equity = 100000;
+  let equityFails = false;
   const held = new Map<string, number>();
   const jobs = new Map<string, { state: string; result: unknown }>();
   const calls: { kind: string; body: Record<string, unknown> }[] = [];
@@ -440,6 +472,7 @@ function harness(mode: "dry" | "live", news: NewsFakes = {}) {
       return n > 0 ? { qty: n, avgEntryPrice: 0.6 } : null;
     },
     async equity() {
+      if (equityFails) throw new Error("account read failed (synthetic)");
       return equity;
     },
     async buy(body) {
@@ -492,6 +525,7 @@ function harness(mode: "dry" | "live", news: NewsFakes = {}) {
     held,
     setMid: (v: number) => (mid = v),
     setEquity: (v: number) => (equity = v),
+    failEquity: (on: boolean) => (equityFails = on),
   };
 }
 
@@ -909,4 +943,143 @@ test("settings: the drawdown pause switches the bot off and says so", async () =
   h.bot.setEnabled(true);
   await h.run(DAY, 961, 965);
   assert.equal(h.bot.status().enabled, true);
+});
+
+// ---- the overnight cap (V2) ----
+
+test("night cap: sells the part above the cap, never more than held; 0 is no cap", () => {
+  // 33 at $3.00 = $9,900 against an $8,000 cap: keep 26 ($7,800), sell 7.
+  assert.equal(nightCapSell(33, 3, 100000, 8), 7);
+  assert.ok((33 - nightCapSell(33, 3, 100000, 8)) * 3 * 100 <= 8000);
+  assert.equal(nightCapSell(26, 3, 100000, 8), 0);
+  assert.equal(nightCapSell(13, 3, 100000, 8), 0);
+  // One contract worth more than the whole cap: all of it, and no more.
+  assert.equal(nightCapSell(2, 90, 100000, 8), 2);
+  assert.equal(nightCapSell(33, 3, 100000, 5), 33 - 16);
+  // Off, or nothing held: nothing.
+  assert.equal(nightCapSell(33, 3, 100000, 0), 0);
+  assert.equal(nightCapSell(0, 3, 100000, 8), 0);
+  // No usable account value or mid: nothing is known to be under the cap.
+  assert.equal(nightCapSell(10, 3, Number.NaN, 8), 10);
+  assert.equal(nightCapSell(10, 0, 100000, 8), 10);
+});
+
+test("runner (live): at 15:50 the night cap sells the excess first, then holds at most 8% overnight", async () => {
+  const h = harness("live");
+  h.bot.setSettings({ ...h.bot.settings(), nightCapPct: 8 }); // the cases below are worked at 8%
+  await h.run(DAY, 565, 600);
+  h.setMid(3); // up 400%: 33 × $3.00 × 100 = $9,900 > 8% of $100,000
+  await h.run(DAY, 601, 965);
+  const sells = h.calls.filter((c) => c.kind === "sell");
+  assert.equal(sells.length, 1);
+  assert.equal(sells[0]!.body.qty, "7");
+  assert.equal(sells[0]!.body.tag, "🤖 Bot");
+  assert.match(String(sells[0]!.body.note), /Overnight cap.*8%/);
+  const [p] = h.store.openPositions();
+  assert.equal(p!.qty, 26);
+  assert.equal(p!.nights, 1);
+  assert.ok(26 * 3 * 100 <= 8000);
+  assert.ok(
+    h.notes.some(
+      (n) => n.includes("held overnight") && n.includes("26 contracts"),
+    ),
+  );
+  // The kept part follows the morning rule: no gap our way, all 26 out.
+  await h.run(NEXT, 565, 590);
+  const after = h.calls.filter((c) => c.kind === "sell");
+  assert.equal(after.length, 2);
+  assert.equal(after[1]!.body.qty, "26");
+  assert.equal(h.store.openPositions().length, 0);
+});
+
+test("runner (live): the night cap counts what the account holds, never more; under the cap nothing is sold", async () => {
+  const h = harness("live");
+  h.bot.setSettings({ ...h.bot.settings(), nightCapPct: 8 }); // the cases below are worked at 8%
+  await h.run(DAY, 565, 600);
+  h.held.set("NVDA261023C00110000", 30); // 3 sold by hand: the bot counts 30
+  h.setMid(3); // 30 × $300 = $9,000: keep 26, sell 4
+  await h.run(DAY, 601, 965);
+  const sells = h.calls.filter((c) => c.kind === "sell");
+  assert.equal(sells.length, 1);
+  assert.equal(sells[0]!.body.qty, "4");
+  assert.equal(h.store.openPositions()[0]!.qty, 26);
+  const g = harness("live");
+  g.bot.setSettings({ ...g.bot.settings(), nightCapPct: 8 }); // the cases below are worked at 8%
+  await g.run(DAY, 565, 600);
+  g.held.set("NVDA261023C00110000", 13);
+  g.setMid(3); // 13 × $300 = $3,900
+  await g.run(DAY, 601, 965);
+  assert.equal(g.calls.filter((c) => c.kind === "sell").length, 0);
+  assert.equal(g.store.openPositions()[0]!.qty, 13);
+});
+
+test("runner (live): nightCapPct 0 is no cap; the whole winner is held", async () => {
+  const h = harness("live");
+  h.bot.setSettings({ ...h.bot.settings(), nightCapPct: 0 });
+  await h.run(DAY, 565, 600);
+  h.setMid(3);
+  await h.run(DAY, 601, 965);
+  assert.equal(h.calls.filter((c) => c.kind === "sell").length, 0);
+  assert.equal(h.store.openPositions()[0]!.qty, 33);
+  assert.equal(h.store.openPositions()[0]!.nights, 1);
+});
+
+test("runner (live): a failed account read at 15:50 caps with the last value read today", async () => {
+  const h = harness("live");
+  h.bot.setSettings({ ...h.bot.settings(), nightCapPct: 8 }); // the cases below are worked at 8%
+  await h.run(DAY, 565, 600); // warm-up read $100,000
+  h.setMid(3);
+  h.failEquity(true);
+  await h.run(DAY, 601, 965);
+  const sells = h.calls.filter((c) => c.kind === "sell");
+  assert.equal(sells.length, 1);
+  assert.equal(sells[0]!.body.qty, "7");
+  assert.equal(h.store.openPositions()[0]!.qty, 26);
+  const feed = h.store.events(200).map((e) => e.text);
+  assert.ok(feed.some((t) => /could not be read at the day exit/.test(t)));
+  assert.ok(
+    feed.some((t) => /last account value read today \(\$100000\)/.test(t)),
+  );
+});
+
+test("runner (live): no account value all day sells the carry at 15:50 and says why", async () => {
+  const h = harness("live");
+  h.failEquity(true); // from the warm-up on
+  await h.run(DAY, 565, 600);
+  assert.ok(h.calls.some((c) => c.kind === "buy"));
+  h.setMid(3);
+  await h.run(DAY, 601, 965);
+  const sells = h.calls.filter((c) => c.kind === "sell");
+  assert.equal(sells.length, 1);
+  assert.equal(sells[0]!.body.qty, "33");
+  assert.match(String(sells[0]!.body.note), /no account value today/);
+  assert.equal(h.store.openPositions().length, 0);
+  assert.ok(
+    h.store
+      .events(200)
+      .some((e) => /nothing is held overnight: selling all 33/.test(e.text)),
+  );
+  assert.ok(!h.notes.some((n) => n.includes("held overnight")));
+});
+
+test("runner (dry): the night cap is a 'would sell' with no order", async () => {
+  const h = harness("dry");
+  h.bot.setSettings({ ...h.bot.settings(), nightCapPct: 8 }); // the cases below are worked at 8%
+  await h.run(DAY, 565, 600);
+  h.setMid(3);
+  await h.run(DAY, 601, 965);
+  assert.equal(h.calls.length, 0);
+  assert.ok(
+    h.notes.some(
+      (n) => n.includes("would sell") && n.includes("Overnight cap"),
+    ),
+  );
+  const [p] = h.store.openPositions();
+  assert.equal(p!.qty, 26);
+  assert.equal(p!.nights, 1);
+  assert.ok(
+    h.notes.some(
+      (n) => n.includes("held overnight") && n.includes("26 contracts"),
+    ),
+  );
 });

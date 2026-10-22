@@ -72,6 +72,8 @@ const reasonText: Record<string, string> = {
   "morning-gap-keep": "morning, gap our way",
   "morning-gap-against": "morning, no gap",
   "expiry-day": "expiry day",
+  "night-cap": "overnight cap",
+  "night-no-equity": "day exit, no account value for the cap",
 };
 
 /** Contracts the bot opened in the last sessions, for the Bot chip. */
@@ -737,6 +739,8 @@ interface ExitStep {
 
 function dayExitLabel(rules: BotSettings): string {
   if (rules.maxNights === 0) return "Day exit: all out";
+  if (rules.nightCapPct > 0)
+    return `Day exit: only winners up ${rules.holdFromPct}%+ stay, at most ${rules.nightCapPct}% of the account`;
   return `Day exit: only winners up ${rules.holdFromPct}%+ stay`;
 }
 
@@ -772,7 +776,7 @@ function exitPlan(
   steps.push({
     label: dayExitLabel(rules),
     ms: newYorkToUtc(day, plan.dayExit),
-    reasons: ["close-1550"],
+    reasons: ["close-1550", "night-cap", "night-no-equity"],
   });
   let nextGiven = false;
   return steps.map((s) => {
@@ -1003,6 +1007,8 @@ function Rules({ v }: { v: BotView }) {
     checks =
       "Half at +10 min and the rest at +20 min if the stock is against; ";
   let carry = `at the day exit only winners up ${r.holdFromPct}%+ stay overnight (${r.maxNights} night${r.maxNights === 1 ? "" : "s"} at most)`;
+  if (r.maxNights > 0 && r.nightCapPct > 0)
+    carry += `, one contract worth at most ${r.nightCapPct}% of the account (the rest is sold)`;
   if (r.maxNights === 0) carry = "everything is sold at the day exit";
   return (
     <details className="bot-card bot-rules">

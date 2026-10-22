@@ -33,9 +33,14 @@ next minute; the stock list is fixed at warm-up (09:25 New York) and changes fro
 | `drawdownPausePct`                         | 15 (new)           | switches the bot off (below)                                  |
 | `checks`                                   | on                 | the 10- and 20-minute checks                                  |
 | `holdFromPct`, `maxNights`                 | 100, 2             | the overnight carry                                           |
+| `nightCapPct`                              | 10 (V2)            | 15:50: one contract held overnight ≤ this % of equity; 0 off  |
 | `delta`, `maxDte`, `minPrice`, `minVolume` | 0.15, 7, 0.20, 200 | the contract picker (delta ≤ 0.25)                            |
-| `minT`, `minRvol`, `firstEntryMin`         | 2, 1.5, 10         | the C signal                                                  |
+| `minT`, `minRvol`, `firstEntryMin`         | 1.8 (V2), 1.5, 10  | the C signal (`minT` on a 0.1 step)                           |
 | `skipEarnings`, `skipPremarket`            | on, on             | the news filter                                               |
+
+V2 (`feat/indi-bot-v2-rules`, docs/tasks/backend-indi-bot.md "V2 rules"): `minT` 1.8 (was 2, step 0.25 → 0.1) and
+the new `nightCapPct`. Settings the owner saved before keep their own `minT` (a saved 2 stays 2) and get
+`nightCapPct` 8 from the defaults. `nightCapPct` was backtested, so it is not in `untested`.
 
 `enabled` and `mode` default to `BOT_ENABLED` / `BOT_MODE` until the owner saves; a saved value then wins.
 Limits on new buys run after the news filter and before the contract is picked. Exits of held positions are
