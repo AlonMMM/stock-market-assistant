@@ -23,6 +23,10 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
   R roll (roll {gain | near, within, share, rest_take}): the option at +gain (or the stock close to the
                strike, see roll_hit) within `within` minutes of the entry -> sell `share` (tiers.py buys a
                new contract); the rest is sold at +rest_take
+  X stall exit (stall_exit {arm, min, giveback?, vol?}): once the option has been up `arm`, sell all when the
+               stock has made no new extreme our way for `min` minutes, the option is `giveback` under its peak, and
+               (with `vol`) the last 15 minutes' volume is under `vol` × the 15 minutes up to the option's peak;
+               (with `below`) only while the gain is under `below`
   K locks (locks [[arm, floor], ...]): once the option's peak is up `arm`, sell all when it falls to `floor`
   T time stop (time_stop {min, need}): `min` minutes after the entry, sell all unless up `need`
   G guard (guard {arm, floor | trail}): once the option has been up `arm` (peak close vs the entry fill),
@@ -51,7 +55,7 @@ Each trade's result is a return on the premium paid (`ret`, after costs); sizing
 """
 import csv, datetime as dt, json, os, sys
 from store import P, DATA, day, calendar, chain, expiries, fetch_bars, occ, iv_delta, years_to_expiry
-from signals import Day
+from signals import Day, series
 
 C, X, SH = dict(P["contract"]), dict(P["exit"]), P["cost"]["spread_half"]
 if os.environ.get("BT_CONTRACT"): C.update(json.loads(os.environ["BT_CONTRACT"]))  # e.g. {"delta": 0.3}
@@ -196,6 +200,19 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 continue
             if t >= X["eod_minute"]: continue
             if g <= X["floor"]: pending = ("all", "L3_floor"); continue
+            SX = X.get("stall_exit")  # {arm, min, giveback?, vol?}: the move is over -> out
+            if SX and sd.ok and peak / cost - 1 >= SX["arm"]:
+                tt = min(t, 389)
+                if c >= peak: st["peak_t"] = (k, tt)
+                stalled = tt - sd.last_ext[tt] >= SX["min"] if st.get("peak_t", (k, tt))[0] == k else True
+                given = c <= peak * (1 - SX.get("giveback", 0.0))
+                faded = True
+                if SX.get("vol") and st.get("peak_t") and st["peak_t"][0] == k:
+                    vv = series(day(und, d))[3]; pt = st["peak_t"][1]
+                    ref = sum(vv[max(0, pt - 14):pt + 1]); now = sum(vv[max(0, tt - 14):tt + 1])
+                    faded = ref > 0 and now < SX["vol"] * ref
+                below = g < SX.get("below", 1e9)  # "below": only while under this gain (not going to be held overnight)
+                if stalled and given and faded and below: pending = ("all", "X_stall"); continue
             LK = X.get("locks")  # step locks [[arm, floor], ...]: once the option has been up `arm`, sell all at `floor`
             if LK:
                 pg = peak / cost - 1

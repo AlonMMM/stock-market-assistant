@@ -8,7 +8,7 @@ sys.path.insert(0, HERE)
 from tiers_round import H, NIGHT, R, B
 
 RULES = sys.argv[1:] or ["t3r1", "t25r12", "t15r25", "s20", "s25", "s30"]
-ENV = dict(os.environ, BT_VARIANT="v2", BT_UNIVERSE="wide", BT_FLAT="1", BT_EXIT=json.dumps(dict(H, **NIGHT)),
+ENV = dict(os.environ, BT_VARIANT="v2", BT_UNIVERSE="wide", BT_FLAT="1", BT_EXIT=json.dumps(dict(H, **NIGHT, **json.loads(os.environ.get("BT_EXIT_EXTRA", "{}")))),
            **({"BT_CONTRACT": os.environ["BT_CONTRACT"]} if os.environ.get("BT_CONTRACT") else {}))
 TAG = os.environ.get("BT_TAG", "")
 

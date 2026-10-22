@@ -13,7 +13,7 @@ Exits for every part: params exit_variants["user"] style overrides from BT_EXIT 
 
   python3 tiers.py <signals_tiers.csv> <out prefix> [shard/shards]  -> <prefix>_legs.csv, <prefix>_trades.csv
 """
-import csv, os, sys
+import csv, json, os, sys
 import sim
 from store import P, day, calendar, occ
 
@@ -29,6 +29,33 @@ def leg(t, minute, sym, exp, cal):
     cost, steps, flag = sim.walk(t["sym"], t["date"], minute, t["right"], sym, exp, cal)
     if cost is None: return None
     return dict(cost=cost, steps=steps, ret=sim.result(cost, steps), flag=flag)
+
+
+REBUY = json.loads(os.environ.get("BT_REBUY", "null"))  # {within, thr, mode: "cross" | "newext"}
+
+
+def rebuy(t, m, base, sym, exp, cal):
+    """After the entry-day stock checks sold part of the first leg: the first minute within `within` minutes of that
+    sale when the stock is `thr` % or more past the entry price our way ("cross"), or makes a new day extreme our way
+    ("newext"), buys the sold share back in the same contract. -> (minute, share, leg) or None."""
+    if not REBUY: return None
+    sold = [s for s in base["steps"] if s[2] == "sell" and s[0] == t["date"] and s[5].startswith("U_check")]
+    if not sold: return None
+    from signals import Day
+    bet = 1 if t["right"] == "C" else -1
+    sd = Day(t["sym"], t["date"], bet, cal, cal.index(t["date"]))
+    if not sd.ok or not sd.c[m]: return None
+    first = sold[0][1]
+    for mm in range(first + 1, min(first + REBUY["within"], 374) + 1):
+        x = sd.c[mm]
+        if x is None: continue
+        hit = bet * (x / sd.c[m] - 1) * 100 > REBUY.get("thr", 0.0)
+        if REBUY.get("mode") == "newext": hit = sd.last_ext[mm] == mm and bet * (x - sd.c[m]) > 0
+        if not hit: continue
+        share = sum(s[3] for s in sold if s[1] < mm)
+        lg = leg(t, mm, sym, exp, cal)
+        return (mm, share, lg) if lg and share > 0 else None
+    return None
 
 
 def open_and_winning(L, date, minute, sym):
@@ -58,6 +85,8 @@ def run(rows, prefix, shard=0, shards=1):
             add = leg(t, tm, sym, exp, cal)
             if add:
                 L.append(dict(kind="add_" + nt, minute=tm, contract=sym, premium=(RISK[nt] - size) * UNIT, **add)); size = RISK[nt]
+        rb = rebuy(t, m, base, sym, exp, cal)  # BT_REBUY: buy back what a stock check sold once the stock turns our way
+        if rb: L.append(dict(kind="rebuy", minute=rb[0], contract=sym, premium=L[0]["premium"] * rb[1], **rb[2]))
         roll = next((s for s in base["steps"] if s[5] == "R_roll"), None)
         if roll:
             profit = L[0]["premium"] * (roll[4] / base["cost"] - 1)
