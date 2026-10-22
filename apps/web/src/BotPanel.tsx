@@ -74,7 +74,7 @@ export function useBotContracts(): ReadonlySet<string> {
 
 export function BotChip() {
   return (
-    <span className="bot-chip" title="Opened by the Indi bot">
+    <span className="bot-chip" title="Opened by the bot">
       🤖 Bot
     </span>
   );
@@ -290,7 +290,7 @@ function Funnel({ v }: { v: BotView }) {
     {
       n: v.watching.length,
       label: "Watching",
-      sub: `${v.universe.length} Indi stocks${favorites}`,
+      sub: `${v.universe.length} core stocks${favorites}`,
     },
     {
       n: close.length,
@@ -957,8 +957,8 @@ function Rules({ v }: { v: BotView }) {
       <summary>How the bot decides</summary>
       <ol>
         <li>
-          <b>Stocks.</b> {v.universe.length} stocks Indi traded options on in
-          the past year
+          <b>Stocks.</b> {v.universe.length} core stocks from the backtested
+          list
           {v.favorites
             ? `, and your "${v.favorites.name}" list (${v.favorites.tickers.length})`
             : " (no favorites list received yet)"}
@@ -1007,7 +1007,7 @@ export function BotPanel() {
     <div className="bot-panel">
       <div className="bot-head">
         <div>
-          <h2 className="portfolio-title">🤖 Indi bot</h2>
+          <h2 className="portfolio-title">🤖 Bot</h2>
           <p className="muted small">
             Delta {value.delta} · {value.sizePct}% a trade · paper account
             {value.lastRun !== null &&
