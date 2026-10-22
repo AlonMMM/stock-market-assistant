@@ -78,6 +78,13 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Candidates
 
+- Fade cut on carried days (`night_fade.py`): from 10:00 New York on a carried day, sell the rest at the first minute
+  the stock's t vs SPY x beta since that day's open is < 0.5 and its volume is under normal. Fair list $598,184 / 11%
+  vs $585,592 (2%: $2.54M vs $2.44M); unseen unchanged (no trade cut). Only 4 trades cut (COIN, META, AMD x2), all
+  better; picked as the best of 5 variants, so tuned. "t < 0 and volume under normal": $591,416. Strength alone
+  (t < -1) is much worse ($484,515): it cuts the big winners on a morning dip; the volume test is what keeps them.
+  Too few trades to call it a champion; worth adding to the paper bot's log, not its rules.
+
 - 0DTE on the user's favorites list (50 stocks, first hour, news filter): 21 of 96 results positive every year. Best
   cluster: a new day-high breakout (t >= 2, volume >= 1.5x), the -40% stop only, delta 0.20-0.30: about $158-162K / 8-10%
   at 1% over 2.7 years ($112-122K in 2026 alone), only 15-16% winners. The list is today's, so it carries hindsight.
