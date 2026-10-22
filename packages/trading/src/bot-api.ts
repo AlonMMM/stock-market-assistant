@@ -11,13 +11,20 @@ export interface BotView {
   watching: string[]; // today's stocks: the list and the favorites
   lastRun: number | null; // the bot's last check (ms)
   day: string;
-  // Where each stock stands now: side, t-stat (|t|), volume ratio.
+  // The news filter's sources today: off (not set up), pending, ok, or failed (no filter).
+  news?: {
+    earnings: "off" | "pending" | "ok" | "failed";
+    premarket: "off" | "pending" | "ok" | "failed";
+  };
+  // Where each stock stands now: side, t-stat (|t|), volume ratio, and
+  // whether the news filter keeps it out today.
   scan: {
     symbol: string;
     side: "C" | "P";
     t: number;
     rvol: number;
     minute: number;
+    blocked?: "earnings" | "premarket" | null;
   }[];
   activity: {
     at: number;

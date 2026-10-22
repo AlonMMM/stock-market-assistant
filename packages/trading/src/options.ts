@@ -51,6 +51,29 @@ export function parseOccSymbol(symbol: string) {
   };
 }
 
+/**
+ * An OCC symbol in words, e.g. "Put 75 · 2DTE": the side, the strike and the
+ * calendar days from `from` (the trade or entry date) to expiry. Anything that
+ * is not an OCC symbol comes back unchanged.
+ */
+export function contractWords(symbol: string, from: string): string {
+  if (!occ.test(symbol)) return symbol;
+  const c = parseOccSymbol(symbol);
+  const days = Math.round(
+    (Date.parse(`${c.expiry}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+      86400000,
+  );
+  const side = c.right === "call" ? "Call" : "Put";
+  return `${side} ${c.strike} · ${Math.max(0, days)}DTE`;
+}
+
+/** Every OCC symbol in a text, in words (see `contractWords`). */
+export function contractsInWords(text: string, from: string): string {
+  return text.replace(/\b[A-Z.]{1,6}\d{6}[CP]\d{8}\b/g, (s) =>
+    contractWords(s, from),
+  );
+}
+
 const addDays = (date: string, days: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000)
     .toISOString()

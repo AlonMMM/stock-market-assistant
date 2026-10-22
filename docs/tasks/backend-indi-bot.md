@@ -32,6 +32,9 @@ own, marked 🤖 Bot. The point is the paper test: real fills, real drawdown, ne
 - **Signal (C):** the t-stat of the 1-minute moves vs SPY × beta (beta from 5-minute returns, prior 20 sessions)
   is at least 2, and volume since the open is at least 1.5× the 20-session median of the same window. From 09:40
   to 15:44, one per stock per day, in the side that comes first. `packages/trading/src/bot/signal.ts`.
+- **News filter:** no new entry on the stock's earnings reaction day, or when its pre-market volume is 4× normal or
+  more. Exits of held positions are unchanged. See "News filter (V2 champion)" below.
+  `packages/trading/src/bot/news.ts`.
 - **Contract:** nearest expiry 1–7 days out, OTM, delta closest to 0.15. Skip it when the mid is under $0.20, when
   under 200 contracts traded in the last 30 minutes, or when the account already holds that contract.
   `packages/trading/src/bot/picker.ts`.
@@ -48,6 +51,51 @@ own, marked 🤖 Bot. The point is the paper test: real fills, real drawdown, ne
 - **Never short:** the bot sells an exact count, at most what its own records hold. Every tick it caps that count
   at what the account holds (a stop, or the user selling by hand). Sales go through the service's close-only sell
   and short check.
+
+## News filter (V2 champion)
+
+Branch `feat/indi-bot-news-filter`. From the V2 research (`news_filter.py` on `research/indi-v2`; full log in
+`docs/research/best-algorithms.md` on that branch).
+
+### The rule
+
+1. **Earnings reaction day.** The public Nasdaq calendar (`api.nasdaq.com/api/calendar/earnings?date=…`), for a
+   report listed on date D:
+   - before the open (`time-pre-market`) and D a session: D;
+   - after the close (`time-after-hours`), or D not a session: the next session after D;
+   - no time (94% of rows), a causal rule the live bot can know: D itself when its regular-session open is 2% or
+     more from the prior close; the next session when its open gap is larger than D's.
+2. **Pre-market volume.** The sum of SIP 5-minute bar volume 04:00–09:30 New York, against the median of the same
+   sum over the prior 20 sessions (at least 10 with data, otherwise no filter). 4× or more: no entry today.
+
+### How the bot runs it
+
+- **Warm-up (09:25 NY):** reads the calendar for every date from the previous session through today (a Monday
+  reads Friday to Monday), keeps the rows of the watched stocks for the day, and writes a feed line.
+- **09:30 NY, before the first entry at 09:40:** reads pre-market volume for today and the 20 prior sessions
+  (`AlpacaBotMarket.premarket`, chunks of 10 stocks). It waits for 09:30 so the sum is final; the research also
+  summed through 09:30. After a restart mid-session it reads it at once.
+- **At a signal:** a blocked stock's signal ends as `earnings` ("skipped, earnings reaction day", with the report
+  date and time) or `premarket` ("skipped, pre-market volume 4× normal or more", with the ratio), as a `skip` line
+  in the activity feed. No buy in live mode, no "would buy" in a dry run. Skips are not posted to Telegram.
+- **Fails open:** if the calendar or the pre-market read fails, an `error` line says the bot trades today without
+  that filter, and it does; each is read once a session. The Bot tab also notes it above the live scan.
+- **Live scan:** a "News filter" column shows a stock that is blocked today.
+- The causal rule needs the open, so a no-time report is decided at the signal (09:40 or later), from today's first
+  bar and the warm-up bars.
+
+### Backtest (C signal, delta 0.15, your stop + overnight hold, fair list, Feb 2024 – Oct 2026, from $100,000)
+
+| Run                    | V1 end   | V1 worst drop | V1 + news filter end | worst drop |
+| ---------------------- | -------- | ------------- | -------------------- | ---------- |
+| 1% a trade             | $257,698 | 26%           | $297,160             | 16%        |
+| 2% a trade             | $499,412 | 46%           | $688,039             | 30%        |
+| 151 unseen stocks, 1%  | $107,869 | 21%           | $121,443             | 11%        |
+| Delta 0.10, 1%         | $495,349 | 23%           | $503,674             | 15%        |
+| Delta 0.10, unseen, 1% | $86,369  | 20%           | $102,663             | 9%         |
+
+The causal earnings rule above reproduces these numbers exactly (the research's "whichever gapped more" rule
+gave the same trades).
 
 ## Parity with the backtest
 
@@ -134,6 +182,20 @@ The Portfolio → 🤖 Bot tab refreshes every 15 seconds and shows:
   - the runner: live (buy → overnight → morning sale of exactly what it holds), a contract the user holds is
     skipped, a hand sale caps the bot's count, and the dry run places no orders.
 - `npm run check` passes: 548 tests, formatting, types, builds.
+- News filter (`feat/indi-bot-news-filter`), synthetic data in `tests/indi-bot.test.ts`:
+  - reaction day before the open, after the close, on a weekend listing, and both causal no-time branches;
+  - pre-market 4× blocks, under 4× passes, under 10 sessions of history passes;
+  - a failed calendar or pre-market read fails open and says so in the feed;
+  - a blocked stock gives no buy (live) and no "would buy" (dry run); a held position still exits on its
+    reaction day;
+  - contracts in words in the Bot tab ("Put 75 · 2DTE"), and the bars reader's seconds fix.
+  - `npm run check` passes: 559 tests (558 pass, 1 skipped as before, 0 fail), formatting, types, builds.
+  - Checked by hand: the Nasdaq endpoint answers with `data.rows[]` on a session date and `rows: null` on a
+    weekend; the code handles both. Not checked: a real Alpaca pre-market read.
+- Fixed on the same branch: `toSessionBars` read Alpaca's bar start (seconds) as milliseconds, so the live bot on
+  `main` would get no bars and never signal. The runner tests use a fake market and could not see it.
+- The Bot tab shows contracts in words (side, strike, calendar days to expiry from the trade or entry date) in the
+  signals, holdings, closed trades and activity feed. Telegram posts keep "110 Call 10/23".
 - Not verified yet: a real session (dry run), real fills, the Railway setup, and the Bot tab against the real
   service.
 
@@ -151,3 +213,5 @@ The Portfolio → 🤖 Bot tab refreshes every 15 seconds and shows:
 - Backtest worst drop at 2% a trade was 46%, or 57% with 5% fill costs.
 - Alpaca's delta (from its quotes) can differ slightly from the backtest's, which was Black-Scholes from the last
   trade.
+- News filter: each source is read once a session; a failure leaves that filter off for the day (no retry). The
+  Nasdaq calendar is an unofficial public endpoint and can change or block requests.

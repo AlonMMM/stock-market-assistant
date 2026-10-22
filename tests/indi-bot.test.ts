@@ -8,9 +8,18 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  coreClose,
   newYorkToUtc,
   previousSessions,
 } from "../packages/market-data/src/calendar.js";
+import {
+  premarketBlocks,
+  premarketRatio,
+  reactionReport,
+  reportDates,
+  type EarningsReport,
+  type NewsCalendar,
+} from "../packages/trading/src/bot/news.js";
 import {
   nextAction,
   type BotPositionState,
@@ -24,9 +33,14 @@ import {
   type PriorDay,
 } from "../packages/trading/src/bot/signal.js";
 import { formatEntry, formatExit } from "../packages/trading/src/message.js";
-import type { OptionQuote } from "../packages/trading/src/options.js";
+import {
+  contractWords,
+  contractsInWords,
+  type OptionQuote,
+} from "../packages/trading/src/options.js";
 import {
   IndiBot,
+  toSessionBars,
   type BotMarket,
   type BotTrading,
 } from "../apps/trader/src/bot.js";
@@ -339,7 +353,13 @@ const NEXT = "2026-10-22";
 const at = (date: string, wall: number, sec = 20) =>
   newYorkToUtc(date, wall) + sec * 1000;
 
-function harness(mode: "dry" | "live") {
+// The news filter's sources for the harness (both off unless given).
+interface NewsFakes {
+  earnings?: (date: string) => Promise<EarningsReport[]>;
+  premarket?: BotMarket["premarket"];
+}
+
+function harness(mode: "dry" | "live", news: NewsFakes = {}) {
   const store = new BotStore(
     join(mkdtempSync(join(tmpdir(), "bot-")), "t.sqlite"),
   );
@@ -400,6 +420,7 @@ function harness(mode: "dry" | "live") {
     async optionVolume30() {
       return 500;
     },
+    ...(news.premarket ? { premarket: news.premarket } : {}),
   };
   let mid = 0.6;
   const held = new Map<string, number>();
@@ -447,6 +468,7 @@ function harness(mode: "dry" | "live") {
     market,
     trading,
     universe: ["NVDA"],
+    ...(news.earnings ? { earnings: news.earnings } : {}),
     mode,
     enabled: true,
     now: () => now,
@@ -562,4 +584,233 @@ test("favorites: the named list, else the one called favorite; the bot adds it t
   );
   assert.match(texts, /NVDA call signal at/);
   assert.match(texts, /NVDA call: would buy \(dry run\)/);
+  // The feed names the contract in words, not as an OCC symbol.
+  assert.match(texts, /would buy \(dry run\) \(\d+ Call 110 · 2DTE at 0\.60\)/);
+  assert.doesNotMatch(texts, /NVDA261023C00110000/);
+});
+
+// ---- contracts in words ----
+
+test("contracts in words: side, strike and calendar days to expiry; 0DTE on expiry day", () => {
+  assert.equal(
+    contractWords("MU250404P00075000", "2025-04-02"),
+    "Put 75 · 2DTE",
+  );
+  assert.equal(
+    contractWords("MU250404P00075000", "2025-04-04"),
+    "Put 75 · 0DTE",
+  );
+  assert.equal(
+    contractWords("NVDA261023C00112500", "2026-10-21"),
+    "Call 112.5 · 2DTE",
+  );
+  assert.equal(contractWords("not a contract", "2026-10-21"), "not a contract");
+  assert.equal(
+    contractsInWords("Bought 3 MU250404P00075000 at 1.20", "2025-04-03"),
+    "Bought 3 Put 75 · 1DTE at 1.20",
+  );
+});
+
+test("bars: provider start times are seconds (RawBar), read as New York session minutes", () => {
+  const start = newYorkToUtc(DAY, 570 + 5) / 1000;
+  const bars = toSessionBars([
+    { start, open: 1, high: 2, low: 0.5, close: 1.5, volume: 10 },
+    { start: start - 3600, open: 1, high: 1, low: 1, close: 1, volume: 1 }, // pre-market: dropped
+  ]);
+  assert.deepEqual(bars.get(DAY), [
+    { m: 5, o: 1, h: 2, l: 0.5, c: 1.5, v: 10 },
+  ]);
+});
+
+// ---- the news filter (SYNTHETIC reports, gaps and volumes) ----
+
+const sessions: NewsCalendar = {
+  isSession: (d) => coreClose(d) !== null,
+  nextSession: (d) => {
+    let x = d;
+    do
+      x = new Date(Date.parse(`${x}T12:00:00Z`) + 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+    while (coreClose(x) === null);
+    return x;
+  },
+};
+const report = (date: string, time: string): EarningsReport => ({
+  symbol: "NVDA",
+  date,
+  time,
+});
+const noGap = () => 0;
+
+test("news: earnings reaction day before the open, after the close, and on a non-session date", () => {
+  // Wednesday 2026-10-21, Thursday 22, Saturday 24, Monday 26.
+  const pre = [report("2026-10-21", "time-pre-market")];
+  assert.ok(reactionReport(pre, "2026-10-21", sessions, noGap));
+  assert.equal(reactionReport(pre, "2026-10-22", sessions, noGap), null);
+  const after = [report("2026-10-21", "time-after-hours")];
+  assert.equal(reactionReport(after, "2026-10-21", sessions, noGap), null);
+  assert.ok(reactionReport(after, "2026-10-22", sessions, noGap));
+  // A Saturday listing, whatever its time, reacts on Monday.
+  for (const time of ["time-pre-market", "time-not-supplied"]) {
+    const weekend = [report("2026-10-24", time)];
+    assert.ok(reactionReport(weekend, "2026-10-26", sessions, noGap));
+  }
+  assert.deepEqual(reportDates("2026-10-26", "2026-10-23"), [
+    "2026-10-23",
+    "2026-10-24",
+    "2026-10-25",
+    "2026-10-26",
+  ]);
+});
+
+test("news: no time given, the listed day when it gaps 2%+, else the next session when it gaps more", () => {
+  const rows = [report("2026-10-21", "time-not-supplied")];
+  const gaps = (g: Record<string, number>) => (d: string) => g[d] ?? null;
+  // The listed day: an open 2.5% away is the reaction; 1.5% is not.
+  assert.ok(
+    reactionReport(rows, "2026-10-21", sessions, gaps({ "2026-10-21": 0.025 })),
+  );
+  assert.equal(
+    reactionReport(rows, "2026-10-21", sessions, gaps({ "2026-10-21": 0.015 })),
+    null,
+  );
+  // The next session: a bigger gap than the listed day's is the reaction; a smaller one is not.
+  assert.ok(
+    reactionReport(
+      rows,
+      "2026-10-22",
+      sessions,
+      gaps({ "2026-10-21": 0.01, "2026-10-22": 0.03 }),
+    ),
+  );
+  assert.equal(
+    reactionReport(
+      rows,
+      "2026-10-22",
+      sessions,
+      gaps({ "2026-10-21": 0.03, "2026-10-22": 0.01 }),
+    ),
+    null,
+  );
+  // Other stocks' reports and other days do not count.
+  assert.equal(reactionReport(rows, "2026-10-23", sessions, noGap), null);
+});
+
+test("news: pre-market volume 4x the 20-session median blocks, under 4x or under 10 sessions passes", () => {
+  const prior = Array.from({ length: 20 }, (_, i) => (i % 2 ? 900 : 1100));
+  assert.equal(premarketRatio(4000, prior), 4);
+  assert.ok(premarketBlocks(premarketRatio(4000, prior)));
+  assert.ok(!premarketBlocks(premarketRatio(3900, prior)));
+  // Days without data are left out; 9 sessions with data are too few.
+  const thin = [...Array(11).fill(undefined), ...Array(9).fill(1000)];
+  assert.equal(premarketRatio(9000, thin), null);
+  assert.ok(!premarketBlocks(premarketRatio(9000, thin)));
+  assert.equal(premarketRatio(5000, [...thin.slice(1), 1000]), 5);
+  assert.equal(premarketRatio(undefined, prior), null);
+});
+
+// Pre-market volume for the harness: 1,000 on each prior session, `today` on DAY.
+const premarketOf = (today: number) => async (symbols: string[]) =>
+  new Map(
+    symbols.map((s) => [
+      s,
+      new Map([
+        ...previousSessions(DAY, 20).map((d) => [d, 1000] as [string, number]),
+        [DAY, today] as [string, number],
+      ]),
+    ]),
+  );
+
+test("runner (live): an earnings reaction day is skipped, no buy; the feed says why", async () => {
+  const asked: string[] = [];
+  const h = harness("live", {
+    earnings: async (date) => {
+      asked.push(date);
+      return date === DAY ? [report(DAY, "time-pre-market")] : [];
+    },
+  });
+  await h.run(DAY, 565, 600);
+  assert.deepEqual(asked, ["2026-10-20", DAY]);
+  assert.equal(h.calls.length, 0);
+  const [s] = h.store.signals(DAY);
+  assert.equal(s!.outcome, "earnings");
+  assert.match(s!.detail, /report listed 2026-10-21, before the open/);
+  const status = h.bot.status();
+  assert.equal(status.news.earnings, "ok");
+  assert.equal(status.scan[0]!.blocked, "earnings");
+  const texts = status.activity.map((e) => e.text).join("\n");
+  assert.match(
+    texts,
+    /Earnings calendar 2026-10-20 to 2026-10-21: reports for NVDA/,
+  );
+  assert.match(texts, /NVDA call: skipped, earnings reaction day/);
+});
+
+test("runner (dry): pre-market volume 5x normal is skipped, no 'would buy'", async () => {
+  const h = harness("dry", { premarket: premarketOf(5000) });
+  await h.run(DAY, 565, 600);
+  assert.equal(h.calls.length, 0);
+  assert.ok(!h.notes.some((n) => n.includes("would buy")));
+  const [s] = h.store.signals(DAY);
+  assert.equal(s!.outcome, "premarket");
+  assert.equal(s!.detail, "pre-market volume 5.0× normal");
+  assert.equal(h.store.openPositions().length, 0);
+  const texts = h.bot
+    .status()
+    .activity.map((e) => e.text)
+    .join("\n");
+  assert.match(texts, /4× normal or more, no entry today: NVDA 5\.0×/);
+});
+
+test("runner: under 4x pre-market and no report trades as before", async () => {
+  const h = harness("live", {
+    premarket: premarketOf(3500),
+    earnings: async () => [],
+  });
+  await h.run(DAY, 565, 600);
+  assert.equal(h.calls.filter((c) => c.kind === "buy").length, 1);
+  assert.equal(h.bot.status().scan[0]!.blocked, null);
+});
+
+test("runner: a failed calendar or pre-market read fails open and says so", async () => {
+  const h = harness("live", {
+    earnings: async () => {
+      throw new Error("Nasdaq earnings calendar failed (503)");
+    },
+    premarket: async () => {
+      throw new Error("Alpaca REST request failed (500)");
+    },
+  });
+  await h.run(DAY, 565, 600);
+  assert.equal(h.calls.filter((c) => c.kind === "buy").length, 1);
+  const status = h.bot.status();
+  assert.deepEqual(status.news, { earnings: "failed", premarket: "failed" });
+  const errors = status.activity.filter((e) => e.kind === "error");
+  assert.ok(
+    errors.some((e) => /without the earnings filter/.test(e.text)),
+    "earnings failure in the feed",
+  );
+  assert.ok(
+    errors.some((e) => /without the pre-market filter/.test(e.text)),
+    "pre-market failure in the feed",
+  );
+});
+
+test("runner: the news filter blocks entries only; a held position still exits on its reaction day", async () => {
+  // Reported after the close on DAY: NEXT is NVDA's reaction day.
+  const h = harness("live", {
+    earnings: async (date) =>
+      date === DAY ? [report(DAY, "time-after-hours")] : [],
+  });
+  await h.run(DAY, 565, 600);
+  assert.equal(h.store.openPositions()[0]!.qty, 33);
+  h.setMid(1.5); // up 150% at 15:50: held overnight
+  await h.run(DAY, 601, 965);
+  await h.run(NEXT, 565, 590);
+  const sells = h.calls.filter((c) => c.kind === "sell");
+  assert.equal(sells.length, 1);
+  assert.equal(sells[0]!.body.qty, "33");
+  assert.equal(h.store.openPositions().length, 0);
+  assert.equal(h.bot.status().news.earnings, "ok");
 });

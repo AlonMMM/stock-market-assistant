@@ -1,4 +1,10 @@
+import { newYork } from "../../../packages/market-data/src/calendar.js";
 import type { BotView } from "../../../packages/trading/src/bot-api.js";
+import {
+  contractWords,
+  contractsInWords,
+  parseOccSymbol,
+} from "../../../packages/trading/src/options.js";
 import { usePolling } from "./Live.js";
 import { israelClock, israelLabel, israelShortDate } from "./time.js";
 
@@ -21,6 +27,8 @@ const outcomeText: Record<string, string> = {
   thin: "Skipped: too few contracts traded",
   held: "Skipped: you hold this contract",
   refused: "Refused by the risk rules",
+  earnings: "Skipped: earnings reaction day",
+  premarket: "Skipped: pre-market volume 4× normal or more",
   error: "Failed",
   new: "Working",
 };
@@ -49,11 +57,20 @@ export function BotChip() {
   );
 }
 
-function contractName(contract: string): string {
-  const m = /^([A-Z.]+)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/.exec(contract);
-  if (!m) return contract;
-  return `${m[1]} ${Number(m[6]) / 1000} ${m[5] === "C" ? "Call" : "Put"} ${Number(m[3])}/${Number(m[4])}`;
+/** "MU Put 75 · 2DTE": days to expiry from the entry date. */
+function contractName(contract: string, entryDay: string): string {
+  const words = contractWords(contract, entryDay);
+  if (words === contract) return contract;
+  return `${parseOccSymbol(contract).underlying} ${words}`;
 }
+
+// Older feed lines and signal details may carry OCC symbols: in words, from that day.
+const nyDay = (at: number) => newYork(at).date;
+
+const blockedText: Record<string, string> = {
+  earnings: "earnings day",
+  premarket: "pre-market 4×+",
+};
 
 function sessionTime(minute: number): string {
   const wall = 570 + minute;
@@ -111,6 +128,7 @@ function LiveScan({ scan }: { scan: BotView["scan"] }) {
             <th>Leaning</th>
             <th>Strength vs SPY (need t 2)</th>
             <th>Volume vs normal (need 1.5×)</th>
+            <th>News filter</th>
           </tr>
         </thead>
         <tbody>
@@ -130,6 +148,7 @@ function LiveScan({ scan }: { scan: BotView["scan"] }) {
                   label={`${r.rvol.toFixed(1)}×`}
                 />
               </td>
+              <td>{newsCell(r.blocked)}</td>
             </tr>
           ))}
         </tbody>
@@ -140,6 +159,34 @@ function LiveScan({ scan }: { scan: BotView["scan"] }) {
       </p>
     </div>
   );
+}
+
+function newsCell(blocked: BotView["scan"][number]["blocked"]) {
+  if (!blocked) return <span className="muted">—</span>;
+  return (
+    <span className="pill amber" title="No new entry in this stock today">
+      Blocked: {blockedText[blocked] ?? blocked}
+    </span>
+  );
+}
+
+const newsStateText: Record<string, string> = {
+  pending: "waiting for 09:30 NY",
+  failed: "failed today, not applied",
+  off: "not set up",
+};
+
+/** The news filter's sources, when one is not working. */
+function newsNote(news: BotView["news"]) {
+  if (!news) return null;
+  const parts: string[] = [];
+  if (news.earnings !== "ok")
+    parts.push(`earnings calendar ${newsStateText[news.earnings]}`);
+  const preFine = news.premarket === "ok" || news.premarket === "pending";
+  if (!preFine)
+    parts.push(`pre-market volume ${newsStateText[news.premarket]}`);
+  if (parts.length === 0) return null;
+  return <p className="muted small">News filter: {parts.join("; ")}.</p>;
 }
 
 const kindLabel: Record<BotView["activity"][number]["kind"], string> = {
@@ -163,7 +210,7 @@ function Activity({ items }: { items: BotView["activity"] }) {
           <span className="bot-ev-kind" aria-hidden="true">
             {kindLabel[e.kind]}
           </span>
-          <span>{e.text}</span>
+          <span>{contractsInWords(e.text, nyDay(e.at))}</span>
         </li>
       ))}
     </ul>
@@ -193,11 +240,13 @@ export function BotPanel() {
           ? ` and your "${value.favorites.name}" list (${value.favorites.tickers.length})`
           : " (no favorites list received yet)"}
         . C signal · delta {value.delta} · {value.sizePct}% of the account a
-        trade · your stop, winners up 100% held overnight.
+        trade · your stop, winners up 100% held overnight · no new entry on an
+        earnings reaction day or with pre-market volume 4× normal.
         {value.lastRun !== null && ` Last check ${israelClock(value.lastRun)}.`}
       </p>
 
       <h3>Live scan</h3>
+      {newsNote(value.news)}
       <LiveScan scan={value.scan} />
 
       <h3>Activity</h3>
@@ -220,7 +269,12 @@ export function BotPanel() {
               </span>
               <div>
                 {outcomeText[s.outcome] ?? s.outcome}
-                {s.detail && <span className="muted"> · {s.detail}</span>}
+                {s.detail && (
+                  <span className="muted">
+                    {" "}
+                    · {contractsInWords(s.detail, s.day)}
+                  </span>
+                )}
               </div>
             </li>
           ))}
@@ -234,7 +288,7 @@ export function BotPanel() {
         <ul className="bot-list">
           {open.map((p) => (
             <li key={p.id}>
-              <strong>{contractName(p.contract)}</strong>
+              <strong>{contractName(p.contract, p.day)}</strong>
               {p.dry && <span className="muted"> (dry run)</span>}
               <div className="muted">
                 {p.status === "buying"
@@ -255,7 +309,7 @@ export function BotPanel() {
         <ul className="bot-list">
           {closed.map((p) => (
             <li key={p.id}>
-              <strong>{contractName(p.contract)}</strong>
+              <strong>{contractName(p.contract, p.day)}</strong>
               <span className="muted">
                 {" "}
                 {israelShortDate(p.openedAt)} · {p.bought} at{" "}
