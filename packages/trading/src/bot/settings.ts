@@ -68,7 +68,7 @@ export const defaultSettings: BotSettings = {
   checks: true,
   holdFromPct: 100,
   maxNights: 2,
-  nightCapPct: 8,
+  nightCapPct: 10,
   delta: 0.15,
   maxDte: 7,
   minPrice: 0.2,

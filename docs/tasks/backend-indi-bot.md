@@ -47,7 +47,7 @@ These are the defaults. Since 2026-10-22 the owner can change each one on the si
   - Your stop: half at +10 minutes and the rest at +20 minutes if the stock is against the entry; all out at −30%
     with the stock against.
   - 15:50: hold winners up 100% or more overnight (at most 2 nights, with a session before expiry); sell the rest.
-    Of what is held, one contract is worth at most 8% of the account (`nightCapPct`): the excess is sold first.
+    Of what is held, one contract is worth at most 10% of the account (`nightCapPct`, default 10; the user chose 10 on 2026-10-22): the excess is sold first.
     See "V2 rules" below.
   - The first carried morning at 09:40: half if the stock gapped 0.5% or more our way, otherwise all.
   - On carried days, −30% sells all. On expiry day everything is out by 15:30.
@@ -80,7 +80,7 @@ Parity: `scripts/bot-parity.ts` was run at t 2, where the research generator rep
 exactly (11,058 of 11,058). The threshold is a parameter of the same code, so at 1.8 the bot matches the
 research's 1.8 signals by construction. The parity script was not run again at 1.8 (it needs the local data).
 
-### 2. Overnight cap: at most 8% of the account into the night
+### 2. Overnight cap: at most 10% of the account into the night (default; backtested at 8%)
 
 - At the 15:50 decision, for a position the rules hold overnight: value = count × the option's mid now × 100. If
   that is more than `nightCapPct` (default 8) percent of the account's equity, the bot first sells the excess, an

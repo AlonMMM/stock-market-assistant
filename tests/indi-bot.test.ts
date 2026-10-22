@@ -966,6 +966,7 @@ test("night cap: sells the part above the cap, never more than held; 0 is no cap
 
 test("runner (live): at 15:50 the night cap sells the excess first, then holds at most 8% overnight", async () => {
   const h = harness("live");
+  h.bot.setSettings({ ...h.bot.settings(), nightCapPct: 8 }); // the cases below are worked at 8%
   await h.run(DAY, 565, 600);
   h.setMid(3); // up 400%: 33 × $3.00 × 100 = $9,900 > 8% of $100,000
   await h.run(DAY, 601, 965);
@@ -993,6 +994,7 @@ test("runner (live): at 15:50 the night cap sells the excess first, then holds a
 
 test("runner (live): the night cap counts what the account holds, never more; under the cap nothing is sold", async () => {
   const h = harness("live");
+  h.bot.setSettings({ ...h.bot.settings(), nightCapPct: 8 }); // the cases below are worked at 8%
   await h.run(DAY, 565, 600);
   h.held.set("NVDA261023C00110000", 30); // 3 sold by hand: the bot counts 30
   h.setMid(3); // 30 × $300 = $9,000: keep 26, sell 4
@@ -1002,6 +1004,7 @@ test("runner (live): the night cap counts what the account holds, never more; un
   assert.equal(sells[0]!.body.qty, "4");
   assert.equal(h.store.openPositions()[0]!.qty, 26);
   const g = harness("live");
+  g.bot.setSettings({ ...g.bot.settings(), nightCapPct: 8 }); // the cases below are worked at 8%
   await g.run(DAY, 565, 600);
   g.held.set("NVDA261023C00110000", 13);
   g.setMid(3); // 13 × $300 = $3,900
@@ -1023,6 +1026,7 @@ test("runner (live): nightCapPct 0 is no cap; the whole winner is held", async (
 
 test("runner (live): a failed account read at 15:50 caps with the last value read today", async () => {
   const h = harness("live");
+  h.bot.setSettings({ ...h.bot.settings(), nightCapPct: 8 }); // the cases below are worked at 8%
   await h.run(DAY, 565, 600); // warm-up read $100,000
   h.setMid(3);
   h.failEquity(true);
@@ -1060,6 +1064,7 @@ test("runner (live): no account value all day sells the carry at 15:50 and says 
 
 test("runner (dry): the night cap is a 'would sell' with no order", async () => {
   const h = harness("dry");
+  h.bot.setSettings({ ...h.bot.settings(), nightCapPct: 8 }); // the cases below are worked at 8%
   await h.run(DAY, 565, 600);
   h.setMid(3);
   await h.run(DAY, 601, 965);

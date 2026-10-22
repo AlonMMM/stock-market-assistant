@@ -33,7 +33,7 @@ next minute; the stock list is fixed at warm-up (09:25 New York) and changes fro
 | `drawdownPausePct`                         | 15 (new)           | switches the bot off (below)                                  |
 | `checks`                                   | on                 | the 10- and 20-minute checks                                  |
 | `holdFromPct`, `maxNights`                 | 100, 2             | the overnight carry                                           |
-| `nightCapPct`                              | 8 (V2)             | 15:50: one contract held overnight ≤ this % of equity; 0 off  |
+| `nightCapPct`                              | 10 (V2)            | 15:50: one contract held overnight ≤ this % of equity; 0 off  |
 | `delta`, `maxDte`, `minPrice`, `minVolume` | 0.15, 7, 0.20, 200 | the contract picker (delta ≤ 0.25)                            |
 | `minT`, `minRvol`, `firstEntryMin`         | 1.8 (V2), 1.5, 10  | the C signal (`minT` on a 0.1 step)                           |
 | `skipEarnings`, `skipPremarket`            | on, on             | the news filter                                               |

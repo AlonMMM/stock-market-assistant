@@ -10,7 +10,7 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
 - **Signal:** C signal on the stocks he traded in the past year, t ≥ 1.8 (V2, `feat/indi-bot-v2-rules`, not
   merged; was 2). Backtest at 1%: $585,592 / worst drop 11% (t ≥ 2: $297,160 / 16%).
 - **Contract and size:** delta 0.15, 2% a trade.
-- **Exits:** your stop, plus the overnight hold. V2: one contract holds at most 8% of the account overnight
+- **Exits:** your stop, plus the overnight hold. V2: one contract holds at most 10% of the account overnight
   (the `nightCapPct` setting, 0 = off); the excess is sold at 15:50 ("night cap"). Scale-in was tested and not
   used.
 - **News filter (V2 champion, `feat/indi-bot-news-filter`, not merged):** no new entry on a stock's earnings

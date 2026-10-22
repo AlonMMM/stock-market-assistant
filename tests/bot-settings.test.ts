@@ -225,13 +225,13 @@ test("V2: minT defaults to 1.8 on a 0.1 step; a saved 2 still loads", () => {
   // Settings saved before V2 (minT 2, no nightCapPct) keep their 2 and get the cap.
   const old = withDefaults({ minT: 2, stopPct: 30 });
   assert.equal(old.minT, 2);
-  assert.equal(old.nightCapPct, 8);
+  assert.equal(old.nightCapPct, 10);
   const odd = parseSettings({ ...defaultSettings, minT: 1.83 });
   assert.equal(odd.ok && odd.value.minT, 1.8);
 });
 
-test("V2: nightCapPct defaults to 8, from 0 (no cap) to 25 on a step of 1; backtested, so not untested", () => {
-  assert.equal(defaultSettings.nightCapPct, 8);
+test("V2: nightCapPct defaults to 10, from 0 (no cap) to 25 on a step of 1; backtested, so not untested", () => {
+  assert.equal(defaultSettings.nightCapPct, 10);
   assert.deepEqual(limits.nightCapPct, [0, 25, 1]);
   assert.equal(untested.has("nightCapPct"), false);
   const off = parseSettings({ ...defaultSettings, nightCapPct: 0 });
