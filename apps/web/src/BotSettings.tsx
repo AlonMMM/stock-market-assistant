@@ -62,6 +62,11 @@ function nightsText(v: number): string {
   return `${v} night${v === 1 ? "" : "s"}`;
 }
 
+function nightCapText(v: number): string {
+  if (v === 0) return "No cap";
+  return `${v}% of the account`;
+}
+
 const daysText = (v: number) => `${v} day${v === 1 ? "" : "s"}`;
 
 /** The day exit (15:50 New York) on Israel's clock today. */
@@ -183,6 +188,15 @@ function groups(): Group[] {
           step: 1,
           fmt: nightsText,
         },
+        {
+          key: "nightCapPct",
+          label: "Most held overnight",
+          help: `Most of the account that may be held overnight, per contract; above it the bot sells at the day exit (${dayExitIsrael()} Israel). 0 is no cap.`,
+          min: 0,
+          max: 25,
+          step: 1,
+          fmt: nightCapText,
+        },
       ],
       switches: [],
     },
@@ -239,7 +253,7 @@ const signalSliders: SliderSpec[] = [
     help: "How steadily the 1-minute moves must beat SPY × beta.",
     min: 1,
     max: 4,
-    step: 0.25,
+    step: 0.1,
     fmt: (v) => `t ${v}`,
   },
   {
@@ -755,9 +769,9 @@ export function BotSettingsPage({ onBack }: { onBack: () => void }) {
         {advanced && (
           <div>
             <p className={leftBacktest(s) ? "bot-warn small" : "muted small"}>
-              The backtest numbers are for strength t 2, volume 1.5×, the first
-              entry 10 minutes in and both news filters on. Other values are
-              untested.
+              The backtest numbers are for strength t 1.8, volume 1.5×, the
+              first entry 10 minutes in and both news filters on. Other values
+              are untested.
             </p>
             {signalSliders.map((spec) => (
               <Slider

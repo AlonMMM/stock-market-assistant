@@ -7,7 +7,8 @@
 //   - 20 minutes after, if it is still against, sell the rest;
 //   - the option at -30% while the stock is against: sell all.
 // 15:50: hold overnight what is up >= +100% (a next session before expiry, at
-//   most 2 nights); sell the rest.
+//   most 2 nights); sell the rest. What is held is worth at most 8% of the
+//   account (`nightCapSell`, the `nightCapPct` setting): the excess is sold first.
 // A carried day: nothing before 09:40. On the first carried day at 09:40, a gap
 //   of >= 0.5% our way sells half, otherwise all. The option at -30% sells all.
 //   Expiry day: all out at 15:30.
@@ -71,7 +72,11 @@ export type ExitReason =
   | "carry"
   | "morning-gap-keep"
   | "morning-gap-against"
-  | "expiry-day";
+  | "expiry-day"
+  // Not from `nextAction`: the overnight cap at 15:50 (`nightCapSell`), and
+  // the carry sold because no account value was known for the cap.
+  | "night-cap"
+  | "night-no-equity";
 
 export interface ExitDecision {
   sell: number; // contracts to sell now; 0 = hold
@@ -83,6 +88,28 @@ export interface ExitDecision {
 }
 
 const hold: ExitDecision = { sell: 0, reason: null, update: {} };
+
+/**
+ * How many of `qty` contracts the rules would hold overnight to sell first so
+ * that what is held after is worth at most `capPct` of `equity` at `mid`
+ * (count × mid × 100), rounded so the rest is under the cap. Never more than
+ * `qty`. `capPct` 0 is no cap. From the V2 research (`night_rules.py`, branch
+ * research/indi-v2), where each trade's night is capped against the account.
+ * The caller makes sure `mid` and `equity` are known (see `IndiBot`).
+ */
+export function nightCapSell(
+  qty: number,
+  mid: number,
+  equity: number,
+  capPct: number,
+): number {
+  if (capPct <= 0 || qty <= 0) return 0;
+  if (!(mid > 0) || !(equity > 0)) return qty; // nothing is known to be under the cap
+  const cap = (equity * capPct) / 100;
+  if (qty * mid * 100 <= cap) return 0;
+  const keep = Math.max(0, Math.floor(cap / (mid * 100)));
+  return Math.min(qty, qty - keep);
+}
 
 function share(qty: number, part: number): number {
   return part >= 1 ? qty : Math.min(qty, Math.ceil(qty * part));

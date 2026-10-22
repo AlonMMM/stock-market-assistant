@@ -3,7 +3,8 @@
 // scripts/research/indi_bt/signals.py (branch research/indi-backtest).
 //
 //   1. steady strength vs SPY × beta: the t-stat of the 1-minute moves of the
-//      stock minus beta × SPY, in the bet direction, is at least 2;
+//      stock minus beta × SPY, in the bet direction, is at least 1.8 (the V2
+//      research's threshold; the V1 backtest used 2; `minT` in settings.ts);
 //   2. volume since the open is at least 1.5× the median of the same window
 //      over the prior 20 sessions.
 //
@@ -37,7 +38,7 @@ export const defaultSignalParams: SignalParams = {
   firstMinute: 10,
   lastMinute: 374,
   minSteps: 10,
-  strengthT: 2,
+  strengthT: 1.8,
   rvolDay: 1.5,
 };
 

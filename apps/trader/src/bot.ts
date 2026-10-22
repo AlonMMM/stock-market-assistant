@@ -7,6 +7,7 @@ import {
 } from "../../../packages/market-data/src/calendar.js";
 import {
   nextAction,
+  nightCapSell,
   type ExitReason,
   type ExitRules,
 } from "../../../packages/trading/src/bot/exits.js";
@@ -134,6 +135,9 @@ function reasonText(reason: ExitReason, s: BotSettings): string {
     "morning-gap-keep": "Morning: gapped our way, sold half",
     "morning-gap-against": "Morning: no gap our way, sold all",
     "expiry-day": "Expiry day, out by 15:30",
+    "night-cap": `Overnight cap: sold what is above ${s.nightCapPct}% of the account`,
+    "night-no-equity":
+      "Sold at 15:50: no account value today for the overnight cap",
   };
   return words[reason] ?? reason;
 }
@@ -219,6 +223,9 @@ export class IndiBot {
   private preState: NewsState = "off";
   // The account at warm-up, for the daily loss limit; null until read.
   private dayStartEquity: number | null = null;
+  // The last account value read successfully, and its day: the overnight cap
+  // falls back to it when the read at 15:50 fails.
+  private lastEquity: { day: string; value: number } | null = null;
 
   constructor(options: BotOptions) {
     this.o = {
@@ -238,6 +245,14 @@ export class IndiBot {
     // Switched back on, the drawdown pause counts from here.
     if (on) this.o.store.setSetting("countFrom", String(this.o.now()));
     this.event("info", `Switched ${on ? "on" : "off"}`);
+  }
+
+  /** The account's equity; a good read is kept for the overnight cap's fallback. */
+  private async equity(): Promise<number> {
+    const value = await this.o.trading.equity();
+    if (Number.isFinite(value) && value > 0)
+      this.lastEquity = { day: newYork(this.o.now()).date, value };
+    return value;
   }
 
   /** The owner's settings over the defaults; on/off and the mode as set. */
@@ -416,7 +431,7 @@ export class IndiBot {
       "info",
       `Ready for ${date}: watching ${this.symbols.length} stocks (${parts})`,
     );
-    this.dayStartEquity = await this.o.trading.equity().catch(() => null);
+    this.dayStartEquity = await this.equity().catch(() => null);
     this.preRatio.clear();
     this.preState = this.o.market.premarket ? "pending" : "off";
     await this.loadEarnings(date);
@@ -674,7 +689,7 @@ export class IndiBot {
       closedAt: null,
     };
     if (s.mode === "dry") {
-      const equity = await this.o.trading.equity();
+      const equity = await this.equity();
       const qty = Math.floor((equity * s.sizePct) / 100 / (picked.mid * 100));
       if (qty < 1)
         return this.outcome(
@@ -739,10 +754,10 @@ export class IndiBot {
     if (open.length >= s.maxOpen)
       return { outcome: "max_open", detail: `${open.length} open` };
     if (this.dayStartEquity === null)
-      this.dayStartEquity = await this.o.trading.equity().catch(() => null);
+      this.dayStartEquity = await this.equity().catch(() => null);
     const start = this.dayStartEquity;
     if (start && start > 0) {
-      const equity = await this.o.trading.equity();
+      const equity = await this.equity();
       const down = ((start - equity) / start) * 100;
       if (down >= s.dayLossPct)
         return {
@@ -774,7 +789,7 @@ export class IndiBot {
       .sort((a, b) => a.at - b.at);
     const down = drawdown(sales.map((x) => x.pnl));
     if (down <= 0) return;
-    const equity = await this.o.trading.equity().catch(() => null);
+    const equity = await this.equity().catch(() => null);
     if (!equity || equity <= 0) return;
     const pct = (down / equity) * 100;
     if (pct < s.drawdownPausePct) return;
@@ -910,14 +925,19 @@ export class IndiBot {
         ...(decided ? { decidedOn: date } : {}),
       };
       if (decision.reason === "carry") {
-        this.o.store.savePosition(next);
+        // The overnight cap: sell what is worth more than the cap first, hold the rest.
+        const cap = await this.nightCap(p, mid, date, s);
+        const keep = p.qty - cap.sell;
+        if (cap.sell > 0) await this.sell(next, cap.sell, cap.reason, mid, s);
+        else this.o.store.savePosition(next);
+        if (keep <= 0) continue;
         this.event(
           "order",
-          `Holding ${p.qty} ${p.symbol} ${this.words(p.contract)} overnight (up ${s.holdFromPct}% or more)`,
+          `Holding ${keep} ${p.symbol} ${this.words(p.contract)} overnight (up ${s.holdFromPct}% or more)`,
         );
         await this.o.notify(`${botTag}: held overnight`, [
           `$${p.symbol} ${contractLabel(p.contract)}`,
-          `${p.qty} contracts, ${mid === null ? "" : `up ${((mid / p.cost - 1) * 100).toFixed(0)}%`}`,
+          `${keep} contracts, ${mid === null ? "" : `up ${((mid / p.cost - 1) * 100).toFixed(0)}%`}`,
         ]);
         continue;
       }
@@ -934,6 +954,55 @@ export class IndiBot {
       }
       await this.sell(next, decision.sell, decision.reason, mid, s);
     }
+  }
+
+  /**
+   * What of `p` to sell at 15:50 before the overnight hold, so what is held is
+   * worth at most `nightCapPct` of the account at the mid (0: no cap). The
+   * account is read now; if that fails, the cap uses the last value read
+   * today (warm-up or later); with none, the whole carry is sold. Never more
+   * than the bot's count, which is already capped at what the account holds.
+   */
+  private async nightCap(
+    p: BotPosition,
+    mid: number | null,
+    date: string,
+    s: BotSettings,
+  ): Promise<{ sell: number; reason: "night-cap" | "night-no-equity" }> {
+    if (s.nightCapPct <= 0 || mid === null)
+      return { sell: 0, reason: "night-cap" };
+    const name = `${p.symbol} ${this.words(p.contract)}`;
+    let equity: number | null = await this.equity().catch((error: unknown) => {
+      const why = error instanceof Error ? error.message : String(error);
+      this.event(
+        "error",
+        `${name}: the account value could not be read at the day exit (${why})`,
+      );
+      return null;
+    });
+    if (equity !== null && !(equity > 0)) equity = null;
+    if (equity === null) {
+      const seen = this.lastEquity?.day === date ? this.lastEquity.value : null;
+      if (seen === null) {
+        this.event(
+          "error",
+          `${name}: no account value today for the ${s.nightCapPct}% overnight cap, so nothing is held overnight: selling all ${p.qty}`,
+        );
+        return { sell: p.qty, reason: "night-no-equity" };
+      }
+      this.event(
+        "info",
+        `${name}: the overnight cap uses the last account value read today ($${Math.round(seen)})`,
+      );
+      equity = seen;
+    }
+    const sell = nightCapSell(p.qty, mid, equity, s.nightCapPct);
+    if (sell > 0)
+      this.event(
+        "info",
+        `${name}: ${p.qty} worth $${Math.round(p.qty * mid * 100)} is over the ${s.nightCapPct}% overnight cap ($${Math.round((equity * s.nightCapPct) / 100)}): selling ${sell}, holding ${p.qty - sell}`,
+      );
+    return { sell, reason: "night-cap" };
   }
 
   private async sell(

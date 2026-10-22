@@ -28,6 +28,9 @@ export interface BotSettings {
   // Profits and holding
   holdFromPct: number;
   maxNights: number;
+  // At 15:50, what one contract holds overnight is worth at most this % of
+  // the account; the excess is sold first. 0 = no cap.
+  nightCapPct: number;
   // Contract
   delta: number;
   maxDte: number;
@@ -65,11 +68,12 @@ export const defaultSettings: BotSettings = {
   checks: true,
   holdFromPct: 100,
   maxNights: 2,
+  nightCapPct: 8,
   delta: 0.15,
   maxDte: 7,
   minPrice: 0.2,
   minVolume: 200,
-  minT: 2,
+  minT: 1.8,
   minRvol: 1.5,
   firstEntryMin: 10,
   skipEarnings: true,
@@ -103,11 +107,12 @@ export const limits: Record<
   drawdownPausePct: [5, 40, 5],
   holdFromPct: [50, 300, 25],
   maxNights: [0, 3, 1],
+  nightCapPct: [0, 25, 1],
   delta: [0.05, 0.25, 0.05],
   maxDte: [1, 14, 1],
   minPrice: [0.05, 1, 0.05],
   minVolume: [0, 1000, 50],
-  minT: [1, 4, 0.25],
+  minT: [1, 4, 0.1],
   minRvol: [1, 3, 0.1],
   firstEntryMin: [5, 60, 5],
 };

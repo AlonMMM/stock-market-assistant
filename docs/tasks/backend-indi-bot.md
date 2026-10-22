@@ -1,6 +1,7 @@
 # Task: the Indi bot trades the paper account
 
-Status: implemented on `feat/indi-bot`; dry run next, then live on paper
+Status: implemented on `feat/indi-bot`; V2 rules (t 1.8, night cap) on `feat/indi-bot-v2-rules`; dry run next,
+then live on paper
 Owner: backend (also touches the site API and the Portfolio page)
 Branch: feat/indi-bot
 
@@ -33,7 +34,7 @@ These are the defaults. Since 2026-10-22 the owner can change each one on the si
 - **Stocks:** `config/bot-universe.json`, stocks Indi opened options on at least twice in the past 12 months, without
   index and macro ETFs. It is refreshed by hand.
 - **Signal (C):** the t-stat of the 1-minute moves vs SPY × beta (beta from 5-minute returns, prior 20 sessions)
-  is at least 2, and volume since the open is at least 1.5× the 20-session median of the same window. From 09:40
+  is at least 1.8 (V2; it was 2), and volume since the open is at least 1.5× the 20-session median of the same window. From 09:40
   to 15:44, one per stock per day, in the side that comes first. `packages/trading/src/bot/signal.ts`.
 - **News filter:** no new entry on the stock's earnings reaction day, or when its pre-market volume is 4× normal or
   more. Exits of held positions are unchanged. See "News filter (V2 champion)" below.
@@ -46,6 +47,8 @@ These are the defaults. Since 2026-10-22 the owner can change each one on the si
   - Your stop: half at +10 minutes and the rest at +20 minutes if the stock is against the entry; all out at −30%
     with the stock against.
   - 15:50: hold winners up 100% or more overnight (at most 2 nights, with a session before expiry); sell the rest.
+    Of what is held, one contract is worth at most 8% of the account (`nightCapPct`): the excess is sold first.
+    See "V2 rules" below.
   - The first carried morning at 09:40: half if the stock gapped 0.5% or more our way, otherwise all.
   - On carried days, −30% sells all. On expiry day everything is out by 15:30.
   - On an early-close day, 15:50 and 15:30 move to 10 and 30 minutes before the close.
@@ -54,6 +57,56 @@ These are the defaults. Since 2026-10-22 the owner can change each one on the si
 - **Never short:** the bot sells an exact count, at most what its own records hold. Every tick it caps that count
   at what the account holds (a stop, or the user selling by hand). Sales go through the service's close-only sell
   and short check.
+
+## V2 rules (`feat/indi-bot-v2-rules`)
+
+From the V2 research (log: `docs/research/best-algorithms.md` on `research/indi-v2`). Backtests: delta 0.15, fair
+list, Feb 2024 – Oct 2026, from $100,000, news filter on. Both changes were chosen by the user and are owner
+settings (docs/tasks/backend-bot-settings.md).
+
+### 1. Signal threshold t ≥ 1.8 (was 2)
+
+`defaultSettings.minT` and `defaultSignalParams.strengthT` are 1.8 (the setting's step is now 0.1); day volume stays
+≥ 1.5×; nothing else changes. Settings saved before V2 keep their own `minT`.
+
+| Run                   | t ≥ 2.0 end / worst drop | t ≥ 1.8 end / worst drop |
+| --------------------- | ------------------------ | ------------------------ |
+| 1% a trade            | $297,160 / 16%           | $585,592 / 11%           |
+| 2% a trade            | $688,039 / 30%           | $2,444,629 / 21%         |
+| 151 unseen stocks, 1% | $121,443 / 11%           | $123,028 / 11%           |
+| Delta 0.10, 1%        | $503,674 / 15%           | $808,028 / 13%           |
+
+Parity: `scripts/bot-parity.ts` was run at t 2, where the research generator reproduces the TypeScript signals
+exactly (11,058 of 11,058). The threshold is a parameter of the same code, so at 1.8 the bot matches the
+research's 1.8 signals by construction. The parity script was not run again at 1.8 (it needs the local data).
+
+### 2. Overnight cap: at most 8% of the account into the night
+
+- At the 15:50 decision, for a position the rules hold overnight: value = count × the option's mid now × 100. If
+  that is more than `nightCapPct` (default 8) percent of the account's equity, the bot first sells the excess, an
+  exact count: what is held after is the largest count worth at most the cap (rounded down). The sale has the
+  reason "night cap" (`night-cap`); the rest is held and follows the usual morning rules.
+- `nightCapPct` 0 is no cap (range 0–25, step 1). There is no environment variable.
+- `nightCapSell` in `packages/trading/src/bot/exits.ts`; `IndiBot.nightCap` in `apps/trader/src/bot.ts`. The count
+  is the bot's own, already capped at what the account holds, and the sale goes through the service's close-only
+  sell like every other: never more than held.
+- The cap is per contract, as in the research (`night_rules.py`, each trade's night against the account). The
+  bot never holds two positions of one contract (it skips a contract the account holds).
+- **Equity:** read from the trader account at 15:50. If that read fails, the cap uses the last value read
+  successfully that day (warm-up or later; an `info` line says so). With none that day, the bot holds nothing
+  overnight: it sells the whole carry (reason `night-no-equity`, "no account value today for the overnight
+  cap") and writes an `error` line.
+- Dry run: a "would sell" post and feed line, no order.
+- The Bot tab names the sale ("overnight cap") and the rule; the settings page has "Most held overnight" under
+  Profits and holding.
+
+Backtest at t ≥ 2: free at 1% a trade; at 2% it cuts the end by about 25% ($688K → $516K) but the worst single
+night from −17.6% to −5.4% of the account; the worst drop hardly changes.
+
+### Not used: scale-in
+
+Scale-in tested on t ≥ 1.8: worse (A $476,299 / 12% vs $585,592 / 11% at 1%; unseen $115,967 vs $123,028), not
+used. The bot buys the full size (2%) at the signal.
 
 ## News filter (V2 champion)
 
@@ -205,6 +258,19 @@ owner-only). It refreshes every 15 seconds and shows:
   signals, holdings, closed trades and activity feed. Telegram posts keep "110 Call 10/23".
 - Not verified yet: a real session (dry run), real fills, the Railway setup, and the Bot tab against the real
   service.
+- V2 rules (`feat/indi-bot-v2-rules`), synthetic data in `tests/indi-bot.test.ts` and `tests/bot-settings.test.ts`:
+  - t 1.8: the defaults are 1.8 / 1.5×; a slow climb signals at t 1.8–2 earlier than at 2; normal volume still
+    gives nothing; `minT` 1.8 parses on the 0.1 step and a saved 2 still loads;
+  - `nightCapPct`: default 8, range 0–25, not in `untested`; 0 sells nothing (unit and runner);
+  - `nightCapSell`: the excess above the cap, the held part at most the cap, never more than the count;
+  - runner, live: up 400% at 15:50 (33 × $3.00 = $9,900 > $8,000) sells exactly 7 ("Overnight cap"), holds 26
+    ($7,800), and the morning rule sells the 26; with the account holding 30 it sells 4; under the cap (13) no
+    cap sale;
+  - runner, equity read fails at 15:50: caps with the warm-up's $100,000 (sells 7); no read all day: sells all
+    33 with the reason and an error line, nothing held overnight;
+  - runner, dry: the cap sale is a "would sell", no orders.
+  - `npm run check` passes: 591 tests (590 pass, 1 skipped as before, 0 fail), formatting, types, builds.
+  - Not run: `scripts/bot-parity.ts` at 1.8 (local data); a real 15:50 with a capped position.
 
 ## Next
 
