@@ -992,7 +992,7 @@ function Rules({ v }: { v: BotView }) {
   );
 }
 
-export function BotPanel() {
+export function BotPanel({ onSettings }: { onSettings?: () => void }) {
   const { value, error } = usePolling<BotView>("/api/bot", refreshMs, ignore);
   const now = useNow(5000);
   if (!value)
@@ -1014,7 +1014,14 @@ export function BotPanel() {
               ` · last check ${ago(value.lastRun, now)}`}
           </p>
         </div>
-        {statusPill(value)}
+        <div className="bot-head-side">
+          {statusPill(value)}
+          {onSettings && (
+            <button type="button" className="bot-more" onClick={onSettings}>
+              Settings
+            </button>
+          )}
+        </div>
       </div>
       {error && (
         <p className="bot-warn small">
