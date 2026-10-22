@@ -23,6 +23,8 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
   R roll (roll {gain | near, within, share, rest_take}): the option at +gain (or the stock close to the
                strike, see roll_hit) within `within` minutes of the entry -> sell `share` (tiers.py buys a
                new contract); the rest is sold at +rest_take
+  K locks (locks [[arm, floor], ...]): once the option's peak is up `arm`, sell all when it falls to `floor`
+  T time stop (time_stop {min, need}): `min` minutes after the entry, sell all unless up `need`
   G guard (guard {arm, floor | trail}): once the option has been up `arm` (peak close vs the entry fill),
                sell all when the gain falls to `floor`, or the price falls `trail` from its peak
   N night trail (night_trail x): on a carried day, after the morning rule kept a part, sell it when the option
@@ -58,7 +60,7 @@ if VARIANT: X.update({k: v for k, v in P["exit_variants"][VARIANT].items() if no
 if os.environ.get("BT_EXIT"): X.update(json.loads(os.environ["BT_EXIT"]))  # ad-hoc overrides for sweeps
 LIMIT = os.environ.get("BT_LIMIT") is not None  # buy with a limit at the last option price seen (+ BT_LIMIT, e.g. 0.01)
 LIMIT_PAD = float(os.environ.get("BT_LIMIT") or 0)
-FILL = os.environ.get("BT_FILL")  # "close" / "mid": fill the buy on the signal bar, not the next one
+FILL = os.environ.get("BT_FILL")  # "close" / "mid": fill the buy on the signal bar; "open": the next bar's open
 COMM = P["size"]["commission"]
 _exp = {}
 
@@ -134,7 +136,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
     dates = [d for d in cal[i0:] if d <= exp]
     fetch_bars("options", [sym], date, exp)
     steps, rem, cost, peak = [], 1.0, None, None
-    if FILL and limit is None:  # BT_FILL: buy on the signal bar itself, at its close ("close") or its middle ("mid", looks ahead)
+    if FILL in ("close", "mid") and limit is None:  # BT_FILL: buy on the signal bar itself, at its close ("close") or its middle ("mid", looks ahead)
         b0 = last_bar(day(sym, date), minute, C["bar_max_age"])
         if b0:
             cost = (b0[4] if FILL == "close" else mid(b0)) * (1 + SH); peak = b0[4]
@@ -157,7 +159,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                     cost = limit
                 else:
                     if t > minute + 3: return None, [], "no_fill"
-                    cost = mid(b) * (1 + SH)
+                    cost = (b[1] if FILL == "open" else mid(b)) * (1 + SH)
                 peak = b[4]
                 steps.append((d, t, "buy", 1.0, round(cost, 4), "entry_limit" if limit is not None else "entry"))
                 continue
@@ -194,6 +196,15 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 continue
             if t >= X["eod_minute"]: continue
             if g <= X["floor"]: pending = ("all", "L3_floor"); continue
+            LK = X.get("locks")  # step locks [[arm, floor], ...]: once the option has been up `arm`, sell all at `floor`
+            if LK:
+                pg = peak / cost - 1
+                fl = max((f for arm, f in LK if pg >= arm), default=None)
+                if fl is not None and g <= fl: pending = ("all", "K_lock"); continue
+            TS = X.get("time_stop")  # {min, need}: at `min` minutes after the entry, out unless up `need`
+            if TS and k == 0 and not st.get("ts_done") and t - minute >= TS["min"]:
+                st["ts_done"] = True
+                if g < TS["need"]: pending = ("all", "T_stop"); continue
             G = X.get("guard")  # give-back guard: once the option has been up `arm`, protect the gain (every day held)
             if G and peak / cost - 1 >= G["arm"]:
                 if "floor" in G and g <= G["floor"]: pending = ("all", "G_floor"); continue
