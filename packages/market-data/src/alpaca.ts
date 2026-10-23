@@ -17,6 +17,23 @@ interface HistoryResponse {
   next_page_token?: string | null;
 }
 
+// One trade from GET /v2/stocks/{symbol}/trades.
+export interface AlpacaTrade {
+  t: string; // RFC 3339 with nanoseconds
+  x: string; // exchange code
+  p: number; // price
+  s: number; // size, shares
+  c?: string[] | null; // SIP condition codes
+  i?: number; // exchange trade id
+  z?: string; // tape: A, B, C (N overnight, O OTC)
+  u?: string; // correction: "canceled" | "incorrect" | "corrected"
+}
+
+interface TradesResponse {
+  trades?: AlpacaTrade[] | null;
+  next_page_token?: string | null;
+}
+
 interface StreamMessage {
   T?: string;
   S?: string;
@@ -163,6 +180,47 @@ export class AlpacaFeed {
       pageToken = body.next_page_token ?? undefined;
     } while (pageToken);
     return result;
+  }
+
+  /**
+   * Every trade of one symbol in [start, end] (Alpaca treats both ends as
+   * inclusive), a page of up to 10,000 at a time in time order. A liquid
+   * stock prints hundreds of thousands of trades a day, so callers consume
+   * the pages as they come instead of collecting them.
+   */
+  async *trades(
+    ticker: string,
+    start: string,
+    end: string,
+  ): AsyncGenerator<AlpacaTrade[]> {
+    let pageToken: string | undefined;
+    do {
+      const url = new URL(
+        `/v2/stocks/${encodeURIComponent(ticker)}/trades`,
+        this.restUrl,
+      );
+      url.searchParams.set("start", start);
+      url.searchParams.set("end", end);
+      url.searchParams.set("feed", this.feed);
+      url.searchParams.set("sort", "asc");
+      url.searchParams.set("limit", "10000");
+      if (pageToken) url.searchParams.set("page_token", pageToken);
+      const response = await this.fetcher.call(globalThis, url, {
+        headers: {
+          "APCA-API-KEY-ID": this.key,
+          "APCA-API-SECRET-KEY": this.secret,
+        },
+        signal: AbortSignal.timeout(60000),
+      });
+      if (!response.ok)
+        throw new Error(`Alpaca REST request failed (${response.status})`);
+      const body = (await response.json()) as TradesResponse;
+      if (body.trades === null) body.trades = [];
+      if (!Array.isArray(body.trades))
+        throw new Error("Invalid Alpaca trades response");
+      yield body.trades;
+      pageToken = body.next_page_token ?? undefined;
+    } while (pageToken);
   }
 
   stream(
