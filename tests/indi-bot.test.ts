@@ -1192,7 +1192,9 @@ test("runner (live): a failed break at the day's high sells all, with the level 
     String(sells[0]!.body.note),
     /Failed break: reached the day's high \(103\.00\)/,
   );
-  assert.ok(h.store.events(50).some((e) => /failed break at/.test(e.text)));
+  assert.ok(
+    h.store.events(50).some((e) => /failed break: reached/.test(e.text)),
+  );
   await h.run(DAY, 641, 645);
   assert.equal(h.store.openPositions().length, 0);
 });

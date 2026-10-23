@@ -1027,7 +1027,7 @@ export class IndiBot {
         : " (the failed-break sale is off)";
       this.event(
         "info",
-        `${name}: failed break at ${clock(next.at!)}: reached ${level} and fell back${off}`,
+        `${name}: failed break: reached ${level} and fell back${off}`,
       );
     }
     return saved;
