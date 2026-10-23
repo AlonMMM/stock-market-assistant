@@ -12,6 +12,12 @@ import {
   type ExitRules,
 } from "../../../packages/trading/src/bot/exits.js";
 import {
+  advanceWatch,
+  priorLevels,
+  watchFor,
+  type PriorLevels,
+} from "../../../packages/trading/src/bot/levels.js";
+import {
   premarketBlocks,
   premarketRatio,
   reactionReport,
@@ -138,6 +144,7 @@ function reasonText(reason: ExitReason, s: BotSettings): string {
     "night-cap": `Overnight cap: sold what is above ${s.nightCapPct}% of the account`,
     "night-no-equity":
       "Sold at 15:50: no account value today for the overnight cap",
+    "failed-break": "Failed break: the stock reached a level and fell back",
   };
   return words[reason] ?? reason;
 }
@@ -202,6 +209,8 @@ export class IndiBot {
   private day: string | null = null;
   private prior = new Map<string, Prior>();
   private priorClose = new Map<string, number>();
+  // The 5 sessions before today's levels and unit, for the failed break.
+  private levels = new Map<string, PriorLevels | null>();
   private today = new Map<string, Map<number, MinuteBar>>();
   private done = -1; // the last session minute processed today
   private summarized: string | null = null;
@@ -393,6 +402,7 @@ export class IndiBot {
     const spy = bars.get("SPY") ?? new Map<string, MinuteBar[]>();
     this.prior.clear();
     this.priorClose.clear();
+    this.levels.clear();
     this.openClose.clear();
     this.priorDays = days;
     for (const s of symbols) {
@@ -409,6 +419,10 @@ export class IndiBot {
             spy: spy.get(d) ?? [],
           })),
         ),
+      );
+      this.levels.set(
+        s,
+        priorLevels(days.slice(-5).map((d) => byDay.get(d) ?? [])),
       );
       const lastDay = byDay.get(days.at(-1)!);
       if (lastDay?.length) this.priorClose.set(s, lastDay.at(-1)!.c);
@@ -680,6 +694,13 @@ export class IndiBot {
       nights: 0,
       checksDone: [],
       morningDone: false,
+      breakWatch: watchFor(
+        this.levels.get(symbol),
+        this.barsOf(symbol),
+        minute,
+        spot,
+        right,
+      ),
       decidedOn: null,
       status: "buying",
       jobId: null,
@@ -892,9 +913,24 @@ export class IndiBot {
       eodMinute: Math.min(base.eodMinute, closeMinute - 10),
       expiryLastMinute: Math.min(base.expiryLastMinute, closeMinute - 30),
     };
-    for (const p of this.o.store.openPositions()) {
+    for (const p0 of this.o.store.openPositions()) {
+      const p = this.watchLevel(p0, date, m, rules.eodMinute);
       if (p.status !== "open" || p.qty <= 0) continue;
       if (p.sales.some((s) => s.jobId !== null && !s.settled)) continue;
+      const failed =
+        s.sellFailedBreak &&
+        p.day === date &&
+        m < rules.eodMinute &&
+        p.breakWatch?.state === "failed";
+      if (failed) {
+        const quote = await this.o.trading.quote(p.contract).catch(() => null);
+        const mid =
+          quote && quote.bid > 0 && quote.ask > 0
+            ? (quote.bid + quote.ask) / 2
+            : null;
+        await this.sell(p, p.qty, "failed-break", mid, s);
+        continue;
+      }
       const expiry = expiryOf(p.contract);
       const quote = await this.o.trading.quote(p.contract).catch(() => null);
       const mid =
@@ -957,6 +993,47 @@ export class IndiBot {
   }
 
   /**
+   * Moves the position's level watch to minute `m` on the entry day (also
+   * while the buy is still filling) and writes what it saw to the feed. A
+   * failed break is noted even with the setting off.
+   */
+  private watchLevel(
+    p: BotPosition,
+    date: string,
+    m: number,
+    eodMinute: number,
+  ): BotPosition {
+    const w = p.breakWatch;
+    if (!w || w.state !== "watching" || p.day !== date) return p;
+    if (p.status === "closed") return p;
+    const next = advanceWatch(
+      w,
+      this.barsOf(p.symbol),
+      Math.min(m, eodMinute - 1),
+      p.right,
+    );
+    if (next === w || next.through === w.through) return p;
+    const saved = { ...p, breakWatch: next };
+    this.o.store.savePosition(saved);
+    const name = `${p.symbol} ${this.words(p.contract)}`;
+    const level = `${w.name} (${w.level.toFixed(2)})`;
+    if (next.touch !== null && w.touch === null && next.state === "watching")
+      this.event("info", `${name}: the stock reached ${level}`);
+    if (next.state === "broken")
+      this.event("info", `${name}: the stock broke ${level}`);
+    if (next.state === "failed") {
+      const off = this.settings().sellFailedBreak
+        ? ""
+        : " (the failed-break sale is off)";
+      this.event(
+        "info",
+        `${name}: failed break at ${clock(next.at!)}: reached ${level} and fell back${off}`,
+      );
+    }
+    return saved;
+  }
+
+  /**
    * What of `p` to sell at 15:50 before the overnight hold, so what is held is
    * worth at most `nightCapPct` of the account at the mid (0: no cap). The
    * account is read now; if that fails, the cap uses the last value read
@@ -1013,7 +1090,10 @@ export class IndiBot {
     s: BotSettings,
   ) {
     const ask = Math.min(qty, p.qty);
-    const why = reasonText(reason, s);
+    let why = reasonText(reason, s);
+    const w = p.breakWatch;
+    if (reason === "failed-break" && w)
+      why = `Failed break: reached ${w.name} (${w.level.toFixed(2)}) and fell back, sold all`;
     if (p.dry) {
       const left = p.qty - ask;
       this.o.store.savePosition({

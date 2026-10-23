@@ -18,7 +18,8 @@ export {
   type BotSettings,
   type NumberKey,
 } from "../../../packages/trading/src/bot/settings.js";
-export type SwitchKey = "checks" | "skipEarnings" | "skipPremarket";
+export type SwitchKey =
+  "checks" | "sellFailedBreak" | "skipEarnings" | "skipPremarket";
 
 /**
  * The settings as far as the bot reports them, the defaults for the rest.

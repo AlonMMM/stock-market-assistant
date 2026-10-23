@@ -64,6 +64,15 @@ export interface BotView {
     status: "buying" | "open" | "closed";
     dry: boolean;
     sales: { at: number; qty: number; reason: string }[];
+    // The level watched on the entry day for the failed-break sale (absent
+    // before it, or with no level ahead).
+    breakWatch?: {
+      name: string;
+      level: number;
+      state: "watching" | "broken" | "ended" | "failed";
+      touch: number | null;
+      at: number | null;
+    } | null;
     openedAt: number;
     closedAt: number | null;
   }[];

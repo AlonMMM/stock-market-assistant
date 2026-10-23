@@ -74,6 +74,7 @@ const reasonText: Record<string, string> = {
   "expiry-day": "expiry day",
   "night-cap": "overnight cap",
   "night-no-equity": "day exit, no account value for the cap",
+  "failed-break": "failed break",
 };
 
 /** Contracts the bot opened in the last sessions, for the Bot chip. */
@@ -766,6 +767,17 @@ function exitPlan(
         reasons: ["check-20"],
       },
     );
+    const w = p.breakWatch;
+    if (
+      rules.sellFailedBreak &&
+      w &&
+      (w.state === "watching" || w.state === "failed")
+    )
+      steps.push({
+        label: `Failed break: all out if it reaches ${w.name} (${w.level.toFixed(2)}) and falls back`,
+        ms: w.state === "failed" ? now : newYorkToUtc(day, plan.dayExit),
+        reasons: ["failed-break"],
+      });
   } else if (p.nights > 0) {
     steps.push({
       label: "Morning: half if it gapped our way, else all",
