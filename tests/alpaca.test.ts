@@ -181,3 +181,49 @@ test("history treats Alpaca's null bars for an empty range as no bars", async ()
     /Invalid Alpaca history response/,
   );
 });
+
+test("trades pages through a symbol-day in time order and accepts null pages", async () => {
+  const requests: URL[] = [];
+  const pages = [
+    {
+      trades: [
+        {
+          t: "2026-10-07T13:30:00.000123456Z",
+          x: "V",
+          p: 10,
+          s: 100,
+          c: ["@"],
+          z: "C",
+        },
+      ],
+      next_page_token: "more",
+    },
+    { trades: null, next_page_token: null },
+  ];
+  const fetcher = (async (input: URL | RequestInfo) => {
+    requests.push(new URL(String(input)));
+    return Response.json(pages.shift());
+  }) as typeof fetch;
+  const feed = new AlpacaFeed("key", "secret", "sip", () => {}, fetcher);
+  const seen: number[] = [];
+  for await (const page of feed.trades(
+    "AAPL",
+    "2026-10-07T13:30:00Z",
+    "2026-10-07T20:00:00Z",
+  ))
+    seen.push(page.length);
+  assert.deepEqual(seen, [1, 0]);
+  assert.equal(requests[0]?.pathname, "/v2/stocks/AAPL/trades");
+  assert.equal(requests[0]?.searchParams.get("limit"), "10000");
+  assert.equal(requests[0]?.searchParams.get("sort"), "asc");
+  assert.equal(requests[0]?.searchParams.get("feed"), "sip");
+  assert.equal(requests[1]?.searchParams.get("page_token"), "more");
+  const broken = new AlpacaFeed("key", "secret", "sip", () => {}, (async () =>
+    Response.json({ trades: "nope" })) as typeof fetch);
+  await assert.rejects(
+    (async () => {
+      for await (const _ of broken.trades("AAPL", "a", "b")) void _;
+    })(),
+    /Invalid Alpaca trades response/,
+  );
+});
