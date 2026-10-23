@@ -153,6 +153,23 @@ Branch `feat/indi-bot-news-filter`. From the V2 research (`news_filter.py` on `r
 The causal earnings rule above reproduces these numbers exactly (the research's "whichever gapped more" rule
 gave the same trades).
 
+## Orders and timing (2026-10-23, user request)
+
+- **Buys chase until filled.** After the usual raises from the mid toward the ask, the bot's buy
+  keeps raising its limit to the current ask every 3 s for up to 10 minutes (`chase: true`,
+  `chaseMs` on the buy; `buyWithLadder`'s `chaseMs`). It never lowers the price and never pays
+  more than 10% over the planned budget (`chaseSlack`); when the ask is above that, the order
+  waits at the cap. What is still unfilled after the chase and the usual 2-minute watch is
+  canceled, as before. The spread is not checked while chasing.
+- **Sales wait 10 minutes.** The bot's sales are re-priced at the bid every 5 s for up to
+  10 minutes (`waitMs` on the sell; was 2). A remainder is tried again by the next exit check.
+- **Exit checks every 10 seconds.** The service ticks the bot every 10 s (was 15), and the exit
+  rules (the 10- and 20-minute checks, −30%, 15:50, the morning rule, the night cap, expiry day)
+  run on every tick, in the minute now, with the stock's last trade (`BotMarket.lastPrices`,
+  Alpaca `trades/latest`) and a fresh option quote. So a check fires at the start of its minute
+  instead of after the minute closes, and −30% is seen within 10 s. Entries still need closed
+  minute bars and run once per minute; the level watch (failed break) reads closed bars only.
+
 ## Parity with the backtest
 
 - `scripts/bot-parity.ts`: the TypeScript signal on the backtest's bar cache gives the same first minute and side

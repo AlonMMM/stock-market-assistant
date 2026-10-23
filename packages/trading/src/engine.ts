@@ -220,11 +220,19 @@ export interface BuyRequest {
   steps?: number;
   intervalMs?: number;
   waitMs?: number; // how long an unfilled order is watched, then canceled
+  // Keep raising to the ask after the planned raises until filled, for up
+  // to `chaseMs` (default chaseDefaultMs), paying up to chaseSlack over the
+  // budget (the bot; docs/tasks/backend-indi-bot.md, "Orders").
+  chase?: boolean;
+  chaseMs?: number;
   // A first line for the posts, such as "🤖 Bot", and a line of why
   // (docs/tasks/backend-indi-bot.md).
   tag?: string;
   note?: string;
 }
+
+export const chaseDefaultMs = 10 * 60_000;
+export const chaseSlack = 0.1; // the cap while chasing: budget × (1 + this)
 
 /** A two-leg debit spread: buy `long`, sell `short` (user 2026-10-17). */
 export interface SpreadRequest {
@@ -324,6 +332,8 @@ export interface BuyPlan extends BuyBase {
   steps?: number;
   intervalMs?: number;
   waitMs?: number;
+  chase?: boolean;
+  chaseMs?: number;
   tag?: string;
   note?: string;
 }
@@ -1050,6 +1060,8 @@ export class TradeEngine {
         ? {}
         : { intervalMs: request.intervalMs }),
       ...(request.waitMs === undefined ? {} : { waitMs: request.waitMs }),
+      ...(request.chase ? { chase: true } : {}),
+      ...(request.chaseMs === undefined ? {} : { chaseMs: request.chaseMs }),
       ...(request.tag === undefined ? {} : { tag: request.tag }),
       ...(request.note === undefined ? {} : { note: request.note }),
     };
@@ -1216,7 +1228,8 @@ export class TradeEngine {
           ...(request.intervalMs === undefined
             ? {}
             : { intervalMs: request.intervalMs }),
-          maxPrice: budget / (qty * 100),
+          ...(plan.chase ? { chaseMs: plan.chaseMs ?? chaseDefaultMs } : {}),
+          maxPrice: (budget * (plan.chase ? 1 + chaseSlack : 1)) / (qty * 100),
           ...this.timing,
         });
         if (

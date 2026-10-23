@@ -143,8 +143,15 @@ function buyRequest(body: Body): BuyRequest {
     throw new RequestError("An order type or price needs a contract");
   if (body.force !== undefined && typeof body.force !== "boolean")
     throw new RequestError("force must be true or false");
+  if (body.chase !== undefined && typeof body.chase !== "boolean")
+    throw new RequestError("chase must be true or false");
+  const chaseMs = number(body, "chaseMs");
+  if (chaseMs !== undefined && !(chaseMs >= 1000 && chaseMs <= 3_600_000))
+    throw new RequestError("chaseMs must be 1000–3600000");
   return {
     ...(body.force === true ? { force: true } : {}),
+    ...(body.chase === true ? { chase: true } : {}),
+    ...(chaseMs === undefined ? {} : { chaseMs }),
     ...(contract ? { contract } : { underlying: underlying!, right: right! }),
     ...(qty === undefined ? { sizePct: sizePct! } : { qty }),
     ...(expiry ? { expiry } : {}),
@@ -444,10 +451,16 @@ export class TraderService {
         409,
       );
     const stopPct = number(body, "stopPct");
+    // How long the sale is re-priced at the bid before giving up (the bot
+    // asks for 10 minutes; the default is 2).
+    const waitMs = number(body, "waitMs");
+    if (waitMs !== undefined && !(waitMs >= 1000 && waitMs <= 3_600_000))
+      throw new RequestError("waitMs must be 1000–3600000");
     const request = {
       contract: symbol,
       qty,
       ...(stopPct === undefined ? {} : { stopPct }),
+      ...(waitMs === undefined ? {} : { waitMs }),
       ...postLines(body),
     };
     const jobId = this.start("sell", symbol, request, () =>

@@ -19,6 +19,9 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
 - **Where it shows:** posts marked 🤖 Bot in the same Telegram chat; a 🤖 Bot tab and Bot chips in Portfolio.
   The Bot tab names contracts in words ("Put 75 · 2DTE").
 - **Switches:** off and dry-run by default (`BOT_ENABLED`, `BOT_MODE`).
+- **Orders (2026-10-23):** buys chase the ask until filled (up to 10 minutes, at most 10% over the
+  budget), sales wait at the bid up to 10 minutes, and the exit checks run every 10 s on the
+  stock's last trade. See "Orders and timing" in [the bot task](tasks/backend-indi-bot.md).
 - **Own account (2026-10-23, `feat/bot-account`, deploy pending):** with `BOT_ALPACA_API_KEY` /
   `BOT_ALPACA_API_SECRET` the bot trades a second paper account of the owner's, and Portfolio gets a
   read-only **Bot trades** tab for it (`/api/portfolio/bot`). See
