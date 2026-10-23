@@ -198,6 +198,17 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
             if NT and carry_day and st.get("morning"):
                 st["npeak"] = max(st.get("npeak", c), c)
                 if c <= st["npeak"] * (1 - NT): pending = ("all", "N_trail"); continue
+            NY = X.get("night_y")  # big carried winners only (night_y.py): a stop from 17:00, a trail under the high since the buy
+            if NY and carry_day and t < X["eod_minute"]:
+                first = next(s for s in steps if s[2] == "carry")[4] / cost - 1
+                if first >= NY["min_first"]:
+                    ref = next(s[4] for s in reversed(steps) if s[2] == "carry")
+                    if NY.get("stop_ref") is not None and t >= NY["from"] and c <= ref * (1 + NY["stop_ref"]):
+                        pending = ("all", "Y_stop"); continue
+                    if NY.get("stop_cost") is not None and t >= NY["from"] and g <= NY["stop_cost"]:
+                        pending = ("all", "Y_stop"); continue
+                    if NY.get("trail") and st.get("morning") and c <= peak * (1 - NY["trail"]):
+                        pending = ("all", "Y_trail"); continue
             if d == exp and t >= X["expiry_last_minute"]: pending = ("all", "expiry_day"); continue
             if t >= X["eod_minute"] and not eod_done:
                 eod_done = True

@@ -62,6 +62,11 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   $137K / 23% sized, $140K / 22% without. All lists, Apr-Oct 2026: refused $141,713 / 15%, sized $135,515 / 18%,
   without $131,848 / 20%. Under the brake the bot's 2% buy is exactly at the 2% limit, so what gets refused is the
   second buy of a brake day after a loss (the 3% day cap); six of the 14 refused on the fair list were +51% to +617%.
+- Half size under the risk manager's brake, as built in the bot (PR #130; `risk_overlay.py` mode "half"): at 1% a trade
+  never binds. At 2%: fair list $1,096,514 / 17% vs $2,444,629 / 21% (213 brake days instead of 138, since half-size
+  trades recover the fall more slowly); unseen $128,201 / 17% vs $140,443 / 22%; all lists Apr-Oct 2026 $110,231 / 16%
+  vs $131,848 / 20%; core $123,747 / 17% vs $133,428 / 20%. Four points less worst drop for about half the end value
+  at 2%; the user's risk rule, chosen knowing that.
 - Overnight: no hold after a 5/10-minute premium drop; a 3–5% cap on what goes into the night: all worse or mixed.
 - Give-back locks 200 → 50 and 300 → 100, trails 100/50, 200/40, 300/50, the ladder: worse or worse on the unseen.
 - End-of-day entries for tomorrow (volume-free strength vs SPY, near the high): lose 2024 and 2025.
@@ -172,3 +177,12 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   on (AAPL 2025-08-06 -509 points, QCOM 2026-05-05 -482, NFLX 2026-02-25 -2595 on the unseen); B's early stop fires
   on 39 of 80 held trades: the open dips -40% and comes back. Real early spreads are wider than the 2% modeled, so
   B is if anything optimistic.
+- Rules for the big carried winners only (`night_y.py`, 2026-10-23; the user's ideas, with a grid around them): only
+  trades up >= +300 / 400 / 500% at the first 15:50 hold (23 / 17 / 11 on the fair list, none on the unseen).
+  1) from 10:00 on a carried day, all out at 40 / 50 / 60% under last night's price, or when the gain falls under
+  +50% of cost: worse or no change everywhere (400% / -50%: $567,828 vs $585,593; SMCI 2025-05-13 -420 points).
+  2) after the morning gap sale, the rest out 30 / 40 / 50% under the option's highest close since the buy: 400% is
+  better ($596K / $621K / $597K at 1%, same 11% drop; trail 40% $2.75M vs $2.44M at 2%), 300% and 500% are worse.
+  Candidate, not champion: 400% / trail 40% changes 4 trades (MRNA 2026-01-21 +541 points, AMD +144, PLTR +131,
+  SMCI -228); without MRNA $573,628 vs $569,305; no unseen trade reaches +400%, so nothing out of sample; the
+  neighbours at 300% / 500% lose, so it is tuned on 17 trades.
