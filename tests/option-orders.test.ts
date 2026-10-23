@@ -776,3 +776,45 @@ test("alpaca chain: IV from the snapshots, open interest from the contracts", as
     [null, null],
   );
 });
+
+test("ladder: chasing follows the ask up until filled, never down, and stops at the cap", async () => {
+  // The ask is 1.10, then 1.15, then 1.13: the order goes to 1.10, 1.15 and stays.
+  const { client, calls } = fakeClient(
+    [
+      [1.0, 1.1],
+      [1.0, 1.1],
+      [1.0, 1.1],
+      [1.0, 1.1],
+      [1.0, 1.1],
+      [1.0, 1.1],
+      [1.0, 1.1],
+      [1.05, 1.15],
+      [1.03, 1.13],
+    ],
+    1.15,
+  );
+  const result = await buyWithLadder(client, symbol, 3, {
+    ...fast,
+    chaseMs: 60000,
+    intervalMs: 3000,
+  });
+  assert.equal(result.status, "filled");
+  assert.equal(result.chased, 2);
+  assert.deepEqual(calls.slice(-2), ["replace @ 1.1", "replace @ 1.15"]);
+  // The cap holds while chasing, and the time runs out: left working at the cap.
+  const capped = fakeClient([[1.0, 1.1]], null);
+  const stuck = await buyWithLadder(capped.client, symbol, 3, {
+    ...fast,
+    chaseMs: 9000,
+    intervalMs: 3000,
+    maxPrice: 1.08,
+  });
+  assert.equal(stuck.status, "open");
+  assert.equal(stuck.prices.at(-1), 1.08);
+  assert.equal(stuck.chased, undefined);
+  // Without chaseMs nothing changes: the planned raises only.
+  const plain = fakeClient([[1.0, 1.1]], null);
+  const old = await buyWithLadder(plain.client, symbol, 3, fast);
+  assert.equal(old.prices.at(-1), 1.09);
+  assert.equal(plain.calls.length, 5);
+});

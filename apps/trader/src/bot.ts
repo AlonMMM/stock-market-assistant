@@ -80,6 +80,11 @@ export interface BotMarket {
     symbols: string[],
     dates: string[],
   ): Promise<Map<string, Map<string, number>>>;
+  /**
+   * The last trade price of each symbol now, for the exit checks between
+   * minute bars. Optional: without it the checks use the last closed minute.
+   */
+  lastPrices?(symbols: string[]): Promise<Map<string, number>>;
   /** Contracts traded in the 30 minutes up to `minute`. */
   optionVolume30(
     contract: string,
@@ -129,6 +134,11 @@ export interface BotOptions {
 }
 
 export const botTag = "🤖 Bot";
+// A buy keeps raising its price to the ask for up to this long; a sale is
+// re-priced at the bid for up to this long (docs/tasks/backend-indi-bot.md,
+// "Orders").
+export const chaseBuyMs = 10 * 60_000;
+export const sellWaitMs = 10 * 60_000;
 
 /** Why the bot sold, in words, with the settings' numbers. */
 function reasonText(reason: ExitReason, s: BotSettings): string {
@@ -382,12 +392,15 @@ export class IndiBot {
     await this.watchDrawdown();
     if (last > this.done && last >= 0) {
       await this.refresh(date, Math.max(0, this.done - 2), last);
-      for (let m = Math.max(this.done + 1, last - 2); m <= last; m++) {
+      for (let m = Math.max(this.done + 1, last - 2); m <= last; m++)
         if (this.enabled) await this.entries(date, m, closeMinute);
-        await this.exits(date, m, closeMinute);
-      }
       this.done = last;
     }
+    // The exits run every tick (10 s), in the minute now, on the stocks'
+    // last trades and fresh option quotes (user 2026-10-23: "check every 10
+    // seconds and not every 1 minute"); the entries stay on closed bars.
+    const current = Math.min(wall - 570, closeMinute - 1);
+    if (current >= 0) await this.exits(date, current, closeMinute);
     if (wall >= close + 5 && this.summarized !== date) {
       this.summarized = date;
       await this.summary(date);
@@ -737,6 +750,9 @@ export class IndiBot {
       contract,
       sizePct: s.sizePct,
       stopPct: s.safetyStopPct,
+      // Keep raising the price until it fills (user 2026-10-23).
+      chase: true,
+      chaseMs: chaseBuyMs,
       tag: botTag,
       note: why,
     });
@@ -905,8 +921,30 @@ export class IndiBot {
 
   // ---- exits ----
 
+  /** The last trade of each open position's stock, when the market gives them. */
+  private async livePrices(): Promise<Map<string, number>> {
+    const symbols = [
+      ...new Set(
+        this.o.store
+          .openPositions()
+          .filter((p) => p.status === "open" && p.qty > 0)
+          .map((p) => p.symbol),
+      ),
+    ];
+    if (!symbols.length || !this.o.market.lastPrices) return new Map();
+    try {
+      return await this.o.market.lastPrices(symbols);
+    } catch (error) {
+      this.o.log(
+        `last prices failed, using the last minute: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return new Map();
+    }
+  }
+
   private async exits(date: string, m: number, closeMinute: number) {
     const s = this.settings();
+    const live = await this.livePrices();
     const base = exitRules(s);
     const rules: ExitRules = {
       ...base,
@@ -914,7 +952,8 @@ export class IndiBot {
       expiryLastMinute: Math.min(base.expiryLastMinute, closeMinute - 30),
     };
     for (const p0 of this.o.store.openPositions()) {
-      const p = this.watchLevel(p0, date, m, rules.eodMinute);
+      // The level watch reads closed bars only: `done` is the last one loaded.
+      const p = this.watchLevel(p0, date, this.done, rules.eodMinute);
       if (p.status !== "open" || p.qty <= 0) continue;
       if (p.sales.some((s) => s.jobId !== null && !s.settled)) continue;
       const failed =
@@ -943,7 +982,7 @@ export class IndiBot {
         state,
         {
           minute: m,
-          stock: this.lastClose(p.symbol, m),
+          stock: live.get(p.symbol) ?? this.lastClose(p.symbol, m),
           option: mid,
           isExpiryDay: expiry === date,
           sessionBeforeExpiry: nextSession(date) <= expiry,
@@ -1131,6 +1170,8 @@ export class IndiBot {
         contract: p.contract,
         qty: String(ask),
         stopPct: s.safetyStopPct,
+        // Re-priced at the bid every few seconds for this long (user 2026-10-23).
+        waitMs: sellWaitMs,
         tag: botTag,
         note: why,
       })

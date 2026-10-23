@@ -237,7 +237,9 @@ const bot = (() => {
     log,
   });
 })();
-const botTimer = bot ? setInterval(() => void bot.tick(), 15_000) : null;
+// Every 10 s: the exit checks run each tick, the entries once per closed
+// minute (user 2026-10-23).
+const botTimer = bot ? setInterval(() => void bot.tick(), 10_000) : null;
 api.get("/v1/bot", async () => {
   if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
   return bot.status();

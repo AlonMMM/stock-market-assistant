@@ -53,6 +53,37 @@ export class AlpacaBotMarket implements BotMarket {
     return out;
   }
 
+  /** The last SIP trade of each symbol (GET /v2/stocks/trades/latest). */
+  async lastPrices(symbols: string[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    for (const part of chunk(symbols, 100)) {
+      const url = new URL(
+        "/v2/stocks/trades/latest",
+        "https://data.alpaca.markets",
+      );
+      url.searchParams.set("symbols", part.join(","));
+      url.searchParams.set("feed", "sip");
+      const response = await this.fetcher.call(globalThis, url, {
+        headers: {
+          "APCA-API-KEY-ID": this.key,
+          "APCA-API-SECRET-KEY": this.secret,
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok)
+        throw new Error(
+          `Alpaca latest trades failed (HTTP ${response.status})`,
+        );
+      const body = (await response.json()) as {
+        trades?: Record<string, { p?: unknown } | null> | null;
+      };
+      for (const [symbol, trade] of Object.entries(body.trades ?? {}))
+        if (typeof trade?.p === "number" && trade.p > 0)
+          out.set(symbol, trade.p);
+    }
+    return out;
+  }
+
   async premarket(symbols: string[], dates: string[]) {
     // 04:00 of the first date through 09:30 of the last; bars outside 04:00–09:30 are dropped.
     const start = new Date(newYorkToUtc(dates[0]!, 240)).toISOString();

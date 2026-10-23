@@ -46,7 +46,9 @@ import {
   type OptionQuote,
 } from "../packages/trading/src/options.js";
 import {
+  chaseBuyMs,
   IndiBot,
+  sellWaitMs,
   toSessionBars,
   type BotMarket,
   type BotTrading,
@@ -526,10 +528,15 @@ function harness(
       await bot.tick();
     }
   };
+  const tickAt = async (date: string, wall: number, sec: number) => {
+    now = at(date, wall, sec);
+    await bot.tick();
+  };
   return {
     bot,
     store,
     run,
+    tickAt,
     calls,
     notes,
     held,
@@ -1225,4 +1232,38 @@ test("runner (live): with the failed-break sale off the bot only notes it and ke
   assert.ok(
     h.store.events(50).some((e) => /failed-break sale is off/.test(e.text)),
   );
+});
+
+test("orders: the bot's buys chase the ask and its sales wait 10 minutes at the bid", async () => {
+  const h = harness("live");
+  await h.run(DAY, 565, 600);
+  const buy = h.calls.find((c) => c.kind === "buy")!;
+  assert.equal(buy.body.chase, true);
+  assert.equal(buy.body.chaseMs, chaseBuyMs);
+  h.setMid(0.7);
+  await h.run(DAY, 601, 955);
+  const sell = h.calls.find((c) => c.kind === "sell")!;
+  assert.equal(sell.body.waitMs, sellWaitMs);
+});
+
+test("exits run on every tick, between minutes, on the stock's last trade", async () => {
+  // The bars keep climbing, but the stock's last trade is far below the
+  // entry: the 10-minute check finds it against the entry on a tick 40 s
+  // into its minute, not only on a minute's close.
+  const live = new Map<string, number>();
+  const h = harness("live");
+  (h.bot as unknown as { o: { market: BotMarket } }).o.market.lastPrices =
+    async () => live;
+  await h.run(DAY, 565, 585);
+  const [p] = h.store.openPositions();
+  assert.equal(p!.status, "open");
+  const wall = 570 + p!.entryMinute + 10;
+  assert.ok(wall > 585);
+  live.set("NVDA", 90);
+  await h.run(DAY, 586, wall - 1);
+  assert.equal(h.calls.filter((c) => c.kind === "sell").length, 0);
+  await h.tickAt(DAY, wall, 40);
+  const sells = h.calls.filter((c) => c.kind === "sell");
+  assert.equal(sells.length, 1);
+  assert.match(String(sells[0]!.body.note), /10-min check/);
 });

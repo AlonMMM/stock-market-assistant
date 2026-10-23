@@ -15,6 +15,11 @@ export interface LadderOptions {
   existing?: Order;
   // A forced buy: the spread is not checked, before sending or while raising.
   anySpread?: boolean;
+  // After the planned raises, keep raising to the current ask, every
+  // `intervalMs`, for up to this long or until filled (the bot, user
+  // 2026-10-23: "try to increase it until it filled"). The cap still holds;
+  // the spread is not checked while chasing.
+  chaseMs?: number;
   sleep?: (ms: number) => Promise<void>;
   log?: (line: string) => void;
 }
@@ -38,6 +43,8 @@ export interface LadderResult {
   // Raising stopped early because the broker refused a price change (for
   // example while the market is closed); the order stays at its last price.
   raiseError?: string;
+  // Raises to the ask after the planned ones (chaseMs).
+  chased?: number;
 }
 
 // Order states in which nothing more can fill.
@@ -150,6 +157,40 @@ export async function buyWithLadder(
     prices.push(price);
     log(`raised to ${price.toFixed(2)} (bid ${quote.bid}, ask ${quote.ask})`);
   }
+  // Chasing: the order follows the ask up, never down, until it fills, the
+  // time is up, the cap is reached or the broker refuses a change.
+  let chased = 0;
+  const chaseMs = options.chaseMs ?? 0;
+  for (
+    let elapsed = 0;
+    chaseMs > 0 &&
+    raiseError === undefined &&
+    elapsed < chaseMs &&
+    status(order) !== "filled" &&
+    status(order) !== "closed";
+    elapsed += interval
+  ) {
+    await sleep(interval);
+    order = await current(client, order.id);
+    if (status(order) === "filled" || status(order) === "closed") break;
+    quote = await client.quote(symbol);
+    check = spreadCheck(quote);
+    const next = Math.min(roundToTick(quote.ask, "down"), cap);
+    if (next <= price + 1e-9) continue;
+    try {
+      order = await client.replace(order.id, next);
+    } catch (error) {
+      raiseError = error instanceof Error ? error.message : String(error);
+      log(`could not raise to ${next.toFixed(2)}: ${raiseError}`);
+      break;
+    }
+    price = next;
+    prices.push(price);
+    chased++;
+    log(
+      `chasing: raised to ${price.toFixed(2)} (bid ${quote.bid}, ask ${quote.ask})`,
+    );
+  }
   if (status(order) !== "filled" && status(order) !== "closed") {
     await sleep(interval);
     order = await current(client, order.id);
@@ -162,5 +203,6 @@ export async function buyWithLadder(
     order,
     ...(spreadWidened ? { spreadWidened } : {}),
     ...(raiseError === undefined ? {} : { raiseError }),
+    ...(chased > 0 ? { chased } : {}),
   };
 }
