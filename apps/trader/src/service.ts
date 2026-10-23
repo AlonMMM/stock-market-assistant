@@ -863,6 +863,11 @@ export class TraderService {
     };
   }
 
+  /** The risk manager's state of the account (full, brake, recovery), for the bot's sizing. */
+  riskState() {
+    return this.engine.riskState();
+  }
+
   /** Positions and limits, plus the orders that are waiting or working. */
   async status() {
     const [status, open] = await Promise.all([

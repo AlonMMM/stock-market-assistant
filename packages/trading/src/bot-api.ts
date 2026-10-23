@@ -11,7 +11,14 @@ import {
 export interface BotView {
   enabled: boolean;
   mode: "dry" | "live";
-  sizePct: number;
+  sizePct: number; // the size in force: the setting, or half of it under the risk manager's brake
+  halfSize?: boolean;
+  // The risk manager's state of the account, as the bot last read it.
+  risk?: {
+    state: "full" | "brake" | "recovery";
+    drawdownPct: number;
+    reason: string;
+  } | null;
   delta: number;
   // All the owner's settings (absent from a trading service before them).
   settings?: BotSettings;
