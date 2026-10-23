@@ -79,6 +79,10 @@ a version.
   which sets its rules (`applyVersion`), shows where the sliders below differ from it ("Changed: stopPct 30 → 40",
   with "Back to 2.1's rules"), and lets the owner name an edited set. Saving goes through `PUT /v1/bot/settings`
   like any other setting; a version change is a settings change in the feed (`version "2.1" → "1.0"; …`).
+- **The full algorithm.** `packages/trading/src/bot/algorithm.ts`, `algorithmSteps(rules)`: a rule set in words, one
+  step per decision (signal, news filter, contract, early checks, failed break, stop, day exit). The settings page
+  shows it for each version (and for the rules as set, when edited); the Bot tab's "How the bot decides" shows it
+  for the rules in force. The owner's limits are worded by the pages, not here.
 - A new version is a new entry in `botVersions` (and a new default): the research log decides what gets one.
   Execution changes (chasing the ask, 10-second exit checks) are code, dated in docs/tasks/backend-indi-bot.md, not
   versions.
@@ -101,7 +105,8 @@ a version.
 - `tests/indi-bot.test.ts`: size and safety stop reach the buy, a stock turned off, a stricter signal, max open,
   the daily loss limit, the drawdown pause (synthetic bars, chains and fills); the version stamp on the signal,
   the position, the buy's note and the feed, starred after a rule change, and picking 1.0.
-- `tests/bot-settings-model.test.ts`: the version card's state.
+- `tests/bot-settings-model.test.ts`: the version card's state; each version's algorithm in words (the steps, t,
+  the news filter and failed break off in 1.0 and on in 2.1, the overnight cap, a changed stop, no volume floor).
 
 ## Deploy
 

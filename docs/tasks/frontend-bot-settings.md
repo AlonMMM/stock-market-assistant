@@ -42,6 +42,14 @@ sliders and switches below; changing a rule afterwards shows "Changed: stopPct 3
 limits and the stock lists are not part of a version. The Bot tab shows the version in its header, on each
 holding ("v2.1"), on signals and closed trades, and first under "How the bot decides".
 
+**Full rules per version (2026-10-23, user: "for each version I want to be able to click on it and see the bot's
+full algorithm rules").** Under the version's notes, a folded row per version, newest first ("2.1 · V2 +
+failed-break sale · since 2026-10-23", "running" on the one in force). Opening a row lists the version's whole
+algorithm in words (`algorithmSteps`, packages/trading/src/bot/algorithm.ts): signal, news filter, contract, early
+checks, failed break, stop, day exit. A row that is not running ends with **Run these rules**, which is the same as
+picking that version. When the rules below were changed or carry an own label, a first row shows the rules as set
+("2.1\* · the rules as set below"). The Bot tab's "How the bot decides" uses the same wording for the rules in force.
+
 ## Behaviour without the API
 
 The page tries `GET /api/bot/settings`. A 404/405 or a non-JSON answer means "not served yet": it starts from
