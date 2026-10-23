@@ -10,6 +10,9 @@
 // reaches any account; Telegram posts are kept in the report.
 //
 //   node --env-file=.env --import tsx scripts/bot-replay.ts <YYYY-MM-DD> [report.md] [--no-favorites]
+//
+// BOT_REPLAY_FAVORITES: the favorites list the site would send (comma-separated).
+// BOT_REPLAY_SETTINGS: a JSON file of the owner's settings (GET /v1/bot/settings).
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +27,7 @@ import {
   newYork,
   newYorkToUtc,
 } from "../packages/market-data/src/calendar.js";
+import { parseSettings } from "../packages/trading/src/bot/settings.js";
 import type { MinuteBar } from "../packages/trading/src/bot/signal.js";
 import { TradeEngine } from "../packages/trading/src/engine.js";
 import { TelegramNotifier } from "../packages/trading/src/notifier.js";
@@ -304,6 +308,15 @@ const bot = new IndiBot({
   now: () => now,
   log: (line) => events.push(`${clock()} ${line}`),
 });
+// The owner's saved settings (GET /v1/bot/settings), else the defaults. The
+// replay always trades (mode live): its broker is in memory.
+if (process.env.BOT_REPLAY_SETTINGS) {
+  const parsed = parseSettings(
+    JSON.parse(readFileSync(process.env.BOT_REPLAY_SETTINGS, "utf8")),
+  );
+  if (!parsed.ok) throw new Error(`BOT_REPLAY_SETTINGS: ${parsed.error}`);
+  bot.setSettings({ ...parsed.value, mode: "live", enabled: true });
+}
 if (withFavorites && process.env.BOT_REPLAY_FAVORITES)
   bot.setWatchlist(
     "favorites",

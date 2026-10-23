@@ -116,7 +116,16 @@ BOT_REPLAY_FAVORITES="NVDA,META,..." \
   "fav" (`favoritesList` in `packages/trading/src/bot-api.ts`). The IBKR paper account's "Favorites" watchlists
   (IBKR connector `get_watchlists` / `get_watchlist`) are a different, shorter list; use them only when asked,
   and leave out SPY and futures (CL, GC, SI), which the bot never watches.
-  The bot uses its default settings (t 1.8, 2% size, 10% night cap), not the owner's saved ones.
+
+- `BOT_REPLAY_SETTINGS` (optional): a JSON file of the owner's saved settings; without it the defaults
+  (t 1.8, 2% size, 10% night cap). Read them (read-only) from the trader without printing the token:
+
+  ```bash
+  V=$(railway variables --service sma-trader --kv); T=$(echo "$V" | grep '^TRADER_TOKEN=' | cut -d= -f2-)
+  curl -s -H "Authorization: Bearer $T" https://sma-trader-production.up.railway.app/v1/bot/settings > settings.json
+  ```
+
+  With `followFavorites: false` the favorites list is not watched even when given.
 
 - The report has the bot's feed (signals, skips and why, orders), the Telegram posts, the positions and the
   end account. A trade held overnight stays open unless the next session is replayed too.
