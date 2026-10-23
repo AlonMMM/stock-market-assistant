@@ -384,8 +384,9 @@ const shows: [Show, string, (k: TickerItem) => boolean][] = [
 function origin(k: TickerItem): { mark: string; tone: string; title: string } {
   if (k.added) return { mark: "+", tone: "added", title: "Added by you" };
   if (k.core && k.favorite)
-    return { mark: "★", tone: "fav", title: "Core list and IBKR Favorites" };
-  if (k.favorite) return { mark: "★", tone: "fav", title: "IBKR Favorites" };
+    return { mark: "★", tone: "fav", title: "Core list and your favorites" };
+  if (k.favorite)
+    return { mark: "★", tone: "fav", title: "Your favorites list" };
   return { mark: "●", tone: "core", title: "Core list" };
 }
 
@@ -419,7 +420,7 @@ function Stocks({
     setText("");
     setError("");
   };
-  let favName = "IBKR Favorites";
+  let favName = "your favorites";
   if (favorites) favName = `"${favorites.name}"`;
   let syncLabel = "Not following Favorites";
   if (s.followFavorites) syncLabel = "Following Favorites";
@@ -463,8 +464,8 @@ function Stocks({
       )}
       {!favorites && (
         <p className="bot-warn small">
-          The bot has not received a favorites list yet. The site sends it
-          before each session.
+          The bot has no favorites list yet. Name a watchlist with "fav" in its
+          name; the site sends it to the bot.
         </p>
       )}
       <div className="bs-bar">
