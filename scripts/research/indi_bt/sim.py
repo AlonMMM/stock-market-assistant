@@ -47,6 +47,8 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
   morning      after a carry, at 09:30 + morning_minute: gap in the bet direction >= gap_keep %
                -> sell gap_sell_share, keep the rest under the rules; otherwise sell all
   expiry day   sell all at 09:30 + expiry_last_minute
+  F failed break (failed_break True): on the entry day, the stock reached the next level ahead and fell back without
+               breaking it (failed_break_minute) -> sell all on the next bar (the user's chosen bot, 2026-10-23)
 Each trade's result is a return on the premium paid (`ret`, after costs); sizing is in report.py.
 
   python3 sim.py [signals.csv] [out prefix] [shard/shards]  -> <prefix>_trades.csv, <prefix>_steps.csv
@@ -133,6 +135,25 @@ def roll_hit(R_, g, sd, t, minute, sym, bet):
     return bet * (k - s) / (bet * (k - s0)) <= R_["near"]
 
 
+def failed_break_minute(und, date, minute, bet):
+    """The entry day's failed break (levels.py; the bot's levels.ts): the minute the stock, having reached the next level
+    ahead of the signal, closed 0.5 S30 back from it within 30 minutes without breaking it; None if it did not."""
+    from levels import ctx, ahead, NEAR, BREAK, BACK, WAIT, EOD
+    x = ctx(und, date)
+    a = ahead(x, minute, bet) if x and x["c"][minute] is not None else None
+    if not a: return None
+    lv, sd0, touch = a[1], x["sd"] * x["c"][minute], None
+    for m in range(minute + 1, EOD):
+        p = x["c"][m]
+        if p is None: continue
+        d = bet * (lv - p) / sd0
+        if d <= -BREAK: return None
+        if d <= NEAR and touch is None: touch = m
+        if touch is not None and m - touch > WAIT: return None
+        if touch is not None and d >= BACK: return m
+    return None
+
+
 def walk(und, date, minute, right, sym, exp, cal, limit=None):
     """Walks one contract from the signal minute to the last sale. -> (entry, steps, flags)."""
     bet = 1 if right == "C" else -1
@@ -147,6 +168,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
             steps.append((date, minute, "buy", 1.0, round(cost, 4), f"entry_{FILL}"))
     st = dict(cut1=False, armed=False, t1=False, plan=None, k=0)
     pending = None  # (share of original or 'all', rule)
+    fb = failed_break_minute(und, date, minute, bet) if X.get("failed_break") else None
     for k, d in enumerate(dates):
         bars = day(sym, d)
         sd = Day(und, d, bet, cal, cal.index(d))
@@ -167,6 +189,9 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 peak = b[4]
                 steps.append((d, t, "buy", 1.0, round(cost, 4), "entry_limit" if limit is not None else "entry"))
                 continue
+            if fb is not None and k == 0 and t > fb and cost is not None:  # the failed-break sale: all of what is left
+                steps.append((d, t, "sell", round(rem, 4), round(max(mid(b) * (1 - SH), 0.01), 4), "F_break"))
+                return cost, steps, ""
             if pending:
                 share, rule = pending
                 q = rem if share == "all" else min(rem, share)

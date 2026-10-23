@@ -41,6 +41,8 @@ The previous champion, the news filter at t ≥ 2: $297,160 / 16%, unseen $121,4
   risk at the same 2% size (2026-10-23). At the same worst drop it beats the champion on both lists. In the live bot:
   `sellFailedBreak` (on by default), branch feat/bot-failed-break; `level_parity_export.py` + the bot's
   `scripts/bot-level-parity.ts` match on 1134 of 1134 trades.
+- In the simulator as `failed_break` (sim.py F, `lists.py` with BT_FAILED_BREAK=1). With the commission on the extra
+  sale counted: fair $526,469 / 10% at 1%, $2,011,681 / 18% at 2%; unseen $125,581 / 10%.
 
 V1 (C signal t ≥ 2 vs SPY × β, day volume ≥ 1.5×, delta 0.15, your stop + overnight hold for winners ≥ +100%) is the
 paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
@@ -91,6 +93,14 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   its high only 114 of 676 days: a few 5% losers right after each high push it into the 2% band, and the winners that
   make the year arrive in the 1% band. Sizing up near highs and down in drawdowns is the reverse of where this
   strategy's P&L comes from.
+- Sizing sweep (`sizing_sweep.py`, 2026-10-23): 534 rule-and-size combinations (cut x0.5 / x0.25 below a 7.5-20%
+  drawdown with the size back at 1/3, 2/3 or a new high; size up x1.5 / x2 below a drawdown; daily stops 2-5%; cuts
+  after 3-8 losers; monthly stops 5-12%; size up after a 1x / 3x win) at 1-3% a trade, judged against the flat size
+  with the same worst drop. No drawdown-cutting rule beats the flat line on all three trade sets (fair list, 151
+  unseen, all lists Apr-Oct 2026): the most consistent, 2% x0.5 below 15% back at 2/3, is +0% / -8% / -6%, i.e. a
+  flat 1.7%. Cuts that look good on the fair list (2% x0.5 below 7.5%: +46%) lose 19% on the unseen. The only rules
+  with a positive edge everywhere size UP in drawdowns or after a big win, and they raise the worst drop. To cut the
+  biggest drop, lower the flat size; the drawdown is proportional to it (1% ~11%, 1.5% ~16%, 2% ~21%, 3% ~31%).
 - Overnight: no hold after a 5/10-minute premium drop; a 3–5% cap on what goes into the night: all worse or mixed.
 - Give-back locks 200 → 50 and 300 → 100, trails 100/50, 200/40, 300/50, the ladder: worse or worse on the unseen.
 - End-of-day entries for tomorrow (volume-free strength vs SPY, near the high): lose 2024 and 2025.
