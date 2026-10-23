@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import type { BreakWatch } from "../../../packages/trading/src/bot/levels.js";
 
 // The bot's records (docs/tasks/backend-indi-bot.md), in the trading
 // service's database: every signal and what came of it, and every position
@@ -53,6 +54,9 @@ export interface BotPosition {
   nights: number;
   checksDone: number[];
   morningDone: boolean;
+  // The level the stock is watched at on the entry day (levels.ts); missing
+  // on positions opened before the failed-break sale.
+  breakWatch?: BreakWatch | null;
   // The last day the 15:50 decision was taken, so it is taken once a day.
   decidedOn: string | null;
   status: BotStatus;

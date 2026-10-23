@@ -7,11 +7,13 @@
 //   - 20 minutes after, if it is still against, sell the rest;
 //   - the option at -30% while the stock is against: sell all.
 // 15:50: hold overnight what is up >= +100% (a next session before expiry, at
-//   most 2 nights); sell the rest. What is held is worth at most 8% of the
-//   account (`nightCapSell`, the `nightCapPct` setting): the excess is sold first.
+//   most 2 nights); sell the rest. What is held is worth at most `nightCapPct`
+//   of the account (`nightCapSell`, 10% by default): the excess is sold first.
 // A carried day: nothing before 09:40. On the first carried day at 09:40, a gap
 //   of >= 0.5% our way sells half, otherwise all. The option at -30% sells all.
 //   Expiry day: all out at 15:30.
+//
+// Also on the entry day, outside these rules: the failed-break sale (levels.ts).
 //
 // The bot only ever sells contracts it bought and still holds: every quantity
 // here is a share of `position.qty`.
@@ -76,7 +78,9 @@ export type ExitReason =
   // Not from `nextAction`: the overnight cap at 15:50 (`nightCapSell`), and
   // the carry sold because no account value was known for the cap.
   | "night-cap"
-  | "night-no-equity";
+  | "night-no-equity"
+  // Not from `nextAction` either: the failed break on the entry day (levels.ts).
+  | "failed-break";
 
 export interface ExitDecision {
   sell: number; // contracts to sell now; 0 = hold

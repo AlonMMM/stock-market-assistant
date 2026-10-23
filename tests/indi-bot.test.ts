@@ -13,6 +13,11 @@ import {
   previousSessions,
 } from "../packages/market-data/src/calendar.js";
 import {
+  advanceWatch,
+  priorLevels,
+  watchFor,
+} from "../packages/trading/src/bot/levels.js";
+import {
   premarketBlocks,
   premarketRatio,
   reactionReport,
@@ -390,7 +395,11 @@ interface NewsFakes {
   premarket?: BotMarket["premarket"];
 }
 
-function harness(mode: "dry" | "live", news: NewsFakes = {}) {
+function harness(
+  mode: "dry" | "live",
+  news: NewsFakes = {},
+  nvdaDay?: (beta: number) => MinuteBar[],
+) {
   const store = new BotStore(
     join(mkdtempSync(join(tmpdir(), "bot-")), "t.sqlite"),
   );
@@ -401,11 +410,12 @@ function harness(mode: "dry" | "live", news: NewsFakes = {}) {
     NVDA: new Map([
       [
         DAY,
-        session(
-          100,
-          (m) => wiggle(m) * beta + 0.0008,
-          () => 2000,
-        ),
+        nvdaDay?.(beta) ??
+          session(
+            100,
+            (m) => wiggle(m) * beta + 0.0008,
+            () => 2000,
+          ),
       ],
       [
         NEXT,
@@ -1099,5 +1109,120 @@ test("runner (dry): the night cap is a 'would sell' with no order", async () => 
     h.notes.some(
       (n) => n.includes("held overnight") && n.includes("26 contracts"),
     ),
+  );
+});
+
+// ---- the failed-break sale (packages/trading/src/bot/levels.ts) ----
+
+const flat = (n: number, c = 100): MinuteBar[] =>
+  Array.from({ length: n }, (_, m) => ({ m, o: c, h: c, l: c, c, v: 1 }));
+
+test("levels: the nearest level ahead in the bet's direction, in the stock's unit; none ahead is no watch", () => {
+  const prior = priorLevels([
+    flat(390, 95),
+    flat(390, 96),
+    flat(390, 97),
+    flat(390, 98),
+    session(
+      100,
+      (m) => (m % 2 ? 0.001 : -0.001),
+      () => 1,
+    ),
+  ])!;
+  assert.ok(prior.prevLow < 100 && prior.prevHigh > prior.prevLow);
+  assert.equal(prior.fiveLow, 95);
+  assert.ok(prior.unit > 0);
+  const today = [
+    { m: 0, o: 101, h: 104, l: 100.5, c: 101, v: 1 },
+    { m: 1, o: 101, h: 101.5, l: 101, c: 101.2, v: 1 },
+  ];
+  const call = watchFor(prior, today, 2, 102, "C")!;
+  assert.equal(call.name, "the day's high");
+  assert.equal(call.level, 104);
+  assert.equal(call.state, "watching");
+  const put = watchFor(prior, today, 2, 102, "P")!;
+  assert.equal(put.name, "the day's low");
+  assert.equal(watchFor(prior, today, 2, 110, "C"), null);
+  assert.equal(watchFor(null, today, 2, 102, "C"), null);
+  assert.equal(
+    priorLevels([flat(390), flat(390), flat(390), flat(390), []]),
+    null,
+  );
+});
+
+test("levels: a touch then 0.5 units back is a failed break; a close beyond is a break; 30 minutes is the end", () => {
+  const w = {
+    name: "yesterday's high",
+    level: 104,
+    unit: 1,
+    touch: null,
+    state: "watching" as const,
+    at: null,
+    through: 10,
+  };
+  const bars = (closes: number[]) =>
+    closes.map((c, i) => ({ m: 11 + i, o: c, h: c, l: c, c, v: 1 }));
+  const failed = advanceWatch(w, bars([103, 103.8, 103.6, 103.3]), 30, "C");
+  assert.deepEqual([failed.state, failed.touch, failed.at], ["failed", 12, 14]);
+  const broken = advanceWatch(w, bars([103.8, 104.3]), 30, "C");
+  assert.deepEqual([broken.state, broken.at], ["broken", 12]);
+  const stalled = bars([103.8, ...Array(31).fill(103.9)]);
+  assert.equal(advanceWatch(w, stalled, 60, "C").state, "ended");
+  // A put watches a level below; minutes after `to` wait for the next call.
+  const put = { ...w, level: 96 };
+  const later = advanceWatch(put, bars([97, 96.2, 96.4, 96.8]), 13, "P");
+  assert.deepEqual([later.state, later.through], ["watching", 13]);
+  assert.equal(
+    advanceWatch(later, bars([97, 96.2, 96.4, 96.8]), 30, "P").state,
+    "failed",
+  );
+});
+
+// NVDA climbs from 100 toward the day's high (a 103 wick at 09:31), touches it
+// and falls back (synthetic bars).
+const failedBreakDay = (beta: number): MinuteBar[] => {
+  const out: MinuteBar[] = [];
+  let p = 100;
+  let climbing = true;
+  for (let m = 0; m <= 389; m++) {
+    const o = p;
+    if (climbing && p >= 102.8) {
+      climbing = false;
+      p = 102.98; // within a quarter unit of 103, not beyond it
+    } else if (climbing) p = p * (1 + wiggle(m) * beta + 0.0008);
+    else p = p * (1 - 0.001);
+    const h = m === 1 ? 103 : Math.max(o, p);
+    out.push({ m, o, h, l: Math.min(o, p), c: p, v: 2000 });
+  }
+  return out;
+};
+
+test("runner (live): a failed break at the day's high sells all, with the level in the note", async () => {
+  const h = harness("live", {}, failedBreakDay);
+  await h.run(DAY, 565, 640);
+  const [p] = h.store.recentPositions(DAY);
+  assert.equal(p!.breakWatch?.name, "the day's high");
+  assert.equal(p!.breakWatch?.level, 103);
+  const sells = h.calls.filter((c) => c.kind === "sell");
+  assert.equal(sells.length, 1);
+  assert.equal(sells[0]!.body.qty, "33");
+  assert.match(
+    String(sells[0]!.body.note),
+    /Failed break: reached the day's high \(103\.00\)/,
+  );
+  assert.ok(
+    h.store.events(50).some((e) => /failed break: reached/.test(e.text)),
+  );
+  await h.run(DAY, 641, 645);
+  assert.equal(h.store.openPositions().length, 0);
+});
+
+test("runner (live): with the failed-break sale off the bot only notes it and keeps the position", async () => {
+  const h = harness("live", {}, failedBreakDay);
+  h.bot.setSettings({ ...h.bot.settings(), sellFailedBreak: false });
+  await h.run(DAY, 565, 640);
+  assert.equal(h.calls.filter((c) => c.kind === "sell").length, 0);
+  assert.ok(
+    h.store.events(50).some((e) => /failed-break sale is off/.test(e.text)),
   );
 });

@@ -25,6 +25,9 @@ export interface BotSettings {
   dayLossPct: number;
   drawdownPausePct: number;
   checks: boolean;
+  // On the entry day, sell all when the stock reaches the next level ahead
+  // and falls back without breaking it (levels.ts).
+  sellFailedBreak: boolean;
   // Profits and holding
   holdFromPct: number;
   maxNights: number;
@@ -66,6 +69,7 @@ export const defaultSettings: BotSettings = {
   dayLossPct: 5,
   drawdownPausePct: 15,
   checks: true,
+  sellFailedBreak: true,
   holdFromPct: 100,
   maxNights: 2,
   nightCapPct: 10,
@@ -121,6 +125,7 @@ const booleans: BooleanKey[] = [
   "enabled",
   "followFavorites",
   "checks",
+  "sellFailedBreak",
   "skipEarnings",
   "skipPremarket",
 ];
