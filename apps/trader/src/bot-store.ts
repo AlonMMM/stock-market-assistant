@@ -18,6 +18,8 @@ export interface BotSignal {
   outcome: string;
   detail: string;
   at: number;
+  // The bot version in force (versions.ts); missing on signals before versions.
+  version?: string;
 }
 
 export interface BotSale {
@@ -59,6 +61,9 @@ export interface BotPosition {
   breakWatch?: BreakWatch | null;
   // The last day the 15:50 decision was taken, so it is taken once a day.
   decidedOn: string | null;
+  // The bot version that entered it ("2.1", or "2.1*" with changed rules);
+  // missing on positions opened before versions.
+  version?: string;
   status: BotStatus;
   jobId: string | null;
   dry: boolean;

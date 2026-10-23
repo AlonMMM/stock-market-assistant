@@ -11,6 +11,14 @@ import {
 // A trading service without `/api/bot/settings` gets the page's fallback: what
 // `GET /api/bot` reports.
 
+import {
+  botVersions,
+  ruleChanges,
+  versionById,
+  versionLabel,
+  type BotVersion,
+} from "../../../packages/trading/src/bot/versions.js";
+
 export {
   defaultSettings,
   neverWatched,
@@ -18,8 +26,34 @@ export {
   type BotSettings,
   type NumberKey,
 } from "../../../packages/trading/src/bot/settings.js";
+export {
+  applyVersion,
+  botVersions,
+  versionLabel,
+  versionLabelPattern,
+  type BotVersion,
+} from "../../../packages/trading/src/bot/versions.js";
 export type SwitchKey =
   "checks" | "sellFailedBreak" | "skipEarnings" | "skipPremarket";
+
+/**
+ * The version card's state: the known version chosen (none for an own label),
+ * where the rules below differ from it, and what entries are stamped with.
+ */
+export function versionState(s: BotSettings): {
+  known: BotVersion | undefined;
+  changes: string[];
+  label: string;
+  latest: boolean;
+} {
+  const known = versionById(s.version);
+  return {
+    known,
+    changes: known ? ruleChanges(s, known) : [],
+    label: versionLabel(s),
+    latest: s.version === botVersions.at(-1)!.id,
+  };
+}
 
 /**
  * The settings as far as the bot reports them, the defaults for the rest.
@@ -98,7 +132,7 @@ export function addTicker(
   return { ...s, off, added: [...s.added, t] };
 }
 
-/** The settings changed against the defaults, keeping on/off and the mode. */
+/** The settings changed against the defaults (the current version), keeping on/off and the mode. */
 export function resetToDefaults(s: BotSettings): BotSettings {
   return { ...defaultSettings, enabled: s.enabled, mode: s.mode };
 }

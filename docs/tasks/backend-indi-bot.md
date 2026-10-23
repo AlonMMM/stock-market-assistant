@@ -108,6 +108,14 @@ night from −17.6% to −5.4% of the account; the worst drop hardly changes.
 Scale-in tested on t ≥ 1.8: worse (A $476,299 / 12% vs $585,592 / 11% at 1%; unseen $115,967 vs $123,028), not
 used. The bot buys the full size (2%) at the signal.
 
+## Versions (2026-10-23)
+
+The rules the bot runs have a version, and every entry is stamped with it: 1.0 (the first bot, 2026-10-21), 2.0
+(the V2 champion: t 1.8, night cap, news filter, 2026-10-22), 2.1 (2.0 plus the failed-break sale, 2026-10-23).
+The owner picks the version on the settings page; a rule changed from the version's stars the stamp ("2.1\*"). The
+table and the mechanics are in docs/tasks/backend-bot-settings.md, "Versions"; the code is
+`packages/trading/src/bot/versions.ts`.
+
 ## News filter (V2 champion)
 
 Branch `feat/indi-bot-news-filter`. From the V2 research (`news_filter.py` on `research/indi-v2`; full log in

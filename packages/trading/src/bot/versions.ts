@@ -1,0 +1,164 @@
+import type { BotSettings } from "./settings.js";
+
+// The bot's versions (docs/tasks/backend-bot-settings.md, "Versions"): each
+// is a named set of the trading rules, the settings that decide when the bot
+// enters, what it buys and how it exits. The owner picks the version the bot
+// runs on the settings page; every signal and position is stamped with the
+// version in force when it was entered, so results can be read per version.
+// The owner's own limits (size, buys a day, open positions, the daily loss,
+// the drawdown pause, the broker safety stop) and the stock lists are not part
+// of a version.
+
+export type RuleKey =
+  | "stopPct"
+  | "checks"
+  | "sellFailedBreak"
+  | "holdFromPct"
+  | "maxNights"
+  | "nightCapPct"
+  | "delta"
+  | "maxDte"
+  | "minPrice"
+  | "minVolume"
+  | "minT"
+  | "minRvol"
+  | "firstEntryMin"
+  | "skipEarnings"
+  | "skipPremarket";
+
+export type Rules = Pick<BotSettings, RuleKey>;
+
+export const ruleKeys: readonly RuleKey[] = [
+  "stopPct",
+  "checks",
+  "sellFailedBreak",
+  "holdFromPct",
+  "maxNights",
+  "nightCapPct",
+  "delta",
+  "maxDte",
+  "minPrice",
+  "minVolume",
+  "minT",
+  "minRvol",
+  "firstEntryMin",
+  "skipEarnings",
+  "skipPremarket",
+];
+
+export interface BotVersion {
+  id: string; // what entries are stamped with, e.g. "2.1"
+  name: string;
+  since: string; // the day it went live
+  notes: string; // what changed from the version before
+  rules: Rules;
+}
+
+// 1.0: the first bot, the rules as backtested on 2026-10-21 (docs/tasks/backend-indi-bot.md, "Rules").
+const v1: Rules = {
+  stopPct: 30,
+  checks: true,
+  sellFailedBreak: false,
+  holdFromPct: 100,
+  maxNights: 2,
+  nightCapPct: 0,
+  delta: 0.15,
+  maxDte: 7,
+  minPrice: 0.2,
+  minVolume: 200,
+  minT: 2,
+  minRvol: 1.5,
+  firstEntryMin: 10,
+  skipEarnings: false,
+  skipPremarket: false,
+};
+// 2.0: the V2 champion (t 1.8, the overnight cap, the news filter).
+const v2: Rules = {
+  ...v1,
+  minT: 1.8,
+  nightCapPct: 10,
+  skipEarnings: true,
+  skipPremarket: true,
+};
+// 2.1: the owner's chosen failed-break sale on the entry day.
+const v21: Rules = { ...v2, sellFailedBreak: true };
+
+/** Every version, oldest first. */
+export const botVersions: readonly BotVersion[] = [
+  {
+    id: "1.0",
+    name: "Indi V1",
+    since: "2026-10-21",
+    notes:
+      "The backtested rules: strength t 2 and volume 1.5×, delta 0.15, 1–7 days out, your stop and the overnight hold. No news filter, no overnight cap.",
+    rules: v1,
+  },
+  {
+    id: "2.0",
+    name: "V2 champion",
+    since: "2026-10-22",
+    notes:
+      "Strength t 1.8 (was 2), one contract holds at most 10% of the account overnight, and no entry on an earnings reaction day or with pre-market volume 4× normal.",
+    rules: v2,
+  },
+  {
+    id: "2.1",
+    name: "V2 + failed-break sale",
+    since: "2026-10-23",
+    notes:
+      "On the entry day, sell all when the stock reaches the next level ahead and falls back without breaking it.",
+    rules: v21,
+  },
+];
+
+/** The version a new bot runs. */
+export const currentVersion = botVersions.at(-1)!.id;
+
+// What the owner may call an own rule set: letters, digits, dots, dashes,
+// plus, spaces and underscores; up to 24 characters.
+export const versionLabelPattern = /^[A-Za-z0-9][A-Za-z0-9 ._+-]{0,23}$/;
+
+export const versionById = (id: string): BotVersion | undefined =>
+  botVersions.find((v) => v.id === id);
+
+/** Just the rules of a settings object. */
+export function rulesOf(s: Rules): Rules {
+  const out: Partial<Rules> = {};
+  for (const key of ruleKeys) (out as Record<string, unknown>)[key] = s[key];
+  return out as Rules;
+}
+
+export const sameRules = (a: Rules, b: Rules): boolean =>
+  ruleKeys.every((key) => a[key] === b[key]);
+
+/** The newest version whose rules are exactly these, if any. */
+export function matchingVersion(s: Rules): BotVersion | undefined {
+  return [...botVersions].reverse().find((v) => sameRules(v.rules, s));
+}
+
+/** Where the rules differ from a version's, in words ("stopPct 30 → 40"). */
+export function ruleChanges(s: Rules, v: BotVersion): string[] {
+  const out: string[] = [];
+  for (const key of ruleKeys)
+    if (s[key] !== v.rules[key])
+      out.push(`${key} ${String(v.rules[key])} → ${String(s[key])}`);
+  return out;
+}
+
+/**
+ * What an entry is stamped with: the chosen version, with a star when the
+ * rules were changed from it ("2.1*"); an own label stays as typed.
+ */
+export function versionLabel(s: BotSettings): string {
+  const known = versionById(s.version);
+  if (!known) return s.version;
+  if (sameRules(s, known.rules)) return s.version;
+  return `${s.version}*`;
+}
+
+/** The settings with a version's rules, and that version chosen. */
+export function applyVersion(s: BotSettings, id: string): BotSettings {
+  const v = versionById(id);
+  if (!v) return { ...s, version: id };
+  return { ...s, ...v.rules, version: id };
+}

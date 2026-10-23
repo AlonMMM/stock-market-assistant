@@ -9,6 +9,7 @@ import {
   defaultSettings,
   type BotSettings,
 } from "../../../packages/trading/src/bot/settings.js";
+import { botVersions } from "../../../packages/trading/src/bot/versions.js";
 import {
   contractWords,
   contractsInWords,
@@ -835,6 +836,7 @@ function Holdings({
                 </span>
                 <strong>{contractName(p.contract, p.day)}</strong>
                 {p.dry && <span className="pill amber">dry run</span>}
+                {p.version && <VersionTag version={p.version} />}
               </div>
               <div className="muted small">
                 {p.status === "buying"
@@ -894,6 +896,7 @@ function Signals({ v }: { v: BotView }) {
                 <span className="muted small">
                   {" "}
                   t {s.t.toFixed(1)} · volume {s.rvol.toFixed(1)}×
+                  {s.version && ` · bot ${s.version}`}
                 </span>
                 {s.detail && (
                   <span className="muted small bot-signal-detail">
@@ -986,6 +989,7 @@ function Closed({ closed }: { closed: Position[] }) {
                   {" "}
                   {p.bought} at ${p.cost.toFixed(2)}
                   {p.dry && " · dry run"}
+                  {p.version && ` · bot ${p.version}`}
                 </span>
                 <span className="muted small bot-signal-detail">
                   {p.sales
@@ -1002,6 +1006,27 @@ function Closed({ closed }: { closed: Position[] }) {
       )}
     </section>
   );
+}
+
+/** "v2.1": the version of the rules that entered a position. */
+function VersionTag({ version }: { version: string }) {
+  let title = `Entered by bot version ${version}`;
+  if (version.endsWith("*"))
+    title = `Entered by bot version ${version.slice(0, -1)} with changed rules`;
+  return (
+    <span className="bot-version" title={title}>
+      v{version}
+    </span>
+  );
+}
+
+/** The version in words for the rules list: name, date and what it changed. */
+function versionWords(id: string): string {
+  const known = botVersions.find((v) => v.id === id.replace(/\*$/, ""));
+  if (!known) return `Your own rule set “${id}”.`;
+  let edited = "";
+  if (id.endsWith("*")) edited = ", with rules changed below";
+  return `${known.id} · ${known.name} (since ${known.since}${edited}). ${known.notes}`;
 }
 
 function Rules({ v }: { v: BotView }) {
@@ -1026,6 +1051,12 @@ function Rules({ v }: { v: BotView }) {
     <details className="bot-card bot-rules">
       <summary>How the bot decides</summary>
       <ol>
+        {v.version && (
+          <li>
+            <b>Version.</b> {versionWords(v.version)} Every entry is stamped
+            with the version that made it.
+          </li>
+        )}
         <li>
           <b>Stocks.</b> {v.universe.length} core stocks from the backtested
           list{stocks}
@@ -1082,6 +1113,7 @@ export function BotPanel({ onSettings }: { onSettings?: () => void }) {
           <div>
             <h2 className="portfolio-title">🤖 Bot</h2>
             <p className="muted small">
+              {value.version && `Version ${value.version} · `}
               Delta {value.delta} · {value.sizePct}% a trade · paper account
               {value.lastRun !== null &&
                 ` · last check ${ago(value.lastRun, now)}`}

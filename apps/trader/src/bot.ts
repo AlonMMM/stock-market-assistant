@@ -39,6 +39,7 @@ import {
   withDefaults,
   type BotSettings,
 } from "../../../packages/trading/src/bot/settings.js";
+import { versionLabel } from "../../../packages/trading/src/bot/versions.js";
 import {
   cSignal,
   cState,
@@ -456,7 +457,7 @@ export class IndiBot {
     if (own.length) parts += `, ${own.length} added by you`;
     this.event(
       "info",
-      `Ready for ${date}: watching ${this.symbols.length} stocks (${parts})`,
+      `Ready for ${date}: watching ${this.symbols.length} stocks (${parts}); bot version ${versionLabel(s)}`,
     );
     this.dayStartEquity = await this.equity().catch(() => null);
     this.preRatio.clear();
@@ -624,6 +625,7 @@ export class IndiBot {
         outcome: "new",
         detail: "",
         at: this.o.now(),
+        version: versionLabel(this.settings()),
       });
       if (added)
         this.event(
@@ -692,7 +694,9 @@ export class IndiBot {
         "held",
         `${this.words(contract)} is already in the account`,
       );
-    const why = `Signal ${side} at ${clock(minute)}: strength t ${t.toFixed(1)}, volume ${rvol.toFixed(1)}× normal`;
+    // The entry's note carries the version, so the trade's record has it too.
+    const version = versionLabel(s);
+    const why = `Signal ${side} at ${clock(minute)}: strength t ${t.toFixed(1)}, volume ${rvol.toFixed(1)}× normal · bot ${version}`;
     const base: BotPosition = {
       id: randomUUID(),
       day: date,
@@ -715,6 +719,7 @@ export class IndiBot {
         right,
       ),
       decidedOn: null,
+      version,
       status: "buying",
       jobId: null,
       dry: s.mode === "dry",
@@ -1234,6 +1239,7 @@ export class IndiBot {
       mode: s.mode,
       sizePct: s.sizePct,
       delta: s.delta,
+      version: versionLabel(s),
       settings: s,
       universe: this.o.universe,
       favorites: this.watchlist(),

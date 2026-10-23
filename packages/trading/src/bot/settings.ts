@@ -1,6 +1,11 @@
 import { defaultExitRules, type ExitRules } from "./exits.js";
 import { defaultPickRules, type PickRules } from "./picker.js";
 import { defaultSignalParams, type SignalParams } from "./signal.js";
+import {
+  currentVersion,
+  matchingVersion,
+  versionLabelPattern,
+} from "./versions.js";
 
 // The bot's settings (docs/tasks/backend-bot-settings.md): what the owner can
 // change on the site's Bot settings page. The defaults are the backtested
@@ -11,6 +16,10 @@ import { defaultSignalParams, type SignalParams } from "./signal.js";
 export interface BotSettings {
   enabled: boolean;
   mode: "live" | "dry";
+  // The version of the rules the bot runs (versions.ts): a known version's id
+  // ("2.1") or the owner's own label for a rule set. Every entry is stamped
+  // with it, with a star when the rules were changed from the version's.
+  version: string;
   // Stocks: the core list and the favorites list, plus the owner's own.
   followFavorites: boolean;
   added: string[];
@@ -58,6 +67,7 @@ type BooleanKey = {
 export const defaultSettings: BotSettings = {
   enabled: true,
   mode: "live",
+  version: currentVersion,
   followFavorites: true,
   added: [],
   off: ["QQQ", "SQQQ"],
@@ -132,12 +142,19 @@ const booleans: BooleanKey[] = [
 const ticker = /^[A-Z][A-Z.]{0,5}$/;
 const maxTickers = 200;
 
-/** Saved values over the defaults; anything not valid falls back. */
+/**
+ * Saved values over the defaults; anything not valid falls back. A record
+ * saved before versions gets the version its rules match, else the current.
+ */
 export function withDefaults(
   saved: unknown,
   base: BotSettings = defaultSettings,
 ): BotSettings {
-  const checked = parseSettings({ ...base, ...(isObject(saved) ? saved : {}) });
+  const record = isObject(saved) ? saved : {};
+  const merged = { ...base, ...record };
+  if (!("version" in record))
+    merged.version = matchingVersion(merged)?.id ?? currentVersion;
+  const checked = parseSettings(merged);
   return checked.ok ? checked.value : base;
 }
 
@@ -156,6 +173,14 @@ export function parseSettings(
   if (body.mode !== "live" && body.mode !== "dry")
     return { ok: false, error: "mode must be live or dry" };
   out.mode = body.mode;
+  const version = typeof body.version === "string" ? body.version.trim() : "";
+  if (!versionLabelPattern.test(version))
+    return {
+      ok: false,
+      error:
+        "version must be a known version or a label of up to 24 letters, digits, dots and dashes",
+    };
+  out.version = version;
   for (const [key, [min, max, step]] of Object.entries(limits) as [
     NumberKey,
     [number, number, number],

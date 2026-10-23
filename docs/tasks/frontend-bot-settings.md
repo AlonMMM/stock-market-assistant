@@ -33,6 +33,15 @@ itself. Everyone else still sees only the read-only Bot tab.
   bot-only limit beside the owner's 5% rule), `drawdownPausePct` (15, turns the bot off). These are not in the
   backtest; the page labels them "Default", not "Backtest". The user confirmed the design's defaults (2026-10-22).
 
+## Bot version card (2026-10-23)
+
+Above the stocks: **Bot version · 2.1**, a segment of the known versions (packages/trading/src/bot/versions.ts),
+the chosen one's name, date and notes, and what entries are stamped with. Picking a version sets its rules on the
+sliders and switches below; changing a rule afterwards shows "Changed: stopPct 30 → 40", the stamp "2.1\*" and a
+"Back to 2.1's rules" link, and an input to name the edited set (an own label, up to 24 characters). The owner's
+limits and the stock lists are not part of a version. The Bot tab shows the version in its header, on each
+holding ("v2.1"), on signals and closed trades, and first under "How the bot decides".
+
 ## Behaviour without the API
 
 The page tries `GET /api/bot/settings`. A 404/405 or a non-JSON answer means "not served yet": it starts from

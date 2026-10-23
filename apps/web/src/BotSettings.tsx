@@ -7,6 +7,8 @@ import type { BotView } from "../../../packages/trading/src/bot-api.js";
 import { readJson } from "./api.js";
 import {
   addTicker,
+  applyVersion,
+  botVersions,
   defaultSettings,
   fromBotView,
   leftBacktest,
@@ -16,6 +18,8 @@ import {
   tickerItems,
   toggleTicker,
   untested,
+  versionLabelPattern,
+  versionState,
   type BotSettings,
   type NumberKey,
   type SwitchKey,
@@ -538,6 +542,123 @@ function Stocks({
   );
 }
 
+/**
+ * The bot's version (packages/trading/src/bot/versions.ts): pick a known rule
+ * set, see where the rules below were changed from it, or name an own one.
+ * Every entry is stamped with what this card shows as the label.
+ */
+function VersionCard({
+  s,
+  onChange,
+}: {
+  s: BotSettings;
+  onChange: (s: BotSettings) => void;
+}) {
+  const { known, changes, label, latest } = versionState(s);
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const edited = changes.length > 0;
+  const name = () => {
+    const next = text.trim();
+    if (!versionLabelPattern.test(next)) {
+      setError("A label is 1–24 letters, digits, dots, dashes or spaces.");
+      return;
+    }
+    onChange({ ...s, version: next });
+    setText("");
+    setError("");
+  };
+  let standing = `Entries are stamped “${label}”.`;
+  if (!known)
+    standing = `Your own rule set, “${label}”: the rules below as you set them. Entries are stamped “${label}”.`;
+  else if (edited)
+    standing = `The rules below differ from ${known.id}; entries are stamped “${label}”.`;
+  return (
+    <section className="bot-card bs-card" aria-labelledby="bs-version">
+      <div className="bs-card-head">
+        <div>
+          <h2 id="bs-version">Bot version · {label}</h2>
+          <p className="muted small">
+            Which set of trading rules the bot runs. Your limits (size, buys a
+            day, losses) and the stocks are not part of a version.
+          </p>
+        </div>
+        {!latest && (
+          <span className="small bs-changed">
+            Not the newest version ({botVersions.at(-1)!.id})
+          </span>
+        )}
+      </div>
+      <div className="bs-seg bs-versions" role="group" aria-label="Version">
+        {botVersions.map((v) => (
+          <button
+            type="button"
+            key={v.id}
+            aria-pressed={s.version === v.id}
+            title={v.name}
+            onClick={() => onChange(applyVersion(s, v.id))}
+          >
+            {v.id}
+          </button>
+        ))}
+      </div>
+      {known && (
+        <p className="small">
+          <b>
+            {known.id} · {known.name}
+          </b>{" "}
+          <span className="muted">since {known.since}.</span> {known.notes}
+        </p>
+      )}
+      <p className={edited || !known ? "small bs-changed" : "muted small"}>
+        {standing}
+      </p>
+      {edited && (
+        <p className="small">
+          Changed: {changes.join("; ")}.{" "}
+          <button
+            type="button"
+            className="bs-link"
+            onClick={() => onChange(applyVersion(s, known!.id))}
+          >
+            Back to {known!.id}&apos;s rules
+          </button>
+        </p>
+      )}
+      {(edited || !known) && (
+        <div className="bs-add bs-name">
+          <label htmlFor="bs-version-label" className="visually-hidden">
+            Name this rule set
+          </label>
+          <input
+            id="bs-version-label"
+            type="text"
+            placeholder="Name this rule set, e.g. 2.2-test"
+            autoComplete="off"
+            maxLength={24}
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              setError("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") name();
+            }}
+          />
+          <button type="button" className="bs-secondary" onClick={name}>
+            Name it
+          </button>
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="bs-error small">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
 /** Reads the saved settings; tells whether the trading service serves them. */
 function useSavedSettings(): [
   Link,
@@ -715,6 +836,8 @@ export function BotSettingsPage({ onBack }: { onBack: () => void }) {
           live.
         </p>
       )}
+
+      <VersionCard s={s} onChange={(next) => put(next)} />
 
       {view ? (
         <Stocks
