@@ -121,7 +121,22 @@ export function favoritesList<T extends { name: string; builtIn?: true }>(
   return own.find((l) => /fav|⭐|★/i.test(l.name));
 }
 
-/** Sends the favorites list to the bot before the session (worker cron). */
+/**
+ * Whether the bot's copy of the favorites list is missing or differs from the
+ * site's list, so the site sends it again.
+ */
+export function favoritesStale(
+  held: { name: string; tickers: string[] } | null,
+  list: { name: string; tickers: string[] },
+): boolean {
+  if (!held) return true;
+  if (held.name !== list.name) return true;
+  const a = [...held.tickers].sort().join(",");
+  const b = [...list.tickers].sort().join(",");
+  return a !== b;
+}
+
+/** Sends the favorites list to the bot (worker cron, and the Bot tab when the bot's copy is stale). */
 export async function pushFavorites(
   trader: { url?: string; token?: string },
   list: { name: string; tickers: string[] },

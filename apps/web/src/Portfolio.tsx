@@ -216,11 +216,21 @@ function Trade({ t, bot }: { t: ClosedTrade; bot: boolean }) {
   );
 }
 
-function History({ onError }: { onError: (m: string) => void }) {
+function History({
+  onError,
+  base = "/api/portfolio",
+  chips = true,
+}: {
+  onError: (m: string) => void;
+  // The account: the owner's, or the bot's own (/api/portfolio/bot).
+  base?: string;
+  // The Bot chip on the bot's trades; off when the whole account is the bot's.
+  chips?: boolean;
+}) {
   const [period, setPeriod] = useState<HistoryPeriod>("1M");
   const bot = useBotContracts();
   const { value, error } = usePolling<PortfolioHistory>(
-    `/api/portfolio/history?period=${period}`,
+    `${base}/history?period=${period}`,
     historyRefreshMs,
     onError,
   );
@@ -291,7 +301,7 @@ function History({ onError }: { onError: (m: string) => void }) {
                 <Trade
                   key={t.symbol + t.closedAt}
                   t={t}
-                  bot={bot.has(t.symbol)}
+                  bot={chips && bot.has(t.symbol)}
                 />
               ))}
             </ul>
@@ -316,6 +326,7 @@ const allSections = [
   ["orders", "Orders"],
   ["history", "History"],
   ["bot", "🤖 Bot"],
+  ["bot-trades", "Bot trades"],
 ] as const;
 
 /** The Portfolio area: open trades, and the account's history. */
@@ -339,6 +350,31 @@ export function Portfolio({
   const [editing, setEditing] = useState<PortfolioOrder | null>(null);
   const sections = allSections.filter(([key]) => key !== "trade" || canTrade);
   const ignore = () => {}; // failures are shown in place
+  const panel = () => {
+    if (tab === "live")
+      return (
+        <LiveTrades
+          onError={ignore}
+          onEdit={(o) => {
+            setEditing(o);
+            setTab("trade");
+          }}
+        />
+      );
+    if (tab === "trade" && canTrade)
+      return (
+        <TradeTicket
+          key={editing?.id ?? "new"}
+          edit={editing}
+          ticker={editing ? undefined : (tradeSymbol ?? undefined)}
+          startMode={tradeMode}
+        />
+      );
+    if (tab === "orders") return <Orders onError={ignore} />;
+    if (tab === "bot") return <BotTab canChange={canTrade} />;
+    if (tab === "bot-trades") return <BotTrades onError={ignore} />;
+    return <History onError={ignore} />;
+  };
   return (
     <div className="live-page">
       <header>
@@ -387,28 +423,7 @@ export function Portfolio({
         aria-labelledby={`tab-${tab}`}
         className="tab-panel"
       >
-        {tab === "live" ? (
-          <LiveTrades
-            onError={ignore}
-            onEdit={(o) => {
-              setEditing(o);
-              setTab("trade");
-            }}
-          />
-        ) : tab === "trade" && canTrade ? (
-          <TradeTicket
-            key={editing?.id ?? "new"}
-            edit={editing}
-            ticker={editing ? undefined : (tradeSymbol ?? undefined)}
-            startMode={tradeMode}
-          />
-        ) : tab === "orders" ? (
-          <Orders onError={ignore} />
-        ) : tab === "bot" ? (
-          <BotTab canChange={canTrade} />
-        ) : (
-          <History onError={ignore} />
-        )}
+        {panel()}
       </section>
     </div>
   );
@@ -608,6 +623,113 @@ function LiveTrades({
       ) : (
         <p className="muted">No open orders.</p>
       )}
+    </div>
+  );
+}
+
+// The bot's own paper account (docs/tasks/backend-bot-account.md): what it
+// holds and what it closed, read-only. The owner's position controls act on
+// the owner's account, so nothing here can be clicked.
+const botRefreshMs = 5000;
+
+function BotTrades({ onError }: { onError: (m: string) => void }) {
+  const { value, at, error } = usePolling<PortfolioData>(
+    "/api/portfolio/bot",
+    botRefreshMs,
+    onError,
+  );
+  if (!value)
+    return (
+      <p className={error ? "notice error" : "chart-status"}>
+        {error
+          ? `Bot account unavailable: ${error}`
+          : "Loading the bot's account…"}
+      </p>
+    );
+  const { account, positions, orders } = value;
+  const openPnl = positions
+    .map((p) => positionNumbers(p, "close", account.equity).pnl)
+    .reduce<number>((sum, pnl) => sum + (pnl ?? 0), 0);
+  return (
+    <div className="portfolio">
+      <p className="portfolio-meta">
+        <span className="account-tag paper">🤖 Bot paper account</span>
+        <span className="muted">
+          {error
+            ? `Update failed (${error}). Showing ${israelClock(Date.parse(value.at))} ${israelLabel}.`
+            : `Updated ${israelClock(at ?? Date.parse(value.at))} ${israelLabel}`}
+        </span>
+      </p>
+      <div className="account">
+        <div className="account-main">
+          <span className="account-label">
+            {value.marketClosed ? "Account value at close" : "Net liquidation"}
+          </span>
+          <strong className="num">{usd(account.equity)}</strong>
+          <span className={`num account-day${tone(account.dayChange)}`}>
+            {signedUsd(account.dayChange)}
+            {account.dayChangePct !== null &&
+              ` (${signedPct(account.dayChangePct)})`}{" "}
+            US session
+          </span>
+        </div>
+        <dl className="account-stats">
+          <div>
+            <dt>Open P&L</dt>
+            <dd className={`num${tone(openPnl)}`}>{signedUsd(openPnl)}</dd>
+          </div>
+          <div>
+            <dt>Cash</dt>
+            <dd className="num">{usd(account.cash)}</dd>
+          </div>
+          <div>
+            <dt>At risk to stops</dt>
+            <dd className="num">
+              {usd(value.riskAtStops)}
+              {account.equity > 0 &&
+                ` (${((value.riskAtStops / account.equity) * 100).toFixed(1)}%)`}
+            </dd>
+          </div>
+        </dl>
+      </div>
+      {value.shortRisks.length > 0 && (
+        <div className="notice error short-alert" role="alert">
+          <strong>Short option risk. This must never happen.</strong>
+          <ul>
+            {value.shortRisks.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <h2 className="portfolio-title">Positions</h2>
+      {positions.length > 0 ? (
+        <PositionList
+          positions={positions}
+          why={new Map()}
+          view="close"
+          equity={account.equity}
+          controls={false}
+        />
+      ) : (
+        <p className="notice">The bot holds nothing right now.</p>
+      )}
+      <h2 className="portfolio-title">Open orders</h2>
+      {orders.length > 0 ? (
+        <ul className="portfolio-orders">
+          {orders.map((o) => (
+            <Order
+              key={o.id}
+              o={o}
+              position={positions.find((p) => p.symbol === o.symbol)}
+            />
+          ))}
+        </ul>
+      ) : (
+        <p className="muted">No open orders.</p>
+      )}
+      <h2 className="portfolio-title">Closed trades</h2>
+      <History onError={onError} base="/api/portfolio/bot" chips={false} />
     </div>
   );
 }

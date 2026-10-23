@@ -50,12 +50,14 @@ import {
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
 import { handleLatestPrices } from "../../../packages/market-data/src/latest-prices.js";
 import {
+  handleBotPortfolio,
   handlePortfolio,
   handlePortfolioHistory,
   PortfolioCache,
 } from "../../../packages/trading/src/portfolio.js";
 import {
   favoritesList,
+  favoritesStale,
   handleBotSettings,
   handleBotStatus,
   pushFavorites,
@@ -71,6 +73,9 @@ import {
 import { TelegramSender } from "../../../packages/notifications/src/telegram.js";
 
 const portfolio = new PortfolioCache();
+// The bot's own paper account (docs/tasks/backend-bot-account.md) has its own
+// cache: the two accounts answer the same Alpaca paths.
+const botPortfolio = new PortfolioCache();
 import { handleCandles } from "../../../packages/market-data/src/candles.js";
 import { handleChartBars } from "../../../packages/market-data/src/chart-bars.js";
 import { handleControl } from "../../../packages/trading/src/control-api.js";
@@ -187,9 +192,11 @@ export default {
     }
     // The Indi bot trades the user's favorites list too
     // (docs/tasks/backend-indi-bot.md): it is sent every minute from 08:30 to
-    // 09:24 New York, before the bot warms up at 09:25.
+    // 09:24 New York, before the bot warms up at 09:25, and every 10 minutes
+    // the rest of the day, so a restart or an edited list is picked up.
     const ny = newYork(Date.now());
-    if (env.BARS_CACHE && ny.minute >= 510 && ny.minute < 565) {
+    const beforeWarmUp = ny.minute >= 510 && ny.minute < 565;
+    if (env.BARS_CACHE && (beforeWarmUp || ny.minute % 10 === 0)) {
       const lists = await stores(env.BARS_CACHE).watchlists.lists();
       const fav = favoritesList(lists, env.BOT_WATCHLIST);
       const line = fav
@@ -245,6 +252,10 @@ export default {
       // "true" reads the live trading account on the Portfolio tab; the
       // keys must belong to it. Anything else reads the paper account.
       ALPACA_TRADING_LIVE?: string;
+      // The Indi bot's own Alpaca paper account, for the Bot trades tab
+      // (docs/tasks/backend-bot-account.md). Unset: the tab says so.
+      BOT_ALPACA_API_KEY?: string;
+      BOT_ALPACA_API_SECRET?: string;
       // The trading service and its read-only token, for the Orders tab.
       TRADER_URL?: string;
       TRADER_READ_TOKEN?: string;
@@ -252,6 +263,8 @@ export default {
       // them, and the trading service's full token. Both unset: no controls.
       TRADE_OWNER_EMAIL?: string;
       TRADER_TOKEN?: string;
+      // The watchlist the Indi bot also trades; else the one named "favorite".
+      BOT_WATCHLIST?: string;
     } = {},
   ): Promise<Response> {
     // Access protection is enabled by configuration; without both values the
@@ -608,10 +621,26 @@ export default {
           status: 405,
           headers: { Allow: "GET" },
         });
-      const result = await handleBotStatus({
-        url: env.TRADER_URL,
-        token: env.TRADER_READ_TOKEN,
-      });
+      const trader = { url: env.TRADER_URL, token: env.TRADER_READ_TOKEN };
+      let result = await handleBotStatus(trader);
+      // The bot's copy of the favorites list is missing or old: send the
+      // site's list now, so the page and the bot both count it.
+      if (
+        result.status === 200 &&
+        "favorites" in result.body &&
+        env.BARS_CACHE
+      ) {
+        const lists = await stores(env.BARS_CACHE).watchlists.lists();
+        const fav = favoritesList(lists, env.BOT_WATCHLIST);
+        if (fav && favoritesStale(result.body.favorites, fav)) {
+          const sent = await pushFavorites(
+            { url: env.TRADER_URL, token: env.TRADER_TOKEN },
+            fav,
+          ).catch((error: unknown) => `failed: ${String(error)}`);
+          console.log(`bot favorites (Bot tab): ${sent}`);
+          result = await handleBotStatus(trader);
+        }
+      }
       return Response.json(result.body, {
         status: result.status,
         headers: { "Cache-Control": "no-store" },
@@ -627,6 +656,27 @@ export default {
         url: env.TRADER_URL,
         token: env.TRADER_READ_TOKEN,
       });
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (
+      path === "/api/portfolio/bot" ||
+      path === "/api/portfolio/bot/history"
+    ) {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const result = await handleBotPortfolio(
+        { key: env.BOT_ALPACA_API_KEY, secret: env.BOT_ALPACA_API_SECRET },
+        path === "/api/portfolio/bot"
+          ? undefined
+          : (new URL(request.url).searchParams.get("period") ?? ""),
+        botPortfolio,
+      );
       return Response.json(result.body, {
         status: result.status,
         headers: { "Cache-Control": "no-store" },

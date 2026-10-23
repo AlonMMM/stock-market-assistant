@@ -116,6 +116,17 @@ deployment without real-time SIP, or requests for recent data fail. An invalid v
 stops the local API at startup and makes the Worker's API answer 500. `/api/board` and
 `/api/day-chart` report the value as `delayMinutes`.
 
+## 10-second bars for research
+
+Alpaca serves no bars under a minute, so `npm run bars:10s` builds them from SIP trades:
+every trade of a symbol-day (`GET /v2/stocks/{symbol}/trades`, 10,000 per page) is
+aggregated into 10-second bars with Alpaca's own condition rules and stored in
+`data/local/bars-10s.sqlite` (one row per bar; regular hours only). The run is paced
+(`--rate`, default 1000 requests/min; Algo Trader Plus allows 10,000), resumable, and
+appends new sessions on rerun. `npm run bars:10s:check SYMBOL DATE` compares a
+symbol-day, rolled up to minutes, with Alpaca's minute bars. Details, data layout and
+limitations: [task](tasks/backend-10s-bars.md).
+
 ## Real-time SIP rollout
 
 Production changes for the user to make (approved per the spec; nothing here changes them):

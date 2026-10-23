@@ -637,6 +637,24 @@ test("favorites: the named list, else the one called favorite; the bot adds it t
 
 // ---- contracts in words ----
 
+test("favorites: the site resends the list when the bot has none, another name or other stocks", async () => {
+  const { favoritesStale } = await import("../packages/trading/src/bot-api.js");
+  const list = { name: "Favorites", tickers: ["NVDA", "AMD"] };
+  assert.equal(favoritesStale(null, list), true);
+  assert.equal(
+    favoritesStale({ name: "Favorites", tickers: ["AMD", "NVDA"] }, list),
+    false,
+  );
+  assert.equal(
+    favoritesStale({ name: "Tech", tickers: ["NVDA", "AMD"] }, list),
+    true,
+  );
+  assert.equal(
+    favoritesStale({ name: "Favorites", tickers: ["NVDA"] }, list),
+    true,
+  );
+});
+
 test("contracts in words: side, strike and calendar days to expiry; 0DTE on expiry day", () => {
   assert.equal(
     contractWords("MU250404P00075000", "2025-04-02"),

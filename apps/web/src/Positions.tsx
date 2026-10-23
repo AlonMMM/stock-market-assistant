@@ -625,6 +625,7 @@ export function PositionList({
   view,
   equity,
   bot,
+  controls = true,
 }: {
   positions: PortfolioPosition[];
   why: Map<string, Decision>;
@@ -632,8 +633,12 @@ export function PositionList({
   equity: number;
   // Contracts the Indi bot opened (docs/tasks/backend-indi-bot.md).
   bot?: ReadonlySet<string>;
+  // false: a look at another account (the bot's), whose positions the
+  // owner's controls could not close; nothing here can be clicked.
+  controls?: boolean;
 }) {
-  const access = useControlAccess();
+  const own = useControlAccess();
+  const access: ControlAccess = controls ? own : { canTrade: false };
   const [open, setOpen] = useState<string | null>(null);
   const pairs = spreadPairs(positions.filter((p) => p.option));
   return (
