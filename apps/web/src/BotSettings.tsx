@@ -56,6 +56,7 @@ interface SliderSpec {
 const pct = (v: number) => `${v}%`;
 const minus = (v: number) => `−${v}%`;
 const count = (v: number) => String(v);
+const halfSizeText = (v: number) => (v === 0 ? "Off" : `−${v}%`);
 
 function nightsText(v: number): string {
   if (v === 0) return "Never";
@@ -156,6 +157,15 @@ function groups(): Group[] {
           max: 40,
           step: 5,
           fmt: minus,
+        },
+        {
+          key: "halfSizeFromPct",
+          label: "Half size after a fall of",
+          help: "Once the account is down this much from its high, every trade costs half the size above; full size again when it has won back two-thirds of the fall. 0 turns it off.",
+          min: 0,
+          max: 30,
+          step: 0.5,
+          fmt: halfSizeText,
         },
       ],
       switches: [

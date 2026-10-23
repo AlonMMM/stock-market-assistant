@@ -24,6 +24,9 @@ export interface BotSettings {
   safetyStopPct: number;
   dayLossPct: number;
   drawdownPausePct: number;
+  // Half-size trades once the account is this % under its high, full size
+  // again once it has recovered `halfSizeBackShare` of the fall. 0 = off.
+  halfSizeFromPct: number;
   checks: boolean;
   // Profits and holding
   holdFromPct: number;
@@ -65,6 +68,7 @@ export const defaultSettings: BotSettings = {
   safetyStopPct: 50,
   dayLossPct: 5,
   drawdownPausePct: 15,
+  halfSizeFromPct: 12.5,
   checks: true,
   holdFromPct: 100,
   maxNights: 2,
@@ -105,6 +109,7 @@ export const limits: Record<
   safetyStopPct: [30, 80, 5],
   dayLossPct: [1, 10, 0.5],
   drawdownPausePct: [5, 40, 5],
+  halfSizeFromPct: [0, 30, 0.5],
   holdFromPct: [50, 300, 25],
   maxNights: [0, 3, 1],
   nightCapPct: [0, 25, 1],
@@ -222,6 +227,42 @@ export function exitRules(s: BotSettings): ExitRules {
     carryMinGain: s.holdFromPct / 100,
     carryMaxNights: s.maxNights,
   };
+}
+
+// Half-size sizing (the user's risk rule, 2026-10-23): the account's high and
+// low since, and whether trades are at half size now. Read once a day at
+// warm-up from the account's equity. Full size returns once the account has
+// recovered this share of the way from the low back to the high.
+export const halfSizeBackShare = 2 / 3;
+
+export interface SizeState {
+  peak: number;
+  low: number;
+  half: boolean;
+}
+
+/** The state after reading `equity`; `fromPct` 0 means the rule is off. */
+export function nextSizeState(
+  state: SizeState | null,
+  equity: number,
+  fromPct: number,
+): SizeState {
+  if (!(equity > 0)) return state ?? { peak: 0, low: 0, half: false };
+  const peak = Math.max(state?.peak ?? 0, equity);
+  if (fromPct <= 0) return { peak, low: equity, half: false };
+  if (!state?.half) {
+    const fallen = equity <= peak * (1 - fromPct / 100);
+    return { peak, low: equity, half: fallen };
+  }
+  const low = Math.min(state.low, equity);
+  const recovered = equity >= low + halfSizeBackShare * (peak - low);
+  return { peak, low, half: !recovered };
+}
+
+/** The trade size in force: the setting, halved while the rule says so. */
+export function sizeInForce(s: BotSettings, state: SizeState | null): number {
+  if (state?.half) return s.sizePct / 2;
+  return s.sizePct;
 }
 
 /**

@@ -945,6 +945,40 @@ test("settings: the drawdown pause switches the bot off and says so", async () =
   assert.equal(h.bot.status().enabled, true);
 });
 
+test("settings: half size once the account is 12.5% under its high, and the buy goes out at half the size", async () => {
+  const h = harness("live");
+  // The account's high was $100,000; today it opens at $87,000 (−13%).
+  h.store.setSetting(
+    "sizeState",
+    JSON.stringify({ peak: 100000, low: 100000, half: false }),
+  );
+  h.setEquity(87000);
+  await h.run(DAY, 565, 600);
+  const status = h.bot.status();
+  assert.equal(status.halfSize, true);
+  assert.equal(status.sizePct, 1);
+  assert.equal(status.peakEquity, 100000);
+  assert.match(
+    status.activity.map((e) => e.text).join("\n"),
+    /Half size: the account \(\$87000\) is 13\.0% under its high/,
+  );
+  assert.ok(h.notes.some((n) => n.includes("half size")));
+  const buy = h.calls.find((c) => c.kind === "buy");
+  assert.ok(buy);
+  assert.equal(buy.body.sizePct, 1);
+  // The next session opens at $96,000: two-thirds of the fall won back (87,000 + ⅔ × 13,000 = 95,667), full size again.
+  h.setMid(1.5);
+  await h.run(DAY, 601, 965);
+  h.setEquity(96000);
+  await h.run(NEXT, 565, 570);
+  assert.equal(h.bot.status().halfSize, false);
+  assert.equal(h.bot.status().sizePct, 2);
+  assert.ok(h.notes.some((n) => n.includes("full size")));
+  // Changing the limit starts the measure again from the account as it is.
+  h.bot.setSettings({ ...h.bot.settings(), halfSizeFromPct: 0 });
+  assert.equal(h.bot.sizeState(), null);
+});
+
 // ---- the overnight cap (V2) ----
 
 test("night cap: sells the part above the cap, never more than held; 0 is no cap", () => {

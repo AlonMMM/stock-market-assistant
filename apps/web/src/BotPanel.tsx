@@ -150,6 +150,19 @@ function statusPill(v: BotView) {
   return <span className="pill green">On · trading the paper account</span>;
 }
 
+/** The half-size rule in force: the account is under its high by the limit. */
+function halfSizePill(v: BotView) {
+  if (!v.halfSize) return null;
+  return (
+    <span
+      className="pill amber"
+      title="Every trade costs half the set size until the account has won back two-thirds of its fall from the high"
+    >
+      Half size · {v.sizePct}% a trade
+    </span>
+  );
+}
+
 /** "12 s ago", "4 min ago": how fresh the bot's last check is. */
 function ago(at: number, now: number): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
@@ -1077,6 +1090,7 @@ export function BotPanel({ onSettings }: { onSettings?: () => void }) {
           </div>
           <div className="bot-head-side">
             {statusPill(value)}
+            {halfSizePill(value)}
             {onSettings && (
               <button type="button" className="bot-more" onClick={onSettings}>
                 Settings

@@ -27,11 +27,15 @@ import {
   defaultSettings,
   drawdown,
   exitRules,
+  halfSizeBackShare,
+  nextSizeState,
   pickRules,
   signalParams,
+  sizeInForce,
   watchedStocks,
   withDefaults,
   type BotSettings,
+  type SizeState,
 } from "../../../packages/trading/src/bot/settings.js";
 import {
   cSignal,
@@ -272,8 +276,42 @@ export class IndiBot {
     const changed = settingsChanges(before, next);
     if (changed.length)
       this.event("info", `Settings changed: ${changed.join("; ")}`);
+    // A new half-size limit counts from the account as it is now.
+    if (next.halfSizeFromPct !== before.halfSizeFromPct)
+      this.o.store.setSetting("sizeState", "");
     if (enabled !== before.enabled) this.setEnabled(enabled);
     return this.settings();
+  }
+
+  /** The account's high, its low since, and whether trades are at half size. */
+  sizeState(): SizeState | null {
+    const saved = this.o.store.setting("sizeState");
+    if (!saved) return null;
+    return JSON.parse(saved) as SizeState;
+  }
+
+  /**
+   * The half-size rule, once a day from the account at warm-up: half-size
+   * trades once the account is `halfSizeFromPct` under its high, full size
+   * again once it has recovered two-thirds of the fall.
+   */
+  private watchSize(equity: number | null, s: BotSettings) {
+    if (equity === null) return;
+    const before = this.sizeState();
+    const next = nextSizeState(before, equity, s.halfSizeFromPct);
+    this.o.store.setSetting("sizeState", JSON.stringify(next));
+    if (next.half === Boolean(before?.half)) return;
+    const back = Math.round(
+      next.low + halfSizeBackShare * (next.peak - next.low),
+    );
+    const pct = ((1 - equity / next.peak) * 100).toFixed(1);
+    let text = `Full size again: the account ($${Math.round(equity)}) is back two-thirds of the way to its high ($${Math.round(next.peak)}); trades at ${s.sizePct}%.`;
+    if (next.half)
+      text = `Half size: the account ($${Math.round(equity)}) is ${pct}% under its high ($${Math.round(next.peak)}), past the ${s.halfSizeFromPct}% limit; trades at ${s.sizePct / 2}% until it is back at $${back}.`;
+    this.event("info", text);
+    void this.o.notify(`${botTag}: ${next.half ? "half size" : "full size"}`, [
+      text,
+    ]);
   }
 
   /** The user's favorites list, sent by the site before each session. */
@@ -432,6 +470,7 @@ export class IndiBot {
       `Ready for ${date}: watching ${this.symbols.length} stocks (${parts})`,
     );
     this.dayStartEquity = await this.equity().catch(() => null);
+    this.watchSize(this.dayStartEquity, s);
     this.preRatio.clear();
     this.preState = this.o.market.premarket ? "pending" : "off";
     await this.loadEarnings(date);
@@ -688,9 +727,10 @@ export class IndiBot {
       openedAt: this.o.now(),
       closedAt: null,
     };
+    const sizePct = sizeInForce(s, this.sizeState());
     if (s.mode === "dry") {
       const equity = await this.equity();
-      const qty = Math.floor((equity * s.sizePct) / 100 / (picked.mid * 100));
+      const qty = Math.floor((equity * sizePct) / 100 / (picked.mid * 100));
       if (qty < 1)
         return this.outcome(
           date,
@@ -714,7 +754,7 @@ export class IndiBot {
     }
     const answer = await this.o.trading.buy({
       contract,
-      sizePct: s.sizePct,
+      sizePct,
       stopPct: s.safetyStopPct,
       tag: botTag,
       note: why,
@@ -1108,10 +1148,13 @@ export class IndiBot {
     const day = newYork(this.o.now()).date;
     const since = previousSessions(day, 5)[0]!;
     const s = this.settings();
+    const sizing = this.sizeState();
     return {
       enabled: s.enabled,
       mode: s.mode,
-      sizePct: s.sizePct,
+      sizePct: sizeInForce(s, sizing),
+      halfSize: Boolean(sizing?.half),
+      peakEquity: sizing?.peak ?? null,
       delta: s.delta,
       settings: s,
       universe: this.o.universe,

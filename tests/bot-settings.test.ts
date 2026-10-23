@@ -7,9 +7,11 @@ import {
   drawdown,
   exitRules,
   limits,
+  nextSizeState,
   parseSettings,
   pickRules,
   signalParams,
+  sizeInForce,
   untested,
   watchedStocks,
   withDefaults,
@@ -247,4 +249,46 @@ test("V2: nightCapPct defaults to 10, from 0 (no cap) to 25 on a step of 1; back
   // 0 is off: nothing is sold for the cap, however much is held.
   assert.equal(nightCapSell(1000, 10, 100000, 0), 0);
   assert.equal(nightCapSell(33, 3, 100000, 8), 7);
+});
+
+// ---- the half-size rule (the user's risk rule, 2026-10-23) ----
+
+test("half size: on at 12.5% under the high, full again two-thirds of the way back; 0 is off", () => {
+  assert.equal(defaultSettings.halfSizeFromPct, 12.5);
+  assert.deepEqual(limits.halfSizeFromPct, [0, 30, 0.5]);
+  const s = { ...defaultSettings, sizePct: 2 };
+  // The account climbs: the high follows it, full size.
+  let st = nextSizeState(null, 100000, 12.5);
+  st = nextSizeState(st, 120000, 12.5);
+  assert.deepEqual(st, { peak: 120000, low: 120000, half: false });
+  assert.equal(sizeInForce(s, st), 2);
+  // Down 12% from the high: still full. Down 13%: half.
+  st = nextSizeState(st, 105600, 12.5);
+  assert.equal(st.half, false);
+  st = nextSizeState(st, 104400, 12.5);
+  assert.deepEqual(st, { peak: 120000, low: 104400, half: true });
+  assert.equal(sizeInForce(s, st), 1);
+  // Lower still: the low follows. Back to the low + two-thirds of the fall (104,400 + ⅔ × 15,600 = 114,800): full.
+  st = nextSizeState(st, 100000, 12.5);
+  assert.deepEqual(st, { peak: 120000, low: 100000, half: true });
+  st = nextSizeState(st, 113000, 12.5);
+  assert.equal(st.half, true);
+  st = nextSizeState(st, 113400, 12.5);
+  assert.deepEqual(st, { peak: 120000, low: 100000, half: false });
+  // A new high resets the measure; the rule off never halves; a bad read changes nothing.
+  st = nextSizeState(st, 130000, 12.5);
+  assert.equal(st.peak, 130000);
+  assert.equal(nextSizeState(st, 90000, 0).half, false);
+  assert.deepEqual(nextSizeState(st, NaN, 12.5), st);
+  assert.equal(sizeInForce(s, null), 2);
+  // Settings saved before the rule get the default; 0 and 30 are accepted, 31 is not.
+  assert.equal(withDefaults({ stopPct: 30 }).halfSizeFromPct, 12.5);
+  assert.equal(
+    parseSettings({ ...defaultSettings, halfSizeFromPct: 0 }).ok,
+    true,
+  );
+  assert.equal(
+    parseSettings({ ...defaultSettings, halfSizeFromPct: 31 }).ok,
+    false,
+  );
 });

@@ -31,6 +31,7 @@ next minute; the stock list is fixed at warm-up (09:25 New York) and changes fro
 | `safetyStopPct`                            | 50                 | the broker stop on buys and on what is left after a sale      |
 | `dayLossPct`                               | 5 (new)            | account vs its value at warm-up; then `day_loss`              |
 | `drawdownPausePct`                         | 15 (new)           | switches the bot off (below)                                  |
+| `halfSizeFromPct`                          | 12.5 (V2)          | half-size buys while the account is under its high (below)    |
 | `checks`                                   | on                 | the 10- and 20-minute checks                                  |
 | `holdFromPct`, `maxNights`                 | 100, 2             | the overnight carry                                           |
 | `nightCapPct`                              | 10 (V2)            | 15:50: one contract held overnight ≤ this % of equity; 0 off  |
@@ -51,6 +52,17 @@ P&L of its sales (of the current mode) since it was last switched on; when that 
 `drawdownPausePct` of the account below its best, it switches itself off, writes an error line and posts
 "🤖 Bot: paused". The owner switches it back on, which restarts the count. Sales from before prices were kept
 do not count.
+
+**Half size (the user's risk rule, 2026-10-23).** Once a day at warm-up the bot reads the account and keeps its
+high, its low since, and whether it is at half size (`bot_settings.sizeState`). When the account is
+`halfSizeFromPct` under its high, every new buy costs half of `sizePct` (the buy's `sizePct`; the dry run's
+share of equity) until the account has won back two-thirds of the fall (`halfSizeBackShare`); each switch is an
+info line and a "🤖 Bot: half size" / "full size" post. 0 turns the rule off; changing the limit starts the
+measure again from the account as it is. `GET /v1/bot` carries `sizePct` as the size in force, `halfSize` and
+`peakEquity`; the Bot tab shows an amber "Half size" pill. Backtested as an overlay (`dd_sizing.py`): at 1% a
+trade the rule never fires on the champion (worst drop 11%); at 2% it fires six times over 2024–26 and cuts the
+fair-list end from $2.44M to $1.10M while the worst drop goes 21% → 17%, because the big winners come during the
+drawdowns. The owner chose it as a risk rule knowing that.
 
 ## Endpoints
 

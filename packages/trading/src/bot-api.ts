@@ -11,7 +11,11 @@ import {
 export interface BotView {
   enabled: boolean;
   mode: "dry" | "live";
-  sizePct: number;
+  sizePct: number; // the size in force: the setting, or half of it under the rule
+  // The half-size rule: on while the account is under its high by the limit
+  // (absent from a trading service before it).
+  halfSize?: boolean;
+  peakEquity?: number | null;
   delta: number;
   // All the owner's settings (absent from a trading service before them).
   settings?: BotSettings;
