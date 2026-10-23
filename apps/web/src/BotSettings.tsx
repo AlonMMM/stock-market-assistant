@@ -7,6 +7,7 @@ import type { BotView } from "../../../packages/trading/src/bot-api.js";
 import { readJson } from "./api.js";
 import {
   addTicker,
+  algorithmSteps,
   applyVersion,
   botVersions,
   defaultSettings,
@@ -22,6 +23,7 @@ import {
   versionState,
   type BotSettings,
   type NumberKey,
+  type Rules,
   type SwitchKey,
   type TickerItem,
 } from "./bot-settings-model.js";
@@ -542,10 +544,48 @@ function Stocks({
   );
 }
 
+/** One rule set's full algorithm, folded: the owner opens it to read every rule. */
+function VersionRules({
+  title,
+  since,
+  rules,
+  running,
+  onRun,
+}: {
+  title: string;
+  since?: string;
+  rules: Rules;
+  running: boolean;
+  onRun?: () => void;
+}) {
+  return (
+    <details className="bs-rules">
+      <summary>
+        <span>{title}</span>
+        {since && <span className="muted small">since {since}</span>}
+        {running && <span className="bot-version">running</span>}
+      </summary>
+      <ol>
+        {algorithmSteps(rules).map((step) => (
+          <li key={step.name}>
+            <b>{step.name}.</b> {step.text}
+          </li>
+        ))}
+      </ol>
+      {onRun && (
+        <button type="button" className="bs-secondary" onClick={onRun}>
+          Run these rules
+        </button>
+      )}
+    </details>
+  );
+}
+
 /**
  * The bot's version (packages/trading/src/bot/versions.ts): pick a known rule
  * set, see where the rules below were changed from it, or name an own one.
- * Every entry is stamped with what this card shows as the label.
+ * Every entry is stamped with what this card shows as the label. Each version
+ * opens to its full algorithm in words.
  */
 function VersionCard({
   s,
@@ -613,6 +653,32 @@ function VersionCard({
       <p className={edited || !known ? "small bs-changed" : "muted small"}>
         {standing}
       </p>
+      <div className="bs-rules-list">
+        <p className="muted small">Full rules of each version: tap to open.</p>
+        {(edited || !known) && (
+          <VersionRules
+            title={`${label} · the rules as set below`}
+            rules={s}
+            running
+          />
+        )}
+        {[...botVersions].reverse().map((v) => {
+          const chosen = known?.id === v.id;
+          let onRun: (() => void) | undefined = () =>
+            onChange(applyVersion(s, v.id));
+          if (chosen && !edited) onRun = undefined;
+          return (
+            <VersionRules
+              key={v.id}
+              title={`${v.id} · ${v.name}`}
+              since={v.since}
+              rules={v.rules}
+              running={chosen && !edited}
+              onRun={onRun}
+            />
+          );
+        })}
+      </div>
       {edited && (
         <p className="small">
           Changed: {changes.join("; ")}.{" "}

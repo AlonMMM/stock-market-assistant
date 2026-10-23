@@ -32,7 +32,12 @@ export {
   versionLabel,
   versionLabelPattern,
   type BotVersion,
+  type Rules,
 } from "../../../packages/trading/src/bot/versions.js";
+export {
+  algorithmSteps,
+  type AlgorithmStep,
+} from "../../../packages/trading/src/bot/algorithm.js";
 export type SwitchKey =
   "checks" | "sellFailedBreak" | "skipEarnings" | "skipPremarket";
 

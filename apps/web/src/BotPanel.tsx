@@ -9,6 +9,7 @@ import {
   defaultSettings,
   type BotSettings,
 } from "../../../packages/trading/src/bot/settings.js";
+import { algorithmSteps } from "../../../packages/trading/src/bot/algorithm.js";
 import { botVersions } from "../../../packages/trading/src/bot/versions.js";
 import {
   contractWords,
@@ -1035,18 +1036,6 @@ function Rules({ v }: { v: BotView }) {
   if (v.favorites && r.followFavorites)
     stocks = `, and your "${v.favorites.name}" list (${v.favorites.tickers.length})`;
   if (!r.followFavorites) stocks = ", not following your favorites";
-  const news: string[] = [];
-  if (r.skipEarnings) news.push("on the stock's earnings reaction day");
-  if (r.skipPremarket)
-    news.push("when its pre-market volume is 4× normal or more");
-  let checks = "No 10- and 20-minute checks; ";
-  if (r.checks)
-    checks =
-      "Half at +10 min and the rest at +20 min if the stock is against; ";
-  let carry = `at the day exit only winners up ${r.holdFromPct}%+ stay overnight (${r.maxNights} night${r.maxNights === 1 ? "" : "s"} at most)`;
-  if (r.maxNights > 0 && r.nightCapPct > 0)
-    carry += `, one contract worth at most ${r.nightCapPct}% of the account (the rest is sold)`;
-  if (r.maxNights === 0) carry = "everything is sold at the day exit";
   return (
     <details className="bot-card bot-rules">
       <summary>How the bot decides</summary>
@@ -1063,28 +1052,16 @@ function Rules({ v }: { v: BotView }) {
           {r.added.length > 0 && `, ${r.added.length} added by you`}
           {r.off.length > 0 && `; ${r.off.length} turned off`}.
         </li>
-        <li>
-          <b>Signal.</b> From {r.firstEntryMin} minutes after the open to 16
-          minutes before the close: strength t {r.minT}+ and volume {r.minRvol}
-          ×+. One per stock a day, on the side that comes first.
-        </li>
-        <li>
-          <b>News filter.</b>{" "}
-          {news.length ? `No entry ${news.join(", or ")}.` : "Off."}
-        </li>
-        <li>
-          <b>Contract.</b> Nearest expiry 1–{r.maxDte} days out, delta closest
-          to {r.delta}; skipped under ${r.minPrice.toFixed(2)} or under{" "}
-          {r.minVolume} contracts traded in 30 minutes.
-        </li>
+        {algorithmSteps(r).map((step) => (
+          <li key={step.name}>
+            <b>{step.name}.</b> {step.text}
+          </li>
+        ))}
         <li>
           <b>Size.</b> {r.sizePct}% of the account, at most {r.maxBuysPerDay}{" "}
           buys a day and {r.maxOpen} open; no new buys after a {r.dayLossPct}%
-          day loss. The same risk rules as your own buys apply.
-        </li>
-        <li>
-          <b>Exits.</b> {checks}all out at −{r.stopPct}% with the stock against;{" "}
-          {carry}. A broker stop at −{r.safetyStopPct}% backs it up.
+          day loss. The same risk rules as your own buys apply. A broker stop at
+          −{r.safetyStopPct}% backs the exits up.
         </li>
         <li>
           <b>Pause.</b> The bot switches itself off when its trades are down{" "}

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   addTicker,
+  algorithmSteps,
+  botVersions,
   defaultSettings,
   fromBotView,
   leftBacktest,
@@ -10,6 +12,7 @@ import {
   tickerItems,
   toggleTicker,
   versionState,
+  type Rules,
 } from "../apps/web/src/bot-settings-model.js";
 import type { BotView } from "../packages/trading/src/bot-api.js";
 
@@ -129,6 +132,52 @@ test("the version card: the chosen version, its changes and the entry label", ()
   const own = versionState({ ...defaultSettings, version: "mine" });
   assert.equal(own.known, undefined);
   assert.equal(own.label, "mine");
+});
+
+test("each version opens to its full algorithm in words", () => {
+  const names = (rules: Rules) => algorithmSteps(rules).map((s) => s.name);
+  const expected = [
+    "Signal",
+    "News filter",
+    "Contract",
+    "Early checks",
+    "Failed break",
+    "Stop",
+    "Day exit",
+  ];
+  for (const v of botVersions) assert.deepEqual(names(v.rules), expected);
+  const text = (rules: Rules, name: string) =>
+    algorithmSteps(rules).find((s) => s.name === name)!.text;
+  const v1 = botVersions[0]!;
+  const v21 = botVersions[2]!;
+  assert.match(text(v1.rules, "Signal"), /t 2\+/);
+  assert.match(text(v21.rules, "Signal"), /t 1\.8\+/);
+  assert.match(text(v1.rules, "News filter"), /^Off/);
+  assert.match(
+    text(v21.rules, "News filter"),
+    /earnings reaction day, or when its pre-market volume/,
+  );
+  assert.match(text(v1.rules, "Failed break"), /^Off/);
+  assert.match(
+    text(v21.rules, "Failed break"),
+    /sold when the stock reaches the next level/,
+  );
+  assert.match(
+    text(v1.rules, "Day exit"),
+    /2 nights at most, never into expiry\)\./,
+  );
+  assert.match(text(v21.rules, "Day exit"), /at most 10% of the account/);
+  // The rules as set, not only a version's: a changed stop and no volume floor.
+  const own = text({ ...defaultSettings, stopPct: 40, minVolume: 0 }, "Stop");
+  assert.match(own, /down 40%/);
+  assert.doesNotMatch(
+    text({ ...defaultSettings, minVolume: 0 }, "Contract"),
+    /contracts traded/,
+  );
+  assert.match(
+    text({ ...defaultSettings, maxNights: 0 }, "Day exit"),
+    /^At 15:50 everything is sold\./,
+  );
 });
 
 test("the signal leaves the backtest when any of its values change", () => {
