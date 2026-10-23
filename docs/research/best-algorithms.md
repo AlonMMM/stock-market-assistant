@@ -43,6 +43,10 @@ The previous champion, the news filter at t ≥ 2: $297,160 / 16%, unseen $121,4
   `scripts/bot-level-parity.ts` match on 1134 of 1134 trades.
 - In the simulator as `failed_break` (sim.py F, `lists.py` with BT_FAILED_BREAK=1). With the commission on the extra
   sale counted: fair $526,469 / 10% at 1%, $2,011,681 / 18% at 2%; unseen $125,581 / 10%.
+- The user's app lists over 2025-10-23 to 2026-10-22 (`lists.py`, `semis_fb|software_fb|favorites_fb` vs `_y`
+  without the sale), at 2%: Favorites (51) $294,375 / 14% vs $256,531 / 18%; Software (30) $112,183 / 7% vs
+  $111,761 / 7%; Semis (27) $103,524 / 16% vs $103,677 / 18%. Without the best 5 at 1%, Favorites $86,053 vs $80,400.
+  Same 335 / 49 / 111 trades in both. On the Backtest Reports dashboard.
 
 V1 (C signal t ≥ 2 vs SPY × β, day volume ≥ 1.5×, delta 0.15, your stop + overnight hold for winners ≥ +100%) is the
 paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
