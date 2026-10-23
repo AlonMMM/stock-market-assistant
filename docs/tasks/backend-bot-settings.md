@@ -23,6 +23,7 @@ next minute; the stock list is fixed at warm-up (09:25 New York) and changes fro
 | ------------------------------------------ | ------------------ | ------------------------------------------------------------- |
 | `enabled`                                  | env                | the existing on/off switch (`bot_settings.enabled`)           |
 | `mode`                                     | env                | `live` paper orders or `dry` "would buy"; new entries only    |
+| `version`                                  | 2.1                | the rule set's name, stamped on every entry (see "Versions")  |
 | `followFavorites`, `added`, `off`          | on, —, QQQ SQQQ    | today's stocks: core ∪ added ∪ favorites − off − SPY/CL/GC/SI |
 | `sizePct`                                  | 2                  | the buy's `sizePct` (dry run: the same share of equity)       |
 | `maxBuysPerDay`                            | 5 (new)            | entries today (bought or would buy); then `max_buys`          |
@@ -52,6 +53,36 @@ P&L of its sales (of the current mode) since it was last switched on; when that 
 "🤖 Bot: paused". The owner switches it back on, which restarts the count. Sales from before prices were kept
 do not count.
 
+## Versions (2026-10-23, user: "make the bot support version, write the bot version on each entry, let me control it")
+
+`packages/trading/src/bot/versions.ts`. A version is a named set of the **trading rules**: `stopPct`, `checks`,
+`sellFailedBreak`, `holdFromPct`, `maxNights`, `nightCapPct`, `delta`, `maxDte`, `minPrice`, `minVolume`, `minT`,
+`minRvol`, `firstEntryMin`, `skipEarnings`, `skipPremarket`. The owner's limits (`sizePct`, `maxBuysPerDay`,
+`maxOpen`, `safetyStopPct`, `dayLossPct`, `drawdownPausePct`), on/off, the mode and the stock lists are not part of
+a version.
+
+| Version | Since      | Rules                                                                                                          |
+| ------- | ---------- | -------------------------------------------------------------------------------------------------------------- |
+| 1.0     | 2026-10-21 | the first bot: t 2, volume 1.5×, delta 0.15, 1–7 DTE, your stop + overnight hold; no news filter, no night cap |
+| 2.0     | 2026-10-22 | V2 champion: t 1.8, night cap 10%, news filter (earnings reaction day, pre-market 4×)                          |
+| 2.1     | 2026-10-23 | 2.0 + the failed-break sale on the entry day                                                                   |
+
+- `settings.version` is the chosen version's id or the owner's own label (1–24 letters, digits, dots, dashes,
+  spaces). The default is the newest version (`currentVersion`). A record saved before versions gets the version
+  its rules match exactly, else the newest.
+- **The stamp.** `versionLabel(settings)` is what every entry carries: the version id, with a star when the rules
+  differ from that version's ("2.1\*"), or the own label as typed. The bot writes it to the signal
+  (`bot_signals.data.version`), the position (`bot_positions.data.version`), the buy's note ("… · bot 2.1", so the
+  trade journal and Telegram post have it), the warm-up line ("Ready for …; bot version 2.1") and `GET /v1/bot`
+  (`version`, `signals[].version`, `positions[].version`). Positions from before versions have no stamp.
+- **Control.** The settings page's **Bot version** card (docs/tasks/frontend-bot-settings.md) picks a version,
+  which sets its rules (`applyVersion`), shows where the sliders below differ from it ("Changed: stopPct 30 → 40",
+  with "Back to 2.1's rules"), and lets the owner name an edited set. Saving goes through `PUT /v1/bot/settings`
+  like any other setting; a version change is a settings change in the feed (`version "2.1" → "1.0"; …`).
+- A new version is a new entry in `botVersions` (and a new default): the research log decides what gets one.
+  Execution changes (chasing the ask, 10-second exit checks) are code, dated in docs/tasks/backend-indi-bot.md, not
+  versions.
+
 ## Endpoints
 
 - Trader: `GET /v1/bot/settings` (read token works) → `BotSettings`; `PUT /v1/bot/settings` (full token) with a
@@ -65,9 +96,12 @@ do not count.
 ## Verification
 
 - `tests/bot-settings.test.ts`: validation, defaults, watched stocks, rule mapping, checks off, drawdown, the
-  site's owner gate and token choice (synthetic).
+  site's owner gate and token choice (synthetic); versions: ids, the defaults are 2.1, the label and its star,
+  applying a version, the label check, the version an old record gets.
 - `tests/indi-bot.test.ts`: size and safety stop reach the buy, a stock turned off, a stricter signal, max open,
-  the daily loss limit, the drawdown pause (synthetic bars, chains and fills).
+  the daily loss limit, the drawdown pause (synthetic bars, chains and fills); the version stamp on the signal,
+  the position, the buy's note and the feed, starred after a rule change, and picking 1.0.
+- `tests/bot-settings-model.test.ts`: the version card's state.
 
 ## Deploy
 

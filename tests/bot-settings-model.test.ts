@@ -9,6 +9,7 @@ import {
   settingsWarnings,
   tickerItems,
   toggleTicker,
+  versionState,
 } from "../apps/web/src/bot-settings-model.js";
 import type { BotView } from "../packages/trading/src/bot-api.js";
 
@@ -111,6 +112,23 @@ test("warnings: a safety stop above the stop, and a big trade size", () => {
     sizePct: 4,
   });
   assert.equal(w.length, 2);
+});
+
+test("the version card: the chosen version, its changes and the entry label", () => {
+  const clean = versionState(defaultSettings);
+  assert.equal(clean.known?.id, "2.1");
+  assert.deepEqual(clean.changes, []);
+  assert.equal(clean.label, "2.1");
+  assert.equal(clean.latest, true);
+  const edited = versionState({ ...defaultSettings, stopPct: 40 });
+  assert.deepEqual(edited.changes, ["stopPct 30 → 40"]);
+  assert.equal(edited.label, "2.1*");
+  const old = versionState({ ...defaultSettings, version: "2.0" });
+  assert.equal(old.latest, false);
+  assert.deepEqual(old.changes, ["sellFailedBreak false → true"]);
+  const own = versionState({ ...defaultSettings, version: "mine" });
+  assert.equal(own.known, undefined);
+  assert.equal(own.label, "mine");
 });
 
 test("the signal leaves the backtest when any of its values change", () => {

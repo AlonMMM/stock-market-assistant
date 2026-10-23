@@ -908,6 +908,56 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
   assert.equal(h.bot.status().settings.sizePct, 1);
 });
 
+test("versions: every entry is stamped with the version in force; changed rules star it; the owner can pick an older one", async () => {
+  const h = harness("live");
+  assert.equal(h.bot.status().version, "2.1");
+  await h.run(DAY, 565, 600);
+  const buy = h.calls.find((c) => c.kind === "buy");
+  assert.match(String(buy?.body.note), /· bot 2\.1$/);
+  const [p] = h.store.openPositions();
+  assert.equal(p!.version, "2.1");
+  assert.equal(h.store.signals(DAY)[0]!.version, "2.1");
+  assert.equal(h.bot.status().positions[0]!.version, "2.1");
+  const texts = () =>
+    h.bot
+      .status()
+      .activity.map((e) => e.text)
+      .join("\n");
+  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.1$/m);
+
+  // The stop changed from 2.1's: the next entry is stamped "2.1*".
+  const edited = harness("live");
+  edited.bot.setSettings({ ...edited.bot.settings(), stopPct: 40 });
+  assert.equal(edited.bot.status().version, "2.1*");
+  await edited.run(DAY, 565, 600);
+  assert.equal(edited.store.openPositions()[0]!.version, "2.1*");
+  assert.match(
+    String(edited.calls.find((c) => c.kind === "buy")?.body.note),
+    /· bot 2\.1\*$/,
+  );
+
+  // Version 1.0 picked: its rules (t 2, no night cap, no news filter) run, and the feed says so.
+  const old = harness("live");
+  const picked = old.bot.setSettings({
+    ...old.bot.settings(),
+    version: "1.0",
+    minT: 2,
+    nightCapPct: 0,
+    skipEarnings: false,
+    skipPremarket: false,
+    sellFailedBreak: false,
+  });
+  assert.equal(picked.version, "1.0");
+  assert.equal(old.bot.status().version, "1.0");
+  assert.match(
+    old.bot
+      .status()
+      .activity.map((e) => e.text)
+      .join("\n"),
+    /Settings changed: version "2\.1" → "1\.0"; sellFailedBreak true → false; nightCapPct 10 → 0; minT 1\.8 → 2/,
+  );
+});
+
 test("settings: a stock turned off is not watched; a stricter signal does not fire", async () => {
   const off = harness("live");
   off.bot.setSettings({ ...off.bot.settings(), off: ["NVDA"] });

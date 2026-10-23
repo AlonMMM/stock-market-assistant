@@ -13,6 +13,9 @@ export interface BotView {
   mode: "dry" | "live";
   sizePct: number;
   delta: number;
+  // The version of the rules in force (bot/versions.ts): "2.1", "2.1*" when
+  // the owner changed its rules, or the owner's own label. Absent before versions.
+  version?: string;
   // All the owner's settings (absent from a trading service before them).
   settings?: BotSettings;
   universe: string[];
@@ -50,6 +53,7 @@ export interface BotView {
     outcome: string;
     detail: string;
     at: number;
+    version?: string; // the bot version in force; absent before versions
   }[];
   positions: {
     id: string;
@@ -63,6 +67,7 @@ export interface BotView {
     nights: number;
     status: "buying" | "open" | "closed";
     dry: boolean;
+    version?: string; // the bot version that entered it; absent before versions
     sales: { at: number; qty: number; reason: string }[];
     // The level watched on the entry day for the failed-break sale (absent
     // before it, or with no level ahead).
