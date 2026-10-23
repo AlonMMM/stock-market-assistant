@@ -31,6 +31,17 @@ A version beats the champion only when **all** hold, on the same period (Feb 202
 
 The previous champion, the news filter at t ≥ 2: $297,160 / 16%, unseen $121,443 / 11%.
 
+## Chosen for the bot (the user's pick)
+
+| Since      | Version | Fair list at 1% / 2% | 151 unseen at 1% |
+| ---------- | ------- | -------------------- | ---------------- |
+| 2026-10-23 | **Champion + the failed-break sale**: on the entry day, sell all when the stock reaches the next level ahead (yesterday's / 5-day / 15-minute / the day's high or low) and falls back 0.5 S30 within 30 minutes without breaking it (`fail_rebuy.py` "all") | $538,923 / 9%; $2,107,921 / 18% | $127,476 / 10% |
+
+- Not a champion by the rule above (less money at the same size on the fair list); the user chose it for the lower
+  risk at the same 2% size (2026-10-23). At the same worst drop it beats the champion on both lists. In the live bot:
+  `sellFailedBreak` (on by default), branch feat/bot-failed-break; `level_parity_export.py` + the bot's
+  `scripts/bot-level-parity.ts` match on 1134 of 1134 trades.
+
 V1 (C signal t ≥ 2 vs SPY × β, day volume ≥ 1.5×, delta 0.15, your stop + overnight hold for winners ≥ +100%) is the
 paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
