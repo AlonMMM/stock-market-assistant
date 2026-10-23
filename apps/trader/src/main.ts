@@ -205,6 +205,7 @@ const bot = (() => {
       buy: (b) => owner().service.buy(b),
       sell: (b) => owner().service.sell(b),
       job: (id) => owner().service.job(id),
+      riskState: () => owner().service.riskState(),
     },
     notify: (title, lines) => owner().notifier.notice(title, lines),
     universe: botUniverse.symbols,

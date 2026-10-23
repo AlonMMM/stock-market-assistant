@@ -105,6 +105,14 @@ export interface BotTrading {
     body: Record<string, unknown>,
   ): Promise<{ status: string; jobId?: string }>;
   job(id: string): { state: string; result: unknown };
+  /** The risk manager's state of the account; without it the bot trades at full size. */
+  riskState?(): Promise<RiskAccount>;
+}
+
+export interface RiskAccount {
+  state: "full" | "brake" | "recovery";
+  drawdownPct: number;
+  reason: string;
 }
 
 export interface BotOptions {
@@ -226,6 +234,9 @@ export class IndiBot {
   // The last account value read successfully, and its day: the overnight cap
   // falls back to it when the read at 15:50 fails.
   private lastEquity: { day: string; value: number } | null = null;
+  // The risk manager's last answer: under its brake (12.5% below the high),
+  // the bot's orders are half size (user rule, 2026-10-23).
+  private risk: RiskAccount | null = null;
 
   constructor(options: BotOptions) {
     this.o = {
@@ -245,6 +256,35 @@ export class IndiBot {
     // Switched back on, the drawdown pause counts from here.
     if (on) this.o.store.setSetting("countFrom", String(this.o.now()));
     this.event("info", `Switched ${on ? "on" : "off"}`);
+  }
+
+  /**
+   * The trade size in force: the setting, halved while the risk manager has
+   * the brake on. Asks the risk manager; a failed read keeps the last answer.
+   */
+  private async sizeNow(s: BotSettings): Promise<number> {
+    if (this.o.trading.riskState) {
+      const before = this.risk;
+      try {
+        this.risk = await this.o.trading.riskState();
+      } catch (error: unknown) {
+        this.o.log(`risk state read failed: ${String(error)}`);
+      }
+      const brakeWas = before?.state === "brake";
+      const brakeNow = this.risk?.state === "brake";
+      if (brakeNow && !brakeWas) {
+        const text = `Half size: the risk manager has the brake on (${this.risk!.reason}, the account is ${this.risk!.drawdownPct.toFixed(1)}% below its high); the bot buys at ${s.sizePct / 2}% until the brake is off.`;
+        this.event("info", text);
+        void this.o.notify(`${botTag}: half size`, [text]);
+      }
+      if (!brakeNow && brakeWas && this.risk) {
+        const text = `Full size again: the risk manager's brake is off (${this.risk.reason}); the bot buys at ${s.sizePct}%.`;
+        this.event("info", text);
+        void this.o.notify(`${botTag}: full size`, [text]);
+      }
+    }
+    if (this.risk?.state === "brake") return s.sizePct / 2;
+    return s.sizePct;
   }
 
   /** The account's equity; a good read is kept for the overnight cap's fallback. */
@@ -432,6 +472,7 @@ export class IndiBot {
       `Ready for ${date}: watching ${this.symbols.length} stocks (${parts})`,
     );
     this.dayStartEquity = await this.equity().catch(() => null);
+    await this.sizeNow(s);
     this.preRatio.clear();
     this.preState = this.o.market.premarket ? "pending" : "off";
     await this.loadEarnings(date);
@@ -688,9 +729,10 @@ export class IndiBot {
       openedAt: this.o.now(),
       closedAt: null,
     };
+    const sizePct = await this.sizeNow(s);
     if (s.mode === "dry") {
       const equity = await this.equity();
-      const qty = Math.floor((equity * s.sizePct) / 100 / (picked.mid * 100));
+      const qty = Math.floor((equity * sizePct) / 100 / (picked.mid * 100));
       if (qty < 1)
         return this.outcome(
           date,
@@ -714,7 +756,7 @@ export class IndiBot {
     }
     const answer = await this.o.trading.buy({
       contract,
-      sizePct: s.sizePct,
+      sizePct,
       stopPct: s.safetyStopPct,
       tag: botTag,
       note: why,
@@ -1108,10 +1150,13 @@ export class IndiBot {
     const day = newYork(this.o.now()).date;
     const since = previousSessions(day, 5)[0]!;
     const s = this.settings();
+    const brake = this.risk?.state === "brake";
     return {
       enabled: s.enabled,
       mode: s.mode,
-      sizePct: s.sizePct,
+      sizePct: brake ? s.sizePct / 2 : s.sizePct,
+      halfSize: brake,
+      risk: this.risk,
       delta: s.delta,
       settings: s,
       universe: this.o.universe,

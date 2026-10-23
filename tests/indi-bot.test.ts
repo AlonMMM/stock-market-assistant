@@ -45,6 +45,7 @@ import {
   toSessionBars,
   type BotMarket,
   type BotTrading,
+  type RiskAccount,
 } from "../apps/trader/src/bot.js";
 import { BotStore } from "../apps/trader/src/bot-store.js";
 
@@ -495,6 +496,14 @@ function harness(mode: "dry" | "live", news: NewsFakes = {}) {
     job(id) {
       return jobs.get(id)!;
     },
+    async riskState() {
+      return risk;
+    },
+  };
+  let risk: RiskAccount = {
+    state: "full",
+    drawdownPct: 0,
+    reason: "at a new high",
   };
   let now = at(DAY, 560);
   const bot = new IndiBot({
@@ -526,6 +535,7 @@ function harness(mode: "dry" | "live", news: NewsFakes = {}) {
     setMid: (v: number) => (mid = v),
     setEquity: (v: number) => (equity = v),
     failEquity: (on: boolean) => (equityFails = on),
+    setRisk: (v: RiskAccount) => (risk = v),
   };
 }
 
@@ -943,6 +953,42 @@ test("settings: the drawdown pause switches the bot off and says so", async () =
   h.bot.setEnabled(true);
   await h.run(DAY, 961, 965);
   assert.equal(h.bot.status().enabled, true);
+});
+
+test("risk manager's brake: the bot buys at half size, says so once, and goes back to full size when the brake is off", async () => {
+  const h = harness("live");
+  h.setRisk({
+    state: "brake",
+    drawdownPct: 13.2,
+    reason: "12.5% below the high",
+  });
+  await h.run(DAY, 565, 600);
+  const buy = h.calls.find((c) => c.kind === "buy");
+  assert.ok(buy);
+  assert.equal(buy.body.sizePct, 1);
+  const status = h.bot.status();
+  assert.equal(status.halfSize, true);
+  assert.equal(status.sizePct, 1);
+  assert.equal(status.risk?.state, "brake");
+  const lines = status.activity.map((e) => e.text).join("\n");
+  assert.match(
+    lines,
+    /Half size: the risk manager has the brake on \(12\.5% below the high, the account is 13\.2% below its high\); the bot buys at 1%/,
+  );
+  assert.equal(lines.match(/Half size:/g)?.length, 1);
+  assert.ok(h.notes.some((n) => n.includes("half size")));
+  // The brake comes off (two-thirds of the fall recovered): full size from the next read.
+  h.setMid(1.5);
+  await h.run(DAY, 601, 965);
+  h.setRisk({
+    state: "recovery",
+    drawdownPct: 4,
+    reason: "most of the fall recovered",
+  });
+  await h.run(NEXT, 565, 570);
+  assert.equal(h.bot.status().halfSize, false);
+  assert.equal(h.bot.status().sizePct, 2);
+  assert.ok(h.notes.some((n) => n.includes("full size")));
 });
 
 // ---- the overnight cap (V2) ----

@@ -53,6 +53,7 @@ import {
   accountState,
   checkRisk,
   defaultRiskRules,
+  type AccountState,
   type RiskRules,
 } from "./risk-manager.js";
 import {
@@ -1868,6 +1869,12 @@ export class TradeEngine {
       order = await current(this.broker, order.id);
     }
     return order;
+  }
+
+  /** The risk manager's state of the account: full, brake or recovery. */
+  async riskState(): Promise<AccountState> {
+    const a = await this.account();
+    return accountState(a.history, this.riskRules);
   }
 
   /** Positions with their stops, and today's use of each limit. */

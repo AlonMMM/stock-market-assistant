@@ -150,6 +150,19 @@ function statusPill(v: BotView) {
   return <span className="pill green">On · trading the paper account</span>;
 }
 
+/** The risk manager's brake is on: the bot buys at half size until it is off. */
+function brakePill(v: BotView) {
+  if (!v.halfSize || !v.risk) return null;
+  return (
+    <span
+      className="pill amber"
+      title={`${v.risk.reason}; the account is ${v.risk.drawdownPct.toFixed(1)}% below its high`}
+    >
+      Brake · half size, {v.sizePct}% a trade
+    </span>
+  );
+}
+
 /** "12 s ago", "4 min ago": how fresh the bot's last check is. */
 function ago(at: number, now: number): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
@@ -1077,6 +1090,7 @@ export function BotPanel({ onSettings }: { onSettings?: () => void }) {
           </div>
           <div className="bot-head-side">
             {statusPill(value)}
+            {brakePill(value)}
             {onSettings && (
               <button type="button" className="bot-more" onClick={onSettings}>
                 Settings

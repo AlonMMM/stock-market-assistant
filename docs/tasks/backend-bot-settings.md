@@ -52,6 +52,18 @@ P&L of its sales (of the current mode) since it was last switched on; when that 
 "🤖 Bot: paused". The owner switches it back on, which restarts the count. Sales from before prices were kept
 do not count.
 
+**Half size under the risk manager's brake (user rule, 2026-10-23).** The trading service's risk manager
+(`packages/trading/src/risk-manager.ts`) puts the brake on when the account is 12.5% below its high (or after two
+days in a row at the daily limit) and takes it off once two-thirds of the fall is recovered. The bot reads that state
+(`BotTrading.riskState`, from `TradeEngine.riskState()`) at warm-up and before each buy; while the brake is on, every
+new buy goes at half of `sizePct` (the buy's `sizePct`; the dry run's share of equity). Each switch is an info line and
+a "🤖 Bot: half size" / "full size" post. The rule itself lives only in the risk manager, which still validates the
+order after; `GET /v1/bot` carries `sizePct` as the size in force, `halfSize` and `risk`, and the Bot tab shows an
+amber "Brake · half size" pill. A failed state read keeps the last answer. Not a setting: it follows the risk manager's
+rules. Backtested as an overlay (`risk_overlay.py`): at 1% a trade the brake never binds (2024–26 and the last six
+months); at 2% the risk manager refuses the second buy of a brake day after a loss, and sizing down instead of being
+refused keeps the result closer to the unlimited one ($2.21M vs $1.96M refused vs $2.44M without, fair list).
+
 ## Endpoints
 
 - Trader: `GET /v1/bot/settings` (read token works) → `BotSettings`; `PUT /v1/bot/settings` (full token) with a
