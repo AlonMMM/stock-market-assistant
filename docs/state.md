@@ -19,6 +19,10 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
 - **Where it shows:** posts marked 🤖 Bot in the same Telegram chat; a 🤖 Bot tab and Bot chips in Portfolio.
   The Bot tab names contracts in words ("Put 75 · 2DTE").
 - **Switches:** off and dry-run by default (`BOT_ENABLED`, `BOT_MODE`).
+- **Own account (2026-10-23, `feat/bot-account`, deploy pending):** with `BOT_ALPACA_API_KEY` /
+  `BOT_ALPACA_API_SECRET` the bot trades a second paper account of the owner's, and Portfolio gets a
+  read-only **Bot trades** tab for it (`/api/portfolio/bot`). See
+  [the task](tasks/backend-bot-account.md).
 - **Parity:** signal and exits match the Python backtest exactly (26,049 stock-days, 875 trades).
 - **Fixed on the news-filter branch:** the live bars reader took Alpaca's start times (seconds) as milliseconds, so
   the deployed bot on `main` would read no bars and never signal.

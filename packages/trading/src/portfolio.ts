@@ -1260,3 +1260,32 @@ export async function handlePortfolioHistory(
     };
   }
 }
+
+/**
+ * The Indi bot's own paper account (docs/tasks/backend-bot-account.md):
+ * the account now (`period` undefined) or its history for `period`. Without
+ * the bot's keys the answer says the account is not connected, so the page
+ * can say so instead of showing the owner's account by mistake.
+ */
+export async function handleBotPortfolio(
+  credentials: { key?: string; secret?: string },
+  period: unknown,
+  cache: PortfolioCache,
+  fetcher: typeof fetch = fetch,
+  now = Date.now(),
+): Promise<{
+  status: number;
+  body: Portfolio | PortfolioHistory | { error: string };
+}> {
+  if (!credentials.key || !credentials.secret)
+    return {
+      status: 503,
+      body: {
+        error:
+          "The bot's Alpaca paper account is not connected (BOT_ALPACA_API_KEY and BOT_ALPACA_API_SECRET)",
+      },
+    };
+  return period === undefined
+    ? handlePortfolio(credentials, false, fetcher, now, cache)
+    : handlePortfolioHistory(credentials, period, false, fetcher, now, cache);
+}

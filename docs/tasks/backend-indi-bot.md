@@ -230,6 +230,7 @@ owner-only). It refreshes every 15 seconds and shows:
 | `BOT_MODE=live`                   | trader env          | Places orders. Anything else is a dry run: "would buy / would sell" posts, no orders |
 | `POST /v1/bot {"enabled": false}` | trader, write token | Off now (kept across restarts)                                                       |
 | `TRADING_ENABLED=false`           | trader env          | Refuses every buy, the bot's too                                                     |
+| `BOT_ALPACA_API_KEY` / `…_SECRET` | trader env, Worker  | The bot's own paper account (docs/tasks/backend-bot-account.md); unset: the owner's  |
 
 ## Verification evidence
 

@@ -9,6 +9,7 @@ import Fastify, { type FastifyRequest } from "fastify";
 import { Vault } from "./secrets.js";
 import { StoqeyTws } from "../../../packages/trading/src/tws-client.js";
 import { ensureOwnerIbkr, seedOwner } from "./seed.js";
+import { botAccount, ensureBotAccount } from "./seed-bot.js";
 import { ShortWatch } from "./short-watch.js";
 import { RequestError, type TraderService } from "./service.js";
 import { TradeStore } from "./store.js";
@@ -42,6 +43,8 @@ const seeded = seedOwner(store, process.env, Date.now());
 if (seeded) log(`added the owner "${seeded}" from the environment`);
 const ibkr = ensureOwnerIbkr(store, process.env, Date.now());
 if (ibkr) log(`added the owner's IBKR paper account "${ibkr}"`);
+const botAdded = ensureBotAccount(store, process.env, Date.now());
+if (botAdded) log(`added the bot's own Alpaca paper account "${botAdded}"`);
 const vaultKey = env("TRADER_VAULT_KEY");
 const traders = new Traders({
   store,
@@ -180,15 +183,35 @@ api.get<{ Querystring: { limit?: string } }>("/v1/decisions", async (request) =>
   service(request).decisions(Number(request.query.limit)),
 );
 
-// The Indi bot (docs/tasks/backend-indi-bot.md): on the owner's Alpaca paper
-// account, through the owner's service. Off unless BOT_ENABLED=true; a dry run
-// unless BOT_MODE=live.
+// The Indi bot (docs/tasks/backend-indi-bot.md): on its own Alpaca paper
+// account once BOT_ALPACA_API_KEY / BOT_ALPACA_API_SECRET are set
+// (docs/tasks/backend-bot-account.md), else on the owner's; always through
+// the owner's trading service. Off unless BOT_ENABLED=true; a dry run unless
+// BOT_MODE=live. Market data comes from the owner's keys either way.
 const botStore = new BotStore(dbPath);
 const bot = (() => {
   const key = env("ALPACA_API_KEY", "APCA_API_KEY_ID");
   const secret = env("ALPACA_API_SECRET", "APCA_API_SECRET_KEY");
   if (!key || !secret) return null;
-  const owner = () => traders.forCaller(undefined, "alpaca");
+  const own = botAccount(store);
+  const owner = own
+    ? () => traders.forAccount(own.id)
+    : () => traders.forCaller(undefined, "alpaca");
+  if (own) {
+    try {
+      owner(); // its keys must be there, or the bot does not run at all
+    } catch (error) {
+      log(
+        `the bot's account "${own.id}" cannot start, so the bot is off: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+  log(
+    own
+      ? `the bot trades its own account "${own.id}"`
+      : "the bot trades the owner's default account (no BOT_ALPACA_API_KEY)",
+  );
   return new IndiBot({
     store: botStore,
     market: new AlpacaBotMarket(key, secret, "sip"),

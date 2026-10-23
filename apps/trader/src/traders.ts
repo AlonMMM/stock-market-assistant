@@ -146,14 +146,17 @@ export class Traders {
    * the user's account at `broker`. Built on first use.
    */
   get(userId: string, broker?: BrokerName): Trader {
-    const { store, log, now, sleep } = this.options;
-    const user = store.findUser(userId);
-    if (!user || user.id !== userId || !user.enabled)
-      throw new RequestError("This trader is not allowed", 403);
-    const accounts = store.accounts(user.id).filter((a) => a.enabled);
-    const account = broker
-      ? accounts.find((a) => a.broker === broker)
-      : accounts.find((a) => a.isDefault);
+    const user = this.user(userId);
+    const accounts = this.options.store
+      .accounts(user.id)
+      .filter((a) => a.enabled);
+    // Naming the broker still means the default account when it is at that
+    // broker; a second account there (the bot's) is reached by id only.
+    const matching = broker
+      ? accounts.filter((a) => a.broker === broker)
+      : accounts;
+    const account =
+      matching.find((a) => a.isDefault) ?? (broker ? matching[0] : undefined);
     if (!account)
       throw new RequestError(
         broker
@@ -161,6 +164,33 @@ export class Traders {
           : "This trader has no broker account",
         409,
       );
+    return this.build(user, account);
+  }
+
+  /** The trader of one account, by its id (the bot's own account). */
+  forAccount(accountId: string): Trader {
+    for (const user of this.options.store.users()) {
+      const account = this.options.store
+        .accounts(user.id)
+        .find((a) => a.id === accountId);
+      if (account) {
+        if (!account.enabled || !user.enabled)
+          throw new RequestError("This account is switched off", 409);
+        return this.build(this.user(user.id), account);
+      }
+    }
+    throw new RequestError(`No account "${accountId}"`, 409);
+  }
+
+  private user(userId: string): User {
+    const user = this.options.store.findUser(userId);
+    if (!user || user.id !== userId || !user.enabled)
+      throw new RequestError("This trader is not allowed", 403);
+    return user;
+  }
+
+  private build(user: User, account: BrokerAccount): Trader {
+    const { store, log, now, sleep } = this.options;
     const cached = this.built.get(account.id);
     if (cached) return cached;
     const scope = account.isDefault ? user.id : `${user.id}/${account.id}`;
@@ -225,11 +255,7 @@ export class Traders {
       for (const account of this.options.store.accounts(user.id)) {
         if (!account.enabled) continue;
         try {
-          traders.push(
-            account.isDefault
-              ? this.get(user.id)
-              : this.get(user.id, account.broker),
-          );
+          traders.push(this.build(user, account));
         } catch (error) {
           this.options.log(
             `${user.id}'s ${account.broker} account not started: ${error instanceof Error ? error.message : String(error)}`,
