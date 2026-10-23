@@ -174,6 +174,17 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 steps.append((d, t, "sell", round(q, 4), round(max(mid(b) * (1 - SH), 0.01), 4), rule))
                 pending = None
                 if rem <= 1e-9: return cost, steps, ""
+            NX = X.get("night_x")  # carried days: stop / take profit from the last 15:50 price (night_x.py)
+            if NX and carry_day and t >= NX["from"] and t < X["eod_minute"]:
+                c = b[4]; ref = next(s[4] for s in reversed(steps) if s[2] == "carry")
+                if st.get("nx_k") != k: st.update(nx_k=k, nx_took=False)
+                early = t < NX.get("early_until", -1)
+                if st["nx_took"]: level, rule = ref * (1 + NX["after_take"]), "NX_after_take"
+                elif early: level, rule = ref * (1 + NX["early_stop"]), "NX_early_stop"
+                else: level, rule = ref * (1 + NX["stop"]), "NX_stop"
+                if c <= level: pending = ("all", rule); continue
+                if not st["nx_took"] and c >= ref * (1 + NX["take"]):
+                    st["nx_took"] = True; pending = (rem * NX["take_share"], "NX_take"); continue
             if carry_day and t < X["morning_minute"]: continue
             c = b[4]; peak = max(peak, c); g = c / cost - 1
             stall = sd.ok and t - sd.last_ext[min(t, 389)] >= X["stall_min"]
