@@ -52,6 +52,7 @@ import {
 import { parseSipDelay } from "../../../packages/market-data/src/sip-delay.js";
 import { handleLatestPrices } from "../../../packages/market-data/src/latest-prices.js";
 import {
+  handleBotPortfolio,
   handlePortfolio,
   handlePortfolioHistory,
   PortfolioCache,
@@ -88,6 +89,7 @@ export function buildApp(
   };
   const app = Fastify({ logger: logging });
   const portfolio = new PortfolioCache();
+  const botPortfolio = new PortfolioCache(); // the bot's own account
   app.post("/api/backtest", async (request, reply) => {
     const result = await handleBacktest(
       request.body,
@@ -274,6 +276,37 @@ export function buildApp(
     canTrade: false,
     reason: "Position controls work on the hosted site only",
   }));
+  // The Indi bot's own paper account (docs/tasks/backend-bot-account.md).
+  app.get("/api/portfolio/bot", async (_request, reply) => {
+    const result = await handleBotPortfolio(
+      {
+        key: process.env.BOT_ALPACA_API_KEY,
+        secret: process.env.BOT_ALPACA_API_SECRET,
+      },
+      undefined,
+      botPortfolio,
+      alpaca.fetcher,
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.get("/api/portfolio/bot/history", async (request, reply) => {
+    const result = await handleBotPortfolio(
+      {
+        key: process.env.BOT_ALPACA_API_KEY,
+        secret: process.env.BOT_ALPACA_API_SECRET,
+      },
+      (request.query as { period?: unknown }).period ?? "",
+      botPortfolio,
+      alpaca.fetcher,
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
   app.get("/api/portfolio/history", async (request, reply) => {
     const result = await handlePortfolioHistory(
       alpaca,

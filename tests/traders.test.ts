@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import test from "node:test";
 import { readSecret, Vault } from "../apps/trader/src/secrets.js";
 import { ensureOwnerIbkr, seedOwner } from "../apps/trader/src/seed.js";
+import { botAccount, ensureBotAccount } from "../apps/trader/src/seed-bot.js";
 import { ShortWatch, shortRepeatMs } from "../apps/trader/src/short-watch.js";
 import { TradeStore, type Channel } from "../apps/trader/src/store.js";
 import { Traders } from "../apps/trader/src/traders.js";
@@ -313,4 +314,65 @@ test("short watch: a short is sent at once, repeated after 15 minutes, and clear
   held = [];
   assert.deepEqual(await watch.check(trader), []);
   assert.match(alerts[2]!, /gone/);
+});
+
+test("seed: the bot's own Alpaca paper account is added once, from its two variables", () => {
+  const store = new TradeStore(":memory:");
+  const keys = {
+    BOT_ALPACA_API_KEY: "synthetic-bot-key",
+    BOT_ALPACA_API_SECRET: "synthetic-bot-secret",
+  };
+  // No owner yet, then no variables: nothing is added.
+  assert.equal(ensureBotAccount(store, keys, monday), null);
+  seedOwner(store, env, monday);
+  assert.equal(ensureBotAccount(store, {}, monday), null);
+  assert.equal(
+    ensureBotAccount(store, { BOT_ALPACA_API_KEY: "only" }, monday),
+    null,
+  );
+  assert.equal(botAccount(store), null);
+  assert.equal(ensureBotAccount(store, keys, monday), "owner-bot");
+  assert.equal(ensureBotAccount(store, keys, monday), null);
+  const bot = botAccount(store)!;
+  assert.deepEqual(
+    [bot.userId, bot.broker, bot.mode, bot.isDefault, bot.credentials],
+    [
+      "owner",
+      "alpaca",
+      "paper",
+      false,
+      {
+        key: { env: "BOT_ALPACA_API_KEY" },
+        secret: { env: "BOT_ALPACA_API_SECRET" },
+      },
+    ],
+  );
+});
+
+test("traders: the bot's account is reached by id; naming alpaca still means the owner's default", async () => {
+  const { traders, store } = setup();
+  const keys = {
+    BOT_ALPACA_API_KEY: "synthetic-bot-key",
+    BOT_ALPACA_API_SECRET: "synthetic-bot-secret",
+  };
+  ensureBotAccount(store, keys, monday);
+  const own = traders.forCaller(undefined);
+  assert.equal(traders.forCaller(undefined, "alpaca"), own);
+  assert.equal(traders.get("owner", "alpaca").scope, "owner");
+  const bot = traders.forAccount("owner-bot");
+  assert.notEqual(bot, own);
+  assert.deepEqual(
+    [bot.scope, bot.account.broker, bot.account.isDefault],
+    ["owner/owner-bot", "alpaca", false],
+  );
+  assert.equal(traders.forAccount("owner-bot"), bot);
+  assert.throws(() => traders.forAccount("nobody-bot"), /No account/);
+  // Its records are its own: a buy there is not the owner's job.
+  const started = await bot.service.buy(buyNvda);
+  await bot.service.idle();
+  assert.equal(started.status, "started");
+  const jobId = (started as { jobId: string }).jobId;
+  assert.throws(() => own.service.job(jobId), /No such job/);
+  // Both accounts are watched (owner, friend, bot).
+  assert.equal(traders.all().length, 3);
 });
