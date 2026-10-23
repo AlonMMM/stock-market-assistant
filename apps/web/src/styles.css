@@ -2537,59 +2537,86 @@ dd > .stop-missing {
 
 .trade-pnl-chart {
   min-width: 0;
-  padding: 16px;
-  border: 1px solid #cdd7ce;
-  border-radius: 12px;
+  display: grid;
+  gap: 14px;
+  padding: 20px 22px;
+  border: 1px solid #dfe6dd;
+  border-radius: 14px;
+  background: #fff;
 }
-.trade-pnl-chart p {
-  margin: 8px 0;
-}
-.trade-pnl-heading {
+/* The realized account value (option A, user 2026-10-20). */
+.pnl-head {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
-.trade-pnl-total {
-  font-size: 20px;
+.pnl-figures {
+  display: grid;
+  gap: 2px;
+}
+.pnl-label {
+  font-size: 13px;
+  color: #526461;
+}
+.pnl-value {
+  font-size: 30px;
   font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #142b29;
 }
-.trade-pnl-frame {
+.pnl-change {
+  font-size: 14px;
+  font-weight: 600;
+}
+.pnl-change .muted {
+  font-weight: 400;
+}
+.pnl-frame {
   position: relative;
   min-width: 0;
-  background: #fafbf8;
-  border-radius: 8px;
 }
-.trade-pnl-svg {
+.pnl-svg {
   display: block;
   cursor: crosshair;
   touch-action: pan-y;
   user-select: none;
 }
-.trade-pnl-svg:focus-visible {
-  outline: 2px solid #16746b;
-  outline-offset: 2px;
-}
-.trade-pnl-svg text {
+.pnl-svg text {
   font-variant-numeric: tabular-nums;
 }
-.trade-pnl-tooltip {
+.pnl-tip {
   position: absolute;
+  top: 0;
   z-index: 1;
   display: grid;
-  gap: 2px;
-  min-width: 150px;
-  padding: 8px 10px;
-  border: 1px solid #cdd7ce;
+  gap: 1px;
+  padding: 7px 10px;
+  border: 1px solid #dfe6dd;
   border-radius: 8px;
   background: #fff;
-  box-shadow: 0 4px 14px rgba(20, 43, 41, 0.14);
+  box-shadow: 0 4px 14px rgba(20, 43, 41, 0.12);
   font-size: 12px;
   white-space: nowrap;
   pointer-events: none;
+  transform: translateX(-50%);
 }
-.trade-pnl-tooltip strong {
-  font-size: 13px;
+.pnl-tip strong {
+  font-size: 12px;
+  color: #526461;
+}
+.pnl-tip .num:first-of-type {
+  font-size: 15px;
+  font-weight: 700;
+  color: #142b29;
+}
+@media (max-width: 560px) {
+  .trade-pnl-chart {
+    padding: 16px;
+  }
+  .pnl-value {
+    font-size: 26px;
+  }
 }
 .portfolio.loading {
   opacity: 0.55;

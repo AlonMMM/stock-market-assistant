@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   cumulativeTrades,
+  dailyCloses,
   monotonePath,
   nearestPoint,
   niceTicks,
@@ -110,5 +111,26 @@ test("monotone curve passes through every point without overshooting", () => {
       [0, 5],
     ]),
     / L 0 5$/,
+  );
+});
+
+test("daily closes: one point per Israel day, the day's P&L and trade count", () => {
+  const points = cumulativeTrades(
+    [
+      trade(-100, "2026-10-12T14:00:00Z"),
+      trade(50, "2026-10-12T19:00:00Z"),
+      // 22:30 UTC is already the 13th in Israel.
+      trade(300, "2026-10-12T22:30:00Z"),
+      trade(-20, "2026-10-14T15:00:00Z"),
+    ],
+    100000,
+  );
+  assert.deepEqual(
+    dailyCloses(points).map((d) => [d.day, d.pnl, d.dayPnl, d.trades]),
+    [
+      ["2026-10-12", -50, -50, 2],
+      ["2026-10-13", 250, 300, 1],
+      ["2026-10-14", 230, -20, 1],
+    ],
   );
 });
