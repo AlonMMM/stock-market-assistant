@@ -140,3 +140,7 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   unseen at 1%: $123,028 vs $117,738 and $94,618 (2026 turns negative). The extra minutes add more swings than
   profit; a winner that slips under +100% in the last minutes is sold and misses its night (NFLX 2026-02-25: -2660
   points on the unseen).
+- Day-end decision earlier (`eod_late.py 375 370`): 15:45 fair list $639,671 / 14% at 1% ($2,879,093 / 27% at 2%),
+  15:40 $656,269 / 15%; unseen about the same ($122,102 / $123,990 vs $123,028). Not better: the gain is one trade
+  (TSLA 2024-07-01 call, +1503 points held from 15:45); without it 15:45 is $550,669 vs $579,603. At the same worst
+  drop (14%) the champion at 1.25% a trade makes $860,919 vs $639,671.

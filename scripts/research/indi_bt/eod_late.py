@@ -3,7 +3,7 @@ overnight, the rest is sold on the next bar. Here the decision (and the sale of 
 15:55 or 15:58 (sold on the 15:59 bar); until then the champion's stops keep working. Same trades (t >= 1.8,
 news filter, delta 0.15), each walked again; 1% / 2% of the start-of-day account from $100,000.
 
-  python3 eod_late.py      (from the repo root)
+  python3 eod_late.py [minute ...]      (from the repo root; default 385 388)
 """
 import csv, glob, multiprocessing as mp, os, statistics as st, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -20,6 +20,8 @@ B = "data/local/x/bt"
 CAL = calendar()
 X0 = {**sim.X, **H, **NIGHT}
 VERSIONS = [("15:50 (champion)", 380), ("15:55", 385), ("15:58, sold on the last bar", 388)]
+if len(sys.argv) > 1:  # other decision minutes, e.g. 370 375 (session minutes; 380 = 15:50)
+    VERSIONS = [("15:50 (champion)", 380)] + [(f"{9 + (30 + int(m)) // 60}:{(30 + int(m)) % 60:02d}", int(m)) for m in sys.argv[1:]]
 
 
 def walk(t):
@@ -47,7 +49,7 @@ def main():
             a1, d1 = account(rows); a2, d2 = account(rows, 0.02)
             print(f"| {lab} | {held} | " + " / ".join(f"{st.fmean(v):+,.0f}" for v in yr) + f" | ${a1:,.0f}, {100 * d1:.0f}% | ${a2:,.0f}, {100 * d2:.0f}% |", flush=True)
         # Where the late decision changes a trade most.
-        diffs = sorted(((R[(t["date"], t["sym"], t["minute"])][388][0] - R[(t["date"], t["sym"], t["minute"])][380][0], t) for t in L), key=lambda x: x[0])
+        diffs = sorted(((R[(t["date"], t["sym"], t["minute"])][VERSIONS[-1][1]][0] - R[(t["date"], t["sym"], t["minute"])][380][0], t) for t in L), key=lambda x: x[0])
         print("\nmost hurt:", [(t["date"], t["sym"], t["right"], f"{d:+.0%}") for d, t in diffs[:5]])
         print("most helped:", [(t["date"], t["sym"], t["right"], f"{d:+.0%}") for d, t in diffs[-5:]])
 
