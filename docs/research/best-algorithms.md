@@ -265,6 +265,21 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   the entry on the fair list: 78 within 5 minutes, 192 within 10, 472 within 20, 590 within 60, of 745 same-day sellers.
   Verdict: the early stops and failed-break sales are right more often than wrong; delaying them costs money and adds
   drop. Not better. sim.py: `first_exit_min N`.
+- More air unless the thesis breaks (`thesis.py`, 2026-10-24; the user's goal: a -50% stop "if our thesis is not
+  broken"). Thesis exits on the stock, entry day: a close k S30 against the entry (k 0.5 / 1 / 1.5), a close past the
+  signal bar's low (put: high), or the signal's own cumulative t-stat vs SPY x beta down to 0 or 0.5; with the option
+  stop at -50%; checks, failed break and overnight hold as today, plus "no checks" versions. Fair list at 1% vs
+  $526,469 / 10% today ($2.01M / 18% at 2%): -50% alone $521,758 / 11%; + 0.5 / 1 / 1.5 S30 $388,408 / $364,100 /
+  $486,665 (14-16% drop); + signal bar broken $326,532 / 15%; + t ≤ 0 $510,221 / 11%; + t ≤ 0.5 $539,410 / 11%
+  ($2,103,523 / 21% at 2%); all three $329,646; no checks + 1 S30 $377,987 / 18%; no checks + t ≤ 0 $532,492 / 14%
+  ($2.00M / 26%, 28% winners). Unseen vs $125,581 / 10%: -50% alone $132,061, + 0.5 S30 $134,655 / 9%, + t ≤ 0.5
+  $131,152 / 11%, no checks + t ≤ 0 $131,804 / 12% (UNH 2024-12-05 and LLY 2025-10-01 in all of them). The stock stops
+  (S30, signal bar) are right on most trades (305 of 454 better at 0.5 S30) and sell the few big winners on a normal
+  pullback (COIN 2026-08-19 -152K points, GOOGL 2026-07-31 -142K, COIN 2025-06-18 -107K): the money is lost there. The
+  t-stat is the one thesis measure that does not do that: t ≤ 0.5 fires on 99 trades, 18 at t ≤ 0. Candidate, not
+  champion: -50% + t ≤ 0.5 is ahead on both lists (+$13K fair, +$5.6K unseen), every year positive, but one point more
+  drop (3 at 2%) and the fair gain is a few trades (MSFT 2025-04-09 +25,781, MSFT 2026-06-26 +19,437, HIMS 2025-09-04
+  +15,071 of +26,235 total). sim.py: `thesis {s30, bar, t}`.
 
 ## Candidates
 

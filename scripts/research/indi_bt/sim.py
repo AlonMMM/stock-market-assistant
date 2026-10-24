@@ -48,6 +48,9 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                last `window` minutes under k x its usual move for that span (S30 x sqrt(window/30), levels.py); with `under`
                only while the option is under that gain                 -> sell all
   first_exit_min N: on the entry day no -X% stop and no failed-break sale in the first N minutes (the checks keep their times)
+  T thesis (thesis {s30, bar, t}): entry day, the stock closes `s30` S30 units against the entry price (T_s30), or past the
+               signal bar's low / high (T_bar), or the signal's cumulative t vs SPY x beta falls to `t` or under (T_tstat)
+                                                                       -> sell all
   S stock stop (stock_stop "vwap" / "prev", entry day): the stock closes back on the wrong side of
                VWAP, or back inside yesterday's range                    -> sell all
   EOD 15:50    carry only if g >= carry_min_gain, stock at >= carry_range_pos of the day range,
@@ -64,7 +67,7 @@ Each trade's result is a return on the premium paid (`ret`, after costs); sizing
   (with a shard, only every shards-th signal from `shard`, written to <prefix>.<shard>_*.csv;
   report.py reads all shards of a prefix)
 """
-import csv, datetime as dt, json, os, sys
+import csv, math, datetime as dt, json, os, sys
 from store import P, DATA, day, calendar, chain, expiries, fetch_bars, occ, iv_delta, years_to_expiry
 from signals import Day, series
 
@@ -311,6 +314,29 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
             if R_ and not st.get("rolled") and k == 0 and t - minute <= R_["within"] and roll_hit(R_, g, sd, t, minute, sym, bet):
                 st["rolled"] = True; pending = (rem * R_["share"], "R_roll"); continue
             if R_ and st.get("rolled") and g >= R_["rest_take"]: pending = ("all", "R_take"); continue
+            TH = X.get("thesis")  # {s30, bar, t}: the entry's thesis broken on the stock itself (user, 2026-10-24)
+            if TH and k == 0 and sd.ok:
+                if "th" not in st:
+                    from levels import ctx
+                    cx = ctx(und, d)
+                    unit = cx["sd"] * sd.c[minute] if cx and sd.c[minute] else None
+                    sb = next((b for b in day(und, d) if b[0] == minute), None)
+                    tser = None
+                    if TH.get("t") is not None and sd.beta is not None:
+                        spy_ = series(day("SPY", d))[0]; tser = [None] * 390; n_ = s1 = s2 = 0.0
+                        for m_ in range(1, 390):
+                            if sd.c[m_] and sd.c[m_ - 1] and spy_[m_] and spy_[m_ - 1]:
+                                x_ = (sd.c[m_] / sd.c[m_ - 1] - 1) - sd.beta * (spy_[m_] / spy_[m_ - 1] - 1)
+                                n_ += 1; s1 += x_; s2 += x_ * x_
+                            if n_ >= 5:
+                                mu_ = s1 / n_; var_ = max(s2 / n_ - mu_ * mu_, 0.0)
+                                tser[m_] = mu_ / math.sqrt(var_) * math.sqrt(n_) if var_ > 0 else 0.0
+                    st["th"] = (unit, sb, tser)
+                unit, sb, tser = st["th"]; tt = min(t, 389); px = sd.c[tt]
+                if px:
+                    if TH.get("s30") and unit and bet * (px - sd.c[minute]) <= -TH["s30"] * unit: pending = ("all", "T_s30"); continue
+                    if TH.get("bar") and sb and (px < sb[3] if bet > 0 else px > sb[2]): pending = ("all", "T_bar"); continue
+                    if TH.get("t") is not None and tser and tser[tt] is not None and bet * tser[tt] <= TH["t"]: pending = ("all", "T_tstat"); continue
             if X.get("user_stop") and sd.ok and k == 0:
                 U = X["user_stop"]; tt = min(t, 389)
                 if st.get("sp0") is None: st["sp0"] = sd.c[minute]
