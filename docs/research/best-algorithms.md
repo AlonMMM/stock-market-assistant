@@ -187,6 +187,12 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   worse than selling at 10:00 (median fair $102,691 RUN, $100,475 HEDGE vs $113,623; worst drop 14% vs 12%); the
   hedge helps the unseen a little over RUN and costs the fair list. Best: t >= 2.0, not stuck, delta 0.25, 10:00:
   fair $112,594 / 10% (175 trades), unseen $94,663.
+- The close trade added to the chosen bot in one account (2026-10-24, the user: "if we add the trades to the champion
+  it won't add more money?"; close trades sorted after the day's bot trades, 1% / 2% of the start-of-day account). eod5
+  best (t >= 2.0, not stuck, d0.25, 10:00): fair $566,885 / 15% vs $526,469 / 10% alone, unseen $118,832 vs $125,581;
+  eod3 best (day t >= 2.0, d0.20): fair $573,712 / 16%, unseen $109,967. At 2% the worst drop goes 18% -> 29-30%.
+  More money only on the fair list, where the rules were chosen; less on the unseen, and the drop grows by half. Not
+  better.
 - Support / resistance at the 15:50 hold (`night_levels.py`, 2026-10-24, on the chosen bot): "above a support it broke
   today" is true for every held trade (74 of 74), so it filters nothing; "stuck under a level in the last hour" (8 of
   74): no hold when stuck $517,868 vs $526,469, unseen +$1K. Not better. What looked like a level gain (hold from +50%
