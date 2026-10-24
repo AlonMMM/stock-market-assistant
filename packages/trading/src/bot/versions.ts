@@ -91,6 +91,8 @@ const v21: Rules = { ...v2, sellFailedBreak: true };
 // 2.2: the t-stat exit (the 2026-10-24 champion): on the entry day, all out
 // when the signal's own strength vs SPY × beta falls to t 0.5.
 const v22: Rules = { ...v21, sellOnWeakness: true, weaknessT: 0.5 };
+// 2.3: winners up +50% (not +100%) stay overnight (the user, 2026-10-24).
+const v23: Rules = { ...v22, holdFromPct: 50 };
 
 /** Every version, oldest first. */
 export const botVersions: readonly BotVersion[] = [
@@ -125,6 +127,13 @@ export const botVersions: readonly BotVersion[] = [
     notes:
       "On the entry day, sell all when the signal's own strength vs SPY × beta (the t-stat that had to reach 1.8 to enter) falls to 0.5 or under.",
     rules: v22,
+  },
+  {
+    id: "2.3",
+    name: "V2.2, overnight from +50%",
+    since: "2026-10-24",
+    notes: "At 15:50, winners up 50% or more stay overnight (was 100%).",
+    rules: v23,
   },
 ];
 

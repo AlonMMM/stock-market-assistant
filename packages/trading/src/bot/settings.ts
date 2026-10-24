@@ -87,7 +87,7 @@ export const defaultSettings: BotSettings = {
   sellOnWeakness: true,
   weaknessT: 0.5,
   sellFailedBreak: true,
-  holdFromPct: 100,
+  holdFromPct: 50,
   maxNights: 2,
   nightCapPct: 10,
   delta: 0.15,

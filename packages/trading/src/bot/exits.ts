@@ -8,7 +8,8 @@
 //   - the option at -30% while the stock is against: sell all;
 //   - the signal's own t-stat vs SPY × beta (cumulative from the open) down to
 //     `strengthOut` or under: sell all (the 2026-10-24 champion, exits.ts T).
-// 15:50: hold overnight what is up >= +100% (a next session before expiry, at
+// 15:50: hold overnight what is up >= carryMinGain (+50% since version 2.3,
+//   +100% before; a next session before expiry, at
 //   most 2 nights); sell the rest. What is held is worth at most `nightCapPct`
 //   of the account (`nightCapSell`, 10% by default): the excess is sold first.
 // A carried day: nothing before 09:40. On the first carried day at 09:40, a gap
