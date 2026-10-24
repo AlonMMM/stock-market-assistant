@@ -168,6 +168,18 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   year (+1,348 / +1,036 / +384 a trade), $79,493 without the best 5; unseen $87,557. Day strength >= 1.5, delta 0.20,
   10:00: fair $121,919 / 16%, unseen $74,742, Favorites (a year) $145,759 on 142 trades. Selling at 10:00 is the best
   exit, the open the worst. Indi's own late overnight entries make +$4,450 a trade at $10K; the mechanical pick does not.
+- The close trade held longer (`eod4.py`, 2026-10-24, eod3's entries with day strength >= 1.5 / 2.0): out at -30%
+  else 15:50, +100% / -30%, a 30% trail from +50%, the champion's stop on the stock: all worse than selling at 10:00
+  (median fair end $76K-$99K vs $113,713 at 10:00; unseen $74K-$83K vs $86,442).
+- Support / resistance at the 15:50 hold (`night_levels.py`, 2026-10-24, on the chosen bot): "above a support it broke
+  today" is true for every held trade (74 of 74), so it filters nothing; "stuck under a level in the last hour" (8 of
+  74): no hold when stuck $517,868 vs $526,469, unseen +$1K. Not better. What looked like a level gain (hold from +50%
+  when above support and not stuck, $663,272) is the lower hold threshold alone: hold from +50% with no levels
+  $661,989 (see Candidates).
+- A stock hedge on the held night (`night_levels.py`): short contracts x 100 x delta x 0.5 shares at 15:50 (buy for a
+  put), closed at the next morning's first sale: fair $373,951 vs $526,469 (2%: $1.11M vs $2.01M), unseen $115,724 vs
+  $125,581; the full delta $260,414. It saves the worst nights (QCOM -45% -> +27%, BA -43% -> +4%) but gives back the
+  gaps our way, which are where the held winners make their money.
 - 0DTE, the user's spec (`zero4.py`, 2026-10-24): breakouts first (a close 0.25 S30 past yesterday's / the 5-day /
   the 15-minute / the day's high or low, or any), lower confirmations (c0: t >= 0, volume >= 1x; c1: t >= 1, 1.2x;
   c2: t >= 1.5, 1.5x), signals 09:40-12:59 New York (buys by 20:00 Israel), delta 0.15 / 0.20 / 0.25, the champion's
@@ -195,6 +207,13 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   minute) would take the coin-flip out. Not tested yet.
 
 ## Candidates
+
+- Hold overnight from +50% instead of +100% (`hold_from.py`, 2026-10-24, on the chosen bot). Delta 0.15: fair list
+  $661,989 / 10% vs $526,469 / 10% (2%: $3,063,613 / 19% vs $2,011,681 / 18%), every year better (+585K / +732K /
+  +792K vs +468K / +665K / +724K), $248,168 vs $196,717 without the best 5; a band, not one cell (+25% $645,804, +75%
+  $610,664, +150% $430,414). Unseen: $126,110 vs $125,581 (2025 lower, 2024 and 2026 higher). Delta 0.10: fair
+  $743,023 / 13% vs $698,307 / 11%, but unseen $103,289 vs $106,261, and there the higher the threshold the better.
+  Strong on the fair list, not confirmed by the unseen: the user's call.
 
 - Fade cut on carried days (`night_fade.py`): from 10:00 New York on a carried day, sell the rest at the first minute
   the stock's t vs SPY x beta since that day's open is < 0.5 and its volume is under normal. Fair list $598,184 / 11%
