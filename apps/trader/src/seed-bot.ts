@@ -1,3 +1,7 @@
+import {
+  botBrokers,
+  type BotBroker,
+} from "../../../packages/trading/src/bot/settings.js";
 import type { BrokerAccount, TradeStore } from "./store.js";
 
 // The Indi bot's own Alpaca paper account (user 2026-10-23: "I create one
@@ -11,6 +15,36 @@ type Env = Record<string, string | undefined>;
 export const botAccountSuffix = "bot";
 export const botKeyVariable = "BOT_ALPACA_API_KEY";
 export const botSecretVariable = "BOT_ALPACA_API_SECRET";
+// Where the bot's new entries go until the owner saves a choice on the Bot
+// settings page (user 2026-10-24: "connect the bot with my interactive
+// brokers", then "configurable in the bot settings"): `ibkr` is the owner's
+// IBKR paper account behind the Gateway (`IBKR_GATEWAY`, seed.ts); `alpaca`,
+// the default, is the bot's own Alpaca account, or the owner's default one
+// without the key variables.
+export const botBrokerVariable = "BOT_BROKER";
+
+/** The start-up default broker; throws on a value that is neither. */
+export function botBrokerFromEnv(env: Env): BotBroker {
+  const named = env[botBrokerVariable] || "alpaca";
+  if (!(botBrokers as readonly string[]).includes(named))
+    throw new Error(`${botBrokerVariable} must be alpaca or ibkr`);
+  return named as BotBroker;
+}
+
+/** The owner's account the bot trades at `broker`, or null when there is none. */
+export function botAccountFor(
+  store: TradeStore,
+  broker: BotBroker,
+): BrokerAccount | null {
+  const owner = store.users().find((u) => u.isAdmin);
+  if (!owner) return null;
+  const accounts = store.accounts(owner.id).filter((a) => a.enabled);
+  if (broker === "ibkr")
+    return accounts.find((a) => a.broker === "ibkr") ?? null;
+  const own = botAccount(store);
+  if (own && own.enabled) return own;
+  return accounts.find((a) => a.broker === "alpaca" && a.isDefault) ?? null;
+}
 
 /** The owner's bot account, if it was added. */
 export function botAccount(store: TradeStore): BrokerAccount | null {

@@ -9,7 +9,12 @@ import Fastify, { type FastifyRequest } from "fastify";
 import { Vault } from "./secrets.js";
 import { StoqeyTws } from "../../../packages/trading/src/tws-client.js";
 import { ensureOwnerIbkr, seedOwner } from "./seed.js";
-import { botAccount, ensureBotAccount } from "./seed-bot.js";
+import {
+  botAccountFor,
+  botBrokerFromEnv,
+  ensureBotAccount,
+} from "./seed-bot.js";
+import { EquityLog } from "./equity-log.js";
 import { ShortWatch } from "./short-watch.js";
 import { RequestError, type TraderService } from "./service.js";
 import { TradeStore } from "./store.js";
@@ -19,7 +24,11 @@ import { IndiBot } from "./bot.js";
 import { nasdaqEarnings } from "./bot-news.js";
 import { AlpacaBotMarket } from "./bot-market.js";
 import { BotStore } from "./bot-store.js";
-import { parseSettings } from "../../../packages/trading/src/bot/settings.js";
+import {
+  botBrokers,
+  parseSettings,
+  type BotBroker,
+} from "../../../packages/trading/src/bot/settings.js";
 
 const env = (...names: string[]) =>
   names.map((n) => process.env[n]).find((v) => v) ?? "";
@@ -183,52 +192,72 @@ api.get<{ Querystring: { limit?: string } }>("/v1/decisions", async (request) =>
   service(request).decisions(Number(request.query.limit)),
 );
 
-// The Indi bot (docs/tasks/backend-indi-bot.md): on its own Alpaca paper
-// account once BOT_ALPACA_API_KEY / BOT_ALPACA_API_SECRET are set
-// (docs/tasks/backend-bot-account.md), else on the owner's; always through
-// the owner's trading service. Off unless BOT_ENABLED=true; a dry run unless
-// BOT_MODE=live. Market data comes from the owner's keys either way.
+// The Indi bot (docs/tasks/backend-indi-bot.md). It can trade at two brokers
+// (docs/tasks/backend-bot-ibkr.md): the owner's IBKR paper account behind the
+// Gateway, and its own Alpaca paper account once BOT_ALPACA_API_KEY /
+// BOT_ALPACA_API_SECRET are set (docs/tasks/backend-bot-account.md), else the
+// owner's default account. New entries go to the broker chosen on the Bot
+// settings page, BOT_BROKER until the owner saves; a position is sold where it
+// was bought. Always through the owner's trading service. Off unless
+// BOT_ENABLED=true; a dry run unless BOT_MODE=live. Market data comes from the
+// owner's Alpaca keys either way.
 const botStore = new BotStore(dbPath);
+let botOff = "The bot has no Alpaca keys";
 const bot = (() => {
   const key = env("ALPACA_API_KEY", "APCA_API_KEY_ID");
   const secret = env("ALPACA_API_SECRET", "APCA_API_SECRET_KEY");
   if (!key || !secret) return null;
-  const own = botAccount(store);
-  const owner = own
-    ? () => traders.forAccount(own.id)
-    : () => traders.forCaller(undefined, "alpaca");
-  if (own) {
+  // A wrong BOT_BROKER stops the service: the bot must never trade the wrong
+  // account by accident.
+  const startBroker = botBrokerFromEnv(process.env);
+  const traderFor = (broker: BotBroker) => {
+    const account = botAccountFor(store, broker);
+    if (!account)
+      throw new RequestError(`The bot has no ${broker} account`, 409);
+    return traders.forAccount(account.id);
+  };
+  // Only a broker whose account builds (keys, Gateway) can be chosen.
+  const connected = botBrokers.filter((broker) => {
     try {
-      owner(); // its keys must be there, or the bot does not run at all
+      traderFor(broker);
+      return true;
     } catch (error) {
       log(
-        `the bot's account "${own.id}" cannot start, so the bot is off: ${error instanceof Error ? error.message : String(error)}`,
+        `the bot cannot trade at ${broker}: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return null;
+      return false;
     }
+  });
+  if (!connected.includes(startBroker)) {
+    botOff = `The bot's ${startBroker} account cannot start`;
+    log(`${botOff}; the bot is off`);
+    return null;
   }
   log(
-    own
-      ? `the bot trades its own account "${own.id}"`
-      : "the bot trades the owner's default account (no BOT_ALPACA_API_KEY)",
+    `the bot can trade at ${connected.map((b) => `${b} ("${traderFor(b).account.id}")`).join(" and ")}; new entries at ${startBroker} until the owner chooses on the Bot settings page`,
   );
+  // The owner's channels are the same for every account.
+  const owner = () => traders.forCaller(undefined);
   return new IndiBot({
+    broker: startBroker,
+    brokers: connected,
+    trading: (broker) => {
+      const t = traderFor(broker);
+      return {
+        chain: (u, right, from, to) => t.broker.chain(u, right, from, to),
+        quote: (c) => t.broker.quote(c),
+        held: async (c) => {
+          const p = await t.broker.position(c).catch(() => null);
+          return p && p.qty > 0 ? p : null;
+        },
+        equity: () => t.broker.equity(),
+        buy: (b) => t.service.buy(b),
+        sell: (b) => t.service.sell(b),
+        job: (id) => t.service.job(id),
+      };
+    },
     store: botStore,
     market: new AlpacaBotMarket(key, secret, "sip"),
-    trading: {
-      chain: (u, right, from, to) => owner().broker.chain(u, right, from, to),
-      quote: (c) => owner().broker.quote(c),
-      held: async (c) => {
-        const p = await owner()
-          .broker.position(c)
-          .catch(() => null);
-        return p && p.qty > 0 ? p : null;
-      },
-      equity: () => owner().broker.equity(),
-      buy: (b) => owner().service.buy(b),
-      sell: (b) => owner().service.sell(b),
-      job: (id) => owner().service.job(id),
-    },
     notify: (title, lines) => owner().notifier.notice(title, lines),
     universe: botUniverse.symbols,
     earnings: (date) => nasdaqEarnings(date),
@@ -241,12 +270,12 @@ const bot = (() => {
 // minute (user 2026-10-23).
 const botTimer = bot ? setInterval(() => void bot.tick(), 10_000) : null;
 api.get("/v1/bot", async () => {
-  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  if (!bot) throw new RequestError(botOff, 409);
   return bot.status();
 });
 // The site sends the user's favorites list before each session.
 api.post("/v1/bot/watchlist", async (request) => {
-  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  if (!bot) throw new RequestError(botOff, 409);
   const b = body(request.body);
   if (typeof b.name !== "string" || !Array.isArray(b.tickers))
     throw new RequestError("Need name and tickers");
@@ -258,7 +287,7 @@ api.post("/v1/bot/watchlist", async (request) => {
   };
 });
 api.post("/v1/bot", async (request) => {
-  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  if (!bot) throw new RequestError(botOff, 409);
   const on = body(request.body).enabled;
   if (typeof on !== "boolean")
     throw new RequestError("enabled must be true or false");
@@ -268,13 +297,18 @@ api.post("/v1/bot", async (request) => {
 
 // The owner's settings from the site's Bot settings page (docs/tasks/backend-bot-settings.md).
 api.get("/v1/bot/settings", async () => {
-  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  if (!bot) throw new RequestError(botOff, 409);
   return bot.settings();
 });
 api.put("/v1/bot/settings", async (request) => {
-  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  if (!bot) throw new RequestError(botOff, 409);
   const parsed = parseSettings(request.body);
   if (!parsed.ok) throw new RequestError(parsed.error);
+  if (!bot.canTrade(parsed.value.broker))
+    throw new RequestError(
+      `The bot has no ${parsed.value.broker} account connected`,
+      409,
+    );
   return bot.setSettings(parsed.value);
 });
 
@@ -295,18 +329,26 @@ const watchAll = () =>
       ),
   );
 const stopWatch = setInterval(() => void watchAll(), stopWatchMs);
-// Brokers that would let a sell open a short are checked every minute.
+// Brokers that would let a sell open a short are checked every minute, and
+// the account value of brokers without their own history is recorded.
 const shorts = new ShortWatch(log);
+const equityLog = new EquityLog(store, log);
+const failed = (what: string, scope: string) => (error: unknown) =>
+  log(
+    `${what} of ${scope} failed: ${error instanceof Error ? error.message : String(error)}`,
+  );
+const recordEquity = () =>
+  Promise.all(
+    traders
+      .all()
+      .filter((t) => EquityLog.keeps(t))
+      .map((t) => equityLog.record(t).catch(failed("equity record", t.scope))),
+  );
 const shortWatch = setInterval(() => {
   for (const t of traders.all())
     if (!t.broker.capabilities.closeOnlyOrders)
-      shorts
-        .check(t)
-        .catch((error: unknown) =>
-          log(
-            `short check of ${t.scope} failed: ${error instanceof Error ? error.message : String(error)}`,
-          ),
-        );
+      shorts.check(t).catch(failed("short check", t.scope));
+  void recordEquity();
 }, 60_000);
 
 async function stop() {
@@ -326,8 +368,11 @@ for (const t of traders.all()) {
   const cut = await t.service.reconcile();
   if (cut > 0) log(`settled ${cut} job(s) of ${t.scope} cut off by a restart`);
 }
-// Stops that sold while the service was down are reported now.
+// Stops that sold while the service was down are reported now, and today's
+// account value goes on record (not awaited: a slow Gateway must not hold
+// the start).
 await watchAll();
+void recordEquity();
 await api.listen({
   host: process.env.TRADER_HOST ?? "127.0.0.1",
   port: Number(process.env.PORT ?? 3003),

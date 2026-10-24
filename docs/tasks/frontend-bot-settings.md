@@ -71,3 +71,10 @@ presented as applied.
 Next: Backend adds the store and routes (Worker + trader `GET/PUT /v1/bot/settings`), and the bot reads the
 settings each tick (stocks at warm-up). Integration confirms the four new defaults with the user and moves the
 type into the shared package.
+
+## Broker switch (2026-10-24, backend task docs/tasks/backend-bot-ibkr.md)
+
+Next to the mode switch: Alpaca | Interactive Brokers, where new entries are bought. A broker the trading
+service has not connected (`GET /api/bot` → `brokers`) is greyed out with "Not connected"; an older service
+that names none shows only the saved broker. The help line says an open position is sold where it was bought.
+Reset to defaults keeps the broker. Added by the backend session, not checked in a browser.

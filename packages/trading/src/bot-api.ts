@@ -1,7 +1,7 @@
 // The bot's state for the website (docs/tasks/backend-indi-bot.md): what the
 // trading service answers at GET /v1/bot, read with the read-only token.
 
-import type { BotSettings } from "./bot/settings.js";
+import type { BotBroker, BotSettings } from "./bot/settings.js";
 import {
   controlAccess,
   type ControlConfig,
@@ -11,6 +11,9 @@ import {
 export interface BotView {
   enabled: boolean;
   mode: "dry" | "live";
+  // The brokers the bot can trade at (docs/tasks/backend-bot-ibkr.md); the
+  // chosen one is `settings.broker`. Absent from a trading service before it.
+  brokers?: BotBroker[];
   sizePct: number;
   delta: number;
   // The version of the rules in force (bot/versions.ts): "2.1", "2.1*" when

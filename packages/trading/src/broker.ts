@@ -107,6 +107,10 @@ export interface BrokerCapabilities {
   optionStops: boolean;
   // An order's price is changed in place; otherwise by cancel and re-send.
   replaceInPlace: boolean;
+  // False when the broker has no daily equity history of its own (IBKR), so
+  // the trading service records the account's value each day and feeds it
+  // back through `equityHistory` (apps/trader/src/equity-log.ts).
+  ownEquityHistory?: boolean;
 }
 
 export interface Broker {

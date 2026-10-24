@@ -37,6 +37,7 @@ import {
   signalParams,
   watchedStocks,
   withDefaults,
+  type BotBroker,
   type BotSettings,
 } from "../../../packages/trading/src/bot/settings.js";
 import { versionLabel } from "../../../packages/trading/src/bot/versions.js";
@@ -122,7 +123,12 @@ export interface BotTrading {
 export interface BotOptions {
   store: BotStore;
   market: BotMarket;
-  trading: BotTrading;
+  /** The trading service and account at one broker; throws when that broker is not connected. */
+  trading: (broker: BotBroker) => BotTrading;
+  /** The brokers that are connected; the owner may choose among them. */
+  brokers: BotBroker[];
+  /** Where new entries go until the owner saves a choice (BOT_BROKER). */
+  broker: BotBroker;
   notify: (title: string, lines: string[]) => Promise<unknown>;
   universe: string[];
   /** The earnings calendar's reports listed on a date (Nasdaq). Without it there is no earnings filter. */
@@ -268,9 +274,24 @@ export class IndiBot {
     this.event("info", `Switched ${on ? "on" : "off"}`);
   }
 
+  /**
+   * The trading service at a position's broker, or, without a position, at
+   * the broker chosen for new entries. A position from before the setting was
+   * bought at the start-up default.
+   */
+  private trading(p?: Pick<BotPosition, "broker">): BotTrading {
+    const broker = p ? (p.broker ?? this.o.broker) : this.settings().broker;
+    return this.o.trading(broker);
+  }
+
+  /** Whether the owner may send new entries to this broker. */
+  canTrade(broker: BotBroker): boolean {
+    return this.o.brokers.includes(broker);
+  }
+
   /** The account's equity; a good read is kept for the overnight cap's fallback. */
-  private async equity(): Promise<number> {
-    const value = await this.o.trading.equity();
+  private async equity(p?: Pick<BotPosition, "broker">): Promise<number> {
+    const value = await this.trading(p).equity();
     if (Number.isFinite(value) && value > 0)
       this.lastEquity = { day: newYork(this.o.now()).date, value };
     return value;
@@ -278,7 +299,11 @@ export class IndiBot {
 
   /** The owner's settings over the defaults; on/off and the mode as set. */
   settings(): BotSettings {
-    const base = { ...defaultSettings, mode: this.o.mode };
+    const base = {
+      ...defaultSettings,
+      mode: this.o.mode,
+      broker: this.o.broker,
+    };
     const saved = this.o.store.setting("settings");
     let s = base;
     if (saved) s = withDefaults(JSON.parse(saved), base);
@@ -287,6 +312,8 @@ export class IndiBot {
 
   /** Saves the owner's settings; stocks count from the next warm-up. */
   setSettings(next: BotSettings): BotSettings {
+    if (!this.canTrade(next.broker))
+      throw new Error(`The bot has no ${next.broker} account connected`);
     const before = this.settings();
     const { enabled, ...rest } = next;
     this.o.store.setSetting("settings", JSON.stringify(rest));
@@ -671,7 +698,7 @@ export class IndiBot {
     const side = right === "C" ? "call" : "put";
     const [from, to] = expiryWindow(date, pick);
     const picked = pickContract(
-      await this.o.trading.chain(symbol, side, from, to),
+      await this.trading().chain(symbol, side, from, to),
       spot,
       side,
       date,
@@ -688,7 +715,7 @@ export class IndiBot {
         `${this.words(contract)}: ${volume} contracts in 30 minutes`,
       );
     // A contract the account already holds is the user's; the bot leaves it alone.
-    if (await this.o.trading.held(contract))
+    if (await this.trading().held(contract))
       return this.outcome(
         date,
         symbol,
@@ -721,6 +748,7 @@ export class IndiBot {
       ),
       decidedOn: null,
       version,
+      broker: s.broker,
       status: "buying",
       jobId: null,
       dry: s.mode === "dry",
@@ -752,7 +780,7 @@ export class IndiBot {
       ]);
       return;
     }
-    const answer = await this.o.trading.buy({
+    const answer = await this.trading().buy({
       contract,
       sizePct: s.sizePct,
       stopPct: s.safetyStopPct,
@@ -848,9 +876,9 @@ export class IndiBot {
     for (const p of this.o.store.openPositions()) {
       if (p.dry) continue;
       if (p.status === "buying" && p.jobId) {
-        const job = this.o.trading.job(p.jobId);
+        const job = this.trading(p).job(p.jobId);
         if (job.state === "running") continue;
-        const held = await this.o.trading.held(p.contract);
+        const held = await this.trading(p).held(p.contract);
         if (!held || held.qty <= 0) {
           this.o.store.savePosition({
             ...p,
@@ -879,11 +907,11 @@ export class IndiBot {
       }
       const pending = p.sales.find((s) => s.jobId !== null && !s.settled);
       if (pending && pending.jobId) {
-        const job = this.o.trading.job(pending.jobId);
+        const job = this.trading(p).job(pending.jobId);
         if (job.state === "running") continue;
         const sold = soldOf(job.result);
         const price = priceOf(job.result);
-        const held = await this.o.trading.held(p.contract);
+        const held = await this.trading(p).held(p.contract);
         const qty = Math.max(0, Math.min(p.qty - sold, held?.qty ?? 0));
         const sales = p.sales.map((s) =>
           s === pending
@@ -906,7 +934,7 @@ export class IndiBot {
       }
       // A stop or the user may have sold some: the bot never counts more than the account holds.
       if (p.status === "open") {
-        const held = await this.o.trading.held(p.contract);
+        const held = await this.trading(p).held(p.contract);
         const qty = Math.min(p.qty, held?.qty ?? 0);
         if (qty < p.qty)
           this.event(
@@ -968,7 +996,9 @@ export class IndiBot {
         m < rules.eodMinute &&
         p.breakWatch?.state === "failed";
       if (failed) {
-        const quote = await this.o.trading.quote(p.contract).catch(() => null);
+        const quote = await this.trading(p)
+          .quote(p.contract)
+          .catch(() => null);
         const mid =
           quote && quote.bid > 0 && quote.ask > 0
             ? (quote.bid + quote.ask) / 2
@@ -977,7 +1007,9 @@ export class IndiBot {
         continue;
       }
       const expiry = expiryOf(p.contract);
-      const quote = await this.o.trading.quote(p.contract).catch(() => null);
+      const quote = await this.trading(p)
+        .quote(p.contract)
+        .catch(() => null);
       const mid =
         quote && quote.bid > 0 && quote.ask > 0
           ? (quote.bid + quote.ask) / 2
@@ -1102,7 +1134,7 @@ export class IndiBot {
     if (s.nightCapPct <= 0 || mid === null)
       return { sell: 0, reason: "night-cap" };
     const name = `${p.symbol} ${this.words(p.contract)}`;
-    let equity: number | null = await this.equity().catch((error: unknown) => {
+    let equity: number | null = await this.equity(p).catch((error: unknown) => {
       const why = error instanceof Error ? error.message : String(error);
       this.event(
         "error",
@@ -1179,7 +1211,7 @@ export class IndiBot {
       ]);
       return;
     }
-    const answer = await this.o.trading
+    const answer = await this.trading(p)
       .sell({
         contract: p.contract,
         qty: String(ask),
@@ -1246,6 +1278,7 @@ export class IndiBot {
     return {
       enabled: s.enabled,
       mode: s.mode,
+      brokers: this.o.brokers,
       sizePct: s.sizePct,
       delta: s.delta,
       version: versionLabel(s),

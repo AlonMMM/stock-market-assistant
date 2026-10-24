@@ -23,6 +23,7 @@ next minute; the stock list is fixed at warm-up (09:25 New York) and changes fro
 | ------------------------------------------ | ------------------ | ------------------------------------------------------------- |
 | `enabled`                                  | env                | the existing on/off switch (`bot_settings.enabled`)           |
 | `mode`                                     | env                | `live` paper orders or `dry` "would buy"; new entries only    |
+| `broker`                                   | env (`BOT_BROKER`) | `alpaca` or `ibkr`: where new entries are bought (see below)  |
 | `version`                                  | 2.1                | the rule set's name, stamped on every entry (see "Versions")  |
 | `followFavorites`, `added`, `off`          | on, —, QQQ SQQQ    | today's stocks: core ∪ added ∪ favorites − off − SPY/CL/GC/SI |
 | `sizePct`                                  | 2                  | the buy's `sizePct` (dry run: the same share of equity)       |
@@ -43,7 +44,16 @@ V2 (`feat/indi-bot-v2-rules`, docs/tasks/backend-indi-bot.md "V2 rules"): `minT`
 the new `nightCapPct`. Settings the owner saved before keep their own `minT` (a saved 2 stays 2) and get
 `nightCapPct` 8 from the defaults. `nightCapPct` was backtested, so it is not in `untested`.
 
-`enabled` and `mode` default to `BOT_ENABLED` / `BOT_MODE` until the owner saves; a saved value then wins.
+`enabled`, `mode` and `broker` default to `BOT_ENABLED` / `BOT_MODE` / `BOT_BROKER` until the owner saves; a
+saved value then wins.
+
+**Broker (2026-10-24, user: "configurable in the bot settings, to trade via ibkr or alpaca account").** `broker`
+names the account new entries are bought at: `ibkr`, the owner's IBKR paper account behind the Gateway, or
+`alpaca`, the bot's own Alpaca account (docs/tasks/backend-bot-ibkr.md). Every position records the broker it
+was bought at and is quoted, checked and sold there, so the owner may switch while positions are open. `GET
+/v1/bot` lists the connected brokers (`brokers`); `PUT /v1/bot/settings` answers 409 for a broker that is not
+connected, and the page greys that option out. The account's equity for sizing, the daily loss limit and the
+drawdown pause is the chosen broker's; the overnight cap uses the position's.
 Limits on new buys run after the news filter and before the contract is picked. Exits of held positions are
 never limited, also when the bot is off or paused.
 

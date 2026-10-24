@@ -36,6 +36,12 @@ Setup:
   against what is held and already offered, and the trading service checks the IBKR
   account for short risk every minute (alerts repeat every 15 minutes).
 - Real-time market data only (`reqMarketDataType(1)`); no delayed or frozen quotes.
+- The Indi bot buys at this account when the owner picks Interactive Brokers on the Bot
+  settings page (docs/tasks/backend-bot-ibkr.md); `BOT_BROKER=ibkr` makes that the default
+  before any save. A position is sold at the broker it was bought at.
+- TWS has no daily account history: the trading service records the IBKR account's value
+  every minute of a trading day (`equity_days` in its SQLite), and the risk manager's
+  drawdown brake reads that series. It starts on the first connected day.
 
 ## History: read-only collector (September 2026, replaced by Alpaca)
 

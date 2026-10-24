@@ -297,7 +297,10 @@ const universe = (
 const bot = new IndiBot({
   store,
   market,
-  trading,
+  // One simulated broker, named alpaca: the setting cannot send it elsewhere.
+  trading: () => trading,
+  brokers: ["alpaca"],
+  broker: "alpaca",
   notify: async (title, lines) => {
     posts.push(`${clock()} ${[title, ...lines].join(" | ")}`);
   },

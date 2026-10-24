@@ -200,6 +200,9 @@ export class TradeStore {
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL, provider TEXT NOT NULL,
         config TEXT NOT NULL, events TEXT, enabled INTEGER NOT NULL,
         created_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS equity_days (
+        account_id TEXT NOT NULL, date TEXT NOT NULL, equity REAL NOT NULL,
+        at INTEGER NOT NULL, PRIMARY KEY (account_id, date));
     `);
   }
 
@@ -422,6 +425,31 @@ export class TradeStore {
         )
         .all(userId, limit) as unknown as { data: string }[]
     ).map((r) => JSON.parse(r.data) as Decision);
+  }
+
+  /**
+   * The account's value on a trading day (New York date), for brokers with no
+   * history of their own (docs/tasks/backend-bot-ibkr.md). The day's last
+   * write wins, so after the close the row is the closing value.
+   */
+  recordEquity(accountId: string, date: string, equity: number, now: number) {
+    this.db
+      .prepare(
+        "INSERT OR REPLACE INTO equity_days (account_id, date, equity, at) VALUES (?, ?, ?, ?)",
+      )
+      .run(accountId, date, equity, now);
+  }
+
+  /** The recorded daily values of one account, oldest first. */
+  equityDays(accountId: string): { date: string; equity: number }[] {
+    // Plain objects: node:sqlite's rows have no prototype.
+    return (
+      this.db
+        .prepare(
+          "SELECT date, equity FROM equity_days WHERE account_id = ? ORDER BY date",
+        )
+        .all(accountId) as unknown as { date: string; equity: number }[]
+    ).map((r) => ({ date: r.date, equity: r.equity }));
   }
 
   /** A small named record of one user, such as the stops being watched. */

@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import type { BreakWatch } from "../../../packages/trading/src/bot/levels.js";
+import type { BotBroker } from "../../../packages/trading/src/bot/settings.js";
 
 // The bot's records (docs/tasks/backend-indi-bot.md), in the trading
 // service's database: every signal and what came of it, and every position
@@ -64,6 +65,9 @@ export interface BotPosition {
   // The bot version that entered it ("2.1", or "2.1*" with changed rules);
   // missing on positions opened before versions.
   version?: string;
+  // The broker it was bought at; its sales go there too. Missing on positions
+  // opened before the broker setting: those were bought at the start-up default.
+  broker?: BotBroker;
   status: BotStatus;
   jobId: string | null;
   dry: boolean;

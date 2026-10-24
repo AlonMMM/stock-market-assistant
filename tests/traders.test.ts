@@ -3,7 +3,12 @@ import { randomBytes } from "node:crypto";
 import test from "node:test";
 import { readSecret, Vault } from "../apps/trader/src/secrets.js";
 import { ensureOwnerIbkr, seedOwner } from "../apps/trader/src/seed.js";
-import { botAccount, ensureBotAccount } from "../apps/trader/src/seed-bot.js";
+import {
+  botAccount,
+  botAccountFor,
+  botBrokerFromEnv,
+  ensureBotAccount,
+} from "../apps/trader/src/seed-bot.js";
 import { ShortWatch, shortRepeatMs } from "../apps/trader/src/short-watch.js";
 import { TradeStore, type Channel } from "../apps/trader/src/store.js";
 import { Traders } from "../apps/trader/src/traders.js";
@@ -375,4 +380,29 @@ test("traders: the bot's account is reached by id; naming alpaca still means the
   assert.throws(() => own.service.job(jobId), /No such job/);
   // Both accounts are watched (owner, friend, bot).
   assert.equal(traders.all().length, 3);
+});
+
+test("bot account: BOT_BROKER is the start-up default; each broker maps to the owner's account there", () => {
+  const store = new TradeStore(":memory:");
+  seedOwner(store, env, monday);
+  assert.equal(botBrokerFromEnv({}), "alpaca");
+  assert.equal(botBrokerFromEnv({ BOT_BROKER: "ibkr" }), "ibkr");
+  // A typo must not pick an account by accident.
+  assert.throws(
+    () => botBrokerFromEnv({ BOT_BROKER: "ib" }),
+    /BOT_BROKER must be alpaca or ibkr/,
+  );
+  // Alpaca without the bot's own account: the owner's default; IBKR: none yet.
+  assert.equal(botAccountFor(store, "alpaca")?.id, "owner-alpaca");
+  assert.equal(botAccountFor(store, "ibkr"), null);
+  ensureOwnerIbkr(store, { IBKR_GATEWAY: "gw:4001" }, monday);
+  assert.equal(botAccountFor(store, "ibkr")?.id, "owner-ibkr");
+  // The bot's own Alpaca account wins over the default.
+  ensureBotAccount(
+    store,
+    { BOT_ALPACA_API_KEY: "k", BOT_ALPACA_API_SECRET: "s" },
+    monday,
+  );
+  assert.equal(botAccountFor(store, "alpaca")?.id, "owner-bot");
+  assert.equal(botAccountFor(store, "ibkr")?.id, "owner-ibkr");
 });

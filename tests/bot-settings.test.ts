@@ -129,6 +129,13 @@ test("parse: the defaults pass; values are checked, snapped to the step and tick
     false,
   );
   assert.equal(parseSettings({ ...defaultSettings, mode: "real" }).ok, false);
+  assert.equal(parseSettings({ ...defaultSettings, broker: "ibkr" }).ok, true);
+  assert.equal(parseSettings({ ...defaultSettings, broker: "ib" }).ok, false);
+  // Settings saved before the broker setting keep the base's broker.
+  assert.equal(
+    withDefaults({ sizePct: 1 }, { ...defaultSettings, broker: "ibkr" }).broker,
+    "ibkr",
+  );
   assert.equal(parseSettings({ ...defaultSettings, checks: "yes" }).ok, false);
   assert.equal(parseSettings([]).ok, false);
 });
