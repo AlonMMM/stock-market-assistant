@@ -9,7 +9,11 @@ import Fastify, { type FastifyRequest } from "fastify";
 import { Vault } from "./secrets.js";
 import { StoqeyTws } from "../../../packages/trading/src/tws-client.js";
 import { ensureOwnerIbkr, seedOwner } from "./seed.js";
-import { chooseBotAccount, ensureBotAccount } from "./seed-bot.js";
+import {
+  botAccountFor,
+  botBrokerFromEnv,
+  ensureBotAccount,
+} from "./seed-bot.js";
 import { EquityLog } from "./equity-log.js";
 import { ShortWatch } from "./short-watch.js";
 import { RequestError, type TraderService } from "./service.js";
@@ -20,7 +24,11 @@ import { IndiBot } from "./bot.js";
 import { nasdaqEarnings } from "./bot-news.js";
 import { AlpacaBotMarket } from "./bot-market.js";
 import { BotStore } from "./bot-store.js";
-import { parseSettings } from "../../../packages/trading/src/bot/settings.js";
+import {
+  botBrokers,
+  parseSettings,
+  type BotBroker,
+} from "../../../packages/trading/src/bot/settings.js";
 
 const env = (...names: string[]) =>
   names.map((n) => process.env[n]).find((v) => v) ?? "";
@@ -184,12 +192,15 @@ api.get<{ Querystring: { limit?: string } }>("/v1/decisions", async (request) =>
   service(request).decisions(Number(request.query.limit)),
 );
 
-// The Indi bot (docs/tasks/backend-indi-bot.md): on the owner's IBKR paper
-// account with BOT_BROKER=ibkr (docs/tasks/backend-bot-ibkr.md), else on its
-// own Alpaca paper account once BOT_ALPACA_API_KEY / BOT_ALPACA_API_SECRET are
-// set (docs/tasks/backend-bot-account.md), else on the owner's; always through
-// the owner's trading service. Off unless BOT_ENABLED=true; a dry run unless
-// BOT_MODE=live. Market data comes from the owner's Alpaca keys either way.
+// The Indi bot (docs/tasks/backend-indi-bot.md). It can trade at two brokers
+// (docs/tasks/backend-bot-ibkr.md): the owner's IBKR paper account behind the
+// Gateway, and its own Alpaca paper account once BOT_ALPACA_API_KEY /
+// BOT_ALPACA_API_SECRET are set (docs/tasks/backend-bot-account.md), else the
+// owner's default account. New entries go to the broker chosen on the Bot
+// settings page, BOT_BROKER until the owner saves; a position is sold where it
+// was bought. Always through the owner's trading service. Off unless
+// BOT_ENABLED=true; a dry run unless BOT_MODE=live. Market data comes from the
+// owner's Alpaca keys either way.
 const botStore = new BotStore(dbPath);
 let botOff = "The bot has no Alpaca keys";
 const bot = (() => {
@@ -198,48 +209,55 @@ const bot = (() => {
   if (!key || !secret) return null;
   // A wrong BOT_BROKER stops the service: the bot must never trade the wrong
   // account by accident.
-  const choice = chooseBotAccount(store, process.env);
-  const owner =
-    choice.kind === "default"
-      ? () => traders.forCaller(undefined, "alpaca")
-      : () => traders.forAccount(choice.account.id);
-  if (choice.kind !== "default") {
+  const startBroker = botBrokerFromEnv(process.env);
+  const traderFor = (broker: BotBroker) => {
+    const account = botAccountFor(store, broker);
+    if (!account)
+      throw new RequestError(`The bot has no ${broker} account`, 409);
+    return traders.forAccount(account.id);
+  };
+  // Only a broker whose account builds (keys, Gateway) can be chosen.
+  const connected = botBrokers.filter((broker) => {
     try {
-      owner(); // its keys or Gateway must be there, or the bot does not run at all
+      traderFor(broker);
+      return true;
     } catch (error) {
-      const why = error instanceof Error ? error.message : String(error);
-      botOff = `The bot's account "${choice.account.id}" cannot start: ${why}`;
-      log(`${botOff}; the bot is off`);
-      return null;
+      log(
+        `the bot cannot trade at ${broker}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return false;
     }
+  });
+  if (!connected.includes(startBroker)) {
+    botOff = `The bot's ${startBroker} account cannot start`;
+    log(`${botOff}; the bot is off`);
+    return null;
   }
-  const account = owner().account;
-  if (choice.kind === "ibkr")
-    log(
-      `the bot trades the owner's IBKR paper account "${account.id}" (BOT_BROKER=ibkr)`,
-    );
-  else if (choice.kind === "own")
-    log(`the bot trades its own account "${account.id}"`);
-  else
-    log("the bot trades the owner's default account (no BOT_ALPACA_API_KEY)");
+  log(
+    `the bot can trade at ${connected.map((b) => `${b} ("${traderFor(b).account.id}")`).join(" and ")}; new entries at ${startBroker} until the owner chooses on the Bot settings page`,
+  );
+  // The owner's channels are the same for every account.
+  const owner = () => traders.forCaller(undefined);
   return new IndiBot({
-    account: { broker: account.broker, id: account.id },
+    broker: startBroker,
+    brokers: connected,
+    trading: (broker) => {
+      const t = traderFor(broker);
+      return {
+        chain: (u, right, from, to) => t.broker.chain(u, right, from, to),
+        quote: (c) => t.broker.quote(c),
+        held: async (c) => {
+          const p = await t.broker.position(c).catch(() => null);
+          return p && p.qty > 0 ? p : null;
+        },
+        equity: () => t.broker.equity(),
+        buy: (b) => t.service.buy(b),
+        sell: (b) => t.service.sell(b),
+        job: (id) => t.service.job(id),
+      };
+    },
     store: botStore,
     market: new AlpacaBotMarket(key, secret, "sip"),
-    trading: {
-      chain: (u, right, from, to) => owner().broker.chain(u, right, from, to),
-      quote: (c) => owner().broker.quote(c),
-      held: async (c) => {
-        const p = await owner()
-          .broker.position(c)
-          .catch(() => null);
-        return p && p.qty > 0 ? p : null;
-      },
-      equity: () => owner().broker.equity(),
-      buy: (b) => owner().service.buy(b),
-      sell: (b) => owner().service.sell(b),
-      job: (id) => owner().service.job(id),
-    },
     notify: (title, lines) => owner().notifier.notice(title, lines),
     universe: botUniverse.symbols,
     earnings: (date) => nasdaqEarnings(date),
@@ -286,6 +304,11 @@ api.put("/v1/bot/settings", async (request) => {
   if (!bot) throw new RequestError(botOff, 409);
   const parsed = parseSettings(request.body);
   if (!parsed.ok) throw new RequestError(parsed.error);
+  if (!bot.canTrade(parsed.value.broker))
+    throw new RequestError(
+      `The bot has no ${parsed.value.broker} account connected`,
+      409,
+    );
   return bot.setSettings(parsed.value);
 });
 

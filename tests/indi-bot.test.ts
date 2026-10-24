@@ -3,6 +3,7 @@
 // signal and exits are also checked against the Python backtest on real bars
 // by scripts/bot-parity.ts and scripts/bot-exit-parity.ts (local data only).
 import { test } from "node:test";
+import type { BotBroker } from "../packages/trading/src/bot/settings.js";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -401,6 +402,7 @@ function harness(
   mode: "dry" | "live",
   news: NewsFakes = {},
   nvdaDay?: (beta: number) => MinuteBar[],
+  opts: { brokers?: BotBroker[] } = {},
 ) {
   const store = new BotStore(
     join(mkdtempSync(join(tmpdir(), "bot-")), "t.sqlite"),
@@ -470,8 +472,14 @@ function harness(
   let equityFails = false;
   const held = new Map<string, number>();
   const jobs = new Map<string, { state: string; result: unknown }>();
-  const calls: { kind: string; body: Record<string, unknown> }[] = [];
+  const calls: {
+    kind: string;
+    body: Record<string, unknown>;
+    broker: BotBroker;
+  }[] = [];
   const notes: string[] = [];
+  // The broker the bot asked for last; each order records it.
+  let broker: BotBroker = "alpaca";
   const trading: BotTrading = {
     async chain() {
       return [q(110, 0.15, 0.59), q(115, 0.08, 0.3)];
@@ -488,13 +496,13 @@ function harness(
       return equity;
     },
     async buy(body) {
-      calls.push({ kind: "buy", body });
+      calls.push({ kind: "buy", body, broker });
       held.set(String(body.contract), 33);
       jobs.set("b1", { state: "done", result: {} });
       return { status: "started", jobId: "b1", qty: 33 };
     },
     async sell(body) {
-      calls.push({ kind: "sell", body });
+      calls.push({ kind: "sell", body, broker });
       const id = `s${calls.length}`;
       const n = Number(body.qty);
       held.set(
@@ -512,7 +520,12 @@ function harness(
   const bot = new IndiBot({
     store,
     market,
-    trading,
+    trading: (b) => {
+      broker = b;
+      return trading;
+    },
+    brokers: opts.brokers ?? ["alpaca", "ibkr"],
+    broker: "alpaca",
     universe: ["NVDA"],
     ...(news.earnings ? { earnings: news.earnings } : {}),
     mode,
@@ -571,6 +584,32 @@ test("runner (live): signal -> buy with the bot tag -> no check sale while winni
   assert.match(String(sells[0]!.body.note), /no gap our way/);
   await h.run(NEXT, 586, 590);
   assert.equal(h.store.openPositions().length, 0);
+});
+
+test("broker setting: new entries go to the chosen broker; a position is sold where it was bought", async () => {
+  const h = harness("live");
+  await h.run(DAY, 565, 600);
+  const buy = h.calls.find((c) => c.kind === "buy")!;
+  assert.equal(buy.broker, "alpaca");
+  assert.equal(h.store.openPositions()[0]!.broker, "alpaca");
+  // The owner moves new entries to IBKR while the position is open.
+  h.bot.setSettings({ ...h.bot.settings(), broker: "ibkr" });
+  assert.equal(h.bot.settings().broker, "ibkr");
+  // Next morning, no gap our way: the sale goes to Alpaca, where the contracts are.
+  h.setMid(1.5);
+  await h.run(DAY, 601, 965);
+  await h.run(NEXT, 565, 590);
+  const sells = h.calls.filter((c) => c.kind === "sell");
+  assert.equal(sells.length, 1);
+  assert.equal(sells[0]!.broker, "alpaca");
+  assert.equal(h.store.openPositions().length, 0);
+  // A broker that is not connected cannot be chosen.
+  const g = harness("live", {}, undefined, { brokers: ["alpaca"] });
+  assert.throws(
+    () => g.bot.setSettings({ ...g.bot.settings(), broker: "ibkr" }),
+    /no ibkr account connected/,
+  );
+  assert.equal(g.bot.canTrade("alpaca"), true);
 });
 
 test("runner: a contract the account already holds is left alone; the bot never sells more than the account has", async () => {

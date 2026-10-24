@@ -13,9 +13,18 @@ import {
 // have. The trading service stores what the owner saved and fills the rest
 // from these defaults, so a new field never needs a migration.
 
+// The brokers the bot can trade at (user 2026-10-24: "configurable in the bot
+// settings, to trade via ibkr or alpaca account"). The trading service says
+// which are connected; a position keeps the broker it was bought at.
+export type BotBroker = "alpaca" | "ibkr";
+export const botBrokers: readonly BotBroker[] = ["alpaca", "ibkr"];
+
 export interface BotSettings {
   enabled: boolean;
   mode: "live" | "dry";
+  // Where new entries are bought: the owner's IBKR paper account, or the
+  // bot's Alpaca account. Open positions stay with their own broker.
+  broker: BotBroker;
   // The version of the rules the bot runs (versions.ts): a known version's id
   // ("2.1") or the owner's own label for a rule set. Every entry is stamped
   // with it, with a star when the rules were changed from the version's.
@@ -67,6 +76,7 @@ type BooleanKey = {
 export const defaultSettings: BotSettings = {
   enabled: true,
   mode: "live",
+  broker: "alpaca",
   version: currentVersion,
   followFavorites: true,
   added: [],
@@ -173,6 +183,9 @@ export function parseSettings(
   if (body.mode !== "live" && body.mode !== "dry")
     return { ok: false, error: "mode must be live or dry" };
   out.mode = body.mode;
+  if (body.broker !== "alpaca" && body.broker !== "ibkr")
+    return { ok: false, error: "broker must be alpaca or ibkr" };
+  out.broker = body.broker;
   const version = typeof body.version === "string" ? body.version.trim() : "";
   if (!versionLabelPattern.test(version))
     return {

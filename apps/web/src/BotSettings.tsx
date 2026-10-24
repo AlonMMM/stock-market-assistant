@@ -27,8 +27,15 @@ import {
   type SwitchKey,
   type TickerItem,
 } from "./bot-settings-model.js";
+import {
+  botBrokers,
+  type BotBroker,
+} from "../../../packages/trading/src/bot/settings.js";
 import { usePolling } from "./Live.js";
 import { israelClock } from "./time.js";
+
+const brokerName = (b: BotBroker) =>
+  b === "ibkr" ? "Interactive Brokers" : "Alpaca";
 
 // The bot's settings (docs/tasks/frontend-bot-settings.md), for the account
 // owner only: the stocks it watches, trade size, losses, holding, the contract
@@ -834,6 +841,12 @@ export function BotSettingsPage({ onBack }: { onBack: () => void }) {
 
   let modeHelp = "Every signal is a paper order.";
   if (s.mode === "dry") modeHelp = "Signals are logged as “would buy”.";
+  // The brokers the trading service has connected; an older service names none.
+  const brokers = view?.brokers ?? [s.broker];
+  let brokerHelp =
+    "New entries are bought there; an open position is sold where it was bought.";
+  if (brokers.length < 2)
+    brokerHelp = `Only ${brokerName(brokers[0] ?? s.broker)} is connected.`;
 
   return (
     <div className="bot-panel bot-settings">
@@ -891,6 +904,21 @@ export function BotSettingsPage({ onBack }: { onBack: () => void }) {
             </button>
           </div>
           <span className="muted small">{modeHelp}</span>
+          <div className="bs-seg" role="group" aria-label="Broker">
+            {botBrokers.map((b) => (
+              <button
+                key={b}
+                type="button"
+                aria-pressed={s.broker === b}
+                disabled={!brokers.includes(b)}
+                title={brokers.includes(b) ? undefined : "Not connected"}
+                onClick={() => put({ broker: b })}
+              >
+                {brokerName(b)}
+              </button>
+            ))}
+          </div>
+          <span className="muted small">{brokerHelp}</span>
         </div>
       </div>
 

@@ -137,9 +137,14 @@ export function addTicker(
   return { ...s, off, added: [...s.added, t] };
 }
 
-/** The settings changed against the defaults (the current version), keeping on/off and the mode. */
+/** The settings changed against the defaults (the current version), keeping on/off, the mode and the broker. */
 export function resetToDefaults(s: BotSettings): BotSettings {
-  return { ...defaultSettings, enabled: s.enabled, mode: s.mode };
+  return {
+    ...defaultSettings,
+    enabled: s.enabled,
+    mode: s.mode,
+    broker: s.broker,
+  };
 }
 
 export const sameSettings = (a: BotSettings, b: BotSettings) =>
