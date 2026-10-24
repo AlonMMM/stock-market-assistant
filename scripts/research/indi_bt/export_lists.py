@@ -3,9 +3,9 @@
   trades.csv   one row per bought trade: list, key, date, time, minute, sym, right, contract, strike, expiry, dte, delta, iv,
                price (the stock's close on the signal minute, the entry the checks compare with), cost, ret, exit (words), overnight
   funnel.csv   per list: signals, skipped by the news filter, no contract, no fill, bought
-  bars.csv     5-minute closes of each trade's stock on the day before and the trade day, and SPY on those days
-               (key "SYM|date", 78 slots a day, blank where no bar)
-  paths.csv    per trade: the paid price, every fill (day,minute,side,share,price,rule; ...), the option's 5-minute closes
+  bars.csv     1-minute closes of each trade's stock on the day before and the trade day, and SPY on those days
+               (key "SYM|date", 390 slots a day, blank where no bar)
+  paths.csv    per trade: the paid price, every fill (day,minute,side,share,price,rule; ...), the option's 1-minute closes
                per day held ("date: c c c|date2: ..."), and the stock's closes on carried days
 
   python3 export_lists.py <A> <Z> <name> [<name> ...]     (from the repo root) -> data/local/x/bt/viz_lists/
@@ -21,7 +21,7 @@ B = "data/local/x/bt"
 OUT = f"{B}/viz_lists"
 os.makedirs(OUT, exist_ok=True)
 A, Z, NAMES = sys.argv[1], sys.argv[2], sys.argv[3:]
-PER = 78
+PER = 390  # one slot per session minute (5-minute slots, 78, until 2026-10-24)
 
 EXIT_WORDS = {
     "U_check10": "Stop: 10-min check", "U_check20": "Stop: 20-min check", "U_out": "Stop: option −30%",
@@ -37,10 +37,10 @@ def exit_words(rule):
 
 
 def closes5(bars):
-    """78 five-minute slots of closes from 1-minute bars (minute, o, h, l, c, v); '' where the slot has no bar."""
+    """PER slots of closes from 1-minute bars (minute, o, h, l, c, v), one a minute; '' where the minute has no bar."""
     out = [""] * PER
     for b in bars:
-        k = min(PER - 1, b[0] // 5)
+        k = min(PER - 1, b[0] * PER // 390)
         out[k] = f"{b[4]:.5g}"
     return out
 
