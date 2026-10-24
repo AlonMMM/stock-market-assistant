@@ -40,6 +40,9 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                or worse; with opt_wait a check not met stays armed until both hold, else it passes once. Older form: 10-20 minutes after the entry, the stock
                on the wrong side of the entry price -> sell `share` (once); option at `out` (e.g. -35%)
                with the stock on the wrong side of the entry price -> sell all
+  Z stall + strength (stall_rs {hours, gain, rs}): entry day, from `hours` after the entry, the option never up `gain`
+               since the entry and (rs "entry" / "hour") the stock's move vs SPY x beta since the entry / over the last hour
+               against us                                               -> sell all
   S stock stop (stock_stop "vwap" / "prev", entry day): the stock closes back on the wrong side of
                VWAP, or back inside yesterday's range                    -> sell all
   EOD 15:50    carry only if g >= carry_min_gain, stock at >= carry_range_pos of the day range,
@@ -173,6 +176,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
     for k, d in enumerate(dates):
         bars = day(sym, d)
         sd = Day(und, d, bet, cal, cal.index(d))
+        spyc = series(day("SPY", d))[0] if X.get("stall_rs") and k == 0 else None
         start = minute if k == 0 else -1
         carry_day = k > 0
         eod_done = False
@@ -248,6 +252,14 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 continue
             if t >= X["eod_minute"]: continue
             if g <= X["floor"]: pending = ("all", "L3_floor"); continue
+            Z = X.get("stall_rs")  # {hours, gain, rs}: the option never up `gain` since the entry, `hours` on (user, 2026-10-24)
+            if Z and k == 0 and sd.ok and t - minute >= Z["hours"] * 60 and peak / cost - 1 < Z["gain"]:
+                bad = True  # with rs: the stock's move vs SPY x beta since the entry ("entry") or over the last hour ("hour") is against us
+                if Z.get("rs"):
+                    tt = min(t, 389); ref = minute if Z["rs"] == "entry" else max(minute, tt - 60)
+                    s0, s1, y0, y1 = sd.c[ref], sd.c[tt], spyc[ref], spyc[tt]
+                    bad = bool(s0 and s1 and y0 and y1) and bet * ((s1 / s0 - 1) - (sd.beta or 1.0) * (y1 / y0 - 1)) <= 0
+                if bad: pending = ("all", "Z_stall"); continue
             SX = X.get("stall_exit")  # {arm, min, giveback?, vol?}: the move is over -> out
             if SX and sd.ok and peak / cost - 1 >= SX["arm"]:
                 tt = min(t, 389)

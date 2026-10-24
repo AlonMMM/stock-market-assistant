@@ -224,6 +224,15 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   loses at every level. "From the check on" (the check stays armed until both hold): much worse, $374K-$440K on the fair
   list, it becomes a trailing stop that fires on the first dip (GOOGL 2026-07-31 -142K points). Not better: the fair
   list is a handful of trades and the unseen falls. sim.py: user_stop `opt_below` / `opt_wait`.
+- Hours without the option up, and the stock weak vs SPY (`stall_rs.py`, 2026-10-24; the user's idea): on the entry
+  day, from 1 / 2 / 3 hours after the entry, the option never closed +10% over the cost and (with rs) the stock's move
+  vs SPY x beta since the entry, or over the last hour, is against us -> sell all. Against the bot today, all champion
+  trades 2024-2026. The rule has almost nothing to act on: of the 813 fair-list trades, 258 are still open an hour after
+  the entry and only 8 of those never got above +10% (3 at two hours, 1 at three); unseen 96 open, 8 under. So it
+  changes 1-8 trades: fair list $521,248-$526,675 vs $526,469 (1h alone -$10K at $10K, SMCI 2025-10-01 -8,647;
+  2h alone +$384), unseen $125,474-$125,822 vs $125,581. Not better, not worse: the +10 / +20 checks, the -30% stop and
+  the failed break already sell the flat trades in the first 20 minutes, and a 0.15-delta option that survives them is
+  rarely still under +10% an hour later. sim.py: `stall_rs {hours, gain, rs}`.
 
 ## Candidates
 
