@@ -35,7 +35,9 @@ T_MIN, RV_MIN = 1.8, 1.5
 # The alert's rule (rvol-v6 defaults).
 WIN, THRESHOLD, PACE, MIN_VOL, PRICE_MULT, MIN_MOVE = 3, 4.0, 4.0, 10000, 3.0, 0.5
 PACE_SKIP_OPEN, PACE_SKIP_CLOSE, PACE_MIN_MINUTES = 30, 30, 15
-RULES = {"t18r15": None, "ag5": 5, "ag15": 15}   # name -> alert window in minutes (None: the champion, as a check)
+TAG = os.environ.get("BT_TAG", "")  # output prefix s<TAG>_... (the champion at the same contract rules: s<TAG>_t18r15)
+# name -> (alert window in minutes, day-volume floor on the alert route); None: the champion, as a check
+RULES = {"t18r15": None, "ag5": (5, 0.0), "ag15": (15, 0.0), "ag5r10": (5, 1.0)}
 if os.environ.get("BT_RULES"): RULES = {k: RULES[k] for k in os.environ["BT_RULES"].split(",")}
 
 
@@ -129,8 +131,8 @@ def stock(sym):
                     if tt < T_MIN: continue
                     route, am = None, ""
                     if rv >= RV_MIN: route = "day"
-                    elif wdw:
-                        hit = [k for k in range(max(0, m - wdw + 1), m + 1) if al[k] == want]
+                    elif wdw and rv >= wdw[1]:
+                        hit = [k for k in range(max(0, m - wdw[0] + 1), m + 1) if al[k] == want]
                         if hit: route, am = "alert", hit[0]
                     if route is None: continue
                     left.discard(name)
@@ -176,7 +178,7 @@ def round_():
     jobs = []
     for rule in [a for a in sys.argv[2:] if a[:2] != "20"] or [k for k in RULES if RULES[k]]:
         for y in YEARS:
-            out = f"{B}/s_{rule}d_{y}"
+            out = f"{B}/s{TAG}_{rule}d_{y}"
             if all(os.path.exists(f"{out}.{i}_trades.csv") for i in range(4)): continue
             for i in range(4):
                 jobs.append((["node", "--env-file=.env", R, "tiers.py", f"{B}/s_sig_{rule}d_{y}.csv", out, f"{i}/4"], f"{out}.{i}.log"))
@@ -197,18 +199,18 @@ def summary():
              ("151 unseen", lambda t: t["sym"] not in HIS40)]
     news = lambda t: t["e_next"] != 0 and (t["pre_rvol"] is None or t["pre_rvol"] < 4)
     key = lambda t: (t["date"], t["sym"])
-    champ = [t for f in glob.glob(f"{B}/s_t18r15_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] == "ok"]
+    champ = [t for f in glob.glob(f"{B}/s{TAG}_t18r15_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] == "ok"]
     nf.features(champ); champ = sorted((t for t in champ if news(t)), key=lambda t: (t["date"], int(t["minute"])))
     champ_signals = {key(r) for y in SPAN for r in csv.DictReader(open(f"{B}/s_sig_t18r15_{y}.csv"))}
     champ_by = {key(t): t for t in champ}
-    print(f"Champion: {len(champ)} trades after the news filter")
+    print(f"Champion (s{TAG}_t18r15, min_vol30 {P['contract']['min_vol30']}): {len(champ)} trades after the news filter")
     for name in [k for k in RULES if RULES[k]]:
         dsig = {key(r): r for y in SPAN if os.path.exists(f"{B}/s_sig_{name}d_{y}.csv") for r in csv.DictReader(open(f"{B}/s_sig_{name}d_{y}.csv"))}
-        D = [t for f in glob.glob(f"{B}/s_{name}d_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] == "ok"]
+        D = [t for f in glob.glob(f"{B}/s{TAG}_{name}d_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] == "ok"]
         if not D: print(f"\n{name}: no trades yet"); continue
         nf.features(D); D = [t for t in D if news(t)]
         for t in D: t["route"] = dsig[key(t)]["route"]; t["moved"] = key(t) in champ_signals
-        print(f"\n## {name}: t >= 1.8 and (day volume >= 1.5x or an alert our way in the last {RULES[name]} minutes)\n")
+        print(f"\n## {name}: t >= 1.8 and (day volume >= 1.5x or an alert our way in the last {RULES[name][0]} minutes with day volume >= {RULES[name][1]}x)\n")
         print(f"Signals that differ from the champion's: {len(dsig)} ({sum(1 for k in dsig if k in champ_signals)} earlier on a champion day, "
               f"{sum(1 for k in dsig if k not in champ_signals)} new days); {len(D)} of them traded after the news filter.")
         for lname, lf in lists:

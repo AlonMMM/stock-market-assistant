@@ -310,8 +310,20 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   −2,346 a trade, negative in every year, −2,500 a trade under 1.2× day volume and −759 at 1.2–1.5×. Unseen: 10 earlier
   (+418), 7 lost (+3,250), 11 new (−2,040). ORCL 2026-09-29 itself: the alert-gated signal at 10:17 at 137.30 finds the
   contract illiquid, so the bot would not have bought there either. Not better: the burst-only days lose, as with the
-  3× 5-minute burst, and the earlier minutes hit thin contracts. A 1.2× day-volume floor on the alert route would be
-  picked from these numbers, so it was not run.
+  3× 5-minute burst, and the earlier minutes hit thin contracts.
+  - **Second round, the user's changes (2026-10-24):** the contract's liquidity floor is 10 contracts in the last 30
+    minutes instead of 200 ("contract liquidity is not my concern"), now the default in `params.json` (`min_vol30`; the
+    live bot's `minVolume30` in `packages/trading/src/bot/picker.ts` is still 200), and the alert route needs day volume
+    ≥ 1.0× (`ag5r10`). The champion re-run at 10 contracts (`sv10_t18r15`) is a different baseline: fair list 1,484
+    trades (813 at 200), +1,931 / +932 / +1,579 a trade, $603,077 / 21% at 1% ($2,332,447 / 37% at 2%) vs $585,592 /
+    11% ($2,444,629 / 21%); unseen 1,484 trades (273), $124,227 / 23% vs $123,028 / 11%. The floor roughly doubles the
+    trades and the worst drop for about the same end: the thin contracts it lets in make little. Against that baseline,
+    ag5r10: fair $584,717 / 24% ($2,121,184 / 42% at 2%), per trade +1,941 / +860 / +1,253, without the best 5 −29K /
+    −230K / −193K vs −101K / −150K / −95K; unseen $118,933 / 26% vs $124,227 / 23%. The 1.0× floor drops 276 of the
+    885 new days, but the 139 that trade still lose −2,132 each (13 winners), and 21 champion trades are lost to the
+    earlier minute; the 121 earlier entries make +3,262 vs the champion's +1,415 on the same days (PLTR 2025-02-19,
+    FSLR 2024-03-27 +134K, COIN 2025-06-18, PDD 2024-04-22). ag5 without the floor at 10 contracts: fair $538,587 /
+    25%, unseen $119,276 / 26%. Not better either way.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%

@@ -74,7 +74,7 @@
     "otm_scan_max": 0.2,
     "max_strikes": 16,
     "min_price": 0.2,
-    "min_vol30": 200,
+    "min_vol30": 10,
     "bar_max_age": 10,
     "limit_minutes": 5
   },
