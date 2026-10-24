@@ -59,6 +59,10 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
   morning      after a carry, at 09:30 + morning_minute: gap in the bet direction >= gap_keep %
                -> sell gap_sell_share, keep the rest under the rules; otherwise sell all
   expiry day   sell all at 09:30 + expiry_last_minute
+  V volume fade (vol_fade {min, until}): entry day, for an entry taken with the day's volume under `until` x normal:
+               sell all at the first minute, `min` minutes or more after the entry, when the day's volume ratio is
+               lower than `min` minutes earlier and still under `until`; once it reaches `until` the rule is off
+               (user, 2026-10-24: "if the volume stops increasing and we are not reaching 1.5x, exit")
   F failed break (failed_break True): on the entry day, the stock reached the next level ahead and fell back without
                breaking it (failed_break_minute) -> sell all on the next bar (the user's chosen bot, 2026-10-23)
 Each trade's result is a return on the premium paid (`ret`, after costs); sizing is in report.py.
@@ -134,6 +138,36 @@ def pick(und, date, minute, right, spot):
 
 
 def mid(b): return (b[2] + b[3]) / 2
+
+
+_rv = {}
+
+
+def rvol_series(und, d, cal):
+    """The stock's volume since the open / the median of the same minute over the prior 20 sessions (as the C signal),
+    by minute, or None without 10 prior sessions with data."""
+    k = (und, d)
+    if k in _rv: return _rv[k]
+    i = cal.index(d); hist = []
+    for p in cal[max(0, i - 20):i]:
+        v = [0] * 390
+        for x in day(und, p): v[x[0]] = x[5]
+        acc, cum = 0, []
+        for x in v: acc += x; cum.append(acc)
+        if cum[-1] > 0: hist.append(cum)
+    out = None
+    if len(hist) >= 10:
+        v = [0] * 390
+        for x in day(und, d): v[x[0]] = x[5]
+        acc, cum = 0, []
+        for x in v: acc += x; cum.append(acc)
+        out = []
+        for m in range(390):
+            med = sorted(h[m] for h in hist); n = len(med)
+            u = med[n // 2] if n % 2 else (med[n // 2 - 1] + med[n // 2]) / 2
+            out.append(cum[m] / u if u else None)
+    _rv[k] = out
+    return out
 
 
 def roll_hit(R_, g, sd, t, minute, sym, bet):
@@ -284,6 +318,14 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                     tt = min(t, 389); win = [sbars[m_] for m_ in range(tt - ST["window"] + 1, tt + 1) if m_ in sbars]
                     if win and (max(b[2] for b in win) - min(b[3] for b in win)) / win[-1][4] < ST["k"] * unit * (ST["window"] / 30) ** 0.5:
                         pending = ("all", "Q_still"); continue
+            VF = X.get("vol_fade")  # {min, until}: the alert-route entry whose day volume stops building (user, 2026-10-24)
+            if VF and k == 0 and not st.get("vf_off"):
+                if "vf" not in st: st["vf"] = rvol_series(und, d, cal)
+                rv = st["vf"]; tt = min(t, 389)
+                if not rv or rv[minute] is None or rv[minute] >= VF["until"]: st["vf_off"] = True
+                elif rv[tt] is not None and rv[tt] >= VF["until"]: st["vf_off"] = True
+                elif tt - minute >= VF["min"] and rv[tt] is not None and rv[tt - VF["min"]] is not None and rv[tt] < rv[tt - VF["min"]]:
+                    pending = ("all", "V_fade"); continue
             SX = X.get("stall_exit")  # {arm, min, giveback?, vol?}: the move is over -> out
             if SX and sd.ok and peak / cost - 1 >= SX["arm"]:
                 tt = min(t, 389)

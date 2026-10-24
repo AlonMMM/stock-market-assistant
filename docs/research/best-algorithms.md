@@ -342,6 +342,18 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     are near zero and not monotonic (noise); the money is in contracts with 200+ traded. 100 is one good cell between
     two bad ones, picked from these numbers, so not a champion. The simulator fills thin contracts at the mid ± 2%, so
     every slice under 200 is an upper bound. 200 stays the research default (reverted from 10 in `params.json`).
+  - **Volume-fade exit on the alert-route entries (`alert_gate.py fade`, sim.py `vol_fade`, 2026-10-24, the user's rule:
+    "if the volume stops increasing and we are not reaching 1.5×, exit"):** for an entry taken with day volume under
+    1.5×, sell all at the first minute, N minutes or more after the entry, when the day-volume ratio is lower than N
+    minutes earlier and still under 1.5×; off once 1.5× is reached. On ag5r10 at the 200-contract floor (fair
+    $528,844 / 12%, unseen $118,941 / 12%, 149 changed trades). N = 5: fair $551,049 / 11% ($2,130,980 / 22% at 2%),
+    unseen $119,207 / 12%; N = 10: $552,442 / 12%, $118,022; N = 20: $552,834 / 12%, $118,896. The exit does what
+    it should on its group: at N = 5 it cuts 42 fair-list trades from −1,460 to −492 a trade (7 → 16 winners after
+    the cut), at N = 20 22 trades from −1,233 to +764. It is not enough: ag5r10 + fade still ends under the champion
+    ($585,592 / 11%) on the fair list and under it on the unseen, because the 14 champion trades lost to the earlier
+    minute (+7,653 a trade, the contract under 200 contracts at the alert) and the new days that never fade (26 of
+    68) are not touched. A working component, not a champion; it belongs with an entry that waits for the options
+    crowd (arm on the alert, enter when the contract has 200 contracts), not yet run.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%

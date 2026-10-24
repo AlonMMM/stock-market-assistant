@@ -18,7 +18,8 @@ applied: the bot would read evaluations, not delivered alerts. Deviations from t
          data/local/x/bt/s_sig_<rule>d_<year>.csv (only stock-days whose signal differs from the champion's)
          and a check that the regenerated t18r15 signals equal s_sig_t18r15_<year>.csv
   python3 alert_gate.py round [rules...]        -> the champion's trade (score_round) on the d files
-  python3 alert_gate.py summary                 -> champion vs each rule, fair list and 151 unseen
+  python3 alert_gate.py fade [rules...]         -> the d files again with the volume-fade exit (sim.py vol_fade) at 5 / 10 / 20 min
+  python3 alert_gate.py summary                 -> champion vs each rule (and its fade variants), fair list and 151 unseen
 """
 import csv, glob, math, multiprocessing as mp, os, statistics as st, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -171,14 +172,17 @@ def signals():
             print(f"{name} {y}: {len(ys)} signals, {len(d)} differ from the champion ({earlier} earlier on the same day, {len(d) - earlier} new days)", flush=True)
 
 
-def round_():
+FADES = {"vf5": 5, "vf10": 10, "vf20": 20}   # the volume-fade exit: the ratio lower than N minutes earlier
+
+
+def round_(suffix="", extra=None):
     from tiers_round import H, NIGHT, R
     import json
-    env = dict(os.environ, BT_VARIANT="v2", BT_UNIVERSE="wide", BT_FLAT="1", BT_EXIT=json.dumps(dict(H, **NIGHT)))
+    env = dict(os.environ, BT_VARIANT="v2", BT_UNIVERSE="wide", BT_FLAT="1", BT_EXIT=json.dumps(dict(H, **NIGHT, **(extra or {}))))
     jobs = []
     for rule in [a for a in sys.argv[2:] if a[:2] != "20"] or [k for k in RULES if RULES[k]]:
         for y in YEARS:
-            out = f"{B}/s{TAG}_{rule}d_{y}"
+            out = f"{B}/s{TAG}_{rule}d{suffix}_{y}"
             if all(os.path.exists(f"{out}.{i}_trades.csv") for i in range(4)): continue
             for i in range(4):
                 jobs.append((["node", "--env-file=.env", R, "tiers.py", f"{B}/s_sig_{rule}d_{y}.csv", out, f"{i}/4"], f"{out}.{i}.log"))
@@ -189,6 +193,11 @@ def round_():
             with open(log, "w") as f: running.append(subprocess.Popen(args, env=env, stdout=f, stderr=subprocess.STDOUT))
         running[0].wait(); running = [p for p in running if p.poll() is None]
     print("done", flush=True)
+
+
+def fade():
+    """The rule's changed days again, with the volume-fade exit at each window -> s<TAG>_<rule>d_<vf>_<year>."""
+    for suf, n in FADES.items(): round_(f"_{suf}", {"vol_fade": {"min": n, "until": RV_MIN}})
 
 
 def summary():
@@ -206,10 +215,16 @@ def summary():
     print(f"Champion (s{TAG}_t18r15, min_vol30 {P['contract']['min_vol30']}): {len(champ)} trades after the news filter")
     for name in [k for k in RULES if RULES[k]]:
         dsig = {key(r): r for y in SPAN if os.path.exists(f"{B}/s_sig_{name}d_{y}.csv") for r in csv.DictReader(open(f"{B}/s_sig_{name}d_{y}.csv"))}
-        D = [t for f in glob.glob(f"{B}/s{TAG}_{name}d_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] == "ok"]
+        variants = [("", name)] + [(f"_{suf}", f"{name} + volume fade {n} min") for suf, n in FADES.items()
+                                    if glob.glob(f"{B}/s{TAG}_{name}d_{suf}_20*.[0-9]_trades.csv")]
+        Dv = {}
+        for suf, lab in variants:
+            Dv[suf] = [t for f in glob.glob(f"{B}/s{TAG}_{name}d{suf}_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] == "ok"]
+            nf.features(Dv[suf]); Dv[suf] = [t for t in Dv[suf] if news(t)]
+            rules = {r["id"]: r["rules"] for f in glob.glob(f"{B}/s{TAG}_{name}d{suf}_20*.[0-9]_legs.csv") for r in csv.DictReader(open(f))}
+            for t in Dv[suf]: t["route"] = dsig[key(t)]["route"]; t["moved"] = key(t) in champ_signals; t["rules"] = rules.get(t["id"], "")
+        D = Dv[""]
         if not D: print(f"\n{name}: no trades yet"); continue
-        nf.features(D); D = [t for t in D if news(t)]
-        for t in D: t["route"] = dsig[key(t)]["route"]; t["moved"] = key(t) in champ_signals
         print(f"\n## {name}: t >= 1.8 and (day volume >= 1.5x or an alert our way in the last {RULES[name][0]} minutes with day volume >= {RULES[name][1]}x)\n")
         print(f"Signals that differ from the champion's: {len(dsig)} ({sum(1 for k in dsig if k in champ_signals)} earlier on a champion day, "
               f"{sum(1 for k in dsig if k not in champ_signals)} new days); {len(D)} of them traded after the news filter.")
@@ -229,6 +244,14 @@ def summary():
                       + f" | ${a1:,.0f}, {100 * d1:.0f}% | ${a2:,.0f}, {100 * d2:.0f}% |")
             line("champion", L)
             line(name, A)
+            for suf, lab in variants[1:]:
+                Lv = [t for t in Dv[suf] if lf(t)]
+                Av = sorted(kept + Lv, key=lambda t: (t["date"], int(t["minute"])))
+                line(lab, Av)
+                faded = [t for t in Lv if "V_fade" in t.get("rules", "")]
+                paired = [(t, next(x for x in Ld if key(x) == key(t))) for t in faded if any(key(x) == key(t) for x in Ld)]
+                if paired: print(f"  {lab}: {len(faded)} trades cut by the fade, {sum(float(a['pnl']) > 0 for a, b in paired)} winners after vs {sum(float(b['pnl']) > 0 for a, b in paired)} before, "
+                                 f"{st.fmean(float(a['pnl']) for a, b in paired):+,.0f} vs {st.fmean(float(b['pnl']) for a, b in paired):+,.0f} a trade")
             # the changed trades, paired with what the champion did on the same stock-day
             moved = [t for t in Ld if t["moved"]]
             old = [champ_by[key(t)] for t in moved if key(t) in champ_by]
@@ -247,4 +270,4 @@ def summary():
 
 
 if __name__ == "__main__":
-    {"signals": signals, "round": round_, "summary": summary}[sys.argv[1]]()
+    {"signals": signals, "round": round_, "fade": fade, "summary": summary}[sys.argv[1]]()
