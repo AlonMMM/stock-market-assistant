@@ -160,6 +160,14 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   2026). Best-looking: near 0.5, floors, delta 0.25, sold at 09:40: fair $113,393 / 9% (40 trades, 2024 -$5,323 a
   trade), unseen $102,454 / 6% (30); Favorites (a year) up to $116,433 on 19 trades. The morning gap rule is the
   worst exit nearly everywhere.
+- The close trade, Indi's way (`eod3.py`, 2026-10-24): no volume condition; the strongest stock at 15:55 (t vs SPY ×
+  β over the last hour, or the day's C measure, >= 1.0 / 1.5 / 2.0) in the top 20% of its day's range our way, the
+  nearest expiry 1-4 days out, delta 0.15 / 0.20 / 0.25, out in the next morning's first 30 minutes (open, 09:45,
+  10:00, +50% / -30% till 10:00). 72 versions: the unseen lose with every one; none is positive every year on both
+  lists. Best fair list: day strength >= 2.0, delta 0.20, sold at 10:00: $114,663 / 11% on 178 trades, positive every
+  year (+1,348 / +1,036 / +384 a trade), $79,493 without the best 5; unseen $87,557. Day strength >= 1.5, delta 0.20,
+  10:00: fair $121,919 / 16%, unseen $74,742, Favorites (a year) $145,759 on 142 trades. Selling at 10:00 is the best
+  exit, the open the worst. Indi's own late overnight entries make +$4,450 a trade at $10K; the mechanical pick does not.
 - 0DTE, the user's spec (`zero4.py`, 2026-10-24): breakouts first (a close 0.25 S30 past yesterday's / the 5-day /
   the 15-minute / the day's high or low, or any), lower confirmations (c0: t >= 0, volume >= 1x; c1: t >= 1, 1.2x;
   c2: t >= 1.5, 1.5x), signals 09:40-12:59 New York (buys by 20:00 Israel), delta 0.15 / 0.20 / 0.25, the champion's
