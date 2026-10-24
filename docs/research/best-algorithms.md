@@ -205,6 +205,16 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   that the champion's figures lean on three thresholds hit by a hair, and the model's +-2-6% is wider than those
   margins, so neither cadence is "right"; a stop or a carry that needs the condition on two ticks (or on the closed
   minute) would take the coin-flip out. Not tested yet.
+- The +10 / +20 minute checks need the option down too (`opt_check.py`, 2026-10-24; the user's idea: "the stock not
+  only needs to be against the entry but also the option should be worth 10% less"). Against the bot today (champion +
+  the failed-break sale), all champion trades 2024-2026. "At the check" (the check fires only if both hold, else it
+  passes, as today): -10% fair list $540,852 / 10% at 1% ($2,106,518 / 19% at 2%) vs $526,469 / 10% ($2,011,681 / 18%),
+  every year positive, but unseen $123,253 vs $125,581; -5% $561,761 / $124,670; -15% $537,646 / $120,704; -20%
+  $569,276 / $120,477. The fair-list gain is four trades (ORCL 2025-01-21 +39,670 points, MSFT 2026-04-08 +26,422,
+  FSLR 2024-03-27 +24,680, META 2024-08-07 +11,496); the other 106 changed trades sum -$71K at $10K, and the unseen
+  loses at every level. "From the check on" (the check stays armed until both hold): much worse, $374K-$440K on the fair
+  list, it becomes a trailing stop that fires on the first dip (GOOGL 2026-07-31 -142K points). Not better: the fair
+  list is a handful of trades and the unseen falls. sim.py: user_stop `opt_below` / `opt_wait`.
 
 ## Candidates
 

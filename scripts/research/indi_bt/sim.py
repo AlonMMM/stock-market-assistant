@@ -36,7 +36,8 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
   U your stop (user_stop {every: {from, to, share}} sells `share` at the first minute in the window the stock is
                against the entry, once; then {checks: [[10, 0.5], [20, 1.0]], out} or {check_from, check_to, share, out}):
                at each checkpoint (minutes after the entry, once), the stock on the wrong side of the entry
-               price -> sell that share of what is left. Older form: 10-20 minutes after the entry, the stock
+               price -> sell that share of what is left. With opt_below (e.g. -0.10) the option must also be at that gain
+               or worse; with opt_wait a check not met stays armed until both hold, else it passes once. Older form: 10-20 minutes after the entry, the stock
                on the wrong side of the entry price -> sell `share` (once); option at `out` (e.g. -35%)
                with the stock on the wrong side of the entry price -> sell all
   S stock stop (stock_stop "vwap" / "prev", entry day): the stock closes back on the wrong side of
@@ -289,10 +290,14 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                     done = st.setdefault("checks_done", set())
                     hit = next((i for i, (mins, _) in enumerate(U["checks"]) if i not in done and t - minute >= mins), None)
                     if hit is not None:
-                        done.add(hit)
-                        if against:
+                        # opt_below (e.g. -0.10): the check also needs the option at that gain or worse (user, 2026-10-24);
+                        # opt_wait: a check not met stays armed until both hold, instead of passing once
+                        opt_ok = U.get("opt_below") is None or g <= U["opt_below"]
+                        if against and opt_ok:
+                            done.add(hit)
                             share = U["checks"][hit][1]
                             pending = ("all" if share >= 1 else rem * share, f"U_check{U['checks'][hit][0]}"); continue
+                        if not U.get("opt_wait"): done.add(hit)
                 elif not st.get("half") and U["check_from"] <= t - minute <= U["check_to"] and against:
                     st["half"] = True; pending = (rem * U["share"], "U_half"); continue
                 if g <= U["out"] and against: pending = ("all", "U_out"); continue
