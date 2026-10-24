@@ -208,7 +208,11 @@ interface Parts {
   // Markers on the line and on the candles alike: only the visible one shows them.
   stockMarkers: ISeriesMarkersPluginApi<Time>[];
   optionMarkers: ISeriesMarkersPluginApi<Time>[];
-  lines: IPriceLine[];
+  // Price lines on the line and on the candles alike, as with the markers.
+  lines: {
+    series: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
+    line: IPriceLine;
+  }[];
   ruleLines: IPriceLine[];
   dayStarts: Time[];
   stockLevels: number[];
@@ -560,28 +564,31 @@ export function TradeStoryChart({
 
     // The lines: the entry, the level and its touch and fall-back lines on
     // the stock; paid and the stop on the option.
-    for (const l of p.lines) {
-      p.stockLine.removePriceLine(l);
-      p.optionLine?.removePriceLine(l);
-    }
+    for (const { series, line } of p.lines) series.removePriceLine(line);
     p.lines = [];
     p.stockLevels = [];
     p.optionLevels = [];
     for (const l of levelLines(story)) {
-      const series = l.pane === "stock" ? p.stockLine : p.optionLine;
-      if (!series) continue;
+      const onStock = l.pane === "stock";
+      const targets = onStock
+        ? [p.stockLine, p.stockCandles]
+        : [p.optionLine, p.optionCandles];
       const { color, style } = lineStyle(l.kind);
-      p.lines.push(
-        series.createPriceLine({
-          price: l.price,
-          color,
-          lineWidth: 1,
-          lineStyle: style,
-          axisLabelVisible: true,
-          title: l.title,
-        }),
-      );
-      if (l.pane === "stock") p.stockLevels.push(l.price);
+      for (const series of targets) {
+        if (!series) continue;
+        p.lines.push({
+          series,
+          line: series.createPriceLine({
+            price: l.price,
+            color,
+            lineWidth: 1,
+            lineStyle: style,
+            axisLabelVisible: true,
+            title: l.title,
+          }),
+        });
+      }
+      if (onStock) p.stockLevels.push(l.price);
       else p.optionLevels.push(l.price);
     }
     // The strength pane: zero, and the rule the signal needed (its side
