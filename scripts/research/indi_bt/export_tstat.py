@@ -18,7 +18,10 @@ from low_delta import HIS40, PRIOR
 B = "data/local/x/bt"
 CAL = calendar()
 X0 = {**sim.X, **H, **NIGHT, "thesis": {"t": 0.5}}
-SLUG, NAME = "t18-tstat", "Champion: t ≥ 1.8 + news filter + t-stat exit, delta 0.15"
+# BT_HOLD (e.g. 0.5): the overnight hold from that gain; BT_SLUG / BT_NAME name the version (defaults: the t-stat exit at +100%)
+if os.environ.get("BT_HOLD"): X0["carry_min_gain"] = float(os.environ["BT_HOLD"])
+SLUG = os.environ.get("BT_SLUG", "t18-tstat")
+NAME = os.environ.get("BT_NAME", "Champion: t ≥ 1.8 + news filter + t-stat exit, delta 0.15")
 PER = 78
 WORDS = {"U_check10": "Stop: 10-min check", "U_check20": "Stop: 20-min check", "U_out": "Stop: -30%", "eod_close": "Sold 15:50",
          "morning_gap_keep": "sold half next morning", "morning_gap_against": "sold next morning", "expiry_day": "expiry day",
@@ -67,7 +70,8 @@ def main():
     base_t = list(csv.DictReader(open(sys.argv[2]))) if len(sys.argv) > 3 else []
     base_p = list(csv.DictReader(open(sys.argv[3]))) if len(sys.argv) > 3 else []
     base_t = [r for r in base_t if r["version"] != SLUG]; base_p = [r for r in base_p if not r["key"].startswith(SLUG + "-")]
-    for name, data in (("trades5.csv", base_t + rows), ("paths4.csv", base_p + paths)):
+    names = (os.environ.get("BT_OUT_TRADES", "trades5.csv"), os.environ.get("BT_OUT_PATHS", "paths4.csv"))
+    for name, data in ((names[0], base_t + rows), (names[1], base_p + paths)):
         with open(f"{out}/{name}", "w") as f:
             w = csv.DictWriter(f, fieldnames=list(data[0].keys())); w.writeheader(); w.writerows(data)
         print(name, len(data), "rows", os.path.getsize(f"{out}/{name}") // 1024, "KB")
