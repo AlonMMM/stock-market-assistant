@@ -171,6 +171,15 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 - The close trade held longer (`eod4.py`, 2026-10-24, eod3's entries with day strength >= 1.5 / 2.0): out at -30%
   else 15:50, +100% / -30%, a 30% trail from +50%, the champion's stop on the stock: all worse than selling at 10:00
   (median fair end $76K-$99K vs $113,713 at 10:00; unseen $74K-$83K vs $86,442).
+- The close trade with support / resistance and a hedged winner (`eod5.py`, 2026-10-24, what the user meant the two
+  ideas for): candidates filtered at 15:55 by "above a level it broke today" (true for 7,756 of 7,795 candidates: it
+  filters nothing) and / or "not stuck under a level in the last hour" (797 stuck); the next morning, an option up
+  +50% at 09:40 kept with a 30% trail (RUN), and the same with a stock hedge of contracts x 100 x delta x 0.5 shares
+  (HEDGE). 72 versions: none positive every year on both lists. The filters add a little on the fair list (median
+  $104,043 with both vs $100,119 without) and nothing on the unseen ($83,301 vs $84,557). Keeping the winners is
+  worse than selling at 10:00 (median fair $102,691 RUN, $100,475 HEDGE vs $113,623; worst drop 14% vs 12%); the
+  hedge helps the unseen a little over RUN and costs the fair list. Best: t >= 2.0, not stuck, delta 0.25, 10:00:
+  fair $112,594 / 10% (175 trades), unseen $94,663.
 - Support / resistance at the 15:50 hold (`night_levels.py`, 2026-10-24, on the chosen bot): "above a support it broke
   today" is true for every held trade (74 of 74), so it filters nothing; "stuck under a level in the last hour" (8 of
   74): no hold when stuck $517,868 vs $526,469, unseen +$1K. Not better. What looked like a level gain (hold from +50%
