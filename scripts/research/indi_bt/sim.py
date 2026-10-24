@@ -52,6 +52,7 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                `until`): mode "at20" when the stock is not against at the 20-minute check, mode "back" at the first close
                `off` (price units) past the entry price our way; next bar at the middle + SH. The stops and the hold
                then measure the gain from the average cost; result() pays for the rebuy (user, 2026-10-24)
+  user_stop.rest_after_half: once a check sold part, the later checks sell regardless of the stock (the rest out at +20)
   early_out {min, out}: on the entry day the -X% stop is `out` (e.g. -0.5) in the first `min` minutes, then user_stop.out
   T thesis (thesis {s30, bar, t}): entry day, the stock closes `s30` S30 units against the entry price (T_s30), or past the
                signal bar's low / high (T_bar), or the signal's cumulative t vs SPY x beta falls to `t` or under (T_tstat)
@@ -405,7 +406,8 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                         # opt_below (e.g. -0.10): the check also needs the option at that gain or worse (user, 2026-10-24);
                         # opt_wait: a check not met stays armed until both hold, instead of passing once
                         opt_ok = U.get("opt_below") is None or g <= U["opt_below"]
-                        if against and opt_ok:
+                        forced = U.get("rest_after_half") and hit > 0 and st.get("half_q")  # sell the rest even with the stock back (user, 2026-10-24)
+                        if (against and opt_ok) or forced:
                             done.add(hit)
                             share = U["checks"][hit][1]
                             pending = ("all" if share >= 1 else rem * share, f"U_check{U['checks'][hit][0]}"); continue

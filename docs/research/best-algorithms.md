@@ -300,6 +300,13 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   past the entry (99) $527,872; B1 0.25 S30 past it (72) $526,825. Unseen lower in all: A $123,372 / 11%, B0 $122,377,
   B1 $123,173 vs $125,581 / 10%. Not better: a second try at the same trade loses except for two big ones. sim.py:
   `rebuy {mode, off, until}`.
+- Sell the rest after the +10 half (`rest20.py`, 2026-10-24; the user: "if buying the half back is not helping, isn't
+  selling in that spot saving money?"). The mirror of the rebuy: the rest always out at +20 once +10 sold half, fair
+  $508,588 / 13% vs $526,469 / 10% ($1.88M / 24% vs $2.01M / 18% at 2%), 55 trades changed -$35,761: ORCL 2025-01-21
+  -39,404, FSLR 2024-03-27 -24,560, HOOD 2025-06-24 -9,608 (without ORCL and FSLR the change is +$28K). Unseen $127,475
+  vs $125,581 (+$14.9K on 15 trades). All at +10 when against: fair $485,867 / 14%, unseen $123,613. Not better: the
+  kept half is a loser on most trades and pays for itself with the rare ORCL; selling it raises the drop. sim.py:
+  `user_stop.rest_after_half`.
 - More air unless the thesis breaks (`thesis.py`, 2026-10-24; the user's goal: a -50% stop "if our thesis is not
   broken"). Thesis exits on the stock, entry day: a close k S30 against the entry (k 0.5 / 1 / 1.5), a close past the
   signal bar's low (put: high), or the signal's own cumulative t-stat vs SPY x beta down to 0 or 0.5; with the option
