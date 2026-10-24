@@ -310,6 +310,10 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   -40% / -50% stops with it are worse than -30% on the fair list. Candidate, a hair short of the rule: the unseen is
   $349 lower, and most of the fair-list gain is one trade (MSFT 2025-04-09; without it still +$17K over 33 trades).
   Cheap to run live: the bot computes the t-stat every minute for the scan already.
+  With the stop at -35% / -40% (user, 2026-10-24): fair list $531,488 / 10% and $518,434 / 10% (2%: $2.04M / 19%,
+  $1.94M / 19%) vs $549,153 / 9% at -30%; unseen $133,047 / 10% and $132,146 / 11% vs $125,260, but that is UNH
+  2024-12-05 (+53,000) and LLY 2025-10-01 (+23,120) again, as for -35% / -40% alone ($507,090 / $510,995 fair; $134,444
+  / $133,590 unseen). -30% stays the stop; the wider ones give back on the fair list what the t-stat exit earns.
 
 ## Candidates
 
