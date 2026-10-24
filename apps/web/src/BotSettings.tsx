@@ -28,14 +28,16 @@ import {
   type TickerItem,
 } from "./bot-settings-model.js";
 import {
+  botBrokerChoices,
   botBrokers,
-  type BotBroker,
+  brokerNames,
+  type BotBrokerChoice,
 } from "../../../packages/trading/src/bot/settings.js";
 import { usePolling } from "./Live.js";
 import { israelClock } from "./time.js";
 
-const brokerName = (b: BotBroker) =>
-  b === "ibkr" ? "Interactive Brokers" : "Alpaca";
+const choiceName = (c: BotBrokerChoice) =>
+  c === "both" ? "Both" : brokerNames[c];
 
 // The bot's settings (docs/tasks/frontend-bot-settings.md), for the account
 // owner only: the stocks it watches, trade size, losses, holding, the contract
@@ -847,11 +849,16 @@ export function BotSettingsPage({ onBack }: { onBack: () => void }) {
   let modeHelp = "Every signal is a paper order.";
   if (s.mode === "dry") modeHelp = "Signals are logged as “would buy”.";
   // The brokers the trading service has connected; an older service names none.
-  const brokers = view?.brokers ?? [s.broker];
+  const brokers = view?.brokers ?? botBrokers.filter((b) => b === s.broker);
+  const canChoose = (c: BotBrokerChoice) =>
+    c === "both" ? brokers.length >= 2 : brokers.includes(c);
   let brokerHelp =
     "New entries are bought there; an open position is sold where it was bought.";
-  if (brokers.length < 2)
-    brokerHelp = `Only ${brokerName(brokers[0] ?? s.broker)} is connected.`;
+  if (s.broker === "both")
+    brokerHelp =
+      "Every signal is bought at both accounts, the same contract, to compare fills and fees. A position is sold where it was bought.";
+  else if (brokers.length < 2)
+    brokerHelp = `Only ${choiceName(brokers[0] ?? s.broker)} is connected.`;
 
   return (
     <div className="bot-panel bot-settings">
@@ -910,16 +917,16 @@ export function BotSettingsPage({ onBack }: { onBack: () => void }) {
           </div>
           <span className="muted small">{modeHelp}</span>
           <div className="bs-seg" role="group" aria-label="Broker">
-            {botBrokers.map((b) => (
+            {botBrokerChoices.map((c) => (
               <button
-                key={b}
+                key={c}
                 type="button"
-                aria-pressed={s.broker === b}
-                disabled={!brokers.includes(b)}
-                title={brokers.includes(b) ? undefined : "Not connected"}
-                onClick={() => put({ broker: b })}
+                aria-pressed={s.broker === c}
+                disabled={!canChoose(c)}
+                title={canChoose(c) ? undefined : "Not connected"}
+                onClick={() => put({ broker: c })}
               >
-                {brokerName(b)}
+                {choiceName(c)}
               </button>
             ))}
           </div>

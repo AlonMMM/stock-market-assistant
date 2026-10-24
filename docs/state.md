@@ -26,8 +26,10 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
   `BOT_ALPACA_API_SECRET` the bot trades a second paper account of the owner's, and Portfolio gets a
   read-only **Bot trades** tab for it (`/api/portfolio/bot`). See
   [the task](tasks/backend-bot-account.md).
-- **IBKR (2026-10-24, `feat/bot-ibkr`, deploy pending):** the Bot settings page gets a Broker switch (Alpaca |
-  Interactive Brokers) for new entries; a position is sold where it was bought. IBKR is the owner's paper account
+- **IBKR (2026-10-24, #140 deployed; `feat/bot-both-brokers` in review):** the Bot settings page gets a Broker
+  switch (Alpaca | Interactive Brokers | Both) for new entries; a position is sold where it was bought. "Both"
+  buys the same contract at each account, to compare fills and fees; the Bot trades tab shows either account by
+  toggle (IBKR through the trader). IBKR is the owner's paper account
   behind the Gateway (the account `IBKR_GATEWAY` adds); `BOT_BROKER` is only the default before a save; market
   data stays Alpaca. The service records the IBKR account's value daily (`equity_days`), so the risk
   manager's drawdown brake works there too. The Bot trades tab still shows the Alpaca bot account. See

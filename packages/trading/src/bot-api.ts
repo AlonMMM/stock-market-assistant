@@ -2,6 +2,7 @@
 // trading service answers at GET /v1/bot, read with the read-only token.
 
 import type { BotBroker, BotSettings } from "./bot/settings.js";
+import type { Portfolio, PortfolioHistory } from "./portfolio.js";
 import {
   controlAccess,
   type ControlConfig,
@@ -231,6 +232,62 @@ export async function handleBotSettings(
     return {
       status: 502,
       body: { error: `The trading service answered ${response.status}` },
+    };
+  } catch {
+    return {
+      status: 502,
+      body: { error: "The trading service is unreachable" },
+    };
+  }
+}
+
+/**
+ * The Bot trades tab for an account the site cannot read itself (IBKR, behind
+ * the Gateway): the trading service answers from its own view of that account
+ * (apps/trader/src/bot-portfolio.ts). `period` undefined asks for the
+ * positions, else for the history of that period.
+ */
+export async function handleBotPortfolioAt(
+  trader: { url?: string; token?: string },
+  broker: unknown,
+  period: unknown,
+  fetcher: typeof fetch = fetch,
+): Promise<{
+  status: number;
+  body: Portfolio | PortfolioHistory | { error: string };
+}> {
+  if (broker !== "alpaca" && broker !== "ibkr")
+    return { status: 400, body: { error: "broker must be alpaca or ibkr" } };
+  if (!trader.url || !trader.token)
+    return {
+      status: 503,
+      body: { error: "The trading service is not configured for this site" },
+    };
+  const path =
+    period === undefined
+      ? `/v1/bot/portfolio?broker=${broker}`
+      : `/v1/bot/portfolio/history?broker=${broker}&period=${encodeURIComponent(String(period))}`;
+  try {
+    const response = await fetcher(new URL(path, trader.url), {
+      headers: { Authorization: `Bearer ${trader.token}` },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!response.ok) {
+      const said = (await response.json().catch(() => null)) as {
+        error?: unknown;
+      } | null;
+      const why =
+        typeof said?.error === "string"
+          ? said.error
+          : `HTTP ${response.status}`;
+      return {
+        status: response.status === 400 ? 400 : 502,
+        body: { error: `The trading service answered: ${why}` },
+      };
+    }
+    return {
+      status: 200,
+      body: (await response.json()) as Portfolio | PortfolioHistory,
     };
   } catch {
     return {

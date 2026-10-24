@@ -5,6 +5,7 @@ import { nextAction, nightCapSell } from "../packages/trading/src/bot/exits.js";
 import {
   defaultSettings,
   drawdown,
+  entryBrokers,
   exitRules,
   limits,
   parseSettings,
@@ -130,7 +131,14 @@ test("parse: the defaults pass; values are checked, snapped to the step and tick
   );
   assert.equal(parseSettings({ ...defaultSettings, mode: "real" }).ok, false);
   assert.equal(parseSettings({ ...defaultSettings, broker: "ibkr" }).ok, true);
+  assert.equal(parseSettings({ ...defaultSettings, broker: "both" }).ok, true);
   assert.equal(parseSettings({ ...defaultSettings, broker: "ib" }).ok, false);
+  assert.deepEqual(entryBrokers("both", ["alpaca", "ibkr"]), [
+    "alpaca",
+    "ibkr",
+  ]);
+  assert.deepEqual(entryBrokers("both", ["alpaca"]), ["alpaca"]);
+  assert.deepEqual(entryBrokers("ibkr", ["alpaca"]), []);
   // Settings saved before the broker setting keep the base's broker.
   assert.equal(
     withDefaults({ sizePct: 1 }, { ...defaultSettings, broker: "ibkr" }).broker,

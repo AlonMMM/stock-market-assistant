@@ -62,6 +62,7 @@ import {
   handleBotStatus,
   pushFavorites,
 } from "../../../packages/trading/src/bot-api.js";
+import { handleBotPortfolioAt } from "../../../packages/trading/src/bot-api.js";
 import { newYork } from "../../../packages/market-data/src/calendar.js";
 import { handleOrderDecisions } from "../../../packages/trading/src/decisions-api.js";
 import {
@@ -687,13 +688,29 @@ export default {
           status: 405,
           headers: { Allow: "GET" },
         });
-      const result = await handleBotPortfolio(
-        { key: env.BOT_ALPACA_API_KEY, secret: env.BOT_ALPACA_API_SECRET },
+      const params = new URL(request.url).searchParams;
+      const broker = params.get("broker");
+      const period =
         path === "/api/portfolio/bot"
           ? undefined
-          : (new URL(request.url).searchParams.get("period") ?? ""),
-        botPortfolio,
-      );
+          : (params.get("period") ?? "");
+      // Another account than the bot's Alpaca one is read through the trading
+      // service (docs/tasks/backend-bot-ibkr.md).
+      const result =
+        broker && broker !== "alpaca"
+          ? await handleBotPortfolioAt(
+              { url: env.TRADER_URL, token: env.TRADER_READ_TOKEN },
+              broker,
+              period,
+            )
+          : await handleBotPortfolio(
+              {
+                key: env.BOT_ALPACA_API_KEY,
+                secret: env.BOT_ALPACA_API_SECRET,
+              },
+              period,
+              botPortfolio,
+            );
       return Response.json(result.body, {
         status: result.status,
         headers: { "Cache-Control": "no-store" },

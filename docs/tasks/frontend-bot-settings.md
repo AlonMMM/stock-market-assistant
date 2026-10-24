@@ -74,7 +74,8 @@ type into the shared package.
 
 ## Broker switch (2026-10-24, backend task docs/tasks/backend-bot-ibkr.md)
 
-Next to the mode switch: Alpaca | Interactive Brokers, where new entries are bought. A broker the trading
+Next to the mode switch: Alpaca | Interactive Brokers | Both, where new entries are bought ("Both": the same
+contract at each account, to compare fills and fees). A broker the trading
 service has not connected (`GET /api/bot` → `brokers`) is greyed out with "Not connected"; an older service
 that names none shows only the saved broker. The help line says an open position is sold where it was bought.
 Reset to defaults keeps the broker. Added by the backend session, not checked in a browser.

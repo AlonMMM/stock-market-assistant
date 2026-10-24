@@ -18,13 +18,35 @@ import {
 // which are connected; a position keeps the broker it was bought at.
 export type BotBroker = "alpaca" | "ibkr";
 export const botBrokers: readonly BotBroker[] = ["alpaca", "ibkr"];
+export const brokerNames: Record<BotBroker, string> = {
+  alpaca: "Alpaca",
+  ibkr: "Interactive Brokers",
+};
+// The owner's choice: one broker, or both at once, every signal bought at
+// each (user 2026-10-24: "trade in both in parallel, to see the difference in
+// premia and rake").
+export type BotBrokerChoice = BotBroker | "both";
+export const botBrokerChoices: readonly BotBrokerChoice[] = [
+  "alpaca",
+  "ibkr",
+  "both",
+];
+
+/** The brokers a choice buys at, among the connected ones. */
+export function entryBrokers(
+  choice: BotBrokerChoice,
+  connected: readonly BotBroker[],
+): BotBroker[] {
+  if (choice === "both") return botBrokers.filter((b) => connected.includes(b));
+  return connected.includes(choice) ? [choice] : [];
+}
 
 export interface BotSettings {
   enabled: boolean;
   mode: "live" | "dry";
-  // Where new entries are bought: the owner's IBKR paper account, or the
-  // bot's Alpaca account. Open positions stay with their own broker.
-  broker: BotBroker;
+  // Where new entries are bought: the owner's IBKR paper account, the bot's
+  // Alpaca account, or both. Open positions stay with their own broker.
+  broker: BotBrokerChoice;
   // The version of the rules the bot runs (versions.ts): a known version's id
   // ("2.1") or the owner's own label for a rule set. Every entry is stamped
   // with it, with a star when the rules were changed from the version's.
@@ -192,9 +214,9 @@ export function parseSettings(
   if (body.mode !== "live" && body.mode !== "dry")
     return { ok: false, error: "mode must be live or dry" };
   out.mode = body.mode;
-  if (body.broker !== "alpaca" && body.broker !== "ibkr")
-    return { ok: false, error: "broker must be alpaca or ibkr" };
-  out.broker = body.broker;
+  if (!(botBrokerChoices as readonly unknown[]).includes(body.broker))
+    return { ok: false, error: "broker must be alpaca, ibkr or both" };
+  out.broker = body.broker as BotBrokerChoice;
   const version = typeof body.version === "string" ? body.version.trim() : "";
   if (!versionLabelPattern.test(version))
     return {
