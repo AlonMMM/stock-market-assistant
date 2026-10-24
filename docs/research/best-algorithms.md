@@ -20,10 +20,19 @@ A version beats the champion only when **all** hold, on the same period (Feb 202
 
 | Since      | Version                                                                                                                                                                                         | Fair list: end / worst drop / years           | 151 unseen: end / worst drop |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ---------------------------- |
+| 2026-10-24 | **Rest stop -20%**: the overnight-from-+50% champion below, plus on the entry day, once the +10 check sold half, the rest out at -20% (not -30%) with the stock against (the user's idea: be more careful with trades we already cut) | $811,353 / 11% / +2,768 a trade higher every year (+692K / +865K / +768K at $10K) | $124,471 / 10% |
 | 2026-10-24 | **Overnight from +50%**: the t-stat exit champion below, holding winners up 50% (not 100%) overnight at 15:50 (the user's number; +75% also beats +100%) | $795,638 / 11% / +3,329 +2,417 +3,018 a trade | $122,890 / 10%               |
 | 2026-10-24 | t-stat exit: the champion below, plus on the entry day sell all when the signal's own cumulative t-stat vs SPY × beta falls to 0.5 or under (the entry needs 1.8); the -30% stop stays (the user's call, 2026-10-24) | $610,096 / 11% / +2,768 +2,153 +2,703 a trade | $122,679 / 11%               |
 | 2026-10-22 | News filter + t ≥ 1.8: the C signal with t ≥ 1.8 (not 2.0) and day volume ≥ 1.5×, no entry on earnings reaction days or with pre-market volume ≥ 4×, delta 0.15, your stop + overnight hold | $585,592 / 11% / +2,762 +2,039 +2,699 a trade | $123,028 / 11%               |
 
+- Rest stop -20% (`rest_stop.py` on the 2.1 bot, `rest_stop2.py` on today's bot and champion; levels -20% / -15% / -20%
+  on the option alone set before running, -20% the main one): champion $811,353 / 11% vs $795,638 / 11% at 1%,
+  $4,502,047 / 21% vs $4,329,976 / 22% at 2%; without the best 5 $304,317 vs $298,445; every year higher (+692K / +865K /
+  +768K vs +689K / +858K / +758K at $10K); unseen $124,471 / 10% vs $122,890 / 10%. A band: -15% $822,300 / $124,026,
+  -20% on the option alone $812,373 / $123,731. Broad: 159 trades change, the largest gain GME 2025-07-21 +1,818,
+  the largest loss SMCI 2025-10-01 -8,767. On the bot 2.3 (+ failed break): $695,450 / 9% vs $690,515 / 10% ($3,372,307
+  / 18% vs $3,325,165 / 19% at 2%), unseen $127,433 / 9% vs $125,788 / 10%. Small (+2% fair, +1.3% unseen) but on every
+  check. sim.py: `after_half {out}`.
 - Overnight from +50% (`hold50.py`): at 2% $4,329,976 / 22% vs $2,647,105 / 21%; without the best 5 +1,483 vs +1,127 a
   trade; 39 trades change (15 better), TSLA 2024-07-01 +150,319 and SMCI 2025-02-14 +80,126 the largest; 146 nights
   held instead of 101. Unseen $122,890 / 10% vs $122,679 / 11% (14 trades). With the bot's rules (failed break +
@@ -409,7 +418,7 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Candidates
 
-- A tighter stop on the rest after the +10 half (`rest_stop.py`, 2026-10-24; the user: "be more careful with trades we
+- (Now the champion, see above.) A tighter stop on the rest after the +10 half (`rest_stop.py`, 2026-10-24; the user: "be more careful with trades we
   already cut - maybe move the stop higher"; levels set before running). Entry day, once +10 sold half: R20 the rest
   out at -20% with the stock against: fair $529,302 / 9% vs $526,469 / 10% ($2,033,193 / 17% vs $2,011,681 / 18% at
   2%), every year higher (+469K / +666K / +726K vs +468K / +665K / +724K), unseen $127,223 vs $125,581 (every year
