@@ -47,6 +47,7 @@ These are the defaults. Since 2026-10-22 the owner can change each one on the si
   - Your stop: half at +10 minutes and the rest at +20 minutes if the stock is against the entry; all out at −30%
     with the stock against.
   - 15:50: hold winners up 100% or more overnight (at most 2 nights, with a session before expiry); sell the rest.
+    Since version 2.3 (2026-10-24, the user's call) the bar is +50% (`holdFromPct`, default 50).
     Of what is held, one contract is worth at most 10% of the account (`nightCapPct`, default 10; the user chose 10 on 2026-10-22): the excess is sold first.
     See "V2 rules" below.
   - The first carried morning at 09:40: half if the stock gapped 0.5% or more our way, otherwise all.

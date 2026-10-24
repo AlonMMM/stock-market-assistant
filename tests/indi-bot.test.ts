@@ -945,30 +945,30 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
 
 test("versions: every entry is stamped with the version in force; changed rules star it; the owner can pick an older one", async () => {
   const h = harness("live");
-  assert.equal(h.bot.status().version, "2.2");
+  assert.equal(h.bot.status().version, "2.3");
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy");
-  assert.match(String(buy?.body.note), /· bot 2\.2$/);
+  assert.match(String(buy?.body.note), /· bot 2\.3$/);
   const [p] = h.store.openPositions();
-  assert.equal(p!.version, "2.2");
-  assert.equal(h.store.signals(DAY)[0]!.version, "2.2");
-  assert.equal(h.bot.status().positions[0]!.version, "2.2");
+  assert.equal(p!.version, "2.3");
+  assert.equal(h.store.signals(DAY)[0]!.version, "2.3");
+  assert.equal(h.bot.status().positions[0]!.version, "2.3");
   const texts = () =>
     h.bot
       .status()
       .activity.map((e) => e.text)
       .join("\n");
-  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.2$/m);
+  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.3$/m);
 
-  // The stop changed from 2.2's: the next entry is stamped "2.2*".
+  // The stop changed from 2.3's: the next entry is stamped "2.3*".
   const edited = harness("live");
   edited.bot.setSettings({ ...edited.bot.settings(), stopPct: 40 });
-  assert.equal(edited.bot.status().version, "2.2*");
+  assert.equal(edited.bot.status().version, "2.3*");
   await edited.run(DAY, 565, 600);
-  assert.equal(edited.store.openPositions()[0]!.version, "2.2*");
+  assert.equal(edited.store.openPositions()[0]!.version, "2.3*");
   assert.match(
     String(edited.calls.find((c) => c.kind === "buy")?.body.note),
-    /· bot 2\.2\*$/,
+    /· bot 2\.3\*$/,
   );
 
   // Version 1.0 picked: its rules (t 2, no night cap, no news filter) run, and the feed says so.
@@ -982,6 +982,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
     skipPremarket: false,
     sellFailedBreak: false,
     sellOnWeakness: false,
+    holdFromPct: 100,
   });
   assert.equal(picked.version, "1.0");
   assert.equal(old.bot.status().version, "1.0");
@@ -990,7 +991,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
       .status()
       .activity.map((e) => e.text)
       .join("\n"),
-    /Settings changed: version "2\.2" → "1\.0"; sellOnWeakness true → false; sellFailedBreak true → false; nightCapPct 10 → 0; minT 1\.8 → 2/,
+    /Settings changed: version "2\.3" → "1\.0"; sellOnWeakness true → false; sellFailedBreak true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2/,
   );
 });
 
