@@ -22,7 +22,8 @@ RISK = dict(V["risk"])
 if os.environ.get("BT_FLAT"): RISK = {"C": 0.01, "B": 0.01, "A": 0.01}  # baseline: every trade at 1%, no adds
 UNIT = 10000 / 0.01  # dollars of premium per 1.0 of risk
 ROLL_DELTA = float(os.environ.get("BT_ROLL_DELTA", "0.20"))
-ROLL_FUND = os.environ.get("BT_ROLL_FUND", "profit")  # "profit": half the profit so far; "premium": the sold part's original cost
+ROLL_FUND = os.environ.get("BT_ROLL_FUND", "profit")
+RETRY = int(os.environ.get("BT_RETRY_ILLIQUID", "0"))  # see run(): retry an illiquid pick until this minute  # "profit": half the profit so far; "premium": the sold part's original cost
 
 
 def leg(t, minute, sym, exp, cal):
@@ -72,6 +73,17 @@ def run(rows, prefix, shard=0, shards=1):
         if n % shards != shard: continue
         m = int(t["minute"]); bm = int(t["b_minute"]) if t["b_minute"] != "" else None; am = int(t["a_minute"]) if t["a_minute"] != "" else None
         picked, why = sim.pick(t["sym"], t["date"], m, t["right"], float(t["price"]))
+        # BT_RETRY_ILLIQUID=<last minute>: a contract under min_vol30 at the signal is tried again every minute until it
+        # has the volume (the options crowd arrives) or that minute passes; the entry moves to that minute (user, 2026-10-24)
+        if not picked and why == "illiquid" and RETRY:
+            sbars = {x[0]: x for x in day(t["sym"], t["date"])}
+            t = dict(t, signal_minute=m)
+            while not picked and why == "illiquid" and m < RETRY:
+                m += 1
+                if m not in sbars: continue
+                t["minute"], t["price"] = m, sbars[m][4]
+                picked, why = sim.pick(t["sym"], t["date"], m, t["right"], sbars[m][4])
+            t["time"] = f"{(570 + m) // 60:02d}:{(570 + m) % 60:02d}"
         if not picked: trades.append(dict(t, id=n, status=why)); continue
         sym, exp, k, dl, px, v30, iv = picked
         tier = "A" if am == m else "B" if bm == m else "C"

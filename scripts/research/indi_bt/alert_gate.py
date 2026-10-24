@@ -38,7 +38,10 @@ WIN, THRESHOLD, PACE, MIN_VOL, PRICE_MULT, MIN_MOVE = 3, 4.0, 4.0, 10000, 3.0, 0
 PACE_SKIP_OPEN, PACE_SKIP_CLOSE, PACE_MIN_MINUTES = 30, 30, 15
 TAG = os.environ.get("BT_TAG", "")  # output prefix s<TAG>_... (the champion at the same contract rules: s<TAG>_t18r15)
 # name -> (alert window in minutes, day-volume floor on the alert route); None: the champion, as a check
-RULES = {"t18r15": None, "ag5": (5, 0.0), "ag15": (15, 0.0), "ag5r10": (5, 1.0)}
+RULES = {"t18r15": None, "ag5": (5, 0.0), "ag15": (15, 0.0), "ag5r10": (5, 1.0), "ag5r12": (5, 1.2)}
+LAST_ENTRY = 374   # retries stop at 15:44, the signal window's end
+LABELS = {"vf5": "volume fade 5 min", "vf10": "volume fade 10 min", "vf20": "volume fade 20 min",
+          "rt": "entry waits for 200 contracts", "rt_vf5": "waits for 200 contracts + fade 5 min"}
 if os.environ.get("BT_RULES"): RULES = {k: RULES[k] for k in os.environ["BT_RULES"].split(",")}
 
 
@@ -175,17 +178,19 @@ def signals():
 FADES = {"vf5": 5, "vf10": 10, "vf20": 20}   # the volume-fade exit: the ratio lower than N minutes earlier
 
 
-def round_(suffix="", extra=None):
+def round_(suffix="", extra=None, env_extra=None, full=False):
+    """full: the rule's whole signal file (s_sig_<rule>_<year>), not only the days that differ from the champion."""
     from tiers_round import H, NIGHT, R
     import json
-    env = dict(os.environ, BT_VARIANT="v2", BT_UNIVERSE="wide", BT_FLAT="1", BT_EXIT=json.dumps(dict(H, **NIGHT, **(extra or {}))))
+    env = dict(os.environ, BT_VARIANT="v2", BT_UNIVERSE="wide", BT_FLAT="1", BT_EXIT=json.dumps(dict(H, **NIGHT, **(extra or {}))), **(env_extra or {}))
     jobs = []
     for rule in [a for a in sys.argv[2:] if a[:2] != "20"] or [k for k in RULES if RULES[k]]:
         for y in YEARS:
-            out = f"{B}/s{TAG}_{rule}d{suffix}_{y}"
+            d = "" if full else "d"
+            out = f"{B}/s{TAG}_{rule}{d}{suffix}_{y}"
             if all(os.path.exists(f"{out}.{i}_trades.csv") for i in range(4)): continue
             for i in range(4):
-                jobs.append((["node", "--env-file=.env", R, "tiers.py", f"{B}/s_sig_{rule}d_{y}.csv", out, f"{i}/4"], f"{out}.{i}.log"))
+                jobs.append((["node", "--env-file=.env", R, "tiers.py", f"{B}/s_sig_{rule}{d}_{y}.csv", out, f"{i}/4"], f"{out}.{i}.log"))
     running = []
     while jobs or running:
         while jobs and len(running) < 8:
@@ -200,6 +205,17 @@ def fade():
     for suf, n in FADES.items(): round_(f"_{suf}", {"vol_fade": {"min": n, "until": RV_MIN}})
 
 
+def retry():
+    """The rule's changed days with the entry waiting for a liquid contract, alone and with the 5-minute fade."""
+    rt = {"BT_RETRY_ILLIQUID": str(LAST_ENTRY)}
+    round_("_rt", None, rt); round_("_rt_vf5", {"vol_fade": {"min": 5, "until": RV_MIN}}, rt)
+
+
+def champrt():
+    """The champion's own signals with the same retry -> s<TAG>_t18r15_rt_<year> (the baseline for the retry variants)."""
+    sys.argv[2:2] = ["t18r15"]; round_("_rt", None, {"BT_RETRY_ILLIQUID": str(LAST_ENTRY)}, full=True)
+
+
 def summary():
     import news_filter as nf
     from low_delta import HIS40, PRIOR
@@ -212,11 +228,15 @@ def summary():
     nf.features(champ); champ = sorted((t for t in champ if news(t)), key=lambda t: (t["date"], int(t["minute"])))
     champ_signals = {key(r) for y in SPAN for r in csv.DictReader(open(f"{B}/s_sig_t18r15_{y}.csv"))}
     champ_by = {key(t): t for t in champ}
+    champ_rt = [t for f in glob.glob(f"{B}/s{TAG}_t18r15_rt_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] == "ok"]
+    if champ_rt:
+        nf.features(champ_rt); champ_rt = sorted((t for t in champ_rt if news(t)), key=lambda t: (t["date"], int(t["minute"])))
+        print(f"Champion + entry waits for 200 contracts: {len(champ_rt)} trades")
     print(f"Champion (s{TAG}_t18r15, min_vol30 {P['contract']['min_vol30']}): {len(champ)} trades after the news filter")
     for name in [k for k in RULES if RULES[k]]:
         dsig = {key(r): r for y in SPAN if os.path.exists(f"{B}/s_sig_{name}d_{y}.csv") for r in csv.DictReader(open(f"{B}/s_sig_{name}d_{y}.csv"))}
-        variants = [("", name)] + [(f"_{suf}", f"{name} + volume fade {n} min") for suf, n in FADES.items()
-                                    if glob.glob(f"{B}/s{TAG}_{name}d_{suf}_20*.[0-9]_trades.csv")]
+        found = sorted({f.split(f"_{name}d_")[1].rsplit("_20", 1)[0] for f in glob.glob(f"{B}/s{TAG}_{name}d_*_20*.[0-9]_trades.csv")}, key=lambda x: list(LABELS).index(x) if x in LABELS else 99)
+        variants = [("", name)] + [(f"_{suf}", f"{name} + {LABELS.get(suf, suf)}") for suf in found]
         Dv = {}
         for suf, lab in variants:
             Dv[suf] = [t for f in glob.glob(f"{B}/s{TAG}_{name}d{suf}_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] == "ok"]
@@ -244,10 +264,14 @@ def summary():
                       + f" | ${a1:,.0f}, {100 * d1:.0f}% | ${a2:,.0f}, {100 * d2:.0f}% |")
             line("champion", L)
             line(name, A)
+            Lrt = [t for t in champ_rt if lf(t)]
+            if Lrt: line("champion + entry waits for 200 contracts", Lrt)
             for suf, lab in variants[1:]:
                 Lv = [t for t in Dv[suf] if lf(t)]
-                Av = sorted(kept + Lv, key=lambda t: (t["date"], int(t["minute"])))
+                base = [t for t in Lrt if key(t) not in dsig] if (suf.startswith("_rt") and Lrt) else kept
+                Av = sorted(base + Lv, key=lambda t: (t["date"], int(t["minute"])))
                 line(lab, Av)
+                if suf.startswith("_rt"): print(f"  {lab}: {sum(1 for t in Lv if t.get('signal_minute'))} entries moved later by the wait, median {st.median(int(t['minute']) - int(t['signal_minute']) for t in Lv if t.get('signal_minute')) if any(t.get('signal_minute') for t in Lv) else 0:.0f} min; {len(Lv)} traded vs {len(Ld)} without the wait")
                 faded = [t for t in Lv if "V_fade" in t.get("rules", "")]
                 paired = [(t, next(x for x in Ld if key(x) == key(t))) for t in faded if any(key(x) == key(t) for x in Ld)]
                 if paired: print(f"  {lab}: {len(faded)} trades cut by the fade, {sum(float(a['pnl']) > 0 for a, b in paired)} winners after vs {sum(float(b['pnl']) > 0 for a, b in paired)} before, "
@@ -270,4 +294,4 @@ def summary():
 
 
 if __name__ == "__main__":
-    {"signals": signals, "round": round_, "fade": fade, "summary": summary}[sys.argv[1]]()
+    {"signals": signals, "round": round_, "fade": fade, "retry": retry, "champrt": champrt, "summary": summary}[sys.argv[1]]()

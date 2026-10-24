@@ -375,6 +375,22 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     minute (+7,653 a trade, the contract under 200 contracts at the alert) and the new days that never fade (26 of
     68) are not touched. A working component, not a champion; it belongs with an entry that waits for the options
     crowd (arm on the alert, enter when the contract has 200 contracts), not yet run.
+  - **The 1.2× alert route, and the entry that waits for the options crowd (`alert_gate.py retry` / `champrt`, tiers.py
+    `BT_RETRY_ILLIQUID`, 2026-10-24, the user's pick of 1.2×):** ag5r12 = t ≥ 1.8 and (day volume ≥ 1.5×, or an alert
+    our way in the last 5 minutes with day volume ≥ 1.2×). Plain: fair $496,737 / 12% vs $585,592 / 11%, unseen
+    $118,761 / 12% vs $123,028 / 11%; with the volume fade (5 / 10 / 20 min) $493K / $506K / $507K, unseen $117-119K.
+    The wait: a signal whose contract has under 200 contracts in the last 30 minutes is tried again every minute until
+    it has them (or 15:44), the entry moving to that minute. On the champion's own signals it adds 660 fair-list
+    trades (813 → 1,473; +878 a trade, +$579K at $10K; median wait 11 min) and ends $912,400 / 17% ($4,848,880 / 32%
+    at 2%), better without the best 5 (−98K / −7K / +41K vs −193K / +39K / −139K). On the 151 unseen it adds 657
+    trades at −708 each (−$465K) and ends $75,818 / 33% vs $123,028 / 11%: a failure of the unseen test as clear as
+    the sector filter's. No wait bucket, follow-through band or hour rescues it there (the 1-5 minute waits are the
+    only positive bucket, +412 a trade on 112; a 15-minute cap, picked after the fact, still ends the unseen at
+    $99,299). The fair-list gain is MSTR, COIN, QCOM: hot names where a late entry still catches the run. ag5r12 +
+    the wait tracks the champion + the wait a little lower on both lists ($846,441 / 19%; unseen $72,636), so the
+    alert adds nothing on top of the wait. Verdict: the wait is a hot-name effect, not a rule; the alert route loses
+    at every volume floor tried (0, 1.0, 1.2) with or without the fade and the wait. The alert engine's use for the
+    bot, if any, is not at the entry.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
