@@ -48,6 +48,7 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                last `window` minutes under k x its usual move for that span (S30 x sqrt(window/30), levels.py); with `under`
                only while the option is under that gain                 -> sell all
   first_exit_min N: on the entry day no -X% stop and no failed-break sale in the first N minutes (the checks keep their times)
+  early_out {min, out}: on the entry day the -X% stop is `out` (e.g. -0.5) in the first `min` minutes, then user_stop.out
   T thesis (thesis {s30, bar, t}): entry day, the stock closes `s30` S30 units against the entry price (T_s30), or past the
                signal bar's low / high (T_bar), or the signal's cumulative t vs SPY x beta falls to `t` or under (T_tstat)
                                                                        -> sell all
@@ -401,7 +402,9 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                         if not U.get("opt_wait"): done.add(hit)
                 elif not st.get("half") and U["check_from"] <= t - minute <= U["check_to"] and against:
                     st["half"] = True; pending = (rem * U["share"], "U_half"); continue
-                if g <= uout and against and not early: pending = ("all", "U_out"); continue
+                EO = X.get("early_out")
+                out_now = EO["out"] if EO and t - minute < EO["min"] else uout  # a wider stop right after the entry (user, 2026-10-24)
+                if g <= out_now and against and not early: pending = ("all", "U_out"); continue
             if X.get("user_stop") and sd.ok and k > 0 and g <= uout:
                 pending = ("all", "U_out"); continue
             if X.get("stock_stop") and sd.ok and k == 0 and t > minute:

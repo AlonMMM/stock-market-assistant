@@ -286,6 +286,12 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   the entry on the fair list: 78 within 5 minutes, 192 within 10, 472 within 20, 590 within 60, of 745 same-day sellers.
   Verdict: the early stops and failed-break sales are right more often than wrong; delaying them costs money and adds
   drop. Not better. sim.py: `first_exit_min N`.
+- A wider stop right after the entry (`early_stop50.py`, 2026-10-24; the user: "check 50% stop only for the first 10
+  minutes"): -50% in the first N minutes, then -30%; checks and failed break as today. Fair list at 1% vs $526,469 / 10%
+  ($2.01M / 18% at 2%): -50% / 10 min $508,356 / 10% ($1.87M / 20%), 114 trades changed, -$34,715 at $10K; -40% / 10
+  $507,446; -50% / 5 $521,374; -50% / 20 $513,523 / 11%. Unseen vs $125,581: -50% / 10 $131,653, -40% / 10 $132,307,
+  -50% / 20 $130,943, but it is UNH 2024-12-05 again (+53,000 of +48,703; the other 31 changed trades -$4.3K). Lower on
+  the fair list in every version and every year. Not better. sim.py: `early_out {min, out}`.
 - More air unless the thesis breaks (`thesis.py`, 2026-10-24; the user's goal: a -50% stop "if our thesis is not
   broken"). Thesis exits on the stock, entry day: a close k S30 against the entry (k 0.5 / 1 / 1.5), a close past the
   signal bar's low (put: high), or the signal's own cumulative t-stat vs SPY x beta down to 0 or 0.5; with the option
