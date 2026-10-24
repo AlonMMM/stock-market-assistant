@@ -30,6 +30,7 @@ against it was comparable.
 | Since      | Version                                                                                                                                                                                         | Fair list: end / worst drop / years           | 151 unseen: end / worst drop |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ---------------------------- |
 | 2026-10-24 | **Rest stop -20%**: the overnight-from-+50% champion below, plus on the entry day, once the +10 check sold half, the rest out at -20% (not -30%) with the stock against (the user's idea: be more careful with trades we already cut) | $811,353 / 11% / every year higher: +692K +865K +768K at $10K | $124,471 / 10% |
+| 2026-10-25 | **D2 bonus entry**: the +50% hold champion below, plus an entry when t ≥ 1.2 and D2 ≥ 1.5 (D2: the stock's excess move, stock minus beta × SPY, summed over the SPY-down minutes of the last 30, in S30 units), day volume ≥ 1.5× as always; `defence_signals.py` rule c12_15 | $983,435 / 11% / +3,055 +2,360 +2,594 a trade | $126,688 / 11%               |
 | 2026-10-24 | **Overnight from +50%**: the t-stat exit champion below, holding winners up 50% (not 100%) overnight at 15:50 (the user's number; +75% also beats +100%) | $795,638 / 11% / +3,329 +2,417 +3,018 a trade | $122,890 / 10%               |
 | 2026-10-24 | t-stat exit: the champion below, plus on the entry day sell all when the signal's own cumulative t-stat vs SPY × beta falls to 0.5 or under (the entry needs 1.8); the -30% stop stays (the user's call, 2026-10-24) | $610,096 / 11% / +2,768 +2,153 +2,703 a trade | $122,679 / 11%               |
 | 2026-10-22 | News filter + t ≥ 1.8: the C signal with t ≥ 1.8 (not 2.0) and day volume ≥ 1.5×, no entry on earnings reaction days or with pre-market volume ≥ 4×, delta 0.15, your stop + overnight hold | $585,592 / 11% / +2,762 +2,039 +2,699 a trade | $123,028 / 11%               |
@@ -47,6 +48,18 @@ against it was comparable.
   held instead of 101. Unseen $122,890 / 10% vs $122,679 / 11% (14 trades). With the bot's rules (failed break +
   t-stat exit): $690,515 / 10% at 1%, $3,325,165 / 19% at 2% vs $549,153 / $2,183,362; unseen $125,788 vs $125,260.
   +75%: $636,985 (bot). Passes the rule: fair list higher, every year positive, unseen no worse.
+- D2 bonus entry (`defence_signals.py` + `defence_sum.py`, the user's idea 2026-10-24: "holding against a drop should
+  give a huge extra bonus"): at 2% $6,112,317 / 22% vs $4,330,004 / 22%; without the best 5 $340,555 vs $298,446 at
+  1% (+1,410 vs +1,492 a trade); unseen $126,688 / 11% vs $122,891 / 10% (349 trades vs 273). Fair list 981 trades
+  vs 813: 776 shared days (137 entered earlier: +3,395 vs +2,612 a trade on the shared days), 205 new days (−330 a
+  trade, 21 winners), 37 champion days lost to an earlier minute with no contract. The money is the earlier entry on
+  days the champion enters anyway, not the new days. Picked as the best of a 9-cell grid (t 1.0 / 1.2 / 1.5 × D2
+  1.0 / 1.5 / 2.0) on the fair list; its neighbours c12_20 ($955,902 / 11%) and c10_20 ($921,223 / 13%) also beat
+  the champion, so a band; the unseen run once, on this cell only. Controls: t ≥ 1.2 alone $467,580 / 18% and t ≥ 1.5
+  alone $503,036 / 18% against the t-stat exit champion's $610,096, so the lower bar alone loses; the defended minutes
+  pick the entries. Not better: D (only fully defended minutes: beta × SPY's drop when the stock did not fall) in
+  every form, D or D2 as a filter on the champion (fewer trades, less money), D or D2 instead of t (negative or far
+  under). Found at a 10-contract floor first (see "Before any run") and re-earned at 200.
 - The t-stat exit (`thesis.py`): at 2% $2,647,105 / 21% vs $2,444,640 / 21%; without the best 5 +1,127 vs +1,075 a trade; 38
   trades change (24 better), MSFT 2025-04-09 +25,781 the largest (without it still +$17K). Unseen $122,679 vs $123,028
   (8 trades, -$349): a hair under "no worse", declared champion by the user. Neighbours: t ≤ 0 changes 5 trades, t ≤ 1
@@ -100,7 +113,8 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 | 2026-10-21 | V1 + news filter (no earnings reaction day, no pre-market volume ≥ 4×) | $297,160 / 16%              | $121,443 / 11% | +$18K, −9 pts drop; unseen +$12K, −9 pts; holds at 0.10 | champion until t ≥ 1.8                          |
 | 2026-10-22 | News filter + t ≥ 1.8 (volume ≥ 1.5×)                                  | $585,592 / 11%              | $123,028 / 11% | +$288K, −5 pts drop; unseen +$2K; holds at 0.10         | champion until the t-stat exit                  |
 | 2026-10-24 | + t-stat exit (signal t ≤ 0.5 on the entry day), -30% stop             | $610,096 / 11%              | $122,679 / 11% | +$25K, same drop; unseen −$349 (8 trades)                | champion until the +50% hold (the user's call)  |
-| 2026-10-24 | + hold overnight from +50% (was +100%)                                 | $795,638 / 11%              | $122,890 / 10% | +$186K, same drop; unseen +$211, −1 pt                   | 🏆 champion (backtest only)                     |
+| 2026-10-24 | + hold overnight from +50% (was +100%)                                 | $795,638 / 11%              | $122,890 / 10% | +$186K, same drop; unseen +$211, −1 pt                   | champion until the D2 bonus entry               |
+| 2026-10-25 | + D2 bonus entry (t ≥ 1.2 and D2 ≥ 1.5 enters too)                     | $983,435 / 11%              | $126,688 / 11% | +$188K, same drop; unseen +$3.8K, +1 pt                  | 🏆 champion (backtest only)                     |
 
 ## Tested, not better (V2, 2026-10-21)
 
