@@ -341,13 +341,20 @@ api.get("/v1/bot/portfolio/history", async (request) => {
   const recorded = store.equityDays(t.account.id);
   const days = recorded.length ? recorded : await t.broker.equityHistory();
   const since = newYork(Date.now() - 366 * 86_400_000).date;
-  return botHistory(
+  const history = botHistory(
     days,
     bot.positionsAt(broker, since),
     q.period,
     t.broker.capabilities.paper,
     Date.now(),
   );
+  // The history's own status, not a 200 wrapping it (the page reads the body).
+  if (history.status !== 200)
+    throw new RequestError(
+      (history.body as { error: string }).error,
+      history.status,
+    );
+  return history.body;
 });
 
 // A stop that sells is reported within this long.
