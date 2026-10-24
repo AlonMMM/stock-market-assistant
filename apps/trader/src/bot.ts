@@ -147,6 +147,7 @@ function reasonText(reason: ExitReason, s: BotSettings): string {
     "check-10": "10-min check: the stock is against the entry",
     "check-20": "20-min check: the stock is still against the entry",
     "stop-30": `Down ${s.stopPct}% with the stock against the entry`,
+    "strength-gone": `Strength gone: the stock's edge over SPY since the open fell to t ${s.weaknessT}`,
     "close-1550": "Sold at 15:50",
     carry: `Held overnight (up ${s.holdFromPct}% or more)`,
     "morning-gap-keep": "Morning: gapped our way, sold half",
@@ -983,12 +984,20 @@ export class IndiBot {
           : null;
       const first = this.barsOf(p.symbol)[0];
       const state = { ...p, nights: p.day === date ? 0 : p.nights };
+      // The signal's strength now, from the closed minutes (the scan's prior data).
+      const prior = this.prior.get(p.symbol);
+      const strength =
+        s.sellOnWeakness && prior && p.day === date
+          ? (cState(this.barsOf(p.symbol), this.barsOf("SPY"), prior, this.done)
+              ?.t ?? null)
+          : null;
       const decision = nextAction(
         state,
         {
           minute: m,
           stock: live.get(p.symbol) ?? this.lastClose(p.symbol, m),
           option: mid,
+          strength,
           isExpiryDay: expiry === date,
           sessionBeforeExpiry: nextSession(date) <= expiry,
           open: first && first.m <= 5 ? first.o : null,

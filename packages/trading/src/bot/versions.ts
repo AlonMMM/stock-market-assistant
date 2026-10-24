@@ -12,6 +12,8 @@ import type { BotSettings } from "./settings.js";
 export type RuleKey =
   | "stopPct"
   | "checks"
+  | "sellOnWeakness"
+  | "weaknessT"
   | "sellFailedBreak"
   | "holdFromPct"
   | "maxNights"
@@ -31,6 +33,8 @@ export type Rules = Pick<BotSettings, RuleKey>;
 export const ruleKeys: readonly RuleKey[] = [
   "stopPct",
   "checks",
+  "sellOnWeakness",
+  "weaknessT",
   "sellFailedBreak",
   "holdFromPct",
   "maxNights",
@@ -58,6 +62,8 @@ export interface BotVersion {
 const v1: Rules = {
   stopPct: 30,
   checks: true,
+  sellOnWeakness: false,
+  weaknessT: 0.5,
   sellFailedBreak: false,
   holdFromPct: 100,
   maxNights: 2,
@@ -82,6 +88,9 @@ const v2: Rules = {
 };
 // 2.1: the owner's chosen failed-break sale on the entry day.
 const v21: Rules = { ...v2, sellFailedBreak: true };
+// 2.2: the t-stat exit (the 2026-10-24 champion): on the entry day, all out
+// when the signal's own strength vs SPY × beta falls to t 0.5.
+const v22: Rules = { ...v21, sellOnWeakness: true, weaknessT: 0.5 };
 
 /** Every version, oldest first. */
 export const botVersions: readonly BotVersion[] = [
@@ -108,6 +117,14 @@ export const botVersions: readonly BotVersion[] = [
     notes:
       "On the entry day, sell all when the stock reaches the next level ahead and falls back without breaking it.",
     rules: v21,
+  },
+  {
+    id: "2.2",
+    name: "V2.1 + t-stat exit",
+    since: "2026-10-24",
+    notes:
+      "On the entry day, sell all when the signal's own strength vs SPY × beta (the t-stat that had to reach 1.8 to enter) falls to 0.5 or under.",
+    rules: v22,
   },
 ];
 

@@ -178,6 +178,21 @@ gave the same trades).
   instead of after the minute closes, and −30% is seen within 10 s. Entries still need closed
   minute bars and run once per minute; the level watch (failed break) reads closed bars only.
 
+## The t-stat exit (2026-10-24, the champion the user called)
+
+On the entry day the bot keeps the signal's own statistic alive for each open position: the t-stat of the stock's
+1-minute moves against SPY × beta, cumulative from the open (`cState` in signal.ts, the number that had to reach
+`minT` 1.8 to enter), from the closed minutes. When it falls to `weaknessT` (0.5) or under in the bet's direction,
+the stock has given back its edge over the market since the open and the bot sells all (reason `strength-gone`,
+checked every tick with the other exits, before the +10 / +20 checks and the stop). Carried days are not touched.
+Settings `sellOnWeakness` (default on) and `weaknessT` (0–1.5, step 0.1); version 2.2. A stock the bot no longer
+watches has no prior data, so its position is not checked for this.
+
+Backtest (`thesis.py` on research/indi-v2, all champion trades 2024–2026): champion $585,593 / 11% → $610,096 / 11%
+at 1% ($2.44M → $2.65M at 21% at 2%), every year positive; unseen $123,028 → $122,679. With the failed-break sale
+(the bot's rules) $526,469 / 10% → $549,153 / 9%. Wider stops with it (-35 / -40 / -50%), stock-price thesis stops
+and stall rules were all worse (docs/research/best-algorithms.md on research/indi-v2).
+
 ## Parity with the backtest
 
 - `scripts/bot-parity.ts`: the TypeScript signal on the backtest's bar cache gives the same first minute and side

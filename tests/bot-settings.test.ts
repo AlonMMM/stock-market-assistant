@@ -29,9 +29,9 @@ import {
 test("versions: distinct ids oldest first; the defaults are the current version's rules", () => {
   const ids = botVersions.map((v) => v.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(currentVersion, "2.1");
+  assert.equal(currentVersion, "2.2");
   assert.equal(defaultSettings.version, currentVersion);
-  assert.equal(matchingVersion(defaultSettings)?.id, "2.1");
+  assert.equal(matchingVersion(defaultSettings)?.id, "2.2");
   assert.deepEqual(rulesOf(defaultSettings), botVersions.at(-1)!.rules);
   // Each version differs from the one before, and 2.1 is 2.0 plus the failed-break sale.
   for (let i = 1; i < botVersions.length; i++)
@@ -39,15 +39,19 @@ test("versions: distinct ids oldest first; the defaults are the current version'
   assert.deepEqual(ruleChanges(botVersions[2]!.rules, botVersions[1]!), [
     "sellFailedBreak false → true",
   ]);
+  // 2.2 is 2.1 plus the t-stat exit.
+  assert.deepEqual(ruleChanges(botVersions[3]!.rules, botVersions[2]!), [
+    "sellOnWeakness false → true",
+  ]);
 });
 
 test("versions: the label is the version, starred when its rules were changed; an own label stays", () => {
-  assert.equal(versionLabel(defaultSettings), "2.1");
-  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.1*");
+  assert.equal(versionLabel(defaultSettings), "2.2");
+  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.2*");
   // The owner's limits and lists are not rules: no star.
   assert.equal(
     versionLabel({ ...defaultSettings, sizePct: 1, off: ["TSLA"] }),
-    "2.1",
+    "2.2",
   );
   const own = { ...defaultSettings, version: "2.2-test", stopPct: 40 };
   assert.equal(versionLabel(own), "2.2-test");
@@ -63,7 +67,7 @@ test("versions: applying one sets its rules and keeps the owner's limits", () =>
   assert.equal(s.sellFailedBreak, false);
   assert.equal(s.sizePct, 1);
   assert.equal(versionLabel(s), "1.0");
-  const back = applyVersion(s, "2.1");
+  const back = applyVersion(s, "2.2");
   assert.deepEqual(rulesOf(back), rulesOf(defaultSettings));
   assert.equal(applyVersion(s, "mine").version, "mine");
 });
@@ -77,11 +81,15 @@ test("versions: parse checks the label; a record saved before versions gets the 
   assert.equal(parseSettings({ ...defaultSettings, version: "<x>" }).ok, false);
   const own = parseSettings({ ...defaultSettings, version: " 2.2 test " });
   assert.equal(own.ok && own.value.version, "2.2 test");
-  // Saved with the defaults' rules: 2.1. Saved with the failed-break sale off: 2.0. Odd rules: the current version.
-  assert.equal(withDefaults({ stopPct: 30 }).version, "2.1");
-  assert.equal(withDefaults({ sellFailedBreak: false }).version, "2.0");
+  // Saved with the defaults' rules: 2.2. Without the t-stat exit: 2.1; also without the failed-break sale: 2.0. Odd rules: the current version.
+  assert.equal(withDefaults({ stopPct: 30 }).version, "2.2");
+  assert.equal(withDefaults({ sellOnWeakness: false }).version, "2.1");
+  assert.equal(
+    withDefaults({ sellFailedBreak: false, sellOnWeakness: false }).version,
+    "2.0",
+  );
   assert.equal(withDefaults({ stopPct: 40 }).version, currentVersion);
-  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.1*");
+  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.2*");
   // A saved version is kept as saved.
   assert.equal(withDefaults({ version: "1.0", minT: 2 }).version, "1.0");
 });

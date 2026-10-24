@@ -70,6 +70,7 @@ const reasonText: Record<string, string> = {
   "check-10": "10-min check",
   "check-20": "20-min check",
   "stop-30": "stop",
+  "strength-gone": "strength gone",
   "close-1550": "end-of-day close",
   "morning-gap-keep": "morning, gap our way",
   "morning-gap-against": "morning, no gap",
@@ -769,6 +770,12 @@ function exitPlan(
         reasons: ["check-20"],
       },
     );
+    if (rules.sellOnWeakness)
+      steps.push({
+        label: `Strength gone: all out if its edge over SPY falls to t ${rules.weaknessT}`,
+        ms: newYorkToUtc(day, plan.dayExit),
+        reasons: ["strength-gone"],
+      });
     const w = p.breakWatch;
     if (
       rules.sellFailedBreak &&

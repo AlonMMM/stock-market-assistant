@@ -26,6 +26,7 @@ import {
   type NewsCalendar,
 } from "../packages/trading/src/bot/news.js";
 import {
+  defaultExitRules,
   nextAction,
   nightCapSell,
   type BotPositionState,
@@ -223,6 +224,40 @@ test("exits: -30% sells all only with the stock against on the entry day", () =>
       mk({ minute: 100, option: 0.69, stock: 101 }),
     ).reason,
     "stop-30",
+  );
+});
+
+test("exits: the strength-gone sale: the signal's t at 0.5 or under sells all, on the entry day only", () => {
+  const r = { ...defaultExitRules, strengthOut: 0.5 };
+  assert.equal(
+    nextAction(pos(), mk({ strength: 0.4 }), r).reason,
+    "strength-gone",
+  );
+  assert.equal(nextAction(pos(), mk({ strength: 0.6 }), r).sell, 0);
+  // A put reads the call-side t negated.
+  assert.equal(
+    nextAction(pos({ right: "P" }), mk({ strength: -0.4 }), r).reason,
+    "strength-gone",
+  );
+  assert.equal(
+    nextAction(pos({ right: "P" }), mk({ strength: -0.6 }), r).sell,
+    0,
+  );
+  // Off, unknown, or a carried day: nothing.
+  assert.equal(nextAction(pos(), mk({ strength: 0.4 })).sell, 0);
+  assert.equal(nextAction(pos(), mk({ strength: null }), r).sell, 0);
+  assert.equal(
+    nextAction(
+      pos({ nights: 1, morningDone: true }),
+      mk({ minute: 100, strength: 0.4 }),
+      r,
+    ).sell,
+    0,
+  );
+  // It comes before the checks and the stop.
+  assert.equal(
+    nextAction(pos(), mk({ minute: 70, stock: 99, strength: 0.2 }), r).reason,
+    "strength-gone",
   );
 });
 
@@ -910,30 +945,30 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
 
 test("versions: every entry is stamped with the version in force; changed rules star it; the owner can pick an older one", async () => {
   const h = harness("live");
-  assert.equal(h.bot.status().version, "2.1");
+  assert.equal(h.bot.status().version, "2.2");
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy");
-  assert.match(String(buy?.body.note), /· bot 2\.1$/);
+  assert.match(String(buy?.body.note), /· bot 2\.2$/);
   const [p] = h.store.openPositions();
-  assert.equal(p!.version, "2.1");
-  assert.equal(h.store.signals(DAY)[0]!.version, "2.1");
-  assert.equal(h.bot.status().positions[0]!.version, "2.1");
+  assert.equal(p!.version, "2.2");
+  assert.equal(h.store.signals(DAY)[0]!.version, "2.2");
+  assert.equal(h.bot.status().positions[0]!.version, "2.2");
   const texts = () =>
     h.bot
       .status()
       .activity.map((e) => e.text)
       .join("\n");
-  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.1$/m);
+  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.2$/m);
 
-  // The stop changed from 2.1's: the next entry is stamped "2.1*".
+  // The stop changed from 2.2's: the next entry is stamped "2.2*".
   const edited = harness("live");
   edited.bot.setSettings({ ...edited.bot.settings(), stopPct: 40 });
-  assert.equal(edited.bot.status().version, "2.1*");
+  assert.equal(edited.bot.status().version, "2.2*");
   await edited.run(DAY, 565, 600);
-  assert.equal(edited.store.openPositions()[0]!.version, "2.1*");
+  assert.equal(edited.store.openPositions()[0]!.version, "2.2*");
   assert.match(
     String(edited.calls.find((c) => c.kind === "buy")?.body.note),
-    /· bot 2\.1\*$/,
+    /· bot 2\.2\*$/,
   );
 
   // Version 1.0 picked: its rules (t 2, no night cap, no news filter) run, and the feed says so.
@@ -946,6 +981,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
     skipEarnings: false,
     skipPremarket: false,
     sellFailedBreak: false,
+    sellOnWeakness: false,
   });
   assert.equal(picked.version, "1.0");
   assert.equal(old.bot.status().version, "1.0");
@@ -954,7 +990,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
       .status()
       .activity.map((e) => e.text)
       .join("\n"),
-    /Settings changed: version "2\.1" → "1\.0"; sellFailedBreak true → false; nightCapPct 10 → 0; minT 1\.8 → 2/,
+    /Settings changed: version "2\.2" → "1\.0"; sellOnWeakness true → false; sellFailedBreak true → false; nightCapPct 10 → 0; minT 1\.8 → 2/,
   );
 });
 
@@ -1276,7 +1312,12 @@ test("runner (live): a failed break at the day's high sells all, with the level 
 
 test("runner (live): with the failed-break sale off the bot only notes it and keeps the position", async () => {
   const h = harness("live", {}, failedBreakDay);
-  h.bot.setSettings({ ...h.bot.settings(), sellFailedBreak: false });
+  // The strength-gone sale is off too: the falling stock would trip it.
+  h.bot.setSettings({
+    ...h.bot.settings(),
+    sellFailedBreak: false,
+    sellOnWeakness: false,
+  });
   await h.run(DAY, 565, 640);
   assert.equal(h.calls.filter((c) => c.kind === "sell").length, 0);
   assert.ok(

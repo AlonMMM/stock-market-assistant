@@ -274,6 +274,10 @@ export function botExitWords(
       `Stop −${r.stopPct}%`,
       `The option was down ${r.stopPct}% with the stock against the entry: all sold.`,
     ],
+    "strength-gone": [
+      "Strength gone",
+      `The stock's edge over SPY since the open fell to t ${r.weaknessT}: all sold on the entry day.`,
+    ],
     "failed-break": [
       "Failed break",
       `The stock reached ${level} and fell back without breaking it: all sold on the entry day.`,

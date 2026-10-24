@@ -171,6 +171,11 @@ function groups(): Group[] {
           "Sell half at +10 minutes and the rest at +20 if the stock is against the entry.",
         ],
         [
+          "sellOnWeakness",
+          "Strength-gone sale",
+          "On the entry day, sell all when the stock's strength vs SPY × beta since the open (the t-stat the entry needed) falls to the level below.",
+        ],
+        [
           "sellFailedBreak",
           "Failed-break sale",
           "On the entry day, sell all when the stock reaches the next level ahead (yesterday's or the 5-day high or low, the 15-minute or the day's high or low) and falls back without breaking it.",

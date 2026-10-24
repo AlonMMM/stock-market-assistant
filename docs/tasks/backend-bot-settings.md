@@ -56,7 +56,7 @@ do not count.
 ## Versions (2026-10-23, user: "make the bot support version, write the bot version on each entry, let me control it")
 
 `packages/trading/src/bot/versions.ts`. A version is a named set of the **trading rules**: `stopPct`, `checks`,
-`sellFailedBreak`, `holdFromPct`, `maxNights`, `nightCapPct`, `delta`, `maxDte`, `minPrice`, `minVolume`, `minT`,
+`sellOnWeakness`, `weaknessT`, `sellFailedBreak`, `holdFromPct`, `maxNights`, `nightCapPct`, `delta`, `maxDte`, `minPrice`, `minVolume`, `minT`,
 `minRvol`, `firstEntryMin`, `skipEarnings`, `skipPremarket`. The owner's limits (`sizePct`, `maxBuysPerDay`,
 `maxOpen`, `safetyStopPct`, `dayLossPct`, `drawdownPausePct`), on/off, the mode and the stock lists are not part of
 a version.
