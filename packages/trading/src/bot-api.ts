@@ -82,6 +82,7 @@ export interface BotView {
     breakWatch?: {
       name: string;
       level: number;
+      unit?: number; // the stock's unit in dollars (a typical 30-minute move)
       state: "watching" | "broken" | "ended" | "failed";
       touch: number | null;
       at: number | null;

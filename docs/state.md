@@ -96,10 +96,12 @@ account base value and changes at each close, with vertical padding above and be
 balance range; percentage mode remains cumulative realized return. Unrealized P&L is not
 part of this chart. The x-axis fits dates with closes while preserving their true spacing.
 
-**A trade's story (2026-10-24).** A tap on a closed trade, the owner's or the bot's, opens a window: the stock and
-the option through the trade's sessions with the entry, each exit, the bot's signal and level marked; why it was
-entered (the bot's signal and rules, or the owner's buy order); why each exit happened (the bot's rule, or what the
-fills show); the fills. `GET /api/trade-chart` serves the minutes. See [the task](tasks/frontend-trade-story.md).
+**A trade's story (2026-10-24).** A tap on a closed trade, the owner's or the bot's, opens a window: a chart on
+the regular chart's library (zoom, scroll, more days on a drag) with the stock and SPY, the volume, the bot's
+strength against SPY minute by minute, the option and its volume, the entry, each exit, the signal and the level
+the bot watched with its touch and fall-back lines marked, line or candles; why it was entered (the bot's signal
+and rules, or the owner's buy order); why each exit happened (the bot's rule, or what the fills show); the fills.
+`GET /api/trade-chart` serves the minutes. See [the task](tasks/frontend-trade-story.md).
 
 ## Portfolio: pre/post-market option estimates
 

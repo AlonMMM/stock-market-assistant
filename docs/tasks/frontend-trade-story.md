@@ -1,23 +1,35 @@
 # Task: a closed trade's story (chart, why in, why out)
 
-Status: implemented on `feat/trade-story`
+Status: implemented on `feat/trade-story` (PR #137); the chart rebuilt on `feat/trade-story-chart`
 Owner: frontend (with the chart endpoint and the bot's entries, backend)
-Branch: feat/trade-story
+Branch: feat/trade-story-chart
 
 ## Outcome
 
 User (2026-10-24): "add a graph to the history trades (both bot and mine) … and an info to explain why we entered
-and why we exit (all the info can go in a special modal)."
+and why we exit (all the info can go in a special modal)." Then: "I want to be able to zoom in and out and scroll
+aside like we do in regular chart"; "I would like to see resistance and holding we are using for stops when not
+breaking"; "I want volume"; "visualize how the SPY strength moves and the SPY graph on the chart as well"; "regular
+graph and candle as toggle"; no legend, no hint text, a bigger window.
 
 Portfolio → History (the owner's account) and Portfolio → Bot trades (the bot's account): a tap on a closed trade
 opens a window with:
 
-- **The chart.** Two panes through the sessions the trade spanned: the stock each minute, and the option each
-  minute it traded. Marked on them: the buy ("bought 2 at 0.40"), each sale, the bot's signal minute and the
-  minute the stock tested the level it watched. Lines: the stock's entry price, the bot's level ("day high so
-  far $74.40"), what was paid, and the stop (the bot's −30%, or the owner's broker stop). A crosshair on hover
-  or touch shows the time (Israel), the stock and the option. Sessions sit side by side with a gap; a hold of
-  more than five sessions shows the first and the last four and says how many were left out.
+- **The chart**, on the library the regular chart uses, so the wheel or a pinch zooms, a drag moves sideways, and
+  dragging past the first or last day reads more days. Five panes on one minute: the stock (a line, or candles
+  by a toggle that is remembered) with SPY beside it on a left scale; the stock's volume; the bot's **strength
+  against SPY** minute by minute (the t-stat its signal reads, with the rule's bar on the bet's side and a faint
+  one on the other); the option (line or candles); the option's volume. A stock trade has the first three panes.
+  Lines, each named on its price axis: the stock's entry, the level the bot watched ("yesterday's high ·
+  watched"), the **touch line** a quarter unit short of it and the **fall-back line** half a unit short ("fall-back
+  · sell": a close back here within 30 minutes of a touch is the sale), what was paid, and the stop (the bot's
+  −30%, or the owner's broker stop). Markers: an arrow up for the buy, an arrow down for each sale, dots for the
+  signal, the touch and an expiry; their labels show when the bars are wide enough apart to read them. Dashed
+  lines mark where each day starts. The crosshair readout above the chart gives the time (Israel), the stock, SPY,
+  the volume, the strength and the volume ratio, and the option.
+  Three views: **The trade** (20 minutes before the entry to 40 after the last exit), **Trade day** (the trade's
+  days; the window opens here), **All days** (every day read so far). The window opens with two days each side
+  of the trade, up to the last closed session; a drag past either end reads three more.
 - **Why it was entered.** Bot trades: the signal (t and volume against the rule's numbers, as the version in
   force had them), the contract and what it cost, the level ahead, the bot version. The owner's trades: the buy
   order's command inputs, how the contract was picked, the size and the stop, the order's notes, and a **Why**
@@ -31,33 +43,36 @@ opens a window with:
 ## Design
 
 - `GET /api/trade-chart?symbol=<OCC or ticker>&from=<date>&to=<date>` (`packages/market-data/src/trade-chart.ts`,
-  `handleTradeChart`): the stock's regular-hours one-minute closes and the contract's (Alpaca
-  `/v1beta1/options/bars`) for the sessions from `from` to `to`, as `[minute since 09:30, close]` pairs per
-  session. Up to five sessions (`chartSessions`); more show the first and the last four. 400 on a bad symbol, a
-  non-session date, `to` before `from` or a day without data yet; 502 when Alpaca fails. Served by the Worker and
-  the local API with the market-data credentials; nothing cached.
-- `GET /v1/bot` / `/api/bot` adds `entries`: the signals that entered a position in the last five sessions (the
-  same window as `positions`), so a closed bot trade's t and volume are there after the day. `BotView.positions`
-  now types `entryStock`, `entryMinute` and `sales[].price`, which the store already kept.
-- `apps/web/src/trade-story-model.ts`: `tradeDates`, `chartAxis` (sessions side by side), `botStory` (from the
-  bot's position, its signal and sales; the rules of the position's version when known exactly, else the
-  settings now), `ownerStory` (from the buy decision matched by contract and time, and the fills),
-  `unknownStory` (a bot trade older than the bot's records). `apps/web/src/TradeStory.tsx`: the window and the
-  SVG chart. `apps/web/src/format.ts` and `use-width.ts`: helpers shared with the Portfolio and the P&L chart.
-- On a phone (≤ 640 px) the window is a full-screen sheet; the chart's panes are shorter and the time ticks hourly.
+  `handleTradeChart`): for the sessions from `from` to `to` (consecutive, up to seven; a longer span carries the
+  last seven and says how many were left out), each session's one-minute bars of the stock
+  (`[minute, o, h, l, c, v]`), SPY's closes, the **strength** (`[minute, t, volume ratio]` from minute 2, computed
+  by the bot's own `cState` against the 20 sessions before that day, read in the same request) and, for an option,
+  the contract's bars (Alpaca `/v1beta1/options/bars`). Regular hours only. 400 on a bad symbol, a non-session
+  date, `to` before `from` or a day without data yet; 502 when Alpaca fails. Served by the Worker and the local API
+  with the market-data credentials; nothing cached.
+- `GET /v1/bot` / `/api/bot`: `positions[].breakWatch.unit` (the stock's unit in dollars, kept by the trader since
+  the failed-break sale) is now typed, for the touch and fall-back lines. `entries` as before.
+- `apps/web/src/trade-story-model.ts`: `chartWindow` (the days to open on), `lastClosedSession`, `barTime` (the
+  Israel wall clock read as UTC, like every chart here), `mergeSessions`, `levelLines` (the lines a story draws),
+  `botStory` / `ownerStory` / `unknownStory` as before, now with the bet's side and the rule's t.
+  `apps/web/src/TradeStoryChart.tsx`: the chart (lightweight-charts, five panes, price lines, markers, the views,
+  the edge loading). `apps/web/src/TradeStory.tsx`: the window, the view and line/candles toggles, the readout, the
+  sections. `packages/market-data/src/calendar.ts`: `nextSessions`.
+- The window is 1240 px wide on a desktop; on a phone (≤ 640 px) a full-screen sheet with a shorter chart.
 
 ## Verification evidence
 
-- `tests/trade-chart.test.ts`: the stock and the contract by session minute (regular hours only, the contract's
-  traded minutes), a stock trade, a hold across sessions, the five-session cut, and the request checks
-  (synthetic Alpaca answers).
-- `tests/trade-story-model.test.ts`: the sessions and the request, the x axis, a bot trade's story (signal,
-  contract, level, each sale's rule, the stop and markers; another version's numbers; no record), the owner's
-  story (the order matched by contract and time, each line, the stop heuristics, an expiry).
+- `tests/trade-chart.test.ts`: the stock, SPY, the strength and the contract by session minute (regular hours
+  only), the reads made (the stock and SPY from 20 sessions before), a stock trade, a hold across sessions, the
+  seven-session cut, the request checks (synthetic Alpaca answers).
+- `tests/trade-story-model.test.ts`: the trade's sessions, the days the window opens on and the last closed
+  session, the chart's times, merging answers, a bot trade's story (signal, contract, level, each sale's rule,
+  the stop, markers and their labels, the level's touch and fall-back lines for a call and a put), the owner's
+  story.
 - `npm run typecheck`, `npm test`, `npm run build`: see the PR.
-- Looked at in Chrome against a synthetic API (desktop and 390 px): see the PR.
+- Looked at in Chrome against a synthetic API (1440 px and 390 px): the three views, line and candles, the
+  readout, older days loading on a drag; see the PR.
 
 ## Deploy
 
-The website Worker (the chart endpoint and the window) and the trading service (`entries` in the bot status);
-until the trader is deployed, a bot trade's signal numbers are missing after its day.
+The website Worker (the chart endpoint and the window) and the trading service (`unit` in the bot status).

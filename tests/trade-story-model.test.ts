@@ -1,21 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { TradeChartSession } from "../packages/market-data/src/trade-chart.js";
+import type { TradeChart } from "../packages/market-data/src/trade-chart.js";
 import type { BotView } from "../packages/trading/src/bot-api.js";
 import { defaultSettings } from "../packages/trading/src/bot/settings.js";
 import type { Decision } from "../packages/trading/src/explain.js";
 import type { ClosedTrade } from "../packages/trading/src/portfolio.js";
 import {
+  barTime,
   botStory,
-  chartAxis,
+  chartWindow,
   decisionFor,
+  lastClosedSession,
+  levelLines,
+  mergeSessions,
   momentOf,
   ownerStory,
   rulesFor,
   tradeChartUrl,
   tradeDates,
   unknownStory,
-  valueAt,
 } from "../apps/web/src/trade-story-model.js";
 
 // A synthetic RKLB call: bought 16:59 Israel time (09:59 New York) on
@@ -83,6 +86,7 @@ const view = {
       breakWatch: {
         name: "day high so far",
         level: 74.4,
+        unit: 0.9,
         state: "failed",
         touch: 34,
         at: 36,
@@ -93,43 +97,69 @@ const view = {
   ],
 } as unknown as BotView;
 
-test("story: the trade's sessions and the chart request", () => {
+test("story: the trade's sessions, the days the window opens on, the chart's times", () => {
   assert.deepEqual(tradeDates(trade), { from: "2026-09-30", to: "2026-09-30" });
   assert.equal(
-    tradeChartUrl(trade),
-    `/api/trade-chart?symbol=${contract}&from=2026-09-30&to=2026-09-30`,
+    tradeChartUrl(contract, "2026-09-28", "2026-10-02"),
+    `/api/trade-chart?symbol=${contract}&from=2026-09-28&to=2026-10-02`,
   );
   // 09:59 New York is minute 29 of the session.
   assert.deepEqual(momentOf(bought), { date: "2026-09-30", minute: 29 });
   // An expiry is stamped 20:00Z: still that session.
   assert.equal(momentOf(Date.parse("2026-10-03T20:00:00Z")).date, "2026-10-03");
-});
-
-test("story: the x axis puts the sessions side by side with a gap", () => {
-  const sessions: TradeChartSession[] = [
-    { date: "2026-09-30", minutes: 390, stock: [], option: [] },
-    { date: "2026-10-01", minutes: 390, stock: [], option: [] },
-  ];
-  const axis = chartAxis(sessions);
-  assert.equal(axis.total, 390 + 15 + 390);
-  assert.equal(axis.xOf({ date: "2026-09-30", minute: 29 }), 29);
-  assert.equal(axis.xOf({ date: "2026-10-01", minute: 0 }), 405);
-  assert.equal(axis.xOf({ date: "2026-10-01", minute: 390 }), 405 + 389); // the close, clamped
-  assert.equal(axis.xOf({ date: "2026-10-02", minute: 0 }), null);
-  assert.deepEqual(axis.at(29.4), { date: "2026-09-30", minute: 29 });
-  assert.deepEqual(axis.at(398), { date: "2026-10-01", minute: 0 });
+  // A session is complete 20 minutes after its close; before that, the day before.
   assert.equal(
-    valueAt(
-      [
-        [0, 1],
-        [5, 2],
-        [9, 3],
-      ],
-      7,
-    ),
-    2,
+    lastClosedSession(Date.parse("2026-10-02T20:30:00Z")),
+    "2026-10-02",
   );
-  assert.equal(valueAt([[3, 1]], 2), null);
+  assert.equal(
+    lastClosedSession(Date.parse("2026-10-02T20:10:00Z")),
+    "2026-10-01",
+  );
+  assert.equal(
+    lastClosedSession(Date.parse("2026-10-04T12:00:00Z")),
+    "2026-10-02",
+  ); // a Sunday
+  // Two days each side of the trade, up to the last closed one.
+  assert.deepEqual(chartWindow(trade, Date.parse("2026-10-20T12:00:00Z")), {
+    from: "2026-09-28",
+    to: "2026-10-02",
+  });
+  assert.deepEqual(chartWindow(trade, Date.parse("2026-10-01T15:00:00Z")), {
+    from: "2026-09-28",
+    to: "2026-09-30",
+  });
+  // The chart's times read the Israel wall clock as UTC: 09:59 New York is 16:59.
+  assert.equal(
+    barTime("2026-09-30", 29),
+    Date.parse("2026-09-30T16:59:00Z") / 1000,
+  );
+  const session = (date: string): TradeChart["sessions"][number] => ({
+    date,
+    minutes: 390,
+    stock: [],
+    spy: [],
+    strength: [],
+    option: [],
+  });
+  const base: TradeChart = {
+    symbol: contract,
+    underlying: "RKLB",
+    option: true,
+    sessions: [session("2026-09-30"), session("2026-10-01")],
+    skipped: 0,
+    at: 0,
+  };
+  const more = {
+    ...base,
+    sessions: [session("2026-09-28"), session("2026-09-29")],
+  };
+  assert.deepEqual(
+    mergeSessions(base, more).sessions.map((s) => s.date),
+    ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01"],
+  );
+  // A day read twice is drawn once.
+  assert.equal(mergeSessions(base, base).sessions.length, 2);
 });
 
 test("story: a bot trade is told from the signal, the position and its sales", () => {
@@ -160,16 +190,39 @@ test("story: a bot trade is told from the signal, the position and its sales", (
   assert.equal(s.paid, 0.4);
   assert.equal(s.stop, 0.28); // −30% of 0.40
   assert.equal(s.stockEntry, 74);
-  assert.deepEqual(s.wall, { name: "day high so far", level: 74.4 });
+  assert.deepEqual(s.wall, { name: "day high so far", level: 74.4, unit: 0.9 });
+  assert.equal(s.right, "C");
+  assert.equal(s.rule, 1.8);
   assert.deepEqual(
-    s.markers.map((m) => [m.kind, m.pane, m.at.minute]),
+    s.markers.map((m) => [m.kind, m.pane, m.at.minute, m.label]),
     [
-      ["buy", "option", 29],
-      ["sell", "option", 40],
-      ["sell", "option", 46],
-      ["signal", "stock", 29],
-      ["touch", "stock", 34],
+      ["buy", "option", 29, "buy 2 @ 0.40"],
+      ["sell", "option", 40, "sell 1 @ 0.32"],
+      ["sell", "option", 46, "sell 1 @ 0.28"],
+      ["signal", "stock", 29, "signal 16:59"],
+      ["touch", "stock", 34, "touch"],
     ],
+  );
+  // The lines: the entry, the level with its touch and fall-back lines (a
+  // quarter and half a unit short of it for a call), paid and the stop.
+  assert.deepEqual(
+    levelLines(s).map((l) => [l.pane, l.kind, l.price]),
+    [
+      ["stock", "entry", 74],
+      ["stock", "level", 74.4],
+      ["stock", "touch", 74.18],
+      ["stock", "fallback", 73.95],
+      ["option", "paid", 0.4],
+      ["option", "stop", 0.28],
+    ],
+  );
+  // A put watches a level below: its lines sit above the level.
+  const put = { ...s, right: "P" as const };
+  assert.deepEqual(
+    levelLines(put)
+      .filter((l) => l.kind === "touch" || l.kind === "fallback")
+      .map((l) => l.price),
+    [74.63, 74.85],
   );
   // A version with other rules words the exits with its own numbers.
   const v1 = botStory(

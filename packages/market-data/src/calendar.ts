@@ -139,3 +139,15 @@ export function newYorkToUtc(date: string, minute: number): number {
   }
   throw new Error("Invalid New York time");
 }
+
+/** The `count` sessions after a date, oldest first. */
+export function nextSessions(date: string, count: number): string[] {
+  const result: string[] = [];
+  const cursor = new Date(`${date}T12:00:00Z`);
+  while (result.length < count) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    const d = cursor.toISOString().slice(0, 10);
+    if (coreClose(d) !== null) result.push(d);
+  }
+  return result;
+}

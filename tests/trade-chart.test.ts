@@ -59,7 +59,7 @@ function fetcher(seen: URL[] = []) {
   }) as unknown as typeof fetch;
 }
 
-test("trade chart: the stock and the contract by session minute, regular hours only", async () => {
+test("trade chart: the stock, SPY, the strength and the contract by session minute, regular hours only", async () => {
   const seen: URL[] = [];
   const out = await handleTradeChart(
     { symbol: contract, from: day, to: day },
@@ -77,17 +77,27 @@ test("trade chart: the stock and the contract by session minute, regular hours o
   assert.equal(s.date, day);
   assert.equal(s.minutes, 390);
   assert.equal(s.stock.length, 390); // the 08:00 bar is not a session minute
-  assert.deepEqual(s.stock[0], [0, 100]);
-  assert.deepEqual(s.stock[389], [389, 103.89]);
+  assert.deepEqual(s.stock[0], [0, 100, 100, 100, 100, 10]);
+  assert.deepEqual(s.stock[389], [389, 103.89, 103.89, 103.89, 103.89, 10]);
+  assert.deepEqual(s.spy[0], [0, 100]);
+  assert.equal(s.spy.length, 390);
+  // The strength from minute 2 (two steps make a t): the stock moves exactly
+  // like SPY here, so t is 0 against a beta of 1, and the volume is the usual (1×).
+  assert.equal(s.strength.length, 388);
+  assert.deepEqual(s.strength[0], [2, 0, 1]);
+  assert.deepEqual(s.strength[387], [389, 0, 1]);
   assert.equal(s.option.length, 120); // every third minute from 10:00
-  assert.deepEqual(s.option[0], [30, 0.7]);
-  // One read of each: the stock's split-adjusted minute bars, the contract's bars.
+  assert.deepEqual(s.option[0], [30, 0.7, 0.7, 0.7, 0.7, 10]);
+  // One read of each: the stock's and SPY's split-adjusted minute bars from
+  // 20 sessions before (for the strength), the contract's bars from the day.
   assert.deepEqual(
     seen.map((u) => u.pathname),
-    ["/v2/stocks/RKLB/bars", "/v1beta1/options/bars"],
+    ["/v2/stocks/RKLB/bars", "/v2/stocks/SPY/bars", "/v1beta1/options/bars"],
   );
-  assert.equal(seen[1]!.searchParams.get("symbols"), contract);
-  assert.equal(seen[1]!.searchParams.get("timeframe"), "1Min");
+  assert.equal(seen[0]!.searchParams.get("start"), "2026-09-01T00:00:00Z");
+  assert.equal(seen[2]!.searchParams.get("start"), "2026-09-30T00:00:00Z");
+  assert.equal(seen[2]!.searchParams.get("symbols"), contract);
+  assert.equal(seen[2]!.searchParams.get("timeframe"), "1Min");
 });
 
 test("trade chart: a stock trade has no option pane; a held trade spans its sessions", async () => {
@@ -108,7 +118,7 @@ test("trade chart: a stock trade has no option pane; a held trade spans its sess
   for (const s of stock.body.sessions) assert.deepEqual(s.option, []);
 });
 
-test("trade chart: a long hold shows its first session and the last four", () => {
+test("trade chart: one answer carries up to seven days, the last ones of a longer span", () => {
   assert.deepEqual(chartSessions(day, day), { dates: [day], skipped: 0 });
   assert.deepEqual(chartSessions("2026-09-28", "2026-10-02"), {
     dates: [
@@ -120,16 +130,18 @@ test("trade chart: a long hold shows its first session and the last four", () =>
     ],
     skipped: 0,
   });
-  // Nine sessions from 2026-09-21: the 21st, then the 28th to the 2nd; three left out.
+  // Ten sessions from 2026-09-21: the last seven, three left out.
   assert.deepEqual(chartSessions("2026-09-21", "2026-10-02"), {
     dates: [
-      "2026-09-21",
+      "2026-09-24",
+      "2026-09-25",
+      "2026-09-28",
       "2026-09-29",
       "2026-09-30",
       "2026-10-01",
       "2026-10-02",
     ],
-    skipped: 5,
+    skipped: 3,
   });
 });
 

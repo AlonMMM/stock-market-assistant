@@ -1,5 +1,15 @@
-import type { TradeChartSession } from "../../../packages/market-data/src/trade-chart.js";
-import { newYork } from "../../../packages/market-data/src/calendar.js";
+import type {
+  TradeChart,
+  TradeChartSession,
+} from "../../../packages/market-data/src/trade-chart.js";
+import {
+  coreClose,
+  newYork,
+  newYorkToUtc,
+  nextSessions,
+  previousSessions,
+} from "../../../packages/market-data/src/calendar.js";
+import { levelRules } from "../../../packages/trading/src/bot/levels.js";
 import type { BotView } from "../../../packages/trading/src/bot-api.js";
 import type { BotSettings } from "../../../packages/trading/src/bot/settings.js";
 import {
@@ -11,16 +21,19 @@ import type {
   ClosedTrade,
   TradeFill,
 } from "../../../packages/trading/src/portfolio.js";
+import { israelWallSeconds, usSessionDate } from "./time.js";
 
 // A closed trade's story (docs/tasks/frontend-trade-story.md): where it sits
-// on the chart of its sessions, why it was entered and why each exit
+// on the chart of the days around it, why it was entered and why each exit
 // happened. The bot's trades are told from the bot's own records (the signal,
 // the position, its sales and their reasons); the owner's from the buy
 // decision and the fills.
 
 export const sessionOpen = 570; // 09:30 New York
-/** Space between two sessions on the x axis, in minutes. */
-export const sessionGap = 15;
+/** Days drawn on each side of the trade when the window opens. */
+export const contextDays = 2;
+/** Days read at a time when the viewer drags past what is drawn. */
+export const pageDays = 3;
 
 /** A moment on the chart: the New York session and the minute since 09:30. */
 export interface Moment {
@@ -41,58 +54,55 @@ export function tradeDates(t: ClosedTrade): { from: string; to: string } {
   };
 }
 
-export function tradeChartUrl(t: ClosedTrade): string {
-  const { from, to } = tradeDates(t);
-  return `/api/trade-chart?${new URLSearchParams({ symbol: t.symbol, from, to })}`;
+export function tradeChartUrl(
+  symbol: string,
+  from: string,
+  to: string,
+): string {
+  return `/api/trade-chart?${new URLSearchParams({ symbol, from, to })}`;
 }
 
-/** The x axis: the sessions side by side, each as long as it was, with a gap between. */
-export function chartAxis(sessions: TradeChartSession[]) {
-  const offsets = new Map<string, { start: number; minutes: number }>();
-  let total = 0;
-  for (const s of sessions) {
-    offsets.set(s.date, { start: total, minutes: s.minutes });
-    total += s.minutes + sessionGap;
-  }
-  total = Math.max(1, total - sessionGap);
+// A session's bars are final about 20 minutes after its close (the data
+// feed's delay); before that the day before is the last one to draw.
+const settleMs = 20 * 60000;
+
+/** The last US session whose bars are complete at `now`. */
+export function lastClosedSession(now: number): string {
+  const date = usSessionDate(now);
+  const close = coreClose(date);
+  if (close !== null && now >= newYorkToUtc(date, close) + settleMs)
+    return date;
+  return previousSessions(date, 1)[0]!;
+}
+
+/** The days the window opens on: the trade's and a couple each side, up to the last closed one. */
+export function chartWindow(
+  t: ClosedTrade,
+  now: number,
+): { from: string; to: string } {
+  const { from, to } = tradeDates(t);
+  const last = lastClosedSession(now);
+  const after = nextSessions(to, contextDays).filter((d) => d <= last);
   return {
-    total,
-    offsets,
-    /** The x position (in minutes) of a moment; null on a session not shown. */
-    xOf(m: Moment): number | null {
-      const s = offsets.get(m.date);
-      if (!s) return null;
-      return s.start + Math.min(Math.max(0, m.minute), s.minutes - 1);
-    },
-    /** The moment at an x position, for the crosshair. */
-    at(x: number): Moment | null {
-      for (const [date, s] of offsets) {
-        if (x < s.start - sessionGap / 2) return null;
-        if (x < s.start + s.minutes + sessionGap / 2)
-          return {
-            date,
-            minute: Math.min(
-              s.minutes - 1,
-              Math.max(0, Math.round(x - s.start)),
-            ),
-          };
-      }
-      return null;
-    },
+    from: previousSessions(from, contextDays)[0]!,
+    to: after.at(-1) ?? (to <= last ? to : last),
   };
 }
 
-/** The last close at or before a minute; null before the first bar. */
-export function valueAt(
-  pairs: [number, number][],
-  minute: number,
-): number | null {
-  let out: number | null = null;
-  for (const [m, v] of pairs) {
-    if (m > minute) break;
-    out = v;
-  }
-  return out;
+/** The chart's time for a session minute: the Israel wall clock, read as UTC. */
+export function barTime(date: string, minute: number): number {
+  return israelWallSeconds(newYorkToUtc(date, sessionOpen + minute) / 1000);
+}
+
+/** The sessions of two answers as one list, oldest first, each date once. */
+export function mergeSessions(chart: TradeChart, more: TradeChart): TradeChart {
+  const byDate = new Map<string, TradeChartSession>();
+  for (const s of [...chart.sessions, ...more.sessions]) byDate.set(s.date, s);
+  return {
+    ...chart,
+    sessions: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    skipped: 0,
+  };
 }
 
 export interface Marker {
@@ -123,9 +133,67 @@ export interface Story {
   stop: number | null;
   stopLabel: string;
   stockEntry: number | null; // null: the stock's close at the first buy
-  wall: { name: string; level: number } | null;
+  // The level the bot watched; `unit` is the stock's unit in dollars when the
+  // bot kept it (the touch and fall-back lines need it).
+  wall: { name: string; level: number; unit: number | null } | null;
+  right: "C" | "P" | null; // the bet's direction, for the lines around the level
+  rule: number | null; // the strength the signal needed (t), for the strength pane
   markers: Marker[];
   decision: Decision | null; // the owner's buy order, for its full details
+}
+
+/** A line drawn across a pane at a price. */
+export interface LevelLine {
+  pane: "stock" | "option";
+  price: number;
+  title: string;
+  kind: "entry" | "level" | "touch" | "fallback" | "paid" | "stop";
+}
+
+/** The lines a story draws: the entry, the level and its touch and fall-back lines, what was paid, the stop. */
+export function levelLines(story: Story): LevelLine[] {
+  const out: LevelLine[] = [];
+  if (story.stockEntry !== null)
+    out.push({
+      pane: "stock",
+      price: story.stockEntry,
+      title: "entry",
+      kind: "entry",
+    });
+  if (story.wall) {
+    const w = story.wall;
+    out.push({
+      pane: "stock",
+      price: w.level,
+      title: `${w.name} · watched`,
+      kind: "level",
+    });
+    if (w.unit !== null) {
+      // Ahead of the entry: above for a call, below for a put.
+      const back = story.right === "P" ? 1 : -1;
+      out.push({
+        pane: "stock",
+        price: Number((w.level + back * levelRules.near * w.unit).toFixed(2)),
+        title: "touch from",
+        kind: "touch",
+      });
+      out.push({
+        pane: "stock",
+        price: Number((w.level + back * levelRules.back * w.unit).toFixed(2)),
+        title: "fall-back · sell",
+        kind: "fallback",
+      });
+    }
+  }
+  out.push({ pane: "option", price: story.paid, title: "paid", kind: "paid" });
+  if (story.stop !== null)
+    out.push({
+      pane: "option",
+      price: story.stop,
+      title: story.stopLabel,
+      kind: "stop",
+    });
+  return out;
 }
 
 type BotPosition = BotView["positions"][number];
@@ -163,7 +231,7 @@ const fillMarkers = (t: ClosedTrade): Marker[] =>
         at: momentOf(ms),
         ms,
         price: f.price,
-        label: `bought ${f.qty} at ${f.price.toFixed(2)}`,
+        label: `buy ${f.qty} @ ${f.price.toFixed(2)}`,
       };
     if (f.side === "expired")
       return {
@@ -180,7 +248,7 @@ const fillMarkers = (t: ClosedTrade): Marker[] =>
       at: momentOf(ms),
       ms,
       price: f.price,
-      label: `sold ${f.qty} at ${f.price.toFixed(2)}`,
+      label: `sell ${f.qty} @ ${f.price.toFixed(2)}`,
     };
   });
 
@@ -253,7 +321,11 @@ export function botStory(
     (s) => s.day === p.day && s.symbol === p.symbol && s.right === p.right,
   );
   const wall = p.breakWatch
-    ? { name: p.breakWatch.name, level: p.breakWatch.level }
+    ? {
+        name: p.breakWatch.name,
+        level: p.breakWatch.level,
+        unit: p.breakWatch.unit ?? null,
+      }
     : null;
   const entry: string[] = [];
   const strength = p.right === "C" ? "strength" : "weakness";
@@ -303,7 +375,7 @@ export function botStory(
       at: { date: p.day, minute: p.breakWatch.touch },
       ms: 0,
       price: null,
-      label: `tests ${p.breakWatch.name}`,
+      label: "touch",
     });
   return {
     bot: true,
@@ -316,6 +388,8 @@ export function botStory(
     stopLabel: `stop −${r.stopPct}%`,
     stockEntry: p.entryStock ?? null,
     wall,
+    right: p.right,
+    rule: r.minT,
     markers,
     decision: null,
   };
@@ -345,6 +419,8 @@ export function unknownStory(t: ClosedTrade): Story {
     stopLabel: "stop",
     stockEntry: null,
     wall: null,
+    right: null,
+    rule: null,
     markers: fillMarkers(t),
     decision: null,
   };
@@ -437,6 +513,8 @@ export function ownerStory(t: ClosedTrade, decision: Decision | null): Story {
     stopLabel: "stop",
     stockEntry: null,
     wall: null,
+    right: null,
+    rule: null,
     markers: fillMarkers(t),
     decision,
   };
