@@ -393,6 +393,16 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Candidates
 
+- A tighter stop on the rest after the +10 half (`rest_stop.py`, 2026-10-24; the user: "be more careful with trades we
+  already cut - maybe move the stop higher"; levels set before running). Entry day, once +10 sold half: R20 the rest
+  out at -20% with the stock against: fair $529,302 / 9% vs $526,469 / 10% ($2,033,193 / 17% vs $2,011,681 / 18% at
+  2%), every year higher (+469K / +666K / +726K vs +468K / +665K / +724K), unseen $127,223 vs $125,581 (every year
+  higher). R15 $529,398 / $127,130; R20o (-20% on the option alone) $530,309 / 9% / $126,815. Broad, not a few trades
+  (fair: 130 changed, biggest gain GME 2025-07-21 +1,818, biggest loss SMCI 2025-10-01 -8,767). Passes the bar on both
+  lists with a smaller drop, but by a small margin (+0.5% fair, +1.3% unseen). Not yet re-tested on the Favorites
+  year. Worse: RHalf (under the half's sale price) $507,398 / 13% and RStock (out when the stock is against after +20)
+  $506,032 / 13%: both sell ORCL 2025-01-21 (-40K points). sim.py: `after_half {out, need_against, stock}`.
+
 - Hold overnight from +50% instead of +100% (`hold_from.py`, 2026-10-24, on the chosen bot). Delta 0.15: fair list
   $661,989 / 10% vs $526,469 / 10% (2%: $3,063,613 / 19% vs $2,011,681 / 18%), every year better (+585K / +732K /
   +792K vs +468K / +665K / +724K), $248,168 vs $196,717 without the best 5; a band, not one cell (+25% $645,804, +75%

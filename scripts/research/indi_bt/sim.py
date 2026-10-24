@@ -53,6 +53,9 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                `off` (price units) past the entry price our way; next bar at the middle + SH. The stops and the hold
                then measure the gain from the average cost; result() pays for the rebuy (user, 2026-10-24)
   user_stop.rest_after_half: once a check sold part, the later checks sell regardless of the stock (the rest out at +20)
+  after_half {out, need_against, stock}: on the entry day once the +10 check sold half, the rest out at `out` (a gain,
+               or "half_px": under the half's sale price), with the stock against unless need_against False; stock True:
+               the rest out at the first minute after +20 with the stock against the entry
   early_out {min, out}: on the entry day the -X% stop is `out` (e.g. -0.5) in the first `min` minutes, then user_stop.out
   T thesis (thesis {s30, bar, t}): entry day, the stock closes `s30` S30 units against the entry price (T_s30), or past the
                signal bar's low / high (T_bar), or the signal's cumulative t vs SPY x beta falls to `t` or under (T_tstat)
@@ -261,7 +264,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 q = rem if share == "all" else min(rem, share)
                 rem -= q
                 steps.append((d, t, "sell", round(q, 4), round(max(mid(b) * (1 - SH), 0.01), 4), rule))
-                if rule == "U_check10": st["half_q"] = q
+                if rule == "U_check10": st["half_q"], st["half_px"] = q, steps[-1][4]
                 pending = None
                 if rem <= 1e-9: return cost, steps, ""
             NX = X.get("night_x")  # carried days: stop / take profit from the last 15:50 price (night_x.py)
@@ -420,6 +423,12 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 if RB and st.get("half_q") and not st.get("rebought") and not st.get("rb_pending") and t <= RB.get("until", 330) and sd.c[tt] is not None:
                     back = (t - minute >= 20 and not against) if RB["mode"] == "at20" else bet * (sd.c[tt] - st["sp0"]) >= RB.get("off", 0) and sd.c[tt] != st["sp0"]
                     if back: st["rb_pending"] = True; continue
+                AH = X.get("after_half")  # the rest after the +10 half: a tighter stop (user, 2026-10-24)
+                if AH and st.get("half_q") and not early:
+                    lvl = st["half_px"] / basis - 1 if AH.get("out") == "half_px" else AH.get("out")
+                    need = against or not AH.get("need_against", True)
+                    if lvl is not None and g <= lvl and need: pending = ("all", "U_rest"); continue
+                    if AH.get("stock") and t - minute > 20 and against: pending = ("all", "U_rest"); continue
                 if g <= out_now and against and not early: pending = ("all", "U_out"); continue
             if X.get("user_stop") and sd.ok and k > 0 and g <= uout:
                 pending = ("all", "U_out"); continue
