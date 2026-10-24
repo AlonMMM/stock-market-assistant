@@ -123,6 +123,8 @@ export interface BotOptions {
   store: BotStore;
   market: BotMarket;
   trading: BotTrading;
+  /** The broker account the trades go to, for the status; unknown when absent. */
+  account?: { broker: string; id: string };
   notify: (title: string, lines: string[]) => Promise<unknown>;
   universe: string[];
   /** The earnings calendar's reports listed on a date (Nasdaq). Without it there is no earnings filter. */
@@ -212,7 +214,10 @@ const expiryOf = (contract: string) => {
 };
 
 export class IndiBot {
-  private readonly o: Required<Omit<BotOptions, "now" | "log" | "earnings">> & {
+  private readonly o: Required<
+    Omit<BotOptions, "now" | "log" | "earnings" | "account">
+  > & {
+    account?: { broker: string; id: string } | undefined;
     earnings?: BotOptions["earnings"];
     now: () => number;
     log: (line: string) => void;
@@ -1237,6 +1242,7 @@ export class IndiBot {
     return {
       enabled: s.enabled,
       mode: s.mode,
+      account: this.o.account ?? null,
       sizePct: s.sizePct,
       delta: s.delta,
       version: versionLabel(s),

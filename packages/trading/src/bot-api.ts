@@ -11,6 +11,9 @@ import {
 export interface BotView {
   enabled: boolean;
   mode: "dry" | "live";
+  // The broker account the bot trades (docs/tasks/backend-bot-ibkr.md); null
+  // when unknown, absent from a trading service before it was reported.
+  account?: { broker: string; id: string } | null;
   sizePct: number;
   delta: number;
   // The version of the rules in force (bot/versions.ts): "2.1", "2.1*" when

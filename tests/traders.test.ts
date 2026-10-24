@@ -3,7 +3,11 @@ import { randomBytes } from "node:crypto";
 import test from "node:test";
 import { readSecret, Vault } from "../apps/trader/src/secrets.js";
 import { ensureOwnerIbkr, seedOwner } from "../apps/trader/src/seed.js";
-import { botAccount, ensureBotAccount } from "../apps/trader/src/seed-bot.js";
+import {
+  botAccount,
+  chooseBotAccount,
+  ensureBotAccount,
+} from "../apps/trader/src/seed-bot.js";
 import { ShortWatch, shortRepeatMs } from "../apps/trader/src/short-watch.js";
 import { TradeStore, type Channel } from "../apps/trader/src/store.js";
 import { Traders } from "../apps/trader/src/traders.js";
@@ -375,4 +379,37 @@ test("traders: the bot's account is reached by id; naming alpaca still means the
   assert.throws(() => own.service.job(jobId), /No such job/);
   // Both accounts are watched (owner, friend, bot).
   assert.equal(traders.all().length, 3);
+});
+
+test("bot account: BOT_BROKER picks the owner's IBKR account; else its own, else the default", () => {
+  const store = new TradeStore(":memory:");
+  seedOwner(store, env, monday);
+  // Nothing set: the owner's default account.
+  assert.deepEqual(chooseBotAccount(store, {}), { kind: "default" });
+  assert.deepEqual(chooseBotAccount(store, { BOT_BROKER: "alpaca" }), {
+    kind: "default",
+  });
+  // A typo must not pick an account by accident.
+  assert.throws(
+    () => chooseBotAccount(store, { BOT_BROKER: "ib" }),
+    /BOT_BROKER must be alpaca or ibkr/,
+  );
+  // ibkr without the Gateway's account: refused, not silently Alpaca.
+  assert.throws(
+    () => chooseBotAccount(store, { BOT_BROKER: "ibkr" }),
+    /needs the owner's IBKR account/,
+  );
+  ensureOwnerIbkr(store, { IBKR_GATEWAY: "gw:4001" }, monday);
+  const ibkr = chooseBotAccount(store, { BOT_BROKER: "ibkr" });
+  assert.equal(ibkr.kind, "ibkr");
+  assert.equal(ibkr.kind === "ibkr" && ibkr.account.id, "owner-ibkr");
+  // The bot's own Alpaca account wins over the default, but not over ibkr.
+  ensureBotAccount(
+    store,
+    { BOT_ALPACA_API_KEY: "k", BOT_ALPACA_API_SECRET: "s" },
+    monday,
+  );
+  const own = chooseBotAccount(store, {});
+  assert.equal(own.kind === "own" && own.account.id, "owner-bot");
+  assert.equal(chooseBotAccount(store, { BOT_BROKER: "ibkr" }).kind, "ibkr");
 });

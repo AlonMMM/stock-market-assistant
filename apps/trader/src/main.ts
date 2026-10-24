@@ -9,7 +9,7 @@ import Fastify, { type FastifyRequest } from "fastify";
 import { Vault } from "./secrets.js";
 import { StoqeyTws } from "../../../packages/trading/src/tws-client.js";
 import { ensureOwnerIbkr, seedOwner } from "./seed.js";
-import { botAccount, ensureBotAccount } from "./seed-bot.js";
+import { chooseBotAccount, ensureBotAccount } from "./seed-bot.js";
 import { ShortWatch } from "./short-watch.js";
 import { RequestError, type TraderService } from "./service.js";
 import { TradeStore } from "./store.js";
@@ -183,36 +183,46 @@ api.get<{ Querystring: { limit?: string } }>("/v1/decisions", async (request) =>
   service(request).decisions(Number(request.query.limit)),
 );
 
-// The Indi bot (docs/tasks/backend-indi-bot.md): on its own Alpaca paper
-// account once BOT_ALPACA_API_KEY / BOT_ALPACA_API_SECRET are set
-// (docs/tasks/backend-bot-account.md), else on the owner's; always through
+// The Indi bot (docs/tasks/backend-indi-bot.md): on the owner's IBKR paper
+// account with BOT_BROKER=ibkr (docs/tasks/backend-bot-ibkr.md), else on its
+// own Alpaca paper account once BOT_ALPACA_API_KEY / BOT_ALPACA_API_SECRET are
+// set (docs/tasks/backend-bot-account.md), else on the owner's; always through
 // the owner's trading service. Off unless BOT_ENABLED=true; a dry run unless
-// BOT_MODE=live. Market data comes from the owner's keys either way.
+// BOT_MODE=live. Market data comes from the owner's Alpaca keys either way.
 const botStore = new BotStore(dbPath);
+let botOff = "The bot has no Alpaca keys";
 const bot = (() => {
   const key = env("ALPACA_API_KEY", "APCA_API_KEY_ID");
   const secret = env("ALPACA_API_SECRET", "APCA_API_SECRET_KEY");
   if (!key || !secret) return null;
-  const own = botAccount(store);
-  const owner = own
-    ? () => traders.forAccount(own.id)
-    : () => traders.forCaller(undefined, "alpaca");
-  if (own) {
+  // A wrong BOT_BROKER stops the service: the bot must never trade the wrong
+  // account by accident.
+  const choice = chooseBotAccount(store, process.env);
+  const owner =
+    choice.kind === "default"
+      ? () => traders.forCaller(undefined, "alpaca")
+      : () => traders.forAccount(choice.account.id);
+  if (choice.kind !== "default") {
     try {
-      owner(); // its keys must be there, or the bot does not run at all
+      owner(); // its keys or Gateway must be there, or the bot does not run at all
     } catch (error) {
-      log(
-        `the bot's account "${own.id}" cannot start, so the bot is off: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      const why = error instanceof Error ? error.message : String(error);
+      botOff = `The bot's account "${choice.account.id}" cannot start: ${why}`;
+      log(`${botOff}; the bot is off`);
       return null;
     }
   }
-  log(
-    own
-      ? `the bot trades its own account "${own.id}"`
-      : "the bot trades the owner's default account (no BOT_ALPACA_API_KEY)",
-  );
+  const account = owner().account;
+  if (choice.kind === "ibkr")
+    log(
+      `the bot trades the owner's IBKR paper account "${account.id}" (BOT_BROKER=ibkr)`,
+    );
+  else if (choice.kind === "own")
+    log(`the bot trades its own account "${account.id}"`);
+  else
+    log("the bot trades the owner's default account (no BOT_ALPACA_API_KEY)");
   return new IndiBot({
+    account: { broker: account.broker, id: account.id },
     store: botStore,
     market: new AlpacaBotMarket(key, secret, "sip"),
     trading: {
@@ -241,12 +251,12 @@ const bot = (() => {
 // minute (user 2026-10-23).
 const botTimer = bot ? setInterval(() => void bot.tick(), 10_000) : null;
 api.get("/v1/bot", async () => {
-  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  if (!bot) throw new RequestError(botOff, 409);
   return bot.status();
 });
 // The site sends the user's favorites list before each session.
 api.post("/v1/bot/watchlist", async (request) => {
-  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  if (!bot) throw new RequestError(botOff, 409);
   const b = body(request.body);
   if (typeof b.name !== "string" || !Array.isArray(b.tickers))
     throw new RequestError("Need name and tickers");
@@ -258,7 +268,7 @@ api.post("/v1/bot/watchlist", async (request) => {
   };
 });
 api.post("/v1/bot", async (request) => {
-  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  if (!bot) throw new RequestError(botOff, 409);
   const on = body(request.body).enabled;
   if (typeof on !== "boolean")
     throw new RequestError("enabled must be true or false");
@@ -268,11 +278,11 @@ api.post("/v1/bot", async (request) => {
 
 // The owner's settings from the site's Bot settings page (docs/tasks/backend-bot-settings.md).
 api.get("/v1/bot/settings", async () => {
-  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  if (!bot) throw new RequestError(botOff, 409);
   return bot.settings();
 });
 api.put("/v1/bot/settings", async (request) => {
-  if (!bot) throw new RequestError("The bot has no Alpaca keys", 409);
+  if (!bot) throw new RequestError(botOff, 409);
   const parsed = parseSettings(request.body);
   if (!parsed.ok) throw new RequestError(parsed.error);
   return bot.setSettings(parsed.value);

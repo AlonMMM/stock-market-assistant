@@ -11,6 +11,44 @@ type Env = Record<string, string | undefined>;
 export const botAccountSuffix = "bot";
 export const botKeyVariable = "BOT_ALPACA_API_KEY";
 export const botSecretVariable = "BOT_ALPACA_API_SECRET";
+// Which broker the bot trades at (user 2026-10-24: "connect the bot with my
+// interactive brokers"): `ibkr` is the owner's IBKR paper account behind the
+// Gateway (`IBKR_GATEWAY`, seed.ts); `alpaca`, the default, keeps the bot on
+// its own Alpaca account, or the owner's default one without the key variables.
+export const botBrokerVariable = "BOT_BROKER";
+
+/** The account the bot trades: a named one, or the owner's default account. */
+export type BotAccountChoice =
+  | { kind: "ibkr"; account: BrokerAccount }
+  | { kind: "own"; account: BrokerAccount }
+  | { kind: "default" };
+
+/**
+ * Reads `BOT_BROKER`. Throws on a value that is not `alpaca` or `ibkr`, and on
+ * `ibkr` without the owner's IBKR account, so a misconfigured bot never trades
+ * the wrong account.
+ */
+export function chooseBotAccount(
+  store: TradeStore,
+  env: Env,
+): BotAccountChoice {
+  const named = env[botBrokerVariable] || "alpaca";
+  if (named !== "alpaca" && named !== "ibkr")
+    throw new Error(`${botBrokerVariable} must be alpaca or ibkr`);
+  if (named === "ibkr") {
+    const owner = store.users().find((u) => u.isAdmin);
+    const account = owner
+      ? store.accounts(owner.id).find((a) => a.broker === "ibkr" && a.enabled)
+      : undefined;
+    if (!account)
+      throw new Error(
+        `${botBrokerVariable}=ibkr needs the owner's IBKR account (set IBKR_GATEWAY)`,
+      );
+    return { kind: "ibkr", account };
+  }
+  const own = botAccount(store);
+  return own ? { kind: "own", account: own } : { kind: "default" };
+}
 
 /** The owner's bot account, if it was added. */
 export function botAccount(store: TradeStore): BrokerAccount | null {

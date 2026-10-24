@@ -36,6 +36,8 @@ Setup:
   against what is held and already offered, and the trading service checks the IBKR
   account for short risk every minute (alerts repeat every 15 minutes).
 - Real-time market data only (`reqMarketDataType(1)`); no delayed or frozen quotes.
+- `BOT_BROKER=ibkr` makes the Indi bot trade this account instead of its Alpaca one
+  (docs/tasks/backend-bot-ibkr.md); unset, the bot stays on Alpaca.
 
 ## History: read-only collector (September 2026, replaced by Alpaca)
 
