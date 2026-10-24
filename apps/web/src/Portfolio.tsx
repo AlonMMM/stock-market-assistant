@@ -15,12 +15,23 @@ import { BotChip, BotPanel, useBotContracts } from "./BotPanel.js";
 import { BotSettingsPage } from "./BotSettings.js";
 import { Orders, useDecisions, WhyButton } from "./Orders.js";
 import { PositionList, useControlAccess } from "./Positions.js";
+import {
+  expiryLabel,
+  optionName,
+  signedPct,
+  signedUsd,
+  tone,
+  usd,
+} from "./format.js";
 import { positionNumbers } from "./positions-model.js";
 import { Trade as TradeTicket } from "./Trade.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
 
 const PnlChart = lazy(() =>
   import("./PnlChart.js").then((m) => ({ default: m.PnlChart })),
+);
+const TradeStory = lazy(() =>
+  import("./TradeStory.js").then((m) => ({ default: m.TradeStory })),
 );
 // Daily points and closed trades; the API keeps them for a minute.
 const historyRefreshMs = 60000;
@@ -34,29 +45,6 @@ const periods: [HistoryPeriod, string][] = [
 // The API reuses Alpaca's answers briefly (portfolioTtlMs), so open orders
 // and the stops read from them can be up to five seconds old.
 const refreshMs = 1000;
-
-const usd = (n: number, digits = 0) =>
-  `$${Math.abs(n).toLocaleString("en-US", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  })}`;
-const signedUsd = (n: number) => `${n >= 0 ? "+" : "−"}${usd(n)}`;
-const signedPct = (n: number) =>
-  `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(1)}%`;
-const tone = (n: number | null) =>
-  n === null || n === 0 ? "" : n > 0 ? " up" : " down";
-const expiry = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "UTC",
-  day: "numeric",
-  month: "short",
-});
-const expiryLabel = (date: string) =>
-  expiry.format(Date.parse(`${date}T00:00:00Z`));
-
-const optionName = (c: Contract) =>
-  c.option
-    ? `${c.underlying} ${c.option.strike} ${c.option.right === "call" ? "Call" : "Put"}`
-    : c.symbol;
 
 function Order({
   o,
@@ -125,18 +113,16 @@ function Trade({ t, bot }: { t: ClosedTrade; bot: boolean }) {
   const opened = israelDateTime(Date.parse(t.openedAt));
   // An expiry has a date but no time of day.
   const closed = t.expired ? "expiry" : israelDateTime(Date.parse(t.closedAt));
-  // A tap shows each buy, sale and expiry (user 2026-10-19).
+  // A tap opens the trade's story: the chart, why it was entered and exited,
+  // and each fill (user 2026-10-19 and 2026-10-24).
   const [open, setOpen] = useState(false);
-  const multiplier = t.option ? 100 : 1;
-  const fills = t.fills ?? [];
   return (
     <li className={`position trade-row${open ? " open" : ""}`}>
       <button
         type="button"
         className="trade-toggle"
-        aria-expanded={open}
-        disabled={fills.length === 0}
-        onClick={() => setOpen(!open)}
+        aria-haspopup="dialog"
+        onClick={() => setOpen(true)}
       >
         <div className="position-head">
           <strong>{optionName(t)}</strong>
@@ -161,56 +147,14 @@ function Trade({ t, bot }: { t: ClosedTrade; bot: boolean }) {
             {opened} → {closed} · {israelLabel}
           </dd>
         </dl>
-        {fills.length > 0 && (
-          <span className="trade-more muted" aria-hidden="true">
-            {open ? "Hide the fills ▴" : `${fills.length} fills ▾`}
-          </span>
-        )}
+        <span className="trade-more muted" aria-hidden="true">
+          Chart, why in, why out ▸
+        </span>
       </button>
       {open && (
-        <table className="trade-fills num">
-          <thead>
-            <tr>
-              <th scope="col">When ({israelLabel})</th>
-              <th scope="col">Side</th>
-              <th scope="col">Qty</th>
-              <th scope="col">Price</th>
-              <th scope="col">Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {fills.map((f, i) => (
-              <tr key={i} className={f.side}>
-                <td>
-                  {f.side === "expired"
-                    ? f.at.slice(0, 10)
-                    : israelDateTime(Date.parse(f.at))}
-                </td>
-                <td>
-                  {f.side === "buy"
-                    ? "Buy"
-                    : f.side === "sell"
-                      ? "Sell"
-                      : "Expired"}
-                </td>
-                <td>{f.qty}</td>
-                <td>{f.side === "expired" ? "—" : f.price.toFixed(2)}</td>
-                <td>
-                  {f.side === "buy" ? "−" : "+"}
-                  {usd(f.qty * f.price * multiplier)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <th scope="row" colSpan={4}>
-                Result
-              </th>
-              <td className={tone(t.pnl).trim()}>{signedUsd(t.pnl)}</td>
-            </tr>
-          </tfoot>
-        </table>
+        <Suspense fallback={null}>
+          <TradeStory t={t} bot={bot} onClose={() => setOpen(false)} />
+        </Suspense>
       )}
     </li>
   );
@@ -301,7 +245,7 @@ function History({
                 <Trade
                   key={t.symbol + t.closedAt}
                   t={t}
-                  bot={chips && bot.has(t.symbol)}
+                  bot={!chips || bot.has(t.symbol)}
                 />
               ))}
             </ul>

@@ -154,6 +154,17 @@ export class BotStore {
     ).map((r) => JSON.parse(r.data) as BotSignal);
   }
 
+  /** The signals that entered a position since `since`, for the trade's story. */
+  entries(since: string): BotSignal[] {
+    return (
+      this.db
+        .prepare("SELECT data FROM bot_signals WHERE day >= ? ORDER BY id")
+        .all(since) as { data: string }[]
+    )
+      .map((r) => JSON.parse(r.data) as BotSignal)
+      .filter((s) => s.outcome === "bought" || s.outcome === "would-buy");
+  }
+
   savePosition(p: BotPosition) {
     this.db
       .prepare(

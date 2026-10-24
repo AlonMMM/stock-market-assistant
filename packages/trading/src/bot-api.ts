@@ -55,6 +55,9 @@ export interface BotView {
     at: number;
     version?: string; // the bot version in force; absent before versions
   }[];
+  // The signals that entered a position in the last sessions (the same window
+  // as `positions`), for a closed trade's story. Absent from an older service.
+  entries?: BotView["signals"];
   positions: {
     id: string;
     day: string;
@@ -64,11 +67,16 @@ export interface BotView {
     qty: number;
     bought: number;
     cost: number;
+    // The entry: session minute and the stock's price then.
+    entryMinute?: number;
+    entryStock?: number;
     nights: number;
     status: "buying" | "open" | "closed";
     dry: boolean;
     version?: string; // the bot version that entered it; absent before versions
-    sales: { at: number; qty: number; reason: string }[];
+    // `price`: the sale's average fill (the mid in a dry run); absent on
+    // sales from before it was kept.
+    sales: { at: number; qty: number; reason: string; price?: number }[];
     // The level watched on the entry day for the failed-break sale (absent
     // before it, or with no level ahead).
     breakWatch?: {
