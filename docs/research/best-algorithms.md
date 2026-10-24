@@ -78,6 +78,15 @@ The previous champion, the news filter at t ≥ 2: $297,160 / 16%, unseen $121,4
   without the sale), at 2%: Favorites (51) $294,375 / 14% vs $256,531 / 18%; Software (30) $112,183 / 7% vs
   $111,761 / 7%; Semis (27) $103,524 / 16% vs $103,677 / 18%. Without the best 5 at 1%, Favorites $86,053 vs $80,400.
   Same 335 / 49 / 111 trades in both. On the Backtest Reports dashboard.
+- Re-test of version 2.3 on the user's Favorites as the app lists them on 2026-10-24 (63 stocks; `universe_fav` in
+  `params.json`), 2025-10-24 to 2026-10-23 (`lists.py`, `favorites_23` = BT_FAILED_BREAK=1 BT_THESIS=0.5 BT_HOLD=0.5 vs
+  `favorites_21` = the failed break only): 1,895 signals, 405 trades in both (`min_vol30` 200; a first run that had loaded
+  the 10-contract floor gave 907 and was thrown away). Bot 2.3 at 1%: $178,543 / 12%, at 2%: $277,307 / 23%; bot 2.1:
+  $169,984 / 10% and $252,782 / 20%. Per trade at $10K +$1,639 vs +$1,511; winners 68 vs 77 (the t-stat exit sells 22
+  trades early); held overnight 48 vs 30; without the best 5 at 1% $84,531 vs $80,447. The Oct–Dec 2025 part loses
+  (−$36,762 over its trades at $10K each), 2026 carries the year. 39 trades end differently, +$52,207 at $10K in all;
+  the largest are QCOM 2026-05-07 (+530% vs +74%) and AMZN 2026-04-09 (+462% vs +45%) kept overnight, against AVGO
+  2025-12-17 (−3% vs +106%) and AAPL 2026-01-20 (−52% vs +46%). On the Backtest Reports dashboard.
 
 V1 (C signal t ≥ 2 vs SPY × β, day volume ≥ 1.5×, delta 0.15, your stop + overnight hold for winners ≥ +100%) is the
 paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
