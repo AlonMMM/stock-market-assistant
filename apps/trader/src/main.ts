@@ -10,6 +10,7 @@ import { Vault } from "./secrets.js";
 import { StoqeyTws } from "../../../packages/trading/src/tws-client.js";
 import { ensureOwnerIbkr, seedOwner } from "./seed.js";
 import { chooseBotAccount, ensureBotAccount } from "./seed-bot.js";
+import { EquityLog } from "./equity-log.js";
 import { ShortWatch } from "./short-watch.js";
 import { RequestError, type TraderService } from "./service.js";
 import { TradeStore } from "./store.js";
@@ -305,18 +306,26 @@ const watchAll = () =>
       ),
   );
 const stopWatch = setInterval(() => void watchAll(), stopWatchMs);
-// Brokers that would let a sell open a short are checked every minute.
+// Brokers that would let a sell open a short are checked every minute, and
+// the account value of brokers without their own history is recorded.
 const shorts = new ShortWatch(log);
+const equityLog = new EquityLog(store, log);
+const failed = (what: string, scope: string) => (error: unknown) =>
+  log(
+    `${what} of ${scope} failed: ${error instanceof Error ? error.message : String(error)}`,
+  );
+const recordEquity = () =>
+  Promise.all(
+    traders
+      .all()
+      .filter((t) => EquityLog.keeps(t))
+      .map((t) => equityLog.record(t).catch(failed("equity record", t.scope))),
+  );
 const shortWatch = setInterval(() => {
   for (const t of traders.all())
     if (!t.broker.capabilities.closeOnlyOrders)
-      shorts
-        .check(t)
-        .catch((error: unknown) =>
-          log(
-            `short check of ${t.scope} failed: ${error instanceof Error ? error.message : String(error)}`,
-          ),
-        );
+      shorts.check(t).catch(failed("short check", t.scope));
+  void recordEquity();
 }, 60_000);
 
 async function stop() {
@@ -336,8 +345,11 @@ for (const t of traders.all()) {
   const cut = await t.service.reconcile();
   if (cut > 0) log(`settled ${cut} job(s) of ${t.scope} cut off by a restart`);
 }
-// Stops that sold while the service was down are reported now.
+// Stops that sold while the service was down are reported now, and today's
+// account value goes on record (not awaited: a slow Gateway must not hold
+// the start).
 await watchAll();
+void recordEquity();
 await api.listen({
   host: process.env.TRADER_HOST ?? "127.0.0.1",
   port: Number(process.env.PORT ?? 3003),

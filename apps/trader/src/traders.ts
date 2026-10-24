@@ -89,8 +89,11 @@ export class Traders {
       const [host, port] = (account.gatewayUrl ?? "").split(":");
       if (!host || !port || !this.options.makeTws)
         throw new Error(`Account ${account.id}: no IB Gateway to connect to`);
+      const store = this.options.store;
       return new IbkrTrading(this.options.makeTws(host, Number(port)), {
         paper: true,
+        // The service's own record of the account's closes (equity-log.ts).
+        history: async () => store.equityDays(account.id),
       });
     }
     throw new Error(

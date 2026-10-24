@@ -28,6 +28,15 @@ never-short check, and the market data (the owner's Alpaca SIP keys).
   the bot is off and `/v1/bot` answers 409 with that reason.
 - `GET /v1/bot` (`BotView`) adds `account: { broker, id }`, so the site can say where the
   bot trades. Optional in the type; no page uses it yet.
+- **Equity history for the risk manager** (user 2026-10-24: "i must have the risk manager").
+  TWS has no daily account history, so the service keeps it: `apps/trader/src/equity-log.ts`
+  writes the account's value every minute of a trading day from the open, under the New
+  York date, into `equity_days` (`TradeStore.recordEquity` / `equityDays`); the day's last
+  write is the close. `IbkrTrading` reads that series through its `history` option, so the
+  drawdown brake (12.5% off the high → brake limits) and the days-in-a-row rule work on
+  IBKR as on Alpaca. A broker says it needs this with `capabilities.ownEquityHistory: false`
+  (IBKR only). The series starts the day the account is connected: no past, so no drawdown
+  until the account actually falls from a recorded high.
 - Not changed: the Portfolio **Bot trades** tab still reads the Alpaca bot account through
   the Worker (`/api/portfolio/bot`, `docs/tasks/backend-bot-account.md`). With
   `BOT_BROKER=ibkr` it shows that Alpaca account, not the IBKR one. The Worker cannot reach
@@ -50,8 +59,9 @@ never-short check, and the market data (the owner's Alpaca SIP keys).
 
 - IBKR does not refuse a sell that opens a short, so the broker's own close-only check and
   the trader's minute watch are the gate; the bot only ever sells contracts it bought.
-- No equity history: the risk manager's drawdown brake sees "no history" and allows full
-  size. The daily loss limit and the overnight cap use `NetLiquidation` live.
+- Equity history is the service's own record (above), from the first connected day; a day
+  the service was down all session has no row. The daily loss limit and the overnight cap
+  use `NetLiquidation` live.
 - Real-time market data only (`reqMarketDataType(1)`): the paper username shares the
   owner's data subscriptions; while IBKR Mobile streams, the paper account may get no data,
   and a signal is then skipped as "no prices".
@@ -70,6 +80,10 @@ never-short check, and the market data (the owner's Alpaca SIP keys).
 - `tests/traders.test.ts`, "bot account: BOT_BROKER picks the owner's IBKR account; else its
   own, else the default": the four cases above plus the two refusals. Trader, bot, settings
   and IBKR tests: 83 pass.
+- `tests/equity-log.test.ts`: one row per account and day with the last write winning;
+  recorded only for brokers without their own history, on trading days from the open, not
+  on a failed or empty read; the IBKR broker built by `Traders` answers `equityHistory`
+  from the record.
 - `npm run typecheck` passes; `npm run check` see the PR.
 - Not verified: a real bot order on the IBKR paper account through the Gateway (the
   Gateway is online on Railway, logged in to paper `DUR786216`, API 4002 bridged to 4001;
@@ -90,4 +104,6 @@ never-short check, and the market data (the owner's Alpaca SIP keys).
 
 - Bot trades tab on IBKR: read the trader's `/v1/positions` and decisions for the
   `owner/owner-ibkr` scope instead of the Alpaca keys (product + frontend).
-- Daily equity snapshots for IBKR, so the risk manager's brake works there too.
+- The equity record has no past: if the brake should know the account's earlier high, load
+  the IBKR account's past closes once (PortfolioAnalyst through the Claude connector, by
+  hand) into `equity_days`.

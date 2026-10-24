@@ -28,7 +28,8 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
   [the task](tasks/backend-bot-account.md).
 - **IBKR (2026-10-24, `feat/bot-ibkr`, deploy pending):** `BOT_BROKER=ibkr` on the trading service moves the
   bot's orders to the owner's IBKR paper account behind the Gateway (the account `IBKR_GATEWAY` adds); market
-  data stays Alpaca. The Bot trades tab still shows the Alpaca bot account. See
+  data stays Alpaca. The service records the IBKR account's value daily (`equity_days`), so the risk
+  manager's drawdown brake works there too. The Bot trades tab still shows the Alpaca bot account. See
   [the task](tasks/backend-bot-ibkr.md).
 - **Versions (2026-10-23, `feat/bot-version`):** the rules have a version (1.0 the first bot, 2.0 the V2
   champion, 2.1 with the failed-break sale); every signal, position and buy note is stamped with the version in

@@ -217,6 +217,8 @@ export class IbkrTrading implements Broker {
       closeOnlyOrders: false,
       optionStops: true,
       replaceInPlace: true,
+      // TWS has no account history; the service keeps it (IbkrOptions.history).
+      ownEquityHistory: false,
     };
   }
 

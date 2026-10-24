@@ -38,6 +38,9 @@ Setup:
 - Real-time market data only (`reqMarketDataType(1)`); no delayed or frozen quotes.
 - `BOT_BROKER=ibkr` makes the Indi bot trade this account instead of its Alpaca one
   (docs/tasks/backend-bot-ibkr.md); unset, the bot stays on Alpaca.
+- TWS has no daily account history: the trading service records the IBKR account's value
+  every minute of a trading day (`equity_days` in its SQLite), and the risk manager's
+  drawdown brake reads that series. It starts on the first connected day.
 
 ## History: read-only collector (September 2026, replaced by Alpaca)
 
