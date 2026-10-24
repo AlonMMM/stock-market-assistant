@@ -2,30 +2,46 @@ import { AlpacaFeed } from "./alpaca.js";
 import { tickerPattern, type Credentials } from "./backtest.js";
 import { coreClose, newYork, previousSessions } from "./calendar.js";
 import { defaultSipDelayMinutes, sipDelayMs } from "./sip-delay.js";
+import {
+  cState,
+  priorFrom,
+  type MinuteBar,
+} from "../../trading/src/bot/signal.js";
 
-// The minutes of one closed trade (docs/tasks/frontend-trade-story.md): the
-// stock's close each minute of the sessions the trade spanned and, for an
-// option, the contract's close each minute it traded. Regular hours only,
-// one-minute bars from Alpaca, nothing cached. The page draws both and marks
-// the entry and the exits on them.
+// The minutes of the days around one closed trade (docs/tasks/frontend-trade-story.md):
+// the stock's one-minute bars, SPY's closes, the bot's strength against SPY
+// minute by minute (the t-stat and the volume ratio the signal reads, from the
+// 20 sessions before each day, as the bot computes them) and, for an option,
+// the contract's bars in the minutes it traded. Regular hours only, from
+// Alpaca, nothing cached. The page draws them on a chart that zooms and
+// scrolls, and asks for more days as the viewer drags.
 
 export const sessionOpen = 570; // 09:30 New York, in minutes
-/** The most sessions one chart shows: the first and the last ones of a long hold. */
-export const maxSessions = 5;
+/** The most sessions one answer carries; the page asks again for more. */
+export const maxSessions = 7;
+/** The sessions before a day the signal's numbers are measured against. */
+export const priorDays = 20;
+
+/** [minute since 09:30, open, high, low, close, volume] */
+export type ChartBar = [number, number, number, number, number, number];
 
 export interface TradeChartSession {
   date: string; // New York session date
   minutes: number; // the session's length (390, fewer on an early close)
-  stock: [number, number][]; // [minute since 09:30, close]
-  option: [number, number][]; // the contract's bars, in the minutes it traded
+  stock: ChartBar[];
+  spy: [number, number][]; // [minute, close]
+  // [minute, t, volume ratio]: the strength against SPY as the bot reads it
+  // at that minute; empty when the prior sessions were not enough.
+  strength: [number, number, number][];
+  option: ChartBar[]; // the contract's bars, in the minutes it traded
 }
 
 export interface TradeChart {
   symbol: string; // the contract (OCC) or the stock
   underlying: string;
   option: boolean;
-  sessions: TradeChartSession[]; // oldest first
-  skipped: number; // sessions between the first and the rest left out
+  sessions: TradeChartSession[]; // oldest first, consecutive
+  skipped: number; // sessions asked for before the first one carried
   at: number;
 }
 
@@ -42,20 +58,20 @@ const isSession = (date: string): boolean => {
 };
 
 /**
- * The sessions to draw for a trade held from `from` to `to`: all of them up
- * to five; a longer hold shows its first session and the last four, with the
- * number left out.
+ * The sessions from `from` to `to`, at most `maxSessions`: a longer span
+ * carries the last ones and says how many before them were left out.
  */
 export function chartSessions(
   from: string,
   to: string,
 ): { dates: string[]; skipped: number } {
-  const last = [...previousSessions(to, maxSessions - 1), to];
-  const shown = last.filter((d) => d >= from);
-  if (shown.length < maxSessions || shown[0] === from)
-    return { dates: shown, skipped: 0 };
-  const between = previousSessions(shown[1]!, 400).filter((d) => d > from);
-  return { dates: [from, ...shown.slice(1)], skipped: between.length };
+  const dates = [...previousSessions(to, maxSessions - 1), to].filter(
+    (d) => d >= from,
+  );
+  if (dates.length < maxSessions || dates[0] === from)
+    return { dates, skipped: 0 };
+  const before = previousSessions(dates[0]!, 400).filter((d) => d >= from);
+  return { dates, skipped: before.length };
 }
 
 const nextDay = (date: string) => {
@@ -66,7 +82,11 @@ const nextDay = (date: string) => {
 
 interface OptionBar {
   t: string;
+  o: number;
+  h: number;
+  l: number;
   c: number;
+  v: number;
 }
 
 async function optionHistory(
@@ -106,21 +126,67 @@ async function optionHistory(
   return rows;
 }
 
-/** Each session's [minute, close] pairs from bars stamped in ms, regular hours only. */
-function byMinute(
-  bars: { at: number; close: number }[],
-  dates: string[],
-): Map<string, [number, number][]> {
-  const out = new Map<string, [number, number][]>(dates.map((d) => [d, []]));
+interface Bar {
+  at: number; // ms
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v: number;
+}
+
+/** Each session's bars by session minute, regular hours only. */
+function bySession(
+  bars: Bar[],
+  dates: Iterable<string>,
+): Map<string, MinuteBar[]> {
+  const out = new Map<string, MinuteBar[]>();
+  for (const d of dates) out.set(d, []);
   for (const b of bars) {
     const ny = newYork(b.at);
     const day = out.get(ny.date);
     if (!day) continue;
     const close = coreClose(ny.date)!;
     if (ny.minute < sessionOpen || ny.minute >= close) continue;
-    day.push([ny.minute - sessionOpen, b.close]);
+    day.push({
+      m: ny.minute - sessionOpen,
+      o: b.o,
+      h: b.h,
+      l: b.l,
+      c: b.c,
+      v: b.v,
+    });
   }
-  for (const day of out.values()) day.sort((a, b) => a[0] - b[0]);
+  for (const day of out.values()) day.sort((a, b) => a.m - b.m);
+  return out;
+}
+
+const tuple = (b: MinuteBar): ChartBar => [b.m, b.o, b.h, b.l, b.c, b.v];
+
+/**
+ * The strength against SPY at each minute of `date`, as the bot's signal
+ * reads it from the 20 sessions before: empty when they are not enough.
+ */
+export function strengthOf(
+  date: string,
+  stock: Map<string, MinuteBar[]>,
+  spy: Map<string, MinuteBar[]>,
+): [number, number, number][] {
+  const prior = priorFrom(
+    previousSessions(date, priorDays).map((d) => ({
+      stock: stock.get(d) ?? [],
+      spy: spy.get(d) ?? [],
+    })),
+  );
+  const day = stock.get(date) ?? [];
+  const spyDay = spy.get(date) ?? [];
+  const minutes = coreClose(date)! - sessionOpen;
+  const out: [number, number, number][] = [];
+  for (let m = 1; m < minutes; m++) {
+    const state = cState(day, spyDay, prior, m);
+    if (state && Number.isFinite(state.t))
+      out.push([m, Number(state.t.toFixed(2)), Number(state.rvol.toFixed(2))]);
+  }
   return out;
 }
 
@@ -153,15 +219,19 @@ export async function handleTradeChart(
   )
     return {
       status: 400,
-      body: { error: "Give the first and last US trading day of the trade" },
+      body: { error: "Give the first and last US trading day to draw" },
     };
   const { dates, skipped } = chartSessions(from, to);
   const delayMinutes = credentials.sipDelayMinutes ?? defaultSipDelayMinutes;
   const until = now - sipDelayMs(delayMinutes);
   const end = Math.min(Date.parse(`${nextDay(to)}T06:00:00Z`), until);
-  const startIso = `${dates[0]}T00:00:00Z`;
   if (Date.parse(`${to}T00:00:00Z`) >= until)
     return { status: 400, body: { error: "That day has no data yet" } };
+  // The stock and SPY from the 20 sessions before the first day, for the
+  // strength; the contract from the first day.
+  const prior = previousSessions(dates[0]!, priorDays);
+  const priorIso = `${prior[0]}T00:00:00Z`;
+  const startIso = `${dates[0]}T00:00:00Z`;
   const endIso = new Date(end).toISOString();
   const feed = new AlpacaFeed(
     credentials.key,
@@ -171,18 +241,33 @@ export async function handleTradeChart(
     fetcher,
   );
   try {
-    const [stockRows, optionRows] = await Promise.all([
-      feed.history(underlying, startIso, endIso, "1Min", "split"),
+    const [stockRows, spyRows, optionRows] = await Promise.all([
+      feed.history(underlying, priorIso, endIso, "1Min", "split"),
+      feed.history("SPY", priorIso, endIso, "1Min", "split"),
       option
         ? optionHistory(symbol, startIso, endIso, credentials, fetcher)
         : Promise.resolve([]),
     ]);
-    const stock = byMinute(
-      stockRows.map((r) => ({ at: r.start * 1000, close: r.close })),
-      dates,
-    );
-    const contract = byMinute(
-      optionRows.map((r) => ({ at: Date.parse(r.t), close: r.c })),
+    const all = [...prior, ...dates];
+    const raw = (r: (typeof stockRows)[number]): Bar => ({
+      at: r.start * 1000,
+      o: r.open,
+      h: r.high,
+      l: r.low,
+      c: r.close,
+      v: r.volume,
+    });
+    const stock = bySession(stockRows.map(raw), all);
+    const spy = bySession(spyRows.map(raw), all);
+    const contract = bySession(
+      optionRows.map((r) => ({
+        at: Date.parse(r.t),
+        o: r.o,
+        h: r.h,
+        l: r.l,
+        c: r.c,
+        v: r.v,
+      })),
       dates,
     );
     return {
@@ -194,8 +279,10 @@ export async function handleTradeChart(
         sessions: dates.map((date) => ({
           date,
           minutes: coreClose(date)! - sessionOpen,
-          stock: stock.get(date)!,
-          option: contract.get(date)!,
+          stock: stock.get(date)!.map(tuple),
+          spy: spy.get(date)!.map((b) => [b.m, b.c]),
+          strength: strengthOf(date, stock, spy),
+          option: contract.get(date)!.map(tuple),
         })),
         skipped,
         at: now,
