@@ -20,10 +20,10 @@ from score_sum import account
 
 B = "data/local/x/bt"
 CAL = calendar()
-X0 = {**sim.X, **H, **NIGHT, "failed_break": True}
+X0 = {**sim.X, **H, **NIGHT, "failed_break": not os.environ.get("BT_NO_FB")}  # BT_NO_FB=1: against the champion itself, without the failed-break sale
 V = lambda out, th=None, checks=True: dict(out=out, thesis=th, checks=checks)
 VERSIONS = [
-    ("Bot today: -30%", V(-0.30)),
+    ("Champion, no failed break: -30%" if os.environ.get("BT_NO_FB") else "Bot today: -30%", V(-0.30)),
     ("-50% alone", V(-0.50)),
     ("-50% + stock 0.5 S30 against", V(-0.50, {"s30": 0.5})),
     ("-50% + stock 1 S30 against", V(-0.50, {"s30": 1.0})),
@@ -31,6 +31,10 @@ VERSIONS = [
     ("-50% + signal bar broken", V(-0.50, {"bar": True})),
     ("-50% + signal t-stat ≤ 0", V(-0.50, {"t": 0.0})),
     ("-50% + signal t-stat ≤ 0.5", V(-0.50, {"t": 0.5})),
+    ("-30% + signal t-stat ≤ 0", V(-0.30, {"t": 0.0})),
+    ("-30% + signal t-stat ≤ 0.5", V(-0.30, {"t": 0.5})),
+    ("-30% + signal t-stat ≤ 1", V(-0.30, {"t": 1.0})),
+    ("-40% + signal t-stat ≤ 0.5", V(-0.40, {"t": 0.5})),
     ("-50% + 1 S30 + bar + t ≤ 0", V(-0.50, {"s30": 1.0, "bar": True, "t": 0.0})),
     ("-30% + 1 S30 + bar + t ≤ 0", V(-0.30, {"s30": 1.0, "bar": True, "t": 0.0})),
     ("No checks, -50% + 1 S30 against", V(-0.50, {"s30": 1.0}, checks=False)),

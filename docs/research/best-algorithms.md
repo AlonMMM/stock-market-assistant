@@ -281,6 +281,36 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   drop (3 at 2%) and the fair gain is a few trades (MSFT 2025-04-09 +25,781, MSFT 2026-06-26 +19,437, HIMS 2025-09-04
   +15,071 of +26,235 total). sim.py: `thesis {s30, bar, t}`.
 
+- The volume alert as a second way through the volume gate (`alert_gate.py`, 2026-10-24; the user's question after ORCL
+  2026-09-29, where the bot bought at 10:27 at the top because the day's volume reached 1.5× only then, while the site's
+  alert fired at 10:18): t ≥ 1.8 and (day volume ≥ 1.5×, or an rvol-v6 alert our way in the last 5 / 15 minutes), the
+  alert as in `packages/alerts/src/relative-volume.ts` on regular-session bars (3-minute volume ≥ 4× the same minutes'
+  median or today's pace, move ≥ 3× the usual and ≥ 0.5%, one-direction candle; no cooldown). Against the champion as
+  the files stand today (fair $587,708 / 16%, unseen $122,930 / 13% at 1%): ag5 fair $510,706 / 13% ($1.83M / 24% at
+  2%), lower per trade every year, worse without the best 5; unseen $118,877 / 12%. ag15 the same ($510,512; $117,584).
+  The signal changes 1,392 stock-days (507 earlier on a champion day, 885 new days) but only 178 trade: 715 are illiquid
+  and 328 too cheap at that minute. Three parts: (1) earlier entries on champion days, 59 trades, +4,430 a trade vs the
+  champion's +1,568 on the same days, all of it PLTR 2025-02-19 (+158K vs +8K, 23 minutes earlier) and GOOGL 2025-05-07
+  (+40K vs −1K); (2) 14 champion trades lost because at the earlier minute the contract had not traded 200 contracts in
+  the last 30 minutes, among them ORCL 2025-07-02 +101,315 (2 minutes earlier) and FSLR 2024-03-27 +26,626; the sim and
+  the bot do not try again later; (3) 90 new days, where the day's volume never reached 1.5× by the signal: 6 winners,
+  −2,346 a trade, negative in every year, −2,500 a trade under 1.2× day volume and −759 at 1.2–1.5×. Unseen: 10 earlier
+  (+418), 7 lost (+3,250), 11 new (−2,040). ORCL 2026-09-29 itself: the alert-gated signal at 10:17 at 137.30 finds the
+  contract illiquid, so the bot would not have bought there either. Not better: the burst-only days lose, as with the
+  3× 5-minute burst, and the earlier minutes hit thin contracts. A 1.2× day-volume floor on the alert route would be
+  picked from these numbers, so it was not run.
+- The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
+  entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
+  the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
+  ($2,011,681 / 18%), every year positive, without the best 5 +986 vs +932 a trade; 34 trades change (22 better),
+  +43,683 at $10K, MSFT 2025-04-09 +25,781 and AMD 2025-10-10 +9,201 the bulk; unseen $125,260 vs $125,581 (7 trades
+  change). Against the champion itself (BT_NO_FB=1, no failed break): $610,096 / 11% ($2,647,105 / 21%) vs $585,593 /
+  11% ($2,444,640 / 21%), every year positive, without the best 5 +1,127 vs +1,075; unseen $122,679 vs $123,028 (8
+  trades, -$349). Neighbours: t ≤ 0 changes 5 trades (nothing), t ≤ 1 is worse ($514,882, ASTS 2025-03-04 -38,745);
+  -40% / -50% stops with it are worse than -30% on the fair list. Candidate, a hair short of the rule: the unseen is
+  $349 lower, and most of the fair-list gain is one trade (MSFT 2025-04-09; without it still +$17K over 33 trades).
+  Cheap to run live: the bot computes the t-stat every minute for the scan already.
+
 ## Candidates
 
 - Hold overnight from +50% instead of +100% (`hold_from.py`, 2026-10-24, on the chosen bot). Delta 0.15: fair list
