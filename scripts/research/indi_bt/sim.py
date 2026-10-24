@@ -47,6 +47,7 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
   Q still (still {window, k, under}): entry day, from `window` minutes after the entry, the stock's high-low range over the
                last `window` minutes under k x its usual move for that span (S30 x sqrt(window/30), levels.py); with `under`
                only while the option is under that gain                 -> sell all
+  first_exit_min N: on the entry day no -X% stop and no failed-break sale in the first N minutes (the checks keep their times)
   S stock stop (stock_stop "vwap" / "prev", entry day): the stock closes back on the wrong side of
                VWAP, or back inside yesterday's range                    -> sell all
   EOD 15:50    carry only if g >= carry_min_gain, stock at >= carry_range_pos of the day range,
@@ -203,7 +204,8 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 peak = b[4]
                 steps.append((d, t, "buy", 1.0, round(cost, 4), "entry_limit" if limit is not None else "entry"))
                 continue
-            if fb is not None and k == 0 and t > fb and cost is not None:  # the failed-break sale: all of what is left
+            early = k == 0 and t - minute < X.get("first_exit_min", 0)  # no stop / failed-break sale this soon after the entry (user, 2026-10-24)
+            if fb is not None and k == 0 and t > fb and cost is not None and not early:  # the failed-break sale: all of what is left
                 steps.append((d, t, "sell", round(rem, 4), round(max(mid(b) * (1 - SH), 0.01), 4), "F_break"))
                 return cost, steps, ""
             if pending:
@@ -331,7 +333,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                         if not U.get("opt_wait"): done.add(hit)
                 elif not st.get("half") and U["check_from"] <= t - minute <= U["check_to"] and against:
                     st["half"] = True; pending = (rem * U["share"], "U_half"); continue
-                if g <= uout and against: pending = ("all", "U_out"); continue
+                if g <= uout and against and not early: pending = ("all", "U_out"); continue
             if X.get("user_stop") and sd.ok and k > 0 and g <= uout:
                 pending = ("all", "U_out"); continue
             if X.get("stock_stop") and sd.ok and k == 0 and t > minute:

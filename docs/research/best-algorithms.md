@@ -255,6 +255,16 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   mostly lets losers run to -50% (311 trades change, 93 better). The 1-2 DTE trades do not gain from the wider stop on
   the fair list (+2,217 vs +2,290 a trade); the 3-7 DTE trades are flat. Not better by the rule; the user's call on
   the live bot (more room, more drop). sim.py: user_stop `out_by_dte [[max dte, out], ...]`.
+- Exits in the first minutes (`early_exits.py`, 2026-10-24; the user's question: how many exits before the 10-minute
+  check cut trades off). Bot today, fair list: 168 of 813 trades are sold within 10 minutes of the entry (98 by the
+  -30% stop, 68 by the failed break); they made -$484,558 at $10K. Held past 10 minutes (no stop and no failed-break
+  sale before +10, the checks keep their times) the same trades make -$511,021; past 20 minutes -$519,333. Whole list at
+  1%: $526,469 / 10% today; no early exit before 5 min $517,487 / 10%; 10 min $507,145 / 10%; 20 min $504,482 / 11%
+  (2%: $2.01M / 18% -> $1.84M / 22%). Unseen: 59 of 273 sold early (-$163K); held past 10 min -$112K, and the list goes
+  $125,581 -> $132,436 / $133,308, but it is UNH 2024-12-05 (+53,000 points); the rest is about even. First sale after
+  the entry on the fair list: 78 within 5 minutes, 192 within 10, 472 within 20, 590 within 60, of 745 same-day sellers.
+  Verdict: the early stops and failed-break sales are right more often than wrong; delaying them costs money and adds
+  drop. Not better. sim.py: `first_exit_min N`.
 
 ## Candidates
 
