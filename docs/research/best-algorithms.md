@@ -285,9 +285,9 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   2026-09-29, where the bot bought at 10:27 at the top because the day's volume reached 1.5× only then, while the site's
   alert fired at 10:18): t ≥ 1.8 and (day volume ≥ 1.5×, or an rvol-v6 alert our way in the last 5 / 15 minutes), the
   alert as in `packages/alerts/src/relative-volume.ts` on regular-session bars (3-minute volume ≥ 4× the same minutes'
-  median or today's pace, move ≥ 3× the usual and ≥ 0.5%, one-direction candle; no cooldown). Against the champion as
-  the files stand today (fair $587,708 / 16%, unseen $122,930 / 13% at 1%): ag5 fair $510,706 / 13% ($1.83M / 24% at
-  2%), lower per trade every year, worse without the best 5; unseen $118,877 / 12%. ag15 the same ($510,512; $117,584).
+  median or today's pace, move ≥ 3× the usual and ≥ 0.5%, one-direction candle; no cooldown). Against the champion (fair
+  $585,592 / 11%, unseen $123,028 / 11% at 1%): ag5 fair $510,706 / 13% ($1.83M / 24% at 2%), lower per trade every
+  year, a bigger worst drop, worse without the best 5; unseen $118,877 / 12%. ag15 the same ($510,512; $117,584).
   The signal changes 1,392 stock-days (507 earlier on a champion day, 885 new days) but only 178 trade: 715 are illiquid
   and 328 too cheap at that minute. Three parts: (1) earlier entries on champion days, 59 trades, +4,430 a trade vs the
   champion's +1,568 on the same days, all of it PLTR 2025-02-19 (+158K vs +8K, 23 minutes earlier) and GOOGL 2025-05-07
