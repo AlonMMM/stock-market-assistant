@@ -233,6 +233,18 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   2h alone +$384), unseen $125,474-$125,822 vs $125,581. Not better, not worse: the +10 / +20 checks, the -30% stop and
   the failed break already sell the flat trades in the first 20 minutes, and a 0.15-delta option that survives them is
   rarely still under +10% an hour later. sim.py: `stall_rs {hours, gain, rs}`.
+- The stock itself not moving (`still.py`, 2026-10-24; the user's idea): on the entry day, from W minutes after the
+  entry, the stock's high-low range over the last W minutes under k x its usual move for that span (its 1-minute
+  spread over the 5 sessions before x sqrt(W), the S30 unit of levels.py) -> sell all; W 30 / 60, k 0.5 / 0.75 / 1.0,
+  pure and only while the option is under +10%. Against the bot today, all champion trades 2024-2026. Pure: much worse
+  at every setting but one. 30-min under 0.5x $319,188 / 13% vs $526,469 / 10%; 0.75x $181,145; 1x $140,324; 60-min
+  0.75x $270,673, 1x $173,205; unseen $97K-$119K vs $125,581. Most changed trades end better (119 of 206 at 30-min 1x:
+  small losers cut earlier), but the rule sells the few big winners in their pauses (BA 2024-08-01 -210K points, ORCL
+  2026-04-13 -224K, SMCI 2025-05-13 -207K, GOOGL 2026-07-31 -135K, AAPL 2025-08-06 -115K; NFLX 2026-02-25 -265K on the
+  unseen), and the money is those trades. The one setting that gains on the fair list, 60-min under 0.5x ($534,866 /
+  9%, 28 trades change, PDD 2024-09-04 +21,650 vs AVGO 2025-11-24 -30,290), loses on the unseen ($118,794 / 13%). With
+  the option under +10% as a condition the rule fires on 0-7 trades and changes nothing ($523K-$528K; unseen $125.5K-
+  $125.9K). Not better. sim.py: `still {window, k, under}`.
 
 ## Candidates
 

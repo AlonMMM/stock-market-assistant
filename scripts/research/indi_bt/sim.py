@@ -43,6 +43,9 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
   Z stall + strength (stall_rs {hours, gain, rs}): entry day, from `hours` after the entry, the option never up `gain`
                since the entry and (rs "entry" / "hour") the stock's move vs SPY x beta since the entry / over the last hour
                against us                                               -> sell all
+  Q still (still {window, k, under}): entry day, from `window` minutes after the entry, the stock's high-low range over the
+               last `window` minutes under k x its usual move for that span (S30 x sqrt(window/30), levels.py); with `under`
+               only while the option is under that gain                 -> sell all
   S stock stop (stock_stop "vwap" / "prev", entry day): the stock closes back on the wrong side of
                VWAP, or back inside yesterday's range                    -> sell all
   EOD 15:50    carry only if g >= carry_min_gain, stock at >= carry_range_pos of the day range,
@@ -260,6 +263,16 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                     s0, s1, y0, y1 = sd.c[ref], sd.c[tt], spyc[ref], spyc[tt]
                     bad = bool(s0 and s1 and y0 and y1) and bet * ((s1 / s0 - 1) - (sd.beta or 1.0) * (y1 / y0 - 1)) <= 0
                 if bad: pending = ("all", "Z_stall"); continue
+            ST = X.get("still")  # {window, k, under}: the stock's own range over the last `window` minutes under k x its usual move (user, 2026-10-24)
+            if ST and k == 0 and sd.ok and t - minute >= ST["window"] and (ST.get("under") is None or peak / cost - 1 < ST["under"]):
+                if "still" not in st:
+                    from levels import ctx
+                    cx = ctx(und, d); st["still"] = (cx["sd"] if cx else None, {b[0]: b for b in day(und, d)})
+                unit, sbars = st["still"]
+                if unit:
+                    tt = min(t, 389); win = [sbars[m_] for m_ in range(tt - ST["window"] + 1, tt + 1) if m_ in sbars]
+                    if win and (max(b[2] for b in win) - min(b[3] for b in win)) / win[-1][4] < ST["k"] * unit * (ST["window"] / 30) ** 0.5:
+                        pending = ("all", "Q_still"); continue
             SX = X.get("stall_exit")  # {arm, min, giveback?, vol?}: the move is over -> out
             if SX and sd.ok and peak / cost - 1 >= SX["arm"]:
                 tt = min(t, 389)
