@@ -1,7 +1,7 @@
 """Data files for the Backtest Reports dashboard, from lists.py runs (data/local/x/bt/list_<name>_<A>_<Z>.json).
 
   trades.csv   one row per bought trade: list, key, date, time, minute, sym, right, contract, strike, expiry, dte, delta, iv,
-               cost, ret, exit (words), overnight
+               price (the stock's close on the signal minute, the entry the checks compare with), cost, ret, exit (words), overnight
   funnel.csv   per list: signals, skipped by the news filter, no contract, no fill, bought
   bars.csv     5-minute closes of each trade's stock on the day before and the trade day, and SPY on those days
                (key "SYM|date", 78 slots a day, blank where no bar)
@@ -67,7 +67,7 @@ for spec in NAMES:
         key = f"{name}-{r['date']}-{r['sym']}-{r['right']}-{r['minute']}"
         T.append(dict(list=name, key=key, date=r["date"], time=r["time"], minute=r["minute"], sym=r["sym"], right=r["right"],
                       contract=r["contract"], strike=r["strike"], expiry=r["expiry"], dte=(exp - d0).days, delta=r["delta"],
-                      iv=r.get("iv", ""), cost=r["cost"], ret=r["ret"], exit=exit_words(last[5]), overnight=int(last[0] != r["date"]),
+                      iv=r.get("iv", ""), price=r["price"], cost=r["cost"], ret=r["ret"], exit=exit_words(last[5]), overnight=int(last[0] != r["date"]),
                       t=r["c_t"], rvol=r["c_rvol"]))
         days = [d for d in cal if r["date"] <= d <= last[0]]
         opt = "|".join(f"{d}: " + " ".join(closes5([b for b in day(r["contract"], d) if d != r["date"] or b[0] >= int(r["minute"])])) for d in days)
