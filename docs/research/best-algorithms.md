@@ -292,6 +292,14 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   $507,446; -50% / 5 $521,374; -50% / 20 $513,523 / 11%. Unseen vs $125,581: -50% / 10 $131,653, -40% / 10 $132,307,
   -50% / 20 $130,943, but it is UNH 2024-12-05 again (+53,000 of +48,703; the other 31 changed trades -$4.3K). Lower on
   the fair list in every version and every year. Not better. sim.py: `early_out {min, out}`.
+- Buy back the half (`rebuy.py`, 2026-10-24; the user: "buy back the half if the stock goes back"): after the +10
+  check sold half, buy it back once on the entry day (until 15:00 NY) at the next bar's middle + 2%; then the stop and
+  the hold use the average cost. A at the 20-minute check when the stock is not against (55 rebuys on the fair list):
+  $537,970 / 10% vs $526,469 / 10% ($2.09M / 19% vs $2.01M / 18% at 2%), but +25,059 of changed trades is ORCL
+  2025-01-21 +39,080 and FSLR 2024-03-27 +24,153; the other 53 sum -$38K, and 2026 is lower. B0 at the first close back
+  past the entry (99) $527,872; B1 0.25 S30 past it (72) $526,825. Unseen lower in all: A $123,372 / 11%, B0 $122,377,
+  B1 $123,173 vs $125,581 / 10%. Not better: a second try at the same trade loses except for two big ones. sim.py:
+  `rebuy {mode, off, until}`.
 - More air unless the thesis breaks (`thesis.py`, 2026-10-24; the user's goal: a -50% stop "if our thesis is not
   broken"). Thesis exits on the stock, entry day: a close k S30 against the entry (k 0.5 / 1 / 1.5), a close past the
   signal bar's low (put: high), or the signal's own cumulative t-stat vs SPY x beta down to 0 or 0.5; with the option

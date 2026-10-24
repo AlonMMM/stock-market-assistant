@@ -48,6 +48,10 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                last `window` minutes under k x its usual move for that span (S30 x sqrt(window/30), levels.py); with `under`
                only while the option is under that gain                 -> sell all
   first_exit_min N: on the entry day no -X% stop and no failed-break sale in the first N minutes (the checks keep their times)
+  rebuy {mode, off, until}: after the +10 check sold part, buy that part back once on the entry day (until minute
+               `until`): mode "at20" when the stock is not against at the 20-minute check, mode "back" at the first close
+               `off` (price units) past the entry price our way; next bar at the middle + SH. The stops and the hold
+               then measure the gain from the average cost; result() pays for the rebuy (user, 2026-10-24)
   early_out {min, out}: on the entry day the -X% stop is `out` (e.g. -0.5) in the first `min` minutes, then user_stop.out
   T thesis (thesis {s30, bar, t}): entry day, the stock closes `s30` S30 units against the entry price (T_s30), or past the
                signal bar's low / high (T_bar), or the signal's cumulative t vs SPY x beta falls to `t` or under (T_tstat)
@@ -211,7 +215,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
     if FILL in ("close", "mid") and limit is None:  # BT_FILL: buy on the signal bar itself, at its close ("close") or its middle ("mid", looks ahead)
         b0 = last_bar(day(sym, date), minute, C["bar_max_age"])
         if b0:
-            cost = (b0[4] if FILL == "close" else mid(b0)) * (1 + SH); peak = b0[4]
+            cost = (b0[4] if FILL == "close" else mid(b0)) * (1 + SH); peak = b0[4]; basis = cost
             steps.append((date, minute, "buy", 1.0, round(cost, 4), f"entry_{FILL}"))
     st = dict(cut1=False, armed=False, t1=False, plan=None, k=0)
     pending = None  # (share of original or 'all', rule)
@@ -239,18 +243,24 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 else:
                     if t > minute + 3: return None, [], "no_fill"
                     cost = (b[1] if FILL == "open" else mid(b)) * (1 + SH)
-                peak = b[4]
+                peak = b[4]; basis = cost
                 steps.append((d, t, "buy", 1.0, round(cost, 4), "entry_limit" if limit is not None else "entry"))
                 continue
             early = k == 0 and t - minute < X.get("first_exit_min", 0)  # no stop / failed-break sale this soon after the entry (user, 2026-10-24)
             if fb is not None and k == 0 and t > fb and cost is not None and not early:  # the failed-break sale: all of what is left
                 steps.append((d, t, "sell", round(rem, 4), round(max(mid(b) * (1 - SH), 0.01), 4), "F_break"))
                 return cost, steps, ""
+            if st.get("rb_pending"):  # the rebuy (rebuy): the part sold at the +10 check, back at this bar
+                st["rb_pending"] = False; st["rebought"] = True
+                q = st["half_q"]; p_ = mid(b) * (1 + SH)
+                basis = (rem * basis + q * p_) / (rem + q); rem += q
+                steps.append((d, t, "buy", round(q, 4), round(p_, 4), "rebuy"))
             if pending:
                 share, rule = pending
                 q = rem if share == "all" else min(rem, share)
                 rem -= q
                 steps.append((d, t, "sell", round(q, 4), round(max(mid(b) * (1 - SH), 0.01), 4), rule))
+                if rule == "U_check10": st["half_q"] = q
                 pending = None
                 if rem <= 1e-9: return cost, steps, ""
             NX = X.get("night_x")  # carried days: stop / take profit from the last 15:50 price (night_x.py)
@@ -265,7 +275,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 if not st["nx_took"] and c >= ref * (1 + NX["take"]):
                     st["nx_took"] = True; pending = (rem * NX["take_share"], "NX_take"); continue
             if carry_day and t < X["morning_minute"]: continue
-            c = b[4]; peak = max(peak, c); g = c / cost - 1
+            c = b[4]; peak = max(peak, c); g = c / basis - 1
             stall = sd.ok and t - sd.last_ext[min(t, 389)] >= X["stall_min"]
             rsd = sd.ok and (sd.rs[min(t, 389)] or 0) <= X["rs_drop"]
             if carry_day and k == 1 and "morning" not in st:
@@ -404,6 +414,10 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                     st["half"] = True; pending = (rem * U["share"], "U_half"); continue
                 EO = X.get("early_out")
                 out_now = EO["out"] if EO and t - minute < EO["min"] else uout  # a wider stop right after the entry (user, 2026-10-24)
+                RB = X.get("rebuy")
+                if RB and st.get("half_q") and not st.get("rebought") and not st.get("rb_pending") and t <= RB.get("until", 330) and sd.c[tt] is not None:
+                    back = (t - minute >= 20 and not against) if RB["mode"] == "at20" else bet * (sd.c[tt] - st["sp0"]) >= RB.get("off", 0) and sd.c[tt] != st["sp0"]
+                    if back: st["rb_pending"] = True; continue
                 if g <= out_now and against and not early: pending = ("all", "U_out"); continue
             if X.get("user_stop") and sd.ok and k > 0 and g <= uout:
                 pending = ("all", "U_out"); continue
@@ -446,9 +460,10 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
 
 def result(cost, steps):
     sold = sum(s[3] * s[4] for s in steps if s[2] == "sell")
+    rebuys = [s for s in steps if s[2] == "buy" and s[5] == "rebuy"]  # rebuy: more paid in after the entry
     contracts_per_dollar = 1 / (cost * 100)
-    comm = COMM * contracts_per_dollar * (1 + sum(s[3] for s in steps if s[2] == "sell"))
-    return sold / cost - 1 - comm
+    comm = COMM * contracts_per_dollar * (1 + sum(s[3] for s in steps if s[2] == "sell") + sum(s[3] for s in rebuys))
+    return (sold - sum(s[3] * s[4] for s in rebuys)) / cost - 1 - comm
 
 
 def run(signals, prefix, shard=0, shards=1):
