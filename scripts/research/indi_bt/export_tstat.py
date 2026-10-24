@@ -20,12 +20,14 @@ CAL = calendar()
 X0 = {**sim.X, **H, **NIGHT, "thesis": {"t": 0.5}}
 # BT_HOLD (e.g. 0.5): the overnight hold from that gain; BT_SLUG / BT_NAME name the version (defaults: the t-stat exit at +100%)
 if os.environ.get("BT_HOLD"): X0["carry_min_gain"] = float(os.environ["BT_HOLD"])
+# BT_REST (e.g. -0.2): the rest out at that gain once the +10 check sold half (sim.py after_half)
+if os.environ.get("BT_REST"): X0["after_half"] = dict(out=float(os.environ["BT_REST"]))
 SLUG = os.environ.get("BT_SLUG", "t18-tstat")
 NAME = os.environ.get("BT_NAME", "Champion: t ≥ 1.8 + news filter + t-stat exit, delta 0.15")
 PER = 78
 WORDS = {"U_check10": "Stop: 10-min check", "U_check20": "Stop: 20-min check", "U_out": "Stop: -30%", "eod_close": "Sold 15:50",
          "morning_gap_keep": "sold half next morning", "morning_gap_against": "sold next morning", "expiry_day": "expiry day",
-         "day_end_forced": "Day end", "expired": "expired", "T_tstat": "Thesis: strength vs SPY gone", "eod_close_late": "Sold 15:50"}
+         "day_end_forced": "Day end", "expired": "expired", "T_tstat": "Thesis: strength vs SPY gone", "U_rest": "Stop: the rest at -20% after the half", "eod_close_late": "Sold 15:50"}
 
 
 def words(steps):
