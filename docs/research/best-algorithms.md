@@ -332,6 +332,16 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     earlier minute; the 121 earlier entries make +3,262 vs the champion's +1,415 on the same days (PLTR 2025-02-19,
     FSLR 2024-03-27 +134K, COIN 2025-06-18, PDD 2024-04-22). ag5 without the floor at 10 contracts: fair $538,587 /
     25%, unseen $119,276 / 26%. Not better either way.
+  - **The liquidity floor swept (2026-10-24, the user asked about 50):** the 10-contract run sliced by the contract's
+    volume in the 30 minutes before the signal (recomputed from the cached option bars; the ≥ 200 slice is the logged
+    champion's 1,134 trades exactly). Fair list at 1%: 10 → $603,077 / 21%; 25 → $542,485 / 20%; 50 → $534,950 / 18%;
+    100 → $642,229 / 18%; 200 → $585,592 / 11%; 300 → $360,952 / 12%. Unseen: 10 → $124,227 / 23%; 25 → $87,583 / 28%;
+    50 → $95,931 / 22%; 100 → $146,787 / 11%; 200 → $123,028 / 11%; 300 → $135,715 / 8%. By band, fair list per trade:
+    10–25 +870 (138), 25–50 +150 (142), 50–100 −906 (199), 100–200 +694 (192), 200–500 +2,358 (275), 500+ +2,462 (538);
+    unseen 10–25 +998, 25–50 −269, 50–100 −1,535, 100–200 +850, 200–500 +136, 500+ +2,170. Under 200 the added bands
+    are near zero and not monotonic (noise); the money is in contracts with 200+ traded. 100 is one good cell between
+    two bad ones, picked from these numbers, so not a champion. The simulator fills thin contracts at the mid ± 2%, so
+    every slice under 200 is an upper bound. 200 stays the research default (reverted from 10 in `params.json`).
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
