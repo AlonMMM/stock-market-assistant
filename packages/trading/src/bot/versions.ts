@@ -11,6 +11,7 @@ import type { BotSettings } from "./settings.js";
 
 export type RuleKey =
   | "stopPct"
+  | "restStopPct"
   | "checks"
   | "sellOnWeakness"
   | "weaknessT"
@@ -32,6 +33,7 @@ export type Rules = Pick<BotSettings, RuleKey>;
 
 export const ruleKeys: readonly RuleKey[] = [
   "stopPct",
+  "restStopPct",
   "checks",
   "sellOnWeakness",
   "weaknessT",
@@ -61,6 +63,7 @@ export interface BotVersion {
 // 1.0: the first bot, the rules as backtested on 2026-10-21 (docs/tasks/backend-indi-bot.md, "Rules").
 const v1: Rules = {
   stopPct: 30,
+  restStopPct: 0,
   checks: true,
   sellOnWeakness: false,
   weaknessT: 0.5,
@@ -93,6 +96,10 @@ const v21: Rules = { ...v2, sellFailedBreak: true };
 const v22: Rules = { ...v21, sellOnWeakness: true, weaknessT: 0.5 };
 // 2.3: winners up +50% (not +100%) stay overnight (the user, 2026-10-24).
 const v23: Rules = { ...v22, holdFromPct: 50 };
+// 2.4: once the 10-minute check sold half, the rest's stop is -20% (not -30%)
+// on the entry day (the user, 2026-10-24: be more careful with trades we
+// already cut; the 2026-10-24 night champion, rest_stop2.py).
+const v24: Rules = { ...v23, restStopPct: 20 };
 
 /** Every version, oldest first. */
 export const botVersions: readonly BotVersion[] = [
@@ -134,6 +141,14 @@ export const botVersions: readonly BotVersion[] = [
     since: "2026-10-24",
     notes: "At 15:50, winners up 50% or more stay overnight (was 100%).",
     rules: v23,
+  },
+  {
+    id: "2.4",
+    name: "V2.3, the rest at −20% after the half",
+    since: "2026-10-25",
+    notes:
+      "Once the 10-minute check sold half, the rest is sold at −20% (was −30%) with the stock against, on the entry day.",
+    rules: v24,
   },
 ];
 

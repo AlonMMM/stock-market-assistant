@@ -274,6 +274,10 @@ export function botExitWords(
       `Stop −${r.stopPct}%`,
       `The option was down ${r.stopPct}% with the stock against the entry: all sold.`,
     ],
+    "rest-stop": [
+      `Stop −${r.restStopPct}% on the rest`,
+      `The 10-minute check had sold half; the rest was down ${r.restStopPct}% with the stock against the entry: sold.`,
+    ],
     "strength-gone": [
       "Strength gone",
       `The stock's edge over SPY since the open fell to t ${r.weaknessT}: all sold on the entry day.`,

@@ -119,16 +119,17 @@ test("warnings: a safety stop above the stop, and a big trade size", () => {
 
 test("the version card: the chosen version, its changes and the entry label", () => {
   const clean = versionState(defaultSettings);
-  assert.equal(clean.known?.id, "2.3");
+  assert.equal(clean.known?.id, "2.4");
   assert.deepEqual(clean.changes, []);
-  assert.equal(clean.label, "2.3");
+  assert.equal(clean.label, "2.4");
   assert.equal(clean.latest, true);
   const edited = versionState({ ...defaultSettings, stopPct: 40 });
   assert.deepEqual(edited.changes, ["stopPct 30 → 40"]);
-  assert.equal(edited.label, "2.3*");
+  assert.equal(edited.label, "2.4*");
   const old = versionState({ ...defaultSettings, version: "2.0" });
   assert.equal(old.latest, false);
   assert.deepEqual(old.changes, [
+    "restStopPct 0 → 20",
     "sellOnWeakness false → true",
     "sellFailedBreak false → true",
     "holdFromPct 100 → 50",

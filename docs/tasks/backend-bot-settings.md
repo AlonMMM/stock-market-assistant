@@ -30,6 +30,7 @@ next minute; the stock list is fixed at warm-up (09:25 New York) and changes fro
 | `maxBuysPerDay`                            | 5 (new)            | entries today (bought or would buy); then `max_buys`          |
 | `maxOpen`                                  | 4 (new)            | open bot positions of the mode; then `max_open`               |
 | `stopPct`                                  | 30                 | `exitRules.stopOut`                                           |
+| `restStopPct`                              | 20 (2.4)           | `exitRules.restStopOut`: the rest after the +10 half; 0 off   |
 | `safetyStopPct`                            | 50                 | the broker stop on buys and on what is left after a sale      |
 | `dayLossPct`                               | 5 (new)            | account vs its value at warm-up; then `day_loss`              |
 | `drawdownPausePct`                         | 15 (new)           | switches the bot off (below)                                  |
@@ -67,7 +68,7 @@ do not count.
 ## Versions (2026-10-23, user: "make the bot support version, write the bot version on each entry, let me control it")
 
 `packages/trading/src/bot/versions.ts`. A version is a named set of the **trading rules**: `stopPct`, `checks`,
-`sellOnWeakness`, `weaknessT`, `sellFailedBreak`, `holdFromPct`, `maxNights`, `nightCapPct`, `delta`, `maxDte`, `minPrice`, `minVolume`, `minT`,
+`restStopPct`, `sellOnWeakness`, `weaknessT`, `sellFailedBreak`, `holdFromPct`, `maxNights`, `nightCapPct`, `delta`, `maxDte`, `minPrice`, `minVolume`, `minT`,
 `minRvol`, `firstEntryMin`, `skipEarnings`, `skipPremarket`. The owner's limits (`sizePct`, `maxBuysPerDay`,
 `maxOpen`, `safetyStopPct`, `dayLossPct`, `drawdownPausePct`), on/off, the mode and the stock lists are not part of
 a version.

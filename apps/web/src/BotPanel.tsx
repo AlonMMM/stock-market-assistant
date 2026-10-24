@@ -70,6 +70,7 @@ const reasonText: Record<string, string> = {
   "check-10": "10-min check",
   "check-20": "20-min check",
   "stop-30": "stop",
+  "rest-stop": "stop on the rest",
   "strength-gone": "strength gone",
   "close-1550": "end-of-day close",
   "morning-gap-keep": "morning, gap our way",

@@ -45,7 +45,8 @@ These are the defaults. Since 2026-10-22 the owner can change each one on the si
 - **Size:** `sizePct: 2` through the service's buy. The owner's validator and risk manager still apply.
 - **Exits:** `packages/trading/src/bot/exits.ts`.
   - Your stop: half at +10 minutes and the rest at +20 minutes if the stock is against the entry; all out at −30%
-    with the stock against.
+    with the stock against. Since version 2.4 (2026-10-25), once the +10 check sold half, the rest is sold at −20%
+    with the stock against on the entry day (`restStopPct`, default 20). See "The rest stop" below.
   - 15:50: hold winners up 100% or more overnight (at most 2 nights, with a session before expiry); sell the rest.
     Since version 2.3 (2026-10-24, the user's call) the bar is +50% (`holdFromPct`, default 50).
     Of what is held, one contract is worth at most 10% of the account (`nightCapPct`, default 10; the user chose 10 on 2026-10-22): the excess is sold first.
@@ -178,6 +179,19 @@ gave the same trades).
   Alpaca `trades/latest`) and a fresh option quote. So a check fires at the start of its minute
   instead of after the minute closes, and −30% is seen within 10 s. Entries still need closed
   minute bars and run once per minute; the level watch (failed break) reads closed bars only.
+
+## The rest stop (version 2.4, the 2026-10-24 night champion)
+
+The user (2026-10-24): "be more careful with trades we already cut - maybe move the stop higher". A trade the +10
+check cut in half has shown it is weaker, so on the entry day its rest is sold at −`restStopPct`% (20) with the stock
+against the entry, not −`stopPct`% (30). The position knows it was cut from its sales (a `check-10` sale); reason
+`rest-stop`. Carried days keep −30%. Setting `restStopPct` (0–50, step 5; 0 = off).
+
+Backtest (`rest_stop2.py` on research/indi-v2, levels set before running): champion $795,638 / 11% → $811,353 / 11%
+at 1% ($4.33M / 22% → $4.50M / 21% at 2%), every year higher; unseen $122,890 → $124,471. On the bot's rules (2.3)
+$690,515 / 10% → $695,450 / 9% ($3,325,165 → $3,372,307 at 2%), unseen $125,788 → $127,433. A band (−15% and −20%
+on the option alone about the same) and broad (159 trades change, none by much). Re-test on the owner's Favorites
+year (63 stocks, 2025-10-24 to 2026-10-23): $178,543 → $179,263 at 1%, $277,307 → $279,558 at 2%, same drop.
 
 ## The t-stat exit (2026-10-24, the champion the user called)
 
