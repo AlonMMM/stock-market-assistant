@@ -26,7 +26,10 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
   `BOT_ALPACA_API_SECRET` the bot trades a second paper account of the owner's, and Portfolio gets a
   read-only **Bot trades** tab for it (`/api/portfolio/bot`). See
   [the task](tasks/backend-bot-account.md).
-- **IBKR (2026-10-24, #140 deployed; `feat/bot-both-brokers` in review):** the Bot settings page gets a Broker
+- **Portfolio navigation (2026-10-25, `feat/portfolio-two-tabs`):** two tabs, Trade (Live trades · New trade ·
+  Orders · History) and 🤖 Bot (Activity · Trades · Settings), each with a pill row of pages that remembers where
+  it was; the owner-only pages (New trade, Settings) are hidden from visitors. Was six flat tabs.
+- **IBKR (2026-10-24, #140 and #142 deployed):** the Bot settings page gets a Broker
   switch (Alpaca | Interactive Brokers | Both) for new entries; a position is sold where it was bought. "Both"
   buys the same contract at each account, to compare fills and fees; the Bot trades tab shows either account by
   toggle (IBKR through the trader). IBKR is the owner's paper account
