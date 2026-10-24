@@ -168,6 +168,23 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   the unseen. Lower thresholds are worse (median fair end c0 $55,632, c1 $73,925, c2 $94,514). The take-profits cut the
   worst drop and lift the median vs the stop alone, but none pass $100K on both lists. Top fair list: any breakout, c2,
   0.15, the stop alone, $147,567 / 20% on 212 trades with 9% winners, $69,123 without the best 5; unseen $81,313.
+- Exits checked every 10 seconds (`exits_10s.py`, 2026-10-24; the live bot ticks every 10 s since 2026-10-23), on the
+  10-second bar database (`data/local/bars-10s.sqlite`, Alpaca SIP trades, one year to 2026-10-22, 196 symbols; 67 of
+  the window's 424 champion-bot trades are on 29 other symbols and left out of both versions). Stock at each tick from
+  the 10-second bars; option mark MODELED: Black-Scholes at the tick's stock price with the last closed minute bar's
+  implied vol (median error 1.9%, 90th percentile 6.2% against the real minute closes). The same rules (your stop,
+  overnight hold, failed break) once a minute vs every 10 s, 2025-10-23 to 2026-10-22: fair list (288 trades) at 1%
+  $195,674 / 6% vs $149,938 / 11% (2%: $335,077 / 12% vs $202,718 / 21%), per trade +$2,613 vs +$1,629 at $10K; 151
+  unseen (61) $93,946 vs $93,705. 286 of 288 trades end differently (167 better, 119 worse), and the whole gap is
+  three knife-edge trades: GOOGL 2026-07-31 (the -30% stop: minute 117 closed at -29.97%, its low exactly -30%; the
+  10-s check sold inside the minute, the champion went on to +1406%), COIN 2026-08-19 (15:50 at +101%: at 15:50:10 the
+  modeled mark was +93% and it sold instead of carrying; the carry made +1499%), ASTS 2025-12-04 (-30%: minute 24
+  closed at -28.9%, a tick dipped under; then +440%). Without those three the 10-s version is ahead by $48.8K at $10K
+  over the other 285 trades (+$171 a trade): the earlier stop-outs save a little on the ordinary losers. More stops
+  overall (U_out 142 -> 164 of 357 trades). Not a rule, a cadence: the live bot runs the 10-s version. The lesson is
+  that the champion's figures lean on three thresholds hit by a hair, and the model's +-2-6% is wider than those
+  margins, so neither cadence is "right"; a stop or a carry that needs the condition on two ticks (or on the closed
+  minute) would take the coin-flip out. Not tested yet.
 
 ## Candidates
 
