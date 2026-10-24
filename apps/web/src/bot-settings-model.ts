@@ -39,7 +39,11 @@ export {
   type AlgorithmStep,
 } from "../../../packages/trading/src/bot/algorithm.js";
 export type SwitchKey =
-  "checks" | "sellFailedBreak" | "skipEarnings" | "skipPremarket";
+  | "checks"
+  | "sellOnWeakness"
+  | "sellFailedBreak"
+  | "skipEarnings"
+  | "skipPremarket";
 
 /**
  * The version card's state: the known version chosen (none for an own label),

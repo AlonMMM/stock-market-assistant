@@ -34,6 +34,11 @@ export interface BotSettings {
   dayLossPct: number;
   drawdownPausePct: number;
   checks: boolean;
+  // On the entry day, sell all when the signal's own t-stat vs SPY × beta
+  // (cumulative from the open) falls to weaknessT or under: the stock gave
+  // back its edge over the market (the 2026-10-24 champion).
+  sellOnWeakness: boolean;
+  weaknessT: number;
   // On the entry day, sell all when the stock reaches the next level ahead
   // and falls back without breaking it (levels.ts).
   sellFailedBreak: boolean;
@@ -79,6 +84,8 @@ export const defaultSettings: BotSettings = {
   dayLossPct: 5,
   drawdownPausePct: 15,
   checks: true,
+  sellOnWeakness: true,
+  weaknessT: 0.5,
   sellFailedBreak: true,
   holdFromPct: 100,
   maxNights: 2,
@@ -116,6 +123,7 @@ export const limits: Record<
   maxBuysPerDay: [1, 10, 1],
   maxOpen: [1, 10, 1],
   stopPct: [15, 60, 5],
+  weaknessT: [0, 1.5, 0.1],
   safetyStopPct: [30, 80, 5],
   dayLossPct: [1, 10, 0.5],
   drawdownPausePct: [5, 40, 5],
@@ -135,6 +143,7 @@ const booleans: BooleanKey[] = [
   "enabled",
   "followFavorites",
   "checks",
+  "sellOnWeakness",
   "sellFailedBreak",
   "skipEarnings",
   "skipPremarket",
@@ -249,6 +258,7 @@ export function exitRules(s: BotSettings): ExitRules {
     ...defaultExitRules,
     checks,
     stopOut: -s.stopPct / 100,
+    strengthOut: s.sellOnWeakness ? s.weaknessT : null,
     carryMinGain: s.holdFromPct / 100,
     carryMaxNights: s.maxNights,
   };

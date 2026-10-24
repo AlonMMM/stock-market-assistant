@@ -27,7 +27,7 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
   read-only **Bot trades** tab for it (`/api/portfolio/bot`). See
   [the task](tasks/backend-bot-account.md).
 - **Versions (2026-10-23, `feat/bot-version`):** the rules have a version (1.0 the first bot, 2.0 the V2
-  champion, 2.1 with the failed-break sale); every signal, position and buy note is stamped with the version in
+  champion, 2.1 with the failed-break sale, 2.2 with the t-stat exit of 2026-10-24); every signal, position and buy note is stamped with the version in
   force (starred when its rules were changed), and the owner picks the version on the settings page. See
   "Versions" in [the settings task](tasks/backend-bot-settings.md).
 - **Parity:** signal and exits match the Python backtest exactly (26,049 stock-days, 875 trades).

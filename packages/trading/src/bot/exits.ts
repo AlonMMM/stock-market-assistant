@@ -5,7 +5,9 @@
 // Entry day:
 //   - 10 minutes after the entry, if the stock is against the entry price, sell half;
 //   - 20 minutes after, if it is still against, sell the rest;
-//   - the option at -30% while the stock is against: sell all.
+//   - the option at -30% while the stock is against: sell all;
+//   - the signal's own t-stat vs SPY × beta (cumulative from the open) down to
+//     `strengthOut` or under: sell all (the 2026-10-24 champion, exits.ts T).
 // 15:50: hold overnight what is up >= +100% (a next session before expiry, at
 //   most 2 nights); sell the rest. What is held is worth at most `nightCapPct`
 //   of the account (`nightCapSell`, 10% by default): the excess is sold first.
@@ -21,6 +23,9 @@
 export interface ExitRules {
   checks: readonly (readonly [minutes: number, share: number])[];
   stopOut: number; // option return that sells all (with the stock against on the entry day)
+  // The signal's t-stat, in the bet's direction, at or under which the entry
+  // day sells all; null is off. The entry needed 1.8.
+  strengthOut: number | null;
   eodMinute: number; // 15:50
   carryMinGain: number; // hold overnight from this option return
   carryMaxNights: number;
@@ -35,6 +40,7 @@ export const defaultExitRules: ExitRules = {
     [20, 1],
   ],
   stopOut: -0.3,
+  strengthOut: null,
   eodMinute: 380,
   carryMinGain: 1,
   carryMaxNights: 2,
@@ -58,6 +64,9 @@ export interface ExitMarket {
   minute: number; // session minute now
   stock: number | null; // the stock's last close
   option: number | null; // the option's mark (mid)
+  // The signal's t-stat now on the call side (a put's is the negation), from
+  // the closed minutes; null when it cannot be computed.
+  strength?: number | null;
   isExpiryDay: boolean;
   // A session after today on or before the expiry date (a carry is possible).
   sessionBeforeExpiry: boolean;
@@ -70,6 +79,7 @@ export type ExitReason =
   | "check-10"
   | "check-20"
   | "stop-30"
+  | "strength-gone"
   | "close-1550"
   | "carry"
   | "morning-gap-keep"
@@ -170,7 +180,13 @@ export function nextAction(
     if (g <= r.stopOut) return { sell: p.qty, reason: "stop-30", update: {} };
     return hold;
   }
-  // The entry day: your stop.
+  // The entry day: the thesis first (the signal's strength gone), then your stop.
+  const strength =
+    mk.strength === null || mk.strength === undefined
+      ? null
+      : bet * mk.strength;
+  if (r.strengthOut !== null && strength !== null && strength <= r.strengthOut)
+    return { sell: p.qty, reason: "strength-gone", update: {} };
   const against = mk.stock !== null && bet * (mk.stock - p.entryStock) < 0;
   const held = mk.minute - p.entryMinute;
   const due = r.checks.findIndex(
