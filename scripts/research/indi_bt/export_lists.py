@@ -3,6 +3,7 @@
   trades.csv   one row per bought trade: list, key, date, time, minute, sym, right, contract, strike, expiry, dte, delta, iv,
                price (the stock's close on the signal minute, the entry the checks compare with), cost, ret, exit (words), overnight
   funnel.csv   per list: signals, skipped by the news filter, no contract, no fill, bought
+  funnel_stock.csv  the same per list and stock, the no-contract signals split by reason (illiquid, too cheap, other)
   bars.csv     1-minute closes of each trade's stock on the day before and the trade day, and SPY on those days
                (key "SYM|date", 390 slots a day, blank where no bar)
   paths.csv    per trade: the paid price, every fill (day,minute,side,share,price,rule; ...), the option's 1-minute closes
@@ -93,7 +94,7 @@ def closes5(bars):
 
 
 cal = calendar()
-T, F, PA, keys = [], [], [], set()
+T, F, FS, PA, keys = [], [], [], [], set()
 for spec in NAMES:
     name, _, rng = spec.partition("@")
     W = json.load(open(f"{B}/list_{name}_{rng or f'{A}_{Z}'}.json"))
@@ -102,6 +103,13 @@ for spec in NAMES:
         s = r["status"].split(":")[0].replace(" ", "_")
         n[s] = n.get(s, 0) + 1
     F.append(dict(list=name, **n))
+    per = {}
+    for r in W:
+        c = per.setdefault(r["sym"], {"signals": 0, "skipped": 0, "no_contract": 0, "illiquid": 0, "too_cheap": 0, "other": 0, "no_fill": 0, "bought": 0})
+        s, _, why = r["status"].partition(":")
+        c["signals"] += 1; c[s.replace(" ", "_")] += 1
+        if s == "no contract": c[why.strip() if why.strip() in ("illiquid", "too_cheap") else "other"] += 1
+    FS.extend(dict(list=name, key=f"{name}|{sym}", sym=sym, **c) for sym, c in sorted(per.items()))
     for r in W:
         if r["status"] != "bought" or r["ret"] is None: continue
         steps = [x.split(" ") for x in r["steps"].split(";")] if r["steps"] else []
@@ -135,4 +143,4 @@ def write(fname, rows):
     print(fname, len(rows), os.path.getsize(f"{OUT}/{fname}") // 1024, "KB")
 
 
-write("trades.csv", T); write("funnel.csv", F); write("bars.csv", BARS); write("paths.csv", PA); write("minutes.csv", MIN)
+write("trades.csv", T); write("funnel.csv", F); write("funnel_stock.csv", FS); write("bars.csv", BARS); write("paths.csv", PA); write("minutes.csv", MIN)
