@@ -1,6 +1,7 @@
 import {
-  botBrokers,
+  botBrokerChoices,
   type BotBroker,
+  type BotBrokerChoice,
 } from "../../../packages/trading/src/bot/settings.js";
 import type { BrokerAccount, TradeStore } from "./store.js";
 
@@ -23,12 +24,12 @@ export const botSecretVariable = "BOT_ALPACA_API_SECRET";
 // without the key variables.
 export const botBrokerVariable = "BOT_BROKER";
 
-/** The start-up default broker; throws on a value that is neither. */
-export function botBrokerFromEnv(env: Env): BotBroker {
+/** The start-up default for new entries; throws on any other value. */
+export function botBrokerFromEnv(env: Env): BotBrokerChoice {
   const named = env[botBrokerVariable] || "alpaca";
-  if (!(botBrokers as readonly string[]).includes(named))
-    throw new Error(`${botBrokerVariable} must be alpaca or ibkr`);
-  return named as BotBroker;
+  if (!(botBrokerChoices as readonly string[]).includes(named))
+    throw new Error(`${botBrokerVariable} must be alpaca, ibkr or both`);
+  return named as BotBrokerChoice;
 }
 
 /** The owner's account the bot trades at `broker`, or null when there is none. */

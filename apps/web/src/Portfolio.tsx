@@ -9,6 +9,11 @@ import type {
   PortfolioPosition,
 } from "../../../packages/trading/src/portfolio.js";
 import type { Decision } from "../../../packages/trading/src/explain.js";
+import {
+  botBrokers,
+  brokerNames,
+  type BotBroker,
+} from "../../../packages/trading/src/bot/settings.js";
 import { usePolling } from "./Live.js";
 import { OrderActions, StopMover } from "./OrderControls.js";
 import { BotChip, BotPanel, useBotContracts } from "./BotPanel.js";
@@ -164,17 +169,20 @@ function History({
   onError,
   base = "/api/portfolio",
   chips = true,
+  query = "",
 }: {
   onError: (m: string) => void;
   // The account: the owner's, or the bot's own (/api/portfolio/bot).
   base?: string;
   // The Bot chip on the bot's trades; off when the whole account is the bot's.
   chips?: boolean;
+  // More query parameters, e.g. the bot account's broker.
+  query?: string;
 }) {
   const [period, setPeriod] = useState<HistoryPeriod>("1M");
   const bot = useBotContracts();
   const { value, error } = usePolling<PortfolioHistory>(
-    `${base}/history?period=${period}`,
+    `${base}/history?period=${period}${query ? `&${query}` : ""}`,
     historyRefreshMs,
     onError,
   );
@@ -576,9 +584,47 @@ function LiveTrades({
 // the owner's account, so nothing here can be clicked.
 const botRefreshMs = 5000;
 
+// The bot can trade at two accounts (docs/tasks/backend-bot-ibkr.md); the
+// tab shows one at a time (user 2026-10-24: "show both, by toggle").
 function BotTrades({ onError }: { onError: (m: string) => void }) {
+  const [broker, setBroker] = useState<BotBroker>("alpaca");
+  return (
+    <div className="portfolio">
+      <div className="toolbar">
+        <div className="segmented small" role="group" aria-label="Bot account">
+          {botBrokers.map((b) => (
+            <button
+              type="button"
+              key={b}
+              aria-pressed={broker === b}
+              onClick={() => setBroker(b)}
+            >
+              {brokerNames[b]}
+            </button>
+          ))}
+        </div>
+        {broker === "ibkr" && (
+          <span className="muted small">
+            Shared with your own IBKR trades: the bot's contracts only; the
+            account value is the whole account.
+          </span>
+        )}
+      </div>
+      <BotAccount key={broker} broker={broker} onError={onError} />
+    </div>
+  );
+}
+
+function BotAccount({
+  broker,
+  onError,
+}: {
+  broker: BotBroker;
+  onError: (m: string) => void;
+}) {
+  const query = broker === "alpaca" ? "" : `broker=${broker}`;
   const { value, at, error } = usePolling<PortfolioData>(
-    "/api/portfolio/bot",
+    `/api/portfolio/bot${query ? `?${query}` : ""}`,
     botRefreshMs,
     onError,
   );
@@ -597,7 +643,9 @@ function BotTrades({ onError }: { onError: (m: string) => void }) {
   return (
     <div className="portfolio">
       <p className="portfolio-meta">
-        <span className="account-tag paper">🤖 Bot paper account</span>
+        <span className="account-tag paper">
+          🤖 Bot · {brokerNames[broker]} paper
+        </span>
         <span className="muted">
           {error
             ? `Update failed (${error}). Showing ${israelClock(Date.parse(value.at))} ${israelLabel}.`
@@ -673,7 +721,12 @@ function BotTrades({ onError }: { onError: (m: string) => void }) {
         <p className="muted">No open orders.</p>
       )}
       <h2 className="portfolio-title">Closed trades</h2>
-      <History onError={onError} base="/api/portfolio/bot" chips={false} />
+      <History
+        onError={onError}
+        base="/api/portfolio/bot"
+        chips={false}
+        query={query}
+      />
     </div>
   );
 }

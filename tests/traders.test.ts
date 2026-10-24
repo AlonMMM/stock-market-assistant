@@ -388,9 +388,10 @@ test("bot account: BOT_BROKER is the start-up default; each broker maps to the o
   assert.equal(botBrokerFromEnv({}), "alpaca");
   assert.equal(botBrokerFromEnv({ BOT_BROKER: "ibkr" }), "ibkr");
   // A typo must not pick an account by accident.
+  assert.equal(botBrokerFromEnv({ BOT_BROKER: "both" }), "both");
   assert.throws(
     () => botBrokerFromEnv({ BOT_BROKER: "ib" }),
-    /BOT_BROKER must be alpaca or ibkr/,
+    /BOT_BROKER must be alpaca, ibkr or both/,
   );
   // Alpaca without the bot's own account: the owner's default; IBKR: none yet.
   assert.equal(botAccountFor(store, "alpaca")?.id, "owner-alpaca");

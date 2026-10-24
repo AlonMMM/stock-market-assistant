@@ -62,6 +62,7 @@ import {
   handleBotSettings,
   handleBotStatus,
 } from "../../../packages/trading/src/bot-api.js";
+import { handleBotPortfolioAt } from "../../../packages/trading/src/bot-api.js";
 import { handleOrderDecisions } from "../../../packages/trading/src/decisions-api.js";
 
 export function buildApp(
@@ -278,30 +279,39 @@ export function buildApp(
     reason: "Position controls work on the hosted site only",
   }));
   // The Indi bot's own paper account (docs/tasks/backend-bot-account.md).
-  app.get("/api/portfolio/bot", async (_request, reply) => {
-    const result = await handleBotPortfolio(
+  const botAt = (query: unknown, period: unknown) => {
+    const broker = body(query).broker;
+    if (broker && broker !== "alpaca")
+      return handleBotPortfolioAt(
+        { url: process.env.TRADER_URL, token: process.env.TRADER_READ_TOKEN },
+        broker,
+        period,
+      );
+    return handleBotPortfolio(
       {
         key: process.env.BOT_ALPACA_API_KEY,
         secret: process.env.BOT_ALPACA_API_SECRET,
       },
-      undefined,
+      period,
       botPortfolio,
       alpaca.fetcher,
     );
+  };
+  const body = (value: unknown) =>
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  app.get("/api/portfolio/bot", async (request, reply) => {
+    const result = await botAt(request.query, undefined);
     return reply
       .code(result.status)
       .header("Cache-Control", "no-store")
       .send(result.body);
   });
   app.get("/api/portfolio/bot/history", async (request, reply) => {
-    const result = await handleBotPortfolio(
-      {
-        key: process.env.BOT_ALPACA_API_KEY,
-        secret: process.env.BOT_ALPACA_API_SECRET,
-      },
+    const result = await botAt(
+      request.query,
       (request.query as { period?: unknown }).period ?? "",
-      botPortfolio,
-      alpaca.fetcher,
     );
     return reply
       .code(result.status)

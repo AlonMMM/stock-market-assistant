@@ -505,7 +505,12 @@ function harness(
   let mid = 0.6;
   let equity = 100000;
   let equityFails = false;
-  const held = new Map<string, number>();
+  // What each account holds; `held` is Alpaca's, as the older tests use it.
+  const heldBy: Record<BotBroker, Map<string, number>> = {
+    alpaca: new Map<string, number>(),
+    ibkr: new Map<string, number>(),
+  };
+  const held = heldBy.alpaca;
   const jobs = new Map<string, { state: string; result: unknown }>();
   const calls: {
     kind: string;
@@ -523,7 +528,7 @@ function harness(
       return { ...q(110, 0.15, mid - 0.01), symbol: c, ask: mid + 0.01 };
     },
     async held(c) {
-      const n = held.get(c) ?? 0;
+      const n = heldBy[broker].get(c) ?? 0;
       return n > 0 ? { qty: n, avgEntryPrice: 0.6 } : null;
     },
     async equity() {
@@ -532,17 +537,20 @@ function harness(
     },
     async buy(body) {
       calls.push({ kind: "buy", body, broker });
-      held.set(String(body.contract), 33);
-      jobs.set("b1", { state: "done", result: {} });
-      return { status: "started", jobId: "b1", qty: 33 };
+      // IBKR fills one contract fewer: the accounts should differ a little.
+      const qty = broker === "ibkr" ? 32 : 33;
+      heldBy[broker].set(String(body.contract), qty);
+      const id = `b${calls.length}`;
+      jobs.set(id, { state: "done", result: {} });
+      return { status: "started", jobId: id, qty };
     },
     async sell(body) {
       calls.push({ kind: "sell", body, broker });
       const id = `s${calls.length}`;
       const n = Number(body.qty);
-      held.set(
+      heldBy[broker].set(
         String(body.contract),
-        (held.get(String(body.contract)) ?? 0) - n,
+        (heldBy[broker].get(String(body.contract)) ?? 0) - n,
       );
       jobs.set(id, { state: "done", result: { result: { sold: n } } });
       return { status: "started", jobId: id };
@@ -645,6 +653,49 @@ test("broker setting: new entries go to the chosen broker; a position is sold wh
     /no ibkr account connected/,
   );
   assert.equal(g.bot.canTrade("alpaca"), true);
+});
+
+test("broker setting 'both': one signal, one contract, a position at each account; each sold at its own", async () => {
+  const h = harness("live");
+  h.bot.setSettings({ ...h.bot.settings(), broker: "both" });
+  await h.run(DAY, 565, 600);
+  const buys = h.calls.filter((c) => c.kind === "buy");
+  assert.deepEqual(
+    buys.map((b) => [b.broker, b.body.contract]),
+    [
+      ["alpaca", "NVDA261023C00110000"],
+      ["ibkr", "NVDA261023C00110000"],
+    ],
+  );
+  assert.match(String(buys[1]!.body.note), /Interactive Brokers$/);
+  const open = h.store.openPositions();
+  assert.deepEqual(
+    open.map((p) => [p.broker, p.qty]),
+    [
+      ["alpaca", 33],
+      ["ibkr", 32],
+    ],
+  );
+  // One signal row, with both accounts in its words.
+  const signal = h.store.signals(DAY)[0]!;
+  assert.equal(signal.outcome, "bought");
+  assert.match(signal.detail ?? "", /Alpaca: 33 .*; Interactive Brokers: 32 /);
+  // Up 150% at 15:50: both held overnight; next morning no gap: each sold where it was bought.
+  h.setMid(1.5);
+  await h.run(DAY, 601, 965);
+  await h.run(NEXT, 565, 590);
+  const sells = h.calls.filter((c) => c.kind === "sell");
+  assert.deepEqual(sells.map((c) => [c.broker, c.body.qty]).sort(), [
+    ["alpaca", "33"],
+    ["ibkr", "32"],
+  ]);
+  assert.equal(h.store.openPositions().length, 0);
+  // "both" needs both accounts connected.
+  const g = harness("live", {}, undefined, { brokers: ["alpaca"] });
+  assert.throws(
+    () => g.bot.setSettings({ ...g.bot.settings(), broker: "both" }),
+    /no both account connected/,
+  );
 });
 
 test("runner: a contract the account already holds is left alone; the bot never sells more than the account has", async () => {

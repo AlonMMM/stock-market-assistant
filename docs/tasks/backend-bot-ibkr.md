@@ -2,11 +2,13 @@
 
 Status: implemented, deploy pending
 Owner: backend (the Bot settings page's Broker switch included, at the user's request)
-Branch: feat/bot-ibkr
+Branch: feat/bot-ibkr (merged, #140), then feat/bot-both-brokers
 Spec/contract revision: user requests 2026-10-24 ("I would like to connect the bot with my
 interactive brokers"; "i must have the risk manager"; "can i make it configurable in the bot
-settings? to trade via ibkr or alpaka acount?"); docs/features/multi-user-ibkr.md phase 3
-(`IbkrTrading`, the owner's IBKR paper account behind the Gateway)
+settings? to trade via ibkr or alpaka acount?"; "I want this tab to be able to show both - by
+toggle … give the bot a way to trade in both in parallel - it will be nice to see the
+difference in premia and rake"); docs/features/multi-user-ibkr.md phase 3 (`IbkrTrading`, the
+owner's IBKR paper account behind the Gateway)
 
 ## Outcome
 
@@ -17,6 +19,32 @@ trading service is only the default until the owner saves. A position is sold wh
 bought. Everything else is unchanged: the signal and exits, the owner's validator and risk
 manager, the Telegram posts marked 🤖 Bot, the stop watch and the never-short check, and the
 market data (the owner's Alpaca SIP keys).
+
+## Second round: both accounts at once, and the tab per account (feat/bot-both-brokers)
+
+- **Broker "both".** `BotSettings.broker` is `alpaca | ibkr | both` (`BotBrokerChoice`;
+  `entryBrokers(choice, connected)` says which accounts a choice buys at). With `both`, one
+  signal picks one contract (from the first account's chain) and buys it at each connected
+  account: two position records, each with its own `broker`, sizing from its own account's
+  equity, each sold where it was bought. The signal keeps one row, its words naming each
+  account ("Alpaca: 33 …; Interactive Brokers: 32 …"). Limits are per account: `maxOpen`
+  counts that account's open bot positions, the daily loss limit reads that account; an
+  account at its limit sits the signal out while the other still buys. `maxBuysPerDay`
+  counts signals, as before. The drawdown pause measures the bot's realized P&L against the
+  accounts' equity added up. `both` can be chosen (or set as `BOT_BROKER`) only with both
+  accounts connected.
+- **Bot trades tab per account.** The trader answers `GET /v1/bot/portfolio?broker=` and
+  `GET /v1/bot/portfolio/history?broker=&period=` (read token) from the broker and the bot's
+  own records (`apps/trader/src/bot-portfolio.ts`): the bot's open positions at that account
+  with live marks (mid, else the side there), their stops, the orders on them, the whole
+  account's totals ("Cash" is what is free to spend), the recorded daily values
+  (`equity_days`, else the broker's own history) and the bot's closed positions as closed
+  trades with their fills. Positions and orders are the bot's contracts only, because the
+  IBKR account is shared with the owner's own trades. The site forwards
+  `/api/portfolio/bot?broker=ibkr` (and `/history`) to the trader
+  (`handleBotPortfolioAt`); without a broker, or `alpaca`, the Alpaca path is unchanged.
+  The tab gets an Alpaca | Interactive Brokers toggle; the IBKR view says it is a shared
+  account. Not opened in a browser here.
 
 ## Scope and exclusions
 
@@ -51,11 +79,9 @@ market data (the owner's Alpaca SIP keys).
 - Site (`apps/web/src/BotSettings.tsx`): a Broker switch (Alpaca | Interactive Brokers) next
   to the mode switch, an unconnected broker greyed out. Reset to defaults keeps the broker.
   Not checked in a browser here; the model and page compile and the build passes.
-- Not changed: the Portfolio **Bot trades** tab still reads the Alpaca bot account through
-  the Worker (`/api/portfolio/bot`, `docs/tasks/backend-bot-account.md`). With IBKR chosen
-  it shows that Alpaca account, not the IBKR one. The Worker cannot reach the Gateway
-  (private network); the tab would have to read the trader's `/v1/positions` with
-  `X-Trader-Broker: ibkr` instead. Frontend/Integration decision, see "Next".
+- The Portfolio **Bot trades** tab: the Alpaca view is unchanged (the Worker reads the bot's
+  Alpaca account with its keys, `docs/tasks/backend-bot-account.md`); the IBKR view comes
+  through the trader (second round, above).
 - Not changed: the bot's market data (Alpaca), the Gateway (`Dockerfile.gateway`,
   `deploy/gateway/start.sh`), `IbkrTrading`'s order flow.
 
@@ -104,7 +130,14 @@ market data (the owner's Alpaca SIP keys).
   recorded only for brokers without their own history, on trading days from the open, not
   on a failed or empty read; the IBKR broker built by `Traders` answers `equityHistory`
   from the record.
-- `npm run typecheck`, the whole test suite and the build: see the PR for the run.
+- Second round: `tests/indi-bot.test.ts` "broker setting 'both'" (one signal, one contract,
+  a position at each account with its own size, each sold at its own; `both` refused when
+  one account is missing); `tests/bot-portfolio.test.ts` (the bot's contracts only, marks,
+  stops, totals, a missing quote, the history's days and closed trades, a bad period);
+  `tests/worker.test.ts` (another broker goes to the trader with the read token; 503
+  without a trader, 400 for an unknown broker); `tests/bot-settings.test.ts` (`both`,
+  `entryBrokers`).
+- `npm run typecheck`, the whole test suite and the build: see the PRs for the runs.
 - Not verified: a real bot order on the IBKR paper account through the Gateway (the
   Gateway is online on Railway, logged in to paper `DUR786216`, API 4002 bridged to 4001;
   the trader logs `ibkr: connected to the Gateway`). Option quotes and chains from the paper
@@ -123,8 +156,8 @@ market data (the owner's Alpaca SIP keys).
 
 ## Next
 
-- Bot trades tab on IBKR: read the trader's `/v1/positions` and decisions for the
-  `owner/owner-ibkr` scope instead of the Alpaca keys (product + frontend).
+- A side-by-side view of the two accounts' fills and fees for the same signals (the data is
+  in each account's closed trades; the comparison itself is not built).
 - The equity record has no past: if the brake should know the account's earlier high, load
   the IBKR account's past closes once (PortfolioAnalyst through the Claude connector, by
   hand) into `equity_days`.

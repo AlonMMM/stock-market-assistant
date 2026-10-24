@@ -79,3 +79,45 @@ test("the bot's account routes: not connected without its keys; its keys reach t
   );
   assert.ok(seen.some((s) => s.url.includes("paper-api.alpaca.markets")));
 });
+
+test("the bot's account routes: another broker is read through the trading service with the read token", async () => {
+  const unset = await worker.fetch(
+    new Request("https://example.test/api/portfolio/bot?broker=ibkr"),
+    {},
+  );
+  assert.equal(unset.status, 503);
+  assert.match(
+    ((await unset.json()) as { error: string }).error,
+    /trading service/,
+  );
+  const unknown = await worker.fetch(
+    new Request("https://example.test/api/portfolio/bot?broker=robinhood"),
+    {},
+  );
+  assert.equal(unknown.status, 400);
+  const seen: { url: string; auth: string | null }[] = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    seen.push({ url: String(input), auth: headers.get("Authorization") });
+    return Response.json({ paper: true, points: [], trades: [] });
+  }) as typeof fetch;
+  try {
+    const answer = await worker.fetch(
+      new Request(
+        "https://example.test/api/portfolio/bot/history?broker=ibkr&period=1W",
+      ),
+      { TRADER_URL: "https://trader.test", TRADER_READ_TOKEN: "read-token" },
+    );
+    assert.equal(answer.status, 200);
+    assert.equal(((await answer.json()) as { paper: boolean }).paper, true);
+  } finally {
+    globalThis.fetch = real;
+  }
+  assert.deepEqual(seen, [
+    {
+      url: "https://trader.test/v1/bot/portfolio/history?broker=ibkr&period=1W",
+      auth: "Bearer read-token",
+    },
+  ]);
+});

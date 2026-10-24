@@ -23,7 +23,7 @@ next minute; the stock list is fixed at warm-up (09:25 New York) and changes fro
 | ------------------------------------------ | ------------------ | ------------------------------------------------------------- |
 | `enabled`                                  | env                | the existing on/off switch (`bot_settings.enabled`)           |
 | `mode`                                     | env                | `live` paper orders or `dry` "would buy"; new entries only    |
-| `broker`                                   | env (`BOT_BROKER`) | `alpaca` or `ibkr`: where new entries are bought (see below)  |
+| `broker`                                   | env (`BOT_BROKER`) | `alpaca`, `ibkr` or `both`: where new entries are bought      |
 | `version`                                  | 2.1                | the rule set's name, stamped on every entry (see "Versions")  |
 | `followFavorites`, `added`, `off`          | on, —, QQQ SQQQ    | today's stocks: core ∪ added ∪ favorites − off − SPY/CL/GC/SI |
 | `sizePct`                                  | 2                  | the buy's `sizePct` (dry run: the same share of equity)       |
@@ -48,8 +48,9 @@ the new `nightCapPct`. Settings the owner saved before keep their own `minT` (a 
 saved value then wins.
 
 **Broker (2026-10-24, user: "configurable in the bot settings, to trade via ibkr or alpaca account").** `broker`
-names the account new entries are bought at: `ibkr`, the owner's IBKR paper account behind the Gateway, or
-`alpaca`, the bot's own Alpaca account (docs/tasks/backend-bot-ibkr.md). Every position records the broker it
+names the account new entries are bought at: `ibkr`, the owner's IBKR paper account behind the Gateway,
+`alpaca`, the bot's own Alpaca account, or `both`: the same contract bought at each account, to compare fills
+and fees (docs/tasks/backend-bot-ibkr.md, "Second round"). Every position records the broker it
 was bought at and is quoted, checked and sold there, so the owner may switch while positions are open. `GET
 /v1/bot` lists the connected brokers (`brokers`); `PUT /v1/bot/settings` answers 409 for a broker that is not
 connected, and the page greys that option out. The account's equity for sizing, the daily loss limit and the

@@ -3,6 +3,7 @@
 // hosted site talks to it, with TRADER_TOKEN; Claude reaches it through the
 // site's connector and never sees a key.
 import { timingSafeEqual } from "node:crypto";
+import { newYork } from "../../../packages/market-data/src/calendar.js";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Fastify, { type FastifyRequest } from "fastify";
@@ -15,6 +16,7 @@ import {
   ensureBotAccount,
 } from "./seed-bot.js";
 import { EquityLog } from "./equity-log.js";
+import { botHistory, botPortfolio } from "./bot-portfolio.js";
 import { ShortWatch } from "./short-watch.js";
 import { RequestError, type TraderService } from "./service.js";
 import { TradeStore } from "./store.js";
@@ -203,6 +205,17 @@ api.get<{ Querystring: { limit?: string } }>("/v1/decisions", async (request) =>
 // owner's Alpaca keys either way.
 const botStore = new BotStore(dbPath);
 let botOff = "The bot has no Alpaca keys";
+/** The trader (account, service, channels) the bot uses at one broker. */
+const botTraderFor = (broker: BotBroker) => {
+  const account = botAccountFor(store, broker);
+  if (!account) throw new RequestError(`The bot has no ${broker} account`, 409);
+  return traders.forAccount(account.id);
+};
+const botBrokerOf = (value: unknown): BotBroker => {
+  if (value !== "alpaca" && value !== "ibkr")
+    throw new RequestError("broker must be alpaca or ibkr");
+  return value;
+};
 const bot = (() => {
   const key = env("ALPACA_API_KEY", "APCA_API_KEY_ID");
   const secret = env("ALPACA_API_SECRET", "APCA_API_SECRET_KEY");
@@ -210,12 +223,7 @@ const bot = (() => {
   // A wrong BOT_BROKER stops the service: the bot must never trade the wrong
   // account by accident.
   const startBroker = botBrokerFromEnv(process.env);
-  const traderFor = (broker: BotBroker) => {
-    const account = botAccountFor(store, broker);
-    if (!account)
-      throw new RequestError(`The bot has no ${broker} account`, 409);
-    return traders.forAccount(account.id);
-  };
+  const traderFor = botTraderFor;
   // Only a broker whose account builds (keys, Gateway) can be chosen.
   const connected = botBrokers.filter((broker) => {
     try {
@@ -228,8 +236,12 @@ const bot = (() => {
       return false;
     }
   });
-  if (!connected.includes(startBroker)) {
-    botOff = `The bot's ${startBroker} account cannot start`;
+  const startable =
+    startBroker === "both"
+      ? botBrokers.every((b) => connected.includes(b))
+      : connected.includes(startBroker);
+  if (!startable) {
+    botOff = `The bot's ${startBroker} account(s) cannot start`;
     log(`${botOff}; the bot is off`);
     return null;
   }
@@ -310,6 +322,32 @@ api.put("/v1/bot/settings", async (request) => {
       409,
     );
   return bot.setSettings(parsed.value);
+});
+// The Bot trades tab for an account the site cannot read itself (IBKR): the
+// bot's positions there with live marks, and its closed trades
+// (docs/tasks/backend-bot-ibkr.md). Readable with the read-only token.
+api.get("/v1/bot/portfolio", async (request) => {
+  if (!bot) throw new RequestError(botOff, 409);
+  const broker = botBrokerOf(body(request.query).broker);
+  const t = botTraderFor(broker);
+  return botPortfolio(t.broker, bot.positionsAt(broker), Date.now());
+});
+api.get("/v1/bot/portfolio/history", async (request) => {
+  if (!bot) throw new RequestError(botOff, 409);
+  const q = body(request.query);
+  const broker = botBrokerOf(q.broker);
+  const t = botTraderFor(broker);
+  // The service's own daily record (equity-log.ts), else the broker's.
+  const recorded = store.equityDays(t.account.id);
+  const days = recorded.length ? recorded : await t.broker.equityHistory();
+  const since = newYork(Date.now() - 366 * 86_400_000).date;
+  return botHistory(
+    days,
+    bot.positionsAt(broker, since),
+    q.period,
+    t.broker.capabilities.paper,
+    Date.now(),
+  );
 });
 
 // A stop that sells is reported within this long.
