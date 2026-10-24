@@ -21,6 +21,7 @@ Preserve unrelated changes and use a task branch for implementation.
 - Do not force-push, discard unrelated changes, trade, or deploy without authorization for that action. Honor authorization already given in the session.
 - Deploy only what is on `main`: merge first, then deploy from a clean checkout of `origin/main`. Never deploy a pull request's branch or uncommitted changes. This applies to every deploy target (the website Worker, the connector Worker, the Railway services).
 - Add dependencies and automation to meet concrete needs, not to fill out a scaffold.
+- Before any backtest or test of a bot rule, check the current champion and the simulator's configuration, pin them, and reproduce the champion first; see the `bot-backtest` skill ("Before any run").
 
 ## Verify and finish
 
