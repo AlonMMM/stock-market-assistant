@@ -39,7 +39,8 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                price -> sell that share of what is left. With opt_below (e.g. -0.10) the option must also be at that gain
                or worse; with opt_wait a check not met stays armed until both hold, else it passes once. Older form: 10-20 minutes after the entry, the stock
                on the wrong side of the entry price -> sell `share` (once); option at `out` (e.g. -35%)
-               with the stock on the wrong side of the entry price -> sell all
+               with the stock on the wrong side of the entry price -> sell all; out_by_dte [[max dte, out], ...]
+               picks `out` by the days to expiry at the entry (first row the trade fits)
   Z stall + strength (stall_rs {hours, gain, rs}): entry day, from `hours` after the entry, the option never up `gain`
                since the entry and (rs "entry" / "hour") the stock's move vs SPY x beta since the entry / over the last hour
                against us                                               -> sell all
@@ -176,6 +177,11 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
     st = dict(cut1=False, armed=False, t1=False, plan=None, k=0)
     pending = None  # (share of original or 'all', rule)
     fb = failed_break_minute(und, date, minute, bet) if X.get("failed_break") else None
+    # the -X% stop can depend on days to expiry at the entry: out_by_dte [[max dte, out], ...] (user, 2026-10-24)
+    uout = (X.get("user_stop") or {}).get("out")
+    if X.get("user_stop") and X["user_stop"].get("out_by_dte"):
+        dte0 = (dt.date.fromisoformat(exp) - dt.date.fromisoformat(date)).days
+        uout = next((o for lim, o in X["user_stop"]["out_by_dte"] if dte0 <= lim), uout)
     for k, d in enumerate(dates):
         bars = day(sym, d)
         sd = Day(und, d, bet, cal, cal.index(d))
@@ -325,8 +331,8 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                         if not U.get("opt_wait"): done.add(hit)
                 elif not st.get("half") and U["check_from"] <= t - minute <= U["check_to"] and against:
                     st["half"] = True; pending = (rem * U["share"], "U_half"); continue
-                if g <= U["out"] and against: pending = ("all", "U_out"); continue
-            if X.get("user_stop") and sd.ok and k > 0 and g <= X["user_stop"]["out"]:
+                if g <= uout and against: pending = ("all", "U_out"); continue
+            if X.get("user_stop") and sd.ok and k > 0 and g <= uout:
                 pending = ("all", "U_out"); continue
             if X.get("stock_stop") and sd.ok and k == 0 and t > minute:
                 tt = min(t, 389); px = sd.c[tt]

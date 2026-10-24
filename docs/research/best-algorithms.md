@@ -245,6 +245,16 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   9%, 28 trades change, PDD 2024-09-04 +21,650 vs AVGO 2025-11-24 -30,290), loses on the unseen ($118,794 / 13%). With
   the option under +10% as a condition the rule fires on 0-7 trades and changes nothing ($523K-$528K; unseen $125.5K-
   $125.9K). Not better. sim.py: `still {window, k, under}`.
+- A wider -X% stop, by days to expiry (`stop_dte.py`, 2026-10-24; the user's request: "50% for 1-2 days and 40% for
+  4-7 days", 3 DTE taken with 4-7). Against the bot today (-30%), all champion trades 2024-2026 (fair list: 373 trades
+  at 1-2 DTE, 440 at 3-7). Fair list at 1%: -30% $526,469 / 10%; flat -40% $510,995 / 10%; flat -50% $521,758 / 11%;
+  -50% / -40% by DTE $511,473 / 11%; -40% / -30% $511,163 / 10% (at 2%: $2.01M / 18% vs $1.89M / 22% for the user's
+  version). Unseen: $125,581 / 10% vs $133,590 / $132,061 / $132,393 / $132,894 (11%). Every year positive everywhere.
+  The unseen gain is two trades (UNH 2024-12-05 +53,000 points, LLY 2025-10-01 +23,120); the other 93 changed trades
+  sum -$22K at $10K. On the fair list the wider stop loses $15K and adds a point of drop (4 points at 2%): the extra room
+  mostly lets losers run to -50% (311 trades change, 93 better). The 1-2 DTE trades do not gain from the wider stop on
+  the fair list (+2,217 vs +2,290 a trade); the 3-7 DTE trades are flat. Not better by the rule; the user's call on
+  the live bot (more room, more drop). sim.py: user_stop `out_by_dte [[max dte, out], ...]`.
 
 ## Candidates
 
