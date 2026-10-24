@@ -418,6 +418,19 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     alert adds nothing on top of the wait. Verdict: the wait is a hot-name effect, not a rule; the alert route loses
     at every volume floor tried (0, 1.0, 1.2) with or without the fade and the wait. The alert engine's use for the
     bot, if any, is not at the entry.
+  - **The champion's trades tagged with the alerts (2026-10-25):** before the signal the alert does not travel (a
+    same-side alert before: fair +4,511 vs +1,807 a trade; unseen −1,373 vs +1,536). After the entry it reads whether
+    the trade is alive on both lists: a same-side alert within 30 minutes fair 170 trades, 35% winners, +9,099; unseen
+    41, 41%, +5,536; no alert at all after the entry fair 434, 12%, −1,244 (−$540K), unseen 196, 16%, −1,259. But the
+    unseen's big trades (COST, WMT, PEP: overnight gaps) never alert during the day, so an "alert-silence" exit would
+    cut 6 of its top 10; not run. The 15:50 hold shows nothing (83–94% winners with or without a late alert).
+  - **Double the position on the first same-side alert after the entry (`alert_add.py`, tiers.py `BT_RISK`, 2026-10-25,
+    the user: "double the premia"):** the champion's signals with the alert minute as the B add (same contract, same
+    premium again, only if the option is above cost and nothing sold), within 30 / 60 minutes. Fair list: $777,680 /
+    17% ($3,742,497 / 31% at 2%) vs $585,592 / 11%; 130 trades got the add, the add leg +2,991 a trade but 23%
+    positive and BA 2024-08-01 is +234K of its +389K; worse without the best 5. 60 min: $832,687 / 17%, 152 adds.
+    Unseen: $114,260 / 13% vs $123,028 / 11%; 28 adds, the add leg −2,666 a trade, 11% positive. Not better: the
+    unseen loses, the fair-list gain is one trade, and the worst drop grows with the size.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%

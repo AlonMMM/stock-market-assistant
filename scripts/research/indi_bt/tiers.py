@@ -20,6 +20,7 @@ from store import P, day, calendar, occ
 V = P["entry_variants"]["tiers"]
 RISK = dict(V["risk"])
 if os.environ.get("BT_FLAT"): RISK = {"C": 0.01, "B": 0.01, "A": 0.01}  # baseline: every trade at 1%, no adds
+if os.environ.get("BT_RISK"): RISK.update(json.loads(os.environ["BT_RISK"]))  # e.g. {"C": 0.01, "B": 0.02}: the B add doubles the premium
 UNIT = 10000 / 0.01  # dollars of premium per 1.0 of risk
 ROLL_DELTA = float(os.environ.get("BT_ROLL_DELTA", "0.20"))
 ROLL_FUND = os.environ.get("BT_ROLL_FUND", "profit")
