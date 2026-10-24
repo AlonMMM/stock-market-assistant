@@ -1259,6 +1259,7 @@ export class IndiBot {
         // Closest to a signal first: the weaker of the two conditions.
         .sort((a, b) => closeness(b, s) - closeness(a, s)),
       signals: this.o.store.signals(day),
+      entries: this.o.store.entries(since),
       positions: this.o.store.recentPositions(since),
       activity: this.o.store.events(150),
     };

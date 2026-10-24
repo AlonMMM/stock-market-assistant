@@ -228,6 +228,8 @@ owner-only). It refreshes every 15 seconds and shows:
 - **holding**: each open position with its exits ahead (10- and 20-minute checks or the morning rule, the
   day exit, the standing −30% rule), each marked done, next or later;
 - today's signals and their outcome, the activity feed (`bot_events`), closed trades and the rules.
+- `GET /v1/bot` also carries `entries`, the signals that entered a position in the last five sessions, for a
+  closed trade's story (docs/tasks/frontend-trade-story.md).
 
 ## Design
 

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import type { PortfolioHistory } from "../../../packages/trading/src/portfolio.js";
 import {
   cumulativeTrades,
@@ -14,6 +14,7 @@ import {
   israelShortDate,
   israelWallSeconds,
 } from "./time.js";
+import { useWidth } from "./use-width.js";
 
 const colors = {
   up: "#16a34a",
@@ -41,21 +42,6 @@ const tone = (n: number) =>
   n > 0 ? colors.up : n < 0 ? colors.down : colors.flat;
 
 const margin = { top: 14, right: 18, bottom: 30, left: 64 };
-
-/** Width of the element, following resizes. */
-function useWidth<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    setWidth(el.clientWidth);
-    const observer = new ResizeObserver(() => setWidth(el.clientWidth));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  return [ref, width] as const;
-}
 
 /**
  * Realized P&L through each close as a smooth line on a true time axis;
