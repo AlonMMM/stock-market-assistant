@@ -16,6 +16,15 @@ A version beats the champion only when **all** hold, on the same period (Feb 202
    on his 40 stocks does not count; the sector filter failed exactly this way.
 4. It was not tuned on the result it is judged by. If its thresholds were picked from these numbers, say so.
 
+**Before any run (the user's rule, 2026-10-24):** read the champion row above at that moment (it moved three times on
+2026-10-24), read the simulator's configuration (`params.json`: delta, `min_price`, `min_vol30` = 200 for the champion,
+the exits the champion needs such as the t-stat exit and the overnight hold from +50%), pin them through the
+environment (`BT_CONTRACT`, `BT_EXIT_EXTRA`), run from a frozen copy of `scripts/research/indi_bt` when another
+session may be editing it, and reproduce the champion in the same pipeline first (its fair-list trade count, 813, and
+its money). A baseline that does not match the log means the configuration differs: stop and find out why. On
+2026-10-24 a 10-contract floor left in `params.json` during a sweep made a baseline of 1,484 trades; nothing read
+against it was comparable.
+
 ## Champion
 
 | Since      | Version                                                                                                                                                                                         | Fair list: end / worst drop / years           | 151 unseen: end / worst drop |
