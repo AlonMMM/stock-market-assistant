@@ -1107,3 +1107,11 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     $139,981 / 14%, $154,583 / 15%, **$173,108 / 16%**, $168,882 / 16%. The pyramid's add holds on the Favorites (+$20K
     on 12 months over the same bot without it); the fallback half does not: here the fallback picks are among the best
     trades (IONQ 2026-04-14, IBIT 2026-08-19), so halving them costs money without cutting the drop (14-15% either way).
+  - **The pyramid on the fallback trades (`fb_pyramid.py`, the user: "what if I do pyramid on the fallbacks as well?"):**
+    the D2 fallback trades already get the real-signal add; for the t >= 1.8 fallback trades (half size), add half a
+    size of the usual 0.15-delta contract once it passes the floor within an hour, the first leg still held. It seldom
+    happens: 20 adds on the fair list, 15 on the Favorites (of 77 such trades). Fair list: pyramid + half $1,667,924 /
+    12% → with the add $1,660,100 / 12% (held and up $1,629,162); Favorites 12 months $258,894 / 15% → $264,781 / 15%;
+    6 months $154,583 → $159,006. No change worth having: the usual contract rarely becomes tradable once the bot had to
+    fall back. The pyramid with the fallbacks at full size stays the best on the Favorites ($306,567 / 16%) and the
+    most money on the fair list ($1,751,061 / 14%).
