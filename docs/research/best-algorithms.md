@@ -729,6 +729,22 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     as a bar, the breakdowns, the sortable trade table, and a trade window with the numbered fills, the two legs against
     what was paid and the two-day stock chart with SPY scaled to the same start. 307 trades, +$305,480 at $10,000 a
     trade, 119 winners. The research page stays https://claude.ai/artifact/Uug3uh6G7MWQcvRTMfq3tM.
+  - **Two false-alarm filters for the strangle (`strangle_filters.py`, 2026-10-25, the user's ideas), on the final rule's
+    trades (fair list 2024–2026, 307; favorites 2025-10-23 to 2026-10-22, 192).** (1) The bounce: in the 30 minutes
+    before the alert the stock's high came within 0.25 S30 of a level above (low of one below) without a close 0.25 S30
+    beyond it, and the alert points away from it. Fair: 39 bounces at +60 a trade (2024 and 2026 negative) vs +1,264
+    for alerts with no failed test; skipping them $134,098 / 4% vs $134,414 / 3% (no change). Favorites: 28 bounces at
+    −1,431 (21% winners), the day's own high / low the worst (20 at −2,104); skipping them $109,279 / 3% vs $104,976 /
+    4%. Over 15 minutes the fair list's bounces were good (+1,350), so the window matters. Any failed test in 30
+    minutes (either alert side) is the weaker group on both lists (fair +439 a trade, favorites −1,000) and "no failed
+    test" the stronger (fair +1,264, favorites +816); as a filter fair $128,604 / 5%, favorites $111,014 / 3%.
+    (2) Against a big move: the move from the open (or the last hour) ≥ 1.5 / 2 / 3 S30 one way and the alert the
+    other. Fair: these are the best trades in 2024–2025 (+3,713 / +5,040 a trade at 1.5 from the open: a reversal is a
+    big move, which a strangle wants) and lose in 2026 at every threshold (−1,692); skipping costs $13K–$24K. Favorites
+    (the last year): against-the-open ≥ 3 at −762 a trade, ≥ 1.5 / 2 about −150; skipping ≥ 3 $106,772 vs $104,976.
+    Verdict: (1) helps where the strategy is weak and costs nothing where it is strong: worth a setting in the paper bot
+    (skip the alert after a failed test of the day's high / low or yesterday's within 30 minutes), not proven; (2) is a
+    regime effect (bad in 2026, good before), not a rule. Small groups everywhere (13–53 trades).
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
