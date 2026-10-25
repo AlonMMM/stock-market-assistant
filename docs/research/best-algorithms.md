@@ -472,6 +472,13 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   On the live bot 2.4's exits (the rest at −20% after the +10 half; `BT_LIST=fav_rest_bot BT_REST=-0.2`, baseline 405
   trades, $179,264 / 12%): *cheap* $210,297 / 11% ($364,578 / 20% at 2%), the 82 added +2,391 each, IBIT +$235K of
   +$196K; *liquid* $200,816 / 15%; *both* $238,611 / 16%. The same as on 2.3 within $4K; the exits do not change it.
+  On the champion (the D2 bonus entry, `BT_LIST=fav_d2 BT_REST=-0.2 BT_FAILED_BREAK=0`; baseline 495 trades,
+  $183,487 / 14%): *cheap* 595 trades, $235,837 / 14% ($435,239 / 27% at 2%); *liquid* 988 trades, $253,152 / 16%;
+  *both* 1,060 trades, $313,196 / 17% ($688,676 / 31%). On the champion with the bot's failed-break sale (`fav_d2_bot`;
+  baseline $191,220 / 12%): *cheap* $231,953 / 14%; *liquid* $243,929 / 16%; *both* $306,762 / 17% ($674,145 / 31%).
+  All twelve are on the Backtest Reports dashboard ("The contract rules on the favorites year"). The favorites year is
+  the user's own list in-sample, so these are re-tests, not the champion test: on the fair list and the 151 unseen
+  (`cheap_up.py` above) both rules fail.
 - **Second round, the user's changes (2026-10-24):** the contract's liquidity floor is 10 contracts in the last 30
     minutes instead of 200 ("contract liquidity is not my concern"), now the default in `params.json` (`min_vol30`; the
     live bot's `minVolume30` in `packages/trading/src/bot/picker.ts` is still 200), and the alert route needs day volume

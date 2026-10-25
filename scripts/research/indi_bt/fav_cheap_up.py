@@ -1,6 +1,7 @@
 """cheap_up.py's contract fallbacks on the user's Favorites year (lists.py favorites_23: the app's 63 favorites,
 2025-10-24 to 2026-10-23, the live bot 2.3's exits; BT_LIST=fav_rest_bot BT_REST=-0.2: the same on bot 2.4, the live bot
-since 2026-10-25). The bought signals are walked again (the baseline must match the
+since 2026-10-25; BT_LIST=fav_d2 BT_REST=-0.2 BT_FAILED_BREAK=0 BT_NAME=Champion: the D2 bonus entry champion; BT_LIST=fav_d2_bot
+BT_REST=-0.2: the champion with the bot's failed-break sale). The bought signals are walked again (the baseline must match the
 list's summary), the too-cheap and illiquid ones are re-picked with each fallback and walked.
 
   node --env-file=.env ../sma-indi-backtest/scripts/research/indi_bt/run.mjs fav_cheap_up.py      (from the repo root)
@@ -16,8 +17,9 @@ from lists import account
 A, Z = "2025-10-24", "2026-10-23"
 NAME = os.environ.get("BT_LIST", "favorites_23")  # the lists.py result to start from (its bought rows are the baseline)
 REST = os.environ.get("BT_REST")  # -0.2: the rest at -20% after the +10 half (bot 2.4, lists.py BT_REST), on top of bot 2.3's exits
-BOT_RULES = {**cu.BOT, "after_half": dict(out=float(REST))} if REST else cu.BOT
-BOT_NAME = "Bot 2.4" if REST else "Bot 2.3"
+BOT_RULES = {**cu.BOT, "after_half": dict(out=float(REST))} if REST else dict(cu.BOT)
+if os.environ.get("BT_FAILED_BREAK") == "0": BOT_RULES.pop("failed_break", None)  # the research champion has no failed-break sale
+BOT_NAME = os.environ.get("BT_NAME") or ("Bot 2.4" if REST else "Bot 2.3")
 EXITS = [(BOT_NAME, BOT_RULES)]
 
 
