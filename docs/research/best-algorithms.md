@@ -1091,3 +1091,11 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     1.0 $2,312,692 / 13% (+0%). At 2%: +7%, +6%, +16% for the last three. The add's size is a risk dial on the same
     trades: at 1% every split ends where the pyramid at that drop would; at 2% a bigger add is a little better (the
     night cap binds less on two legs). Halving the D2 entry gives back its cheap early price, as before.
+  - **The candidate stage on the Favorites (`fav_pyramid.py`, the user: "run it against my favorites in the last 12
+    months"):** 86 Favorites, 1% from $100,000. 12 months: production 2.4 $176,352 / 9%; candidate 2.5 $192,534 / 12%;
+    2.5 + cheap + next strike for D2 $285,889 / 15% ($115,777 without the best 5); + both fallbacks at half $239,024 / 14%;
+    the pyramid + fallbacks at half $258,894 / 15% ($115,934); **the pyramid with the fallbacks at full size $306,567 /
+    16% ($128,651)**; D2 1x + add 1x + half $277,390 / 16%. 6 months: $118,562 / 9%, $121,303 / 12%, $158,329 / 15%,
+    $139,981 / 14%, $154,583 / 15%, **$173,108 / 16%**, $168,882 / 16%. The pyramid's add holds on the Favorites (+$20K
+    on 12 months over the same bot without it); the fallback half does not: here the fallback picks are among the best
+    trades (IONQ 2026-04-14, IBIT 2026-08-19), so halving them costs money without cutting the drop (14-15% either way).
