@@ -152,6 +152,13 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   the early D2 ones: $855,938 / 13% at 1% ($4,712,111 / 24%), +693K / +900K / +824K, without the best 5 $296,392;
   unseen $130,487 / 11%. Under the D2 champion in money and worse in drop (13% vs 11%): in D2's trades the failed
   break no longer lowers the risk. Not better.
+- "Defence broken" exit for the D2 bonus (2026-10-25, `defence_exit.py`, sim `defence`): on the entry day, from 15 (30)
+  minutes after the entry, sell all when the D2 of the last 15 (30) minutes is at or under a level; main cell 15 min
+  at 0, set before running. Fair list $75,590 / 26% at 1% vs $1,005,207 / 11% (593 of 981 trades sold; saved
+  +$1.40M on losers, cost -$4.25M on the rest, BA 2024-08-01 -$297K, ORCL 2026-04-13 -$253K); -0.5: $111,061 / 17%;
+  -1: $308,920 / 16%; 30 min at 0: $84,008 / 19%. Unseen worse in every cell ($87,016 / 14% for the main one vs
+  $127,302). Winners rise (305 vs 171) because it sells the runners early at small gains. A 15-minute D2 is noise
+  after the entry; no cell close. Not better.
 - IV filters (own IV rank, low-IV stocks, IV / realized vol): about the same as trading less; fail at 0.10 and unseen.
 - Rolling out when the stock nears the strike fast (to delta 0.15 or 0.30): $161K – $206K; it sells the big winners.
 - Rolling again on t >= 1.8 (`roll2.py`): "fast" as a share of the time to expiry (10% / 25%), the stock 50% / 25% of

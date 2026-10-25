@@ -60,6 +60,9 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
   T thesis (thesis {s30, bar, t}): entry day, the stock closes `s30` S30 units against the entry price (T_s30), or past the
                signal bar's low / high (T_bar), or the signal's cumulative t vs SPY x beta falls to `t` or under (T_tstat)
                                                                        -> sell all
+  DF defence broken (defence {window, out}): entry day, from `window` minutes after the entry, the D2 of the last
+               `window` minutes (the stock's excess move vs SPY x beta on the minutes SPY moved against the bet, in the
+               bet's direction, in S30 units of the price) is `out` or under (user, 2026-10-25)  -> sell all
   S stock stop (stock_stop "vwap" / "prev", entry day): the stock closes back on the wrong side of
                VWAP, or back inside yesterday's range                    -> sell all
   EOD 15:50    carry only if g >= carry_min_gain, stock at >= carry_range_pos of the day range,
@@ -394,6 +397,19 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                     if TH.get("s30") and unit and bet * (px - sd.c[minute]) <= -TH["s30"] * unit: pending = ("all", "T_s30"); continue
                     if TH.get("bar") and sb and (px < sb[3] if bet > 0 else px > sb[2]): pending = ("all", "T_bar"); continue
                     if TH.get("t") is not None and tser and tser[tt] is not None and bet * tser[tt] <= TH["t"]: pending = ("all", "T_tstat"); continue
+            DF = X.get("defence")  # {window, out}: the stock stops holding up on the market's bad minutes
+            if DF and k == 0 and sd.ok and sd.beta is not None and t - minute >= DF["window"]:
+                if "df" not in st:
+                    from levels import ctx
+                    cx = ctx(und, d); spy_ = series(day("SPY", d))[0]; ex = [0.0] * 390
+                    if cx and cx["sd"]:
+                        for m_ in range(1, 390):
+                            if sd.c[m_] and sd.c[m_ - 1] and spy_[m_] and spy_[m_ - 1]:
+                                rp = spy_[m_] / spy_[m_ - 1] - 1
+                                if bet * rp < 0: ex[m_] = bet * ((sd.c[m_] / sd.c[m_ - 1] - 1) - sd.beta * rp) / cx["sd"]
+                    st["df"] = ex if cx and cx["sd"] else None
+                tt = min(t, 389)
+                if st["df"] and sum(st["df"][tt - DF["window"] + 1:tt + 1]) <= DF["out"]: pending = ("all", "DF_defence"); continue
             if X.get("user_stop") and sd.ok and k == 0:
                 U = X["user_stop"]; tt = min(t, 389)
                 if st.get("sp0") is None: st["sp0"] = sd.c[minute]
