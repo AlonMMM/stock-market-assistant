@@ -924,3 +924,24 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     for a much bigger drop; cheap_adj $1,324,417 / 17%; 2.5 + cheap ($1,297,219 / 11%) stays the best 2.5 pick at the
     same risk. Unseen: adj loses least of the fallbacks (2.4 $117,576 / 20%, 2.5 $121,053 / 22% vs plain ~$126K /
     9–11%), cheap_adj $70–72K / 42–45%. Fair + hot 6m: 2.5 cheap_adj $1,778,863 / 21%.
+- **The D2 entries and the 200-contract floor (`d2_liquid.py`, `d2_nofloor_fill.py`, 2026-10-25; the user: "if there is
+  D2 involved buy even if there are less than 200 contracts; if it's D2 and fails on liquidity, try again after 5
+  minutes if the rules still mark going in"):** bot 2.5, a D2 entry = one in through the bonus (t < 1.8); 470 of them
+  illiquid on the fair list. 10% night cap. Fair list (the unseen below for the record):
+  - **nofloor** (buy the 0.15-delta contract anyway, $0.20+, a bar in the last 10 minutes, the usual fill):
+    **$2,725,559 / 12%** (2%: $24.9M / 23%) vs $1,108,662 / 11%, every year higher (+1,211K / +1,220K / +1,282K),
+    $875,155 without the best 5; 325 added trades, 77 winners, +1,006K at $10K, +273K without their best 5 (ARM
+    2024-04-17, COIN 2026-08-19, SMCI 2026-05-28, CVNA 2024-09-16). By the contract's 30-minute volume: 0–24 +221K
+    (105), 25–49 +99K (66), 50–99 −25K (65), 100–199 +711K (89): no clean threshold. **It rests on the fill:** at a 5%
+    spread a side on the added trades $2,165,150 / 12% (added +77K without their best 5), at 10% $1,533,009 / 15%
+    (−214K without their best 5). The simulator fills at a bar's middle ± 2%; a contract with a few trades in 30 minutes
+    has a wider real spread, and at 1% of a compounding account the order is often more than its whole volume.
+    Unseen: $110,285 / 24% vs $126,187 / 11% (912 added, −83K). cheap+nofloor $2,899,149 / 13%.
+  - **retry1** (once, 5 minutes later, if c12_15 still holds): $1,216,760 / 11% vs $1,108,662 / 11%; unseen $130,489 /
+    11% vs $126,187: passes the bar on paper, but 26 added trades and COIN 2026-08-19 (+179K) is all of it (−60K
+    without the best 5). **retry** (every 5 minutes while the rule holds) $1,382,773 / 13%, 68 added, −152K without
+    their best 5 (ARM +15m, COIN +5m); unseen $127,817 / 13%. **retryday** (every 5 minutes to 15:44, skipping checks
+    where the rule fails) $1,322,942 / 12%, 121 added, −217K; unseen $123,867 / 15%. The rule sits at its threshold, so
+    it often fails at exactly +5. On cheap: cheap+retry $1,551,002 / 13%, cheap+retryday $1,504,181 / 13%.
+  Verdict: the retries are a few trades; nofloor is the largest result logged on the fair list, but its size depends on
+  fills the backtest cannot see (no quotes), so it needs a live paper check of the real fills before it counts.
