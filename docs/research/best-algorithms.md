@@ -754,6 +754,24 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     breaks: strangle +658 a trade vs one leg +535 (+572 with the stop) on the fair list; favorites +460 vs −92 (−11).
     As a rule (a break: one leg, else the strangle): fair $131,411 / 5% vs $134,414 / 3%; favorites $98,909 / 6% vs
     $104,976 / 4%. Not better: a break fails almost as often as it holds, and the other leg is what pays then.
+  - **The confirmed leg alone, a trail on the stock, D2 and the falling SPY (`strangle_more.py`, 2026-10-25; the replay
+    reproduces the export's returns on 307 / 307 and 192 / 192).** At the 2% fill, fair list / favorites (last year), at
+    1% a trade: the strangle as now $134,415 / 3% and $104,976 / 4% (without the best 5 $113,977 / $93,429). **A trail
+    on the stock instead of the option** (the kept leg sold when the stock gives back k S30 from its best since the
+    side): k 0.25 $142,560 / 1% and $121,659 / 1% (50% winners on both, without the best 5 $130,401 / $112,792);
+    0.5 $141,043 / $112,707; 0.75 $154,578 / 4% and $118,625 / 4%; 1 $141,688 / 7% and $111,561; 1.5 worse ($114,329
+    / 16%). Every year positive on both lists from 0.25 to 1: the first change that lifts the favorites' year above
+    $100K without its best 5. **Only the leg, bought at the side** (no strangle; the same 0.25 S30 side from the stock at
+    the alert's fill, the pair's premium on one leg): with the option trail $136,199 / 2% and $107,599 / 3%; with the
+    stock trail 0.75 $157,440 / 3% and $122,233 / 3% (0.5: $143,774 and $115,432), the best of the study on both lists.
+    It makes 2 fills instead of 6, so it holds up at a 4% fill a leg: $137,179 / 6% and $112,497 / 4%, vs the strangle
+    as now $111,460 and $93,996, and the strangle with the 0.25 stock trail $117,685 and $108,024. **D2** (a second unit
+    of new money at the side) is worse than D on both lists ($124,038, $103,736). **Falling SPY**: on the fair list the
+    alerts while SPY falls are not worse (down 0.3%+ in 30 min: +1,314 a trade; skipping costs $7.5K); on the favorites
+    they are (13 trades at −1,057; with 3+ stocks alerting 9 at −2,438, 1 winner), skipping +$1.4K. Small and not on
+    both lists: a tag to watch, not a rule. Also: alerts with SPY within ±0.25% of its open are the weakest group on both
+    lists (+8 and −74 a trade). Candidate for the paper bot: the stock trail (0.25 to 0.75 S30) and the one-leg entry
+    at the side; picked from these runs, so in sample, but a band on both lists and robust to the fill.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
