@@ -889,3 +889,13 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     liquid2 $95,922 / 36%, both2 $67,096 / 49% (2024 −386K). Bot 2.4: plain $126,312 / 9%, cheap $85,613 / 31%,
     liquid2 $107,025 / 24%, both2 $74,899 / 42%. Every fallback loses money on the unseen with both bots; the fair-list
     gain of cheap on 2.5 ($1,297,219) is in-sample in stocks. The plain pick stays.
+  - **The neighbouring strike (`hot_fit_test.py` modes `adj` / `cheap_adj`, 2026-10-25; the user: "just check one
+    above and one below the delta if there is no liquid ... 247.5 ... 250"):** when the 0.15-delta strike has under
+    200 contracts in 30 minutes, the next listed strike on each side (OTM) that has them and costs $0.20+, the nearer
+    to 0.15 if both. The user set the unseen aside for the fallbacks ("the 151 unseen is irrelevant here"). Fair list,
+    10% night cap: **bot 2.4 + adj $1,177,582 / 12%** (2%: $4,336,561 / 22%) vs plain $719,943 / 9%, every year higher
+    (+958K / +1,060K / +824K), $324,001 without the best 5 vs $269,257; the new best trade MU 2025-04-03 +397K.
+    2.4 cheap_adj $1,321,691 / 15%. Bot 2.5 + adj $1,164,855 / 18% vs plain $1,108,662 / 11%: a little more money
+    for a much bigger drop; cheap_adj $1,324,417 / 17%; 2.5 + cheap ($1,297,219 / 11%) stays the best 2.5 pick at the
+    same risk. Unseen: adj loses least of the fallbacks (2.4 $117,576 / 20%, 2.5 $121,053 / 22% vs plain ~$126K /
+    9–11%), cheap_adj $70–72K / 42–45%. Fair + hot 6m: 2.5 cheap_adj $1,778,863 / 21%.

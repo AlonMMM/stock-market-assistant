@@ -16,6 +16,7 @@ os.environ.setdefault("BT_VARIANT", "v2")
 import sim
 import cheap_up as cu
 import cheap_up2 as cu2
+C = sim.C
 import news_filter as nf
 from store import calendar
 from low_delta import HIS40, PRIOR
@@ -26,8 +27,29 @@ B = "data/local/x/bt"
 CAL = calendar()
 A, Z = "2024-02-01", "2026-10-23"
 VERSIONS = {"2.4": ("s_t18r15", "hotfit_24", cu2.BOT24), "2.5": ("sg_c12_15", "hotfit_25", CHAMP)}
-MODES = ("plain", "cheap", "liquid2", "both2")
+MODES = ("plain", "cheap", "liquid2", "both2", "adj", "cheap_adj")
 HOT6 = {m: set(v) for m, v in json.load(open(f"{B}/hot_6m.json")).items()}
+
+
+def adjacent(cands, best, und, right):
+    """The user's liquid fallback (2026-10-25: "just check one above and one below the delta if there is no liquid ...
+    247.5 ... 250"): when the 0.15-delta strike is illiquid, the next listed strike on each side (OTM only), the one
+    that has min_vol30 contracts and costs min_price or more; both -> the nearer to 0.15 delta."""
+    ks = sorted(sim.chain(und, best[1], right))
+    i = ks.index(best[2])
+    near = {ks[j] for j in (i - 1, i + 1) if 0 <= j < len(ks)}
+    ok = [c for c in cands if c[2] in near and c[5] >= C["min_vol30"] and c[4] >= C["min_price"]]
+    return min(ok, key=lambda c: abs(abs(c[3]) - C["delta"])) if ok else None
+
+
+def choose(cands, mode, und, right):
+    if mode not in ("adj", "cheap_adj"): return cu2.choose(cands, mode)
+    c, why = cu.choose(cands, "cheap" if mode == "cheap_adj" else "plain")
+    if c or why != "illiquid": return c, why
+    best = min(cands, key=lambda x: abs(x[3] - C["delta"]))
+    if mode == "cheap_adj" and best[4] < C["min_price"]:
+        best = min((x for x in cands if x[4] >= C["min_price"] and abs(x[3]) >= abs(best[3])), key=lambda x: x[4])
+    return adjacent(cands, best, und, right), "illiquid"
 
 
 def one(t):
@@ -38,7 +60,7 @@ def one(t):
         if t["status"] == "ok": p = (t["contract"], t["expiry"])
         elif mode == "plain": continue
         else:
-            c, _ = cu2.choose(cands, mode)
+            c, _ = choose(cands, mode, t["sym"], t["right"])
             if not c: continue
             p = (c[0], c[1])
         sim.X.clear(); sim.X.update(VERSIONS[t["v"]][2])
@@ -94,7 +116,7 @@ def main():
                 per = sum(float(r["pnl"]) for r in rows) / len(rows)
                 best = ", ".join(f"{rows[i]['sym']} {rows[i]['date'][2:]} {float(rows[i]['pnl']) / 1e3:+,.0f}K" for i in top)
                 print(f"| {lname} | {mode} | {len(rows)} | {sum(float(r['pnl']) > 0 for r in rows)} | {per:+,.0f} | ${a1:,.0f} / {100 * d1:.0f}% | ${a2:,.0f} / {100 * d2:.0f}% | {yr} | ${a5:,.0f} | {best} |", flush=True)
-        for mode in ("plain", "liquid2"):
+        for mode in ("plain", "adj"):
             by = collections.defaultdict(list)
             for t in T:
                 if t["v"] == v and t["src"].startswith("hot") and mode in R[t["k"]]: by[t["sym"]].append(pt(R[t["k"]][mode][0]))
