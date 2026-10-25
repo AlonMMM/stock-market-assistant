@@ -128,6 +128,12 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Tested, not better (V2, 2026-10-21)
 
+- D2 bonus entry + the failed-break sale (2026-10-25, `d2_failed_break.py`; the user: "is there a place for both?"; the
+  live bot 2.4 is the rest-stop champion + the failed break): fair list $669,231 / 14% at 1% ($3,042,721 / 27% at 2%)
+  vs bot 2.4 $695,450 / 9% and the D2 champion $1,005,207 / 11%; 2024 falls to +392K at $10K (D2 alone +793K);
+  without the best 5 $258,171. The 151 unseen like it: $137,444 / 9% vs $127,302 / 11% (D2) and $127,433 / 9% (2.4).
+  Fails the fair list: the failed break costs D2 $336K against $116K on the t >= 1.8 entry, and adds 3 points of drop.
+  Baselines reproduced in the same run: $811,353, $695,450, $1,005,207 (981 trades).
 - IV filters (own IV rank, low-IV stocks, IV / realized vol): about the same as trading less; fail at 0.10 and unseen.
 - Rolling out when the stock nears the strike fast (to delta 0.15 or 0.30): $161K – $206K; it sells the big winners.
 - Rolling again on t >= 1.8 (`roll2.py`): "fast" as a share of the time to expiry (10% / 25%), the stock 50% / 25% of
