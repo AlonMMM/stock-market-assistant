@@ -446,6 +446,9 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   62 added trades lose, SMCI −22K on 10. Eight of twelve months negative. *Liquid* adds 423 trades (+341 each) for
   $197,184 / 15%, MSTR / NOW / IONQ / META +$391K against ORCL / MRNA / ASTS / LLY / IREN −$143K. Both together
   $234,105 / 17%. The same hot-name effect as the fair list, one stock deep here; not a rule.
+  On the live bot 2.4's exits (the rest at −20% after the +10 half; `BT_LIST=fav_rest_bot BT_REST=-0.2`, baseline 405
+  trades, $179,264 / 12%): *cheap* $210,297 / 11% ($364,578 / 20% at 2%), the 82 added +2,391 each, IBIT +$235K of
+  +$196K; *liquid* $200,816 / 15%; *both* $238,611 / 16%. The same as on 2.3 within $4K; the exits do not change it.
 - **Second round, the user's changes (2026-10-24):** the contract's liquidity floor is 10 contracts in the last 30
     minutes instead of 200 ("contract liquidity is not my concern"), now the default in `params.json` (`min_vol30`; the
     live bot's `minVolume30` in `packages/trading/src/bot/picker.ts` is still 200), and the alert route needs day volume

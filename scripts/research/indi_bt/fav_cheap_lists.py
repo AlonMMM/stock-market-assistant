@@ -1,6 +1,7 @@
 """fav_cheap_up.py's three fallbacks written as lists.py result files, so the Backtest Reports dashboard can show them:
 list_favorites_23_cheap|liquid|both_<A>_<Z>.json = favorites_23's rows, the too-cheap / illiquid signals that the
-fallback turns into a trade filled in as "bought" rows (the live bot 2.3's exits).
+fallback turns into a trade filled in as "bought" rows (the live bot 2.3's exits; BT_LIST=fav_rest_bot BT_REST=-0.2 for
+bot 2.4, written as fav_rest_bot_cheap|liquid|both).
 
   node --env-file=.env ../sma-indi-backtest/scripts/research/indi_bt/run.mjs fav_cheap_lists.py      (from the repo root)
 """
@@ -10,7 +11,7 @@ sys.path.insert(0, HERE)
 os.environ.setdefault("BT_VARIANT", "v2")
 import sim
 import cheap_up as cu
-from fav_cheap_up import A, Z, NAME
+from fav_cheap_up import A, Z, NAME, BOT_RULES
 
 MODES = ("cheap", "liquid", "both")
 
@@ -25,7 +26,7 @@ def one(r):
         c, _ = cu.choose(cands, mode)
         if not c: continue
         csym, exp, k, dl, px, v30, iv = c
-        sim.X.clear(); sim.X.update(cu.BOT)
+        sim.X.clear(); sim.X.update(BOT_RULES)
         cost, steps, _ = sim.walk(r["sym"], r["date"], minute, r["right"], csym, exp, cu.CAL)
         if cost is None: out[mode] = {"status": "no fill"}; continue
         sold = sum(s[3] for s in steps if s[2] == "sell")
