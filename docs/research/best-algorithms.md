@@ -1115,3 +1115,16 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     6 months $154,583 → $159,006. No change worth having: the usual contract rarely becomes tradable once the bot had to
     fall back. The pyramid with the fallbacks at full size stays the best on the Favorites ($306,567 / 16%) and the
     most money on the fair list ($1,751,061 / 14%).
+- **Try a stock again after a stop (`reentry.py`, 2026-10-25; the user: "find a good strategy to try again a stock; we
+  might go out but the stock might still be strong"):** on 2.5 (981 trades, $1,108,678 / 11%): 753 close in full by a
+  stop on the entry day; 89 of those see the first contract reach 2x its cost later that day (the ceiling). One
+  re-entry, 10 minutes after the exit at the earliest, by 14:30 NY, a fresh 0.15-delta, the same size. Rules: R0 the entry
+  rule again (control); R1 D2 since the exit >= 1.5 with t >= 1.2; R2 R1 and the stock back past the first entry; R3 D2
+  since the exit >= 2.0; R4 R1 after a stop that was SPY's doing (excess move from entry to exit >= -0.5 S30); R5 a new
+  high (low) of the day with t >= 1.8. With the usual exits every one loses: R0 168 re-entries -$191K ($914,670 / 15%),
+  R1 67 -$111K ($992,548 / 12%), R2 59 -$97K, R3 23 -$52K, R4 22 -$42K ($1,063,445 / 12%), R5 93 -$101K; 10-15% winners.
+  Second round, the re-entry's own exits: no stop for 30 minutes (R0 +$20K but -$352K without its best 5, $1,102,276 /
+  16%; the rest -$52K to -$169K) and -30% only (all lose, -$62K to -$246K). The re-entries reach 41 of the 89 runners
+  (R0) and still lose: the second contract costs more and the runs come back through the stops again. Not better: a
+  stopped trade is not worth buying again on any of these signs, D2 since the exit included. The 89 runners are an exit
+  question (the stop sells them), not an entry one.
