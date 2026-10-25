@@ -47,10 +47,15 @@ def run(A, Z, name, syms):
     sig = [r for s in syms for r in (ds.stock(s)[entry] if entry else ts.stock(s)["t18r15"])]
     nf.CAL[:] = CAL; nf.IDX.clear(); nf.IDX.update({d: i for i, d in enumerate(CAL)})
     nf.features(sig)
+    # BT_HOT=a.json,b.json: {month: [symbols]} (hot_universe.py); a signal in a month its stock is in none of them is not traded
+    hot = {}
+    for f in filter(None, os.environ.get("BT_HOT", "").split(",")):
+        for m, v in json.load(open(f)).items(): hot.setdefault(m, set()).update(v)
     out = []
     for n, t in enumerate(sorted(sig, key=lambda r: (r["date"], r["minute"]))):
         row = dict(t, list=name)
-        if t["e_next"] == 0: row["status"] = "skipped: earnings reaction day"
+        if hot and t["sym"] not in hot.get(t["date"][:7], ()): row["status"] = "skipped: not hot"
+        elif t["e_next"] == 0: row["status"] = "skipped: earnings reaction day"
         elif t["pre_rvol"] is not None and t["pre_rvol"] >= 4: row["status"] = f"skipped: pre-market volume {t['pre_rvol']:.1f}x"
         else:
             picked, why = sim.pick(t["sym"], t["date"], t["minute"], t["right"], float(t["price"]))
