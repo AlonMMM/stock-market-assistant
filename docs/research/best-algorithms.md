@@ -717,6 +717,13 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     +259 a trade vs 1–7 days −545. The strangle needs the same-day expiry's gamma: with a week of time value the kept
     leg barely moves on the burst and the wrong leg still costs. Not run for 2024–2025 (new option bars to fetch;
     2026 is decisive enough). So the strangle stays a Friday strategy on the names with same-day expiries.
+  - **Deltas 0.25 and 0.20 (`zero7.py` with `BT_STRANGLE_DELTA`, 2026-10-25):** the band runs 0.25–0.40 with 0.35 in the
+    middle. At 0.25 (283 tradeable; more strikes fail the $0.20 minimum): base $119,459 / 3% (+1,723 / +321 / +401),
+    D-recycle $135,470 / 3% (+2,746 / +606 / +746, $116,320 without the best 5, the highest, but 2024-heavy), with the
+    strength filter $111,012 / 1%; at a 4% fill D-recycle $113,847 / 7%. At 0.20 (255): base $116,421 / 5%, D-recycle
+    $128,856 / 5%, at 4% sizing the worst drop doubles against 0.35 (20% vs 11%); the cheaper legs make the recycle
+    buy more contracts of a thinner option and the swings grow. 0.35 remains the pick: the same end as 0.25 with the
+    most even years and the smallest drops; 0.25 is a fair alternative, 0.20 is not.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%

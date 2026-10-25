@@ -27,9 +27,10 @@ from rvol_alert import alerts_for, windows, med
 import zero5, zero6
 
 B = "data/local/x/bt"
-OUT, REPORT = f"{B}/z7_results.json", f"{B}/z7_report.json"
 SPAN = zero5.SPAN
-DELTA, CONFIRM_K, WAIT = 0.35, 0.25, 60
+DELTA, CONFIRM_K, WAIT = float(os.environ.get("BT_STRANGLE_DELTA", "0.35")), 0.25, 60
+_sfx = "" if DELTA == 0.35 else f"_{DELTA}"
+OUT, REPORT = f"{B}/z7_results{_sfx}.json", f"{B}/z7_report{_sfx}.json"
 FILLS = (0.02, 0.03, 0.04, 0.05)
 KEEPS = ("trail30", "t60")
 VARIANTS = ("base", "excess", "d_recycle", "d_double")
