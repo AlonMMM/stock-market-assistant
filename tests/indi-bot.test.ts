@@ -698,14 +698,12 @@ test("broker setting 'both': one signal, one contract, a position at each accoun
     ],
   );
   assert.match(String(buys[1]!.body.note), /Interactive Brokers$/);
+  // Positions come back in id order, and ids are random: compare by broker.
   const open = h.store.openPositions();
-  assert.deepEqual(
-    open.map((p) => [p.broker, p.qty]),
-    [
-      ["alpaca", 33],
-      ["ibkr", 32],
-    ],
-  );
+  assert.deepEqual(open.map((p) => [p.broker, p.qty]).sort(), [
+    ["alpaca", 33],
+    ["ibkr", 32],
+  ]);
   // One signal row, with both accounts in its words.
   const signal = h.store.signals(DAY)[0]!;
   assert.equal(signal.outcome, "bought");
