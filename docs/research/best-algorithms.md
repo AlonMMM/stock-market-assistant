@@ -1068,3 +1068,13 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   The 19 pre-market trades: 7 winners, +3,090 a trade, ARM 2025-05-29 +73K is most of it; $96,113 without their best 5.
   Most leave by the t-stat exit right after the 30 minutes (the regular-session t starts at the open, so it is thin
   then). Too few trades to judge: a pre-market D2 against SPY is rare on Indi's stocks. Not better (one trade).
+- **More drop cuts (`dd_more.py`, 2026-10-25; the user: "try 2 and 3 with and without pyramid; also 6% stop for day"):**
+  on 2.5 + cheap + the next strike for D2 with both fallbacks at half ($1,203,541 / 11% at 1%, $5,942,686 / 22% at 2%)
+  and with the pyramid ($1,667,924 / 12%, $10,394,112 / 22%). 1-DTE contracts at half: $931,937 / 11% (-17% against
+  the flat size with the same drop) and with the pyramid $1,252,539 / 11% (-14%); half size when SPY's 20-day volatility
+  is in its top fifth: $731,495 / 13% and $953,555 / 12% (-40%); half after SPY closed under its 20-day average: $876,858
+  / 10% (-10%) and $1,185,490 / 11% (-22%); 2% the same picture. **The 6% day stop never fires**, at 1% or 2%, with or
+  without the pyramid: no day's same-day positions ever reached -6%. Why: the worst drop (11.4%, 2024-09-12 to
+  2025-01-17) is a four-month bleed, 57 of 65 trading days a small loss, the worst single day -1.2%. A rule that waits
+  for a bad day or a bad market never sees it; only less exposure to the weak trades (the fallback half) or a smaller
+  size moves it. Not better: all three.
