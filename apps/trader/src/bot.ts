@@ -763,7 +763,7 @@ export class IndiBot {
     );
     // The picked contract's bid / ask, kept with the signal (paper fills are not real ones).
     const chosen = picked.quote;
-    const pickedBook = bookOf(chosen, this.o.now());
+    const pickedBook = bookOf(chosen, this.o.now(), legs[0]!);
     if (chosen && pickedBook)
       this.o.store.setSignalBook(date, symbol, {
         ...pickedBook,
@@ -823,6 +823,7 @@ export class IndiBot {
                 .quote(contract)
                 .catch(() => null),
               this.o.now(),
+              broker,
             );
       results.push({
         broker,
@@ -1142,7 +1143,7 @@ export class IndiBot {
           "failed-break",
           mid,
           s,
-          bookOf(quote, this.o.now()),
+          bookOf(quote, this.o.now(), this.brokerOf(p)),
         );
         continue;
       }
@@ -1200,7 +1201,7 @@ export class IndiBot {
             cap.reason,
             mid,
             s,
-            bookOf(quote, this.o.now()),
+            bookOf(quote, this.o.now(), this.brokerOf(p)),
           );
         else this.o.store.savePosition(next);
         if (keep <= 0) continue;
@@ -1231,7 +1232,7 @@ export class IndiBot {
         decision.reason,
         mid,
         s,
-        bookOf(quote, this.o.now()),
+        bookOf(quote, this.o.now(), this.brokerOf(p)),
       );
     }
   }

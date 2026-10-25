@@ -732,12 +732,14 @@ test("books: the option's bid / ask is kept on the signal, on each account's buy
   await h.run(DAY, 565, 600);
   const signal = h.store.signals(DAY)[0]!;
   assert.equal(signal.book?.contract, "NVDA261023C00110000");
+  assert.equal(signal.book?.broker, "alpaca"); // the first account's chain
   assert.ok(signal.book!.bid > 0 && signal.book!.ask > signal.book!.bid);
   const open = h.store.openPositions();
   assert.equal(open.length, 2);
   for (const p of open) {
     assert.ok(p.entryBook, `entry book at ${p.broker}`);
     assert.ok(p.entryBook!.ask > p.entryBook!.bid);
+    assert.equal(p.entryBook!.broker, p.broker);
   }
   // Up 150% at 15:50: held; next morning no gap: each sale carries the book it was decided on.
   h.setMid(1.5);
@@ -745,6 +747,15 @@ test("books: the option's bid / ask is kept on the signal, on each account's buy
   await h.run(NEXT, 565, 590);
   const closed = h.store.recentPositions(DAY).filter((p) => p.day === DAY);
   const sales = closed.flatMap((p) => p.sales);
+  assert.deepEqual(
+    closed
+      .flatMap((p) => p.sales.map((x) => [p.broker, x.book?.broker]))
+      .sort(),
+    [
+      ["alpaca", "alpaca"],
+      ["ibkr", "ibkr"],
+    ],
+  );
   assert.equal(sales.length, 2);
   for (const sale of sales) {
     assert.ok(sale.book, "sale book");

@@ -793,7 +793,7 @@ export class StrangleBot {
     );
     // The picked leg's bid / ask, kept with the signal (paper fills are not real ones).
     const chosen = got.quote;
-    const book = bookOf(chosen, this.o.now());
+    const book = bookOf(chosen, this.o.now(), "alpaca"); // its own Alpaca paper account
     if (chosen && book)
       this.o.store.setSignalBook(t.day, t.symbol, {
         ...book,
@@ -896,7 +896,7 @@ export class StrangleBot {
     mark: { mid: number; bid: number; ask: number } | null,
   ) {
     const mid = mark?.mid ?? null;
-    const book = bookOf(mark, this.o.now());
+    const book = bookOf(mark, this.o.now(), "alpaca");
     const leg = t.leg!;
     const qty = leg.qty;
     if (qty <= 0) {

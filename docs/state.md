@@ -31,7 +31,7 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
   it was; the owner-only pages (New trade, Settings) are hidden from visitors. Was six flat tabs.
 - **Option bid / ask on every bot record (2026-10-25):** the accounts are paper accounts, so their fills are not
   real-world prices. Both bots (Indi and Alert leg) keep the option's bid / ask at the decision: on the signal (the
-  contract picked, a too-cheap one too), on each account's buy (`entryBook`) and on every sale or order (`book`), in
+  contract picked, a too-cheap one too), on each account's buy (`entryBook`) and on every sale or order (`book`), each with the broker whose quote it is (alpaca or ibkr), in
   the trading service's SQLite (`apps/trader/src/option-book.ts`). Records before this date have none.
 - **IBKR (2026-10-24, #140 and #142 deployed):** the Bot settings page gets a Broker
   switch (Alpaca | Interactive Brokers | Both) for new entries; a position is sold where it was bought. "Both"
