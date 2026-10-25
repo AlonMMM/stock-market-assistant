@@ -1,6 +1,6 @@
 """A bot version for the Bot vs Indi dashboard, from any rule's trade files (export_tstat.py with the signal rule as a
 parameter): BT_PREFIX names the trade files (default s_t18r15, the champion's entry; e.g. sg_c12_15 for the D2 bonus
-entry), their fair-list trades are walked with the exits named by BT_HOLD / BT_REST (the t-stat exit always), in the
+entry), their fair-list trades are walked with the exits named by BT_HOLD / BT_REST / BT_FB (the t-stat exit always), in the
 dashboard's trades / paths file shapes. Appends to the downloaded current files when given.
 
   BT_PREFIX=sg_c12_15 BT_HOLD=0.5 BT_REST=-0.2 BT_SLUG=d2-bonus BT_NAME="..." \
@@ -23,12 +23,14 @@ X0 = {**sim.X, **H, **NIGHT, "thesis": {"t": 0.5}}
 if os.environ.get("BT_HOLD"): X0["carry_min_gain"] = float(os.environ["BT_HOLD"])
 # BT_REST (e.g. -0.2): the rest out at that gain once the +10 check sold half (sim.py after_half)
 if os.environ.get("BT_REST"): X0["after_half"] = dict(out=float(os.environ["BT_REST"]))
+# BT_FB=1: the failed-break sale (sim.py F; the live bot keeps it, the research champion does not)
+if os.environ.get("BT_FB"): X0["failed_break"] = True
 SLUG = os.environ.get("BT_SLUG", "t18-tstat")
 NAME = os.environ.get("BT_NAME", "Champion: t ≥ 1.8 + news filter + t-stat exit, delta 0.15")
 PER = 78
 WORDS = {"U_check10": "Stop: 10-min check", "U_check20": "Stop: 20-min check", "U_out": "Stop: -30%", "eod_close": "Sold 15:50",
          "morning_gap_keep": "sold half next morning", "morning_gap_against": "sold next morning", "expiry_day": "expiry day",
-         "day_end_forced": "Day end", "expired": "expired", "T_tstat": "Thesis: strength vs SPY gone", "U_rest": "Stop: the rest at -20% after the half", "eod_close_late": "Sold 15:50"}
+         "day_end_forced": "Day end", "expired": "expired", "T_tstat": "Thesis: strength vs SPY gone", "U_rest": "Stop: the rest at -20% after the half", "F_break": "Failed break: sold", "eod_close_late": "Sold 15:50"}
 
 
 def words(steps):
