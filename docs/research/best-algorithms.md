@@ -704,6 +704,19 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     $169K / 6%, 4% $197K / 7%). Current best reading of the strangle: 0.35 delta, the first alert, confirm 0.25 S30, sell
     the wrong leg and put its proceeds into the right one, trail 30%, prefer trades where the stock's own strength vs SPY
     agrees. The page: https://claude.ai/artifact/Uug3uh6G7MWQcvRTMfq3tM (card "Market filters, the D bonus and the fill").
+  - **Which leg to drop, and not only 0DTE (`zero8.py`, 2026-10-25):** the bot's direction is worse than the stock's raw
+    move at picking the leg, in every form. On the 307 same-day strangles (2% fill, trail 30%): the move 0.25 S30
+    $120,078 / 2% (D bonus $134,414); the sign of the C t-stat at the fill $100,429 / 7% (2025 flat, 2026 negative);
+    the sign only when |t| ≥ 1 $107,058, ≥ 1.8 $110,181 / 3%; waiting for the bot's full C signal within the hour
+    $108,686 / 7%; the move only when it agrees with the sign $110,641 / 6%. |t| at the fill is a median 1.24, ≥ 1.8 on
+    81 trades. The alert's own burst is the fresh information; the day-long strength is stale against it, and the
+    "agree" rule loses trades waiting. At a 4% fill every strength-based rule is under $100,000. **Not only 0DTE:** the
+    same rule with the bot's expiry (nearest 1–7 days), on every day's first alert, 2026 only (1,380 fair first-alerts,
+    1,013 without a same-day expiry): 271 tradeable, 29% winners, −215 a trade, $94,266 / 7% (4% fill $84,879 / 15%);
+    the same-day expiry on the same year's expiry days $104,607 / 2% (122 trades, +375); on the same 37 alerts, 0DTE
+    +259 a trade vs 1–7 days −545. The strangle needs the same-day expiry's gamma: with a week of time value the kept
+    leg barely moves on the burst and the wrong leg still costs. Not run for 2024–2025 (new option bars to fetch;
+    2026 is decisive enough). So the strangle stays a Friday strategy on the names with same-day expiries.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
