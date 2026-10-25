@@ -810,6 +810,12 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     Favorites: $140,636 / 7.3%, $132,997 / 5.9%, $142,797 / 7.4%, $146,519 / 5.9% vs $151,341 / 5.1%: every version
     worse; the 20 overnight trades win (+$19K) but the legs that reach +50% and fall back the same day, with no give-back,
     lose more. Not better: wins on the fair list, loses on the favorites (the user's own list) with 2 points more drop.
+    **The morning rule on top (the user: "sale after the night - 50% if we win, 100% if we loose"; 1d_b1h / b1hc /
+    b1fh / b1fhc):** at the leg's first bar next day, up from the buy (or from the close): half sold, the rest on the
+    give-back; down: all sold. Fair: b1 $391,875 → $351,647 (from the buy) / $355,120 (from the close), drop 6.3% each;
+    b1f $384,149 → $352,060 / $353,444. Favorites: b1 $140,636 → $134,655 / $135,762; b1f $132,997 → $132,088 /
+    $132,907. Less money on both lists, no less drop: the overnight winners keep running the next morning (the half
+    sold at the open caps them), and few are down at the open. The 1DTE days out by 15:30 stay the candidate.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%

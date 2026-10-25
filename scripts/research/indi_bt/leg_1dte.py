@@ -28,7 +28,7 @@ from leg_fallback import account
 DELTA, K, WAIT, GIVE, END, CLOSE, SH = 0.35, 0.25, 60, 0.75, 360, 389, 0.02
 CAL = calendar()
 C = sim.C
-RUN50 = ("b1", "b1f", "b2", "b3")
+RUN50 = ("b1", "b1f", "b1h", "b1fh", "b1hc", "b1fhc")
 
 
 def kind_of(sym, date):
@@ -56,13 +56,19 @@ def entries():
 
 
 def walk(sym, date, ct, side, contract, spot_side, u, night, run50=None):
+    morning = None   # the user's morning rule: 'buy' / 'close' = win measured from the buy / from the close
+    if run50 and run50.endswith('hc'): run50, morning = run50[:-2], 'close'
+    elif run50 and run50.endswith('h'): run50, morning = run50[:-1], 'buy'
     """night: None (out by 15:30), 'all' (hold if not given back), 'up' (hold only when up at 15:30).
     run50 (1DTE, the user's "let it run overnight if it's up more than 50%"): once the leg's sale price is +50% over the
     buy, the day's give-back stops; at the close it is held overnight if still +50% (else sold at the close); next day
     the 0.75 give-back from the best since the side, out by 15:30.
       'b1'  as above          'b1f' also sold the same day if it falls back to +20%
       'b2'  next day's give-back from the next day's open, not the old best
-      'b3'  after +50% the day's give-back widens to 1.5 S30 instead of stopping"""
+      'b3'  after +50% the day's give-back widens to 1.5 S30 instead of stopping
+    A suffix 'h' / 'hc' adds the morning rule (the user, 2026-10-25: "sale after the night - 50% if we win, 100% if we
+    loose"): at the leg's first bar the next day, up from the buy ('h') or from the close ('hc'): half sold there, the
+    rest on the give-back; down: all sold there."""
     d2 = CAL[CAL.index(date) + 1]
     kb = {b[0]: b for b in day(contract, date)}
     sb = {b[0]: b for b in day(sym, date)}
@@ -90,7 +96,7 @@ def walk(sym, date, ct, side, contract, spot_side, u, night, run50=None):
     fetch_bars("options", [contract], d2, d2, key=f"n1|{contract}|{d2}")
     kb2 = {b[0]: b for b in day(contract, d2)}; sb2 = {b[0]: b for b in day(sym, d2)}
     if not kb2 or not sb2: return buy, sell(last), 1
-    give = GIVE
+    give = GIVE; close_px = sell(last); half = None
     if run50 == "b2":
         o = next((sb2[q][4] for q in range(0, 10) if q in sb2), None)
         if o: best = o
@@ -98,9 +104,14 @@ def walk(sym, date, ct, side, contract, spot_side, u, night, run50=None):
         if t in kb2: last = kb2[t]
         spot = sb2[t][4] if t in sb2 else None
         if t not in kb2 and t < 5: continue   # wait for the leg's first bar of the day
+        if morning and half is None:
+            px = sell(last)
+            if px < (buy if morning == "buy" else close_px): return buy, px, 1
+            half = px
+            continue
         if spot: best = max(best, spot) if side == "C" else min(best, spot)
-        if (spot and gave(spot)) or t >= END: return buy, sell(last), 1
-    return buy, sell(last), 1
+        if (spot and gave(spot)) or t >= END: return buy, (sell(last) if half is None else (half + sell(last)) / 2), 1
+    return buy, (sell(last) if half is None else (half + sell(last)) / 2), 1
 
 
 def one(sig):
@@ -144,11 +155,12 @@ def main():
     combos = [
         ("as now: 0DTE days only", ["0dte"]),
         ("+ 1DTE days, out by 15:30", ["0dte", "1d_day"]),
-        ("+ 1DTE days, overnight if not given back (last test)", ["0dte", "1d_night"]),
-        ("+ 1DTE, from +50% no give-back, overnight if still +50%", ["0dte", "1d_b1"]),
-        ("+ 1DTE, the same, sold if back to +20%", ["0dte", "1d_b1f"]),
-        ("+ 1DTE, the same, next day's give-back from its open", ["0dte", "1d_b2"]),
-        ("+ 1DTE, from +50% the give-back widens to 1.5", ["0dte", "1d_b3"]),
+        ("+ 1DTE, from +50% no give-back, overnight if still +50% (b1)", ["0dte", "1d_b1"]),
+        ("+ b1, morning: up from the buy half, down all", ["0dte", "1d_b1h"]),
+        ("+ b1, morning: up from the close half, down all", ["0dte", "1d_b1hc"]),
+        ("+ 1DTE, b1 sold if back to +20% (b1f)", ["0dte", "1d_b1f"]),
+        ("+ b1f, morning: up from the buy half, down all", ["0dte", "1d_b1fh"]),
+        ("+ b1f, morning: up from the close half, down all", ["0dte", "1d_b1fhc"]),
     ]
     print("\n| Version | Trades | Held overnight | Winners | 1%, ±2%: end, worst drop | without best 5 | 1%, ±4% | 2%, ±2% | by year (1%, ±2%) |")
     print("|---|---|---|---|---|---|---|---|---|")
@@ -163,7 +175,7 @@ def main():
         print(f"| {lab} | {len(R)} | {sum(r['night'] for r in R)} | {100 * sum(r['pnl'] > 0 for r in R) / max(1, len(R)):.0f}% | ${e1:,.0f}, {100 * d1:.1f}% | ${e5:,.0f} | ${e4:,.0f}, {100 * d4:.1f}% | ${e2:,.0f}, {100 * d2:.1f}% | "
               + ", ".join(f"{y} {v:+,.0f}" for y, v in sorted(yrs.items())) + " |")
     print("\n| 1DTE trades alone | Trades | Held overnight | Their P&L | Overnight trades' P&L (winners) |\n|---|---|---|---|---|")
-    for k in ("1d_day", "1d_night") + tuple(f"1d_{r}" for r in RUN50):
+    for k in ("1d_day",) + tuple(f"1d_{r}" for r in RUN50):
         R = account(pick([k]), 1, 2)[2]; on = [r for r in R if r["night"]]
         print(f"| {k} | {len(R)} | {len(on)} | {sum(r['pnl'] for r in R):+,.0f} | {sum(r['pnl'] for r in on):+,.0f} ({sum(r['pnl'] > 0 for r in on)}) |")
 
