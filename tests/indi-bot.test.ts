@@ -228,6 +228,36 @@ test("exits: -30% sells all only with the stock against on the entry day", () =>
   );
 });
 
+test("exits: the rest stop (2.4): after the 10-minute half, the rest out at -20% with the stock against, entry day only", () => {
+  const r = { ...defaultExitRules, restStopOut: -0.2 };
+  const rest = pos({ qty: 5, checksDone: [0, 1], halfSold: true });
+  assert.deepEqual(nextAction(rest, mk({ option: 0.79, stock: 99 }), r), {
+    sell: 5,
+    reason: "rest-stop",
+    update: {},
+  });
+  // The stock with the entry: held.
+  assert.equal(nextAction(rest, mk({ option: 0.79, stock: 101 }), r).sell, 0);
+  // Not cut at 10 minutes: the -30% stop as before.
+  const whole = pos({ checksDone: [0, 1] });
+  assert.equal(nextAction(whole, mk({ option: 0.79, stock: 99 }), r).sell, 0);
+  assert.equal(
+    nextAction(whole, mk({ option: 0.69, stock: 99 }), r).reason,
+    "stop-30",
+  );
+  // Off (null): the rest keeps -30%.
+  assert.equal(nextAction(rest, mk({ option: 0.79, stock: 99 })).sell, 0);
+  // A carried day keeps -30%.
+  assert.equal(
+    nextAction(
+      pos({ qty: 5, nights: 1, morningDone: true, halfSold: true }),
+      mk({ minute: 100, option: 0.79, stock: 99 }),
+      r,
+    ).sell,
+    0,
+  );
+});
+
 test("exits: the strength-gone sale: the signal's t at 0.5 or under sells all, on the entry day only", () => {
   const r = { ...defaultExitRules, strengthOut: 0.5 };
   assert.equal(
@@ -1035,30 +1065,30 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
 
 test("versions: every entry is stamped with the version in force; changed rules star it; the owner can pick an older one", async () => {
   const h = harness("live");
-  assert.equal(h.bot.status().version, "2.3");
+  assert.equal(h.bot.status().version, "2.4");
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy");
-  assert.match(String(buy?.body.note), /· bot 2\.3$/);
+  assert.match(String(buy?.body.note), /· bot 2\.4$/);
   const [p] = h.store.openPositions();
-  assert.equal(p!.version, "2.3");
-  assert.equal(h.store.signals(DAY)[0]!.version, "2.3");
-  assert.equal(h.bot.status().positions[0]!.version, "2.3");
+  assert.equal(p!.version, "2.4");
+  assert.equal(h.store.signals(DAY)[0]!.version, "2.4");
+  assert.equal(h.bot.status().positions[0]!.version, "2.4");
   const texts = () =>
     h.bot
       .status()
       .activity.map((e) => e.text)
       .join("\n");
-  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.3$/m);
+  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.4$/m);
 
-  // The stop changed from 2.3's: the next entry is stamped "2.3*".
+  // The stop changed from 2.4's: the next entry is stamped "2.4*".
   const edited = harness("live");
   edited.bot.setSettings({ ...edited.bot.settings(), stopPct: 40 });
-  assert.equal(edited.bot.status().version, "2.3*");
+  assert.equal(edited.bot.status().version, "2.4*");
   await edited.run(DAY, 565, 600);
-  assert.equal(edited.store.openPositions()[0]!.version, "2.3*");
+  assert.equal(edited.store.openPositions()[0]!.version, "2.4*");
   assert.match(
     String(edited.calls.find((c) => c.kind === "buy")?.body.note),
-    /· bot 2\.3\*$/,
+    /· bot 2\.4\*$/,
   );
 
   // Version 1.0 picked: its rules (t 2, no night cap, no news filter) run, and the feed says so.
@@ -1073,6 +1103,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
     sellFailedBreak: false,
     sellOnWeakness: false,
     holdFromPct: 100,
+    restStopPct: 0,
   });
   assert.equal(picked.version, "1.0");
   assert.equal(old.bot.status().version, "1.0");
@@ -1081,7 +1112,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
       .status()
       .activity.map((e) => e.text)
       .join("\n"),
-    /Settings changed: version "2\.3" → "1\.0"; sellOnWeakness true → false; sellFailedBreak true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2/,
+    /Settings changed: version "2\.4" → "1\.0"; restStopPct 20 → 0; sellOnWeakness true → false; sellFailedBreak true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2/,
   );
 });
 

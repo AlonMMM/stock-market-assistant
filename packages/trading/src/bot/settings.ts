@@ -4,6 +4,8 @@ import { defaultSignalParams, type SignalParams } from "./signal.js";
 import {
   currentVersion,
   matchingVersion,
+  ruleKeys,
+  versionById,
   versionLabelPattern,
 } from "./versions.js";
 
@@ -61,6 +63,9 @@ export interface BotSettings {
   maxOpen: number;
   // Losses
   stopPct: number;
+  // Once the 10-minute check sold half, the rest's stop on the entry day
+  // (with the stock against); 0 = off, the rest keeps `stopPct` (version 2.4).
+  restStopPct: number;
   safetyStopPct: number;
   dayLossPct: number;
   drawdownPausePct: number;
@@ -112,6 +117,7 @@ export const defaultSettings: BotSettings = {
   maxBuysPerDay: 5,
   maxOpen: 4,
   stopPct: 30,
+  restStopPct: 20,
   safetyStopPct: 50,
   dayLossPct: 5,
   drawdownPausePct: 15,
@@ -155,6 +161,7 @@ export const limits: Record<
   maxBuysPerDay: [1, 10, 1],
   maxOpen: [1, 10, 1],
   stopPct: [15, 60, 5],
+  restStopPct: [0, 50, 5],
   weaknessT: [0, 1.5, 0.1],
   safetyStopPct: [30, 80, 5],
   dayLossPct: [1, 10, 0.5],
@@ -186,15 +193,25 @@ const maxTickers = 200;
 /**
  * Saved values over the defaults; anything not valid falls back. A record
  * saved before versions gets the version its rules match, else the current.
+ * A rule saved before it existed takes its saved version's value, so a new
+ * rule never changes a running version (2.3 stays 2.3 until 2.4 is chosen).
  */
 export function withDefaults(
   saved: unknown,
   base: BotSettings = defaultSettings,
 ): BotSettings {
   const record = isObject(saved) ? saved : {};
-  const merged = { ...base, ...record };
+  const merged: Record<string, unknown> = { ...base, ...record };
+  const known =
+    typeof record.version === "string"
+      ? versionById(record.version)
+      : undefined;
+  if (known)
+    for (const key of ruleKeys)
+      if (!(key in record)) merged[key] = known.rules[key];
   if (!("version" in record))
-    merged.version = matchingVersion(merged)?.id ?? currentVersion;
+    merged.version =
+      matchingVersion(merged as unknown as BotSettings)?.id ?? currentVersion;
   const checked = parseSettings(merged);
   return checked.ok ? checked.value : base;
 }
@@ -286,6 +303,12 @@ export const pickRules = (s: BotSettings): PickRules => ({
   minVolume30: s.minVolume,
 });
 
+/** The rest's stop after the 10-minute half, as an option return; null when off. */
+function restStop(s: BotSettings): number | null {
+  if (s.restStopPct <= 0) return null;
+  return -s.restStopPct / 100;
+}
+
 export function exitRules(s: BotSettings): ExitRules {
   let checks = defaultExitRules.checks;
   if (!s.checks) checks = [];
@@ -293,6 +316,7 @@ export function exitRules(s: BotSettings): ExitRules {
     ...defaultExitRules,
     checks,
     stopOut: -s.stopPct / 100,
+    restStopOut: restStop(s),
     strengthOut: s.sellOnWeakness ? s.weaknessT : null,
     carryMinGain: s.holdFromPct / 100,
     carryMaxNights: s.maxNights,

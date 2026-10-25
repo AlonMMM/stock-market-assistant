@@ -57,9 +57,12 @@ export function algorithmSteps(r: Rules): AlgorithmStep[] {
   if (r.sellOnWeakness)
     strength = `On the entry day, all is sold when the stock's strength vs SPY × beta since the open (the t-stat that had to reach ${r.minT} to enter) falls to ${r.weaknessT} or under.`;
   steps.push({ name: "Strength gone", text: strength });
+  let rest = "";
+  if (r.checks && r.restStopPct > 0)
+    rest = ` Once the 10-minute check sold half, the rest is sold at ${r.restStopPct}% down on the entry day.`;
   steps.push({
     name: "Stop",
-    text: `All out when the option is down ${r.stopPct}% with the stock against the entry. Exits are checked every 10 seconds.`,
+    text: `All out when the option is down ${r.stopPct}% with the stock against the entry.${rest} Exits are checked every 10 seconds.`,
   });
   let carry = `At 15:50 everything is sold, except winners up ${r.holdFromPct}%+ which stay overnight (${plural(r.maxNights, "night")} at most, never into expiry)`;
   if (r.maxNights > 0 && r.nightCapPct > 0)

@@ -70,6 +70,7 @@ interface SliderSpec {
 
 const pct = (v: number) => `${v}%`;
 const minus = (v: number) => `−${v}%`;
+const minusOrOff = (v: number) => (v === 0 ? "off" : minus(v));
 const count = (v: number) => String(v);
 
 function nightsText(v: number): string {
@@ -144,6 +145,15 @@ function groups(): Group[] {
           max: 60,
           step: 5,
           fmt: minus,
+        },
+        {
+          key: "restStopPct",
+          label: "Stop on the rest after the 10-min half",
+          help: "Once the 10-minute check sold half, sell the rest at this loss on the entry day (with the stock against). 0 keeps the stop above.",
+          min: 0,
+          max: 50,
+          step: 5,
+          fmt: minusOrOff,
         },
         {
           key: "safetyStopPct",

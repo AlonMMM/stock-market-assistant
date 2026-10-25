@@ -5,7 +5,9 @@
 // Entry day:
 //   - 10 minutes after the entry, if the stock is against the entry price, sell half;
 //   - 20 minutes after, if it is still against, sell the rest;
-//   - the option at -30% while the stock is against: sell all;
+//   - the option at -30% while the stock is against: sell all; once the
+//     10-minute check sold half, the rest at `restStopOut` (-20% since
+//     version 2.4) instead;
 //   - the signal's own t-stat vs SPY × beta (cumulative from the open) down to
 //     `strengthOut` or under: sell all (the 2026-10-24 champion, exits.ts T).
 // 15:50: hold overnight what is up >= carryMinGain (+50% since version 2.3,
@@ -24,6 +26,9 @@
 export interface ExitRules {
   checks: readonly (readonly [minutes: number, share: number])[];
   stopOut: number; // option return that sells all (with the stock against on the entry day)
+  // The same for what is left once the 10-minute check sold half (entry day
+  // only); null is off, the rest keeps `stopOut`.
+  restStopOut: number | null;
   // The signal's t-stat, in the bet's direction, at or under which the entry
   // day sells all; null is off. The entry needed 1.8.
   strengthOut: number | null;
@@ -41,6 +46,7 @@ export const defaultExitRules: ExitRules = {
     [20, 1],
   ],
   stopOut: -0.3,
+  restStopOut: null,
   strengthOut: null,
   eodMinute: 380,
   carryMinGain: 1,
@@ -59,6 +65,8 @@ export interface BotPositionState {
   nights: number; // sessions carried so far (0 on the entry day)
   checksDone: number[]; // indexes of `checks` already looked at
   morningDone: boolean;
+  // The 10-minute check sold part of it (the caller reads its sales).
+  halfSold?: boolean;
 }
 
 export interface ExitMarket {
@@ -80,6 +88,7 @@ export type ExitReason =
   | "check-10"
   | "check-20"
   | "stop-30"
+  | "rest-stop"
   | "strength-gone"
   | "close-1550"
   | "carry"
@@ -205,6 +214,10 @@ export function nextAction(
     }
     return { sell: 0, reason: null, update: { checksDone } };
   }
+  // A trade already cut at 10 minutes is weaker: its rest may have a tighter stop.
+  const restOut = p.halfSold ? r.restStopOut : null;
+  if (restOut !== null && g <= restOut && against)
+    return { sell: p.qty, reason: "rest-stop", update: {} };
   if (g <= r.stopOut && against)
     return { sell: p.qty, reason: "stop-30", update: {} };
   return hold;
