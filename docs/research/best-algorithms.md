@@ -23,7 +23,9 @@ environment (`BT_CONTRACT`, `BT_EXIT_EXTRA`), run from a frozen copy of `scripts
 session may be editing it, and reproduce the champion in the same pipeline first (its fair-list trade count, 813, and
 its money). A baseline that does not match the log means the configuration differs: stop and find out why. On
 2026-10-24 a 10-contract floor left in `params.json` during a sweep made a baseline of 1,484 trades; nothing read
-against it was comparable.
+against it was comparable. On 2026-10-25 a frozen copy whose `lists.py` predated the `BT_REST` switch ran the favorites
+without the rest stop: a frozen copy has to be refreshed with every switch the run needs, and the exit labels in the
+output (`U_rest`, `T_tstat`, `F_break`) checked against the version before anything is reported.
 
 ## Champion
 
@@ -62,11 +64,21 @@ against it was comparable.
   pick the entries. Not better: D (only fully defended minutes: beta × SPY's drop when the stock did not fall) in
   every form, D or D2 as a filter on the champion (fewer trades, less money), D or D2 instead of t (negative or far
   under). Found at a 10-contract floor first (see "Before any run") and re-earned at 200.
+- D2 champion + the failed-break sale (2026-10-25, the user: "the current is the failed-break sale with all the others"): fair list
+  $669,237 / 14% at 1% ($3,042,777 / 27% at 2%) against the current bot 2.4's $695,451 / 9% ($3,372,316 / 18%) and the D2 champion's
+  $1,005,221 / 11%; 2024 +1,513 a trade (2.4: +2,839), 2025 +2,191 (+2,184), 2026 +2,715 (+3,172); without the best 5 $258,174 vs $260,845.
+  Unseen $137,446 / 9% vs $127,434 / 9% (349 vs 273 trades); favorites year $191,220 / 12% vs $179,263 / 12%. The failed break sells the
+  early D2 entries (a stock entered at t 1.2 is often still under its level), so the two rules do not combine on the fair list; the
+  champion stands without the sale. If the D2 entry goes live, decide the sale again (off, or only after the t 1.8 entry).
 - D2 bonus entry on the app's 63 favorites, 2025-10-24 to 2026-10-23 (`lists.py` with `BT_ENTRY=c12_15`, lists `fav_d2`
-  vs `fav_rest`, the rest-stop champion's exits, floor 200; on the Backtest Reports dashboard): $181,885 / 14% at 1%
-  ($279,890 / 26% at 2%) vs $169,910 / 15% ($250,674 / 28%); 495 trades vs 405, 17% winners both, +1,415 vs +1,520 a
-  trade; without the best 5 both negative (−469 vs −503 a trade): on this list the money is a few trades. 383 shared
-  days (55 entered earlier: −409 → +2,859 a trade), 112 new days (+1,313 a trade, 15 winners; MSTR +176K, META +92K),
+  vs `fav_rest`, the rest-stop champion's exits, floor 200; on the Backtest Reports dashboard): $183,487 / 14% at 1%
+  ($284,993 / 26% at 2%) vs $171,685 / 14% ($256,107 / 27%); 495 trades vs 405, 17% vs 16% winners, +1,432 vs +1,544 a
+  trade; without the best 5 both negative (−452 vs −478 a trade): on this list the money is a few trades. With the
+  failed-break sale (the live bot's exits; `fav_d2_bot` vs `fav_rest_bot`): $191,220 / 12% ($310,176 / 23%) vs $179,263 / 12%
+  ($279,558 / 23%), +1,513 vs +1,649 a trade; here the sale helps both. (A first export of these lists, 2026-10-25 01:30,
+  had run from a frozen copy whose `lists.py` predated `BT_REST`, so without the rest stop: $181,885 vs $169,910; replaced.
+  Check the exit labels in the output, `U_rest` here, before reporting.) 383 shared
+  days (55 entered earlier: −409 → +2,859 a trade in that first run), 112 new days (+1,313 a trade, 15 winners; MSTR +176K, META +92K),
   22 champion days lost because the earlier minute found the contract illiquid, among them COIN 2026-08-19 (+1,499%)
   and GOOGL 2026-07-31 (+1,407%): the sim and the bot do not try again later. A retry when t reaches 1.8 later the
   same day is the next thing to test.
@@ -87,6 +99,7 @@ The previous champion, the news filter at t ≥ 2: $297,160 / 16%, unseen $121,4
 
 | Since      | Version | Fair list at 1% / 2% | 151 unseen at 1% |
 | ---------- | ------- | -------------------- | ---------------- |
+| 2026-10-25 | **The current bot (version 2.4 = "the current"): the failed-break sale on top of everything else** (t ≥ 1.8 + news filter, the t-stat exit, overnight from +50%, the rest at -20% after the half): fair list $695,451 / 9% at 1%, $3,372,316 / 18% at 2%, 813 trades, +2,656 a trade (2024 +2,839 / 2025 +2,184 / 2026 +3,172); unseen $127,434 / 9%; the 63 favorites over the last year $179,263 / 12% (`sb_base`, `lists.py` `fav_rest_bot`). On the Bot vs Indi dashboard as `bot24`. The sale costs money at a smaller drop on the fair list (the rest-stop champion without it: $811,353 / 11%), helps a little on the unseen ($124,471 / 10% without) and on the favorites ($171,685 / 14% without). | see the rows below | |
 | 2026-10-24 | **Champion + the failed-break sale + the t-stat exit + overnight from +50%** (the live bot, version 2.3: $690,515 / 10% at 1%, $3,325,165 / 19% at 2%; unseen $125,788 / 10%) | see the rows below | |
 | 2026-10-24 | Champion + the failed-break sale + the t-stat exit (version 2.2; with the failed break the t-stat exit gives $549,153 / 9% at 1%, $2,183,362 / 18% at 2%; unseen $125,260 / 10%) | see the row below | |
 | 2026-10-23 | Champion + the failed-break sale: on the entry day, sell all when the stock reaches the next level ahead (yesterday's / 5-day / 15-minute / the day's high or low) and falls back 0.5 S30 within 30 minutes without breaking it (`fail_rebuy.py` "all") | $538,923 / 9%; $2,107,921 / 18% | $127,476 / 10% |
@@ -125,6 +138,7 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 | 2026-10-24 | + t-stat exit (signal t ≤ 0.5 on the entry day), -30% stop             | $610,096 / 11%              | $122,679 / 11% | +$25K, same drop; unseen −$349 (8 trades)                | champion until the +50% hold (the user's call)  |
 | 2026-10-24 | + hold overnight from +50% (was +100%)                                 | $795,638 / 11%              | $122,890 / 10% | +$186K, same drop; unseen +$211, −1 pt                   | champion until the rest stop -20%               |
 | 2026-10-25 | + D2 bonus entry (t ≥ 1.2 and D2 ≥ 1.5 enters too)                     | $1,005,221 / 11%            | $127,303 / 11% | +$194K, same drop; unseen +$2.8K, +1 pt                  | 🏆 champion (backtest only)                     |
+| 2026-10-25 | D2 champion + the failed-break sale (the live bot's exits, `BT_TAG=b`)  | $669,237 / 14%              | $137,446 / 9%  | −$336K, +3 pts drop vs the D2 champion; unseen +$10K, −2 pts | not better: the sale cuts the early D2 entries (2024 +1,513 a trade vs +2,839); on the Bot vs Indi dashboard as `d2-bot` |
 
 ## Tested, not better (V2, 2026-10-21)
 
@@ -134,6 +148,10 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   without the best 5 $258,171. The 151 unseen like it: $137,444 / 9% vs $127,302 / 11% (D2) and $127,433 / 9% (2.4).
   Fails the fair list: the failed break costs D2 $336K against $116K on the t >= 1.8 entry, and adds 3 points of drop.
   Baselines reproduced in the same run: $811,353, $695,450, $1,005,207 (981 trades).
+  The middle way (the user: "go and test it"): the failed break only on the 642 entries with t >= 1.8, never on
+  the early D2 ones: $855,938 / 13% at 1% ($4,712,111 / 24%), +693K / +900K / +824K, without the best 5 $296,392;
+  unseen $130,487 / 11%. Under the D2 champion in money and worse in drop (13% vs 11%): in D2's trades the failed
+  break no longer lowers the risk. Not better.
 - IV filters (own IV rank, low-IV stocks, IV / realized vol): about the same as trading less; fail at 0.10 and unseen.
 - Rolling out when the stock nears the strike fast (to delta 0.15 or 0.30): $161K – $206K; it sells the big winners.
 - Rolling again on t >= 1.8 (`roll2.py`): "fast" as a share of the time to expiry (10% / 25%), the stock 50% / 25% of
