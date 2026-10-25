@@ -1,6 +1,6 @@
 """The champion bot on one of the user's watchlists over a date range: t >= 1.8, day volume >= 1.5x, the news filter,
 delta 0.15, your stop + the overnight hold (BT_FAILED_BREAK=1: plus the failed-break sale; BT_THESIS=0.5: the t-stat
-exit; BT_HOLD=0.5: hold overnight from +50%; all three = the live bot, version 2.3, since 2026-10-24). Fetches the days first (stocks, pre-market, earnings; option bars as the
+exit; BT_HOLD=0.5: hold overnight from +50%; all three = the live bot, version 2.3, since 2026-10-24; BT_REST=-0.2: the rest out at -20% after the +10 half, version 2.4; BT_ENTRY=c12_15: the D2 bonus entry, the champion since 2026-10-25). Fetches the days first (stocks, pre-market, earnings; option bars as the
 picker needs them), then walks every trade. Same code path as week.py, for any list of symbols.
 
   node --env-file=.env <path>/run.mjs lists.py run <first day> <last day> <list name> SYM1,SYM2,...   (from the repo root)
@@ -33,12 +33,18 @@ def run(A, Z, name, syms):
     import sim, tune_signals as ts, news_filter as nf
     from tiers_round import H, NIGHT
     ts.SPAN = {"w": (A, Z)}; ts.RULES = {"t18r15": (1.8, 1.5, None)}
+    # BT_ENTRY=c12_15: the D2 bonus entry (defence_signals.py; the champion since 2026-10-25) instead of t >= 1.8 alone
+    entry = os.environ.get("BT_ENTRY")
+    if entry:
+        import defence_signals as ds
+        ds.SPAN = {"w": (A, Z)}; ds.RULES = {entry: ds.RULES[entry]}
     sim.X.update(dict(H, **NIGHT))
     if os.environ.get("BT_FAILED_BREAK"): sim.X["failed_break"] = True  # the bot's failed-break sale (sim.py F)
     if os.environ.get("BT_THESIS"): sim.X["thesis"] = {"t": float(os.environ["BT_THESIS"])}  # the t-stat exit (2026-10-24 champion)
     if os.environ.get("BT_HOLD"): sim.X["carry_min_gain"] = float(os.environ["BT_HOLD"])  # hold overnight from this gain (0.5 since 2026-10-24)
+    if os.environ.get("BT_REST"): sim.X["after_half"] = dict(out=float(os.environ["BT_REST"]))  # the rest at this gain after the +10 half (2026-10-24 night champion)
     CAL = calendar()
-    sig = [r for s in syms for r in ts.stock(s)["t18r15"]]
+    sig = [r for s in syms for r in (ds.stock(s)[entry] if entry else ts.stock(s)["t18r15"])]
     nf.CAL[:] = CAL; nf.IDX.clear(); nf.IDX.update({d: i for i, d in enumerate(CAL)})
     nf.features(sig)
     out = []

@@ -62,6 +62,14 @@ against it was comparable.
   pick the entries. Not better: D (only fully defended minutes: beta × SPY's drop when the stock did not fall) in
   every form, D or D2 as a filter on the champion (fewer trades, less money), D or D2 instead of t (negative or far
   under). Found at a 10-contract floor first (see "Before any run") and re-earned at 200.
+- D2 bonus entry on the app's 63 favorites, 2025-10-24 to 2026-10-23 (`lists.py` with `BT_ENTRY=c12_15`, lists `fav_d2`
+  vs `fav_rest`, the rest-stop champion's exits, floor 200; on the Backtest Reports dashboard): $181,885 / 14% at 1%
+  ($279,890 / 26% at 2%) vs $169,910 / 15% ($250,674 / 28%); 495 trades vs 405, 17% winners both, +1,415 vs +1,520 a
+  trade; without the best 5 both negative (−469 vs −503 a trade): on this list the money is a few trades. 383 shared
+  days (55 entered earlier: −409 → +2,859 a trade), 112 new days (+1,313 a trade, 15 winners; MSTR +176K, META +92K),
+  22 champion days lost because the earlier minute found the contract illiquid, among them COIN 2026-08-19 (+1,499%)
+  and GOOGL 2026-07-31 (+1,407%): the sim and the bot do not try again later. A retry when t reaches 1.8 later the
+  same day is the next thing to test.
 - The t-stat exit (`thesis.py`): at 2% $2,647,105 / 21% vs $2,444,640 / 21%; without the best 5 +1,127 vs +1,075 a trade; 38
   trades change (24 better), MSFT 2025-04-09 +25,781 the largest (without it still +$17K). Unseen $122,679 vs $123,028
   (8 trades, -$349): a hair under "no worse", declared champion by the user. Neighbours: t ≤ 0 changes 5 trades, t ≤ 1
