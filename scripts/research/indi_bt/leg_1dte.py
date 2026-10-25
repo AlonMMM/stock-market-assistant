@@ -85,18 +85,19 @@ def walk(sym, date, ct, side, contract, spot_side, u, night, run50=None):
         if run50 and not ran and sell(last) >= buy * 1.5:
             ran = True
             if run50 == "b3": give = 1.5
-        if ran and run50 == "b1f" and sell(last) <= buy * 1.2: return buy, sell(last), 0
-        if spot and gave(spot) and not (ran and run50 in ("b1", "b1f", "b2")): return buy, sell(last), 0
+        out1 = (buy, sell(last), 0, dict(b=b0[0], d="t", m=t))
+        if ran and run50 == "b1f" and sell(last) <= buy * 1.2: return out1
+        if spot and gave(spot) and not (ran and run50 in ("b1", "b1f", "b2")): return out1
         if run50:
-            if t == END and not ran: return buy, sell(last), 0
-            if t == CLOSE and sell(last) < buy * 1.5: return buy, sell(last), 0
+            if t == END and not ran: return out1
+            if t == CLOSE and sell(last) < buy * 1.5: return out1
             continue
-        if t == END and (night is None or (night == "up" and sell(last) <= buy)): return buy, sell(last), 0
+        if t == END and (night is None or (night == "up" and sell(last) <= buy)): return out1
     # overnight
     fetch_bars("options", [contract], d2, d2, key=f"n1|{contract}|{d2}")
     kb2 = {b[0]: b for b in day(contract, d2)}; sb2 = {b[0]: b for b in day(sym, d2)}
-    if not kb2 or not sb2: return buy, sell(last), 1
-    give = GIVE; close_px = sell(last); half = None
+    if not kb2 or not sb2: return buy, sell(last), 1, dict(b=b0[0], d="t", m=CLOSE)
+    give = GIVE; close_px = sell(last); half = None; half_m = None
     if run50 == "b2":
         o = next((sb2[q][4] for q in range(0, 10) if q in sb2), None)
         if o: best = o
@@ -106,12 +107,13 @@ def walk(sym, date, ct, side, contract, spot_side, u, night, run50=None):
         if t not in kb2 and t < 5: continue   # wait for the leg's first bar of the day
         if morning and half is None:
             px = sell(last)
-            if px < (buy if morning == "buy" else close_px): return buy, px, 1
-            half = px
+            if px < (buy if morning == "buy" else close_px): return buy, px, 1, dict(b=b0[0], d="n", m=t)
+            half = px; half_m = t
             continue
         if spot: best = max(best, spot) if side == "C" else min(best, spot)
-        if (spot and gave(spot)) or t >= END: return buy, (sell(last) if half is None else (half + sell(last)) / 2), 1
-    return buy, (sell(last) if half is None else (half + sell(last)) / 2), 1
+        if (spot and gave(spot)) or t >= END:
+            return buy, (sell(last) if half is None else (half + sell(last)) / 2), 1, dict(b=b0[0], d="n", m=t, half=half, half_m=half_m if half else None)
+    return buy, (sell(last) if half is None else (half + sell(last)) / 2), 1, dict(b=b0[0], d="n", m=END, half=half, half_m=half_m if half else None)
 
 
 def one(sig):
