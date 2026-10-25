@@ -397,9 +397,10 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   both fail the unseen test as the retry-until-200 did. Three different ways of taking the signals the contract rule
   refuses (wait for the crowd, step to a liquid strike, pay up for a dearer strike) all lose on the unseen stocks: the
   thin or cheap contract is a symptom, the options crowd is not in that stock at that moment, and the signal there has
-  no edge. The fair-list gain is hot names (IBIT, MSTR, ARM) where any contract works. Note: the live bot's user settings
-  had `minVolume` 0 on 2026-10-24 (the version's is 200), which is the 10-contract baseline in practice: twice the
-  trades, twice the drop, and real fills on thin contracts worse than the simulator's mid ± 2%.
+  no edge. The fair-list gain is hot names (IBIT, MSTR, ARM) where any contract works. The live bot (checked 2026-10-25) is at
+  `minVolume` 200 and `minPrice` 0.15, so it already takes the $0.15–0.20 contracts the research refuses; a lower
+  volume floor would be the 10-contract baseline in practice (twice the trades, twice the drop, real fills on thin
+  contracts worse than the simulator's mid ± 2%).
 - **Second round, the user's changes (2026-10-24):** the contract's liquidity floor is 10 contracts in the last 30
     minutes instead of 200 ("contract liquidity is not my concern"), now the default in `params.json` (`min_vol30`; the
     live bot's `minVolume30` in `packages/trading/src/bot/picker.ts` is still 200), and the alert route needs day volume
