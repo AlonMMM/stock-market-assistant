@@ -50,7 +50,7 @@ def walk(job):
     for cap in (0.05, 0.075):
         sim.NIGHT_CAP = cap; caps[cap] = sim.result(cost, steps, 0.01)
     sim.NIGHT_CAP = 0.1
-    return slug, dict(row, c_t=t["c_t"], cap5=caps[0.05], cap75=caps[0.075])
+    return slug, dict(row, c_t=t["c_t"], src=t["status"], cap5=caps[0.05], cap75=caps[0.075])  # src: why the 0.15 pick failed
 
 
 def account(T, size=lambda t: 1.0, per_day=None, field="ret", streak=None):
@@ -95,6 +95,9 @@ def main():
     add("by entry", "D2 bonus entries (t < 1.8) at half size", T, size=lambda t: 0.5 if d2(t) else 1.0)
     add("by entry", "fallback-added trades at half size", T, size=lambda t: 0.5 if t["added"] == 1 else 1.0)
     add("by entry", "both at half size", T, size=lambda t: 0.5 if d2(t) or t["added"] == 1 else 1.0)
+    # which fallback added the trade (the user, 2026-10-25: "fallback trades at half size but only for the liquid fallback")
+    add("by entry", "liquid-fallback trades (next strike for D2) at half size", T, size=lambda t: 0.5 if t["added"] == 1 and t["src"] == "illiquid" else 1.0)
+    add("by entry", "cheap-fallback trades at half size", T, size=lambda t: 0.5 if t["added"] == 1 and t["src"] == "too_cheap" else 1.0)
     add("night", "overnight cap 7.5%", T, field="cap75")
     add("night", "overnight cap 5%", T, field="cap5")
     for k in EXITS: add("exits" if "night" not in k and "overnight" not in k else "night", k, by[f"{BASE}|{k}"])

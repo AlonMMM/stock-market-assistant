@@ -1020,3 +1020,7 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   its option up $1,017,698 / 11% (131 adds, +10%), $374,819 without the best 5; always $988,390 / 11% (174, +4%). The
   adds themselves earn: +$874K at $10K a full trade, +$133K without their best 5 (held-and-up). Better than trading
   smaller, but below the fallback-added trades at half size ($1,203,557 / 11%, +22%) at the same drop.
+  - **By fallback (the user: "fallback trades at half size but only for the liquid fallback"):** the liquid-fallback
+    trades (the next strike for D2) at half size $1,278,782 / 12% (+16% over flat 0.95%), $415,950 without the best 5:
+    the same money as the base for a point less drop; the cheap-fallback trades at half size $1,206,495 / 12% (+3%);
+    both at half $1,203,557 / 11% (+22%). The liquid fallback's trades add drop but no money at full size.

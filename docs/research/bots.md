@@ -39,3 +39,12 @@ Close to the best; a new test can be run with each of them on or off. Each is a 
 | Cheap + D2 under 200 (fill unproven) | both | fallback `cheap+nofloor` | $2,899,179 / 13% | $318,407 / 18% |
 | Failed-break sale | production's sale added to the candidate | exit `failed_break: True` (`@fb`) | $734,522 / 14% (worse) | $186,064 / 11% |
 | Next strike, every entry | on production: any illiquid strike, the next one on each side | fallback `adj` (on 2.4) | $1,177,597 / 12% | $165,870 / 18% |
+
+## Next to test (saved)
+
+- **Pyramid on confirmed D2 moves + trim the weak picks** (the user, 2026-10-25: "save it for now; we build on top of
+  it"): on 2.5 + cheap + the next strike for D2, D2 entries at full size, the add (a fresh 0.15-delta, half size) when the
+  same stock reaches the real signal (t >= 1.8, same side) with the first leg still held and up (`d2_scale.py` add-up),
+  and the fallback-added trades at half size (`dd_reduce.py`; the liquid-fallback ones only, or both fallbacks).
+- **Re-entry with D2** (proposed 2026-10-25, waiting for the user's three answers): after an entry-day stop that was
+  mostly SPY's doing, re-enter when D2 since the exit >= 1.5 with t >= 1.2 and volume >= 1.5x; R0 control without D2.
