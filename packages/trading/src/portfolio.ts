@@ -1273,18 +1273,15 @@ export async function handleBotPortfolio(
   cache: PortfolioCache,
   fetcher: typeof fetch = fetch,
   now = Date.now(),
+  // Which bot's account, for the message when its keys are missing (the
+  // strangle bot's too: docs/tasks/backend-strangle-bot.md).
+  missing = "The bot's Alpaca paper account is not connected (BOT_ALPACA_API_KEY and BOT_ALPACA_API_SECRET)",
 ): Promise<{
   status: number;
   body: Portfolio | PortfolioHistory | { error: string };
 }> {
   if (!credentials.key || !credentials.secret)
-    return {
-      status: 503,
-      body: {
-        error:
-          "The bot's Alpaca paper account is not connected (BOT_ALPACA_API_KEY and BOT_ALPACA_API_SECRET)",
-      },
-    };
+    return { status: 503, body: { error: missing } };
   return period === undefined
     ? handlePortfolio(credentials, false, fetcher, now, cache)
     : handlePortfolioHistory(credentials, period, false, fetcher, now, cache);
