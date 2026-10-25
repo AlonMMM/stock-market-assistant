@@ -480,6 +480,10 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   $2,725,172 / 34% and $61,388 / 65%. With PR #130 (half under the brake) both2 is $2,709,158 / 26% and $69,515 / 47%
   vs the plain bot's $2,173,513 / 16% and $106,773 / 16%. The risk manager trims the drop but not the unseen losses:
   the fallbacks still fail. At 1% it never binds on the plain bot.
+  On the unseen stocks whose options trade (`active_unseen.py`: 10%+ of their signals had a tradeable 0.15 contract,
+  17 stocks, NFLX / UNH / XOM / JPM / COST / V ...; the fair list's median is 30%): bot 2.4 $132,559 / 7% at 1%; cheap
+  $125,406 / 14%, liquid2 $114,579 / 12%, both2 $106,656 / 15%; the added trades -52K / -141K / -212K at $10K. At 5%+
+  (42 stocks) the same order. The fallbacks lose on liquid unseen stocks too.
   On the live bot 2.4's exits (the rest at −20% after the +10 half; `BT_LIST=fav_rest_bot BT_REST=-0.2`, baseline 405
   trades, $179,264 / 12%): *cheap* $210,297 / 11% ($364,578 / 20% at 2%), the 82 added +2,391 each, IBIT +$235K of
   +$196K; *liquid* $200,816 / 15%; *both* $238,611 / 16%. The same as on 2.3 within $4K; the exits do not change it.
