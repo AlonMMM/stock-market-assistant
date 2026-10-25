@@ -1,5 +1,5 @@
 // What the trading service answers at GET /v1/strangle (the site's
-// /api/strangle), for the app's Strangle tab (docs/tasks/backend-strangle-bot.md).
+// /api/strangle), for the app's Alert leg tab (docs/tasks/backend-strangle-bot.md).
 import type { StrangleSettings } from "./settings.js";
 
 export interface StrangleOrderView {
@@ -28,25 +28,19 @@ export interface StrangleTradeView {
   alertMinute: number;
   alertSide: "up" | "down";
   unit: number;
-  stockAtFill: number | null;
-  legs: { C: StrangleLegView; P: StrangleLegView };
-  phase: "buying" | "open" | "kept" | "closing" | "closed";
-  kept: "C" | "P" | null;
-  confirmMinute: number | null;
-  peak: number | null;
-  recycled: boolean;
+  stockRef: number;
+  side: "C" | "P" | null;
+  sideMinute: number | null;
+  best: number | null;
+  leg: StrangleLegView | null;
+  phase: "watching" | "buying" | "open" | "closing" | "closed";
   closeReason: string | null;
   dry: boolean;
   openedAt: number;
   closedAt: number | null;
   paid: number;
   got: number;
-  marks: {
-    C: number | null;
-    P: number | null;
-    stock: number | null;
-    at: number;
-  } | null;
+  marks: { leg: number | null; stock: number | null; at: number } | null;
   openValue: number | null;
 }
 

@@ -1,9 +1,12 @@
-// The alert strangle's settings (docs/tasks/backend-strangle-bot.md): a
-// second bot, separate from the Indi bot, on its own Alpaca paper account
-// (user 2026-10-25: "create another test with this strategy and test it - not
-// mix them ... edit the settings and see the trades in our app"). The
-// defaults are the rule backtested in `zero9.py` (research/indi-v2,
-// docs/research/best-algorithms.md, "The strangle").
+// The alert leg's settings (docs/tasks/backend-strangle-bot.md): a second
+// bot, separate from the Indi bot, on its own Alpaca paper account (user
+// 2026-10-25: "create another test with this strategy and test it - not mix
+// them ... edit the settings and see the trades in our app"; then "the one
+// leg looks much better than the strangle - go with it"). The defaults are the
+// rule backtested in `strangle_more.py` (research/indi-v2,
+// docs/research/best-algorithms.md): on the first volume alert, wait for the
+// side, buy only that leg, sell on the stock's give-back. The code keeps the
+// name "strangle" for the module, its routes and its tables.
 
 export interface StrangleSettings {
   enabled: boolean;
@@ -13,7 +16,7 @@ export interface StrangleSettings {
   followFavorites: boolean;
   added: string[];
   off: string[];
-  // Size: both legs together cost this share of the account.
+  // Size: the leg costs this share of the account.
   sizePct: number;
   maxTradesPerDay: number;
   maxOpen: number;
@@ -29,16 +32,16 @@ export interface StrangleSettings {
   delta: number;
   minPrice: number; // each leg's mid
   minVolume: number; // each leg's contracts in the last 30 minutes
-  // The side: the stock moves this many typical 30-minute moves from the fill.
+  // The side: the stock moves this many typical 30-minute moves from where it
+  // was at the alert; only then is the leg of that side bought.
   confirmUnits: number;
-  waitMinutes: number; // no side by then: both legs out
-  // The wrong leg's money buys more of the right one (the "D bonus").
-  recycle: boolean;
-  // The kept leg: sold when it closes this % under its high since kept.
-  trailPct: number;
+  waitMinutes: number; // no side by then: no trade
+  // The exit: the leg is sold when the stock gives back this many typical
+  // 30-minute moves from its best since the buy.
+  giveBackUnits: number;
   endMinute: number; // everything out by then (15:30 = 360)
-  // Optional: only trades where the stock's strength vs SPY x beta since the
-  // open points the way of the kept side (a steadier, smaller version).
+  // Optional: buy only when the stock's strength vs SPY x beta since the open
+  // points the way of the side (else no trade).
   strengthFilter: boolean;
   // The news filter, as the Indi bot's.
   skipEarnings: boolean;
@@ -62,7 +65,7 @@ export const defaultStrangleSettings: StrangleSettings = {
   added: [],
   off: [],
   sizePct: 1,
-  maxTradesPerDay: 3,
+  maxTradesPerDay: 5,
   maxOpen: 3,
   dayLossPct: 5,
   safetyStopPct: 70,
@@ -73,8 +76,7 @@ export const defaultStrangleSettings: StrangleSettings = {
   minVolume: 200,
   confirmUnits: 0.25,
   waitMinutes: 60,
-  recycle: true,
-  trailPct: 30,
+  giveBackUnits: 0.75,
   endMinute: 360,
   strengthFilter: false,
   skipEarnings: true,
@@ -88,8 +90,8 @@ export const strangleLimits: Record<
   [min: number, max: number, step: number]
 > = {
   sizePct: [0.5, 6, 0.5],
-  // Three buys a trade (two legs and the recycled buy), ten a day per account.
-  maxTradesPerDay: [1, 3, 1],
+  // One buy a trade; the account's rules allow ten a day.
+  maxTradesPerDay: [1, 10, 1],
   maxOpen: [1, 10, 1],
   dayLossPct: [1, 15, 0.5],
   safetyStopPct: [30, 70, 5],
@@ -100,7 +102,7 @@ export const strangleLimits: Record<
   minVolume: [0, 1000, 10],
   confirmUnits: [0.1, 1, 0.05],
   waitMinutes: [10, 120, 5],
-  trailPct: [10, 60, 5],
+  giveBackUnits: [0.25, 1.5, 0.05],
   endMinute: [300, 375, 5],
 };
 
@@ -115,7 +117,6 @@ export const strangleUntested: ReadonlySet<keyof StrangleSettings> = new Set([
 const booleans: BooleanKey[] = [
   "enabled",
   "followFavorites",
-  "recycle",
   "strengthFilter",
   "skipEarnings",
   "skipPremarket",
@@ -206,45 +207,34 @@ export const clockOf = (minute: number): string => {
 export function strangleSteps(
   s: StrangleSettings,
 ): { name: string; text: string }[] {
-  const steps = [
+  const news = [
+    s.skipEarnings && "the stock's earnings reaction day",
+    s.skipPremarket && "a pre-market volume of 4× normal or more",
+  ].filter(Boolean);
+  return [
     {
-      name: "Entry",
+      name: "The alert",
       text: `On a day with a same-day expiry, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, the first time the volume alert fires on a stock, in either direction. One trade per stock a day.`,
     },
     {
       name: "News filter",
-      text:
-        [
-          s.skipEarnings && "the stock's earnings reaction day",
-          s.skipPremarket && "a pre-market volume of 4× normal or more",
-        ]
-          .filter(Boolean)
-          .join(" or ") === ""
-          ? "Off."
-          : `No entry on ${[s.skipEarnings && "the stock's earnings reaction day", s.skipPremarket && "a pre-market volume of 4× normal or more"].filter(Boolean).join(" or ")}.`,
-    },
-    {
-      name: "Buy",
-      text: `The ${s.delta.toFixed(2)}-delta call and put of that expiry, the same number of each, both legs together ${s.sizePct}% of the account. Each leg's mid at least $${s.minPrice.toFixed(2)}${s.minVolume > 0 ? ` and ${s.minVolume} contracts traded in the last 30 minutes` : ""}.`,
+      text: news.length ? `No trade on ${news.join(" or ")}.` : "Off.",
     },
     {
       name: "The side",
-      text: `When the stock has moved ${s.confirmUnits} of its typical 30-minute move from the fill, that is the side${s.strengthFilter ? ", taken only when the stock's strength vs SPY × β since the open points the same way (else both legs out)" : ""}. No side within ${s.waitMinutes} minutes: both legs out.`,
+      text: `Wait until the stock has moved ${s.confirmUnits} of its typical 30-minute move from where it was at the alert, up or down${s.strengthFilter ? ", with the stock's strength vs SPY × β since the open pointing the same way" : ""}. No side within ${s.waitMinutes} minutes: no trade.`,
     },
     {
-      name: "The wrong leg",
-      text: s.recycle
-        ? "Sold at once, and its money buys more of the right leg."
-        : "Sold at once; the money stays in cash.",
+      name: "Buy",
+      text: `Only that leg: the ${s.delta.toFixed(2)}-delta call (up) or put (down) of the same-day expiry, ${s.sizePct}% of the account. Its mid at least $${s.minPrice.toFixed(2)}${s.minVolume > 0 ? ` and ${s.minVolume} contracts traded in the last 30 minutes` : ""}.`,
     },
     {
-      name: "The right leg",
-      text: `Sold when it closes ${s.trailPct}% under its highest close since it was kept; everything out by ${clockOf(s.endMinute)}.`,
+      name: "Sell",
+      text: `When the stock gives back ${s.giveBackUnits} of its typical 30-minute move from its best since the buy (its high for a call, its low for a put); everything out by ${clockOf(s.endMinute)}.`,
     },
     {
       name: "Limits",
-      text: `At most ${s.maxTradesPerDay} trades a day and ${s.maxOpen} open; no new trade after a ${s.dayLossPct}% day loss. Every leg carries the broker's safety stop at −${s.safetyStopPct}%, and every order passes the account's risk rules.`,
+      text: `At most ${s.maxTradesPerDay} trades a day and ${s.maxOpen} open; no new trade after a ${s.dayLossPct}% day loss. Every buy carries the broker's safety stop at −${s.safetyStopPct}% and passes the account's risk rules.`,
     },
   ];
-  return steps;
 }

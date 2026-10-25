@@ -1,7 +1,7 @@
-// SYNTHETIC market data, chains and fills: the alert strangle bot
-// (docs/tasks/backend-strangle-bot.md). The alert, the side and the trail are
-// also checked against the Python backtest's 307 trades on real bars by
-// scripts/strangle-parity.ts (local data only).
+// SYNTHETIC market data, chains and fills: the alert leg bot
+// (docs/tasks/backend-strangle-bot.md). The alert, the side, the buy and the
+// give-back are also checked against the Python backtest's trades on real bars
+// by scripts/strangle-parity.ts (local data only).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -19,9 +19,9 @@ import {
   windows,
 } from "../packages/trading/src/strangle/alert.js";
 import {
-  keptExit,
-  pairQty,
-  recycleQty,
+  bestOf,
+  giveBackExit,
+  legQty,
   sideOf,
   strengthAgrees,
   waitedOut,
@@ -83,7 +83,7 @@ test("alert: a 3-minute burst of 4x volume and 3x the usual move is an alert, th
   assert.equal(firstAlert(alerts(down, hist), 10, 209)?.side, "down");
 });
 
-test("decide: the side, the strength filter, the wait, the trail, the sizes", () => {
+test("decide: the side, the strength filter, the wait, the give-back, the size", () => {
   const s = defaultStrangleSettings;
   // unit 0.4%: the side at 0.1% either way.
   assert.equal(sideOf(100.05, 100, 0.004, s), null);
@@ -94,13 +94,17 @@ test("decide: the side, the strength filter, the wait, the trail, the sizes", ()
   assert.equal(strengthAgrees("P", null), false);
   assert.equal(waitedOut(99, 40, s), false);
   assert.equal(waitedOut(100, 40, s), true);
-  assert.equal(keptExit(1.0, 1.4, 200, s), null);
-  assert.equal(keptExit(0.97, 1.4, 200, s), "trail");
-  assert.equal(keptExit(2, 2, 360, s), "end");
-  // 1% of $100,000 at 0.60 + 0.40 a pair: 10 pairs.
-  assert.equal(pairQty(100000, 1, 0.6, 0.4), 10);
-  assert.equal(pairQty(1000, 1, 0.6, 0.4), 0);
-  assert.equal(recycleQty(450, 0.7), 6);
+  // The give-back: 0.75 x 0.4% = 0.3% from the best, the side's way.
+  assert.equal(bestOf(101, 102, "C"), 102);
+  assert.equal(bestOf(99, 98, "P"), 98);
+  assert.equal(giveBackExit(101.75, 102, "C", 0.004, 200, s), null);
+  assert.equal(giveBackExit(101.69, 102, "C", 0.004, 200, s), "giveback");
+  assert.equal(giveBackExit(98.25, 98, "P", 0.004, 200, s), null);
+  assert.equal(giveBackExit(98.3, 98, "P", 0.004, 200, s), "giveback");
+  assert.equal(giveBackExit(110, 110, "C", 0.004, 360, s), "end");
+  // 1% of $100,000 at 0.61: 16 contracts.
+  assert.equal(legQty(100000, 1, 0.61), 16);
+  assert.equal(legQty(1000, 1, 0.61), 0);
 });
 
 test("settings: the backtested defaults; bad values refused; the stocks; the rule in words", () => {
@@ -109,12 +113,12 @@ test("settings: the backtested defaults; bad values refused; the stocks; the rul
   assert.equal(d.mode, "dry");
   assert.equal(d.delta, 0.35);
   assert.equal(d.confirmUnits, 0.25);
-  assert.equal(d.trailPct, 30);
-  assert.equal(d.recycle, true);
+  assert.equal(d.giveBackUnits, 0.75);
   assert.deepEqual(parseStrangleSettings(d), { ok: true, value: d });
   assert.equal(parseStrangleSettings({ ...d, sizePct: 7 }).ok, false);
   assert.equal(parseStrangleSettings({ ...d, safetyStopPct: 80 }).ok, false);
-  assert.equal(parseStrangleSettings({ ...d, maxTradesPerDay: 4 }).ok, false);
+  assert.equal(parseStrangleSettings({ ...d, maxTradesPerDay: 11 }).ok, false);
+  assert.equal(parseStrangleSettings({ ...d, giveBackUnits: 2 }).ok, false);
   assert.equal(parseStrangleSettings({ ...d, lastMinute: 5 }).ok, false);
   assert.equal(parseStrangleSettings({ ...d, mode: "maybe" }).ok, false);
   assert.equal(
@@ -138,12 +142,11 @@ test("settings: the backtested defaults; bad values refused; the stocks; the rul
   );
   const steps = strangleSteps(d).map((x) => x.name);
   assert.deepEqual(steps, [
-    "Entry",
+    "The alert",
     "News filter",
-    "Buy",
     "The side",
-    "The wrong leg",
-    "The right leg",
+    "Buy",
+    "Sell",
     "Limits",
   ]);
 });
@@ -291,104 +294,95 @@ function harness(
   return { bot, store, run, calls, notes, held, mids };
 }
 
-test("runner (dry): first alert -> both legs -> the side -> the wrong leg sold, its money into the right one -> the trail", async () => {
-  const h = harness({ mode: "dry" });
+// The burst at 10:08-10:09, a climb to 10:29, then a fall.
+const climbThenFall = () =>
+  session(
+    100,
+    (m) =>
+      m === 38 || m === 39
+        ? 0.003
+        : m >= 40 && m < 60
+          ? 0.001
+          : m >= 60
+            ? -0.001
+            : wiggle(m),
+    (m) => (m === 38 || m === 39 ? 20000 : 1000),
+  );
+
+test("runner (dry): first alert -> watching -> the side -> only that leg -> sold on the stock's give-back", async () => {
+  const h = harness({ mode: "dry" }, { day: climbThenFall() });
   await h.run(565, 610); // the alert at 10:09 is read at 10:10
   const [sig] = h.store.signals(DAY);
   assert.equal(sig!.minute, 39);
-  assert.equal(sig!.outcome, "would-trade");
-  // 1% of $100,000 at 0.60 + 0.50: 9 of each.
+  assert.equal(sig!.outcome, "watching");
   let [t] = h.store.openTrades();
-  assert.equal(t!.legs.C.qty, 9);
-  assert.equal(t!.legs.P.qty, 9);
-  assert.equal(t!.legs.C.contract, "NVDA261023C00101000");
-  assert.equal(t!.legs.P.contract, "NVDA261023P00099000");
-  // The stock climbs: the call is the side; the put is sold at 0.50 ($450),
-  // and the next tick that money buys 7 more calls at the 0.61 ask.
-  await h.run(611, 613);
+  assert.equal(t!.phase, "watching");
+  assert.equal(t!.leg, null);
+  // The stock keeps climbing: the side is the call; 1% of $100,000 at the 0.61 ask: 16.
+  await h.run(611, 612);
   [t] = h.store.openTrades();
-  assert.equal(t!.kept, "C");
-  assert.equal(t!.legs.P.qty, 0);
-  assert.equal(t!.recycled, true);
-  assert.equal(t!.legs.C.qty, 16);
-  // The call runs to 1.40, then falls 30% from there: all 16 sold.
-  h.mids.C = 1.4;
-  await h.run(614, 620);
+  assert.equal(t!.phase, "open");
+  assert.equal(t!.side, "C");
+  assert.equal(t!.leg!.contract, "NVDA261023C00101000");
+  assert.equal(t!.leg!.qty, 16);
+  assert.equal(h.store.signal(DAY, "NVDA")!.outcome, "would-trade");
+  // Still climbing to 10:29: held. From 10:30 it falls: sold once it gives back 0.75 of its 30-minute move.
+  h.mids.C = 1.2;
+  await h.run(613, 629);
   assert.equal(h.store.openTrades().length, 1);
-  h.mids.C = 0.95;
-  await h.run(621, 622);
+  await h.run(630, 640);
   assert.equal(h.store.openTrades().length, 0);
   const [done] = h.store.recentTrades(DAY);
   assert.equal(done!.phase, "closed");
-  assert.match(done!.closeReason ?? "", /fell 30%/);
+  assert.match(done!.closeReason ?? "", /gave back 0.75/);
   const cash = tradeCash(done!);
-  // Paid 9 x 0.60 + 9 x 0.50 + 7 x 0.61 = $1,417; got 9 x 0.50 + 16 x 0.95 = $1,970.
-  assert.equal(Math.round(cash.paid), 1417);
-  assert.equal(Math.round(cash.got), 1970);
-  // Nothing sent to the account in a dry run; the posts say so.
+  // Paid 16 x 0.61 = $976; got 16 x 1.20 = $1,920.
+  assert.equal(Math.round(cash.paid), 976);
+  assert.equal(Math.round(cash.got), 1920);
   assert.equal(h.calls.length, 0);
   assert.ok(
     h.notes.some((n) => n.startsWith(`${strangleTag} (dry run): would buy`)),
   );
   assert.ok(
-    h.notes.some((n) => n.startsWith(`${strangleTag} (dry run): closed`)),
+    h.notes.some((n) => n.startsWith(`${strangleTag} (dry run): would sell`)),
   );
 });
 
-test("runner (live): orders go to the account with the strangle tag and the safety stop; never more sold than held", async () => {
-  const h = harness({ mode: "live" });
-  await h.run(565, 610);
+test("runner (live): one buy with the tag and the safety stop; one sale of all of it; never short", async () => {
+  const h = harness({ mode: "live" }, { day: climbThenFall() });
+  await h.run(565, 612);
   const buys = h.calls.filter((c) => c.kind === "buy");
-  assert.equal(buys.length, 2);
-  for (const b of buys) {
-    assert.equal(b.body.qty, 9);
-    assert.equal(b.body.stopPct, 70);
-    assert.equal(b.body.tag, strangleTag);
-  }
-  assert.equal(h.store.openTrades()[0]!.phase, "buying");
-  await h.run(611, 616);
-  const [t] = h.store.openTrades();
-  assert.equal(t!.kept, "C");
+  assert.equal(buys.length, 1);
+  assert.equal(buys[0]!.body.contract, "NVDA261023C00101000");
+  assert.equal(buys[0]!.body.qty, 16);
+  assert.equal(buys[0]!.body.stopPct, 70);
+  assert.equal(buys[0]!.body.tag, strangleTag);
+  await h.run(613, 614);
+  assert.equal(h.store.openTrades()[0]!.phase, "open");
+  h.mids.C = 1.2;
+  await h.run(615, 645);
   const sells = h.calls.filter((c) => c.kind === "sell");
   assert.equal(sells.length, 1);
-  assert.equal(sells[0]!.body.contract, "NVDA261023P00099000");
-  assert.equal(sells[0]!.body.qty, "9");
-  // The recycled buy: 7 more calls with the put's $450.
-  const more = h.calls.filter((c) => c.kind === "buy")[2]!;
-  assert.equal(more.body.contract, "NVDA261023C00101000");
-  assert.equal(more.body.qty, 7);
-  assert.equal(more.body.stopPct, 70);
-  assert.equal(h.held.get("NVDA261023C00101000"), 16);
-  assert.equal(h.store.openTrades()[0]!.legs.C.qty, 16);
-  // The trail: everything held is sold, once.
-  h.mids.C = 1.4;
-  await h.run(617, 620);
-  h.mids.C = 0.9;
-  await h.run(621, 624);
-  const sold = h.calls.filter((c) => c.kind === "sell");
-  assert.equal(sold.length, 2);
-  assert.equal(sold[1]!.body.contract, "NVDA261023C00101000");
-  assert.equal(sold[1]!.body.qty, "16");
+  assert.equal(sells[0]!.body.qty, "16");
   assert.equal(h.held.get("NVDA261023C00101000"), 0);
   assert.equal(h.store.openTrades().length, 0);
   for (const [, n] of h.held) assert.ok(n >= 0, "never short");
 });
 
-test("runner: no side within the hour sells both legs; one trade per stock a day; off means no entries", async () => {
-  // A burst and then a flat stock: the side never comes.
+test("runner: no side within the hour is no trade; one alert per stock a day; off means nothing", async () => {
   const flat = session(
     100,
     (m) => (m === 38 || m === 39 ? 0.003 : 0),
     (m) => (m === 38 || m === 39 ? 20000 : 1000),
   );
-  const h = harness({ mode: "dry", confirmUnits: 1 }, { day: flat });
+  const h = harness({ mode: "dry" }, { day: flat });
   await h.run(565, 611);
-  assert.equal(h.store.openTrades().length, 1);
+  assert.equal(h.store.openTrades()[0]!.phase, "watching");
   await h.run(612, 671);
-  const [t] = h.store.recentTrades(DAY);
-  assert.equal(t!.phase, "closed");
-  assert.equal(t!.closeReason, "no side in time");
+  assert.equal(h.store.openTrades().length, 0);
+  assert.equal(h.store.signal(DAY, "NVDA")!.outcome, "no_side");
   assert.equal(h.store.signals(DAY).length, 1);
+  assert.equal(h.calls.length, 0);
   const off = harness({ mode: "dry", enabled: false });
   await off.run(565, 640);
   assert.equal(off.store.signals(DAY).length, 0);

@@ -301,7 +301,7 @@ const groups = [
   // (docs/tasks/backend-strangle-bot.md, user 2026-10-25: "not mix them").
   [
     "strangle",
-    "🎯 Strangle",
+    "🎯 Alert leg",
     [
       ["s-activity", "Activity"],
       ["s-trades", "Trades"],
@@ -408,7 +408,7 @@ export function Portfolio({
           <BotAccount
             broker="alpaca"
             base="/api/portfolio/strangle"
-            label="🎯 Strangle · Alpaca paper"
+            label="🎯 Alert leg · Alpaca paper"
             onError={ignore}
           />
         </div>

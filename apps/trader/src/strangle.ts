@@ -27,10 +27,9 @@ import {
   type Windows,
 } from "../../../packages/trading/src/strangle/alert.js";
 import {
-  keptExit,
-  other,
-  pairQty,
-  recycleQty,
+  bestOf,
+  giveBackExit,
+  legQty,
   sideOf,
   strengthAgrees,
   waitedOut,
@@ -50,21 +49,21 @@ import type { BotMarket, BotTrading } from "./bot.js";
 import {
   tradeCash,
   type StrangleEventKind,
-  type StrangleLeg,
   type StrangleOrder,
   type StrangleStore,
   type StrangleTrade,
 } from "./strangle-store.js";
 
-// The alert strangle (docs/tasks/backend-strangle-bot.md): a second bot,
-// separate from the Indi bot, on its own Alpaca paper account. On the first
-// volume alert of a stock's day (a day with a same-day expiry), it buys the
-// call and the put at one delta; when the stock has moved a share of its
-// typical 30-minute move, it sells the wrong leg (and, with `recycle`, puts
-// that money into the right one) and trails the right one to the end. The
-// decisions are the backtest's (zero9.py), checked trade by trade by
-// scripts/strangle-parity.ts. Every order goes through the owner's trading
-// service at the strangle's account, as the Indi bot's do at its own.
+// The alert leg (docs/tasks/backend-strangle-bot.md): a second bot, separate
+// from the Indi bot, on its own Alpaca paper account. On the first volume
+// alert of a stock's day (a day with a same-day expiry) it watches; when the
+// stock has moved a share of its typical 30-minute move either way, it buys
+// only that side's leg (the 0.35-delta call or put of the same-day expiry) and
+// sells it when the stock gives back a share of that move from its best since
+// the buy. The decisions are the backtest's (strangle_more.py), checked trade
+// by trade by scripts/strangle-parity.ts. Every order goes through the owner's
+// trading service at its account, as the Indi bot's do at its own. The module
+// keeps the name "strangle", the first version of the strategy.
 
 export interface StrangleOptions {
   store: StrangleStore;
@@ -77,7 +76,7 @@ export interface StrangleOptions {
   log?: (line: string) => void;
 }
 
-export const strangleTag = "🎯 Strangle";
+export const strangleTag = "🎯 Alert leg";
 const chaseBuyMs = 3 * 60_000;
 const sellWaitMs = 3 * 60_000;
 
@@ -108,19 +107,22 @@ const soldOf = (result: unknown): number => {
 };
 
 const outcomeWords: Record<string, string> = {
-  traded: "bought the strangle",
-  "would-trade": "would buy the strangle (dry run)",
+  watching: "watching for the side",
+  traded: "bought the leg",
+  "would-trade": "would buy the leg (dry run)",
+  no_side: "no side in time",
   no_expiry: "no same-day expiry today",
   no_strikes: "no strikes near the stock",
   no_prices: "no prices",
-  too_cheap: "a leg is too cheap",
-  thin: "a leg is too thin",
-  too_small: "the size buys less than one pair",
+  too_cheap: "the leg is too cheap",
+  thin: "the leg is too thin",
+  too_small: "the size buys no contract",
   max_trades: "the day's trades are used",
   max_open: "too many trades open",
   day_loss: "the day's loss limit is reached",
   earnings: "skipped, earnings reaction day",
   premarket: "skipped, pre-market volume 4× normal or more",
+  strength: "skipped, the strength disagrees with the side",
   refused: "refused by the risk rules",
   error: "failed",
 };
@@ -150,7 +152,7 @@ export class StrangleBot {
   // Each open trade's live marks, for the status (not stored).
   private marks = new Map<
     string,
-    { C: number | null; P: number | null; stock: number | null; at: number }
+    { leg: number | null; stock: number | null; at: number }
   >();
 
   constructor(options: StrangleOptions) {
@@ -431,7 +433,7 @@ export class StrangleBot {
     );
   }
 
-  // ---- entries ----
+  // ---- the alert: watch for the side ----
 
   private async entries(date: string, m: number) {
     const s = this.settings();
@@ -461,7 +463,7 @@ export class StrangleBot {
         `${symbol}: volume alert ${first.side} at ${clockOf(m)}`,
       );
       try {
-        const r = await this.enter(date, symbol, m, first.side, s);
+        const r = await this.watch(date, symbol, m, first.side, s);
         this.outcome(date, symbol, r.outcome, r.detail);
       } catch (error) {
         this.outcome(
@@ -482,7 +484,11 @@ export class StrangleBot {
   ) {
     this.o.store.updateSignal(date, symbol, outcome, detail);
     const kind: StrangleEventKind =
-      outcome === "traded" || outcome === "would-trade" ? "order" : "skip";
+      outcome === "traded" || outcome === "would-trade"
+        ? "order"
+        : outcome === "watching"
+          ? "info"
+          : "skip";
     this.event(
       kind,
       `${symbol}: ${outcomeWords[outcome] ?? outcome}${detail ? ` (${detail})` : ""}`,
@@ -495,13 +501,16 @@ export class StrangleBot {
   ): Promise<{ outcome: string; detail: string } | null> {
     const dry = s.mode === "dry";
     const traded = this.o.store
-      .signals(date)
+      .recentTrades(date)
       .filter(
-        (x) => x.outcome === "traded" || x.outcome === "would-trade",
+        (t) =>
+          t.day === date && t.dry === dry && t.leg !== null && t.leg.bought > 0,
       ).length;
     if (traded >= s.maxTradesPerDay)
       return { outcome: "max_trades", detail: `${traded} today` };
-    const open = this.o.store.openTrades().filter((t) => t.dry === dry).length;
+    const open = this.o.store
+      .openTrades()
+      .filter((t) => t.dry === dry && t.leg !== null).length;
     if (open >= s.maxOpen)
       return { outcome: "max_open", detail: `${open} open` };
     if (!dry && this.dayStartEquity && this.dayStartEquity > 0) {
@@ -516,7 +525,8 @@ export class StrangleBot {
     return null;
   }
 
-  private async enter(
+  /** The alert came: check what can be checked now, then watch the stock for the side. */
+  private async watch(
     date: string,
     symbol: string,
     m: number,
@@ -525,77 +535,18 @@ export class StrangleBot {
   ): Promise<{ outcome: string; detail: string }> {
     const blocked = this.newsBlock(date, symbol, s);
     if (blocked) return blocked;
-    const limited = await this.limit(date, s);
-    if (limited) return limited;
     const unit = this.unit.get(symbol);
     if (!unit)
       return {
         outcome: "no_prices",
         detail: "fewer than 5 sessions of history",
       };
-    const spot = this.lastClose(symbol, m);
-    if (spot === null)
-      return { outcome: "no_prices", detail: "no stock price" };
-    const pick = {
-      delta: s.delta,
-      dteMin: 0,
-      dteMax: 0,
-      otmScanMax: 0.2,
-      maxStrikes: 16,
-      minPrice: s.minPrice,
-      minVolume30: s.minVolume,
-    };
-    const picked: Record<
-      Leg,
-      { contract: string; strike: number; mid: number; ask: number }
-    > = {} as never;
-    for (const leg of ["C", "P"] as const) {
-      const right = legName(leg);
-      const got = pickContract(
-        await this.o.trading.chain(symbol, right, date, date),
-        spot,
-        right,
-        date,
-        pick,
-      );
-      if (!got.ok) return { outcome: got.reason, detail: legName(leg) };
-      const contract = got.quote.symbol;
-      if (s.minVolume > 0) {
-        const volume = await this.o.market.optionVolume30(contract, date, m);
-        if (volume < s.minVolume)
-          return {
-            outcome: "thin",
-            detail: `${this.words(contract)}: ${volume} contracts in 30 minutes`,
-          };
-      }
-      if (await this.o.trading.held(contract))
-        return {
-          outcome: "refused",
-          detail: `${this.words(contract)} is already held`,
-        };
-      picked[leg] = {
-        contract,
-        strike: got.quote.strike,
-        mid: got.mid,
-        ask: got.quote.ask,
-      };
-    }
-    const equity = await this.o.trading.equity();
-    const qty = pairQty(equity, s.sizePct, picked.C.mid, picked.P.mid);
-    const pair = `${this.words(picked.C.contract)} + ${this.words(picked.P.contract)}`;
-    if (qty < 1)
-      return {
-        outcome: "too_small",
-        detail: `${pair} at ${(picked.C.mid + picked.P.mid).toFixed(2)}`,
-      };
-    const leg = (l: Leg): StrangleLeg => ({
-      contract: picked[l].contract,
-      strike: picked[l].strike,
-      qty: 0,
-      bought: 0,
-      cost: picked[l].mid,
-      orders: [],
-    });
+    // A same-day expiry is needed at all: its absence ends it now.
+    const chain = await this.o.trading.chain(symbol, "call", date, date);
+    if (!chain.some((q) => q.expiry === date))
+      return { outcome: "no_expiry", detail: "" };
+    const ref = await this.stockNow(symbol, m);
+    if (ref === null) return { outcome: "no_prices", detail: "no stock price" };
     const trade: StrangleTrade = {
       id: randomUUID(),
       day: date,
@@ -603,191 +554,113 @@ export class StrangleBot {
       alertMinute: m,
       alertSide: side,
       unit,
-      stockAtFill: null,
-      legs: { C: leg("C"), P: leg("P") },
-      phase: "buying",
-      kept: null,
-      confirmMinute: null,
-      peak: null,
-      recycled: false,
+      stockRef: ref,
+      side: null,
+      sideMinute: null,
+      best: null,
+      leg: null,
+      phase: "watching",
       closeReason: null,
       dry: s.mode === "dry",
       openedAt: this.o.now(),
       closedAt: null,
     };
-    const why = `Volume alert ${side} at ${clockOf(m)}: the strangle`;
-    if (trade.dry) {
-      for (const l of ["C", "P"] as const) {
-        const L = trade.legs[l];
-        L.qty = L.bought = qty;
-        L.cost = picked[l].mid;
-        L.orders.push({
-          at: this.o.now(),
-          side: "buy",
-          qty,
-          reason: "entry",
-          jobId: null,
-          settled: true,
-          price: picked[l].mid,
-        });
-      }
-      trade.phase = "open";
-      trade.stockAtFill = (await this.stockNow(symbol, m)) ?? spot;
-      this.o.store.saveTrade(trade);
-      await this.o.notify(`${strangleTag} (dry run): would buy`, [
-        `$${symbol} ${pair}`,
-        `${qty} of each at ${picked.C.mid.toFixed(2)} + ${picked.P.mid.toFixed(2)}`,
-        why,
-      ]);
-      return { outcome: "would-trade", detail: `${qty} × ${pair}` };
-    }
-    const refused: string[] = [];
-    for (const l of ["C", "P"] as const) {
-      const answer = await this.o.trading.buy({
-        contract: picked[l].contract,
-        qty,
-        chase: true,
-        chaseMs: chaseBuyMs,
-        stopPct: s.safetyStopPct,
-        tag: strangleTag,
-        note: `${why}, ${legName(l)}`,
-      });
-      if (answer.status !== "started" || !answer.jobId) {
-        refused.push(
-          `${legName(l)}: ${(answer.refused ?? [answer.status]).join("; ")}`,
-        );
-        continue;
-      }
-      trade.legs[l].orders.push({
-        at: this.o.now(),
-        side: "buy",
-        qty,
-        reason: "entry",
-        jobId: answer.jobId,
-        settled: false,
-      });
-    }
-    if (refused.length === 2)
-      return { outcome: "refused", detail: refused.join("; ") };
-    // One leg refused: the other is sold once it fills (settle).
     this.o.store.saveTrade(trade);
-    if (refused.length)
-      this.event(
-        "error",
-        `${symbol}: ${refused.join("; ")}; the other leg is sold once it fills`,
-      );
-    return { outcome: "traded", detail: `${qty} × ${pair}` };
+    const pct = (s.confirmUnits * unit * 100).toFixed(2);
+    return {
+      outcome: "watching",
+      detail: `stock ${ref.toFixed(2)}; the side at ${pct}% either way`,
+    };
   }
 
   // ---- orders: the fills, as the account reports them ----
 
   private pending(t: StrangleTrade): boolean {
-    return [t.legs.C, t.legs.P].some((l) =>
-      l.orders.some((o) => o.jobId !== null && !o.settled),
-    );
+    return (t.leg?.orders ?? []).some((o) => o.jobId !== null && !o.settled);
   }
 
   private async settle() {
     for (const t of this.o.store.openTrades()) {
-      if (t.dry) continue;
+      if (t.dry || !t.leg) continue;
+      const leg = t.leg;
       let changed = false;
-      for (const l of ["C", "P"] as const) {
-        const leg = t.legs[l];
-        for (const o of leg.orders) {
-          if (o.settled || !o.jobId) continue;
-          const job = this.o.trading.job(o.jobId);
-          if (job.state === "running") continue;
-          const held = await this.o.trading.held(leg.contract);
-          const now = held?.qty ?? 0;
-          if (o.side === "buy") {
-            const filled = Math.max(0, now - leg.qty);
-            const price =
-              priceOf(job.result) ?? held?.avgEntryPrice ?? leg.cost;
-            o.qty = filled;
-            o.price = price;
-            leg.bought += filled;
-            leg.qty = now;
-            if (held) leg.cost = held.avgEntryPrice;
-            this.event(
-              "order",
-              filled > 0
-                ? `Bought ${filled} ${t.symbol} ${this.words(leg.contract)} at ${price.toFixed(2)}`
-                : `${t.symbol} ${this.words(leg.contract)}: the buy did not fill`,
-            );
-          } else {
-            const sold = soldOf(job.result);
-            o.qty = sold;
-            const price = priceOf(job.result);
-            if (price !== null) o.price = price;
-            leg.qty = Math.max(0, Math.min(leg.qty - sold, now));
-            this.event(
-              "order",
-              `Sold ${sold} ${t.symbol} ${this.words(leg.contract)} (${o.reason}); ${leg.qty} left`,
-            );
-          }
-          o.settled = true;
-          changed = true;
+      for (const o of leg.orders) {
+        if (o.settled || !o.jobId) continue;
+        const job = this.o.trading.job(o.jobId);
+        if (job.state === "running") continue;
+        const held = await this.o.trading.held(leg.contract);
+        const now = held?.qty ?? 0;
+        if (o.side === "buy") {
+          const filled = Math.max(0, now - leg.qty);
+          const price = priceOf(job.result) ?? held?.avgEntryPrice ?? leg.cost;
+          o.qty = filled;
+          o.price = price;
+          leg.bought += filled;
+          leg.qty = now;
+          if (held) leg.cost = held.avgEntryPrice;
+          this.event(
+            "order",
+            filled > 0
+              ? `Bought ${filled} ${t.symbol} ${this.words(leg.contract)} at ${price.toFixed(2)}`
+              : `${t.symbol} ${this.words(leg.contract)}: the buy did not fill`,
+          );
+        } else {
+          const sold = soldOf(job.result);
+          o.qty = sold;
+          const price = priceOf(job.result);
+          if (price !== null) o.price = price;
+          leg.qty = Math.max(0, Math.min(leg.qty - sold, now));
+          this.event(
+            "order",
+            `Sold ${sold} ${t.symbol} ${this.words(leg.contract)} (${o.reason}); ${leg.qty} left`,
+          );
         }
-        // A sale by hand: the bot never counts more than the account holds.
-        if (!leg.orders.some((o) => !o.settled) && leg.qty > 0) {
-          const held = await this.o.trading.held(leg.contract);
-          if ((held?.qty ?? 0) < leg.qty) {
-            this.event(
-              "info",
-              `${t.symbol} ${this.words(leg.contract)}: the account holds ${held?.qty ?? 0}, so the bot counts that`,
-            );
-            leg.qty = held?.qty ?? 0;
-            changed = true;
-          }
+        o.settled = true;
+        changed = true;
+      }
+      // A stop or a sale by hand: the bot never counts more than the account holds.
+      if (!this.pending(t) && leg.qty > 0) {
+        const held = await this.o.trading.held(leg.contract);
+        if ((held?.qty ?? 0) < leg.qty) {
+          this.event(
+            "info",
+            `${t.symbol} ${this.words(leg.contract)}: the account holds ${held?.qty ?? 0}, so the bot counts that`,
+          );
+          leg.qty = held?.qty ?? 0;
+          changed = true;
         }
       }
       if (t.phase === "buying" && !this.pending(t)) {
-        const c = t.legs.C.qty,
-          p = t.legs.P.qty;
-        if (c > 0 && p > 0) {
+        if (leg.qty > 0) {
           t.phase = "open";
-          t.stockAtFill = await this.stockNow(t.symbol, null);
-          this.event(
-            "info",
-            `${t.symbol}: the strangle is on, stock at ${t.stockAtFill?.toFixed(2) ?? "—"}; the side at ${t.stockAtFill ? (t.unit * this.settings().confirmUnits * 100).toFixed(2) : "—"}% either way`,
-          );
-        } else if (c === 0 && p === 0) {
-          t.phase = "closed";
-          t.closeReason = "did not fill";
-          t.closedAt = this.o.now();
+          t.best = (await this.stockNow(t.symbol, null)) ?? t.best;
         } else {
-          t.phase = "closing";
-          t.closeReason = "one leg did not fill";
-          await this.sellLeg(
-            t,
-            c > 0 ? "C" : "P",
-            "one leg did not fill",
-            null,
-          );
+          t.phase = "closed";
+          t.closeReason = "the buy did not fill";
+          t.closedAt = this.o.now();
         }
         changed = true;
       }
       if (
-        t.phase !== "buying" &&
-        t.phase !== "closed" &&
+        (t.phase === "open" || t.phase === "closing") &&
         !this.pending(t) &&
-        t.legs.C.qty === 0 &&
-        t.legs.P.qty === 0
+        leg.qty === 0
       ) {
         t.phase = "closed";
         t.closedAt = this.o.now();
+        t.closeReason ??= "sold";
         changed = true;
         const { paid, got } = tradeCash(t);
         this.event(
           "order",
-          `${t.symbol} strangle closed: paid ${paid.toFixed(0)}, got ${got.toFixed(0)} (${paid > 0 ? ((got / paid - 1) * 100).toFixed(0) : "—"}%)`,
+          `${t.symbol} closed: paid ${paid.toFixed(0)}, got ${got.toFixed(0)} (${paid > 0 ? ((got / paid - 1) * 100).toFixed(0) : "—"}%)`,
         );
       }
       if (changed) this.o.store.saveTrade(t);
     }
   }
 
-  // ---- the trades: the side, the wrong leg, the trail ----
+  // ---- the trades: the side, the buy, the give-back ----
 
   private async stockNow(
     symbol: string,
@@ -816,153 +689,172 @@ export class StrangleBot {
     }
   }
 
+  private close(t: StrangleTrade, reason: string) {
+    t.phase = "closed";
+    t.closeReason = reason;
+    t.closedAt = this.o.now();
+    this.o.store.saveTrade(t);
+  }
+
   private async manage(date: string, m: number, s: StrangleSettings) {
     for (const t of this.o.store.openTrades()) {
-      if (t.phase === "buying" || t.phase === "closed") continue;
-      if (this.pending(t)) continue;
-      const stock = await this.stockNow(t.symbol, m);
-      const mc = t.legs.C.qty > 0 ? await this.mark(t.legs.C.contract) : null;
-      const mp = t.legs.P.qty > 0 ? await this.mark(t.legs.P.contract) : null;
-      this.marks.set(t.id, {
-        C: mc?.mid ?? null,
-        P: mp?.mid ?? null,
-        stock,
-        at: this.o.now(),
-      });
-      const markOf = (l: Leg) => (l === "C" ? mc : mp);
-      if (t.day !== date) {
-        // Never carried: a same-day expiry. Anything left from a past day is sold now.
-        for (const l of ["C", "P"] as const)
-          if (t.legs[l].qty > 0)
-            await this.sellLeg(
-              t,
-              l,
-              "left from a past day",
-              markOf(l)?.mid ?? null,
-            );
+      if (t.phase === "buying" || t.phase === "closing" || this.pending(t))
         continue;
-      }
-      if (t.phase === "open") {
+      const stock = await this.stockNow(t.symbol, m);
+      if (t.phase === "watching") {
+        if (t.day !== date) {
+          this.close(t, "no side in time");
+          continue;
+        }
         const side =
-          stock !== null && t.stockAtFill !== null
-            ? sideOf(stock, t.stockAtFill, t.unit, s)
-            : null;
+          stock !== null ? sideOf(stock, t.stockRef, t.unit, s) : null;
         if (side) {
-          if (s.strengthFilter) {
-            const prior = this.prior.get(t.symbol);
-            const st = prior
-              ? cState(
-                  this.barsOf(t.symbol),
-                  this.barsOf("SPY"),
-                  prior,
-                  Math.max(1, m - 1),
-                )
-              : null;
-            if (!strengthAgrees(side, st?.t ?? null)) {
-              t.phase = "closing";
-              t.closeReason = "the side and the strength disagree";
-              for (const l of ["C", "P"] as const)
-                await this.sellLeg(t, l, t.closeReason, markOf(l)?.mid ?? null);
-              continue;
-            }
-          }
-          t.kept = side;
-          t.confirmMinute = m;
-          t.peak = markOf(side)?.mid ?? null;
-          t.phase = "kept";
-          this.event(
-            "order",
-            `${t.symbol}: the side is the ${legName(side)} at ${clockOf(m)} (stock ${stock!.toFixed(2)} from ${t.stockAtFill!.toFixed(2)}); selling the ${legName(other(side))}`,
-          );
-          await this.sellLeg(
-            t,
-            other(side),
-            "the wrong leg",
-            markOf(other(side))?.mid ?? null,
-          );
+          await this.buyLeg(t, side, m, stock!, s);
           continue;
         }
         if (waitedOut(m, t.alertMinute, s) || m >= s.endMinute) {
-          t.phase = "closing";
-          t.closeReason = "no side in time";
-          for (const l of ["C", "P"] as const)
-            await this.sellLeg(t, l, t.closeReason, markOf(l)?.mid ?? null);
+          this.close(t, "no side in time");
+          this.o.store.updateSignal(t.day, t.symbol, "no_side", "");
+          this.event(
+            "skip",
+            `${t.symbol}: no side within ${s.waitMinutes} minutes, no trade`,
+          );
         }
         continue;
       }
-      if (t.phase === "kept" && t.kept) {
-        const keep = t.kept;
-        const wrong = t.legs[other(keep)];
-        // The wrong leg's money into the right one, once its sale settled.
-        if (s.recycle && !t.recycled && wrong.qty === 0) {
-          t.recycled = true;
-          const proceeds = wrong.orders
-            .filter(
-              (o) => o.side === "sell" && o.settled && o.price !== undefined,
-            )
-            .reduce((sum, o) => sum + o.qty * o.price! * 100, 0);
-          const km = markOf(keep);
-          const n = km ? recycleQty(proceeds, km.ask) : 0;
-          if (n >= 1) {
-            await this.buyMore(t, keep, n, km!);
-            continue;
-          }
-          this.o.store.saveTrade(t);
-        }
-        const km = markOf(keep);
-        if (!km) continue;
-        t.peak = Math.max(t.peak ?? km.mid, km.mid);
-        const exit = keptExit(km.mid, t.peak, m, s);
-        if (exit) {
-          t.phase = "closing";
-          t.closeReason =
-            exit === "trail"
-              ? `the ${legName(keep)} fell ${s.trailPct}% from its high`
-              : `the end of the day (${clockOf(s.endMinute)})`;
-          await this.sellLeg(t, keep, t.closeReason, km.mid);
-          continue;
-        }
-        this.o.store.saveTrade(t);
+      if (t.phase !== "open" || !t.leg || !t.side) continue;
+      const lm = await this.mark(t.leg.contract);
+      this.marks.set(t.id, { leg: lm?.mid ?? null, stock, at: this.o.now() });
+      // Never carried: a same-day expiry. Anything left from a past day is sold now.
+      if (t.day !== date) {
+        await this.sellLeg(t, "left from a past day", lm?.mid ?? null);
+        continue;
       }
+      if (stock !== null) t.best = bestOf(t.best ?? stock, stock, t.side);
+      const exit = giveBackExit(stock ?? 0, t.best ?? 0, t.side, t.unit, m, s);
+      if (exit) {
+        const reason =
+          exit === "end"
+            ? `the end of the day (${clockOf(s.endMinute)})`
+            : `the stock gave back ${s.giveBackUnits} of its 30-minute move from ${t.best!.toFixed(2)}`;
+        await this.sellLeg(t, reason, lm?.mid ?? null);
+        continue;
+      }
+      this.o.store.saveTrade(t);
     }
   }
 
-  private async buyMore(
+  /** The side came: pick that leg and buy it, or end the trade with why not. */
+  private async buyLeg(
     t: StrangleTrade,
-    l: Leg,
-    n: number,
-    m: { mid: number; ask: number },
+    side: Leg,
+    m: number,
+    stock: number,
+    s: StrangleSettings,
   ) {
-    const leg = t.legs[l];
+    const fail = (outcome: string, detail: string) => {
+      this.close(t, outcomeWords[outcome] ?? outcome);
+      this.outcome(t.day, t.symbol, outcome, detail);
+    };
+    t.side = side;
+    t.sideMinute = m;
+    if (s.strengthFilter) {
+      const prior = this.prior.get(t.symbol);
+      const st = prior
+        ? cState(
+            this.barsOf(t.symbol),
+            this.barsOf("SPY"),
+            prior,
+            Math.max(1, m - 1),
+          )
+        : null;
+      if (!strengthAgrees(side, st?.t ?? null))
+        return fail("strength", `t ${st?.t.toFixed(1) ?? "—"}`);
+    }
+    const limited = await this.limit(t.day, s);
+    if (limited) return fail(limited.outcome, limited.detail);
+    const right = legName(side);
+    const pick = {
+      delta: s.delta,
+      dteMin: 0,
+      dteMax: 0,
+      otmScanMax: 0.2,
+      maxStrikes: 16,
+      minPrice: s.minPrice,
+      minVolume30: s.minVolume,
+    };
+    const got = pickContract(
+      await this.o.trading.chain(t.symbol, right, t.day, t.day),
+      stock,
+      right,
+      t.day,
+      pick,
+    );
+    if (!got.ok) return fail(got.reason, right);
+    const contract = got.quote.symbol;
+    if (s.minVolume > 0) {
+      const volume = await this.o.market.optionVolume30(contract, t.day, m);
+      if (volume < s.minVolume)
+        return fail(
+          "thin",
+          `${this.words(contract)}: ${volume} contracts in 30 minutes`,
+        );
+    }
+    if (await this.o.trading.held(contract))
+      return fail("refused", `${this.words(contract)} is already held`);
+    const equity = await this.o.trading.equity();
+    const qty = legQty(equity, s.sizePct, got.quote.ask);
+    if (qty < 1)
+      return fail(
+        "too_small",
+        `${this.words(contract)} at ${got.quote.ask.toFixed(2)}`,
+      );
+    t.leg = {
+      contract,
+      strike: got.quote.strike,
+      qty: 0,
+      bought: 0,
+      cost: got.mid,
+      orders: [],
+    };
+    const why = `Volume alert ${t.alertSide} at ${clockOf(t.alertMinute)}; the side (${right}) at ${clockOf(m)}, stock ${stock.toFixed(2)} from ${t.stockRef.toFixed(2)}`;
     if (t.dry) {
-      leg.orders.push({
+      t.leg.qty = t.leg.bought = qty;
+      t.leg.cost = got.quote.ask;
+      t.leg.orders.push({
         at: this.o.now(),
         side: "buy",
-        qty: n,
-        reason: "the wrong leg's money",
+        qty,
+        reason: "the side",
         jobId: null,
         settled: true,
-        price: m.ask,
+        price: got.quote.ask,
       });
-      leg.cost = (leg.cost * leg.bought + m.ask * n) / (leg.bought + n);
-      leg.bought += n;
-      leg.qty += n;
+      t.phase = "open";
+      t.best = stock;
       this.o.store.saveTrade(t);
-      this.event(
-        "order",
-        `Would buy ${n} more ${t.symbol} ${this.words(leg.contract)} at ${m.ask.toFixed(2)} with the wrong leg's money`,
+      this.outcome(
+        t.day,
+        t.symbol,
+        "would-trade",
+        `${qty} × ${this.words(contract)} at ${got.quote.ask.toFixed(2)}`,
       );
+      await this.o.notify(`${strangleTag} (dry run): would buy`, [
+        `$${t.symbol} ${this.words(contract)}`,
+        `${qty} at ${got.quote.ask.toFixed(2)}`,
+        why,
+      ]);
       return;
     }
     const answer = await this.o.trading
       .buy({
-        contract: leg.contract,
-        qty: n,
+        contract,
+        qty,
         chase: true,
         chaseMs: chaseBuyMs,
-        stopPct: this.settings().safetyStopPct,
+        stopPct: s.safetyStopPct,
         tag: strangleTag,
-        note: `The ${legName(other(l))}'s money into the ${legName(l)}`,
+        note: why,
       })
       .catch(
         (error: unknown) =>
@@ -971,41 +863,30 @@ export class StrangleBot {
             refused: [error instanceof Error ? error.message : String(error)],
           }) as { status: string; jobId?: string; refused?: string[] },
       );
-    if (answer.status !== "started" || !answer.jobId) {
-      this.event(
-        "error",
-        `${t.symbol}: buying more of the ${legName(l)} was refused (${(answer.refused ?? []).join("; ")})`,
-      );
-      this.o.store.saveTrade(t);
-      return;
-    }
-    leg.orders.push({
+    if (answer.status !== "started" || !answer.jobId)
+      return fail("refused", (answer.refused ?? [answer.status]).join("; "));
+    t.leg.orders.push({
       at: this.o.now(),
       side: "buy",
-      qty: n,
-      reason: "the wrong leg's money",
+      qty,
+      reason: "the side",
       jobId: answer.jobId,
       settled: false,
     });
+    t.phase = "buying";
+    t.best = stock;
     this.o.store.saveTrade(t);
-    this.event(
-      "order",
-      `Buying ${n} more ${t.symbol} ${this.words(leg.contract)} with the wrong leg's money`,
-    );
+    this.outcome(t.day, t.symbol, "traded", `${qty} × ${this.words(contract)}`);
   }
 
-  private async sellLeg(
-    t: StrangleTrade,
-    l: Leg,
-    reason: string,
-    mid: number | null,
-  ) {
-    const leg = t.legs[l];
+  private async sellLeg(t: StrangleTrade, reason: string, mid: number | null) {
+    const leg = t.leg!;
     const qty = leg.qty;
     if (qty <= 0) {
       this.o.store.saveTrade(t);
       return;
     }
+    t.closeReason = reason;
     if (t.dry) {
       const price = mid ?? 0;
       leg.orders.push({
@@ -1018,23 +899,19 @@ export class StrangleBot {
         price,
       });
       leg.qty = 0;
-      if (t.legs.C.qty === 0 && t.legs.P.qty === 0) {
-        t.phase = "closed";
-        t.closedAt = this.o.now();
-      }
+      t.phase = "closed";
+      t.closedAt = this.o.now();
       this.o.store.saveTrade(t);
+      const { paid, got } = tradeCash(t);
       this.event(
         "order",
         `Would sell ${qty} ${t.symbol} ${this.words(leg.contract)} at ${price.toFixed(2)}: ${reason}`,
       );
-      if (t.phase === "closed") {
-        const { paid, got } = tradeCash(t);
-        await this.o.notify(`${strangleTag} (dry run): closed`, [
-          `$${t.symbol}`,
-          `paid ${paid.toFixed(0)}, got ${got.toFixed(0)} (${paid > 0 ? ((got / paid - 1) * 100).toFixed(0) : "—"}%)`,
-          reason,
-        ]);
-      }
+      await this.o.notify(`${strangleTag} (dry run): would sell`, [
+        `$${t.symbol} ${this.words(leg.contract)}`,
+        `paid ${paid.toFixed(0)}, got ${got.toFixed(0)} (${paid > 0 ? ((got / paid - 1) * 100).toFixed(0) : "—"}%)`,
+        reason,
+      ]);
       return;
     }
     const answer = await this.o.trading
@@ -1065,6 +942,7 @@ export class StrangleBot {
       jobId: answer.jobId,
       settled: false,
     });
+    t.phase = "closing";
     this.o.store.saveTrade(t);
     this.event(
       "order",
@@ -1075,16 +953,16 @@ export class StrangleBot {
   private async summary(date: string) {
     const trades = this.o.store
       .recentTrades(date)
-      .filter((t) => t.day === date);
+      .filter((t) => t.day === date && t.leg);
     const signals = this.o.store.signals(date);
-    let paid = 0,
-      got = 0;
+    let paid = 0;
+    let got = 0;
     for (const t of trades) {
       const c = tradeCash(t);
       paid += c.paid;
       got += c.got;
     }
-    const line = `${signals.length} first alerts, ${trades.length} strangles; paid ${paid.toFixed(0)}, got ${got.toFixed(0)}`;
+    const line = `${signals.length} first alerts, ${trades.length} trades; paid ${paid.toFixed(0)}, got ${got.toFixed(0)}`;
     this.event("info", `Day ${date}: ${line}`);
     if (trades.length)
       await this.o.notify(`${strangleTag}: the day`, [date, line]);
@@ -1099,9 +977,8 @@ export class StrangleBot {
     const view = (t: StrangleTrade) => {
       const cash = tradeCash(t);
       const marks = this.marks.get(t.id) ?? null;
-      const openValue = marks
-        ? (t.legs.C.qty * (marks.C ?? 0) + t.legs.P.qty * (marks.P ?? 0)) * 100
-        : null;
+      const openValue =
+        marks && t.leg ? t.leg.qty * (marks.leg ?? 0) * 100 : null;
       return { ...t, paid: cash.paid, got: cash.got, marks, openValue };
     };
     const fav = this.watchlist();
@@ -1120,7 +997,10 @@ export class StrangleBot {
       news: { earnings: this.earningsState, premarket: this.preState },
       signals: this.o.store.signals(day),
       open: this.o.store.openTrades().map(view),
-      trades: this.o.store.recentTrades(since).map(view),
+      trades: this.o.store
+        .recentTrades(since)
+        .filter((t) => t.leg !== null && t.leg.bought > 0)
+        .map(view),
       events: this.o.store.events(200),
     };
   }

@@ -1,9 +1,9 @@
 import { DatabaseSync } from "node:sqlite";
 
-// The strangle bot's records (docs/tasks/backend-strangle-bot.md), in the
+// The alert leg bot's records (docs/tasks/backend-strangle-bot.md), in the
 // trading service's database next to the Indi bot's, in tables of its own:
-// every first alert and what came of it, every trade with both legs, each
-// order and why, its settings and its activity feed.
+// every first alert and what came of it, every trade with its leg, each order
+// and why, its settings and its activity feed.
 
 export type StrangleEventKind = "info" | "signal" | "skip" | "order" | "error";
 
@@ -43,7 +43,10 @@ export interface StrangleLeg {
   orders: StrangleOrder[];
 }
 
-export type StranglePhase = "buying" | "open" | "kept" | "closing" | "closed";
+// watching: the alert came, waiting for the side; buying: the leg's buy is
+// working; open: held; closing: the sale is working; closed.
+export type StranglePhase =
+  "watching" | "buying" | "open" | "closing" | "closed";
 
 export interface StrangleTrade {
   id: string;
@@ -52,13 +55,12 @@ export interface StrangleTrade {
   alertMinute: number;
   alertSide: "up" | "down";
   unit: number; // the stock's typical 30-minute move, a fraction of its price
-  stockAtFill: number | null;
-  legs: { C: StrangleLeg; P: StrangleLeg };
+  stockRef: number; // the stock when the alert was read; the side is measured from here
+  side: "C" | "P" | null;
+  sideMinute: number | null;
+  best: number | null; // the stock's best since the buy, the side's way
+  leg: StrangleLeg | null;
   phase: StranglePhase;
-  kept: "C" | "P" | null;
-  confirmMinute: number | null;
-  peak: number | null; // the kept leg's highest mark since kept
-  recycled: boolean; // the wrong leg's money has gone into the kept leg
   closeReason: string | null;
   dry: boolean;
   openedAt: number;
@@ -190,15 +192,14 @@ export class StrangleStore {
   }
 }
 
-/** Dollars paid and got back for a trade so far (both legs, every fill). */
+/** Dollars paid and got back for a trade so far (every settled fill). */
 export function tradeCash(t: StrangleTrade): { paid: number; got: number } {
   let paid = 0;
   let got = 0;
-  for (const leg of [t.legs.C, t.legs.P])
-    for (const o of leg.orders) {
-      if (!o.settled || o.price === undefined) continue;
-      if (o.side === "buy") paid += o.qty * o.price * 100;
-      else got += o.qty * o.price * 100;
-    }
+  for (const o of t.leg?.orders ?? []) {
+    if (!o.settled || o.price === undefined) continue;
+    if (o.side === "buy") paid += o.qty * o.price * 100;
+    else got += o.qty * o.price * 100;
+  }
   return { paid, got };
 }

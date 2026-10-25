@@ -16,7 +16,7 @@ import { readJson } from "./api.js";
 import { usePolling } from "./Live.js";
 import { israelClock, israelLabel } from "./time.js";
 
-// The strangle bot's tab (docs/tasks/backend-strangle-bot.md): what it does
+// The alert leg bot's tab (docs/tasks/backend-strangle-bot.md): what it does
 // today, its trades, and, for the account owner, its settings. A separate
 // bot on its own paper account; nothing here touches the Indi bot.
 
@@ -33,31 +33,34 @@ const legWords = (contract: string) => {
     : contract;
 };
 const phaseWords: Record<StrangleTradeView["phase"], string> = {
-  buying: "buying both legs",
-  open: "both legs on, waiting for the side",
-  kept: "riding the kept leg",
+  watching: "watching for the side",
+  buying: "buying the leg",
+  open: "held, watching the give-back",
   closing: "selling",
   closed: "closed",
 };
 const outcomeWords: Record<string, string> = {
-  traded: "bought the strangle",
+  watching: "watching for the side",
+  traded: "bought the leg",
   "would-trade": "would buy (dry run)",
+  no_side: "no side in time",
   no_expiry: "no same-day expiry",
   no_strikes: "no strikes",
   no_prices: "no prices",
-  too_cheap: "a leg too cheap",
-  thin: "a leg too thin",
-  too_small: "size buys less than a pair",
+  too_cheap: "the leg too cheap",
+  thin: "the leg too thin",
+  too_small: "the size buys no contract",
   max_trades: "the day's trades are used",
   max_open: "too many open",
   day_loss: "day loss limit",
   earnings: "earnings day",
   premarket: "busy pre-market",
+  strength: "strength disagrees",
   refused: "refused by the risk rules",
   error: "failed",
 };
 
-/** The trade's result: what came back plus what is still held at its marks, against what was paid. */
+/** The trade's result: what came back plus what is still held at its mark. */
 function result(t: StrangleTradeView): { pnl: number; pct: number | null } {
   const value = t.got + (t.phase === "closed" ? 0 : (t.openValue ?? 0));
   const pnl = value - t.paid;
@@ -67,10 +70,7 @@ function result(t: StrangleTradeView): { pnl: number; pct: number | null } {
 function TradeRow({ t }: { t: StrangleTradeView }) {
   const [open, setOpen] = useState(false);
   const r = result(t);
-  const orders = [
-    ...t.legs.C.orders.map((o) => ({ ...o, leg: t.legs.C.contract })),
-    ...t.legs.P.orders.map((o) => ({ ...o, leg: t.legs.P.contract })),
-  ].sort((a, b) => a.at - b.at);
+  const leg = t.leg;
   return (
     <>
       <tr
@@ -86,7 +86,7 @@ function TradeRow({ t }: { t: StrangleTradeView }) {
         <td>
           {clockOf(t.alertMinute)} {t.alertSide === "up" ? "▲" : "▼"}
         </td>
-        <td>{t.kept ? (t.kept === "C" ? "call" : "put") : "—"}</td>
+        <td>{leg ? `${leg.bought} × ${legWords(leg.contract)}` : "—"}</td>
         <td className="muted small">
           {t.phase === "closed"
             ? (t.closeReason ?? "closed")
@@ -102,11 +102,22 @@ function TradeRow({ t }: { t: StrangleTradeView }) {
         <tr className="st-detail">
           <td colSpan={7}>
             <ol className="st-fills">
-              {orders.map((o, i) => (
+              <li>
+                <span className="muted">{clockOf(t.alertMinute)}</span> Volume
+                alert {t.alertSide}, stock {t.stockRef.toFixed(2)}; the side at
+                ±{(t.unit * 100 * 0.25).toFixed(2)}%
+              </li>
+              {t.sideMinute !== null && (
+                <li>
+                  <span className="muted">{clockOf(t.sideMinute)}</span> The
+                  side: the {t.side === "C" ? "call" : "put"}
+                </li>
+              )}
+              {(leg?.orders ?? []).map((o, i) => (
                 <li key={i}>
                   <span className="muted">{israelClock(o.at)}</span>{" "}
                   {o.side === "buy" ? "Buy" : "Sell"} {o.qty} ×{" "}
-                  {legWords(o.leg)}
+                  {legWords(leg!.contract)}
                   {o.price !== undefined && ` at ${o.price.toFixed(2)}`}
                   <span className="muted small">
                     {" "}
@@ -117,11 +128,11 @@ function TradeRow({ t }: { t: StrangleTradeView }) {
               ))}
             </ol>
             <p className="muted small">
-              Call {legWords(t.legs.C.contract)}, put{" "}
-              {legWords(t.legs.P.contract)}; stock at the fill{" "}
-              {t.stockAtFill?.toFixed(2) ?? "—"}; the side at ±
-              {(t.unit * 100 * 0.25).toFixed(2)}% of it (a quarter of a typical
-              30-minute move, {(t.unit * 100).toFixed(2)}%).
+              A typical 30-minute move of {t.symbol} is{" "}
+              {(t.unit * 100).toFixed(2)}%: the side at a quarter of it, the
+              sale when the stock gives back {(t.unit * 100 * 0.75).toFixed(2)}%
+              from its best
+              {t.best ? ` (best so far ${t.best.toFixed(2)})` : ""}.
             </p>
           </td>
         </tr>
@@ -140,8 +151,8 @@ export function StrangleActivity({ onSettings }: { onSettings?: () => void }) {
     return (
       <p className={error ? "notice error" : "chart-status"}>
         {error
-          ? `The strangle bot is unavailable: ${error}`
-          : "Loading the strangle bot…"}
+          ? `The alert leg bot is unavailable: ${error}`
+          : "Loading the alert leg bot…"}
       </p>
     );
   const closed = v.trades.filter((t) => t.phase === "closed");
@@ -158,7 +169,7 @@ export function StrangleActivity({ onSettings }: { onSettings?: () => void }) {
     <div className="bot-panel">
       <section className="bot-card">
         <div className="bs-card-head">
-          <h2>🎯 Alert strangle</h2>
+          <h2>🎯 Alert leg</h2>
           <span className={v.enabled ? "small bs-good" : "small muted"}>
             {state}
           </span>
@@ -255,7 +266,7 @@ export function StrangleActivity({ onSettings }: { onSettings?: () => void }) {
                   <th>Day</th>
                   <th>Stock</th>
                   <th>Alert</th>
-                  <th>Kept</th>
+                  <th>Leg</th>
                   <th>State</th>
                   <th className="num">Paid</th>
                   <th className="num">Result</th>
@@ -381,14 +392,14 @@ const groups: { title: string; specs: Spec[] }[] = [
       {
         key: "waitMinutes",
         label: "Wait for the side",
-        help: "No side by then: both legs out.",
+        help: "No side by then: no trade.",
         fmt: (v) => `${v} min`,
       },
       {
-        key: "trailPct",
-        label: "Trail on the kept leg",
-        help: "Sold when it closes this far under its high.",
-        fmt: pct,
+        key: "giveBackUnits",
+        label: "Sell on the stock's give-back",
+        help: "Of its typical 30-minute move, from its best since the buy.",
+        fmt: (v) => `${v.toFixed(2)}×`,
       },
       {
         key: "endMinute",
@@ -400,24 +411,14 @@ const groups: { title: string; specs: Spec[] }[] = [
   },
 ];
 const switches: {
-  key:
-    | "recycle"
-    | "strengthFilter"
-    | "skipEarnings"
-    | "skipPremarket"
-    | "followFavorites";
+  key: "strengthFilter" | "skipEarnings" | "skipPremarket" | "followFavorites";
   label: string;
   help: string;
 }[] = [
   {
-    key: "recycle",
-    label: "Wrong leg's money into the right one",
-    help: "The D bonus: at the side, what the wrong leg brings back buys more of the kept leg.",
-  },
-  {
     key: "strengthFilter",
     label: "Strength must agree",
-    help: "Keep the side only when the stock's strength vs SPY since the open points the same way; else both out.",
+    help: "Buy only when the stock's strength vs SPY since the open points the way of the side; else no trade.",
   },
   {
     key: "skipEarnings",
@@ -466,8 +467,8 @@ export function StrangleSettingsPage({ onBack }: { onBack: () => void }) {
     return (
       <p className={state.step === "failed" ? "notice error" : "notice"}>
         {state.step === "failed"
-          ? `The strangle bot's settings are unavailable: ${state.message}`
-          : "Loading the strangle bot's settings…"}
+          ? `The alert leg bot's settings are unavailable: ${state.message}`
+          : "Loading the alert leg bot's settings…"}
       </p>
     );
   const put = (patch: Partial<StrangleSettings>) => {
@@ -507,7 +508,7 @@ export function StrangleSettingsPage({ onBack }: { onBack: () => void }) {
       "Unsaved changes. Stocks apply from the next session, the rest from the next minute.";
     statusTone = "bs-changed";
   } else if (state.step === "saved") {
-    status = "Saved. The strangle bot uses the new settings.";
+    status = "Saved. The alert leg bot uses the new settings.";
     statusTone = "bs-good";
   }
   const addTickers = () => {
@@ -523,11 +524,11 @@ export function StrangleSettingsPage({ onBack }: { onBack: () => void }) {
       <div className="bs-head">
         <div className="bs-title">
           <button type="button" className="bs-back" onClick={onBack}>
-            ← Back to the strangle
+            ← Back to the alert leg
           </button>
-          <h2 className="portfolio-title">Strangle settings</h2>
+          <h2 className="portfolio-title">Alert leg settings</h2>
           <p className="muted small">
-            Only you see this page. Everyone else sees the Strangle tab,
+            Only you see this page. Everyone else sees the Alert leg tab,
             read-only.
           </p>
         </div>
@@ -539,7 +540,7 @@ export function StrangleSettingsPage({ onBack }: { onBack: () => void }) {
             onClick={() => put({ enabled: !s.enabled })}
           >
             <span className={s.enabled ? "dot on" : "dot"} aria-hidden="true" />
-            {s.enabled ? "Strangle on" : "Strangle off"}
+            {s.enabled ? "On" : "Off"}
           </button>
           <div className="bs-seg" role="group" aria-label="Mode">
             <button

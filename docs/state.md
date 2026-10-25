@@ -47,13 +47,13 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
 
 See the [task](tasks/backend-indi-bot.md).
 
-## In progress: the alert strangle, a second bot (2026-10-25)
+## In progress: the alert leg, a second bot (2026-10-25)
 
 A separate bot on its own Alpaca paper account (`STRANGLE_ALPACA_API_KEY`), with its own Portfolio tab
-(Activity, Trades, Settings): on the first volume alert of an expiry day, a 0.35-delta strangle; the wrong leg
-sold once the stock moves a quarter of its 30-minute norm, its money into the right leg, a 30% trail. Parity
-307/307 with the backtest. Waiting for the account; starts off and in dry run. See the
-[task](tasks/backend-strangle-bot.md).
+(🎯 Alert leg: Activity, Trades, Settings): on the first volume alert of an expiry day it waits for the side (a
+quarter of the stock's typical 30-minute move), buys only that side's 0.35-delta same-day leg and sells when the
+stock gives back 0.75 of that move from its best. Parity 497/499 with the backtest. Waiting for the account;
+starts off and in dry run. See the [task](tasks/backend-strangle-bot.md).
 
 ## Live prices every second: Watchlist and charts (2026-10-19)
 

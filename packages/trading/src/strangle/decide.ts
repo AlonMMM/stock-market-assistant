@@ -35,32 +35,31 @@ export const waitedOut = (
   s: Pick<StrangleSettings, "waitMinutes">,
 ) => minute - alertMinute >= s.waitMinutes;
 
-/** The kept leg is sold when it closes `trailPct` under its high, or at the end minute. */
-export function keptExit(
-  mark: number,
-  peak: number,
+/**
+ * The exit: "giveback" once the stock is `giveBackUnits` typical 30-minute
+ * moves (`unit`, a fraction of the price) back from its best since the buy
+ * (its high for a call, its low for a put), "end" at the end minute.
+ */
+export function giveBackExit(
+  stock: number,
+  best: number,
+  side: Leg,
+  unit: number,
   minute: number,
-  s: Pick<StrangleSettings, "trailPct" | "endMinute">,
-): "trail" | "end" | null {
+  s: Pick<StrangleSettings, "giveBackUnits" | "endMinute">,
+): "giveback" | "end" | null {
   if (minute >= s.endMinute) return "end";
-  if (peak > 0 && mark <= peak * (1 - s.trailPct / 100)) return "trail";
-  return null;
+  if (!(stock > 0) || !(best > 0)) return null;
+  const back = side === "C" ? 1 - stock / best : stock / best - 1;
+  return back >= s.giveBackUnits * unit ? "giveback" : null;
 }
 
-/** Contracts of each leg for a pair costing `sizePct` of `equity` at these mids. */
-export function pairQty(
-  equity: number,
-  sizePct: number,
-  callMid: number,
-  putMid: number,
-): number {
-  const pair = (callMid + putMid) * 100;
-  if (!(pair > 0) || !(equity > 0)) return 0;
-  return Math.floor((equity * sizePct) / 100 / pair);
-}
+/** The stock's best since the buy, in the side's direction. */
+export const bestOf = (best: number, stock: number, side: Leg) =>
+  side === "C" ? Math.max(best, stock) : Math.min(best, stock);
 
-/** Contracts of the kept leg the wrong leg's money buys at `ask`. */
-export function recycleQty(proceeds: number, ask: number): number {
-  if (!(ask > 0) || !(proceeds > 0)) return 0;
-  return Math.floor(proceeds / (ask * 100));
+/** Contracts of the leg costing `sizePct` of `equity` at `price`. */
+export function legQty(equity: number, sizePct: number, price: number): number {
+  if (!(price > 0) || !(equity > 0)) return 0;
+  return Math.floor((equity * sizePct) / 100 / (price * 100));
 }
