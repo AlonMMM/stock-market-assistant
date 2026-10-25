@@ -7112,3 +7112,74 @@ i.added {
     flex: 1;
   }
 }
+
+/* The strangle bot's tab (docs/tasks/backend-strangle-bot.md): the Bot tab's
+   cards and tokens, plus its trade table. */
+.bot-panel .st-total {
+  margin: 4px 0 0;
+  font-size: 26px;
+  font-weight: 650;
+}
+.bot-panel .up {
+  color: var(--bot-up);
+}
+.bot-panel .down {
+  color: var(--bot-down);
+}
+.st-table-wrap {
+  overflow-x: auto;
+}
+.st-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.st-table th,
+.st-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--bot-line);
+  text-align: left;
+  white-space: nowrap;
+}
+.st-table th {
+  color: var(--bot-faint);
+  font-weight: 600;
+}
+.st-table .num {
+  text-align: right;
+}
+.st-row {
+  cursor: pointer;
+}
+.st-row:hover td {
+  background: var(--bot-up-soft);
+}
+.st-detail td {
+  white-space: normal;
+}
+.st-fills {
+  margin: 4px 0 6px;
+  padding-left: 1.4em;
+}
+.st-alerts,
+.st-events,
+.st-tickers {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.st-tickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.st-ev-error {
+  color: var(--bot-down);
+}
+.st-ev-order {
+  font-weight: 600;
+}

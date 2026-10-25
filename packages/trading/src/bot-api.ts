@@ -99,6 +99,8 @@ export interface BotView {
 export async function handleBotStatus(
   trader: { url?: string; token?: string },
   fetcher: typeof fetch = fetch,
+  // The strangle bot answers at /v1/strangle (docs/tasks/backend-strangle-bot.md).
+  path = "/v1/bot",
 ): Promise<{ status: number; body: BotView | { error: string } }> {
   if (!trader.url || !trader.token)
     return {
@@ -106,7 +108,7 @@ export async function handleBotStatus(
       body: { error: "The trading service is not configured for this site" },
     };
   try {
-    const response = await fetcher(new URL("/v1/bot", trader.url), {
+    const response = await fetcher(new URL(path, trader.url), {
       headers: { Authorization: `Bearer ${trader.token}` },
       signal: AbortSignal.timeout(15000),
     });
@@ -191,6 +193,7 @@ export async function handleBotSettings(
     requestOrigin: string | null;
   },
   fetcher: typeof fetch = fetch,
+  path = "/v1/bot/settings",
 ): Promise<{ status: number; body: unknown }> {
   const reading = request.method === "GET";
   if (!reading && request.method !== "PUT")
@@ -213,7 +216,7 @@ export async function handleBotSettings(
       body: { error: "The trading service is not configured for this site" },
     };
   try {
-    const response = await fetcher(new URL("/v1/bot/settings", config.url), {
+    const response = await fetcher(new URL(path, config.url), {
       method: request.method,
       headers: {
         Authorization: `Bearer ${token}`,

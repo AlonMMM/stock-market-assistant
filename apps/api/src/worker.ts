@@ -77,6 +77,7 @@ const portfolio = new PortfolioCache();
 // The bot's own paper account (docs/tasks/backend-bot-account.md) has its own
 // cache: the two accounts answer the same Alpaca paths.
 const botPortfolio = new PortfolioCache();
+const stranglePortfolio = new PortfolioCache();
 import { handleCandles } from "../../../packages/market-data/src/candles.js";
 import { handleChartBars } from "../../../packages/market-data/src/chart-bars.js";
 import { handleTradeChart } from "../../../packages/market-data/src/trade-chart.js";
@@ -258,6 +259,8 @@ export default {
       // (docs/tasks/backend-bot-account.md). Unset: the tab says so.
       BOT_ALPACA_API_KEY?: string;
       BOT_ALPACA_API_SECRET?: string;
+      STRANGLE_ALPACA_API_KEY?: string;
+      STRANGLE_ALPACA_API_SECRET?: string;
       // The trading service and its read-only token, for the Orders tab.
       TRADER_URL?: string;
       TRADER_READ_TOKEN?: string;
@@ -590,6 +593,90 @@ export default {
         env.BARS_CACHE ? stores(env.BARS_CACHE).baselines : undefined,
         env.BARS_CACHE ? stores(env.BARS_CACHE).strengths : undefined,
         env.BARS_CACHE ? stores(env.BARS_CACHE).sigmas : undefined,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    // The strangle bot (docs/tasks/backend-strangle-bot.md): its status and
+    // settings from the trading service, its account read with its own keys.
+    if (path === "/api/strangle") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const result = await handleBotStatus(
+        { url: env.TRADER_URL, token: env.TRADER_READ_TOKEN },
+        fetch,
+        "/v1/strangle",
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path === "/api/strangle/settings") {
+      let body: unknown;
+      if (request.method === "PUT")
+        try {
+          const text = await request.text();
+          if (text.length > 16384)
+            return Response.json(
+              { error: "Request too large" },
+              { status: 413 },
+            );
+          body = JSON.parse(text);
+        } catch {
+          return Response.json(
+            { error: "Expected JSON object" },
+            { status: 400 },
+          );
+        }
+      const result = await handleBotSettings(
+        {
+          owner: env.TRADE_OWNER_EMAIL,
+          url: env.TRADER_URL,
+          token: env.TRADER_TOKEN,
+          readToken: env.TRADER_READ_TOKEN,
+        },
+        identity,
+        {
+          method: request.method,
+          body,
+          origin: new URL(request.url).origin,
+          requestOrigin: request.headers.get("Origin"),
+        },
+        fetch,
+        "/v1/strangle/settings",
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (
+      path === "/api/portfolio/strangle" ||
+      path === "/api/portfolio/strangle/history"
+    ) {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const result = await handleBotPortfolio(
+        {
+          key: env.STRANGLE_ALPACA_API_KEY,
+          secret: env.STRANGLE_ALPACA_API_SECRET,
+        },
+        path === "/api/portfolio/strangle"
+          ? undefined
+          : (new URL(request.url).searchParams.get("period") ?? ""),
+        stranglePortfolio,
+        fetch,
+        Date.now(),
+        "The strangle bot's Alpaca paper account is not connected (STRANGLE_ALPACA_API_KEY and STRANGLE_ALPACA_API_SECRET)",
       );
       return Response.json(result.body, {
         status: result.status,
