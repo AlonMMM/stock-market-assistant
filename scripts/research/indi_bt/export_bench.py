@@ -6,6 +6,8 @@ list with the 10% overnight cap, in the dashboard's trades / paths / bars file s
   d25-cheap    2.5 + the cheap fallback (under $0.20: the nearest-the-money strike at $0.20 or more; cheap_up.py)
   d24-adj      2.4 + the next strike on each side when the 0.15-delta one is illiquid (hot_fit_test.py adj)
   d25-nofloor  2.5 + a D2 entry buys under the 200-contract floor (d2_liquid.py nofloor; the fill is unproven)
+  d25-adjd2    2.5 + the next strike, only for a D2 entry (t < 1.8) whose 0.15-delta strike is illiquid
+  d25-cheap-adjd2 / d25-cheap-nofloor   the same two on top of the cheap fallback
 
   node --env-file=.env <dir>/run.mjs export_bench.py <out dir>      (from the repo root)
 """
@@ -33,6 +35,10 @@ VERSIONS = {
     "d25-cheap": ("2.5 + the cheap fallback", "sg_c12_15", CHAMP, "cheap"),
     "d24-adj": ("2.4 + the next strike when illiquid", "s_t18r15", cu2.BOT24, "adj"),
     "d25-nofloor": ("2.5 + D2 entries buy under 200 contracts (fill unproven)", "sg_c12_15", CHAMP, "nofloor"),
+    # the user, 2026-10-25: "where is next strike only for D2?"; "combination with d2 entries and fill under 200 + cheap fallback"
+    "d25-adjd2": ("2.5 + the next strike, D2 entries only", "sg_c12_15", CHAMP, "adjd2"),
+    "d25-cheap-adjd2": ("2.5 + cheap + the next strike for D2 entries", "sg_c12_15", CHAMP, "cheap+adjd2"),
+    "d25-cheap-nofloor": ("2.5 + cheap + D2 entries buy under 200 contracts (fill unproven)", "sg_c12_15", CHAMP, "cheap+nofloor"),
 }
 SIZES = (0.01, 0.02, 0.03, 0.04, 0.05)
 
@@ -44,6 +50,12 @@ def contract(t, fb):
     if fb == "cheap" and t["status"] == "too_cheap": c, _ = cu.choose(cu.candidates(t["sym"], t["date"], m, t["right"], spot), "cheap")
     if fb == "adj" and t["status"] == "illiquid": c, _ = hf.choose(cu.candidates(t["sym"], t["date"], m, t["right"], spot), "adj", t["sym"], t["right"])
     if fb == "nofloor" and t["status"] == "illiquid" and float(t["c_t"]) < 1.8: c, _ = dl.pick_at(t, m, spot, False, floor=False)
+    if fb == "cheap+nofloor": c, _ = dl.pick_at(t, m, spot, True, floor=float(t["c_t"]) >= 1.8)
+    if fb in ("adjd2", "cheap+adjd2"):
+        cheap = fb.startswith("cheap")
+        cands = cu.candidates(t["sym"], t["date"], m, t["right"], spot)
+        c, why = cu.choose(cands, "cheap" if cheap else "plain")
+        if not c and why == "illiquid" and float(t["c_t"]) < 1.8: c = hf.choose(cands, "cheap_adj" if cheap else "adj", t["sym"], t["right"])[0]
     return (c[0], c[1]) if c else None
 
 
