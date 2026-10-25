@@ -78,5 +78,30 @@ def main():
             print(f"| {v[0]} | {len(T)} | {sum(r[4] > 0 for r in T)} | {per:+,.0f} | ${a1:,.0f} / {100 * d1:.0f}% | ${a2:,.0f} / {100 * d2:.0f}% | ${a5:,.0f} | {best} |", flush=True)
 
 
+def export(out):
+    """The Favorites trades for the Bot vs Indi dashboard: versions fav12:<slug> (the last 12 months) and fav6:<slug> (the
+    last 6, the same trades from 2026-04-23 with their own account), in export_bench.py's shapes; paths and bars of these
+    trades only (the dashboard's paths_fav and the bars appended to the fair list's)."""
+    S = signals()
+    jobs = [(slug, t) for slug, v in V.items() for t in S[("fav", v[1])] if t["status"] == "ok" or v[3]]
+    with mp.Pool(6) as pool: R = [r for r in pool.map(eb.one, jobs, chunksize=8) if r]
+    rows, paths = [], []
+    for row, path in R:
+        for pre, a in (("fav12", A12), ("fav6", A6)):
+            if row["date"] < a: continue
+            rows.append(dict(row, version=f"{pre}:{row['version']}", key=f"{pre}:{row['key']}"))
+            paths.append(dict(path, key=f"{pre}:{path['key']}"))
+    keys = set()
+    for r in rows:
+        i = CAL.index(r["date"])
+        for s in (r["sym"], "SPY"): keys.add((s, r["date"], CAL[i - 1]))
+    bars = [dict(key=f"{s}|{d}", prev_date=pd, closes=" ".join(eb.closes5(eb.day(s, pd)) + eb.closes5(eb.day(s, d)))) for s, d, pd in sorted(keys)]
+    for fname, data in (("fav_trades.csv", rows), ("fav_paths.csv", paths), ("fav_bars.csv", bars)):
+        with open(f"{out}/{fname}", "w") as f:
+            w = csv.DictWriter(f, fieldnames=list(data[0].keys())); w.writeheader(); w.writerows(data)
+        print(fname, len(data), "rows", os.path.getsize(f"{out}/{fname}") // 1024, "KB")
+
+
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:2] == ["export"]: export(sys.argv[2])
+    else: main()
