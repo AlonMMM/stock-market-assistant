@@ -33,9 +33,7 @@ B = "data/local/x/bt"
 SPAN = {"2024": ("2024-02-01", "2024-12-31"), "2025": ("2025-01-02", "2025-12-31"), "2026": ("2026-01-02", "2026-10-12")}
 FIRST, LAST, MIN_STEPS = 10, 374, 10
 T_MIN, RV_MIN = 1.8, 1.5
-# The alert's rule (rvol-v6 defaults).
-WIN, THRESHOLD, PACE, MIN_VOL, PRICE_MULT, MIN_MOVE = 3, 4.0, 4.0, 10000, 3.0, 0.5
-PACE_SKIP_OPEN, PACE_SKIP_CLOSE, PACE_MIN_MINUTES = 30, 30, 15
+from rvol_alert import WIN, THRESHOLD, PACE, MIN_VOL, PRICE_MULT, MIN_MOVE, PACE_SKIP_OPEN, PACE_SKIP_CLOSE, PACE_MIN_MINUTES, med, windows, alerts  # noqa: E402
 TAG = os.environ.get("BT_TAG", "")  # output prefix s<TAG>_... (the champion at the same contract rules: s<TAG>_t18r15)
 # name -> (alert window in minutes, day-volume floor on the alert route); None: the champion, as a check
 RULES = {"t18r15": None, "ag5": (5, 0.0), "ag15": (15, 0.0), "ag5r10": (5, 1.0), "ag5r12": (5, 1.2)}
@@ -43,52 +41,6 @@ LAST_ENTRY = 374   # retries stop at 15:44, the signal window's end
 LABELS = {"vf5": "volume fade 5 min", "vf10": "volume fade 10 min", "vf20": "volume fade 20 min",
           "rt": "entry waits for 200 contracts", "rt_vf5": "waits for 200 contracts + fade 5 min"}
 if os.environ.get("BT_RULES"): RULES = {k: RULES[k] for k in os.environ["BT_RULES"].split(",")}
-
-
-def med(v):
-    v = sorted(v); k = len(v) // 2
-    return v[k] if len(v) % 2 else (v[k - 1] + v[k]) / 2
-
-
-def windows(bars):
-    """Per minute m: (window volume, |move| %) over bars m-2..m against the close at m-3, when those bars are all
-    present and contiguous; else None. Also the opens, closes, volumes and a presence flag by minute."""
-    by = {b[0]: b for b in bars}
-    out = [None] * 390
-    for m in range(WIN, 390):
-        if all(k in by for k in range(m - WIN, m + 1)):
-            vol = sum(by[k][5] for k in range(m - WIN + 1, m + 1))
-            move = abs(by[m][4] / by[m - WIN][4] - 1) * 100
-            out[m] = (vol, move)
-    return out, by
-
-
-def alerts(bars, hist):
-    """The alert's direction ('up' / 'down') or None at each minute of a day; hist: prior days' windows()."""
-    w, by = windows(bars)
-    out = [None] * 390
-    pace_vol, pace_n = 0, 0            # today's pace zone before the window
-    pace = lambda m: PACE_SKIP_OPEN <= m <= 389 - PACE_SKIP_CLOSE
-    for m in range(390):
-        b = by.get(m)
-        # pace zone volume up to and including the bar before the window (m - WIN)
-        k = m - WIN
-        if k >= 0 and pace(k) and k in by: pace_vol += by[k][5]; pace_n += 1
-        if w[m] is None or b is None: continue
-        actual, move = w[m]
-        samples = [h[m] for h in hist if h[m] is not None]
-        if len(samples) < 10: continue
-        expected, expected_move = med([s[0] for s in samples]), med([s[1] for s in samples])
-        ratio = actual / expected if expected > 0 else None
-        in_pace = all(pace(k) for k in range(m - WIN + 1, m + 1))
-        pace_ratio = actual / (pace_vol / pace_n * WIN) if in_pace and pace_n >= PACE_MIN_MINUTES and pace_vol > 0 else None
-        volume_ok = (ratio is not None and ratio >= THRESHOLD) or (pace_ratio is not None and pace_ratio >= PACE)
-        move_ok = move >= PRICE_MULT * expected_move and move >= MIN_MOVE
-        if not (volume_ok and move_ok and actual >= MIN_VOL): continue
-        prev = by[m - 1][4]
-        if b[4] > prev and b[4] > b[1]: out[m] = "up"
-        elif b[4] < prev and b[4] < b[1]: out[m] = "down"
-    return out
 
 
 def stock(sym):

@@ -75,6 +75,8 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                sell all at the first minute, `min` minutes or more after the entry, when the day's volume ratio is
                lower than `min` minutes earlier and still under `until`; once it reaches `until` the rule is off
                (user, 2026-10-24: "if the volume stops increasing and we are not reaching 1.5x, exit")
+  A alert silence (alert_silence {min}): entry day; no volume alert on the stock (rvol_alert.py, either direction)
+               in the `min` minutes after the entry -> sell all at that minute (user, 2026-10-25; built for 0DTE)
   F failed break (failed_break True): on the entry day, the stock reached the next level ahead and fell back without
                breaking it (failed_break_minute) -> sell all on the next bar (the user's chosen bot, 2026-10-23)
 Each trade's result is a return on the premium paid (`ret`, after costs); sizing is in report.py.
@@ -336,6 +338,13 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                     tt = min(t, 389); win = [sbars[m_] for m_ in range(tt - ST["window"] + 1, tt + 1) if m_ in sbars]
                     if win and (max(b[2] for b in win) - min(b[3] for b in win)) / win[-1][4] < ST["k"] * unit * (ST["window"] / 30) ** 0.5:
                         pending = ("all", "Q_still"); continue
+            AS = X.get("alert_silence")  # {min}: nothing happened on the stock since the entry (user, 2026-10-25)
+            if AS and k == 0 and t - minute >= AS["min"] and not st.get("as_done"):
+                st["as_done"] = True
+                from rvol_alert import alerts_for
+                al = alerts_for(und, d, cal)
+                if al is not None and not any(al[q] for q in range(minute + 1, min(t, 389) + 1)):
+                    pending = ("all", "A_silence"); continue
             VF = X.get("vol_fade")  # {min, until}: the alert-route entry whose day volume stops building (user, 2026-10-24)
             if VF and k == 0 and not st.get("vf_off"):
                 if "vf" not in st: st["vf"] = rvol_series(und, d, cal)
