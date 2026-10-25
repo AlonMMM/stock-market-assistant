@@ -963,3 +963,13 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     it often fails at exactly +5. On cheap: cheap+retry $1,551,002 / 13%, cheap+retryday $1,504,181 / 13%.
   Verdict: the retries are a few trades; nofloor is the largest result logged on the fair list, but its size depends on
   fills the backtest cannot see (no quotes), so it needs a live paper check of the real fills before it counts.
+- **The eight-version benchmark on the Favorites (`fav_bench.py`, 2026-10-25; the user: "the same benchmark on my
+  favorites, last 6 months? then last 12 months?"):** the 86 Favorites (23 of them added that day from the hot list, so
+  in-sample in stocks), lists.py runs fav86_24 / fav86_25, 10% night cap, 1% from $100,000. Last 12 months: 2.4
+  $176,352 / 9% ($83,541 without the best 5), 2.5 $192,534 / 12% ($82,775), 2.5 + cheap $239,826 / 14% ($99,337),
+  2.4 + next strike $165,870 / 18%, 2.5 + D2 under 200 $270,491 / 19%, 2.5 + next strike for D2 $238,367 / 13% (IONQ
+  2026-04-14 +221K), **2.5 + cheap + next strike for D2 $285,889 / 15% ($115,777)**, 2.5 + cheap + D2 under 200
+  $318,405 / 18% ($135,556). Last 6 months: 2.4 $118,562 / 9%, 2.5 $121,303 / 12%, 2.5 + cheap $155,536 / 14%,
+  2.5 + cheap + next strike for D2 $158,329 / 15%, 2.5 + cheap + D2 under 200 $173,090 / 18%; 2.4 + next strike
+  the worst ($108,746 / 18%). On the Favorites the money is the same few trades (ORCL 2026-04-13, QCOM 2026-05-05, MSTR
+  and IBIT 2026-08-19); without the best 5 only the cheap versions stay above $100,000 over 12 months.
