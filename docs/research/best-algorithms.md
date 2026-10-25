@@ -745,6 +745,15 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     Verdict: (1) helps where the strategy is weak and costs nothing where it is strong: worth a setting in the paper bot
     (skip the alert after a failed test of the day's high / low or yesterday's within 30 minutes), not proven; (2) is a
     regime effect (bad in 2026, good before), not a rule. Small groups everywhere (13–53 trades).
+  - **No strangle when the alert breaks a level (`strangle_break.py`, 2026-10-25, the user: "when we break support or
+    resistance - no need strangle"):** an alert whose close is 0.25 S30 beyond a level in its direction (yesterday's,
+    the 5-day, the first 15 minutes', the day's extremes before the window) and was not 3 minutes earlier; then only
+    the leg it points to, same contract, same fills, trail 30% (± a −30% stop), the same premium as the pair. More than
+    half the alerts are breaks (fair 173 of 307, favorites 107 of 192, mostly the day's own high / low), and the
+    stock went the break's way, by the strangle's own side, on only 56% of them (97 / 173; favorites 60 / 107). On the
+    breaks: strangle +658 a trade vs one leg +535 (+572 with the stop) on the fair list; favorites +460 vs −92 (−11).
+    As a rule (a break: one leg, else the strangle): fair $131,411 / 5% vs $134,414 / 3%; favorites $98,909 / 6% vs
+    $104,976 / 4%. Not better: a break fails almost as often as it holds, and the other leg is what pays then.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
