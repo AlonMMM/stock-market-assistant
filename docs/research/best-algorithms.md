@@ -1043,3 +1043,10 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     the best 5 (base $1,277,234 / 13%, $415,374). The pyramid alone $1,751,061 / 14% ($506,781). Against the candidate
     2.5 ($1,108,678 / 11%): more money for a point more drop; against the flat size with the same 12% drop (~$1.05M),
     +59%. Live it needs a second position in the same stock that day (the add) and per-trade sizes in the bot.
+  - **Half size at 16:40, more if it works (`open_scale.py`, the user: "entering in 16:40 - maybe half there too as it's
+    high variance, then increase on the next 0.15 delta if we are right and have more than 50% gain"):** on the pyramid
+    ($1,667,924 / 12%); 328 of 1,323 entries are at minute 10 (16:40 Israel), 528 in minutes 10-15. 16:40 entries at
+    half, no add $857,569 / 10% (-30% against the flat size with the same drop); + the add (a fresh 0.15-delta, half)
+    at +50% $958,349 / 11% (72 adds, -28%); at +100% $832,476 / 10% (52 adds, -35%); minutes 10-15 at half + the add at
+    +50% $933,930 / 10% (99 adds, -19%). Not better: the opening entries carry the money (halving them costs more than
+    a smaller flat size), and the add after +50% buys late, at a higher price, the move the first half already caught.
