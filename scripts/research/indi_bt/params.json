@@ -159,7 +159,8 @@
   "l2_on": true,
   "stock_stop": null,
   "user_stop": null,
-  "roll": null
+  "roll": null,
+  "night_cap": 0.1
  },
  "cost": {
   "spread_half": 0.02

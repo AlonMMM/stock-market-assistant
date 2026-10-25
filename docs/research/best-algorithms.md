@@ -32,6 +32,31 @@ The median paid price of a champion trade is $0.67, so the two commissions take 
 correction (5%, 10%) is the "Cost sensitivity" set on the Bot vs Indi dashboard. To re-state a stored trade at another
 rate without walking again: ret + (0.62 − rate) × (1 + shares sold) / (100 × paid price).
 
+**The overnight cap (the user's rule, 2026-10-25: "10% cap overnight ALWAYS and everywhere"):** what goes into the night is
+worth at most **10% of the account** (contracts × the 15:50 close × 100, against the account at the day's start); the part
+above it is sold at the close, as the live bot's `nightCapPct` (Bot settings page, 10% by default). `params.json`
+`exit.night_cap` = 0.10 (`BT_NIGHT_CAP` overrides, 0 = off); `sim.result(cost, steps, pct)` applies it for the size it is
+asked for (`sim.cap_steps`), 1% unless told (`size.risk_pct`), so a walk's stored steps stay uncapped and any size can be
+read from them. `lists.py` writes `ret` (1%, capped), `ret_2pct` and `ret_nocap`; `night_cap.py` applied it to every stored
+list and to both dashboards (a return per size in their trade files; the pages show the cap sale in the trade window at
+the chosen size). The cap binds rarely at 1% (5 nights of 130 on the champion's fair list) and often at 2% (25 nights):
+
+| Version | At 1%: no cap → cap | At 2%: no cap → cap |
+|---|---|---|
+| D2 bonus entry (champion), fair list | $1,005,221 / 11% → $1,108,678 / 11% | $6,384,240 / 21% → $5,321,917 / 21% |
+| the same, 151 unseen | $127,303 / 11% → $126,188 / 11% | $149,228 / 22% → $143,045 / 22% |
+| The current bot 2.4 (`bot24`) | $695,451 / 9% → $719,943 / 9% | $3,372,316 / 18% → $2,738,900 / 18% |
+| D2 + the sale (`d2-bot`) | $669,237 / 14% → $734,521 / 14% | $3,042,777 / 27% → $2,847,902 / 26% |
+| Rest stop -20% (`t18-rest20`) | $811,356 / 11% → $844,029 / 11% | $4,502,081 / 21% → $3,717,980 / 21% |
+| Favorites year, champion (`fav_d2`) | $183,487 / 14% → $183,253 / 14% | $284,993 / 26% → $243,846 / 26% |
+| Favorites year, current bot 2.4 (`fav_rest_bot`) | $179,263 / 12% (no night capped) | $279,558 / 23% → $256,924 / 23% |
+
+At 1% the cap even helps on the fair list (FSLR 2024-05-22: the excess sold at the close before a morning gap against,
++$113K of the 2024 gain); at 2% it costs 15-17% of the end result and leaves the worst drop as it was, because the drops
+come from the day trades, not the nights. **Every figure logged from here on carries the cap at the size it names**; the
+figures above this line and in the log below were computed before it (the cap moves a 1% figure by under 1% except where a
+capped night is named).
+
 1. **Fair list:** it ends higher than the champion on the stocks Indi traded the year before (no look-ahead), or
    ends about the same with a clearly smaller worst drop.
 2. **Every year positive** on the fair list (2024, 2025, 2026).
@@ -514,6 +539,13 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   2025-01-17, 130 of them fallbacks, where 2.5 alone had 61 trades and 11%). Cutting the losers tighter or taking gains
   reshapes each trade's loss but not the edge; only fewer fallback trades reduce the drop, and then the added money goes too.
   The fallbacks stay out of the bot; the drop lever remains the size (D2 at 1.75% ~ 2.4's drop at 2%).
+  **The overnight cap, everywhere (`night_cap.py`, 2026-10-25):** the user saw "Held overnight ... $541,545 at risk (34.7% of
+  the account)" in a trade window and asked for the live bot's 10% night cap always and everywhere. Done in the simulator
+  (`sim.cap_steps` / `sim.result(cost, steps, pct)`, `params.json` `exit.night_cap`, `BT_NIGHT_CAP`), in `lists.py`
+  (`ret`, `ret_2pct`, `ret_nocap`), on every stored list and on both dashboards (the trade files carry a return per size,
+  the pages apply the cap at the chosen size and show the cap sale in the trade window). The numbers are in "The overnight
+  cap" above the champion table. Also found and fixed: the Backtest Reports "Overnight" column read only the first fills
+  file, so every list whose fills are in parts 2-5 (the favorites lists) showed a dash.
 - **Second round, the user's changes (2026-10-24):** the contract's liquidity floor is 10 contracts in the last 30
     minutes instead of 200 ("contract liquidity is not my concern"), now the default in `params.json` (`min_vol30`; the
     live bot's `minVolume30` in `packages/trading/src/bot/picker.ts` is still 200), and the alert route needs day volume

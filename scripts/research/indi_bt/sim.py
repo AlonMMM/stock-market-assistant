@@ -98,6 +98,11 @@ LIMIT = os.environ.get("BT_LIMIT") is not None  # buy with a limit at the last o
 LIMIT_PAD = float(os.environ.get("BT_LIMIT") or 0)
 FILL = os.environ.get("BT_FILL")  # "close" / "mid": fill the buy on the signal bar; "open": the next bar's open
 COMM = P["size"]["commission"]
+RISK_PCT = P["size"]["risk_pct"]  # the size every result is reported at unless told otherwise (1% of the account)
+# The overnight cap (the user, 2026-10-25: "10% cap overnight ALWAYS and everywhere"): at 15:50 what is held into the
+# night is worth at most this share of the account, the excess sold at the close (as the live bot's nightCapPct). The
+# shares in a walk's steps are the uncapped ones; result() applies the cap for the size it is asked for.
+NIGHT_CAP = float(os.environ["BT_NIGHT_CAP"]) if os.environ.get("BT_NIGHT_CAP") is not None else float(X.get("night_cap") or 0)
 _exp = {}
 
 
@@ -494,7 +499,30 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
     return cost, steps, "expired"
 
 
-def result(cost, steps):
+def cap_steps(cost, steps, pct, cap=None):
+    """The steps with the overnight cap applied at a trade size of `pct` of the account: at each carry, the part worth
+    more than `cap` of the account (contracts x close x 100, the account at the day's start) is sold at the close less
+    the spread ("eod_cap"), and every later share is scaled down to what was kept. -> new steps (shares of the original)."""
+    cap = NIGHT_CAP if cap is None else cap
+    if not pct or not cap: return list(steps)
+    out, f = [], 1.0
+    for d, t, side, q, px, rule in steps:
+        if side == "carry":
+            r = q * f
+            k = min(r, cap * cost / (pct * px)) if px > 0 else r
+            if k < r - 1e-9:
+                out.append((d, t, "sell", round(r - k, 4), round(max(px * (1 - SH), 0.01), 4), "eod_cap"))
+                f *= k / r
+            out.append((d, t, side, round(k, 4), px, rule))
+        elif side == "sell": out.append((d, t, side, round(q * f, 4), px, rule))
+        else: out.append((d, t, side, q, px, rule))
+    return out
+
+
+def result(cost, steps, pct=None):
+    """The return on the premium after costs, at a trade size of `pct` of the account (RISK_PCT unless given; 0 = no
+    overnight cap)."""
+    steps = cap_steps(cost, steps, RISK_PCT if pct is None else pct)
     sold = sum(s[3] * s[4] for s in steps if s[2] == "sell")
     rebuys = [s for s in steps if s[2] == "buy" and s[5] == "rebuy"]  # rebuy: more paid in after the entry
     contracts_per_dollar = 1 / (cost * 100)

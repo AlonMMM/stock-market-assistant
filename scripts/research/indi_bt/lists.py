@@ -69,6 +69,8 @@ def run(A, Z, name, syms):
                     row.update(status="bought", contract=csym, expiry=exp, strike=k, delta=round(dl, 3), cost=round(cost, 2), iv=round(iv, 3) if iv else None,
                                steps=";".join(f"{s[0]} {s[1]} {s[2]} {s[3]:.2f} @{s[4]:.2f} {s[5]}" for s in steps[1:]),
                                ret=round(sim.result(cost, steps), 4) if sold >= 0.999 else None, open_share=round(1 - sold, 2),
+                               ret_2pct=round(sim.result(cost, steps, 0.02), 4) if sold >= 0.999 else None,
+                               ret_nocap=round(sim.result(cost, steps, 0), 4) if sold >= 0.999 else None,
                                next_report=t["e_next"])
         out.append(row)
         if n % 25 == 0: print(f"{n}/{len(sig)} {t['date']}", flush=True)
@@ -76,11 +78,18 @@ def run(A, Z, name, syms):
     print(name, len(out), "signals,", sum(r["status"] == "bought" for r in out), "bought", flush=True)
 
 
+def ret_at(r, pct):
+    """The trade's return at a size of `pct` of the account: `ret` is at 1% with the overnight cap (sim.py NIGHT_CAP),
+    `ret_2pct` at 2%; a list written before the cap (2026-10-25) has only `ret`."""
+    if pct <= 0.01: return r["ret"]
+    return r.get(f"ret_{round(pct * 100)}pct", r["ret"])
+
+
 def account(T, pct, start=100_000):
     """Each trade costs `pct` of the account at the start of its entry day; its P&L joins the account at the day's end."""
     eq, peak, dd = start, start, 0.0
     for d, rows in sorted(_by_day(T).items()):
-        eq += sum(pct * eq * r["ret"] for r in rows)
+        eq += sum(pct * eq * ret_at(r, pct) for r in rows)
         peak = max(peak, eq); dd = max(dd, 1 - eq / peak)
     return eq, dd
 
@@ -92,6 +101,7 @@ def _by_day(T):
 
 
 def summary(A, Z, names):
+    import sim
     money = lambda v: f"{'-' if v < 0 else '+'}${abs(v):,.0f}"
     for name in names:
         W = json.load(open(f"{B}/list_{name}_{A}_{Z}.json"))
@@ -106,7 +116,8 @@ def summary(A, Z, names):
         print(f"trades {len(T)} | per trade at $10K {money(st.fmean(rets) * 10_000)} | winners {len(wins)} ({100 * len(wins) / len(T):.0f}%) | median {st.median(rets):+.0%} | held overnight {nights}")
         for pct in (0.01, 0.02):
             eq, dd = account(T, pct)
-            print(f"account at {pct:.0%} a trade: ${eq:,.0f} ({eq / 100_000 - 1:+.0%}), worst drop {dd:.0%}")
+            cap = f", overnight capped at {sim.NIGHT_CAP:.0%} of the account" if sim.NIGHT_CAP and (pct <= 0.01 or "ret_2pct" in T[0]) else ""
+            print(f"account at {pct:.0%} a trade: ${eq:,.0f} ({eq / 100_000 - 1:+.0%}), worst drop {dd:.0%}{cap}")
         top = sorted(T, key=lambda r: -r["ret"])[:5]
         print("best 5: " + ", ".join(f"{r['sym']} {r['date']} {r['ret']:+.0%}" for r in top))
         rest = [r["ret"] for r in T if r not in top]
