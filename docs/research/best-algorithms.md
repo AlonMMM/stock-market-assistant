@@ -650,6 +650,26 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   for (a move within 30 minutes, direction unknown). Small: about +6% a year at 1% a trade with a 6% worst drop; the
   fill model (mid ± 2% a leg) flatters a two-leg trade. Not a champion by the log's rule (a different strategy, not
   a better version), logged here as the only alert finding with a live edge. Not run on the unseen (the user's call).
+  - **The user's version, the 0.35-delta strangle with leg management (`zero5.py strangles`, 2026-10-25):** on the first
+    alert, buy the 0.35-delta call and put of the same-day expiry (one each, both legs 200+ contracts; 307 of 988
+    first-alerts); when the side is confirmed, sell the wrong leg and ride the right one. Confirmation: the stock 0.25
+    (or 0.5) of its typical 30-minute move (`levels.ctx` S30) from the entry close, or the leading leg up 30%; no
+    confirmation within 60 minutes → both legs out. The kept leg: the 60-minute clock, a 30% trail off its high to
+    15:30, the champion-style −30% stop with the stock against, or +100% / 120 minutes. On the same 307 entries: the
+    near-the-money straddle held 60 min $110,363 / 6% (256 tradeable), the 0.35 strangle unmanaged $108,521 / 9%;
+    confirm 0.25 S30 + trail 30%: **$120,078 / 2%**, 39% winners, +1,010 / +628 / +375 a trade, $106,954 without the
+    best 5; confirm 0.25 + 60-min clock $119,302 / 5%; confirm 0.5 + clock $118,288 / 8%; leg +30% + clock $118,144 /
+    8%. The stop-30 keeps lose the hit rate (21–24%) and the +100% take gives the edge back. It is a band, not a cell:
+    at delta 0.30 confirm 0.25 + trail $120,773 / 4% (clock $113,052), at 0.40 $115,049 / 2% (clock $119,697 / 4%),
+    every year positive in all of them. Breakdown at 0.35 / trail: Fridays 263 trades $118,158 / 2%, not Friday 44
+    about flat; alerts up $109,005 and down $110,218; 09:40–10:30 $107,754, 10:30–12:00 $115,787, 12:00–13:00
+    $96,229 (negative in every variant and in the straddle; not applied as a cutoff, it would be picked from the
+    result); by stock CVNA, GOOGL, QCOM, AMZN, AMD, TSLA, MSTR positive, COIN and ORCL the worst; median trade −533,
+    7% of trades over +50%, 1% under −30% (selling the wrong leg recovers part of the premium, which is where the 2%
+    worst drop comes from). Better than the straddle on end, drawdown and 2026, at the same small scale: about +7% a
+    year at 1% a trade with a 2–4% worst drop, two trades a week, Fridays. Caveats: four fills a trade at the mid ± 2%
+    (the fill model's weakest case), 0DTE only on expiry days, liquid names only. The best alert result of the study;
+    a strategy of its own, next to the bot, not a rule for it.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%

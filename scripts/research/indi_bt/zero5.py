@@ -167,6 +167,146 @@ def straddle(sig):
     return sig, out
 
 
+CONFIRM35 = {"stk25": ("stock", 0.25), "stk50": ("stock", 0.5), "leg30": ("leg", 0.30)}
+KEEP = {"t60": "t60", "trail30": "trail30", "stop30": "stop30", "k100_t120": "k100_t120"}
+WAIT35 = 60   # no confirmation by then: both legs out (the straddle's clock)
+DELTA35 = float(os.environ.get("BT_STRANGLE_DELTA", "0.35"))
+
+
+def strangle35(sig):
+    """The user's idea (2026-10-25): on the alert, a 0.35-delta strangle; when the side is confirmed, sell the wrong leg and
+    ride the right one. -> {"hold60": ret (no management), "<confirm>|<keep>": ret, ...} or reasons."""
+    date, sym, m = sig
+    spot = day(sym, date); sb = {b[0]: b for b in spot}
+    px = sb[m][4] if m in sb else None
+    if px is None: return sig, {"all": "no_spot"}
+    x = ctx(sym, date)
+    if not x or not x.get("sd"): return sig, {"all": "no_ctx"}
+    sim.C.update(dte_min=0, dte_max=0, delta=DELTA35)
+    legs = {}
+    for right in ("C", "P"):
+        best, why = sim.pick(sym, date, m, right, px)
+        if best is None: return sig, {"all": f"{right}:{why}"}
+        legs[right] = best[0]
+    bars = {r: {b[0]: b for b in day(legs[r], date)} for r in legs}
+    out = {}
+    variants = [("hold60", None, None)] + [(f"{c}|{k}", c, k) for c in CONFIRM35 for k in KEEP]
+    for name, cn, kp in variants:
+        cost = None; last = {}; ret = None; paid = {}; sold_wrong = None; keep = None; peak = None; stock0 = None
+        for t in range(m + 1, 361):
+            for r in legs:
+                if t in bars[r]: last[r] = bars[r][t]
+            if len(last) < 2: continue
+            if cost is None:
+                if t > m + 3: ret = "no_fill"; break
+                paid = {r: sim.mid(last[r]) * (1 + sim.SH) for r in legs}; cost = sum(paid.values()); stock0 = sb[t][4] if t in sb else px
+                continue
+            closes = {r: last[r][4] for r in legs}
+            if keep is None:
+                # confirmation?
+                side = None
+                if cn:
+                    kind, k = CONFIRM35[cn]
+                    if kind == "stock" and t in sb:
+                        mv = sb[t][4] / stock0 - 1
+                        if abs(mv) >= k * x["sd"]: side = "C" if mv > 0 else "P"
+                    if kind == "leg":
+                        g = {r: closes[r] / paid[r] - 1 for r in legs}
+                        lead = max(g, key=g.get)
+                        if g[lead] >= k and g[lead] > g[min(g, key=g.get)]: side = lead
+                if side and t - m <= WAIT35:
+                    wrong = "P" if side == "C" else "C"
+                    sold_wrong = max(sim.mid(last[wrong]) * (1 - sim.SH), 0.01); keep = side; peak = closes[side]; kept_t = t
+                    continue
+                if t - m >= WAIT35 or t >= 360:   # no confirmation: both out
+                    sold = max(sum(sim.mid(last[r]) for r in legs) * (1 - sim.SH), 0.01)
+                    ret = round(sold / cost - 1 - sim.COMM * 4 / (cost * 100), 4); break
+                continue
+            # riding the kept leg
+            c = closes[keep]; peak = max(peak, c); g = c / paid[keep] - 1
+            done = t >= 360
+            if kp == "t60": done = done or t - m >= 60
+            elif kp == "trail30": done = done or c <= peak * 0.7
+            elif kp == "stop30":
+                against = False if t not in sb else (sb[t][4] < stock0 if keep == "C" else sb[t][4] > stock0)
+                done = done or (g <= -0.30 and against)
+            elif kp == "k100_t120": done = done or g >= 1.0 or t - m >= 120
+            if done:
+                sold = sold_wrong + max(sim.mid(last[keep]) * (1 - sim.SH), 0.01)
+                ret = round(sold / cost - 1 - sim.COMM * 4 / (cost * 100), 4); break
+        out[name] = ret if ret is not None else "no_exit"
+    return sig, out
+
+
+def entries():
+    ent = []
+    for sym in P["universe"]:
+        for i, date in enumerate(CAL):
+            if not any(a <= date <= b for a, b in SPAN.values()) or i < 21: continue
+            if not sim.expiry_for(sym, date) == date: continue
+            al = alerts_for(sym, date, CAL)
+            if not al: continue
+            m = next((q for q in range(FIRST, LAST + 1) if al[q]), None)
+            if m is not None: ent.append((date, sym, m, al[m]))
+    return ent
+
+
+def strangles():
+    import news_filter as nf
+    from low_delta import HIS40, PRIOR
+    from score_sum import account
+    ent = entries()
+    done = {}
+    with mp.Pool(8) as pool:
+        for sig, res in pool.imap_unordered(strangle35, [e[:3] for e in ent], chunksize=4): done["|".join(map(str, sig))] = res
+    json.dump(done, open(f"{B}/z5_strangles_{DELTA35}.json", "w"))
+    doneS = json.load(open(OUT_S))
+    fair = lambda t: t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]]
+    news = lambda t: t["e_next"] != 0 and (t["pre_rvol"] is None or t["pre_rvol"] < 4)
+    Ts = []
+    for date, sym, m, side in ent:
+        k = "|".join(map(str, (date, sym, m)))
+        Ts.append(dict(date=date, sym=sym, minute=str(m), right="C", res=done[k], base=doneS.get(k, {})))
+    nf.features(Ts); Ts = [t for t in Ts if news(t) and fair(t)]
+    ok = [t for t in Ts if isinstance(t["res"].get("hold60"), float)]
+    print(f"\n## {DELTA35}-delta strangles on the first alert, fair list, news filter: {len(ok)} of {len(Ts)} tradeable; reasons: {collections.Counter(v for t in Ts for v in t['res'].values() if isinstance(v, str)).most_common(4)}")
+    def table(rows, head):
+        print(f"\n| {head} | n | win | 2024 / 2025 / 2026 per trade | without best 5 | at 1% | worst drop |\n|---|---|---|---|---|---|---|")
+        for lab, T in rows:
+            T = sorted(T, key=lambda x: (x[0], x[1]))
+            if not T: print(f"| {lab} | 0 | | | | | |"); continue
+            pn = [dict(date=d, pnl=str(1e4 * max(-1, r))) for d, m, r in T]
+            eq, dd = account(pn); best5 = sorted(range(len(pn)), key=lambda i: -float(pn[i]["pnl"]))[:5]
+            eq5, _ = account([x for i, x in enumerate(pn) if i not in best5])
+            yr = {y: [1e4 * max(-1, r) for d, m, r in T if d[:4] == y] for y in SPAN}
+            print(f"| {lab} | {len(T)} | {100 * sum(r > 0 for d, m, r in T) / len(T):.0f}% | " + " / ".join(f"{st.fmean(v):+,.0f}" if v else "" for v in yr.values())
+                  + f" | ${eq5:,.0f} | ${eq:,.0f} | {100 * dd:.0f}% |")
+    rows = [("near-the-money straddle, 60 min (yesterday)", [(t["date"], int(t["minute"]), t["base"]["t60"]) for t in ok if isinstance(t["base"].get("t60"), float)]),
+            ("0.35 strangle, 60 min, no management", [(t["date"], int(t["minute"]), t["res"]["hold60"]) for t in ok])]
+    for c in CONFIRM35:
+        for k in KEEP:
+            name = f"{c}|{k}"
+            rows.append((f"0.35 strangle, confirm {c}, keep {k}", [(t["date"], int(t["minute"]), t["res"][name]) for t in ok if isinstance(t["res"].get(name), float)]))
+    table(rows, "strangle")
+    if os.environ.get("BT_BREAKDOWN"):
+        import datetime as dt
+        side_of = {"|".join(map(str, e[:3])): e[3] for e in ent}
+        for t in ok: t["side"] = side_of["|".join((t["date"], t["sym"], t["minute"]))]
+        wd = lambda t: dt.date.fromisoformat(t["date"]).weekday()
+        for name in ("stk25|trail30", "stk25|t60"):
+            rows = lambda pred: [(t["date"], int(t["minute"]), t["res"][name]) for t in ok if pred(t) and isinstance(t["res"].get(name), float)]
+            table([(f"{name}, {lab}", rows(pred)) for lab, pred in (("Friday", lambda t: wd(t) == 4), ("not Friday", lambda t: wd(t) != 4),
+                   ("alert up", lambda t: t["side"] == "up"), ("alert down", lambda t: t["side"] == "down"),
+                   ("09:40-10:30", lambda t: int(t["minute"]) <= 60), ("10:30-12:00", lambda t: 60 < int(t["minute"]) <= 150), ("12:00-13:00", lambda t: int(t["minute"]) > 150))], name)
+            by = collections.defaultdict(list)
+            for t in ok:
+                if isinstance(t["res"].get(name), float): by[t["sym"]].append(1e4 * max(-1, t["res"][name]))
+            print(f"{name} by stock, best: " + ", ".join(f"{s_} {len(v)} {sum(v)/1e3:+,.0f}K" for s_, v in sorted(by.items(), key=lambda kv: -sum(kv[1]))[:8]))
+            print(f"{name} by stock, worst: " + ", ".join(f"{s_} {len(v)} {sum(v)/1e3:+,.0f}K" for s_, v in sorted(by.items(), key=lambda kv: sum(kv[1]))[:5]))
+            v = sorted((1e4 * max(-1, t["res"][name]) for t in ok if isinstance(t["res"].get(name), float)), reverse=True)
+            print(f"{name}: top 5 {[f'{x:+,.0f}' for x in v[:5]]}, median {st.median(v):+,.0f}, over +50%: {100*sum(x > 5000 for x in v)/len(v):.0f}%, under -30%: {100*sum(x < -3000 for x in v)/len(v):.0f}%")
+
+
 def run():
     with mp.Pool(8) as pool: parts = pool.map(stock, P["universe"])
     S, tags = collections.defaultdict(list), {}
@@ -329,4 +469,4 @@ def summary():
 
 
 if __name__ == "__main__":
-    {"run": run, "straddles": straddles, "summary": summary}[sys.argv[1]]()
+    {"run": run, "straddles": straddles, "strangles": strangles, "summary": summary}[sys.argv[1]]()
