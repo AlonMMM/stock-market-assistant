@@ -387,10 +387,10 @@ test("picker: nearest expiry 1-7 days out, OTM, the delta closest to 0.15; too c
   assert.ok(p.ok);
   assert.equal(p.quote.strike, 110);
   assert.equal(p.quote.expiry, "2026-10-23");
-  assert.deepEqual(
-    pickContract([q(115, 0.15, 0.1)], 102, "call", "2026-10-21"),
-    { ok: false, reason: "too_cheap" },
-  );
+  const cheap = pickContract([q(115, 0.15, 0.1)], 102, "call", "2026-10-21");
+  assert.equal(cheap.ok, false);
+  assert.equal(!cheap.ok && cheap.reason, "too_cheap");
+  assert.equal(!cheap.ok && cheap.quote?.strike, 115);
   assert.deepEqual(
     pickContract([q(110, 0.15, 1, "2026-11-20")], 102, "call", "2026-10-21"),
     { ok: false, reason: "no_expiry" },
@@ -724,6 +724,43 @@ test("broker setting 'both': one signal, one contract, a position at each accoun
     () => g.bot.setSettings({ ...g.bot.settings(), broker: "both" }),
     /no both account connected/,
   );
+});
+
+test("books: the option's bid / ask is kept on the signal, on each account's buy and on every sale", async () => {
+  const h = harness("live");
+  h.bot.setSettings({ ...h.bot.settings(), broker: "both" });
+  await h.run(DAY, 565, 600);
+  const signal = h.store.signals(DAY)[0]!;
+  assert.equal(signal.book?.contract, "NVDA261023C00110000");
+  assert.equal(signal.book?.broker, "alpaca"); // the first account's chain
+  assert.ok(signal.book!.bid > 0 && signal.book!.ask > signal.book!.bid);
+  const open = h.store.openPositions();
+  assert.equal(open.length, 2);
+  for (const p of open) {
+    assert.ok(p.entryBook, `entry book at ${p.broker}`);
+    assert.ok(p.entryBook!.ask > p.entryBook!.bid);
+    assert.equal(p.entryBook!.broker, p.broker);
+  }
+  // Up 150% at 15:50: held; next morning no gap: each sale carries the book it was decided on.
+  h.setMid(1.5);
+  await h.run(DAY, 601, 965);
+  await h.run(NEXT, 565, 590);
+  const closed = h.store.recentPositions(DAY).filter((p) => p.day === DAY);
+  const sales = closed.flatMap((p) => p.sales);
+  assert.deepEqual(
+    closed
+      .flatMap((p) => p.sales.map((x) => [p.broker, x.book?.broker]))
+      .sort(),
+    [
+      ["alpaca", "alpaca"],
+      ["ibkr", "ibkr"],
+    ],
+  );
+  assert.equal(sales.length, 2);
+  for (const sale of sales) {
+    assert.ok(sale.book, "sale book");
+    assert.ok(Math.abs((sale.book!.bid + sale.book!.ask) / 2 - 1.5) < 1e-9);
+  }
 });
 
 test("runner: a contract the account already holds is left alone; the bot never sells more than the account has", async () => {

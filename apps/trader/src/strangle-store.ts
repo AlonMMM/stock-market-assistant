@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import type { OptionBook } from "./option-book.js";
 
 // The alert leg bot's records (docs/tasks/backend-strangle-bot.md), in the
 // trading service's database next to the Indi bot's, in tables of its own:
@@ -22,6 +23,9 @@ export interface StrangleSignal {
   outcome: string;
   detail: string;
   at: number;
+  // The leg picked and its bid / ask at the pick (also for a too-cheap one);
+  // missing when none was picked, and on signals before 2026-10-25.
+  book?: OptionBook & { contract: string };
 }
 
 export interface StrangleOrder {
@@ -32,6 +36,7 @@ export interface StrangleOrder {
   jobId: string | null; // null in a dry run
   settled: boolean;
   price?: number; // the fill (the mid in a dry run)
+  book?: OptionBook; // bid / ask when the order was decided (missing before 2026-10-25)
 }
 
 export interface StrangleLeg {
@@ -130,6 +135,21 @@ export class StrangleStore {
         "UPDATE strangle_signals SET data = ? WHERE day = ? AND symbol = ?",
       )
       .run(JSON.stringify({ ...s, outcome, detail }), day, symbol);
+  }
+
+  /** The picked leg's book on the day's signal of `symbol`. */
+  setSignalBook(
+    day: string,
+    symbol: string,
+    book: OptionBook & { contract: string },
+  ) {
+    const s = this.signal(day, symbol);
+    if (!s) return;
+    this.db
+      .prepare(
+        "UPDATE strangle_signals SET data = ? WHERE day = ? AND symbol = ?",
+      )
+      .run(JSON.stringify({ ...s, book }), day, symbol);
   }
 
   signal(day: string, symbol: string): StrangleSignal | undefined {
