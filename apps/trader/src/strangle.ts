@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { bookOf } from "./option-book.js";
 import {
   coreClose,
   newYork,
@@ -727,7 +728,7 @@ export class StrangleBot {
       this.marks.set(t.id, { leg: lm?.mid ?? null, stock, at: this.o.now() });
       // Never carried: a same-day expiry. Anything left from a past day is sold now.
       if (t.day !== date) {
-        await this.sellLeg(t, "left from a past day", lm?.mid ?? null);
+        await this.sellLeg(t, "left from a past day", lm);
         continue;
       }
       if (stock !== null) t.best = bestOf(t.best ?? stock, stock, t.side);
@@ -737,7 +738,7 @@ export class StrangleBot {
           exit === "end"
             ? `the end of the day (${clockOf(s.endMinute)})`
             : `the stock gave back ${s.giveBackUnits} of its 30-minute move from ${t.best!.toFixed(2)}`;
-        await this.sellLeg(t, reason, lm?.mid ?? null);
+        await this.sellLeg(t, reason, lm);
         continue;
       }
       this.o.store.saveTrade(t);
@@ -790,6 +791,14 @@ export class StrangleBot {
       t.day,
       pick,
     );
+    // The picked leg's bid / ask, kept with the signal (paper fills are not real ones).
+    const chosen = got.quote;
+    const book = bookOf(chosen, this.o.now());
+    if (chosen && book)
+      this.o.store.setSignalBook(t.day, t.symbol, {
+        ...book,
+        contract: chosen.symbol,
+      });
     if (!got.ok) return fail(got.reason, right);
     const contract = got.quote.symbol;
     if (s.minVolume > 0) {
@@ -829,6 +838,7 @@ export class StrangleBot {
         jobId: null,
         settled: true,
         price: got.quote.ask,
+        ...(book ? { book } : {}),
       });
       t.phase = "open";
       t.best = stock;
@@ -872,6 +882,7 @@ export class StrangleBot {
       reason: "the side",
       jobId: answer.jobId,
       settled: false,
+      ...(book ? { book } : {}),
     });
     t.phase = "buying";
     t.best = stock;
@@ -879,7 +890,13 @@ export class StrangleBot {
     this.outcome(t.day, t.symbol, "traded", `${qty} × ${this.words(contract)}`);
   }
 
-  private async sellLeg(t: StrangleTrade, reason: string, mid: number | null) {
+  private async sellLeg(
+    t: StrangleTrade,
+    reason: string,
+    mark: { mid: number; bid: number; ask: number } | null,
+  ) {
+    const mid = mark?.mid ?? null;
+    const book = bookOf(mark, this.o.now());
     const leg = t.leg!;
     const qty = leg.qty;
     if (qty <= 0) {
@@ -897,6 +914,7 @@ export class StrangleBot {
         jobId: null,
         settled: true,
         price,
+        ...(book ? { book } : {}),
       });
       leg.qty = 0;
       t.phase = "closed";
@@ -941,6 +959,7 @@ export class StrangleBot {
       reason,
       jobId: answer.jobId,
       settled: false,
+      ...(book ? { book } : {}),
     });
     t.phase = "closing";
     this.o.store.saveTrade(t);

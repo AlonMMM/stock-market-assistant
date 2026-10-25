@@ -367,6 +367,18 @@ test("runner (live): one buy with the tag and the safety stop; one sale of all o
   assert.equal(h.held.get("NVDA261023C00101000"), 0);
   assert.equal(h.store.openTrades().length, 0);
   for (const [, n] of h.held) assert.ok(n >= 0, "never short");
+  // The bid / ask is kept on the signal and on the buy and the sale (paper fills are not real ones).
+  const book = h.store.signal(DAY, "NVDA")!.book;
+  assert.equal(book?.contract, "NVDA261023C00101000");
+  assert.ok(book!.ask > book!.bid);
+  const orders = h.store.recentTrades(DAY)[0]!.leg!.orders;
+  assert.deepEqual(
+    orders.map((o) => [o.side, o.book !== undefined]),
+    [
+      ["buy", true],
+      ["sell", true],
+    ],
+  );
 });
 
 test("runner: no side within the hour is no trade; one alert per stock a day; off means nothing", async () => {
