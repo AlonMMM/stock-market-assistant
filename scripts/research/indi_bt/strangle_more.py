@@ -106,6 +106,10 @@ def run(r, x):
                 if t >= END or (spot and abs(spot / best - 1) >= k * u):
                     ret = sell(sim.mid(last)) / cost - 1 - COMM * 2 / (cost * 100); break
             out[f"leg_st{k}"] = ret if ret is not None else sell(sim.mid(last)) / cost - 1 - COMM * 2 / (cost * 100)
+            if k == 0.75:
+                out["fills"] = dict(leg=r["call"] if keep == "C" else r["put"], kept="call" if keep == "C" else "put", side_minute=ct,
+                                    buy_minute=b0[0], buy_price=round(cost, 3), exit_minute=last[0] if ret is None else t,
+                                    exit_price=round(sell(sim.mid(last)), 3), best=round(best, 2), stock_at_fill=round(stock0, 2))
     else:
         out["leg_at_side"] = out["leg_st0.5"] = out["leg_st0.75"] = None
     return out
@@ -154,8 +158,20 @@ def main():
         if abs(res["base"] - float(r["ret"])) > 0.002: diff += 1
         m = int(r["minute"])
         so, s30 = spy_moves(r["date"], m)
-        T.append(dict(date=r["date"], minute=m, sym=r["sym"], up=r["alert"] == "up", spy_open=so, spy_30=s30,
+        T.append(dict(date=r["date"], minute=m, sym=r["sym"], up=r["alert"] == "up", spy_open=so, spy_30=s30, n=r["n"],
                       breadth=len({s for s, q in allal[r["date"]] if s != r["sym"] and abs(q - m) <= 2}), **res))
+    if os.environ.get("BT_EXPORT"):
+        keys = ["base", "D2", "leg_at_side", "st0.25", "st0.5", "st0.75", "st1", "st1.5", "leg_st0.5", "leg_st0.75"]
+        with open(os.environ["BT_EXPORT"], "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["n", "date", "sym", "minute", "alert", "spy_open", "spy_30", "breadth"] + keys + ["leg", "kept", "side_minute", "buy_minute", "buy_price", "exit_minute", "exit_price", "stock_at_fill"])
+            for t in T:
+                fl = t.get("fills") or {}
+                w.writerow([t["n"], t["date"], t["sym"], t["minute"], "up" if t["up"] else "down",
+                            "" if t["spy_open"] is None else round(t["spy_open"], 3), "" if t["spy_30"] is None else round(t["spy_30"], 3), t["breadth"]]
+                           + ["" if t.get(k) is None else round(t[k], 4) for k in keys]
+                           + [fl.get(q, "") for q in ("leg", "kept", "side_minute", "buy_minute", "buy_price", "exit_minute", "exit_price", "stock_at_fill")])
+        print("exported", len(T), "rows to", os.environ["BT_EXPORT"])
     head = "| {} | Trades | Winners | Per trade | 2024 / 2025 / 2026 | Without best 5 | At 1% |\n|---|---|---|---|---|---|---|"
     print(f"\n## {label}: {len(T)} trades (the replay differs from the export on {diff})\n")
     print(head.format("Variant"))
