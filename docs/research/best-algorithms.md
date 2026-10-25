@@ -684,6 +684,26 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     fills a trade at 3 points more each is the whole edge, so the live result hangs on execution: tight spreads, limit
     orders at the mid, and a paper run before any size. Everything else as before: Fridays carry it, 12:00–13:00 loses,
     spread across names.
+  - **Market filters, the D bonus, fills 2–5%, sizing 1–4% (`zero7.py`, 2026-10-25; the user: "is it using any other
+    filter? the SPY strength and the D bonus; when SPY drops the alerts go crazy"):** the strangle used only the alert,
+    the 09:40–13:00 window, the news filter, 200 contracts a leg and the fair list. Context at the alert: breadth (how
+    many of the 40 stocks alert within ±2 minutes: 0 on 105 of the 307 trades, 3+ on 73), SPY's own 3-minute move vs its
+    normal (3× or more on 107), the stock's C t-stat vs SPY × β. **The market-move alerts are not worse:** breadth < 3
+    drops 73 trades and ends lower ($111,817 / 3% vs $120,078 / 2%; 2025 turns −28), SPY calm (< 2×) $111,775 on 152
+    trades, (< 3×) $111,043; for a non-directional trade that sells the wrong leg within minutes a market move is still a
+    move. **Strength agreeing with the kept leg** (the C t-stat's sign = the kept side; 158 trades) is a risk filter, not
+    a money one: $115,586 / 1% at 1%, the most even years (+1,018 / +996 / +817), at 4% a trade $174,530 / 3% vs the
+    base's $197,293 / 7%, and the best survivor at a 4% fill ($107,989 / 2% vs $105,641 / 5%). Confirming on the excess
+    move (stock − β × SPY) is a little worse ($116,535). **D bonus, the wrong leg's proceeds reinvested in the kept
+    leg at confirmation** (a first run double-counted the proceeds as premium and was wrong): $134,414 / 3% at 1%
+    (2%: $177,439 / 6%; 4%: $294,868 / 11%), 39% winners, +1,922 / +879 / +589, **$113,977 without the best 5**, the
+    highest of the study; with the strength filter $123,772 / 2%, +1,944 / +1,301 / +1,095. A second unit of new premium
+    instead: $124,037 / 2%. Fills: base at 3% $112,561 / 3%, at 4% $105,641 / 5%, at 5% $99,260; D-recycle at 4%
+    $111,460 / 5%; the recycle and the strength filter are the two things that keep a positive edge at a 4% fill (D-recycle
+    + strength at 4%: $112,068 / 3%). Sizing is near-linear in the simulator (base: 1% $120K / 2%, 2% $143K / 4%, 3%
+    $169K / 6%, 4% $197K / 7%). Current best reading of the strangle: 0.35 delta, the first alert, confirm 0.25 S30, sell
+    the wrong leg and put its proceeds into the right one, trail 30%, prefer trades where the stock's own strength vs SPY
+    agrees. The page: https://claude.ai/artifact/Uug3uh6G7MWQcvRTMfq3tM (card "Market filters, the D bonus and the fill").
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
