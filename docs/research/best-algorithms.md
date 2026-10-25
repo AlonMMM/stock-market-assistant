@@ -558,6 +558,22 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     positive and BA 2024-08-01 is +234K of its +389K; worse without the best 5. 60 min: $832,687 / 17%, 152 adds.
     Unseen: $114,260 / 13% vs $123,028 / 11%; 28 adds, the add leg −2,666 a trade, 11% positive. Not better: the
     unseen loses, the fair-list gain is one trade, and the worst drop grows with the size.
+  - **Conclusion on the volume alert and the bot (2026-10-25, after the two days above):** the site's rvol-v6 alert does
+    not improve the bot's rules. Tested and not better: the alert as a route through the volume gate at floors 0 / 1.0 /
+    1.2×, with and without the volume-fade exit; the entry that waits for 200 contracts (fails the unseen); doubling
+    the position on a same-side alert after the entry (fails the unseen, one trade on the fair list); the alert-silence
+    exit was not run because it would cut the unseen's big overnight trades. Why: the champion already measures what
+    the alert measures, the stock's volume and move, only more slowly; what the alert adds at the entry is a burst
+    without follow-through (loses) or an earlier minute at which the options are not yet tradeable; and the money is
+    made where the alert does not look, in the options crowd arriving (contract volume, the 200-contract floor is a
+    step not a slope) and in the overnight gaps. What it does give: (1) for the user, its own validated "look now"
+    value (a big move within 30 minutes about a third of the time against a one-in-ten base); (2) for the bot, a live
+    read of open trades, an alert after the entry means the trade is alive on both lists and none means the loser pool,
+    which belongs on the Bot tab as a state per position, not as an order trigger. Open, and testable only live
+    because the bar cache has no extended hours: log pre-market alerts on the bot's watchlist before the open and
+    post-market alerts on carried positions in the paper bot, next to what the 09:40 morning rule then did, for a few
+    months, then judge whether they help that decision. Scripts: `alert_gate.py` (the port of the alert, the routes,
+    the fade and the wait), `alert_add.py` (the add); sim.py `vol_fade`, tiers.py `BT_RETRY_ILLIQUID` and `BT_RISK`.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
