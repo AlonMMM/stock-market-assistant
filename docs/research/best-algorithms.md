@@ -854,3 +854,21 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   $123,028. Up to 3 buy-backs: fair $601,675 / 11% ($2.55M / 20% at 2%), but it is one trade (BA 2024-05-23, third
   try at 10:43 NY, +1901%; without it the buy-backs sum -$62K at $10K) and the unseen is worse ($120,005 / 13%). Not
   better: buy-backs at the same level mostly lose (fair 33 of 113 win, unseen 8 of 39).
+- **The fair list plus the hot stocks (`hot_universe.py`, `opt_volume.py`, `opt_fit.py`, `hot_fit_test.py`,
+  2026-10-25; the user: "the test stocks to be both the core and the hot stocks ... looking 3 to 6 months before", then
+  only the hot stocks whose options fit the bot, with the fallback up to delta 0.30 to test).** Hot = each month's top
+  50 of the whole optionable US market (5,679 Alpaca symbols; price ≥ $5, median day $ volume ≥ $100M, leveraged ETFs
+  and a few funds out) by daily-return volatility over the 6 (and 3) months before; the core 40 removed; kept to the
+  67 whose nearest weekly has a liquid 0.15-delta option, or one up to 0.30 (opt_fit.py, Oct 2026 snapshot). A hot
+  stock trades only in a month it is hot. Feb 2024 – Oct 2026, the 10% overnight cap at each size, so the baselines
+  are bot 2.4 $719,943 / 9% and 2.5 $1,108,662 / 11% on the fair list. **The hot stocks lose with the bot's own
+  pick:** 2.4 hot-6m 90 trades, 18 winners, −661 a trade, $93,985 / 8%; 2.5 115 trades, −192, $97,409 / 9%; the
+  3-month-only months lose too (−1,730 / −1,722 a trade on ~20 trades). Fair + hot 6m: 2.4 $675,010 / 10%, 2.5
+  $1,078,809 / 12%, both below the fair list alone. **The fallbacks turn the hot stocks positive only through IONQ:**
+  2.5 + liquid2 hot-6m 326 trades $119,336 / 12%, but IONQ is +410K of it (23 trades) and the rest lose; $70,268
+  without the best 5. 2.4 + both2 hot-6m $109,546 / 11%, $71,285 without the best 5. Fair + hot 6m + both2 lifts the
+  end (2.5 $1,263,646) at twice the drop (23%). Losers by stock with the plain pick: RKLB, RDDT, IREN, BMNR, ENPH;
+  money only in IONQ and one ALAB trade. Not better: a stock being hot (volatile, busy) is not what makes the bot win;
+  the core stocks are where Indi trades and where the signal works. A lead from the same run, to test before believing:
+  **2.5 + the cheap fallback** on the fair list $1,297,219 / 11% (2%: $6,599,909 / 21%), every year positive,
+  $422,022 without the best 5 vs $360,679; on 2.4 the cheap fallback failed the unseen ($86,373 / 31% vs $127,433).
