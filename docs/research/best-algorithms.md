@@ -789,6 +789,18 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     $119,831: +200% $120,336-$122,103, +300% $119,884-$123,555 (5 trades), +100% $113,677-$115,818. Not better: +200%
     loses on the fair list, +300% touches 8 and 5 trades (a tie), +100% sells the runners. The 0DTE 0.35 leg rarely runs
     past +300% in a day (fair 3 of 306, favorites 0 of 191), so the half caps what is near its top already.
+  - **Next-day expiries and overnight (`leg_1dte.py`, the user, 2026-10-25: "what if we add 1DTE as well here - and let
+    it also have overnight").** The live way (leg at the side). Days whose nearest expiry is the next trading day
+    (mostly Thursdays) as a second set: the 0.35 leg of tomorrow's expiry, the same give-back. Fair (3,346 alerts on
+    0DTE days, 3,393 on 1DTE days): as now 446 trades $208,776 / 4.1%; 1DTE days alone 395 trades $144,438 / 2.6% out
+    by 15:30, $151,550 overnight (41% winners, every year positive); both sets 842 trades $308,991 / 5.0% by 15:30,
+    $321,568 / 5.0% overnight (±4%: $222,708 / 5.9%; 2%: $1,008,947 / 9.9%; without best 5 $227,111). Favorites: as
+    now 253 $131,322 / 5.4%; 1DTE alone 187 $114,435 / 1.6% (45% winners); both 440 $151,341 / 5.1% (±4% $125,184 /
+    7.3%). Overnight barely matters: the 0.75 give-back fires before the close on almost every trade (4 of 395 held
+    on the fair list, all winners +$20K; none on the favorites); "only when up" is the same 4. The 1DTE leg instead of
+    the 0DTE one on 0DTE days rarely exists (the next expiry is usually a week away). Better on both lists: the
+    1DTE days are a second, calmer stream (the dearer leg buys fewer contracts) that adds money at a similar or lower
+    drop. Same rule, so less in-sample than a new parameter; candidate for the live bot.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
