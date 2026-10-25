@@ -1050,3 +1050,12 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     at +50% $958,349 / 11% (72 adds, -28%); at +100% $832,476 / 10% (52 adds, -35%); minutes 10-15 at half + the add at
     +50% $933,930 / 10% (99 adds, -19%). Not better: the opening entries carry the money (halving them costs more than
     a smaller flat size), and the add after +50% buys late, at a higher price, the move the first half already caught.
+- **The D2 bonus before the open (`premarket_d2.py`, sim.py `hold_first`, 2026-10-25; the user: "if we have D2 bonus +
+  more than 1.2 in the spy - bet with no stop on the opening"; pre market, t >= 1.2, no stop for 30 minutes):** t and D2
+  from the pre-market 1-minute bars (08:00-09:29 NY, new table `prem`), pre-market volume 1.5-4x, no earnings reaction
+  day; the option picked at 09:35, the candidate's exits with no stop for 30 minutes. Of 23,239 fair-list stock-days,
+  4,563 pass the volume and news test, 76 give a D2 signal and 19 a trade (42 illiquid at 09:35). On 2.5: pm30
+  $1,185,009 / 11% vs $1,108,678 / 11%; pm0 (the usual stops) $1,158,945; pm30 with D2 >= 2.0 $1,111,840 (7 trades).
+  The 19 pre-market trades: 7 winners, +3,090 a trade, ARM 2025-05-29 +73K is most of it; $96,113 without their best 5.
+  Most leave by the t-stat exit right after the 30 minutes (the regular-session t starts at the open, so it is thin
+  then). Too few trades to judge: a pre-market D2 against SPY is rare on Indi's stocks. Not better (one trade).
