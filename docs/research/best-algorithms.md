@@ -475,6 +475,11 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   without the best 5 $242,100 vs $260,844; the 551 added trades +156K, -524K without their best 5 (ARM 2024-04-17
   +339K alone). With cheap (both2): $823,762 / 20%. Unseen: $107,981 / 24% and $75,568 / 42% vs $127,433 / 9%.
   Further out (155 picks) +237K on the fair list but -98K on the unseen. Not better, as the other fallbacks.
+  Under the risk manager (`fallback_risk.py`, risk_overlay.py's account): at 2% with today's (refused when over)
+  the bot 2.4 is $3,147,385 / 26% fair, $138,363 / 23% unseen; liquid2 $2,877,072 / 34% and $101,165 / 46%; both2
+  $2,725,172 / 34% and $61,388 / 65%. With PR #130 (half under the brake) both2 is $2,709,158 / 26% and $69,515 / 47%
+  vs the plain bot's $2,173,513 / 16% and $106,773 / 16%. The risk manager trims the drop but not the unseen losses:
+  the fallbacks still fail. At 1% it never binds on the plain bot.
   On the live bot 2.4's exits (the rest at −20% after the +10 half; `BT_LIST=fav_rest_bot BT_REST=-0.2`, baseline 405
   trades, $179,264 / 12%): *cheap* $210,297 / 11% ($364,578 / 20% at 2%), the 82 added +2,391 each, IBIT +$235K of
   +$196K; *liquid* $200,816 / 15%; *both* $238,611 / 16%. The same as on 2.3 within $4K; the exits do not change it.
