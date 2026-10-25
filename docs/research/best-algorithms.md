@@ -383,7 +383,24 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   (+418), 7 lost (+3,250), 11 new (−2,040). ORCL 2026-09-29 itself: the alert-gated signal at 10:17 at 137.30 finds the
   contract illiquid, so the bot would not have bought there either. Not better: the burst-only days lose, as with the
   3× 5-minute burst, and the earlier minutes hit thin contracts.
-  - **Second round, the user's changes (2026-10-24):** the contract's liquidity floor is 10 contracts in the last 30
+  - **Contract fallbacks: a higher delta when the 0.15 option is under $0.20, and the nearest liquid strike when it has
+  under 200 contracts (`cheap_up.py`, the user's rule, 2026-10-25):** on the champion's own signals after the news
+  filter (fair list 2,242: 813 bought, 365 too cheap, 1,064 illiquid; unseen 5,977: 273 / 1,732 / 3,972), re-picked
+  and walked with the rest-stop champion's exits (baseline reproduced: 813 trades, $811,353 / 11%) and the live bot
+  2.3's. *Cheap* (the nearest-the-money strike at $0.20 or more, the one closest to $0.20; delta median 0.30, price
+  median $0.25): fair 990 trades, $903,025 / 11% ($5,227,611 / 21% at 2%), the 177 added trades +844 each (+$149K),
+  but +$210K of it is IBIT on 28 trades and RBLX / ROKU / UPST on 9; the unseen 627 trades, $85,156 / 34%
+  ($66,255 / 56%), the 354 added trades −1,052 each (−$372K), 2024 and 2025 negative. *Liquid* (the nearest strike
+  toward the money with 200 contracts, delta up to 0.35; median 0.22, $1.04): fair 1,451 trades, $914,253 / 14%, the
+  638 added +286 each; unseen 827 trades, $87,682 / 34%, the 554 added −594 each (−$329K). On the live bot 2.3's exits
+  the same picture ($793,727 / 13% and $794,075 / 16% fair; $84,850 / 31% and $90,270 / 30% unseen). Not better:
+  both fail the unseen test as the retry-until-200 did. Three different ways of taking the signals the contract rule
+  refuses (wait for the crowd, step to a liquid strike, pay up for a dearer strike) all lose on the unseen stocks: the
+  thin or cheap contract is a symptom, the options crowd is not in that stock at that moment, and the signal there has
+  no edge. The fair-list gain is hot names (IBIT, MSTR, ARM) where any contract works. Note: the live bot's user settings
+  had `minVolume` 0 on 2026-10-24 (the version's is 200), which is the 10-contract baseline in practice: twice the
+  trades, twice the drop, and real fills on thin contracts worse than the simulator's mid ± 2%.
+- **Second round, the user's changes (2026-10-24):** the contract's liquidity floor is 10 contracts in the last 30
     minutes instead of 200 ("contract liquidity is not my concern"), now the default in `params.json` (`min_vol30`; the
     live bot's `minVolume30` in `packages/trading/src/bot/picker.ts` is still 200), and the alert route needs day volume
     ≥ 1.0× (`ag5r10`). The champion re-run at 10 contracts (`sv10_t18r15`) is a different baseline: fair list 1,484
