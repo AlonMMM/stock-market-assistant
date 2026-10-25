@@ -724,6 +724,11 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     $128,856 / 5%, at 4% sizing the worst drop doubles against 0.35 (20% vs 11%); the cheaper legs make the recycle
     buy more contracts of a thinner option and the swings grow. 0.35 remains the pick: the same end as 0.25 with the
     most even years and the smallest drops; 0.25 is a fair alternative, 0.20 is not.
+  - **The strategy's own page (`zero9.py export`, 2026-10-25):** https://claude.ai/artifact/H8gGya26BFsnqxsw97TDsN, in the
+    Bot vs Indi shape: the rule in words, the headline figures, the account against SPY with the same money, every trade
+    as a bar, the breakdowns, the sortable trade table, and a trade window with the numbered fills, the two legs against
+    what was paid and the two-day stock chart with SPY scaled to the same start. 307 trades, +$305,480 at $10,000 a
+    trade, 119 winners. The research page stays https://claude.ai/artifact/Uug3uh6G7MWQcvRTMfq3tM.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
