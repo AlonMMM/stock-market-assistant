@@ -40,6 +40,11 @@ VERSIONS = {
     "d25-cheap-adjd2": ("2.5 + cheap + the next strike for D2 entries", "sg_c12_15", CHAMP, "cheap+adjd2"),
     "d25-cheap-nofloor": ("2.5 + cheap + D2 entries buy under 200 contracts (fill unproven)", "sg_c12_15", CHAMP, "cheap+nofloor"),
 }
+# the failed-break sale on every 2.5 version (the user, 2026-10-25: "can you add the failed to break to the 2.5 versions as
+# well?"): <slug>@fb, the same entries and contracts, the exits plus sim.py F (as the live bot 2.4 has it)
+for _s in [s for s, v in VERSIONS.items() if v[1] == "sg_c12_15"]:
+    _n, _p, _x, _f = VERSIONS[_s]
+    VERSIONS[f"{_s}@fb"] = (f"{_n} + the failed-break sale", _p, {**_x, "failed_break": True}, _f)
 SIZES = (0.01, 0.02, 0.03, 0.04, 0.05)
 
 

@@ -973,3 +973,12 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   2.5 + cheap + next strike for D2 $158,329 / 15%, 2.5 + cheap + D2 under 200 $173,090 / 18%; 2.4 + next strike
   the worst ($108,746 / 18%). On the Favorites the money is the same few trades (ORCL 2026-04-13, QCOM 2026-05-05, MSTR
   and IBIT 2026-08-19); without the best 5 only the cheap versions stay above $100,000 over 12 months.
+- **The failed-break sale on every 2.5 version (`export_bench.py` <slug>@fb, 2026-10-25; the user: "can you add the failed
+  to break to the 2.5 versions as well?"):** 10% night cap, 1% from $100,000. Fair list: 2.5 $1,108,678 / 11% → with
+  the sale $734,522 / 14%; 2.5 + cheap $1,297,233 / 11% → $890,789 / 16%; + next strike for D2 $1,128,279 / 13% →
+  $731,018 / 16%; cheap + next strike for D2 $1,277,250 / 13% → $859,329 / 18%; D2 under 200 $2,725,610 / 12% →
+  $1,713,858 / 15%; cheap + D2 under 200 $2,899,179 / 13% → $1,906,120 / 18%. Every one loses money and gains 3–5 points
+  of drop. Favorites, 12 months: 2.5 $192,533 / 12% → $186,064 / 11%; 2.5 + cheap $239,826 / 14% → $219,924 / 14%;
+  cheap + next strike for D2 $285,889 / 15% → $257,523 / 16%; 6 months within a few thousand either way. Not better:
+  the sale cuts the early D2 trades before they work (as the d2_failed_break.py study found). On the dashboard as a
+  switch.
