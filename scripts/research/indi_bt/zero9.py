@@ -103,11 +103,15 @@ def export(out):
     import news_filter as nf
     from low_delta import HIS40, PRIOR
     os.makedirs(out, exist_ok=True)
-    ent = zero5.entries()
+    lo0, hi0 = os.environ.get("BT_FROM", "0000"), os.environ.get("BT_TO", "9999")
+    ent = [e for e in zero5.entries() if lo0 <= e[0] <= hi0]
+    print(len(ent), "first-alerts in the window", flush=True)
     with mp.Pool(8) as pool: res = pool.map(one, ent, chunksize=4)
     rows = [dict(date=e[0], sym=e[1], minute=e[2], right="C", r=r) for e, r in zip(ent, res) if r]
     nf.features(rows)
-    fair = [t for t in rows if t["e_next"] != 0 and (t["pre_rvol"] is None or t["pre_rvol"] < 4) and t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]] and "trade" in t["r"]]
+    lo, hi = os.environ.get("BT_FROM", "0000"), os.environ.get("BT_TO", "9999")   # a date window (the app lists: the last year)
+    in_list = (lambda t: True) if os.environ.get("BT_ALL") else (lambda t: t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]])   # BT_ALL: every stock of the universe
+    fair = [t for t in rows if t["e_next"] != 0 and (t["pre_rvol"] is None or t["pre_rvol"] < 4) and in_list(t) and lo <= t["date"] <= hi and "trade" in t["r"]]
     fair.sort(key=lambda t: (t["date"], t["minute"]))
     T, S, Pth = [], [], []
     for n, t in enumerate(fair):
@@ -122,7 +126,7 @@ def export(out):
     spy = [dict(date=d, close=round(day("SPY", d)[-1][4], 2)) for d in CAL if "2024-02-01" <= d <= "2026-10-12" and day("SPY", d)]
     with open(f"{out}/spy.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["date", "close"]); w.writeheader(); w.writerows(spy)
-    skipped = [t for t in rows if "skip" in t["r"]]
+    skipped = [t for t in rows if "skip" in t["r"] and lo <= t["date"] <= hi and in_list(t)]
     print("skipped", len(skipped), "| trades", len(T), "| sum pnl at $10K", sum(x["pnl10k"] for x in T), "| winners", sum(x["pnl10k"] > 0 for x in T))
 
 
