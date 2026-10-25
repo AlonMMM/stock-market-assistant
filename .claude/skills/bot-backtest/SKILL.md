@@ -23,6 +23,12 @@ There are three tools. Pick by the question:
 - **Never read `.env`.** Scripts get the Alpaca keys with `node --env-file=.env ...`.
 - **No orders, ever.** Backtests and replays never touch a broker account. The E2E replay uses the in-memory `SimBroker`.
 - Never short options: any sell in new code is close-only and never more than held.
+- **Costs on every strategy (the user's rule, 2026-10-25):** every contract pays a commission on the buy and on every sale,
+  and every fill is corrected against us. The simulator does this itself: `params.json` `size.commission` ($0.62 a contract
+  each way, IBKR's rate, above the user's $0.40 floor) in `sim.result`, and `cost.spread_half` (2%: buy at the bar's middle
+  × 1.02, sell at × 0.98). Never report a gross number, never lower these, and say "net of $0.62 a contract and 2% a fill"
+  when a result is compared with a live account. Re-state a stored trade at another rate with
+  `ret + (0.62 − rate) × (1 + shares sold) / (100 × paid price)`.
 - Show every time to the user in **Israel time** (NY + 7h, except the weeks around the DST changes).
 - Label synthetic data as synthetic (the E2E replay's option bid/ask are synthetic, see C).
 - Local data (`data/local/x/...`) and account data stay out of Git.
