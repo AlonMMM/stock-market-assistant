@@ -494,6 +494,26 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   All twelve are on the Backtest Reports dashboard ("The contract rules on the favorites year"). The favorites year is
   the user's own list in-sample, so these are re-tests, not the champion test: on the fair list and the 151 unseen
   (`cheap_up.py` above) both rules fail.
+  **Fixing the fallbacks' drop (`fallback_drop.py`, the user, 2026-10-25: "the 2 rules make more trades but hurt the drop very
+  much ... cut losses or check for gain taking somehow to reduce the drop"; the grid set before running):** version 2.5 (the D2
+  entry, rest-stop exits, no failed break) with *both* fallbacks, the champion's own contracts keeping their exits, the fixes on
+  the fallback trades or on the account. Baselines reproduced: fair $1,005,221 / 11% (981 trades), unseen $127,303 / 11%,
+  favorites $183,487 / 14%. *Both* on 2.5: fair 1,913 trades, $1,100,066 / 20% ($6,333,859 / 37% at 2%), the 932 fallback
+  trades +237 each (the illiquid route +7 on 686, the too-cheap route +878 on 246), 2024 +650K vs +793K; unseen 1,377 trades,
+  $67,770 / 51%, the 1,028 fallback trades -584 each; favorites $313,196 / 17%. Exits on the fallback trades: the -20% stop
+  (not -30%) $1,132,002 / 18% fair, unseen $67,738 / 49%; half out at +50% $838,769 / 19% and at +100% $847,556 / 19%
+  (unseen $76-83K / 43-45%); -20% stop + half at +50% $861,076 / 17%; out at 60 minutes if under water $1,174,700 / 20%.
+  Account overlays: the fallback trades at half size $1,071,556 / 15% (unseen $93,635 / 33%); a cap of 3 / 4 / 5 new trades a
+  day cuts the champion's own trades and ends at $520-526K / 23-27%; no new entry once the day's closed trades lost 1 / 1.5
+  trade sizes $785,022 / 27% and $890,444 / 28%; at most 1 / 2 fallback trades a day (champion contracts untouched)
+  $856,892 / 19% and $820,650 / 20%; fallback trades only on days without a champion trade $907,586 / 16%, and only one of
+  them $1,051,883 / 14% (118 trades, unseen $99,283 / 26%). Not better in any cell: no fix brings the drop back to 11% while
+  keeping the money, and every one leaves the unseen far under $127,303 / 11%. Why: the fallback trades have no edge (+237 a
+  trade on the fair list against +2,639 for the champion's contracts, -584 on the unseen), so they add variance and no return;
+  the drop goes with the trade count (3.2 a day instead of 1.6; the 20% fair drop is 253 trades from 2024-08-21 to
+  2025-01-17, 130 of them fallbacks, where 2.5 alone had 61 trades and 11%). Cutting the losers tighter or taking gains
+  reshapes each trade's loss but not the edge; only fewer fallback trades reduce the drop, and then the added money goes too.
+  The fallbacks stay out of the bot; the drop lever remains the size (D2 at 1.75% ~ 2.4's drop at 2%).
 - **Second round, the user's changes (2026-10-24):** the contract's liquidity floor is 10 contracts in the last 30
     minutes instead of 200 ("contract liquidity is not my concern"), now the default in `params.json` (`min_vol30`; the
     live bot's `minVolume30` in `packages/trading/src/bot/picker.ts` is still 200), and the alert route needs day volume
