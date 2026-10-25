@@ -43,6 +43,11 @@ There are three tools. Pick by the question:
 - Contract: delta **0.15**, nearest expiry 1-7 days, min $0.20, ≥ 200 contracts traded in the last 30 minutes.
 - Exits ("your stop"): sell half at +10 min and the rest at +20 min if the stock is against the entry; sell all at
   -30% with the stock against. At 15:50 NY, hold winners ≥ +100% overnight (max 2 nights); morning gap rule at 09:40.
+- **Overnight cap, always (the user's rule, 2026-10-25):** what goes into the night is worth at most 10% of the account;
+  the excess is sold at 15:50 (the live bot's `nightCapPct`). In the research code `params.json` `exit.night_cap` = 0.10
+  (`BT_NIGHT_CAP` overrides, 0 = off) and `sim.result(cost, steps, pct)` applies it for the size asked (1% unless told),
+  so a walk's steps stay uncapped; report 2% figures from `ret_2pct` (lists.py) or `sim.result(..., 0.02)`, never from
+  the 1% return. `night_cap.py` re-applies it to stored lists and the dashboards' trade files.
 - Python name: rule `t18r15` with `nf` news filter; trade files `data/local/x/bt/s_t18r15_20*.[0-9]_trades.csv`.
 - Reference result, fair list at 1%: $585,592 / 11% worst drop; at 2%: $2,444,629 / 21%; unseen stocks: $123,028.
 
