@@ -1024,3 +1024,10 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     trades (the next strike for D2) at half size $1,278,782 / 12% (+16% over flat 0.95%), $415,950 without the best 5:
     the same money as the base for a point less drop; the cheap-fallback trades at half size $1,206,495 / 12% (+3%);
     both at half $1,203,557 / 11% (+22%). The liquid fallback's trades add drop but no money at full size.
+  - **The pyramid (the user: "go with both, put it on top of the other rule we liked"):** on 2.5 + cheap + the next
+    strike for D2: D2 entries at full size, the add (a fresh 0.15-delta, half size) when the stock reaches the real
+    signal with the first leg held and up (131 adds), and both fallbacks' trades at half size: **$1,667,924 / 12%**,
+    every year higher than the base (+1,127K / +1,001K / +1,139K vs +920K / +852K / +1,181K at $10K), $459,910 without
+    the best 5 (base $1,277,234 / 13%, $415,374). The pyramid alone $1,751,061 / 14% ($506,781). Against the candidate
+    2.5 ($1,108,678 / 11%): more money for a point more drop; against the flat size with the same 12% drop (~$1.05M),
+    +59%. Live it needs a second position in the same stock that day (the add) and per-trade sizes in the bot.

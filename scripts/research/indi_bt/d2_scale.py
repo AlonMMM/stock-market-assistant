@@ -38,7 +38,7 @@ def legs(job):
     row, path = r
     steps = [(a, int(b), c, float(d), float(e), f) for a, b, c, d, e, f in (s.split(",") for s in path["steps"].split(";"))]
     cost = float(path["cost"])
-    return slug, (t["date"], t["sym"], t["right"]), dict(row, c_t=float(t["c_t"]), cost=cost, steps=steps,
+    return slug, (t["date"], t["sym"], t["right"]), dict(row, c_t=float(t["c_t"]), cost=cost, steps=steps, src=t["status"],
                                                        r1=sim.result(cost, steps, 0.01), rh=sim.result(cost, steps, 0.005))
 
 
@@ -71,15 +71,20 @@ def main():
     first = {k: v for s, k, v in R if s == BASE}
     add = {k: v for s, k, v in R if s == "leg2"}
     rows = {}
-    for mode in ("full", "half", "add-open", "add-up", "add-any"):
+    # the pyramid (the user, 2026-10-25: "go with both, put it on top of the other rule we liked"): D2 entries at full
+    # size, the add (held and up) on the real signal, and the fallback-added trades (both fallbacks) at half size
+    for mode in ("full", "half", "add-open", "add-up", "add-any", "fb-half", "pyramid", "pyramid+fb-half"):
         out, n_add, add_sum = [], 0, []
+        fbh = mode in ("fb-half", "pyramid+fb-half")
         for k, a in first.items():
-            if a["c_t"] >= 1.8 or mode == "full": out.append((a["date"], 0.01 * max(-1, a["r1"]), a)); continue
-            pnl = 0.005 * max(-1, a["rh"])
+            fb_trade = fbh and a["added"] == 1
+            one = (0.005 * max(-1, a["rh"])) if fb_trade else 0.01 * max(-1, a["r1"])
+            if a["c_t"] >= 1.8 or mode in ("full", "fb-half"): out.append((a["date"], one, a)); continue
+            pnl = one if mode.startswith("pyramid") else 0.005 * max(-1, a["rh"])
             b = add.get(k)
             if mode != "half" and b and int(b["minute"]) > int(a["minute"]):
                 share, up = held_at(a, int(b["minute"]))
-                ok = mode == "add-any" or (share > 0 and (mode == "add-open" or (up is not None and up > 0)))
+                ok = mode == "add-any" or (share > 0 and (mode == "add-open" or (up is not None and up > 0)))  # pyramid: as add-up
                 if ok:
                     p2 = 0.005 * max(-1, b["rh"]); pnl += p2; n_add += 1; add_sum.append(p2)
             out.append((a["date"], pnl, a))
@@ -90,9 +95,11 @@ def main():
         e, d = account([(x[0], x[1] * s) for x in rows["full"][0]], "")
         flat.append((d, e))
     print(f"\n### {BASE}, fair list: D2 entries (t < 1.8) {sum(a['c_t'] < 1.8 for a in first.values())} of {len(first)}\n")
-    print("| Version | Account at 1% | Worst drop | Flat size with the same drop | Edge over flat | Without the best 5 | Adds | The adds at $10K a full trade (without their best 5) |\n|---|---|---|---|---|---|---|---|")
+    print("| Version | 2024 / 2025 / 2026 at $10K | Account at 1% | Worst drop | Flat size with the same drop | Edge over flat | Without the best 5 | Adds | The adds at $10K a full trade (without their best 5) |\n|---|---|---|---|---|---|---|---|---|")
     names = {"full": "base: D2 entries at full size", "half": "D2 entries at half size, no add", "add-open": "half + add on the real signal (first half still held)",
-             "add-up": "half + add on the real signal (first half held and up)", "add-any": "half + add on the real signal (always)"}
+             "add-up": "half + add on the real signal (first half held and up)", "add-any": "half + add on the real signal (always)",
+             "fb-half": "fallback-added trades at half size", "pyramid": "pyramid: D2 full + add (held and up)",
+             "pyramid+fb-half": "pyramid + fallback-added trades at half size"}
     for mode, (out, n_add, add_sum) in rows.items():
         e, d = account([(x[0], x[1]) for x in out], "")
         top = sorted(range(len(out)), key=lambda i: -out[i][1])[:5]
@@ -100,7 +107,8 @@ def main():
         f = sw.edge(flat, d, e)
         s_ = sorted((x / 0.005 * 1e4 for x in add_sum), reverse=True)  # each add is half a 1% trade: its return x $10K
         adds = f"{sum(s_) / 1e3:+,.0f}K ({sum(s_[5:]) / 1e3:+,.0f}K)" if s_ else ""
-        print(f"| {names[mode]} | ${e:,.0f} | {d:.0%} | {'$%s' % format(round(f), ',') if f else 'beyond flat 0.5-1%'} | {f'{e / f - 1:+.0%}' if f else ''} | ${e5:,.0f} | {n_add} | {adds} |", flush=True)
+        yrs = " / ".join(f"{sum(x[1] for x in out if x[0][:4] == y) * 1e6 / 1e3:+,.0f}K" for y in ("2024", "2025", "2026"))  # at $10K a 1% trade
+        print(f"| {names[mode]} | {yrs} | ${e:,.0f} | {d:.0%} | {'$%s' % format(round(f), ',') if f else 'beyond flat 0.5-1%'} | {f'{e / f - 1:+.0%}' if f else ''} | ${e5:,.0f} | {n_add} | {adds} |", flush=True)
 
 
 if __name__ == "__main__":
