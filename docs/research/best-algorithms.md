@@ -772,6 +772,23 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     both lists: a tag to watch, not a rule. Also: alerts with SPY within ±0.25% of its open are the weakest group on both
     lists (+8 and −74 a trade). Candidate for the paper bot: the stock trail (0.25 to 0.75 S30) and the one-leg entry
     at the side; picked from these runs, so in sample, but a band on both lists and robust to the fill.
+  - **The Alert leg with the two contract fallbacks (`leg_fallback.py`, the user, 2026-10-25: "try to add the 2
+    fallbacks. cheap and liquid").** The rule as the live bot runs it: the side from the stock's price at the alert,
+    the leg picked at the side minute (only that leg must be liquid). Note this plain baseline is wider than the page's
+    export, which needed both legs liquid at the alert: fair 446 trades, $208,776 / 4.1% at 1% (page 306, $154,676 /
+    3.2%); favorites 253, $131,322 / 5.4% (page 191, $119,831 / 3.3%). Cheap (under $0.20: the nearest-the-money strike
+    at $0.20+) / liquid (under 200: out to 0.25 first, then in to 0.50, the nearest to 0.35) / both: fair +12 / +27 /
+    +38 trades, $216,618 / $216,994 / $222,121, drop 4.1% each (CRCL +5.6K and CVNA +3.1K the bulk of liquid's +6.2K);
+    favorites +8 / +25 / +33, $128,777 / 6.6%, $132,594 / 6.0%, $130,623 / 6.7% vs $131,322 / 5.4%. Not better: on the
+    favorites cheap and both lose money and add a point of drop, liquid +$894 on 25 trades with more drop; the fair
+    gain is two trades. The fallbacks stay out, as for Indi.
+  - **Half at a big gain, the rest with more air (`leg_half.py`, the user, 2026-10-25: "at 200% selling 50% only if did
+    not sell with back, the rest give more air"),** on the page's trades. Half at +100 / +200 / +300% (sale price over
+    the buy) while the 0.75 give-back has not fired; the rest at a 1.0 / 1.5 / 2.0 S30 give-back or 15:30. Fair as now
+    $154,676 / 3.2%: +200% $143,616-$149,915, +300% $144,992-$155,235, +100% $124,733-$142,506. Favorites as now
+    $119,831: +200% $120,336-$122,103, +300% $119,884-$123,555 (5 trades), +100% $113,677-$115,818. Not better: +200%
+    loses on the fair list, +300% touches 8 and 5 trades (a tie), +100% sells the runners. The 0DTE 0.35 leg rarely runs
+    past +300% in a day (fair 3 of 306, favorites 0 of 191), so the half caps what is near its top already.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
