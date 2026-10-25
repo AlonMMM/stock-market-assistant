@@ -670,6 +670,20 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     year at 1% a trade with a 2–4% worst drop, two trades a week, Fridays. Caveats: four fills a trade at the mid ± 2%
     (the fill model's weakest case), 0DTE only on expiry days, liquid names only. The best alert result of the study;
     a strategy of its own, next to the bot, not a rule for it.
+  - **The strangle, wider (`zero6.py`, 2026-10-25; the user asked for a 45% trail and a wider look; results page
+    https://claude.ai/artifact/Uug3uh6G7MWQcvRTMfq3tM):** 630 variants, delta 0.30 / 0.35 / 0.40 × confirmation 0.15 /
+    0.25 / 0.35 / 0.5 S30 or leg +30% × wait 30 / 60 / 90 × kept-leg exit trail 20 / 30 / 45 / 60%, 60 / 90-minute clock,
+    hold to 15:30 × fill mid ± 2% or 5% a leg. At 0.35, confirm 0.25, 2%: trail 20 $118,397 / 2% (the best without the
+    best 5, $109,282), trail 30 $120,078 / 2%, **trail 45 $113,401 / 6%** (2026 negative, $99,725 without the best 5),
+    trail 60 $111,158 / 11%, clock 60 $119,302 / 5%, clock 90 $106,030 / 11%, hold to close $92,559 / 19%: the trail band
+    is 20–30%, 45% gives the kept leg's gains back. The wait cap never binds: the stock reaches 0.25 S30 within a median
+    of 3 minutes of the alert, in every trade, so 30 / 60 / 90 give identical results; the rule is in effect "buy both,
+    sell the wrong one within minutes". Confirmations 0.15–0.35 S30 all work (trail 30: $117K–$120K), 0.5 and the leg
+    rule are weaker. Deltas: 0.30 trail 30 $120,773 / 4%, 0.40 $115,049 / 2% (clock 60 $119,697 / 4%). **Fill: at
+    mid ± 5% a leg the edge is gone**, trail 30 $99,260 / 7% (2025 flat, 2026 negative), trail 45 $94,095 / 13%. Four
+    fills a trade at 3 points more each is the whole edge, so the live result hangs on execution: tight spreads, limit
+    orders at the mid, and a paper run before any size. Everything else as before: Fridays carry it, 12:00–13:00 loses,
+    spread across names.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
