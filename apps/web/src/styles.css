@@ -602,7 +602,7 @@ button.market-tile[aria-expanded="true"] {
   display: flex;
   gap: 4px;
   border-bottom: 1px solid #cdd7ce;
-  /* Five Portfolio tabs (with Bot) can be wider than a phone. */
+  /* The Live page's tabs can be wider than a phone. */
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -653,6 +653,39 @@ button.market-tile[aria-expanded="true"] {
     flex: 1;
     justify-content: center;
   }
+}
+/* Portfolio: the pages of the chosen tab, a quiet row of pills under the
+   underline tabs. The tab row and the pill row read as one control, so the
+   gap between them is smaller than the page's rhythm. */
+.subtabs {
+  display: flex;
+  gap: 4px;
+  margin-top: -8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.subtabs button {
+  flex: none;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+  color: #526461;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+.subtabs button:hover {
+  background: #e8eee8;
+  color: #142b29;
+}
+.subtabs button[aria-selected="true"] {
+  background: #142b29;
+  color: #fff;
+  font-weight: 600;
 }
 /* Live page: toolbars and the alerts table. */
 .toolbar {

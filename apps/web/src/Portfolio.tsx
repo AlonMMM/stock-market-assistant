@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState, type ReactNode } from "react";
+import type React from "react";
 import type {
   ClosedTrade,
   Contract,
@@ -272,14 +273,50 @@ function History({
   );
 }
 
-const allSections = [
-  ["live", "Live trades"],
-  ["trade", "Trade"],
-  ["orders", "Orders"],
-  ["history", "History"],
-  ["bot", "🤖 Bot"],
-  ["bot-trades", "Bot trades"],
+// Two tabs, Trade and Bot, each with its own row of pages (user 2026-10-25:
+// "this is too messy. lets go with 2 tabs, Trade and Bot under each all the
+// related stuff"). Each tab remembers the page it was on.
+const groups = [
+  [
+    "trade",
+    "Trade",
+    [
+      ["live", "Live trades"],
+      ["new", "New trade"],
+      ["orders", "Orders"],
+      ["history", "History"],
+    ],
+  ],
+  [
+    "bot",
+    "🤖 Bot",
+    [
+      ["activity", "Activity"],
+      ["trades", "Trades"],
+      ["settings", "Settings"],
+    ],
+  ],
 ] as const;
+type Group = (typeof groups)[number][0];
+type Page = (typeof groups)[number][2][number][0];
+// Pages for the account owner only: the trade ticket and the bot's settings.
+const ownerPages: readonly Page[] = ["new", "settings"];
+
+/** Arrow keys move along a tab row and focus the tab they land on. */
+function arrowTo<K extends string>(
+  e: React.KeyboardEvent,
+  keys: readonly K[],
+  current: K,
+  go: (next: K) => void,
+  idOf: (key: K) => string,
+) {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  const at = keys.indexOf(current);
+  const step = e.key === "ArrowRight" ? 1 : keys.length - 1;
+  const next = keys[(at + step) % keys.length]!;
+  go(next);
+  document.getElementById(idOf(next))?.focus();
+}
 
 /** The Portfolio area: open trades, and the account's history. */
 export function Portfolio({
@@ -293,27 +330,40 @@ export function Portfolio({
   tradeSymbol?: string | null;
   tradeMode?: "options" | "stock";
 }) {
-  const [tab, setTab] = useState<(typeof allSections)[number][0]>(
-    tradeSymbol ? "trade" : "live",
-  );
-  // The trade ticket is for the account owner only.
+  const [group, setGroup] = useState<Group>("trade");
+  const [pages, setPages] = useState<Record<Group, Page>>({
+    trade: tradeSymbol ? "new" : "live",
+    bot: "activity",
+  });
+  // The trade ticket and the bot's settings are for the account owner only.
   const { canTrade } = useControlAccess();
   // The open order the Trade page was opened on, if any.
   const [editing, setEditing] = useState<PortfolioOrder | null>(null);
-  const sections = allSections.filter(([key]) => key !== "trade" || canTrade);
   const ignore = () => {}; // failures are shown in place
+  const [, groupLabel, allPages] = groups.find(([key]) => key === group)!;
+  const visible = allPages.filter(
+    ([key]) => canTrade || !ownerPages.includes(key),
+  );
+  const wanted = pages[group];
+  const page = visible.some(([key]) => key === wanted)
+    ? wanted
+    : visible[0]![0];
+  const open = (g: Group, p: Page) => {
+    setGroup(g);
+    setPages((prev) => ({ ...prev, [g]: p }));
+  };
   const panel = () => {
-    if (tab === "live")
+    if (page === "live")
       return (
         <LiveTrades
           onError={ignore}
           onEdit={(o) => {
             setEditing(o);
-            setTab("trade");
+            open("trade", "new");
           }}
         />
       );
-    if (tab === "trade" && canTrade)
+    if (page === "new" && canTrade)
       return (
         <TradeTicket
           key={editing?.id ?? "new"}
@@ -322,10 +372,18 @@ export function Portfolio({
           startMode={tradeMode}
         />
       );
-    if (tab === "orders") return <Orders onError={ignore} />;
-    if (tab === "bot") return <BotTab canChange={canTrade} />;
-    if (tab === "bot-trades") return <BotTrades onError={ignore} />;
-    return <History onError={ignore} />;
+    if (page === "orders") return <Orders onError={ignore} />;
+    if (page === "history") return <History onError={ignore} />;
+    if (page === "activity")
+      return canTrade ? (
+        <BotPanel onSettings={() => open("bot", "settings")} />
+      ) : (
+        <BotPanel />
+      );
+    if (page === "trades") return <BotTrades onError={ignore} />;
+    if (page === "settings" && canTrade)
+      return <BotSettingsPage onBack={() => open("bot", "activity")} />;
+    return <BotPanel />;
   };
   return (
     <div className="live-page">
@@ -341,28 +399,58 @@ export function Portfolio({
         role="tablist"
         aria-label="Portfolio sections"
         className="tabs"
-        onKeyDown={(e) => {
-          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-          const at = sections.findIndex(([key]) => key === tab);
-          const step = e.key === "ArrowRight" ? 1 : sections.length - 1;
-          const next = sections[(at + step) % sections.length]![0];
-          setTab(next);
-          document.getElementById(`tab-${next}`)?.focus();
-        }}
+        onKeyDown={(e) =>
+          arrowTo(
+            e,
+            groups.map(([key]) => key),
+            group,
+            (next) => open(next, pages[next]),
+            (key) => `tab-${key}`,
+          )
+        }
       >
-        {sections.map(([key, label]) => (
+        {groups.map(([key, label]) => (
           <button
             type="button"
             role="tab"
             key={key}
             id={`tab-${key}`}
-            aria-selected={tab === key}
+            aria-selected={group === key}
+            aria-controls={`panel-${pages[key]}`}
+            tabIndex={group === key ? 0 : -1}
+            onClick={() => open(key, pages[key])}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div
+        role="tablist"
+        aria-label={`${groupLabel} pages`}
+        className="subtabs"
+        onKeyDown={(e) =>
+          arrowTo(
+            e,
+            visible.map(([key]) => key),
+            page,
+            (next) => open(group, next),
+            (key) => `tab-${key}`,
+          )
+        }
+      >
+        {visible.map(([key, label]) => (
+          <button
+            type="button"
+            role="tab"
+            key={key}
+            id={`tab-${key}`}
+            aria-selected={page === key}
             aria-controls={`panel-${key}`}
-            tabIndex={tab === key ? 0 : -1}
+            tabIndex={page === key ? 0 : -1}
             onClick={() => {
-              // The tab itself starts a new ticket, not the last order.
+              // The page itself starts a new ticket, not the last order.
               setEditing(null);
-              setTab(key);
+              open(group, key);
             }}
           >
             {label}
@@ -371,22 +459,14 @@ export function Portfolio({
       </div>
       <section
         role="tabpanel"
-        id={`panel-${tab}`}
-        aria-labelledby={`tab-${tab}`}
+        id={`panel-${page}`}
+        aria-labelledby={`tab-${page}`}
         className="tab-panel"
       >
         {panel()}
       </section>
     </div>
   );
-}
-
-/** The Bot tab; the account owner can open the bot's settings from it. */
-function BotTab({ canChange }: { canChange: boolean }) {
-  const [settings, setSettings] = useState(false);
-  if (!canChange) return <BotPanel />;
-  if (settings) return <BotSettingsPage onBack={() => setSettings(false)} />;
-  return <BotPanel onSettings={() => setSettings(true)} />;
 }
 
 /** The Alpaca account now: totals, open positions and working orders. */
