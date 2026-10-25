@@ -9,6 +9,29 @@ Every time a backtested version beats the current champion, it is added here, an
 A version beats the champion only when **all** hold, on the same period (Feb 2024 – Oct 2026), the same trade model
 (fills at the bar middle ± 2%) and the same sizing (1% of the current account from $100,000):
 
+**Costs (the user's rule, 2026-10-25):** every strategy pays for every contract on the buy and on every sale, and
+every fill is corrected against us. The simulator has done this from the start: `params.json` `size.commission` =
+**$0.62 a contract** each way (IBKR's rate; `sim.result` charges it on the entry, on each sale and on a rebuy), and
+`cost.spread_half` = **2%**: a buy fills at the bar's middle × 1.02, a sale at × 0.98. Every number in this file and on
+both dashboards is net of both. The user's floor is **$0.40 a contract each way**; the simulator stays at the stricter
+$0.62. At the user's $0.40 the ladder reads (fair list; the drop moves at most one point):
+
+| Version | At 1%: $0.62 → $0.40 | At 2%: $0.62 → $0.40 | A trade at $10K |
+|---|---|---|---|
+| D2 bonus entry (champion) | $1,005,221 → $1,042,426 | $6,384,240 → $6,863,332 | +2,639 → +2,676 |
+| The current bot 2.4 (`bot24`) | $695,451 → $716,630 | $3,372,316 → $3,579,948 | +2,656 → +2,693 |
+| Rest stop -20% | $811,356 → $836,040 | $4,502,081 → $4,778,745 | +2,859 → +2,896 |
+| Overnight from +50% | $795,641 → $819,848 | $4,330,004 → $4,596,132 | +2,835 → +2,872 |
+| t-stat exit | $610,096 → $628,667 | $2,647,108 → $2,809,916 | +2,479 → +2,516 |
+| News filter + t ≥ 1.8 | $585,592 → $603,419 | $2,444,629 → $2,595,019 | +2,427 → +2,464 |
+| Favorites year, current bot 2.4 (`fav_rest_bot`) | $179,263 → $184,458 | $279,558 → $295,990 | |
+| Favorites year, D2 + the sale (`fav_d2_bot`) | $191,220 → $198,075 | $310,176 → $332,807 | |
+
+The median paid price of a champion trade is $0.67, so the two commissions take 1.8% of a trade's premium at $0.62
+(1.2% at $0.40); 9% of the trades pay under $0.30, where they take 4% or more. The sensitivity to a wider fill
+correction (5%, 10%) is the "Cost sensitivity" set on the Bot vs Indi dashboard. To re-state a stored trade at another
+rate without walking again: ret + (0.62 − rate) × (1 + shares sold) / (100 × paid price).
+
 1. **Fair list:** it ends higher than the champion on the stocks Indi traded the year before (no look-ahead), or
    ends about the same with a clearly smaller worst drop.
 2. **Every year positive** on the fair list (2024, 2025, 2026).
