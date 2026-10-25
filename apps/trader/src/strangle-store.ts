@@ -61,6 +61,7 @@ export interface StrangleTrade {
   alertSide: "up" | "down";
   unit: number; // the stock's typical 30-minute move, a fraction of its price
   stockRef: number; // the stock when the alert was read; the side is measured from here
+  expiry?: string; // the leg's expiry: the day itself, or the next session (1DTE); absent on older trades = the day
   side: "C" | "P" | null;
   sideMinute: number | null;
   best: number | null; // the stock's best since the buy, the side's way

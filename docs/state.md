@@ -55,7 +55,8 @@ See the [task](tasks/backend-indi-bot.md).
 
 A separate bot on its own Alpaca paper account (`STRANGLE_ALPACA_API_KEY`), with its own Portfolio tab
 (🎯 Alert leg: Activity, Trades, Settings): on the first volume alert of an expiry day it waits for the side (a
-quarter of the stock's typical 30-minute move), buys only that side's 0.35-delta same-day leg and sells when the
+quarter of the stock's typical 30-minute move), buys only that side's 0.35-delta leg of the day's expiry (0DTE, or
+1DTE on days whose nearest expiry is the next session, since 2026-10-25) and sells when the
 stock gives back 0.75 of that move from its best. Parity 497/499 with the backtest. Waiting for the account;
 starts off and in dry run. See the [task](tasks/backend-strangle-bot.md).
 

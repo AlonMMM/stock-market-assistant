@@ -17,21 +17,28 @@ The code keeps the name `strangle` for its module, routes, tables and environmen
 
 ## The rule (the defaults; every number is a setting)
 
-1. On a day with a same-day expiry, from 09:40 to 13:00 New York, the first time the volume alert (rvol-v6, as
+1. On a day with a same-day expiry (or, with `nextDay` on, the default since 2026-10-25, a day whose nearest expiry
+   is the next session: 1DTE, mostly Thursdays), from 09:40 to 13:00 New York, the first time the volume alert (rvol-v6, as
    the backtest evaluated it: `packages/trading/src/strangle/alert.ts`) fires on a stock, in either direction.
    One trade per stock a day; a later alert the same day does not count.
 2. News filter as the Indi bot's: no trade on the earnings reaction day or with pre-market volume 4× or more.
 3. Watch: the side is the first time the stock is 0.25 of its typical 30-minute move (`priorLevels(...).unit`,
    the failed break's unit) from its price when the alert was read, up or down. No side within 60 minutes of
    the alert: no trade. Optional strength filter: buy only when the C t-stat since the open agrees.
-4. Buy only that side's leg: the 0.35-delta call (up) or put (down) of the same-day expiry (`pickContract`), 1% of
+4. Buy only that side's leg: the 0.35-delta call (up) or put (down) of that day's expiry (`pickContract`), 1% of
    the account at the ask; its mid ≥ $0.20 and ≥ 200 contracts in the last 30 minutes.
 5. Sell all when the stock gives back 0.75 of its typical 30-minute move from its best since the buy (its high
-   for a call, its low for a put); everything out by 15:30. A leg left from a past day is sold at once.
+   for a call, its low for a put); everything out by 15:30, 1DTE legs too. A leg left from a past day is sold at once.
 6. Limits: 5 trades a day, 3 open, no new trade after a 5% day loss.
 
 Backtest (2% fill a leg, 1% a trade): fair list 2024–2026 $157,440 / 3% worst drop vs the strangle's $134,415;
 the favorites' last year $122,233 / 3% vs $104,976; at a 4% fill $137,179 and $112,497.
+
+The 1DTE days (`leg_1dte.py`, `leg_export.py`, the rule as this bot runs it: the leg picked at the side), 1% at a 2%
+fill: fair list 0DTE days alone $208,776 / 4.1% (446 trades), with the 1DTE days $308,991 / 5.0% (842); the
+favorites' year $131,322 / 5.4% → $151,341 / 5.1% (253 → 440); at a 4% fill $171,500 → $211,991 and $117,513 →
+$125,184. Holding 1DTE legs overnight was tested and dropped. Benchmark page:
+https://claude.ai/artifact/4g8QiFg4AmAyUiH5FP5AY4.
 
 Differences from the backtest: the side and the give-back are checked every 10 s on the stock's last trade (the
 backtest used minute closes); the side is measured from the stock when the alert is read (the backtest from the

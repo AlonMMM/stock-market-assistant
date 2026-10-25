@@ -44,7 +44,7 @@ const outcomeWords: Record<string, string> = {
   traded: "bought the leg",
   "would-trade": "would buy (dry run)",
   no_side: "no side in time",
-  no_expiry: "no same-day expiry",
+  no_expiry: "no expiry today or next session",
   no_strikes: "no strikes",
   no_prices: "no prices",
   too_cheap: "the leg too cheap",
@@ -362,8 +362,8 @@ const groups: { title: string; specs: Spec[] }[] = [
       },
       {
         key: "delta",
-        label: "Delta of each leg",
-        help: "The call and the put of the same-day expiry.",
+        label: "Delta of the leg",
+        help: "The call or the put of the same-day expiry (or the next session's, on 1DTE days).",
         fmt: (v) => v.toFixed(2),
       },
       {
@@ -411,10 +411,20 @@ const groups: { title: string; specs: Spec[] }[] = [
   },
 ];
 const switches: {
-  key: "strengthFilter" | "skipEarnings" | "skipPremarket" | "followFavorites";
+  key:
+    | "nextDay"
+    | "strengthFilter"
+    | "skipEarnings"
+    | "skipPremarket"
+    | "followFavorites";
   label: string;
   help: string;
 }[] = [
+  {
+    key: "nextDay",
+    label: "Also 1DTE days",
+    help: "Days with no same-day expiry but one the next session (mostly Thursdays): the same rule on that expiry, still sold the same day.",
+  },
   {
     key: "strengthFilter",
     label: "Strength must agree",

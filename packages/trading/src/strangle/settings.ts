@@ -28,6 +28,10 @@ export interface StrangleSettings {
   // Entry: the first volume alert of the day, from firstMinute to lastMinute
   // (session minutes, 09:30 New York = 0), on days with a same-day expiry.
   firstMinute: number;
+  // Also days whose nearest expiry is the next session (1DTE, mostly
+  // Thursdays): the same rule on that expiry's leg, still sold the same day
+  // (user 2026-10-25, "implement it"; leg_1dte.py: better on both lists).
+  nextDay: boolean;
   lastMinute: number;
   delta: number;
   minPrice: number; // each leg's mid
@@ -70,6 +74,7 @@ export const defaultStrangleSettings: StrangleSettings = {
   dayLossPct: 5,
   safetyStopPct: 70,
   firstMinute: 10,
+  nextDay: true,
   lastMinute: 209,
   delta: 0.35,
   minPrice: 0.2,
@@ -117,6 +122,7 @@ export const strangleUntested: ReadonlySet<keyof StrangleSettings> = new Set([
 const booleans: BooleanKey[] = [
   "enabled",
   "followFavorites",
+  "nextDay",
   "strengthFilter",
   "skipEarnings",
   "skipPremarket",
@@ -214,7 +220,7 @@ export function strangleSteps(
   return [
     {
       name: "The alert",
-      text: `On a day with a same-day expiry, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, the first time the volume alert fires on a stock, in either direction. One trade per stock a day.`,
+      text: `On a day with a same-day expiry${s.nextDay ? " (or, when there is none, one the next session: 1DTE)" : ""}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, the first time the volume alert fires on a stock, in either direction. One trade per stock a day.`,
     },
     {
       name: "News filter",
@@ -226,7 +232,7 @@ export function strangleSteps(
     },
     {
       name: "Buy",
-      text: `Only that leg: the ${s.delta.toFixed(2)}-delta call (up) or put (down) of the same-day expiry, ${s.sizePct}% of the account. Its mid at least $${s.minPrice.toFixed(2)}${s.minVolume > 0 ? ` and ${s.minVolume} contracts traded in the last 30 minutes` : ""}.`,
+      text: `Only that leg: the ${s.delta.toFixed(2)}-delta call (up) or put (down) of that expiry, ${s.sizePct}% of the account. Its mid at least $${s.minPrice.toFixed(2)}${s.minVolume > 0 ? ` and ${s.minVolume} contracts traded in the last 30 minutes` : ""}.`,
     },
     {
       name: "Sell",
