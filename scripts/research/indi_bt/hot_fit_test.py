@@ -51,7 +51,10 @@ def signals(v):
     prefix, hot, _ = VERSIONS[v]
     F = [dict(t, v=v, src="fair") for f in glob.glob(f"{B}/{prefix}_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] in ("ok", "too_cheap", "illiquid")]
     nf.features(F)
-    F = [t for t in F if t["e_next"] != 0 and (t["pre_rvol"] is None or t["pre_rvol"] < 4) and t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]]]
+    F = [t for t in F if t["e_next"] != 0 and (t["pre_rvol"] is None or t["pre_rvol"] < 4)]
+    for t in F:
+        if t["sym"] not in HIS40: t["src"] = "unseen"  # the 151 unseen: the fallbacks' check (the user, 2026-10-25: "add both fallback features")
+    F = [t for t in F if t["src"] == "unseen" or t["sym"] in PRIOR[t["date"][:4]]]
     H = []
     for r in json.load(open(f"{B}/list_{hot}_{A}_{Z}.json")):
         st = {"bought": "ok", "no contract: illiquid": "illiquid", "no contract: too_cheap": "too_cheap"}.get(r["status"])
@@ -69,11 +72,12 @@ def main():
     with mp.Pool(6) as pool: R = dict(pool.map(one, T, chunksize=8))
     pt = lambda x: 1e4 * max(-1, x)
     LISTS = [("fair list, full period", lambda t: t["src"] == "fair"),
+             ("151 unseen", lambda t: t["src"] == "unseen"),
              ("fair list from Feb 2024", lambda t: t["src"] == "fair" and t["date"] >= A),
              ("hot 6m", lambda t: t["src"] == "hot 6m"),
              ("hot 3m only", lambda t: t["src"] == "hot 3m only"),
              ("fair + hot 6m", lambda t: t["date"] >= A and t["src"] in ("fair", "hot 6m")),
-             ("fair + hot 6m + 3m", lambda t: t["date"] >= A)]
+             ("fair + hot 6m + 3m", lambda t: t["date"] >= A and t["src"] != "unseen")]
     for v in VERSIONS:
         print(f"\n## Bot {v}\n")
         print("| List | Pick | Trades | Winners | Per trade at $10K | At 1% / worst drop | At 2% / worst drop | 2024 / 2025 / 2026 at $10K | Without the best 5 at 1% | Best 5 |\n|---|---|---|---|---|---|---|---|---|---|")
@@ -93,7 +97,7 @@ def main():
         for mode in ("plain", "liquid2"):
             by = collections.defaultdict(list)
             for t in T:
-                if t["v"] == v and t["src"] != "fair" and mode in R[t["k"]]: by[t["sym"]].append(pt(R[t["k"]][mode][0]))
+                if t["v"] == v and t["src"].startswith("hot") and mode in R[t["k"]]: by[t["sym"]].append(pt(R[t["k"]][mode][0]))
             print(f"\nBot {v}, hot stocks by stock ({mode}): " + ", ".join(f"{s} {len(x)} {sum(x) / 1e3:+,.0f}K" for s, x in sorted(by.items(), key=lambda kv: -sum(kv[1]))))
 
 

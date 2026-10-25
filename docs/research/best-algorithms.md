@@ -884,3 +884,8 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   the core stocks are where Indi trades and where the signal works. A lead from the same run, to test before believing:
   **2.5 + the cheap fallback** on the fair list $1,297,219 / 11% (2%: $6,599,909 / 21%), every year positive,
   $422,022 without the best 5 vs $360,679; on 2.4 the cheap fallback failed the unseen ($86,373 / 31% vs $127,433).
+  - **The fallbacks on the 151 unseen (`hot_fit_test.py` with the unseen, 2026-10-25; the user: "add both fallback
+    features to the test"):** the lead fails. Bot 2.5 on the unseen: plain $126,187 / 11%, cheap $78,322 / 38%,
+    liquid2 $95,922 / 36%, both2 $67,096 / 49% (2024 −386K). Bot 2.4: plain $126,312 / 9%, cheap $85,613 / 31%,
+    liquid2 $107,025 / 24%, both2 $74,899 / 42%. Every fallback loses money on the unseen with both bots; the fair-list
+    gain of cheap on 2.5 ($1,297,219) is in-sample in stocks. The plain pick stays.
