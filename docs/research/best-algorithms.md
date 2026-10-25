@@ -999,3 +999,16 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   cheap + next strike for D2 $285,889 / 15% → $257,523 / 16%; 6 months within a few thousand either way. Not better:
   the sale cuts the early D2 trades before they work (as the d2_failed_break.py study found). On the dashboard as a
   switch.
+- **Cutting the drop of 2.5 + cheap + the next strike for D2 (`dd_reduce.py`, 2026-10-25; the user: "find a way to reduce
+  the drop in the cheap + liquid; I do not care to lose some money but I need this data"):** fair list, 1%, 10% night
+  cap; base $1,277,250 / 13%. Yardstick = a smaller flat size (0.9% $1,022,256 / 12%, 0.8% $812,977 / 10%, 0.7%
+  $642,282 / 9%, 0.6% $503,951 / 8%); "edge" = the end against the flat size with the same drop. **Known at entry and
+  better than flat: the fallback-added trades at half size, $1,203,557 / 11% (+22% over flat 0.85%), $391,482 without
+  the best 5**; with the 10-minute check selling all $1,202,544 / 11%; with the 7.5% night cap $1,154,371 / 11%.
+  After a losing streak (in entry order, so it knows same-day results early: an upper bound): x0.5 after 3 losers
+  $745,269 / 9% (+17%), with the fallback half $695,361 / 8% (+28%); x0.5 after 8 $1,008,750 / 11%; after 5 worse
+  than flat (-16%), so the streak rule is noisy. Worse than flat: at most 1 / 2 / 3 trades a day ($457K / 10%, $695K /
+  15%, $790K / 16%), the D2 entries at half size ($726,143 / 13%), stops at -25% / -20% ($896K / 13%, $763K / 15%),
+  holding from +100% ($911,438 / 13%), the night cap at 5% ($1,027,938 / 13%), cutting the size below a 10% drawdown
+  ($700,333 / 13%); the drawdown cuts at 15%+ never fire. The drop is not made by a few bad days a rule can see coming;
+  only taking less of the trades the fallbacks add, and the streak rule, beat simply trading smaller.

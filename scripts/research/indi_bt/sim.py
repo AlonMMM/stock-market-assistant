@@ -48,6 +48,9 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                last `window` minutes under k x its usual move for that span (S30 x sqrt(window/30), levels.py); with `under`
                only while the option is under that gain                 -> sell all
   first_exit_min N: on the entry day no -X% stop and no failed-break sale in the first N minutes (the checks keep their times)
+  hold_first N: on the entry day no stop of any kind (the checks, -X%, the rest, the t-stat exit, the failed break) in the
+               first N minutes after the entry; then the rules as usual, a check whose time has passed fires at once
+               (user, 2026-10-25: "no stop for 30 minutes" on the pre-market D2 entries, premarket_d2.py)
   rebuy {mode, off, until}: after the +10 check sold part, buy that part back once on the entry day (until minute
                `until`): mode "at20" when the stock is not against at the 20-minute check, mode "back" at the first close
                `off` (price units) past the entry price our way; next bar at the middle + SH. The stops and the hold
@@ -261,6 +264,8 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 steps.append((d, t, "buy", 1.0, round(cost, 4), "entry_limit" if limit is not None else "entry"))
                 continue
             early = k == 0 and t - minute < X.get("first_exit_min", 0)  # no stop / failed-break sale this soon after the entry (user, 2026-10-24)
+            hold = k == 0 and t - minute < X.get("hold_first", 0)  # no stop of any kind yet (hold_first)
+            early = early or hold
             if fb is not None and k == 0 and t > fb and cost is not None and not early:  # the failed-break sale: all of what is left
                 steps.append((d, t, "sell", round(rem, 4), round(max(mid(b) * (1 - SH), 0.01), 4), "F_break"))
                 return cost, steps, ""
@@ -389,7 +394,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 st["rolled"] = True; pending = (rem * R_["share"], "R_roll"); continue
             if R_ and st.get("rolled") and g >= R_["rest_take"]: pending = ("all", "R_take"); continue
             TH = X.get("thesis")  # {s30, bar, t}: the entry's thesis broken on the stock itself (user, 2026-10-24)
-            if TH and k == 0 and sd.ok:
+            if TH and k == 0 and sd.ok and not hold:
                 if "th" not in st:
                     from levels import ctx
                     cx = ctx(und, d)
@@ -424,7 +429,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                     st["df"] = ex if cx and cx["sd"] else None
                 tt = min(t, 389)
                 if st["df"] and sum(st["df"][tt - DF["window"] + 1:tt + 1]) <= DF["out"]: pending = ("all", "DF_defence"); continue
-            if X.get("user_stop") and sd.ok and k == 0:
+            if X.get("user_stop") and sd.ok and k == 0 and not hold:
                 U = X["user_stop"]; tt = min(t, 389)
                 if st.get("sp0") is None: st["sp0"] = sd.c[minute]
                 against = sd.c[tt] is not None and st["sp0"] and bet * (sd.c[tt] - st["sp0"]) < 0
