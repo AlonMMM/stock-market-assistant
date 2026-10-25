@@ -816,6 +816,14 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     b1f $384,149 → $352,060 / $353,444. Favorites: b1 $140,636 → $134,655 / $135,762; b1f $132,997 → $132,088 /
     $132,907. Less money on both lists, no less drop: the overnight winners keep running the next morning (the half
     sold at the open caps them), and few are down at the open. The 1DTE days out by 15:30 stay the candidate.
+    **Other deltas for 0DTE + 1DTE out by 15:30 (`leg_delta.py`, the user, 2026-10-25).** Same rule, the target delta
+    on both kinds of day, 1% at ±2%: fair 0.20 $329,523 / 5.4% (625 trades), 0.25 $301,827 / 4.2%, 0.30 $304,337 /
+    4.9%, 0.35 $308,991 / 5.0% (842), 0.40 $288,571 / 4.9%, 0.45 $244,586, 0.50 $245,443. Favorites 0.20 $131,772 /
+    5.3%, 0.25 $134,625 / 5.7%, 0.30 $140,752 / 5.5%, **0.35 $151,341 / 5.1%**, 0.40 $145,149 / 6.1%, 0.45 $141,932,
+    0.50 $141,231. Each kind's best delta differs by list (fair 0DTE 0.20 / 1DTE 0.35 → $328,898 / 4.1%; favorites
+    0.35 / 0.25 → $154,316 / 6.0%), so a split is fitting noise. 0.45 and 0.50 are the same leg (the picker scans only
+    OTM strikes; real delta median 0.42-0.45). Low deltas lose trades to the $0.20 / 200-contract floor (0.20: 625 vs
+    842 on the fair list). 0.35 stays: best on the favorites, within 6% of the best on the fair list.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
