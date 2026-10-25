@@ -36,6 +36,8 @@ These are the defaults. Since 2026-10-22 the owner can change each one on the si
 - **Signal (C):** the t-stat of the 1-minute moves vs SPY × beta (beta from 5-minute returns, prior 20 sessions)
   is at least 1.8 (V2; it was 2), and volume since the open is at least 1.5× the 20-session median of the same window. From 09:40
   to 15:44, one per stock per day, in the side that comes first. `packages/trading/src/bot/signal.ts`.
+  Since version 2.5 (2026-10-25) t 1.2 also enters when the stock held up on SPY's down minutes (D2 ≥ 1.5); see
+  "The D2 bonus entry" below.
 - **News filter:** no new entry on the stock's earnings reaction day, or when its pre-market volume is 4× normal or
   more. Exits of held positions are unchanged. See "News filter (V2 champion)" below.
   `packages/trading/src/bot/news.ts`.
@@ -179,6 +181,37 @@ gave the same trades).
   Alpaca `trades/latest`) and a fresh option quote. So a check fires at the start of its minute
   instead of after the minute closes, and −30% is seen within 10 s. Entries still need closed
   minute bars and run once per minute; the level watch (failed break) reads closed bars only.
+
+## The D2 bonus entry (version 2.5, the 2026-10-25 champion)
+
+The user (2026-10-24): "holding against this kind of drop should give a huge bonus". With the volume test as always,
+a stock also enters at strength t `d2T` (1.2) when it held up on the market's bad minutes: D2, the stock's move minus
+beta × SPY summed over the minutes of the last 30 where SPY moved against the bet (down for a call, up for a put), in
+the stock's unit (a typical 30-minute move from the 5 sessions before, as in `levels.ts`), is `minD2` (1.5) or more.
+`cSignal` in `packages/trading/src/bot/signal.ts`, from rule `c12_15` of `defence_signals.py` (research/indi-v2).
+The signal says whether it came from the bonus and its D2; the feed adds "held up on SPY's down minutes (D2 …)".
+Without the unit (a short history) only t 1.8 enters. Settings `d2Entry`, `d2T` (1–1.8), `minD2` (0.5–3).
+
+Version 2.5 also turns the failed-break sale off: with the D2 entries it loses (`d2_failed_break.py`).
+
+Backtest (research/indi-v2, the rest-stop exits, floor 200):
+
+|                                           | Fair list at 1% / worst drop | At 2%            | 151 unseen at 1% |
+| ----------------------------------------- | ---------------------------- | ---------------- | ---------------- |
+| 2.4 (t 1.8 + failed break)                | $695,450 / 9%                | $3,372,307 / 18% | $127,433 / 9%    |
+| 2.5 (D2 bonus, no failed break)           | $1,005,207 / 11%             | $6,384,057 / 21% | $127,302 / 11%   |
+| D2 + failed break                         | $669,231 / 14%               | $3,042,721 / 27% | $137,444 / 9%    |
+| D2 + failed break on t ≥ 1.8 entries only | $855,938 / 13%               | $4,712,111 / 24% | $130,487 / 11%   |
+
+At the same worst drop as 2.4 at 2% (18%), 2.5 at 1.75% ends at $4,170,398 on the fair list but $144,339 vs
+$150,522 on the unseen: its extra money is on the 40 stocks the rules were tuned on. On the owner's 63 Favorites
+over the last year: $181,885 / 14% vs $169,910 / 15% at 1%, both negative without the best 5. An exit when the
+defence breaks (D2 of the last 15 or 30 minutes at or under 0, −0.5, −1) lost in every form. The 2.5 entry may
+come at a minute whose contract is too thin; the bot does not try again later that day (22 such days on the
+Favorites, among them COIN 2026-08-19 and GOOGL 2026-07-31).
+
+Parity: `BOT_PARITY_D2=1 scripts/bot-parity.ts` against `s_sig_c12_15_2026.csv`: 36,600 stock-days, all agree
+(the plain entry against `s_sig_base_2026.csv` too).
 
 ## The rest stop (version 2.4, the 2026-10-24 night champion)
 

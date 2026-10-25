@@ -39,6 +39,7 @@ next minute; the stock list is fixed at warm-up (09:25 New York) and changes fro
 | `nightCapPct`                              | 10 (V2)            | 15:50: one contract held overnight ≤ this % of equity; 0 off  |
 | `delta`, `maxDte`, `minPrice`, `minVolume` | 0.15, 7, 0.20, 200 | the contract picker (delta ≤ 0.25)                            |
 | `minT`, `minRvol`, `firstEntryMin`         | 1.8 (V2), 1.5, 10  | the C signal (`minT` on a 0.1 step)                           |
+| `d2Entry`, `d2T`, `minD2`                  | on, 1.2, 1.5 (2.5) | the D2 bonus entry: t `d2T`+ with D2 `minD2`+ also enters     |
 | `skipEarnings`, `skipPremarket`            | on, on             | the news filter                                               |
 
 V2 (`feat/indi-bot-v2-rules`, docs/tasks/backend-indi-bot.md "V2 rules"): `minT` 1.8 (was 2, step 0.25 → 0.1) and
@@ -68,7 +69,7 @@ do not count.
 ## Versions (2026-10-23, user: "make the bot support version, write the bot version on each entry, let me control it")
 
 `packages/trading/src/bot/versions.ts`. A version is a named set of the **trading rules**: `stopPct`, `checks`,
-`restStopPct`, `sellOnWeakness`, `weaknessT`, `sellFailedBreak`, `holdFromPct`, `maxNights`, `nightCapPct`, `delta`, `maxDte`, `minPrice`, `minVolume`, `minT`,
+`restStopPct`, `sellOnWeakness`, `weaknessT`, `sellFailedBreak`, `holdFromPct`, `maxNights`, `nightCapPct`, `delta`, `maxDte`, `minPrice`, `minVolume`, `minT`, `d2Entry`, `d2T`, `minD2`,
 `minRvol`, `firstEntryMin`, `skipEarnings`, `skipPremarket`. The owner's limits (`sizePct`, `maxBuysPerDay`,
 `maxOpen`, `safetyStopPct`, `dayLossPct`, `drawdownPausePct`), on/off, the mode and the stock lists are not part of
 a version.

@@ -694,10 +694,14 @@ export class IndiBot {
         at: this.o.now(),
         version: versionLabel(this.settings()),
       });
+      // The D2 bonus entered under the usual strength: say why.
+      let held = "";
+      if (sig.bonus && sig.d2 !== null)
+        held = `, held up on SPY's down minutes (D2 ${sig.d2.toFixed(1)})`;
       if (added)
         this.event(
           "signal",
-          `${symbol} ${sig.right === "C" ? "call" : "put"} signal at ${clock(sig.minute)}: strength t ${sig.t.toFixed(1)}, volume ${sig.rvol.toFixed(1)}× normal`,
+          `${symbol} ${sig.right === "C" ? "call" : "put"} signal at ${clock(sig.minute)}: strength t ${sig.t.toFixed(1)}${held}, volume ${sig.rvol.toFixed(1)}× normal`,
         );
       if (added)
         await this.enter(

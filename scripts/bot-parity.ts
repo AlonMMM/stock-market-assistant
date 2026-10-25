@@ -4,11 +4,15 @@
 //
 //   node --import tsx scripts/bot-parity.ts <market.sqlite> <t_sig_tiers_YYYY.csv> [YYYY-MM-DD from] [to]
 //
+// BOT_PARITY_D2=1 checks the D2 bonus entry (version 2.5) against
+// s_sig_c12_15_<year>.csv from defence_signals.py: t 1.8, or t 1.2 with D2 1.5.
+//
 // Reads the backtest's local bar cache (data/local/x/bt, not in Git).
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import {
   cSignal,
+  defaultSignalParams,
   priorFrom,
   type MinuteBar,
 } from "../packages/trading/src/bot/signal.js";
@@ -64,6 +68,11 @@ const dates = [
 const first = dates[0]!,
   lastDate = dates.at(-1)!;
 
+const params = {
+  ...defaultSignalParams,
+  ...(process.env.BOT_PARITY_D2 ? { bonusT: 1.2, bonusD2: 1.5 } : {}),
+};
+
 let same = 0,
   differ = 0;
 const examples: string[] = [];
@@ -79,7 +88,7 @@ for (let i = 1; i < calendar.length; i++) {
         .slice(Math.max(0, i - 20), i)
         .map((d) => ({ stock: day(symbol, d), spy: day("SPY", d) })),
     );
-    const got = cSignal(bars, spy, prior);
+    const got = cSignal(bars, spy, prior, 374, params);
     const want = expected.get(`${date}|${symbol}`);
     const ok =
       got === null

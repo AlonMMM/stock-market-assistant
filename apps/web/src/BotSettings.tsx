@@ -292,6 +292,24 @@ const signalSliders: SliderSpec[] = [
     fmt: (v) => `t ${v}`,
   },
   {
+    key: "d2T",
+    label: "D2 bonus: strength (t)",
+    help: "With the D2 bonus on, this lower strength also enters when the stock held up on SPY's down minutes.",
+    min: 1,
+    max: 1.8,
+    step: 0.1,
+    fmt: (v) => `t ${v}`,
+  },
+  {
+    key: "minD2",
+    label: "D2 bonus: held up on SPY's down minutes",
+    help: "The stock's move beyond beta × SPY on the minutes of the last 30 that SPY fell (rose, for a put), in typical 30-minute moves.",
+    min: 0.5,
+    max: 3,
+    step: 0.1,
+    fmt: (v) => `D2 ${v.toFixed(1)}`,
+  },
+  {
     key: "minRvol",
     label: "Volume vs normal",
     help: "Volume since the open against the usual by that time.",
@@ -311,6 +329,11 @@ const signalSliders: SliderSpec[] = [
   },
 ];
 const signalSwitches: [SwitchKey, string, string][] = [
+  [
+    "d2Entry",
+    "D2 bonus entry",
+    "Also enter at the lower strength below when the stock held up while SPY fell (version 2.5).",
+  ],
   [
     "skipEarnings",
     "Skip earnings reaction days",

@@ -8,8 +8,17 @@
 //   2. volume since the open is at least 1.5× the median of the same window
 //      over the prior 20 sessions.
 //
+// The D2 bonus (version 2.5, the 2026-10-25 champion, rule c12_15 of
+// defence_signals.py on branch research/indi-v2): with the volume as above,
+// a lower strength (t 1.2) also enters when the stock held up on the market's
+// bad minutes. D2 is the stock's move minus beta × SPY summed over the minutes
+// of the last 30 where SPY moved against the bet, in the stock's unit (a
+// typical 30-minute move, levels.ts); the bonus needs D2 ≥ 1.5.
+//
 // Minutes are session minutes (09:30 New York = 0). Missing minutes carry the
 // last close forward and count no volume, as the backtest did.
+
+import { priorLevels } from "./levels.js";
 
 export interface MinuteBar {
   m: number; // session minute, 0–389
@@ -32,6 +41,9 @@ export interface SignalParams {
   minSteps: number;
   strengthT: number;
   rvolDay: number;
+  bonusT: number | null; // the D2 bonus's lower t; null = no bonus
+  bonusD2: number;
+  d2Window: number; // minutes
 }
 
 export const defaultSignalParams: SignalParams = {
@@ -40,12 +52,18 @@ export const defaultSignalParams: SignalParams = {
   minSteps: 10,
   strengthT: 1.8,
   rvolDay: 1.5,
+  bonusT: null,
+  bonusD2: 1.5,
+  d2Window: 30,
 };
 
 export interface Prior {
   beta: number | null;
   // Cumulative volume by minute of each prior session that traded at all.
   curves: number[][];
+  // A typical 30-minute move as a fraction of the price, from the 5 sessions
+  // before today (levels.ts); null when they are short. D2 needs it.
+  unit: number | null;
 }
 
 export interface Signal {
@@ -53,6 +71,8 @@ export interface Signal {
   right: "C" | "P";
   t: number;
   rvol: number;
+  d2: number | null; // D2 at the signal minute, in the signal's direction
+  bonus: boolean; // entered on the D2 bonus, t under strengthT
 }
 
 const SESSION = 390;
@@ -115,6 +135,7 @@ export function priorFrom(days: readonly PriorDay[]): Prior {
     curves: days
       .map((d) => cumulativeVolume(d.stock))
       .filter((c) => c[SESSION - 1]! > 0),
+    unit: priorLevels(days.slice(-5).map((d) => d.stock))?.unit ?? null,
   };
 }
 
@@ -136,15 +157,35 @@ export function cSignal(
   const s = closes(spy);
   const cum = cumulativeVolume(day);
   const last = Math.min(upTo, p.lastMinute);
+  const unit = prior.unit;
+  const bonusT = unit ? p.bonusT : null;
   // Steps of the call side; the put side's are the same numbers negated, so its
   // t-stat is this one negated and the two sides never hold at once.
   const steps: number[] = [];
+  // Each minute's part of D2 for a call (SPY down) and a put (SPY up), in units.
+  const d2Call = new Array<number>(SESSION).fill(0);
+  const d2Put = new Array<number>(SESSION).fill(0);
+  let sumCall = 0;
+  let sumPut = 0;
   for (let m = 1; m <= last; m++) {
     const cm = c[m],
       c0 = c[m - 1],
       sm = s[m],
       s0 = s[m - 1];
-    if (cm && c0 && sm && s0) steps.push(cm / c0 - 1 - beta * (sm / s0 - 1));
+    if (cm && c0 && sm && s0) {
+      const spyMove = sm / s0 - 1;
+      const x = cm / c0 - 1 - beta * spyMove;
+      steps.push(x);
+      if (unit && spyMove < 0) d2Call[m] = x / unit;
+      if (unit && spyMove > 0) d2Put[m] = -x / unit;
+    }
+    sumCall += d2Call[m]!;
+    sumPut += d2Put[m]!;
+    const gone = m - p.d2Window;
+    if (gone >= 1) {
+      sumCall -= d2Call[gone]!;
+      sumPut -= d2Put[gone]!;
+    }
     if (m < p.firstMinute || steps.length < p.minSteps || c[m] === null)
       continue;
     const sd = pstdev(steps);
@@ -152,10 +193,33 @@ export function cSignal(
     const usual = median(prior.curves.map((curve) => curve[m]!));
     const rvol = usual ? cum[m]! / usual : 0;
     if (rvol < p.rvolDay) continue;
-    if (t >= p.strengthT) return { minute: m, right: "C", t, rvol };
-    if (-t >= p.strengthT) return { minute: m, right: "P", t: -t, rvol };
+    const d2 = unit ? sumCall : null;
+    if (passes(t, sumCall, p.strengthT, bonusT, p.bonusD2))
+      return { minute: m, right: "C", t, rvol, d2, bonus: t < p.strengthT };
+    const d2p = unit ? sumPut : null;
+    if (passes(-t, sumPut, p.strengthT, bonusT, p.bonusD2))
+      return {
+        minute: m,
+        right: "P",
+        t: -t,
+        rvol,
+        d2: d2p,
+        bonus: -t < p.strengthT,
+      };
   }
   return null;
+}
+
+/** The strength alone, or the lower strength with the defended drop (D2). */
+function passes(
+  t: number,
+  d2: number,
+  strengthT: number,
+  bonusT: number | null,
+  bonusD2: number,
+): boolean {
+  if (t >= strengthT) return true;
+  return bonusT !== null && t >= bonusT && d2 >= bonusD2;
 }
 
 function mean(xs: readonly number[]): number {
