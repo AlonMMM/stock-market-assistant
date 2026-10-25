@@ -594,6 +594,30 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     post-market alerts on carried positions in the paper bot, next to what the 09:40 morning rule then did, for a few
     months, then judge whether they help that decision. Scripts: `alert_gate.py` (the port of the alert, the routes,
     the fade and the wait), `alert_add.py` (the add); sim.py `vol_fade`, tiers.py `BT_RETRY_ILLIQUID` and `BT_RISK`.
+- **0DTE with the volume alert (`zero5.py`, sim.py `alert_silence`, `rvol_alert.py`, 2026-10-25; fair list only, the
+  user dropped the unseen test that day; zero4's breakout signals and walks reused, deltas 0.15 / 0.25, exits S / T100
+  / THIRDS):** (1) the alert-silence exit, no alert on the stock within 30 (15) minutes of the entry → out: on the
+  stop-only strategies that make the 0DTE money it halves the worst drop and lifts the hit rate from 9% to 16–24%,
+  but the end is mixed (any|c2 δ0.15 S $147,567 / 20% → $122,020 / 15% at 30, $130,363 / 13% at 15; day|c2 δ0.15 S
+  $131,964 / 18% → $140,232 / 13% and $156,589 / 10%); on the take-profit exits it changes nothing. A risk reducer, not
+  an edge, and every 0DTE strategy is still under $100,000 without its best 5. (2) The alert-confirmed entry (a
+  same-side alert in the last 5 / 15 minutes at the breakout): 27–76 trades per strategy, very low drawdowns (3–6%)
+  because few trades, but no year pattern (any|c2 δ0.15 S, alert in 15: 37 trades, −5,396 / +10,277 / +10,334,
+  $127,994 / 4%); the 2024 money sits in the breakouts without an alert. (3) The alert as a bonus (the user's idea, as
+  read here: the confirmation's day-volume ratio counts 1.5× for 15 minutes after a same-side alert, c1b / c2b):
+  1–8% more signals, results within noise of c1 / c2 (S a little worse, THIRDS a little better; prev|c2b δ0.25 THIRDS
+  $97,645 / 4% vs $94,548 / 6%). (4) **The alert straddle**, the first alert of the day in either direction, 09:40–
+  13:00 New York, the nearest OTM call and put of the same-day expiry, one contract each, both legs at 200+ contracts
+  (274 of 988 first-alerts qualify; 70% skipped as illiquid or under $0.20): held 60 minutes $115,906 / 6% at 1%,
+  41% winners, +1,188 / +590 / +91 a trade, every year positive, $103,259 without the best 5; 30 minutes about the
+  same ($115,567); longer holds lose to theta (90 min $95,818, to the close $86,137); a +50% take hurts ($104,253),
+  a −50% stop changes nothing. By parts: Fridays 238 trades $114,296 / 4%; alerts down 140, $112,627 / 3% vs alerts up
+  134, $102,928; 10:30–12:00 best ($115,738), 12:00–13:00 negative; spread over META, AMD, NVDA, AMZN, MSTR; worst
+  HIMS, MU, ORCL. Median trade −1,273, 14% of trades over +50%, 19% under −30%; 2026 nearly flat. The one 0DTE result
+  that is positive every year and without its best 5, and the one use of the alert that matches what it is validated
+  for (a move within 30 minutes, direction unknown). Small: about +6% a year at 1% a trade with a 6% worst drop; the
+  fill model (mid ± 2% a leg) flatters a two-leg trade. Not a champion by the log's rule (a different strategy, not
+  a better version), logged here as the only alert finding with a live edge. Not run on the unseen (the user's call).
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
