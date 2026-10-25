@@ -56,9 +56,9 @@ import {
 
 // The alert leg (docs/tasks/backend-strangle-bot.md): a second bot, separate
 // from the Indi bot, on its own Alpaca paper account. On the first volume
-// alert of a stock's day (a day with a same-day expiry) it watches; when the
+// alert of a stock's day (a day with a same-day expiry, or 1DTE: one the next session) it watches; when the
 // stock has moved a share of its typical 30-minute move either way, it buys
-// only that side's leg (the 0.35-delta call or put of the same-day expiry) and
+// only that side's leg (the 0.35-delta call or put of that expiry) and
 // sells it when the stock gives back a share of that move from its best since
 // the buy. The decisions are the backtest's (strangle_more.py), checked trade
 // by trade by scripts/strangle-parity.ts. Every order goes through the owner's
@@ -111,7 +111,7 @@ const outcomeWords: Record<string, string> = {
   traded: "bought the leg",
   "would-trade": "would buy the leg (dry run)",
   no_side: "no side in time",
-  no_expiry: "no same-day expiry today",
+  no_expiry: "no expiry today or next session",
   no_strikes: "no strikes near the stock",
   no_prices: "no prices",
   too_cheap: "the leg is too cheap",
@@ -541,10 +541,10 @@ export class StrangleBot {
         outcome: "no_prices",
         detail: "fewer than 5 sessions of history",
       };
-    // A same-day expiry is needed at all: its absence ends it now.
-    const chain = await this.o.trading.chain(symbol, "call", date, date);
-    if (!chain.some((q) => q.expiry === date))
-      return { outcome: "no_expiry", detail: "" };
+    // An expiry today, or (1DTE, when the setting allows) the next session's
+    // when there is none today; none of them ends it now.
+    const expiry = await this.expiryFor(symbol, date, s);
+    if (!expiry) return { outcome: "no_expiry", detail: "" };
     const ref = await this.stockNow(symbol, m);
     if (ref === null) return { outcome: "no_prices", detail: "no stock price" };
     const trade: StrangleTrade = {
@@ -559,6 +559,7 @@ export class StrangleBot {
       sideMinute: null,
       best: null,
       leg: null,
+      expiry,
       phase: "watching",
       closeReason: null,
       dry: s.mode === "dry",
@@ -569,8 +570,26 @@ export class StrangleBot {
     const pct = (s.confirmUnits * unit * 100).toFixed(2);
     return {
       outcome: "watching",
-      detail: `stock ${ref.toFixed(2)}; the side at ${pct}% either way`,
+      detail: `stock ${ref.toFixed(2)}; the side at ${pct}% either way${expiry === date ? "" : "; 1DTE"}`,
     };
+  }
+
+  /** The day's expiry: today's, else the next session's when nextDay is on. */
+  private async expiryFor(
+    symbol: string,
+    date: string,
+    s: StrangleSettings,
+  ): Promise<string | null> {
+    const next = nextSession(date);
+    const chain = await this.o.trading.chain(
+      symbol,
+      "call",
+      date,
+      s.nextDay ? next : date,
+    );
+    if (chain.some((q) => q.expiry === date)) return date;
+    if (s.nextDay && chain.some((q) => q.expiry === next)) return next;
+    return null;
   }
 
   // ---- orders: the fills, as the account reports them ----
@@ -725,7 +744,7 @@ export class StrangleBot {
       if (t.phase !== "open" || !t.leg || !t.side) continue;
       const lm = await this.mark(t.leg.contract);
       this.marks.set(t.id, { leg: lm?.mid ?? null, stock, at: this.o.now() });
-      // Never carried: a same-day expiry. Anything left from a past day is sold now.
+      // Never carried, 1DTE legs too (sold by endMinute). Anything left from a past day is sold now.
       if (t.day !== date) {
         await this.sellLeg(t, "left from a past day", lm?.mid ?? null);
         continue;
@@ -774,17 +793,22 @@ export class StrangleBot {
     const limited = await this.limit(t.day, s);
     if (limited) return fail(limited.outcome, limited.detail);
     const right = legName(side);
+    const expiry = t.expiry ?? t.day;
+    const dte = Math.round(
+      (Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${t.day}T00:00:00Z`)) /
+        86_400_000,
+    );
     const pick = {
       delta: s.delta,
-      dteMin: 0,
-      dteMax: 0,
+      dteMin: dte,
+      dteMax: dte,
       otmScanMax: 0.2,
       maxStrikes: 16,
       minPrice: s.minPrice,
       minVolume30: s.minVolume,
     };
     const got = pickContract(
-      await this.o.trading.chain(t.symbol, right, t.day, t.day),
+      await this.o.trading.chain(t.symbol, right, expiry, expiry),
       stock,
       right,
       t.day,

@@ -161,10 +161,11 @@ const q = (
   strike: number,
   delta: number,
   bid: number,
+  expiry = DAY,
 ): OptionQuote => ({
-  symbol: `NVDA261023${right === "call" ? "C" : "P"}${String(strike * 1000).padStart(8, "0")}`,
+  symbol: `NVDA${expiry.slice(2).replaceAll("-", "")}${right === "call" ? "C" : "P"}${String(strike * 1000).padStart(8, "0")}`,
   underlying: "NVDA",
-  expiry: DAY,
+  expiry,
   right,
   strike,
   bid,
@@ -174,7 +175,7 @@ const q = (
 
 function harness(
   settings: Partial<StrangleSettings>,
-  opts: { day?: MinuteBar[] } = {},
+  opts: { day?: MinuteBar[]; expiry?: string } = {},
 ) {
   const store = new StrangleStore(
     join(mkdtempSync(join(tmpdir(), "strangle-")), "t.sqlite"),
@@ -227,10 +228,13 @@ function harness(
   const notes: string[] = [];
   const isCall = (c: string) => /C\d{8}$/.test(c);
   const trading: BotTrading = {
-    async chain(_u, right) {
-      return right === "call"
-        ? [q("call", 101, 0.35, 0.59), q("call", 103, 0.2, 0.3)]
-        : [q("put", 99, 0.36, 0.49), q("put", 97, 0.2, 0.25)];
+    async chain(_u, right, from, to) {
+      const e = opts.expiry ?? DAY;
+      const all =
+        right === "call"
+          ? [q("call", 101, 0.35, 0.59, e), q("call", 103, 0.2, 0.3, e)]
+          : [q("put", 99, 0.36, 0.49, e), q("put", 97, 0.2, 0.25, e)];
+      return all.filter((x) => x.expiry >= from && x.expiry <= to);
     },
     async quote(c) {
       const mid = isCall(c) ? mids.C : mids.P;
@@ -386,4 +390,26 @@ test("runner: no side within the hour is no trade; one alert per stock a day; of
   const off = harness({ mode: "dry", enabled: false });
   await off.run(565, 640);
   assert.equal(off.store.signals(DAY).length, 0);
+});
+
+test("runner (dry): a 1DTE day buys the next session's leg, and nextDay off skips it", async () => {
+  const NEXT = "2026-10-26"; // the Monday after DAY: no same-day expiry, the nearest is the next session
+  const h = harness({ mode: "dry" }, { day: climbThenFall(), expiry: NEXT });
+  await h.run(565, 612);
+  const [t] = h.store.openTrades();
+  assert.equal(t!.expiry, NEXT);
+  assert.equal(t!.phase, "open");
+  assert.equal(t!.leg!.contract, "NVDA261026C00101000");
+  assert.equal(h.store.signal(DAY, "NVDA")!.outcome, "would-trade");
+  // Sold the same day like a 0DTE leg: by the end of the day nothing is open.
+  await h.run(613, 935);
+  assert.equal(h.store.openTrades().length, 0);
+
+  const off = harness(
+    { mode: "dry", nextDay: false },
+    { day: climbThenFall(), expiry: NEXT },
+  );
+  await off.run(565, 612);
+  assert.equal(off.store.openTrades().length, 0);
+  assert.equal(off.store.signal(DAY, "NVDA")!.outcome, "no_expiry");
 });
