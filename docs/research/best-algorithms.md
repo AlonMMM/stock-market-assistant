@@ -801,6 +801,15 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     the 0DTE one on 0DTE days rarely exists (the next expiry is usually a week away). Better on both lists: the
     1DTE days are a second, calmer stream (the dearer leg buys fewer contracts) that adds money at a similar or lower
     drop. Same rule, so less in-sample than a new parameter; candidate for the live bot.
+    **Run overnight from +50% (the user, 2026-10-25: "let the 1DTE run over night if it's up more than 50%"; `leg_1dte.py`
+    1d_b1..b3).** Once the 1DTE leg's sale price is +50% over the buy the day's give-back stops; held overnight if still
+    +50% at the close, else sold there; next day the 0.75 give-back, out by 15:30. With the 0DTE days, fair: $391,875 /
+    6.3% (b1, 42 held overnight, those +$134K at 36 winners), with a +20% floor $384,149 / 5.5%, next day's give-back
+    from its open $396,864 / 6.3%, a 1.5 give-back after +50% $321,765 / 5.6%; vs $308,991 / 5.0% out by 15:30 (±4%
+    $268,557 / 9.5% vs $211,991; without best 5 $260,331 vs $230,295; but 2026 +91.5K vs +97.8K: the gain is 2024-25).
+    Favorites: $140,636 / 7.3%, $132,997 / 5.9%, $142,797 / 7.4%, $146,519 / 5.9% vs $151,341 / 5.1%: every version
+    worse; the 20 overnight trades win (+$19K) but the legs that reach +50% and fall back the same day, with no give-back,
+    lose more. Not better: wins on the fair list, loses on the favorites (the user's own list) with 2 points more drop.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%

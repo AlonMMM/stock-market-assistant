@@ -28,6 +28,7 @@ from leg_fallback import account
 DELTA, K, WAIT, GIVE, END, CLOSE, SH = 0.35, 0.25, 60, 0.75, 360, 389, 0.02
 CAL = calendar()
 C = sim.C
+RUN50 = ("b1", "b1f", "b2", "b3")
 
 
 def kind_of(sym, date):
@@ -54,8 +55,14 @@ def entries():
     return ent
 
 
-def walk(sym, date, ct, side, contract, spot_side, u, night):
-    """night: None (out by 15:30), 'all' (hold if not given back), 'up' (hold only when up at 15:30)."""
+def walk(sym, date, ct, side, contract, spot_side, u, night, run50=None):
+    """night: None (out by 15:30), 'all' (hold if not given back), 'up' (hold only when up at 15:30).
+    run50 (1DTE, the user's "let it run overnight if it's up more than 50%"): once the leg's sale price is +50% over the
+    buy, the day's give-back stops; at the close it is held overnight if still +50% (else sold at the close); next day
+    the 0.75 give-back from the best since the side, out by 15:30.
+      'b1'  as above          'b1f' also sold the same day if it falls back to +20%
+      'b2'  next day's give-back from the next day's open, not the old best
+      'b3'  after +50% the day's give-back widens to 1.5 S30 instead of stopping"""
     d2 = CAL[CAL.index(date) + 1]
     kb = {b[0]: b for b in day(contract, date)}
     sb = {b[0]: b for b in day(sym, date)}
@@ -63,21 +70,34 @@ def walk(sym, date, ct, side, contract, spot_side, u, night):
     if not b0: return None
     buy = sim.mid(b0) * (1 + SH); last = b0; best = spot_side
     sell = lambda b: max(sim.mid(b) * (1 - SH), 0.01)
-    gave = lambda spot: abs(spot / best - 1) >= GIVE * u
+    give = GIVE; ran = False
+    gave = lambda spot: abs(spot / best - 1) >= give * u
     for t in range(b0[0] + 1, CLOSE + 1):
         if t in kb: last = kb[t]
         spot = sb[t][4] if t in sb else None
         if spot: best = max(best, spot) if side == "C" else min(best, spot)
-        if spot and gave(spot): return buy, sell(last), 0
+        if run50 and not ran and sell(last) >= buy * 1.5:
+            ran = True
+            if run50 == "b3": give = 1.5
+        if ran and run50 == "b1f" and sell(last) <= buy * 1.2: return buy, sell(last), 0
+        if spot and gave(spot) and not (ran and run50 in ("b1", "b1f", "b2")): return buy, sell(last), 0
+        if run50:
+            if t == END and not ran: return buy, sell(last), 0
+            if t == CLOSE and sell(last) < buy * 1.5: return buy, sell(last), 0
+            continue
         if t == END and (night is None or (night == "up" and sell(last) <= buy)): return buy, sell(last), 0
     # overnight
     fetch_bars("options", [contract], d2, d2, key=f"n1|{contract}|{d2}")
     kb2 = {b[0]: b for b in day(contract, d2)}; sb2 = {b[0]: b for b in day(sym, d2)}
     if not kb2 or not sb2: return buy, sell(last), 1
+    give = GIVE
+    if run50 == "b2":
+        o = next((sb2[q][4] for q in range(0, 10) if q in sb2), None)
+        if o: best = o
     for t in range(0, END + 1):
         if t in kb2: last = kb2[t]
         spot = sb2[t][4] if t in sb2 else None
-        if t not in kb2 and last[0] > CLOSE - 400 and t < 5: continue   # wait for the leg's first bar of the day
+        if t not in kb2 and t < 5: continue   # wait for the leg's first bar of the day
         if spot: best = max(best, spot) if side == "C" else min(best, spot)
         if (spot and gave(spot)) or t >= END: return buy, sell(last), 1
     return buy, sell(last), 1
@@ -95,15 +115,15 @@ def one(sig):
     if not side: return dict(kind=kind)
     ct, right = side; spot = sb[ct][4]
     out = dict(kind=kind)
-    plans = [("0dte", 0, None)] if kind == "0" else [("1d_day", 1, None), ("1d_night", 1, "all"), ("1d_up", 1, "up")]
-    if kind == "0": plans.append(("1d_on0", 1, "all"))
+    plans = [("0dte", 0, None)] if kind == "0" else [("1d_day", 1, None), ("1d_night", 1, "all")] + [(f"1d_{r}", 1, r) for r in RUN50]
+    if os.environ.get("BT_ON0") and kind == "0": plans.append(("1d_on0", 1, "all"))
     for name, dte, night in plans:
         if dte == 0: C.update(dte_min=0, dte_max=0, delta=DELTA)
         else: C.update(dte_min=1, dte_max=5, delta=DELTA)
         got, why = sim.pick(sym, date, ct, right, spot)
         if got is None: continue
         if dte == 1 and got[1] != CAL[CAL.index(date) + 1]: continue
-        w = walk(sym, date, ct, right, got[0], spot, u, night if dte else None)
+        w = walk(sym, date, ct, right, got[0], spot, u, night if dte else None) if night not in RUN50 else walk(sym, date, ct, right, got[0], spot, u, 'all', night)
         if w: out[name] = dict(buy=w[0], sell=w[1], night=w[2], delta=round(abs(got[3]), 2))
     return out
 
@@ -122,14 +142,13 @@ def main():
     leg = lambda t, k: dict(date=t["date"], minute=t["minute"], sym=t["sym"], **t["r"][k])
     pick = lambda keys: [leg(t, k) for t in keep for k in keys if k in t["r"]]
     combos = [
-        ("as now: 0DTE days, same-day leg", ["0dte"]),
-        ("1DTE days only, out by 15:30", ["1d_day"]),
-        ("1DTE days only, overnight", ["1d_night"]),
-        ("1DTE days only, overnight when up", ["1d_up"]),
-        ("as now + 1DTE days, out by 15:30", ["0dte", "1d_day"]),
-        ("as now + 1DTE days, overnight", ["0dte", "1d_night"]),
-        ("as now + 1DTE days, overnight when up", ["0dte", "1d_up"]),
-        ("1DTE leg every day, overnight (0DTE days too)", ["1d_on0", "1d_night"]),
+        ("as now: 0DTE days only", ["0dte"]),
+        ("+ 1DTE days, out by 15:30", ["0dte", "1d_day"]),
+        ("+ 1DTE days, overnight if not given back (last test)", ["0dte", "1d_night"]),
+        ("+ 1DTE, from +50% no give-back, overnight if still +50%", ["0dte", "1d_b1"]),
+        ("+ 1DTE, the same, sold if back to +20%", ["0dte", "1d_b1f"]),
+        ("+ 1DTE, the same, next day's give-back from its open", ["0dte", "1d_b2"]),
+        ("+ 1DTE, from +50% the give-back widens to 1.5", ["0dte", "1d_b3"]),
     ]
     print("\n| Version | Trades | Held overnight | Winners | 1%, ±2%: end, worst drop | without best 5 | 1%, ±4% | 2%, ±2% | by year (1%, ±2%) |")
     print("|---|---|---|---|---|---|---|---|---|")
@@ -143,9 +162,10 @@ def main():
         for r in R: yrs[r["date"][:4]] = yrs.get(r["date"][:4], 0) + r["pnl"]
         print(f"| {lab} | {len(R)} | {sum(r['night'] for r in R)} | {100 * sum(r['pnl'] > 0 for r in R) / max(1, len(R)):.0f}% | ${e1:,.0f}, {100 * d1:.1f}% | ${e5:,.0f} | ${e4:,.0f}, {100 * d4:.1f}% | ${e2:,.0f}, {100 * d2:.1f}% | "
               + ", ".join(f"{y} {v:+,.0f}" for y, v in sorted(yrs.items())) + " |")
-    on = [r for r in account(pick(["1d_night"]), 1, 2)[2] if r["night"]]
-    if on: print(f"\n1DTE overnight trades: {len(on)}, P&L {sum(r['pnl'] for r in on):+,.0f}, winners {sum(r['pnl'] > 0 for r in on)}")
-
+    print("\n| 1DTE trades alone | Trades | Held overnight | Their P&L | Overnight trades' P&L (winners) |\n|---|---|---|---|---|")
+    for k in ("1d_day", "1d_night") + tuple(f"1d_{r}" for r in RUN50):
+        R = account(pick([k]), 1, 2)[2]; on = [r for r in R if r["night"]]
+        print(f"| {k} | {len(R)} | {len(on)} | {sum(r['pnl'] for r in R):+,.0f} | {sum(r['pnl'] for r in on):+,.0f} ({sum(r['pnl'] > 0 for r in on)}) |")
 
 if __name__ == "__main__":
     main()
