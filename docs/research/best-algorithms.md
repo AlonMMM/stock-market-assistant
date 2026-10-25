@@ -1012,3 +1012,11 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   holding from +100% ($911,438 / 13%), the night cap at 5% ($1,027,938 / 13%), cutting the size below a 10% drawdown
   ($700,333 / 13%); the drawdown cuts at 15%+ never fire. The drop is not made by a few bad days a rule can see coming;
   only taking less of the trades the fallbacks add, and the streak rule, beat simply trading smaller.
+- **D2 entries at half size, the other half added on the real signal (`d2_scale.py`, 2026-10-25; the user: "D2 entries at
+  half size but then increase (buy the next delta 0.15) if we hit the right direction and hit the real bot alert"):**
+  on 2.5 + cheap + the next strike for D2 (base $1,277,234 / 13%; 528 of 1,323 trades are D2 entries). The add is a
+  fresh 0.15-delta contract at 2.4's signal minute (t >= 1.8, same side), half size, the same exits. D2 at half, no add
+  $710,523 / 13%; + the add when the first half is still held $1,003,428 / 11% (153 adds, +8% over flat 0.8%); held and
+  its option up $1,017,698 / 11% (131 adds, +10%), $374,819 without the best 5; always $988,390 / 11% (174, +4%). The
+  adds themselves earn: +$874K at $10K a full trade, +$133K without their best 5 (held-and-up). Better than trading
+  smaller, but below the fallback-added trades at half size ($1,203,557 / 11%, +22%) at the same drop.
