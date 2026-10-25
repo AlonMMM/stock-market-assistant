@@ -415,6 +415,12 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   `minVolume` 200 and `minPrice` 0.15, so it already takes the $0.15–0.20 contracts the research refuses; a lower
   volume floor would be the 10-contract baseline in practice (twice the trades, twice the drop, real fills on thin
   contracts worse than the simulator's mid ± 2%).
+  On the user's Favorites year (`fav_cheap_up.py`, the 63 stocks, 2025-10-24 to 2026-10-23, the live bot 2.3's exits;
+  baseline 405 trades, $178,542 / 12%): *cheap* adds 82 trades (18 winners, +2,418 each, +$198K at $10K) for
+  $209,861 / 11% ($362,903 / 20% at 2%), but IBIT is +$233K of it on 20 trades (two of them +128K and +115K); the other
+  62 added trades lose, SMCI −22K on 10. Eight of twelve months negative. *Liquid* adds 423 trades (+341 each) for
+  $197,184 / 15%, MSTR / NOW / IONQ / META +$391K against ORCL / MRNA / ASTS / LLY / IREN −$143K. Both together
+  $234,105 / 17%. The same hot-name effect as the fair list, one stock deep here; not a rule.
 - **Second round, the user's changes (2026-10-24):** the contract's liquidity floor is 10 contracts in the last 30
     minutes instead of 200 ("contract liquidity is not my concern"), now the default in `params.json` (`min_vol30`; the
     live bot's `minVolume30` in `packages/trading/src/bot/picker.ts` is still 200), and the alert route needs day volume
