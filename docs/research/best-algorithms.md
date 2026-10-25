@@ -469,6 +469,12 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   62 added trades lose, SMCI −22K on 10. Eight of twelve months negative. *Liquid* adds 423 trades (+341 each) for
   $197,184 / 15%, MSTR / NOW / IONQ / META +$391K against ORCL / MRNA / ASTS / LLY / IREN −$143K. Both together
   $234,105 / 17%. The same hot-name effect as the fair list, one stock deep here; not a rule.
+  The liquid fallback the user's way (`cheap_up2.py`, 2026-10-25, on the live bot 2.4; baseline $695,450 / 9%
+  reproduced): an illiquid 0.15 goes first further out to delta 0.10, then toward the money to 0.30, the nearest
+  to 0.15 with 200 contracts and $0.20. Fair $745,199 / 15% at 1% ($3,394,783 / 31% at 2%), 2025 +535K vs +775K,
+  without the best 5 $242,100 vs $260,844; the 551 added trades +156K, -524K without their best 5 (ARM 2024-04-17
+  +339K alone). With cheap (both2): $823,762 / 20%. Unseen: $107,981 / 24% and $75,568 / 42% vs $127,433 / 9%.
+  Further out (155 picks) +237K on the fair list but -98K on the unseen. Not better, as the other fallbacks.
   On the live bot 2.4's exits (the rest at −20% after the +10 half; `BT_LIST=fav_rest_bot BT_REST=-0.2`, baseline 405
   trades, $179,264 / 12%): *cheap* $210,297 / 11% ($364,578 / 20% at 2%), the 82 added +2,391 each, IBIT +$235K of
   +$196K; *liquid* $200,816 / 15%; *both* $238,611 / 16%. The same as on 2.3 within $4K; the exits do not change it.
