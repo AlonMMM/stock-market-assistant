@@ -1084,3 +1084,10 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   2025-01-17) is a four-month bleed, 57 of 65 trading days a small loss, the worst single day -1.2%. A rule that waits
   for a bad day or a bad market never sees it; only less exposure to the weak trades (the fallback half) or a smaller
   size moves it. Not better: all three.
+  - **D2 small, the real signal big (`d2_bigadd.py`, the user: "if D2 enters 50% then we hit the signal we can enter
+    even bigger - 1.5-2X"):** with both fallbacks at half, the add held and up (131 adds); yardstick = the pyramid (D2
+    1x + add 0.5x, $1,667,924 / 12% at 1%, $10,394,112 / 22% at 2%) at another flat size. At 1%: D2 0.5 + add 0.5
+    $1,042,315 / 10% (-5%); D2 0.5 + add 1.0 $1,492,305 / 11% (-4%); D2 0.5 + add 1.5 $2,039,853 / 13% (-5%); D2 1.0 + add
+    1.0 $2,312,692 / 13% (+0%). At 2%: +7%, +6%, +16% for the last three. The add's size is a risk dial on the same
+    trades: at 1% every split ends where the pyramid at that drop would; at 2% a bigger add is a little better (the
+    night cap binds less on two legs). Halving the D2 entry gives back its cheap early price, as before.
