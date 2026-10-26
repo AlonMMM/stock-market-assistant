@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -36,7 +37,11 @@ import {
 } from "../packages/trading/src/strangle/settings.js";
 import type { BotMarket, BotTrading } from "../apps/trader/src/bot.js";
 import { StrangleBot, strangleTag } from "../apps/trader/src/strangle.js";
-import { StrangleStore, tradeCash } from "../apps/trader/src/strangle-store.js";
+import {
+  StrangleStore,
+  tradeCash,
+  type StrangleSignal,
+} from "../apps/trader/src/strangle-store.js";
 
 // ---- synthetic bars ----
 
@@ -387,7 +392,7 @@ test("runner (live): one buy with the tag and the safety stop; one sale of all o
   );
 });
 
-test("runner: no side within 10 minutes is no trade; one alert per stock a day; off means nothing", async () => {
+test("runner: no side within 10 minutes is no trade; one burst is one alert; off means nothing", async () => {
   const flat = session(
     100,
     (m) => (m === 38 || m === 39 ? 0.003 : 0),
@@ -426,4 +431,105 @@ test("runner (dry): a 1DTE day buys the next session's leg, and nextDay off skip
   await off.run(565, 612);
   assert.equal(off.store.openTrades().length, 0);
   assert.equal(off.store.signal(DAY, "NVDA")!.outcome, "no_expiry");
+});
+
+// Three bursts on one stock (10:08, 11:30, 12:30 New York), each followed by
+// a short climb and a fall that sells the call on the give-back.
+const threeBursts = () => {
+  const bursts = [38, 120, 180];
+  const step = (m: number) => {
+    for (const b of bursts) {
+      if (m === b || m === b + 1) return 0.003;
+      if (m > b + 1 && m <= b + 16) return 0.001;
+      if (m > b + 16 && m <= b + 40) return -0.001;
+    }
+    return wiggle(m);
+  };
+  const vol = (m: number) =>
+    bursts.some((b) => m === b || m === b + 1) ? 20000 : 1000;
+  return session(100, step, vol);
+};
+const bought = (h: ReturnType<typeof harness>) =>
+  h.store.recentTrades(DAY).filter((t) => t.leg && t.leg.bought > 0).length;
+
+test("runner (dry): a later burst trades again once the stock is flat, up to maxPerStock a day", async () => {
+  const two = harness({ mode: "dry" }, { day: threeBursts() });
+  await two.run(565, 960);
+  assert.equal(bought(two), 2);
+  assert.deepEqual(
+    two.store.signals(DAY).map((x) => x.minute),
+    [39, 121],
+  );
+  assert.equal(two.store.openTrades().length, 0);
+
+  const three = harness(
+    { mode: "dry", maxPerStock: 3 },
+    { day: threeBursts() },
+  );
+  await three.run(565, 960);
+  assert.equal(bought(three), 3);
+
+  const one = harness({ mode: "dry", maxPerStock: 1 }, { day: threeBursts() });
+  await one.run(565, 960);
+  assert.equal(bought(one), 1);
+});
+
+test("runner (dry): a burst while the stock's trade is open is not a new alert", async () => {
+  // The second burst comes during the first trade's climb: it is skipped.
+  const day = session(
+    100,
+    (m) => {
+      if (m === 38 || m === 39 || m === 48 || m === 49) return 0.003;
+      if (m > 39 && m <= 60) return 0.001;
+      if (m > 60 && m <= 90) return -0.001;
+      return wiggle(m);
+    },
+    (m) => ([38, 39, 48, 49].includes(m) ? 20000 : 1000),
+  );
+  const h = harness({ mode: "dry" }, { day });
+  await h.run(565, 960);
+  assert.deepEqual(
+    h.store.signals(DAY).map((x) => x.minute),
+    [39],
+  );
+  assert.equal(bought(h), 1);
+});
+
+test("store: the one-a-day signals of before re-entry are copied to the alerts table once", () => {
+  const path = join(mkdtempSync(join(tmpdir(), "strangle-")), "old.sqlite");
+  const old = new DatabaseSync(path);
+  old.exec(
+    "CREATE TABLE strangle_signals (id INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT NOT NULL, symbol TEXT NOT NULL, data TEXT NOT NULL, UNIQUE (day, symbol))",
+  );
+  const sig: StrangleSignal = {
+    day: DAY,
+    symbol: "NVDA",
+    minute: 39,
+    side: "up",
+    outcome: "traded",
+    detail: "",
+    at: 1,
+  };
+  old
+    .prepare(
+      "INSERT INTO strangle_signals (day, symbol, data) VALUES (?, ?, ?)",
+    )
+    .run(DAY, "NVDA", JSON.stringify(sig));
+  old.close();
+  const store = new StrangleStore(path);
+  assert.deepEqual(store.signals(DAY), [sig]);
+  // A later burst of the same stock is its own row; updates go to the latest.
+  assert.equal(store.addSignal({ ...sig, minute: 121, outcome: "" }), true);
+  assert.equal(store.addSignal({ ...sig, minute: 121, outcome: "" }), false);
+  store.updateSignal(DAY, "NVDA", "no_side", "");
+  assert.deepEqual(
+    store.signals(DAY).map((x) => [x.minute, x.outcome]),
+    [
+      [39, "traded"],
+      [121, "no_side"],
+    ],
+  );
+  store.close();
+  // Opened again: not copied twice.
+  assert.equal(new StrangleStore(path).signals(DAY).length, 2);
 });

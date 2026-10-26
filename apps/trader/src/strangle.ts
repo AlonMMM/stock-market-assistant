@@ -439,32 +439,39 @@ export class StrangleBot {
   private async entries(date: string, m: number) {
     const s = this.settings();
     if (m < s.firstMinute || m > s.lastMinute) return;
+    // A stock is busy while a trade of it is watching, buying, open or
+    // closing; it is done for the day once it took maxPerStock trades.
+    const busy = new Set(this.o.store.openTrades().map((t) => t.symbol));
+    const traded = new Map<string, number>();
+    for (const t of this.o.store.recentTrades(date))
+      if (t.day === date && t.leg && t.leg.bought > 0)
+        traded.set(t.symbol, (traded.get(t.symbol) ?? 0) + 1);
     for (const symbol of this.symbols) {
-      if (this.o.store.signal(date, symbol)) continue;
+      if (busy.has(symbol)) continue;
+      if ((traded.get(symbol) ?? 0) >= s.maxPerStock) continue;
       const hist = this.hist.get(symbol);
       if (!hist) continue;
-      // Only the day's first alert counts, as in the backtest.
-      const first = firstAlert(
-        alerts(this.barsOf(symbol), hist),
-        s.firstMinute,
-        m,
-      );
-      if (!first || first.minute !== m) continue;
-      this.o.store.addSignal({
+      // A new burst at m: an alert now and none the minute before (the day's
+      // first counts from firstMinute), as leg_twice.py counted them.
+      const sides = alerts(this.barsOf(symbol), hist);
+      const now = sides[m];
+      if (!now) continue;
+      const first = firstAlert(sides, s.firstMinute, m);
+      const isFirst = first !== null && first.minute === m;
+      if (!isFirst && sides[m - 1]) continue;
+      const added = this.o.store.addSignal({
         day: date,
         symbol,
         minute: m,
-        side: first.side,
+        side: now,
         outcome: "",
         detail: "",
         at: this.o.now(),
       });
-      this.event(
-        "signal",
-        `${symbol}: volume alert ${first.side} at ${clockOf(m)}`,
-      );
+      if (!added) continue;
+      this.event("signal", `${symbol}: volume alert ${now} at ${clockOf(m)}`);
       try {
-        const r = await this.watch(date, symbol, m, first.side, s);
+        const r = await this.watch(date, symbol, m, now, s);
         this.outcome(date, symbol, r.outcome, r.detail);
       } catch (error) {
         this.outcome(
@@ -1005,7 +1012,7 @@ export class StrangleBot {
       paid += c.paid;
       got += c.got;
     }
-    const line = `${signals.length} first alerts, ${trades.length} trades; paid ${paid.toFixed(0)}, got ${got.toFixed(0)}`;
+    const line = `${signals.length} alerts, ${trades.length} trades; paid ${paid.toFixed(0)}, got ${got.toFixed(0)}`;
     this.event("info", `Day ${date}: ${line}`);
     if (trades.length)
       await this.o.notify(`${strangleTag}: the day`, [date, line]);

@@ -19,6 +19,11 @@ export interface StrangleSettings {
   // Size: the leg costs this share of the account.
   sizePct: number;
   maxTradesPerDay: number;
+  // Trades a stock may take in a day: a later alert burst on it starts a new
+  // watch once it has nothing open and fewer trades than this (user
+  // 2026-10-26, "go with your recommendation"; leg_twice.py: 2 is best with
+  // the day's caps). 1 = one trade a stock a day.
+  maxPerStock: number;
   maxOpen: number;
   dayLossPct: number;
   // The broker's stop on every leg, % under its cost, in case the service is
@@ -70,6 +75,7 @@ export const defaultStrangleSettings: StrangleSettings = {
   off: [],
   sizePct: 1,
   maxTradesPerDay: 5,
+  maxPerStock: 2,
   maxOpen: 3,
   dayLossPct: 5,
   safetyStopPct: 70,
@@ -99,6 +105,7 @@ export const strangleLimits: Record<
   sizePct: [0.5, 6, 0.5],
   // One buy a trade; the account's rules allow ten a day.
   maxTradesPerDay: [1, 10, 1],
+  maxPerStock: [1, 5, 1],
   maxOpen: [1, 10, 1],
   dayLossPct: [1, 15, 0.5],
   safetyStopPct: [30, 70, 5],
@@ -215,6 +222,13 @@ export const clockOf = (minute: number): string => {
 export function strangleSteps(
   s: StrangleSettings,
 ): { name: string; text: string }[] {
+  const nextDayWords = s.nextDay
+    ? " (or, when there is none, one the next session: 1DTE)"
+    : "";
+  // One trade a stock a day, or a later burst once it has nothing open.
+  let perStockWords = ". One trade per stock a day";
+  if (s.maxPerStock > 1)
+    perStockWords = `; a later burst on the same stock counts once it has nothing open, up to ${s.maxPerStock} trades a stock a day`;
   const news = [
     s.skipEarnings && "the stock's earnings reaction day",
     s.skipPremarket && "a pre-market volume of 4× normal or more",
@@ -222,7 +236,7 @@ export function strangleSteps(
   return [
     {
       name: "The alert",
-      text: `On a day with a same-day expiry${s.nextDay ? " (or, when there is none, one the next session: 1DTE)" : ""}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, the first time the volume alert fires on a stock, in either direction. One trade per stock a day.`,
+      text: `On a day with a same-day expiry${nextDayWords}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.`,
     },
     {
       name: "News filter",

@@ -226,19 +226,19 @@ export function StrangleActivity({ onSettings }: { onSettings?: () => void }) {
 
       <section className="bot-card">
         <div className="bs-card-head">
-          <h2>Today's first alerts</h2>
+          <h2>Today's alerts</h2>
           <span className="muted small">{alerts.length}</span>
         </div>
         {alerts.length === 0 ? (
           <p className="muted small">
-            None yet. The first alert of each stock between{" "}
+            None yet. Alerts on each stock between{" "}
             {clockOf(v.settings.firstMinute)} and{" "}
-            {clockOf(v.settings.lastMinute)} New York counts.
+            {clockOf(v.settings.lastMinute)} New York count.
           </p>
         ) : (
           <ul className="st-alerts">
             {alerts.map((a) => (
-              <li key={a.symbol}>
+              <li key={`${a.symbol}-${a.minute}`}>
                 <b>{a.symbol}</b> {clockOf(a.minute)}{" "}
                 {a.side === "up" ? "▲" : "▼"}{" "}
                 <span className="muted small">
@@ -316,13 +316,19 @@ const groups: { title: string; specs: Spec[] }[] = [
       {
         key: "sizePct",
         label: "Size of one trade",
-        help: "Both legs together, as a share of the account.",
+        help: "The leg, as a share of the account.",
         fmt: pct,
       },
       {
         key: "maxTradesPerDay",
         label: "Most trades a day",
-        help: "Each trade is up to three buys; the account allows ten a day.",
+        help: "One buy a trade; the account allows ten a day.",
+        fmt: count,
+      },
+      {
+        key: "maxPerStock",
+        label: "Most trades a stock a day",
+        help: "A later alert burst on a stock counts once it has nothing open, up to this many trades.",
         fmt: count,
       },
       {
@@ -351,7 +357,7 @@ const groups: { title: string; specs: Spec[] }[] = [
       {
         key: "firstMinute",
         label: "From",
-        help: "New York time; the first alert of the day from here counts.",
+        help: "New York time; alerts from here count.",
         fmt: clock,
       },
       {
