@@ -137,17 +137,33 @@ const blockedText: Record<string, string> = {
   premarket: "pre-market volume 4× normal",
 };
 
+/** Whether the D2 bonus covers the strength check (t from d2T with D2 minD2+). */
+function d2Covers(r: ScanRow, rules: BotSettings): boolean {
+  if (!rules.d2Entry || r.d2 === undefined || r.d2 === null) return false;
+  return r.t >= rules.d2T && r.d2 >= rules.minD2;
+}
+
 /** What a stock still lacks, in words. */
 function lacking(r: ScanRow, rules: BotSettings): string {
   if (r.blocked) return `Blocked today: ${blockedText[r.blocked]}`;
   const { minT: needT, minRvol: needVolume } = rules;
-  const strong = r.t >= needT;
+  const bonus = r.t < needT && d2Covers(r, rules);
+  const strong = r.t >= needT || bonus;
   const heavy = r.rvol >= needVolume;
-  if (strong && heavy) return "Both conditions met";
+  if (strong && heavy)
+    return bonus
+      ? "Both conditions met, by the D2 bonus"
+      : "Both conditions met";
   if (strong) return `Needs volume: ${r.rvol.toFixed(1)}× of ${needVolume}×`;
-  if (heavy) return `Needs strength: t ${r.t.toFixed(1)} of ${needT}`;
+  let orBonus = "";
+  if (rules.d2Entry) orBonus = ` (or t ${rules.d2T} with D2 ${rules.minD2})`;
+  if (heavy) return `Needs strength: t ${r.t.toFixed(1)} of ${needT}${orBonus}`;
   return "Needs strength and volume";
 }
+
+/** D2 in words for a bar: "D2 1.3", or "D2 —" without the stock's typical move. */
+const d2Label = (d2: number | null | undefined) =>
+  d2 === undefined || d2 === null ? "D2 —" : `D2 ${d2.toFixed(1)}`;
 
 function statusPill(v: BotView) {
   if (!v.enabled) return <span className="pill grey">Off</span>;
@@ -581,6 +597,18 @@ function StockFocus({
             label={`${r.rvol.toFixed(1)}×`}
           />
         </span>
+        {rules.d2Entry && (
+          <span>
+            <span className="muted small">
+              D2 (need {rules.minD2}, with t {rules.d2T}+)
+            </span>
+            <Meter
+              value={Math.max(0, r.d2 ?? 0)}
+              of={rules.minD2}
+              label={d2Label(r.d2)}
+            />
+          </span>
+        )}
       </div>
       <p className="small">{state}</p>
     </div>
@@ -606,10 +634,14 @@ function StockList({
   const rows = all ? scan : scan.slice(0, 12);
   return (
     <div className="bot-stocks">
-      <div className="bot-stocks-head muted small" aria-hidden="true">
+      <div
+        className={`bot-stocks-head muted small${rules.d2Entry ? " d2" : ""}`}
+        aria-hidden="true"
+      >
         <span>Stock</span>
         <span>Strength</span>
         <span>Volume</span>
+        {rules.d2Entry && <span>D2</span>}
       </div>
       <ul>
         {rows.map((r) => {
@@ -620,6 +652,7 @@ function StockList({
             <li key={r.symbol}>
               <button
                 type="button"
+                className={rules.d2Entry ? "d2" : undefined}
                 aria-pressed={selected === r.symbol}
                 onClick={() => onSelect(r.symbol)}
               >
@@ -638,6 +671,13 @@ function StockList({
                   of={needVolume}
                   label={`${r.rvol.toFixed(1)}×`}
                 />
+                {rules.d2Entry && (
+                  <Meter
+                    value={Math.max(0, r.d2 ?? 0)}
+                    of={rules.minD2}
+                    label={d2Label(r.d2)}
+                  />
+                )}
                 <span
                   className={
                     r.blocked ? "bot-stock-state blocked" : "bot-stock-state"
@@ -701,6 +741,15 @@ function WhatItSees({ v }: { v: BotView }) {
         <b>Volume</b>: shares since the open against its usual by this time (
         {needVolume}× or more). A stock that reaches a shaded corner signals: up
         buys a call, down a put. A ring marks today's signals.
+        {rules.d2Entry && (
+          <>
+            {" "}
+            <b>D2</b>: how well the stock held up on SPY&apos;s bad minutes of
+            the last 30 (its move beyond beta × SPY, in typical 30-minute
+            moves); with D2 {rules.minD2}+ strength from t {rules.d2T} is
+            enough.
+          </>
+        )}
       </p>
       {newsNote(v.news)}
       {v.scan.length === 0 ? (

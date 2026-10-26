@@ -6630,6 +6630,11 @@ dialog.trade-story .why-head h2 {
   gap: 2px 10px;
   align-items: center;
 }
+/* With the D2 bonus on, a third bar: D2 over the last 30 minutes. */
+.bot-stocks-head.d2,
+.bot-stocks li button.d2 {
+  grid-template-columns: 4.5rem repeat(3, minmax(0, 1fr));
+}
 .bot-stocks-head {
   padding: 0 8px 4px;
 }

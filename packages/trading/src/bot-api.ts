@@ -32,13 +32,16 @@ export interface BotView {
     earnings: "off" | "pending" | "ok" | "failed";
     premarket: "off" | "pending" | "ok" | "failed";
   };
-  // Where each stock stands now: side, t-stat (|t|), volume ratio, and
-  // whether the news filter keeps it out today.
+  // Where each stock stands now: side, t-stat (|t|), volume ratio, D2 on
+  // that side over the last 30 minutes (null without the stock's typical
+  // move; absent from older trader builds), and whether the news filter
+  // keeps it out today.
   scan: {
     symbol: string;
     side: "C" | "P";
     t: number;
     rvol: number;
+    d2?: number | null;
     minute: number;
     blocked?: "earnings" | "premarket" | null;
   }[];

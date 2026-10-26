@@ -244,7 +244,13 @@ export class IndiBot {
   // Where each stock stands at the last minute, for the live scan.
   private scan = new Map<
     string,
-    { side: "C" | "P"; t: number; rvol: number; minute: number }
+    {
+      side: "C" | "P";
+      t: number;
+      rvol: number;
+      d2: number | null;
+      minute: number;
+    }
   >();
   private lastWork: number | null = null;
   // The news filter's data for today (docs/tasks/backend-indi-bot.md).
@@ -671,12 +677,13 @@ export class IndiBot {
     for (const symbol of this.symbols) {
       const prior = this.prior.get(symbol);
       if (!prior) continue;
-      const now = cState(this.barsOf(symbol), spy, prior, m);
+      const now = cState(this.barsOf(symbol), spy, prior, m, params.d2Window);
       if (now)
         this.scan.set(symbol, {
           side: now.t < 0 ? "P" : "C",
           t: Math.abs(now.t),
           rvol: now.rvol,
+          d2: now.d2,
           minute: m,
         });
       if (this.o.store.signal(date, symbol)) continue;

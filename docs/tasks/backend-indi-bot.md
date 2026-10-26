@@ -149,6 +149,9 @@ Branch `feat/indi-bot-news-filter`. From the V2 research (`news_filter.py` on `r
 - **Fails open:** if the calendar or the pre-market read fails, an `error` line says the bot trades today without
   that filter, and it does; each is read once a session. The Bot tab also notes it above the live scan.
 - **Live scan:** a "News filter" column shows a stock that is blocked today.
+- **Live scan, D2 (2026-10-26):** each stock's row carries D2 on its side over the last 30 minutes (`cState`, the
+  same sum `cSignal` uses; null without the stock's typical move). With the D2 bonus on, the Bot tab shows it as a
+  third bar in the stock list and the stock's detail, and the "needs" words count the bonus path.
 - The causal rule needs the open, so a no-time report is decided at the signal (09:40 or later), from today's first
   bar and the warm-up bars.
 
