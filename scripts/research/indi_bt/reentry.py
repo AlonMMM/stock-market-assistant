@@ -146,9 +146,13 @@ def reentries(job):
 
 
 def main():
-    T = [t for f in glob.glob(f"{B}/sg_c12_15_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] == "ok"]
-    nf.features(T)
-    T = [t for t in T if t["e_next"] != 0 and (t["pre_rvol"] is None or t["pre_rvol"] < 4) and t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]]]
+    if sys.argv[1:2] == ["list"]:  # a watchlist: lists.py's run of 2.5's entries (BT_ENTRY=c12_15), e.g. list fav68_25 2025-10-23 2026-10-23
+        import json
+        T = [dict(r, status="ok", minute=str(r["minute"])) for r in json.load(open(f"{B}/list_{sys.argv[2]}_{sys.argv[3]}_{sys.argv[4]}.json")) if r["status"] == "bought"]
+    else:
+        T = [t for f in glob.glob(f"{B}/sg_c12_15_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] == "ok"]
+        nf.features(T)
+        T = [t for t in T if t["e_next"] != 0 and (t["pre_rvol"] is None or t["pre_rvol"] < 4) and t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]]]
     with mp.Pool(6) as pool: F = [x for x in pool.map(first_trades, T, chunksize=8) if x]
     base = [r for _, r in F]
     stopped = [r for k, r in F if k == "stopped"]

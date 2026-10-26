@@ -1151,3 +1151,8 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   (R0) and still lose: the second contract costs more and the runs come back through the stops again. Not better: a
   stopped trade is not worth buying again on any of these signs, D2 since the exit included. The 89 runners are an exit
   question (the stop sells them), not an entry one.
+  - **The same on the user's new watchlist (`reentry.py list fav68_25`, 2026-10-26; "can you run the last test again on
+    the watchlist? I changed it"):** the 68 Favorites (IGV added, 19 removed), 2025-10-23 to 2026-10-23: 2.5 525 trades,
+    $192,845 / 12%; 394 stopped on the entry day, 46 of them later 2x. Usual exits: every rule lower (R0 92 re-entries
+    -$88K, $175,965 / 17%; R4 8, -$14K, $190,092 / 12%). No stop 30 min: R0 +$138K ($215,194 / 17%) but -$227K without
+    its best 5; the rest lose. -30% only: all lose. Same verdict as the fair list.
