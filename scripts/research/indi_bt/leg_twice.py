@@ -93,19 +93,43 @@ def main():
     print(f"{len(keep)} stock-days with an alert; events a day: median {st.median(nev)}, 2+ on {sum(n > 1 for n in nev)}, 3+ on {sum(n > 2 for n in nev)}")
     print("\n| Entries | Trades | 2nd+ trades (their P&L at 1%) | Winners | ±2%: end, worst drop | without best 5 | ±4%: end, worst drop | live caps: end, worst drop |")
     print("|---|---|---|---|---|---|---|---|")
+    dist = {}
     for how, lab in (("first", "first alert only (the bot today)"), ("flat", "again only when flat"), ("open", "again even while open")):
         T = []
         for t in keep:
             for e in pick(t["r"], how):
-                T.append(dict(date=t["date"], sym=t["sym"], minute=e["minute"], again=e["n"] > 0, **{k: v for k, v in e["trade"].items() if k in ("buy", "sell", "bm", "xm")}))
+                T.append(dict(date=t["date"], sym=t["sym"], minute=e["minute"], again=e["n"] > 0, nth=len([x for x in T if x["date"] == t["date"] and x["sym"] == t["sym"]]) + 1, **{k: v for k, v in e["trade"].items() if k in ("buy", "sell", "bm", "xm")}))
         e1, d1, R, wd, _ = D.account(T, 1, 2)
         top = sorted(R, key=lambda r: -r["pnl"])[:5]
         e5 = D.account([t for t in T if not any(t["date"] == x["date"] and t["sym"] == x["sym"] and t["minute"] == x["minute"] for x in top)], 1, 2)[0]
         e4, d4, _, _, _ = D.account(T, 1, 4)
         eL, dL, _, _, _ = D.account(T, 1, 2, loss=5, max_trades=5, max_open=3)
+        dist[lab] = (R, nev)
         ag = [r for r in R if r["again"]]
         print(f"| {lab} | {len(R)} | {len(ag)} ({sum(r['pnl'] for r in ag):+,.0f}, {100 * sum(r['pnl'] > 0 for r in ag) / max(1, len(ag)):.0f}% win) | {100 * sum(r['pnl'] > 0 for r in R) / len(R):.0f}% | "
               f"${e1:,.0f}, {100 * d1:.1f}% | ${e5:,.0f} | ${e4:,.0f}, {100 * d4:.1f}% | ${eL:,.0f}, {100 * dL:.1f}% |")
+
+    # the distributions (the user: "show me distribution of enters per stock")
+    print("\n| Alert events on a stock-day | 1 | 2 | 3 | 4 | 5+ |\n|---|---|---|---|---|---|")
+    c = [sum(1 for n in nev if (n == k if k < 5 else n >= 5)) for k in (1, 2, 3, 4, 5)]
+    print("| stock-days | " + " | ".join(str(x) for x in c) + " |")
+    for lab in ("again only when flat", "again even while open"):
+        R, _ = dist[lab]
+        per = {}
+        for r in R: per[(r["date"], r["sym"])] = per.get((r["date"], r["sym"]), 0) + 1
+        h = [sum(1 for v in per.values() if (v == k if k < 5 else v >= 5)) for k in (1, 2, 3, 4, 5)]
+        print(f"\n#### {lab}\n\n| Trades on a stock-day | 1 | 2 | 3 | 4 | 5+ |\n|---|---|---|---|---|---|\n| stock-days | " + " | ".join(str(x) for x in h) + f" |  (most {max(per.values())})")
+        print("\n| Entry | Trades | Winners | Avg P&L at 1% | Total |\n|---|---|---|---|---|")
+        for k in (1, 2, 3, 4, 5):
+            G = [r for r in R if (r["nth"] == k if k < 5 else r["nth"] >= 5)]
+            if G: print(f"| {'5th+' if k == 5 else ['1st', '2nd', '3rd', '4th'][k - 1]} | {len(G)} | {100 * sum(r['pnl'] > 0 for r in G) / len(G):.0f}% | {st.fmean(r['pnl'] for r in G):+,.0f} | {sum(r['pnl'] for r in G):+,.0f} |")
+        bys = {}
+        for r in R: bys.setdefault(r["sym"], []).append(r)
+        top = sorted(bys.items(), key=lambda kv: -sum(1 for r in kv[1] if r["nth"] > 1))[:10]
+        print("\n| Stock | Trades | Of them re-entries | Stock-days | P&L of re-entries |\n|---|---|---|---|---|")
+        for sym, G in top:
+            ag = [r for r in G if r["nth"] > 1]
+            print(f"| {sym} | {len(G)} | {len(ag)} | {len({r['date'] for r in G})} | {sum(r['pnl'] for r in ag):+,.0f} |")
 
 
 if __name__ == "__main__":
