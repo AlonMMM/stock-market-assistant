@@ -7,12 +7,15 @@ import {
   filterAlerts,
   filterRows,
   groupAlertDays,
+  keepOrder,
   marketPhase,
+  phoneColumns,
   pillFor,
   sipDelayText,
   sortRows,
   sortsDescending,
   symbolCounts,
+  textWidthCh,
   watchRows,
   type LiveAlertRow,
   type WatchRow,
@@ -327,4 +330,56 @@ test("watch sort by today's volume: most shares first, missing last", () => {
     volumes.filter((v) => v === null),
   );
   assert.equal(sortsDescending("volume"), true);
+});
+
+test("watchlist: phone columns fit the longest value, the same in every row", () => {
+  const row = (over: Partial<WatchRow>) =>
+    ({
+      mark: "live",
+      last: 11.15,
+      changeUsd: -4.01,
+      change: -26.45,
+      relVolume: null,
+      volume: 0,
+      ...over,
+    }) as WatchRow;
+  assert.equal(textWidthCh("-26.45%").toFixed(1), "6.7");
+  const cols = phoneColumns([
+    row({}),
+    row({
+      last: 895.05,
+      changeUsd: 17.5,
+      change: 1.99,
+      relVolume: 12.3,
+      volume: 2.4e7,
+    }),
+  ]).split(" max(");
+  assert.equal(cols[0], "minmax(0, 1fr)");
+  // Last 895.05 (5.6ch), Chng +17.50 (5.6ch), Chg % -26.45% (6.7ch),
+  // Rel vol 12.3× (4.6ch), Volume 24.0M (5.1ch), each + 0.3ch.
+  assert.deepEqual(cols.slice(1), [
+    "5.9ch, 44px)",
+    "5.9ch, 40px)",
+    "7.0ch, 50px)",
+    "4.9ch, 34px)",
+    "5.4ch, 48px)",
+  ]);
+  // A close or overnight mark in front of a price widens Last.
+  assert.match(phoneColumns([row({ mark: "close" })]), /max\(6.2ch, 44px\)/);
+});
+
+test("watchlist: a kept order holds while values change; new rows go last", () => {
+  const row = (ticker: string, change: number) =>
+    ({ ticker, change }) as WatchRow;
+  const order = sortRows(
+    [row("A", 3), row("B", 2), row("C", 1)],
+    "change",
+    true,
+  ).map((r) => r.ticker);
+  // C now moves most, but the order holds until the next sort.
+  const now = [row("C", 9), row("D", 5), row("A", 3), row("B", 2)];
+  assert.deepEqual(
+    keepOrder(now, order).map((r) => r.ticker),
+    ["A", "B", "C", "D"],
+  );
 });

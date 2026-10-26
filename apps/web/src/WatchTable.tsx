@@ -1,5 +1,12 @@
 import type { LivePriceState } from "./live-prices.js";
-import { lazy, Suspense, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import type { Board } from "../../../packages/market-data/src/board.js";
 import { newYorkToUtc } from "../../../packages/market-data/src/calendar.js";
 import type { FeedAlert } from "./AlertFeed.js";
@@ -8,6 +15,7 @@ import {
   alertDirection,
   filterRows,
   isHot,
+  keepOrder,
   moving,
   rangePosition,
   sortRows,
@@ -17,7 +25,9 @@ import {
   ibChange,
   ibPct,
   ibPrice,
+  ibRelVolume,
   ibVolume,
+  phoneColumns,
   type Compare,
   type NightPrices,
   type WatchRow,
@@ -67,7 +77,8 @@ const Moon = () => (
 );
 
 // [sort key, label, alignment, shown on phones]. Phones get IBKR's five
-// columns (user 2026-10-26): Instrument, Last price, Chng, Chg %, Volume.
+// columns (user 2026-10-26): Instrument, Last price, Chng, Chg %, Volume,
+// and Rel vol before Volume (user 2026-10-26: "i need relative volume").
 const columns: [WatchSort | null, string, "left" | "right", boolean][] = [
   ["ticker", "Instrument", "left", true],
   [null, "Today", "left", false],
@@ -76,7 +87,7 @@ const columns: [WatchSort | null, string, "left" | "right", boolean][] = [
   ["change", "Chg %", "right", true],
   ["excess", "", "right", false], // vs SPY | vs sector
   ["rsScore", "Score", "right", false],
-  ["relVolume", "Rel vol", "right", false],
+  ["relVolume", "Rel vol", "right", true],
   // Today's regular-session shares (user 2026-10-17).
   ["volume", "Volume", "right", true],
   ["range", "Day range", "left", false],
@@ -207,7 +218,7 @@ function ScoreCell({ score }: { score: number | null }) {
 
 /**
  * The watchlist: one dense line per stock (IBKR-like), today's chart and Rel
- * vol kept. Phones show symbol, chart, last, change % and Rel vol; wider
+ * vol kept. Phones show symbol, last, Chng, Chg %, Rel vol and volume; wider
  * screens add vs SPY/sector, the score, the day range and alert counts. A
  * row opens the day chart and its numbers.
  */
@@ -253,7 +264,16 @@ export function WatchTable({
     now: Date.now(),
     night: night ?? {},
   });
-  const rows = sortRows(filterRows(all, "all", find), sort, descending);
+  // The order is set when a sort is picked, the list changes or a new day
+  // loads; live prices then update the rows in place, not their order.
+  const sortKey = [sort, descending, board.date, ...board.watchlist].join(",");
+  const order = useRef<{ key: string; tickers: string[] } | null>(null);
+  if (order.current?.key !== sortKey)
+    order.current = {
+      key: sortKey,
+      tickers: sortRows(all, sort, descending).map((r) => r.ticker),
+    };
+  const rows = keepOrder(filterRows(all, "all", find), order.current.tickers);
   const bySymbol = new Map(board.series.map((s) => [s.ticker, s]));
   // Picked, but the board with sector ETFs has not arrived yet.
   const sectorsLoading =
@@ -317,7 +337,10 @@ export function WatchTable({
         </p>
       )}
 
-      <div className="wl-table">
+      <div
+        className="wl-table"
+        style={{ "--wl-cols": phoneColumns(all) } as CSSProperties}
+      >
         <div className="wl-head wl-grid" role="group" aria-label="Sort by">
           {columns.map(([key, label, align, phone]) => {
             const text =
@@ -446,9 +469,9 @@ export function WatchTable({
                   </span>
                   <ScoreCell score={r.rsScore} />
                   <span
-                    className={`wl-cell right wl-rv wl-wide num${hot ? " hot" : ""}`}
+                    className={`wl-cell right wl-rv wl-num${hot ? " hot" : ""}`}
                   >
-                    {r.relVolume === null ? "—" : `${r.relVolume.toFixed(1)}×`}
+                    <span>{ibRelVolume(r.relVolume)}</span>
                     <i aria-hidden="true">
                       <span
                         style={{
