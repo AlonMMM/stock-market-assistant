@@ -4427,6 +4427,44 @@ dialog.why::backdrop {
   border: 1px dashed #b9c3b6;
   color: #3d4f48;
 }
+.wl-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.wl-chips-row > .wl-chips {
+  flex: 1 1 auto;
+}
+.wl-chips-row > button.wl-edit {
+  flex: none;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid #b9c3b6;
+  color: #142b29;
+  font-weight: 600;
+}
+.wl-chips-row > button.wl-edit[aria-pressed="true"] {
+  background: #142b29;
+  border-color: #142b29;
+  color: #fff;
+}
+.wl-editor .chips {
+  margin-bottom: 14px;
+}
+.wl-editor-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
 .wl-name-form {
   display: flex;
   flex-wrap: wrap;
