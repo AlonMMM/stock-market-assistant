@@ -3,7 +3,7 @@ import type { OptionBook } from "./option-book.js";
 
 // The alert leg bot's records (docs/tasks/backend-strangle-bot.md), in the
 // trading service's database next to the Indi bot's, in tables of its own:
-// every first alert and what came of it, every trade with its leg, each order
+// every alert it acted on and what came of it, every trade with its leg, each order
 // and why, its settings and its activity feed.
 
 export type StrangleEventKind = "info" | "signal" | "skip" | "order" | "error";
@@ -83,6 +83,10 @@ export class StrangleStore {
       CREATE TABLE IF NOT EXISTS strangle_signals (
         id INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT NOT NULL,
         symbol TEXT NOT NULL, data TEXT NOT NULL, UNIQUE (day, symbol));
+      CREATE TABLE IF NOT EXISTS strangle_alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT NOT NULL,
+        symbol TEXT NOT NULL, minute INTEGER NOT NULL, data TEXT NOT NULL,
+        UNIQUE (day, symbol, minute));
       CREATE TABLE IF NOT EXISTS strangle_trades (
         id TEXT PRIMARY KEY, phase TEXT NOT NULL, day TEXT NOT NULL,
         data TEXT NOT NULL);
@@ -92,6 +96,15 @@ export class StrangleStore {
         id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL,
         kind TEXT NOT NULL, text TEXT NOT NULL);
     `);
+    // Since re-entry (2026-10-26) a stock can have several alerts a day:
+    // strangle_alerts replaces strangle_signals (one a day), copied once.
+    const copied = this.db
+      .prepare("SELECT COUNT(*) AS n FROM strangle_alerts")
+      .get() as { n: number };
+    if (copied.n === 0)
+      this.db
+        .exec(`INSERT OR IGNORE INTO strangle_alerts (day, symbol, minute, data)
+        SELECT day, symbol, json_extract(data, '$.minute'), data FROM strangle_signals ORDER BY id`);
   }
 
   close() {
@@ -117,25 +130,34 @@ export class StrangleStore {
       .all(limit) as unknown as StrangleEvent[];
   }
 
-  /** One signal per stock per day; false when the day already has one. */
+  /** One signal per stock per alert minute; false when that minute already has one. */
   addSignal(s: StrangleSignal): boolean {
     return (
       this.db
         .prepare(
-          "INSERT OR IGNORE INTO strangle_signals (day, symbol, data) VALUES (?, ?, ?)",
+          "INSERT OR IGNORE INTO strangle_alerts (day, symbol, minute, data) VALUES (?, ?, ?, ?)",
         )
-        .run(s.day, s.symbol, JSON.stringify(s)).changes > 0
+        .run(s.day, s.symbol, s.minute, JSON.stringify(s)).changes > 0
     );
+  }
+
+  /** The stock's latest signal of the day: the one its current trade came from. */
+  private latestId(day: string, symbol: string): number | undefined {
+    const row = this.db
+      .prepare(
+        "SELECT MAX(id) AS id FROM strangle_alerts WHERE day = ? AND symbol = ?",
+      )
+      .get(day, symbol) as { id: number | null } | undefined;
+    return row?.id ?? undefined;
   }
 
   updateSignal(day: string, symbol: string, outcome: string, detail: string) {
     const s = this.signal(day, symbol);
-    if (!s) return;
+    const id = this.latestId(day, symbol);
+    if (!s || id === undefined) return;
     this.db
-      .prepare(
-        "UPDATE strangle_signals SET data = ? WHERE day = ? AND symbol = ?",
-      )
-      .run(JSON.stringify({ ...s, outcome, detail }), day, symbol);
+      .prepare("UPDATE strangle_alerts SET data = ? WHERE id = ?")
+      .run(JSON.stringify({ ...s, outcome, detail }), id);
   }
 
   /** The picked leg's book on the day's signal of `symbol`. */
@@ -145,17 +167,19 @@ export class StrangleStore {
     book: OptionBook & { contract: string },
   ) {
     const s = this.signal(day, symbol);
-    if (!s) return;
+    const id = this.latestId(day, symbol);
+    if (!s || id === undefined) return;
     this.db
-      .prepare(
-        "UPDATE strangle_signals SET data = ? WHERE day = ? AND symbol = ?",
-      )
-      .run(JSON.stringify({ ...s, book }), day, symbol);
+      .prepare("UPDATE strangle_alerts SET data = ? WHERE id = ?")
+      .run(JSON.stringify({ ...s, book }), id);
   }
 
+  /** The stock's latest signal of the day. */
   signal(day: string, symbol: string): StrangleSignal | undefined {
     const row = this.db
-      .prepare("SELECT data FROM strangle_signals WHERE day = ? AND symbol = ?")
+      .prepare(
+        "SELECT data FROM strangle_alerts WHERE day = ? AND symbol = ? ORDER BY id DESC LIMIT 1",
+      )
       .get(day, symbol) as { data: string } | undefined;
     return row ? (JSON.parse(row.data) as StrangleSignal) : undefined;
   }
@@ -163,7 +187,7 @@ export class StrangleStore {
   signals(day: string): StrangleSignal[] {
     return (
       this.db
-        .prepare("SELECT data FROM strangle_signals WHERE day = ? ORDER BY id")
+        .prepare("SELECT data FROM strangle_alerts WHERE day = ? ORDER BY id")
         .all(day) as { data: string }[]
     ).map((r) => JSON.parse(r.data) as StrangleSignal);
   }

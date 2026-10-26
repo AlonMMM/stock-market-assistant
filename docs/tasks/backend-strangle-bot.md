@@ -20,7 +20,10 @@ The code keeps the name `strangle` for its module, routes, tables and environmen
 1. On a day with a same-day expiry (or, with `nextDay` on, the default since 2026-10-25, a day whose nearest expiry
    is the next session: 1DTE, mostly Thursdays), from 09:40 to 13:00 New York, the first time the volume alert (rvol-v6, as
    the backtest evaluated it: `packages/trading/src/strangle/alert.ts`) fires on a stock, in either direction.
-   One trade per stock a day; a later alert the same day does not count.
+   A later alert burst on the same stock (an alert minute after one without) starts a new watch once the stock
+   has nothing open, up to `maxPerStock` (2) trades a stock a day; a burst that gave no trade does not count
+   (2026-10-26, `leg_twice.py`: with the day's caps 2 is best on both lists). Alerts are kept in
+   `strangle_alerts` (one row per stock and alert minute; the older `strangle_signals` rows are copied once).
 2. News filter as the Indi bot's: no trade on the earnings reaction day or with pre-market volume 4× or more.
 3. Watch: the side is the first time the stock is 0.25 of its typical 30-minute move (`priorLevels(...).unit`,
    the failed break's unit) from its price when the alert was read, up or down. No side within 10 minutes of
