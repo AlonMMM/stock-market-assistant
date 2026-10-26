@@ -246,7 +246,11 @@ function History({
           </dl>
           {value.trades.length > 0 ? (
             <Suspense fallback={<p className="chart-status">Loading chart…</p>}>
-              <PnlChart key={value.period} history={value} />
+              <PnlChart
+                key={value.period}
+                history={value}
+                periodLabel={label}
+              />
             </Suspense>
           ) : (
             <p className="notice">No closed trades to plot in this period.</p>

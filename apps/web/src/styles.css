@@ -2568,69 +2568,53 @@ dd > .stop-missing {
   font-size: 14px;
 }
 
-.trade-pnl-chart {
+/* Realized account value, one calm line (option A of the chart options). */
+.pnl-card {
   min-width: 0;
-  padding: 16px;
-  border: 1px solid #cdd7ce;
-  border-radius: 12px;
+  padding: 18px 16px 10px;
+  border: 1px solid #dde3dc;
+  border-radius: 16px;
+  background: #fff;
 }
-.trade-pnl-chart p {
-  margin: 8px 0;
-}
-.trade-pnl-heading {
+.pnl-head {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
 }
-.trade-pnl-total {
-  font-size: 20px;
-  font-weight: 700;
-}
-.trade-pnl-change {
-  flex-basis: 100%;
+.pnl-label {
   font-size: 13px;
-  color: #61736b;
+  color: #5d6e69;
 }
-.trade-pnl-change b {
+.pnl-value {
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.pnl-sub {
+  min-height: 1.4em;
+  font-size: 13px;
+  color: #5d6e69;
+}
+.pnl-sub b {
   font-weight: 600;
 }
-.trade-pnl-frame {
-  position: relative;
+.pnl-frame {
   min-width: 0;
-  background: #fafbf8;
-  border-radius: 8px;
 }
-.trade-pnl-svg {
+.pnl-svg {
   display: block;
   cursor: crosshair;
   touch-action: pan-y;
   user-select: none;
 }
-.trade-pnl-svg:focus-visible {
+.pnl-svg:focus-visible {
   outline: 2px solid #16746b;
   outline-offset: 2px;
 }
-.trade-pnl-svg text {
+.pnl-svg text {
   font-variant-numeric: tabular-nums;
-}
-.trade-pnl-tooltip {
-  position: absolute;
-  z-index: 1;
-  display: grid;
-  gap: 2px;
-  min-width: 150px;
-  padding: 8px 10px;
-  border: 1px solid #cdd7ce;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 4px 14px rgba(20, 43, 41, 0.14);
-  font-size: 12px;
-  white-space: nowrap;
-  pointer-events: none;
-}
-.trade-pnl-tooltip strong {
-  font-size: 13px;
 }
 .portfolio.loading {
   opacity: 0.55;

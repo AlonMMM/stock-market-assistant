@@ -141,14 +141,13 @@ The board's load time is unchanged.
 
 ## History: realized account value at trade closes
 
-Realized account value (or P&L) as steps on a true time axis (Israel time): flat between closes, a jump at each
-close, flat on to now, one dot per closed trade coloured by its result, the starting value dashed and named, and
-"−$1,331 (−1.33%) since $100,000" under the title. Axis labels are as precise as their step (no "$100K" twice), and
-day ticks sit on each Israel midnight, so they stay right across a clock change (2026-10-26; it was a smooth curve
-whose day labels slipped a day after Israel's change on Oct 25). A crosshair tooltip shows the trade and the
-cumulative result on hover, tap or the keyboard.
-Dollar/percent controls use Alpaca's starting account value for cumulative returns, rather than adding individual
-trade returns. Missing starting equity disables percentage mode. Unrealized P&L is not part of this chart.
+Realized account value (or P&L) as one clean line (2026-10-26, option A of five designs the user was shown): the
+value large on top with "−$1,331 (−1.33%) · week · 4 trades" under it, then a line from the starting value through
+each closed trade, evenly spaced by trade so nights and weekends leave no gaps, a light fill under it, the starting
+value dashed and named, a dot on the last point and the Israel day names under each day's trades. No grid, axis
+numbers or per-trade dots. Dragging across the line (or the arrow keys) puts that trade's value in the header and
+its symbol, result and Israel time under it. Percentages use Alpaca's starting account value, not a sum of trade
+returns; without it the chart shows realized P&L from $0. Unrealized P&L is not part of this chart.
 
 **A trade's story (2026-10-24).** A tap on a closed trade, the owner's or the bot's, opens a window: a chart on
 the regular chart's library (zoom, scroll, more days on a drag) with the stock and SPY, the volume, the bot's
