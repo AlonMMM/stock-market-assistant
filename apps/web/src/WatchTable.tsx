@@ -274,6 +274,7 @@ export function WatchTable({
       tickers: sortRows(all, sort, descending).map((r) => r.ticker),
     };
   const rows = keepOrder(filterRows(all, "all", find), order.current.tickers);
+  const phone = phoneColumns(all);
   const bySymbol = new Map(board.series.map((s) => [s.ticker, s]));
   // Picked, but the board with sector ETFs has not arrived yet.
   const sectorsLoading =
@@ -339,7 +340,12 @@ export function WatchTable({
 
       <div
         className="wl-table"
-        style={{ "--wl-cols": phoneColumns(all) } as CSSProperties}
+        style={
+          {
+            "--wl-cols": phone.columns,
+            "--wl-width": phone.width,
+          } as CSSProperties
+        }
       >
         <div className="wl-head wl-grid" role="group" aria-label="Sort by">
           {columns.map(([key, label, align, phone]) => {

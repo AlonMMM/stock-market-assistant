@@ -4067,10 +4067,14 @@ dialog.why::backdrop {
     minmax(0, 1fr) 64px 52px 60px 40px 50px
   );
   align-items: center;
-  column-gap: 8px;
-  padding: 0 12px;
+  column-gap: var(--wl-gap);
+  padding: 0 var(--wl-pad);
   font-family: var(--wl-font);
-  font-size: 14px;
+  font-size: 16.5px;
+}
+.wl {
+  --wl-gap: 10px;
+  --wl-pad: 12px;
 }
 .wl-wide,
 .wl-compare {
@@ -4138,7 +4142,7 @@ dialog.why::backdrop {
 }
 .wl-symbol strong {
   font-family: var(--wl-font);
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 500;
   white-space: nowrap;
 }
@@ -4195,7 +4199,7 @@ dialog.why::backdrop {
    alone carries up and down, no pills. */
 .wl-num {
   font-family: var(--wl-font);
-  font-size: 14px;
+  font-size: 16.5px;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
@@ -4332,15 +4336,6 @@ dialog.why::backdrop {
   }
   .wl-wide {
     display: block !important;
-  }
-  .wl .wl-grid {
-    column-gap: 10px;
-  }
-  .wl-symbol strong {
-    font-size: 17px;
-  }
-  .wl-num {
-    font-size: 16.5px;
   }
   .wl-rv {
     font-size: 13px;
@@ -5720,14 +5715,60 @@ button.pa-ticker {
 /* A phone: IBKR's columns and Rel vol, edge to edge. A label longer than
    its column wraps to a second line. */
 @media (max-width: 759px) {
+  .wl {
+    --wl-pad: 10px;
+  }
+  /* IBKR's size (user 2026-10-26: "too small... make it like Interactive");
+     wider than the screen, the table scrolls sideways and the symbol stays. */
+  .wl-table {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+  .wl-table ul {
+    width: max-content;
+    min-width: 100%;
+  }
   .wl .wl-grid {
-    padding: 0 10px;
+    box-sizing: border-box;
+    width: var(--wl-width, 100%);
+  }
+  .wl .wl-grid > .wl-cell:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    margin-left: calc(-1 * var(--wl-pad));
+    padding-left: var(--wl-pad);
+    background: var(--wl-sticky-bg);
+  }
+  .wl-row {
+    --wl-sticky-bg: #fff;
+  }
+  .wl .wl-head {
+    --wl-sticky-bg: #f6f8f4;
+  }
+  .wl-row:hover,
+  .wl-table li.open .wl-row {
+    --wl-sticky-bg: #f6f8f4;
+  }
+  .wl-dark .wl-row,
+  .wl-dark .wl .wl-head {
+    --wl-sticky-bg: #1b1e24;
+  }
+  .wl-dark .wl-row:hover,
+  .wl-dark .wl-table li.open .wl-row {
+    --wl-sticky-bg: #22262d;
+  }
+  .wl-symbol small {
+    display: none;
   }
   .wl .wl-head {
     letter-spacing: 0.03em;
   }
   .wl .wl-head > .wl-cell {
-    font-size: 10.5px;
+    font-size: 11.5px;
     white-space: normal;
     line-height: 1.2;
   }
@@ -5740,16 +5781,18 @@ button.pa-ticker {
   }
 }
 @media (max-width: 380px) {
+  .wl {
+    --wl-gap: 8px;
+    --wl-pad: 8px;
+  }
   .wl .wl-grid {
-    column-gap: 5px;
-    padding: 0 8px;
-    font-size: 13px;
+    font-size: 15.5px;
   }
   .wl-num {
-    font-size: 13px;
+    font-size: 15.5px;
   }
   .wl-symbol strong {
-    font-size: 14px;
+    font-size: 16px;
   }
   .wl-symbol small {
     display: none;
