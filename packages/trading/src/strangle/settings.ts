@@ -74,10 +74,13 @@ export const defaultStrangleSettings: StrangleSettings = {
   added: [],
   off: [],
   sizePct: 1,
-  maxTradesPerDay: 5,
+  // 15 (user 2026-10-26, "go with 15 trades for day limit"): at 5 the cap refused about
+  // 480 trades a year on the watchlists, most of them winners (bench, leg_twice.py).
+  maxTradesPerDay: 15,
   maxPerStock: 2,
   maxOpen: 3,
-  dayLossPct: 5,
+  // 7.5 (user 2026-10-26); at 1% a trade the backtest never reached 5.
+  dayLossPct: 7.5,
   safetyStopPct: 70,
   firstMinute: 10,
   nextDay: true,
@@ -103,8 +106,8 @@ export const strangleLimits: Record<
   [min: number, max: number, step: number]
 > = {
   sizePct: [0.5, 6, 0.5],
-  // One buy a trade; the account's rules allow ten a day.
-  maxTradesPerDay: [1, 10, 1],
+  // One buy a trade; the account's buys-per-day rule must allow as many.
+  maxTradesPerDay: [1, 20, 1],
   maxPerStock: [1, 5, 1],
   maxOpen: [1, 10, 1],
   dayLossPct: [1, 15, 0.5],
