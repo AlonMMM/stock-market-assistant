@@ -11,3 +11,7 @@ docs/features/backtest-page-mockup
 scripts/research/indi-tradelog/index.html
 docs/features/full-screen-chart-mockup
 docs/features/option-ticket-mockup
+# Third-party impeccable skill; keep its upstream files as shipped
+.claude/skills/impeccable
+.claude/agents/impeccable-*.md
+.impeccable

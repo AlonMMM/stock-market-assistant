@@ -14,10 +14,10 @@ the process.
 
 User rule, 2026-10-26: ideas are tuned on one group and checked once on another that they never saw.
 
-| Group | Stocks | Period | Used for |
-|---|---|---|---|
+| Group      | Stocks                                               | Period              | Used for                              |
+| ---------- | ---------------------------------------------------- | ------------------- | ------------------------------------- |
 | **Tuning** | the fair list (Indi's stocks traded the year before) | Feb 2024 - Dec 2025 | every variant, sweep and level choice |
-| **Check** | the user's Favorites + the fair list for 2026 | Jan 2026 - today | the candidate stage only (step 6) |
+| **Check**  | the user's Favorites + the fair list for 2026        | Jan 2026 - today    | the candidate stage only (step 6)     |
 
 - **No 2026 numbers for a variant before step 6**: do not run, print, chart or upload a variant's 2026 trades
   before then. Production and the candidate may run on the full period to reproduce their baselines (2026 is

@@ -44,7 +44,7 @@ A day review uses the same day for first and last. Never read `.env`; no orders,
    came at a low, and what holding would have done.
 4. **Backtest-only trades and skips:** a table, each with why live did not take it (not live yet, not on the list,
    a setting, a cap, a missed fill).
-4b. **Alert leg section, always, live trades or not:** its own figures (with and without the live caps of 5 a day
+   4b. **Alert leg section, always, live trades or not:** its own figures (with and without the live caps of 5 a day
    and 3 open, and which trades the caps drop), a table with each trade's 30-minute move, and its charts
    (`leg_*.png` live, `leg_bt_*.png` backtest: alert, side levels, best since the buy, give-back line). Read every
    chart: was the alert a climax bar, did the side pick the bounce or the continuation, was the exit a shake-out,

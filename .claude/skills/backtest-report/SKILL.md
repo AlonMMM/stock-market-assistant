@@ -21,17 +21,18 @@ read against each other. Two outputs, always both:
 The same seven figures, in this order, for each version or list, always at $100,000 start and the account sizing
 (each trade costs 1% of the account at the start of its day; 2% as the second column where room allows):
 
-| Figure | Why it is there |
-|---|---|
-| Signals → news filter → no contract → trades | the funnel: how much of the idea is tradeable at all |
-| Trades, winners (%) | the hit rate; the champion is 15–20%, so a result on under ~100 trades is noise |
-| Per trade at $10K | comparable across sizes and periods |
-| Account at 1% (and 2%), return | the headline, from $100,000; with the overnight cap (10% of the account) at that size: `ret` is the 1% return, `ret_2pct` the 2% one, never the 1% return sized at 2% |
-| Worst drop from a high | the risk |
-| **Without the best 5 trades**: per trade and account | the overfitting check; the money is always a few trades |
-| By stock: P&L, trades, winners, in his 40 or not | where the money came from, and whether from stocks the rules were tuned on |
+| Figure                                               | Why it is there                                                                                                                                                       |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Signals → news filter → no contract → trades         | the funnel: how much of the idea is tradeable at all                                                                                                                  |
+| Trades, winners (%)                                  | the hit rate; the champion is 15–20%, so a result on under ~100 trades is noise                                                                                       |
+| Per trade at $10K                                    | comparable across sizes and periods                                                                                                                                   |
+| Account at 1% (and 2%), return                       | the headline, from $100,000; with the overnight cap (10% of the account) at that size: `ret` is the 1% return, `ret_2pct` the 2% one, never the 1% return sized at 2% |
+| Worst drop from a high                               | the risk                                                                                                                                                              |
+| **Without the best 5 trades**: per trade and account | the overfitting check; the money is always a few trades                                                                                                               |
+| By stock: P&L, trades, winners, in his 40 or not     | where the money came from, and whether from stocks the rules were tuned on                                                                                            |
 
 Then, for every study:
+
 - **The in-sample warning, in one line.** The rules were chosen after seeing Feb 2024 – Oct 2026 on Indi's 40 stocks.
   Any window inside that is in-sample in time; the core list and 24 of the favorites are in-sample in stocks. Say which
   applies. Only paper trading from here is a clean test.
