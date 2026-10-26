@@ -212,6 +212,20 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### The candidates on today's Favorites, real quotes (2026-10-27)
+
+`fav_real.py`: today's 69 Favorites (fav68 + TSEM, which had no tradeable signal), 2025-10-23 to 2026-10-23, real
+Databento quotes for every fill ($4.76, fav_dbx.py). Old prices reproduce the earlier Favorites runs exactly.
+| Version | Old 1% / drop | Real 1% / drop | Real 2% / drop | Real w/o best 5 | Real 6 months |
+| --- | --- | --- | --- | --- | --- |
+| 2.4 | $184,085 / 10% | $150,271 / 13% | $183,782 / 25% | $70,737 | $108,950 / 13% |
+| 2.5 | $192,845 / 12% | $153,998 / 15% | $170,800 / 26% | $65,137 | $113,322 / 15% |
+| 2.6 (live) | $246,637 / 14% | $186,294 / 17% | $228,963 / 31% | $76,016 | $141,526 / 17% |
+| pyramid | $255,262 / 15% | $191,345 / 18% | $234,738 / 32% | $80,053 | $149,243 / 18% |
+| pyramid + cheap at half | $227,598 / 14% | $175,383 / 17% | $208,767 / 30% | $76,466 | $134,592 / 17% |
+The pyramid holds (+3% at 1%, +1 point of drop; better without the best 5 and over 6 months); cheap at half loses (the
+Favorites' cheap trades are winners). 2.6 stays ahead of 2.4 and 2.5 on real prices. Dashboard tab "Favorites".
+
 ### Candidates on real quotes: delta, what the exits read, sizing (2026-10-26)
 
 The user: "lets try to find more candidates - after that we will take the candidate and test them on my favorite".
