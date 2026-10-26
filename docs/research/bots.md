@@ -9,21 +9,18 @@ overnight cap at each size; Favorites = the app's Favorites watchlist (86 symbol
 What the live bot runs when its settings are reset to defaults: the default version in
 `packages/trading/src/bot/versions.ts` on `origin/main`. It changes only when a version is merged and deployed.
 
-- **2.4** (since 2026-10-24): t >= 1.8 and day volume >= 1.5x, the news filter, delta 0.15 (min $0.20, 200 contracts in
-  30 minutes), the 10 / 20-minute checks, -30% with the stock against, the rest at -20% after the 10-minute half, the
-  t-stat exit at 0.5, overnight from +50% (max 2 nights, morning gap rule), the failed-break sale.
-- Research twin: trade files `s_t18r15_*`, exits `cheap_up2.BOT24`; benchmark slug `bot24`.
-- Fair list $719,945 / 9% at 1% ($2,738,908 / 18% at 2%), $269,258 without the best 5.
-  Favorites $176,352 / 9% at 1% ($248,281 / 19% at 2%).
+- **2.5** (merged as #147 and deployed 2026-10-26; the live bot shows "2.5*": the owner keeps the minimum price at $0.15
+  and the pre-market volume skip off): 2.4 + the D2 bonus entry (t >= 1.2 and D2 >= 1.5), without the failed-break sale.
+- Research twin: trade files `sg_c12_15_*`, exits `d2_failed_break.CHAMP`; benchmark slug `d2-bonus`.
+- Fair list $1,108,678 / 11% at 1% ($5,321,917 / 21% at 2%), $360,684 without the best 5.
+  Favorites (68, 2025-10-23 to 2026-10-23) $192,845 / 12% at 1% ($268,088 / 23% at 2%).
+- The previous production, 2.4 (t >= 1.8 only, with the failed-break sale): fair list $719,945 / 9%; benchmark `bot24`.
 
 ## Candidate
 
-The next bot. Every test is built on it unless the user names another bot.
-
-- **2.5** (PR #147, not merged): production + the D2 bonus entry (t >= 1.2 and D2 >= 1.5), without the failed-break sale.
-- Research twin: trade files `sg_c12_15_*`, exits `d2_failed_break.CHAMP`; benchmark slug `d2-bonus`.
-- Fair list $1,108,678 / 11% at 1% ($5,321,917 / 21% at 2%), $360,684 without the best 5.
-  Favorites $192,533 / 12% at 1% ($267,788 / 23% at 2%).
+Not chosen yet (2026-10-26). Proposed: the pyramid with both fallbacks at half size (2.5 + cheap + the next strike for D2,
+fallback trades at half, the half-size add on the real signal; fair list $1,667,924 / 12%). Until the user picks one,
+tests build on production 2.5.
 
 ## Features under test
 
