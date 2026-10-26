@@ -1174,3 +1174,12 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
   without their best 5 (MSTR 2026-08-19, IONQ 2026-04-14, CRWV 2026-08-03); 2.5 185, 34 winners, +$261K, -$225K (COIN
   2026-08-19, SMCI 2026-05-28, GOOGL 2026-07-31). More money for 4-5 points more drop, all of it a handful of trades;
   thinner contracts, so the 2% fill is optimistic for them. Not better by the rule.
+  - **Size by the contract's volume (`liq_size.py`, the user: "what about 500 and half size for 100+? or double size on
+    500"):** same list and period, the floor at 100. 2.5's 709 trades by volume: 100-199 185 (+$261K at $10K, -$225K
+    without the best 5), 200-499 196 (+$87K, -$179K), 500+ 328 (+$677K, -$216K). 2.5, 12 months (base $193,235 / 12%):
+    flat 100 $238,876 / 16% (+14% against the base at the same drop); **100-499 at half, 500+ at 1x $208,829 / 12% (+9%,
+    the same drop)**; 500+ at 2x $253,743 / 21% (+2%); half / 1x / 2x $281,718 / 21% (+11%). 6 months (base $126,101 /
+    12%): $166,038 / 16% (+29%), **$141,245 / 12% (+12%)**, $131,348 / 21% (-3%), $150,519 / 21% (+11%). 2.4 gains nothing:
+    12 months half under 500 $182,857 / 10% (= base), double 500 $225,567 / 15% (+4%); 6 months every sizing below the base
+    at its drop (-4% to -12%). For 2.5, half size on the thinner contracts adds money at no extra drop on both periods; the
+    double size on the liquid ones only adds drop. Thin-contract fills unproven; one list, one year.
