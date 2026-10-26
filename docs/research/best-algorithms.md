@@ -212,6 +212,26 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### Spread rules, sale limits, a lower floor on real quotes (2026-10-26, not better; the sale limit is unproven)
+
+The user: "1. when spread is more than 15% - go one delta down and one delta up to see if the spread is better. if yes -
+buy - if not try again on 20%-30% and blocks if it's more than 30%. play with the numbers here 2. try to add a stop
+limit and selling not in bid 3. you can try on 50 or 100 contract as long as they are fit with rule number 1."
+`opt_spread.py` on 2.6, the fair list, real Databento quotes; tuned on 2024-2025, 2026 held out. Baseline 2.6 on real
+quotes: 2024-25 $390,392 / 12% at 1% (whole period $910,069 / 14%, = real_bench.py).
+
+- Spread rules (only on a pick the bot would buy; a middle level picks the same strike as the cap, so look / cap):
+  all worse in 2024-25. Best: look 30% cap 30% $287,792 / 13%; the user's look 15% cap 30% $270,138 / 14%; block over
+  30% $225,039 / 15%. The blocked or swapped wide-spread picks are the cheap contracts that become the big winners.
+  (A first run that also let a neighbour replace a too-thin or too-cheap pick was a liquidity fallback: $272,052 / 21%.)
+- Floor 100 / 50 with a spread rule: more trades, still worse (look 15 cap 30 at 100: $309,269 / 15%).
+- Sale: a limit at the mid (filled unless the next minute's ask is below it, else that bid) $419,727 / 12% (+7.5%), 2026
+  $250,212 vs $233,116, whole $1,050,206 / 12%; halfway to the bid is worse than the bid ($374,680), the fallback after a
+  drop costs. Fill unproven: quotes cannot show whether a mid limit fills; a live trial (limit at the mid for a minute,
+  then the bid) would settle it.
+Dashboard tab "Optimisation 2024-25": https://claude.ai/artifact/8hwVRYjvFphR4Ro6kQC1am
+
+
 - D2 bonus entry + the failed-break sale (2026-10-25, `d2_failed_break.py`; the user: "is there a place for both?"; the
   live bot 2.4 is the rest-stop champion + the failed break): fair list $669,231 / 14% at 1% ($3,042,721 / 27% at 2%)
   vs bot 2.4 $695,450 / 9% and the D2 champion $1,005,207 / 11%; 2024 falls to +392K at $10K (D2 alone +793K);
