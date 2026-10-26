@@ -1156,3 +1156,11 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     $192,845 / 12%; 394 stopped on the entry day, 46 of them later 2x. Usual exits: every rule lower (R0 92 re-entries
     -$88K, $175,965 / 17%; R4 8, -$14K, $190,092 / 12%). No stop 30 min: R0 +$138K ($215,194 / 17%) but -$227K without
     its best 5; the rest lose. -30% only: all lose. Same verdict as the fair list.
+- **The contract floor at 100 instead of 200 on the user's watchlist (lists.py with `BT_CONTRACT={"min_vol30":100}`,
+  2026-10-26; "check how my favorites look if the threshold for trades was 100 contracts"):** the 68 Favorites, 12
+  months, 1% from $100,000. 2.4: 434 → 587 trades, $184,085 / 10% → $216,536 / 15% ($87,204 → $99,574 without the best
+  5); 6 months $121,853 / 10% → $128,058 / 15%. 2.5: 525 → 709 trades, $192,845 / 12% → $238,876 / 16% ($82,909 →
+  $99,403); 6 months $125,846 / 12% → $166,038 / 16%. The added trades: 2.4 153, 30 winners, +$198K at $10K, -$211K
+  without their best 5 (MSTR 2026-08-19, IONQ 2026-04-14, CRWV 2026-08-03); 2.5 185, 34 winners, +$261K, -$225K (COIN
+  2026-08-19, SMCI 2026-05-28, GOOGL 2026-07-31). More money for 4-5 points more drop, all of it a handful of trades;
+  thinner contracts, so the 2% fill is optimistic for them. Not better by the rule.
