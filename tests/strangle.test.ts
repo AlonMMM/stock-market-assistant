@@ -661,3 +661,14 @@ test("scan: with the newest bar not in yet, the map shows the latest whole minut
   // 10:09's bar is not in at 10:10: the scan is of 10:08.
   assert.equal(st.scan[0]!.minute, 38);
 });
+
+test("status: stocks with no expiry today or the next session are listed for the map", async () => {
+  const none = harness({ mode: "dry" }, { expiry: "2026-11-20" });
+  await none.run(565, 566);
+  await new Promise((done) => setTimeout(done, 20)); // the background chain reads
+  assert.deepEqual(none.bot.status().noExpiry, ["NVDA"]);
+  const today = harness({ mode: "dry" });
+  await today.run(565, 566);
+  await new Promise((done) => setTimeout(done, 20));
+  assert.deepEqual(today.bot.status().noExpiry, []);
+});
