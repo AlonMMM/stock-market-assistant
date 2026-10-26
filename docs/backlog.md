@@ -317,7 +317,7 @@ watchlist opens faster on a phone.
 - area: Ops
 - tags: Docs
 - source: Session of Oct 26
-- done: 2026-10-26, this PR
+- done: 2026-10-26, PR #172
 
 This file, the board's search and tags, and the Backlog rules in AGENTS.md.
 
