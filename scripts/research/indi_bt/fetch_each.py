@@ -15,5 +15,5 @@ for s in syms:
             d = e + dt.timedelta(days=1)
         print(s, "done", flush=True)
     except urllib.error.HTTPError as x:
-        bad.append(s); print(s, "refused", x.code, flush=True)
+        bad.append(s); print(s, "refused", x.code, d.isoformat(), x.read().decode()[:200], flush=True)
 print("refused:", " ".join(bad))
