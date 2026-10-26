@@ -297,6 +297,7 @@ const groups = [
       ["activity", "Activity"],
       ["trades", "Trades"],
       ["settings", "Settings"],
+      ["b-risk", "Risk"],
     ],
   ],
   // The alert strangle, a separate bot on its own paper account
@@ -308,6 +309,7 @@ const groups = [
       ["s-activity", "Activity"],
       ["s-trades", "Trades"],
       ["s-settings", "Settings"],
+      ["s-risk", "Risk"],
     ],
   ],
 ] as const;
@@ -390,6 +392,11 @@ export function Portfolio({
     if (page === "orders") return <Orders onError={ignore} />;
     if (page === "history") return <History onError={ignore} />;
     if (page === "risk") return <RiskSettingsPage canSave={canTrade} />;
+    // Each bot's own accounts: the main bot trades at Alpaca and IBKR.
+    if (page === "b-risk")
+      return <RiskSettingsPage canSave={canTrade} only={["bot", "ibkr"]} />;
+    if (page === "s-risk")
+      return <RiskSettingsPage canSave={canTrade} only={["strangle"]} />;
     if (page === "activity")
       return canTrade ? (
         <BotPanel onSettings={() => open("bot", "settings")} />

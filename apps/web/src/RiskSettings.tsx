@@ -334,7 +334,18 @@ function AccountCard({
 }
 
 /** Every account's risk numbers; the owner can change and save each. */
-export function RiskSettingsPage({ canSave }: { canSave: boolean }) {
+/**
+ * The Risk page: every account, or, in a bot's tab, only that bot's accounts
+ * (user 2026-10-26: "why i can't see risk managment validation configuration per
+ * bot?"). `only` names the accounts by suffix, e.g. ["bot", "ibkr"].
+ */
+export function RiskSettingsPage({
+  canSave,
+  only,
+}: {
+  canSave: boolean;
+  only?: readonly string[];
+}) {
   const [view, setView] = useState<RiskView | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -368,20 +379,24 @@ export function RiskSettingsPage({ canSave }: { canSave: boolean }) {
           : "Only the owner can change them."}{" "}
         The 3% cap on one trade's size stays fixed.
       </p>
-      {view.accounts.map((a) => (
-        <AccountCard
-          key={a.id}
-          account={a}
-          view={view}
-          canSave={canSave}
-          onSaved={(next) =>
-            setView({
-              ...view,
-              accounts: view.accounts.map((x) => (x.id === next.id ? next : x)),
-            })
-          }
-        />
-      ))}
+      {view.accounts
+        .filter((a) => !only || only.some((x) => a.id.endsWith(`-${x}`)))
+        .map((a) => (
+          <AccountCard
+            key={a.id}
+            account={a}
+            view={view}
+            canSave={canSave}
+            onSaved={(next) =>
+              setView({
+                ...view,
+                accounts: view.accounts.map((x) =>
+                  x.id === next.id ? next : x,
+                ),
+              })
+            }
+          />
+        ))}
     </div>
   );
 }
