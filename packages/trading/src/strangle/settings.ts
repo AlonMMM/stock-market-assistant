@@ -41,6 +41,10 @@ export interface StrangleSettings {
   delta: number;
   minPrice: number; // each leg's mid
   minVolume: number; // each leg's contracts in the last 30 minutes
+  // The leg too thin: the nearest strike that is not, further out (to delta
+  // 0.25) then toward the money (to 0.50), at the same minimums (user
+  // 2026-10-26, "implement the liquid fallback"; picker.ts liquidOrder).
+  liquidFallback: boolean;
   // The side: the stock moves this many typical 30-minute moves from where it
   // was at the alert; only then is the leg of that side bought.
   confirmUnits: number;
@@ -88,6 +92,7 @@ export const defaultStrangleSettings: StrangleSettings = {
   delta: 0.35,
   minPrice: 0.2,
   minVolume: 200,
+  liquidFallback: true,
   confirmUnits: 0.25,
   // 10, not the backtest's first 60 (user 2026-10-26, "implement the 10 minutes give up";
   // leg_entry.py: a side after 10 minutes loses on both lists).
@@ -135,6 +140,7 @@ const booleans: BooleanKey[] = [
   "enabled",
   "followFavorites",
   "nextDay",
+  "liquidFallback",
   "strengthFilter",
   "skipEarnings",
   "skipPremarket",
@@ -232,6 +238,11 @@ export function strangleSteps(
   let perStockWords = ". One trade per stock a day";
   if (s.maxPerStock > 1)
     perStockWords = `; a later burst on the same stock counts once it has nothing open, up to ${s.maxPerStock} trades a stock a day`;
+  // Too thin: no trade, or the nearest strike that trades enough.
+  let thinWords = "";
+  if (s.minVolume > 0 && s.liquidFallback)
+    thinWords =
+      " Too thin: the nearest strike that is not, further out to delta 0.25, then toward the money to 0.50.";
   const news = [
     s.skipEarnings && "the stock's earnings reaction day",
     s.skipPremarket && "a pre-market volume of 4× normal or more",
@@ -251,7 +262,7 @@ export function strangleSteps(
     },
     {
       name: "Buy",
-      text: `Only that leg: the ${s.delta.toFixed(2)}-delta call (up) or put (down) of that expiry, ${s.sizePct}% of the account. Its mid at least $${s.minPrice.toFixed(2)}${s.minVolume > 0 ? ` and ${s.minVolume} contracts traded in the last 30 minutes` : ""}.`,
+      text: `Only that leg: the ${s.delta.toFixed(2)}-delta call (up) or put (down) of that expiry, ${s.sizePct}% of the account. Its mid at least $${s.minPrice.toFixed(2)}${s.minVolume > 0 ? ` and ${s.minVolume} contracts traded in the last 30 minutes` : ""}.${thinWords}`,
     },
     {
       name: "Sell",
