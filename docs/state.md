@@ -35,6 +35,12 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
   stop fills and notices go there. The Indi bot, the owner's trades and every urgent alert stay on almo_ot_bot
   ("almo191 trades"). Unset: nothing changes (`apps/trader/src/bot-channel.ts`). The volume alerts themselves are
   muted for now (the collector's `PUT /notifications {muted: true}`); they still show in the app.
+- **Risk settings per account (2026-10-26):** Portfolio → Trade → Risk: each account (yours, the Indi bot's,
+  IBKR, the Alert leg's) has its own daily loss limit (default 5%), risk per trade, open risk, largest position,
+  buys per day and drawdown brake with its brake / recovery limits; the owner saves, the next buy uses them
+  (`packages/trading/src/account-risk.ts`, the trading service's `account_risk` table, `/api/risk`). A trade with a
+  stop is now counted at its stop (a 2% trade at the 50% stop is 1%), so after a 4% losing day it still fits 5%.
+  The 3% size cap per trade stays fixed in code.
 - **Option bid / ask on every bot record (2026-10-25):** the accounts are paper accounts, so their fills are not
   real-world prices. Both bots (Indi and Alert leg) keep the option's bid / ask at the decision: on the signal (the
   contract picked, a too-cheap one too), on each account's buy (`entryBook`) and on every sale or order (`book`), each with the broker whose quote it is (alpaca or ibkr), in

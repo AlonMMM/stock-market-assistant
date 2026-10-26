@@ -378,8 +378,8 @@ export class TradeEngine {
   private readonly posts: PostStore;
   private readonly buys: BuyLog;
   private readonly decisions: DecisionLog;
-  private readonly limits: BuyLimits;
-  private readonly riskRules: RiskRules;
+  private limits: BuyLimits;
+  private riskRules: RiskRules;
   private readonly validate: (c: BuyContext) => CheckResult[];
   private readonly enabled: boolean;
   private readonly defaultExpiry: "nearest" | "friday";
@@ -602,6 +602,8 @@ export class TradeEngine {
         todayLoss: a.account.lastEquity - a.account.equity,
         premium: ceiling * sized.qty * 100,
         daysToExpiry,
+        // Counted at the order's stop; a buy without one at the share lost by expiry.
+        ...(ticket?.noStop || !(stopPct > 0) ? {} : { stopPct }),
       },
       this.riskRules,
     );
@@ -1881,6 +1883,12 @@ export class TradeEngine {
       order = await current(this.broker, order.id);
     }
     return order;
+  }
+
+  /** New limits and risk rules for the next buys (the owner's risk settings). */
+  setRules(limits: BuyLimits, riskRules: RiskRules) {
+    this.limits = limits;
+    this.riskRules = riskRules;
   }
 
   /** Positions with their stops, and today's use of each limit. */

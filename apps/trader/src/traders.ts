@@ -19,6 +19,10 @@ import {
   TelegramNotifier,
   type Notifier,
 } from "../../../packages/trading/src/notifier.js";
+import {
+  applyAccountRisk,
+  withDefaults,
+} from "../../../packages/trading/src/account-risk.js";
 import { resolveValidator } from "../../../packages/trading/src/validators.js";
 import { BotRoutedNotifier, botAccountIds } from "./bot-channel.js";
 import { readSecret, type SecretSource } from "./secrets.js";
@@ -174,6 +178,30 @@ export class Traders {
     return this.build(user, account);
   }
 
+  /** The validator's limits and rules with the owner's risk settings of the account in them. */
+  private rulesOf(
+    accountId: string,
+    validator: ReturnType<typeof resolveValidator>,
+  ) {
+    return applyAccountRisk(
+      validator.limits,
+      validator.riskRules,
+      withDefaults(this.options.store.accountRisk(accountId)),
+    );
+  }
+
+  /** After a save: an account's trader, if built, takes its new risk settings at once. */
+  reloadRisk(accountId: string) {
+    const trader = this.built.get(accountId);
+    if (!trader) return;
+    const validator = resolveValidator(
+      trader.user.validatorId,
+      trader.user.validatorParams,
+    );
+    const rules = this.rulesOf(accountId, validator);
+    trader.engine.setRules(rules.limits, rules.riskRules);
+  }
+
   /** The trader of one account, by its id (the bot's own account). */
   forAccount(accountId: string): Trader {
     for (const user of this.options.store.users()) {
@@ -214,14 +242,15 @@ export class Traders {
         )
       : owned;
     const validator = resolveValidator(user.validatorId, user.validatorParams);
+    const rules = this.rulesOf(account.id, validator);
     const engine = new TradeEngine({
       broker: built,
       notifier,
       posts: store.posts(scope),
       buys: store.buys(scope),
       decisions: store.decisions(scope),
-      limits: validator.limits,
-      riskRules: validator.riskRules,
+      limits: rules.limits,
+      riskRules: rules.riskRules,
       validate: validator.check,
       enabled: this.options.enabled,
       log,

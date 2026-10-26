@@ -19,6 +19,7 @@ import { usePolling } from "./Live.js";
 import { OrderActions, StopMover } from "./OrderControls.js";
 import { BotChip, BotPanel, useBotContracts } from "./BotPanel.js";
 import { BotSettingsPage } from "./BotSettings.js";
+import { RiskSettingsPage } from "./RiskSettings.js";
 import { StrangleActivity, StrangleSettingsPage } from "./StranglePanel.js";
 import { Orders, useDecisions, WhyButton } from "./Orders.js";
 import { PositionList, useControlAccess } from "./Positions.js";
@@ -286,6 +287,7 @@ const groups = [
       ["new", "New trade"],
       ["orders", "Orders"],
       ["history", "History"],
+      ["risk", "Risk"],
     ],
   ],
   [
@@ -387,6 +389,7 @@ export function Portfolio({
       );
     if (page === "orders") return <Orders onError={ignore} />;
     if (page === "history") return <History onError={ignore} />;
+    if (page === "risk") return <RiskSettingsPage canSave={canTrade} />;
     if (page === "activity")
       return canTrade ? (
         <BotPanel onSettings={() => open("bot", "settings")} />

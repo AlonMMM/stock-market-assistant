@@ -7221,3 +7221,80 @@ i.added {
 .st-ev-order {
   font-weight: 600;
 }
+
+/* Risk settings per account (RiskSettings.tsx, user 2026-10-26). */
+.risk-page {
+  display: grid;
+  gap: 16px;
+}
+.risk-card .bs-card-head {
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.risk-card h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.risk-state {
+  font-size: 13px;
+  color: #3d4f48;
+}
+.risk-state.brake {
+  color: #c0322b;
+  font-weight: 600;
+}
+.risk-state.recovery {
+  color: #8a5a00;
+}
+.risk-control,
+.risk-pair {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.risk-pairs {
+  display: grid;
+  gap: 8px;
+}
+.risk-pair > .small {
+  min-width: 72px;
+}
+.risk-input {
+  width: 84px;
+  font: inherit;
+  font-size: 15px;
+  padding: 7px 9px;
+  border: 1px solid #d0d6ca;
+  border-radius: 8px;
+  background: #fff;
+  color: #142b29;
+}
+.risk-input:disabled {
+  background: transparent;
+  color: #3d4f48;
+}
+.risk-unit {
+  font-size: 13px;
+  color: #3d4f48;
+}
+.risk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+@media (max-width: 600px) {
+  .risk-pair {
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .risk-pair .risk-input {
+    width: 60px;
+    padding: 6px 7px;
+  }
+  .risk-pair > .small {
+    min-width: 58px;
+  }
+}

@@ -1,3 +1,4 @@
+import type { AccountRisk } from "../../../packages/trading/src/account-risk.js";
 import { DatabaseSync } from "node:sqlite";
 import type {
   BuyLog,
@@ -203,6 +204,8 @@ export class TradeStore {
       CREATE TABLE IF NOT EXISTS equity_days (
         account_id TEXT NOT NULL, date TEXT NOT NULL, equity REAL NOT NULL,
         at INTEGER NOT NULL, PRIMARY KEY (account_id, date));
+      CREATE TABLE IF NOT EXISTS account_risk (
+        account_id TEXT PRIMARY KEY, data TEXT NOT NULL, at INTEGER NOT NULL);
     `);
   }
 
@@ -450,6 +453,22 @@ export class TradeStore {
         )
         .all(accountId) as unknown as { date: string; equity: number }[]
     ).map((r) => ({ date: r.date, equity: r.equity }));
+  }
+
+  /** The owner's risk settings of one account (account-risk.ts); null: the defaults. */
+  accountRisk(accountId: string): Partial<AccountRisk> | null {
+    const row = this.db
+      .prepare("SELECT data FROM account_risk WHERE account_id = ?")
+      .get(accountId) as { data: string } | undefined;
+    return row ? (JSON.parse(row.data) as Partial<AccountRisk>) : null;
+  }
+
+  setAccountRisk(accountId: string, risk: AccountRisk, now: number) {
+    this.db
+      .prepare(
+        "INSERT INTO account_risk (account_id, data, at) VALUES (?, ?, ?) ON CONFLICT(account_id) DO UPDATE SET data = excluded.data, at = excluded.at",
+      )
+      .run(accountId, JSON.stringify(risk), now);
   }
 
   /** A small named record of one user, such as the stops being watched. */
