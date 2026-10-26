@@ -5,6 +5,7 @@ import {
   newYorkToUtc,
 } from "../../../packages/market-data/src/calendar.js";
 import type { BotView } from "../../../packages/trading/src/bot-api.js";
+import { isEntry, withEntries } from "./bot-view-model.js";
 import {
   defaultSettings,
   type BotSettings,
@@ -60,7 +61,7 @@ const outcomeText: Record<string, string> = {
 
 /** The colour family of a signal's outcome. */
 function outcomeTone(outcome: string): "good" | "warn" | "bad" | "quiet" {
-  if (outcome === "bought" || outcome === "would-buy") return "good";
+  if (isEntry(outcome)) return "good";
   if (outcome === "refused" || outcome === "new") return "warn";
   if (outcome === "error") return "bad";
   return "quiet";
@@ -245,9 +246,9 @@ function SessionStrip({
           {signals.map((s) => (
             <span
               key={s.symbol}
-              className={`bot-strip-signal ${s.right === "C" ? "up" : "down"}`}
+              className={`bot-strip-signal ${s.right === "C" ? "up" : "down"}${isEntry(s.outcome) ? "" : " skipped"}`}
               style={{ left: at(plan.open + s.minute) }}
-              title={`${s.symbol} ${s.right === "C" ? "call" : "put"} at ${israelAt(day, plan.open + s.minute)}`}
+              title={`${s.symbol} ${s.right === "C" ? "call" : "put"} at ${israelAt(day, plan.open + s.minute)}: ${outcomeText[s.outcome] ?? s.outcome}`}
             />
           ))}
           {inSession && (
@@ -284,7 +285,7 @@ function SessionStrip({
         </span>
         <span>
           <span className="key up" /> call <span className="key down" /> put
-          signal
+          signal, bought; <span className="key up skipped" /> faded: not bought
         </span>
         <span>{israelLabel}</span>
       </p>
@@ -300,9 +301,7 @@ function Funnel({ v }: { v: BotView }) {
   const close = v.scan.filter(
     (r) => !r.blocked && nearness(r, rules) >= closeShare,
   );
-  const bought = v.signals.filter(
-    (s) => s.outcome === "bought" || s.outcome === "would-buy",
-  ).length;
+  const bought = v.signals.filter((s) => isEntry(s.outcome)).length;
   const blocked = v.scan.filter((r) => r.blocked).length;
   const favorites = v.favorites
     ? ` + ${v.favorites.tickers.length} favorites`
@@ -1081,7 +1080,12 @@ function Rules({ v }: { v: BotView }) {
 }
 
 export function BotPanel({ onSettings }: { onSettings?: () => void }) {
-  const { value, error } = usePolling<BotView>("/api/bot", refreshMs, ignore);
+  const { value: answer, error } = usePolling<BotView>(
+    "/api/bot",
+    refreshMs,
+    ignore,
+  );
+  const value = answer && withEntries(answer);
   const now = useNow(5000);
   if (!value)
     return (
