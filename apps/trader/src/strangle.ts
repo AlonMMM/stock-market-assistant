@@ -267,9 +267,10 @@ export class StrangleBot {
       await this.refresh(date, Math.max(0, this.done - 2), last);
       for (let m = Math.max(this.done + 1, last - 2); m <= last; m++)
         if (s.enabled) await this.entries(date, m);
-      this.scanned = this.scan(last);
       this.done = last;
     }
+    // Every tick: the minute's bars arrive a few seconds after it closes.
+    if (last >= 0) this.scanned = this.scan(last);
     // The trades every tick (10 s), on the stock's last trade and fresh quotes.
     const current = Math.min(wall - 570, closeMinute - 1);
     const end = Math.min(s.endMinute, closeMinute - 30);
@@ -454,7 +455,11 @@ export class StrangleBot {
     for (const symbol of this.symbols) {
       const hist = this.hist.get(symbol);
       if (!hist) continue;
-      const got = measureAt(this.barsOf(symbol), hist, m);
+      // The latest minute with its whole window, at most two back: the last
+      // closed minute's bar may not be in yet.
+      const bars = this.barsOf(symbol);
+      let got = null;
+      for (let k = m; k >= m - 2 && !got; k--) got = measureAt(bars, hist, k);
       if (got) rows.push({ symbol, ...got });
     }
     return rows.sort((a, b) => alertCloseness(b) - alertCloseness(a));

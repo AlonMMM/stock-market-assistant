@@ -231,6 +231,8 @@ function harness(
     expiry?: string;
     // contracts each leg traded in the last 30 minutes; 500 when not given
     volume?: (contract: string) => number;
+    // the last asked minute's bar not in yet (it lands seconds after the close)
+    lag?: boolean;
   } = {},
 ) {
   const store = new StrangleStore(
@@ -267,7 +269,11 @@ function harness(
         symbols.map((s) => [
           s,
           (s === "SPY" ? session(500, wiggle, () => 50000) : today).filter(
-            (b) => date === DAY && b.m >= from && b.m <= to,
+            (b) =>
+              date === DAY &&
+              b.m >= from &&
+              b.m <= to &&
+              !(opts.lag && b.m === to),
           ),
         ]),
       );
@@ -645,4 +651,13 @@ test("liquid order: further out first, nearest the target first, then toward the
     order.map((c) => c.quote.strike),
     [102, 103, 100],
   );
+});
+
+test("scan: with the newest bar not in yet, the map shows the latest whole minute", async () => {
+  const h = harness({ mode: "dry" }, { day: climbThenFall(), lag: true });
+  await h.run(565, 610);
+  const st = h.bot.status();
+  assert.ok(st.scan.length > 0);
+  // 10:09's bar is not in at 10:10: the scan is of 10:08.
+  assert.equal(st.scan[0]!.minute, 38);
 });
