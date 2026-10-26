@@ -29,6 +29,12 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
 - **Portfolio navigation (2026-10-25, `feat/portfolio-two-tabs`):** two tabs, Trade (Live trades · New trade ·
   Orders · History) and 🤖 Bot (Activity · Trades · Settings), each with a pill row of pages that remembers where
   it was; the owner-only pages (New trade, Settings) are hidden from visitors. Was six flat tabs.
+- **Alert leg bot's own Telegram chat (2026-10-26):** with `ALERT_LEG_TELEGRAM_BOT_TOKEN` and
+  `ALERT_LEG_TELEGRAM_CHAT_ID` set on `sma-trader` (Railway references to the collector's `TELEGRAM_BOT_TOKEN` and
+  `TELEGRAM_CHAT_ID`: tradisiomos_bot in "Trade ideas", the volume alerts' chat), the Alert leg bot's buys, sales,
+  stop fills and notices go there. The Indi bot, the owner's trades and every urgent alert stay on almo_ot_bot
+  ("almo191 trades"). Unset: nothing changes (`apps/trader/src/bot-channel.ts`). The volume alerts themselves are
+  muted for now (the collector's `PUT /notifications {muted: true}`); they still show in the app.
 - **Option bid / ask on every bot record (2026-10-25):** the accounts are paper accounts, so their fills are not
   real-world prices. Both bots (Indi and Alert leg) keep the option's bid / ask at the decision: on the signal (the
   contract picked, a too-cheap one too), on each account's buy (`entryBook`) and on every sale or order (`book`), each with the broker whose quote it is (alpaca or ibkr), in

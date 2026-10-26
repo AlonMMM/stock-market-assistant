@@ -20,6 +20,7 @@ import {
   type Notifier,
 } from "../../../packages/trading/src/notifier.js";
 import { resolveValidator } from "../../../packages/trading/src/validators.js";
+import { BotRoutedNotifier, botAccountIds } from "./bot-channel.js";
 import { readSecret, type SecretSource } from "./secrets.js";
 import { RequestError, TraderService } from "./service.js";
 import type {
@@ -45,6 +46,9 @@ export interface TradersOptions {
   // Tests replace the real brokers and senders.
   makeBroker?: (account: BrokerAccount) => Broker;
   makeNotifier?: (channel: Channel) => Notifier;
+  // The bots' own chat (bot-channel.ts): its notifier, and the tags of the
+  // bots' orders. Without it every post goes to the owner's channels.
+  bots?: { notifier: Notifier; tags: readonly string[] } | null;
   // The connection to an IB Gateway (main.ts: @stoqey/ib).
   makeTws?: (host: string, port: number) => TwsClient;
   now?: () => number;
@@ -199,7 +203,16 @@ export class Traders {
     const scope = account.isDefault ? user.id : `${user.id}/${account.id}`;
     const clock = { ...(now ? { now } : {}), ...(sleep ? { sleep } : {}) };
     const built = this.broker(account);
-    const notifier = this.channels(user.id);
+    const owned = this.channels(user.id);
+    const bots = this.options.bots;
+    const notifier = bots
+      ? new BotRoutedNotifier(
+          owned,
+          bots.notifier,
+          botAccountIds(user.id).includes(account.id),
+          bots.tags,
+        )
+      : owned;
     const validator = resolveValidator(user.validatorId, user.validatorParams);
     const engine = new TradeEngine({
       broker: built,

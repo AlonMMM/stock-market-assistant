@@ -2,6 +2,8 @@
 // broker keys, runs orders as jobs and keeps the trade records. Only the
 // hosted site talks to it, with TRADER_TOKEN; Claude reaches it through the
 // site's connector and never sees a key.
+import { TelegramSender } from "../../../packages/notifications/src/telegram.js";
+import { TelegramNotifier } from "../../../packages/trading/src/notifier.js";
 import { timingSafeEqual } from "node:crypto";
 import { newYork } from "../../../packages/market-data/src/calendar.js";
 import { mkdirSync } from "node:fs";
@@ -18,7 +20,7 @@ import {
   strangleAccount,
   strangleKeyVariable,
 } from "./seed-bot.js";
-import { StrangleBot } from "./strangle.js";
+import { StrangleBot, strangleTag } from "./strangle.js";
 import { StrangleStore } from "./strangle-store.js";
 import { parseStrangleSettings } from "../../../packages/trading/src/strangle/settings.js";
 import { EquityLog } from "./equity-log.js";
@@ -66,8 +68,19 @@ const strangleAdded = ensureStrangleAccount(store, process.env, Date.now());
 if (strangleAdded)
   log(`added the strangle bot's own Alpaca paper account "${strangleAdded}"`);
 const vaultKey = env("TRADER_VAULT_KEY");
+// The Alert leg bot's own Telegram chat (bot-channel.ts): both values, or neither.
+const legToken = process.env.ALERT_LEG_TELEGRAM_BOT_TOKEN ?? "";
+const legChat = process.env.ALERT_LEG_TELEGRAM_CHAT_ID ?? "";
+if (!legToken !== !legChat)
+  throw new Error(
+    "Set both ALERT_LEG_TELEGRAM_BOT_TOKEN and ALERT_LEG_TELEGRAM_CHAT_ID, or neither",
+  );
+const legNotifier = legToken
+  ? new TelegramNotifier(new TelegramSender(legToken, legChat))
+  : null;
 const traders = new Traders({
   store,
+  bots: legNotifier ? { notifier: legNotifier, tags: [strangleTag] } : null,
   secrets: {
     env: process.env,
     ...(vaultKey ? { vault: new Vault(vaultKey) } : {}),
@@ -403,7 +416,9 @@ const strangle = (() => {
       sell: (b) => t.service.sell(b),
       job: (id) => t.service.job(id),
     },
-    notify: (title, lines) => owner().notifier.notice(title, lines),
+    // The Alert leg's own chat when set, else the owner's channels.
+    notify: (title, lines) =>
+      (legNotifier ?? owner().notifier).notice(title, lines),
     earnings: (date) => nasdaqEarnings(date),
     log,
   });
