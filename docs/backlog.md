@@ -329,7 +329,7 @@ watchlist opens faster on a phone.
 - area: App
 - tags: Portfolio, Charts
 - source: Session of Oct 26, chart option A
-- done: 2026-10-26, PR #PR
+- done: 2026-10-26, PR #179
 
 The user chose option A of five chart designs: the account value large on top with its change, one line from the
 starting value through each closed trade, evenly spaced, no grid or axis numbers. Dragging across the line shows
