@@ -329,7 +329,7 @@ watchlist opens faster on a phone.
 - area: App
 - tags: Main bot, Portfolio, Charts
 - source: Session of Oct 26
-- done: 2026-10-26, this PR
+- done: 2026-10-26, PR #175
 
 The trade's own day is drawn even during its session; fills are drawn at their minutes with the time held shaded; a
 summary gives the entry, exits, time held, best and worst while held and the option after the sale. The account
