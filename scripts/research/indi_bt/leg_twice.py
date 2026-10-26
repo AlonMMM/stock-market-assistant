@@ -109,6 +109,27 @@ def main():
         print(f"| {lab} | {len(R)} | {len(ag)} ({sum(r['pnl'] for r in ag):+,.0f}, {100 * sum(r['pnl'] > 0 for r in ag) / max(1, len(ag)):.0f}% win) | {100 * sum(r['pnl'] > 0 for r in R) / len(R):.0f}% | "
               f"${e1:,.0f}, {100 * d1:.1f}% | ${e5:,.0f} | ${e4:,.0f}, {100 * d4:.1f}% | ${eL:,.0f}, {100 * dL:.1f}% |")
 
+    # a cap per stock per day on "again when flat" (the user: "show max per day"), and the bot's trades a day
+    print("\n| Max trades a stock a day (again when flat) | Trades | ±2%: end, worst drop | without best 5 | ±4%: end, worst drop | live caps: end, worst drop |\n|---|---|---|---|---|---|")
+    for cap in (1, 2, 3, 4, 99):
+        T = []
+        for t in keep:
+            for e in pick(t["r"], "flat")[:cap]:
+                T.append(dict(date=t["date"], sym=t["sym"], minute=e["minute"], **{k: v for k, v in e["trade"].items() if k in ("buy", "sell", "bm", "xm")}))
+        e1, d1, R, wd, _ = D.account(T, 1, 2)
+        top = sorted(R, key=lambda r: -r["pnl"])[:5]
+        e5 = D.account([t for t in T if not any(t["date"] == x["date"] and t["sym"] == x["sym"] and t["minute"] == x["minute"] for x in top)], 1, 2)[0]
+        e4, d4, _, _, _ = D.account(T, 1, 4)
+        eL, dL, _, _, _ = D.account(T, 1, 2, loss=5, max_trades=5, max_open=3)
+        print(f"| {'no cap' if cap == 99 else cap} | {len(R)} | ${e1:,.0f}, {100 * d1:.1f}% | ${e5:,.0f} | ${e4:,.0f}, {100 * d4:.1f}% | ${eL:,.0f}, {100 * dL:.1f}% |")
+    for lab in ("first alert only (the bot today)", "again only when flat"):
+        R, _ = dist[lab]
+        per = {}
+        for r in R: per[r["date"]] = per.get(r["date"], 0) + 1
+        bins = [(1, 1), (2, 2), (3, 3), (4, 5), (6, 8), (9, 99)]
+        print(f"\n| The bot's trades a day, {lab} | " + " | ".join(f"{a}" if a == b else (f"{a}+" if b == 99 else f"{a}-{b}") for a, b in bins) + " |\n|---" * (len(bins) + 1) + "|")
+        print("| days | " + " | ".join(str(sum(1 for v in per.values() if a <= v <= b)) for a, b in bins) + f" |  (days with a trade {len(per)}, most {max(per.values())} on {max(per, key=per.get)})")
+
     # the distributions (the user: "show me distribution of enters per stock")
     print("\n| Alert events on a stock-day | 1 | 2 | 3 | 4 | 5+ |\n|---|---|---|---|---|---|")
     c = [sum(1 for n in nev if (n == k if k < 5 else n >= 5)) for k in (1, 2, 3, 4, 5)]

@@ -867,6 +867,12 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     trade as the first (fair +265 vs +262 at 1%; favorites +94 vs +126). Without caps more trades = more money and more
     drop; with the live caps "again when flat" is better on both lists, "while open" fills the 3-open / 5-a-day caps
     with one stock and loses on the favorites. Candidate: re-entry after the sale, with the caps.
+    A cap per stock a day on "again when flat" (live caps in brackets): favorites 1 $152,516 ($139,217 / 4.6%), **2
+    $184,087 ($155,077 / 5.8%)**, 3 $182,511 ($150,421), 4 $191,823 ($149,848), none $199,721 ($149,462); fair 1
+    $374,849 ($316,250 / 4.4%), 2 $578,392 ($426,097 / 4.9%), 3 $600,769, 4 $680,722 ($453,069), none $717,451
+    ($454,452 / 4.1%). Cap 1 here = the day's first trade from any alert (a later alert counts when the first gave no
+    trade): fair $374,849 vs $317,972 for the first alert only. Trades a day (the whole bot): today most 13 (favorites)
+    / 15 (fair); with re-entry 30 favorite days with 9+, most 28 and 53, so the 5-a-day cap binds hard.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
