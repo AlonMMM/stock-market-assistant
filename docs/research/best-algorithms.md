@@ -847,6 +847,16 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     5.4%, 50 $459,183 / 4.6% (±4% $211,991 → $250,307 at 100). Better on both lists at 100 (the favorites by a little,
     with about half a point more drop); the fill model is the same bar middle ± 2% on thinner contracts, so part of the
     gain may go to the spread live. A setting (minVolume), not changed.
+    **Entering earlier, and a 15-minute give-up (`leg_entry.py`, the user, 2026-10-26: "I just think we enter too late
+    and can improve"; "Also decrease the give up to 15 minutes").** The side at k = 0.05-0.35 of S30 (live 0.25), or
+    "now" (the alert's direction, bought the next minute); give-up 60 (live) / 30 / 15 / 10 minutes. 1%, ±2%. Favorites:
+    0.05 $135,396, 0.10 $143,973, 0.15 $146,889, 0.20 $150,225, 0.25 $151,341 / 5.2%, 0.35 $151,063 / 4.0%, now $103,089
+    / 9.8% (31% winners). Fair: 0.05 $249,137, 0.10 $287,748, 0.20 $327,721, 0.25 $308,991 / 4.9%, 0.35 $317,695, now
+    $134,157 / 16.8%. Earlier is worse: even at 0.05 the buy is +0.22 S30 from the alert price (the 1-minute bar jumps
+    past the level), so it saves little price and keeps the false starts. The give-up: 0.25 at 15 min favorites
+    $153,504 / 5.2% (live caps $136,458 / 4.0% vs $134,128), fair $315,386 / 4.4% (live caps $265,953 / 4.8% vs
+    $260,156 / 5.5%); at 10 min $154,729 and $319,856. Only 5 and 4 trades go (sides after 15 minutes lose), so a small
+    gain on both lists; the waitMinutes setting (10-120), not changed.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
