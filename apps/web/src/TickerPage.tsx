@@ -5,7 +5,13 @@ import type { Portfolio } from "../../../packages/trading/src/portfolio.js";
 import { readJson } from "./api.js";
 import type { FeedAlert } from "./AlertFeed.js";
 import { usePolling } from "./Live.js";
-import { alertDate, alertDirection, statsOf, watchRows } from "./live-model.js";
+import {
+  alertDate,
+  alertDirection,
+  statsOf,
+  watchRows,
+  type NightPrices,
+} from "./live-model.js";
 import {
   BellIcon,
   PriceAlertList,
@@ -120,6 +126,7 @@ function YearLine({ closes }: { closes: [number, number][] }) {
 export function TickerPage({
   ticker,
   board,
+  night,
   alerts,
   onBack,
   onShowAlerts,
@@ -127,6 +134,8 @@ export function TickerPage({
 }: {
   ticker: string;
   board: Board | null;
+  // The latest prints after the board's day (overnight, BOATS).
+  night?: NightPrices;
   alerts: FeedAlert[];
   onBack: () => void;
   onShowAlerts: () => void;
@@ -167,17 +176,30 @@ export function TickerPage({
   const account = usePolling<Portfolio>("/api/portfolio", 10000, () => {});
 
   const row = board
-    ? watchRows(board, new Map(), "SPY").find((r) => r.ticker === ticker)
+    ? watchRows(board, new Map(), "SPY", {
+        now: Date.now(),
+        night: night ?? {},
+      }).find((r) => r.ticker === ticker)
     : undefined;
+  // Overnight (20:00–04:00 New York) a BOATS print leads, against the close.
+  const nightRow = row?.mark === "night" ? row : null;
   const stats = statsOf(board?.series.find((s) => s.ticker === ticker));
   const today = alerts.filter(
     (a) => a.ticker === ticker && (!board || alertDate(a) === board.date),
   );
   const q = info?.quote;
-  const last = q?.last ?? row?.last ?? null;
+  const last = nightRow ? nightRow.last : (q?.last ?? row?.last ?? null);
   const prev = q?.previousClose ?? row?.previousClose ?? null;
-  const change = last !== null && prev ? last - prev : null;
-  const changePct = change !== null && prev ? (change / prev) * 100 : null;
+  const change = nightRow
+    ? nightRow.changeUsd
+    : last !== null && prev
+      ? last - prev
+      : null;
+  const changePct = nightRow
+    ? nightRow.change
+    : change !== null && prev
+      ? (change / prev) * 100
+      : null;
   const s = info?.stats;
   const held = (account.value?.positions ?? []).filter(
     (p) => p.underlying === ticker,
@@ -209,10 +231,12 @@ export function TickerPage({
             </span>
           )}
           <span className="muted num">
-            {q?.bid != null && q.ask != null
-              ? `${price(q.bid)} × ${price(q.ask)}`
-              : ""}
-            {q?.at ? ` · ${israelClock(q.at)}` : ""}
+            {nightRow
+              ? `Night · vs close · ${israelClock(night![ticker]!.at)}`
+              : q?.bid != null && q.ask != null
+                ? `${price(q.bid)} × ${price(q.ask)}`
+                : ""}
+            {!nightRow && q?.at ? ` · ${israelClock(q.at)}` : ""}
           </span>
         </div>
       </section>

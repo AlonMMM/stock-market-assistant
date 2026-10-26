@@ -4,6 +4,7 @@
 // them on top, so Last, Change % and the day line move with each trade.
 import type { Credentials } from "./backtest.js";
 import { tickerPattern } from "./backtest.js";
+import { overnightSession } from "./overnight.js";
 import { defaultSipDelayMinutes } from "./sip-delay.js";
 
 // A board shows at most 200 symbols, plus SPY, QQQ and sector ETFs.
@@ -13,6 +14,10 @@ export interface LatestPrices {
   // Symbol → last trade price and its time (Unix ms). A symbol without a
   // trade (or one Alpaca does not know) is left out.
   prices: Record<string, { price: number; at: number }>;
+  // Set between 20:00 and 04:00 New York, when the prices come from the
+  // overnight feed (BOATS): the trading day the night leads into, and the
+  // night's start. A price older than `since` is from an earlier night.
+  overnight?: { date: string; since: number };
 }
 
 type Answer = { status: number; body: LatestPrices | { error: string } };
@@ -23,6 +28,7 @@ export async function handleLatestPrices(
   credentials: Credentials,
   fetcher: typeof fetch = fetch,
   restUrl = "https://data.alpaca.markets",
+  now = Date.now(),
 ): Promise<Answer> {
   if (!credentials.key || !credentials.secret)
     return {
@@ -57,19 +63,30 @@ export async function handleLatestPrices(
       status: 400,
       body: { error: `Not US symbols: ${invalid.join(", ")}` },
     };
-  const url = new URL("/v2/stocks/trades/latest", restUrl);
-  url.searchParams.set("symbols", symbols.join(","));
-  url.searchParams.set("feed", "sip");
-  let response: Response;
-  try {
+  // Overnight, BOATS has the trades; SIP's latest is the 20:00 after-hours
+  // print. When BOATS is refused (a plan without it), SIP still answers.
+  const night = overnightSession(now);
+  const read = async (feed: "sip" | "boats") => {
+    const url = new URL("/v2/stocks/trades/latest", restUrl);
+    url.searchParams.set("symbols", symbols.join(","));
+    url.searchParams.set("feed", feed);
     // Workers reject fetch invoked with a foreign `this` ("Illegal invocation").
-    response = await fetcher.call(globalThis, url, {
+    return fetcher.call(globalThis, url, {
       headers: {
-        "APCA-API-KEY-ID": credentials.key,
-        "APCA-API-SECRET-KEY": credentials.secret,
+        "APCA-API-KEY-ID": credentials.key!,
+        "APCA-API-SECRET-KEY": credentials.secret!,
       },
       signal: AbortSignal.timeout(5000),
     });
+  };
+  let response: Response;
+  let overnight = night !== null;
+  try {
+    response = await read(night ? "boats" : "sip");
+    if (night && !response.ok) {
+      overnight = false;
+      response = await read("sip");
+    }
   } catch (error) {
     return {
       status: 502,
@@ -97,5 +114,13 @@ export async function handleLatestPrices(
     )
       prices[symbol] = { price: trade.p, at };
   }
-  return { status: 200, body: { prices } };
+  return {
+    status: 200,
+    body: {
+      prices,
+      ...(overnight && night
+        ? { overnight: { date: night.date, since: night.start } }
+        : {}),
+    },
+  };
 }

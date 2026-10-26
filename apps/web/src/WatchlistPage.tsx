@@ -9,6 +9,7 @@ import { useLivePrices } from "./live-prices.js";
 import { useControlAccess } from "./Positions.js";
 import { StatusPill } from "./StatusPill.js";
 import { BellIcon, PriceAlertsPage, usePriceAlerts } from "./PriceAlerts.js";
+import { useDarkPage, useWatchlistTheme } from "./theme.js";
 import { TickerPage } from "./TickerPage.js";
 import { WatchTable } from "./WatchTable.js";
 import {
@@ -102,6 +103,9 @@ export function WatchlistPage({
   const status = live.value;
   if (status && status.state !== "unavailable") kept.current = status.alerts;
   const pill = pillFor(status, Date.now(), live.at);
+  // Dark mode: the list itself (not yet a stock's page or the price alerts).
+  const theme = useWatchlistTheme();
+  useDarkPage(theme.dark && page === null);
 
   return (
     <div className="live-page">
@@ -130,7 +134,8 @@ export function WatchlistPage({
         <TickerPage
           key={page}
           ticker={page}
-          board={board.value}
+          board={shown}
+          night={prices.prices}
           alerts={status ? kept.current : []}
           onBack={close}
           onShowAlerts={() => onShowAlerts(page)}
@@ -146,6 +151,25 @@ export function WatchlistPage({
             {board.value && (
               <span className="count num">{board.value.watchlist.length}</span>
             )}
+            <button
+              type="button"
+              className="wl-theme"
+              aria-pressed={theme.dark}
+              title={theme.dark ? "Light mode" : "Dark mode"}
+              onClick={() => theme.choose(theme.dark ? "light" : "dark")}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                {theme.dark ? (
+                  <>
+                    <circle cx="12" cy="12" r="4.5" />
+                    <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" />
+                  </>
+                ) : (
+                  <path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1z" />
+                )}
+              </svg>
+              <span className="sr-only">Dark mode</span>
+            </button>
             <button
               type="button"
               className="wl-pa"
@@ -174,6 +198,7 @@ export function WatchlistPage({
           ) : board.value ? (
             <WatchTable
               board={shown!}
+              night={prices.prices}
               livePrices={prices.state}
               alerts={status ? kept.current : []}
               onShowAlerts={onShowAlerts}
