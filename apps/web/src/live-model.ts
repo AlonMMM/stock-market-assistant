@@ -614,6 +614,20 @@ const sortValue: Record<WatchSort, (r: WatchRow) => number | string | null> = {
 /** Default direction when a column is first chosen. */
 export const sortsDescending = (key: WatchSort) => key !== "ticker";
 
+/**
+ * Rows in a kept order (tickers), so live prices do not move them (user
+ * 2026-10-26: "do not sort every second - only on click on sort"). A row
+ * not in the order goes last, in the order it came.
+ */
+export function keepOrder(rows: WatchRow[], order: string[]): WatchRow[] {
+  const at = new Map(order.map((t, i) => [t, i]));
+  const place = (r: WatchRow) => at.get(r.ticker) ?? order.length;
+  return rows
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => place(a.r) - place(b.r) || a.i - b.i)
+    .map((x) => x.r);
+}
+
 /** Sorts by a column; missing values ("—") always go last. */
 export function sortRows(
   rows: WatchRow[],

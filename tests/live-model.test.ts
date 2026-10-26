@@ -7,6 +7,7 @@ import {
   filterAlerts,
   filterRows,
   groupAlertDays,
+  keepOrder,
   marketPhase,
   phoneColumns,
   pillFor,
@@ -365,4 +366,20 @@ test("watchlist: phone columns fit the longest value, the same in every row", ()
   ]);
   // A close or overnight mark in front of a price widens Last.
   assert.match(phoneColumns([row({ mark: "close" })]), /max\(6.2ch, 44px\)/);
+});
+
+test("watchlist: a kept order holds while values change; new rows go last", () => {
+  const row = (ticker: string, change: number) =>
+    ({ ticker, change }) as WatchRow;
+  const order = sortRows(
+    [row("A", 3), row("B", 2), row("C", 1)],
+    "change",
+    true,
+  ).map((r) => r.ticker);
+  // C now moves most, but the order holds until the next sort.
+  const now = [row("C", 9), row("D", 5), row("A", 3), row("B", 2)];
+  assert.deepEqual(
+    keepOrder(now, order).map((r) => r.ticker),
+    ["A", "B", "C", "D"],
+  );
 });

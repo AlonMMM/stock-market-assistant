@@ -2,6 +2,7 @@ import type { LivePriceState } from "./live-prices.js";
 import {
   lazy,
   Suspense,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -14,6 +15,7 @@ import {
   alertDirection,
   filterRows,
   isHot,
+  keepOrder,
   moving,
   rangePosition,
   sortRows,
@@ -262,7 +264,16 @@ export function WatchTable({
     now: Date.now(),
     night: night ?? {},
   });
-  const rows = sortRows(filterRows(all, "all", find), sort, descending);
+  // The order is set when a sort is picked, the list changes or a new day
+  // loads; live prices then update the rows in place, not their order.
+  const sortKey = [sort, descending, board.date, ...board.watchlist].join(",");
+  const order = useRef<{ key: string; tickers: string[] } | null>(null);
+  if (order.current?.key !== sortKey)
+    order.current = {
+      key: sortKey,
+      tickers: sortRows(all, sort, descending).map((r) => r.ticker),
+    };
+  const rows = keepOrder(filterRows(all, "all", find), order.current.tickers);
   const bySymbol = new Map(board.series.map((s) => [s.ticker, s]));
   // Picked, but the board with sector ETFs has not arrived yet.
   const sectorsLoading =
