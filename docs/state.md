@@ -87,6 +87,11 @@ burst once the stock is flat, since 2026-10-26) and sells when the
 stock gives back 0.75 of that move from its best. Parity 497/499 with the backtest. Waiting for the account;
 starts off and in dry run. See the [task](tasks/backend-strangle-bot.md).
 
+Branch `feat/volume-bot-activity` (2026-10-26): the Activity page redrawn like the Main bot's (session strip,
+funnel, alert map from a per-minute `scan` of every watched stock's alert checks, side gauges, held legs with
+their sale line) and a Benchmark page (live P&L by day over the backtest band in
+`config/volume-bot-benchmark.json`, still a placeholder of zeros).
+
 ## Live prices every second: Watchlist and charts (2026-10-19)
 
 `GET /api/prices?symbols=…` answers Alpaca's latest SIP trade for every symbol in one

@@ -111,3 +111,85 @@ export function firstAlert(
   }
   return null;
 }
+
+/** One stock's alert checks at a minute, for the app's map (StrangleView.scan). */
+export interface AlertMeasure {
+  minute: number;
+  // The volume check: the better of its two ratios (the window's volume vs
+  // the median of the same window in prior sessions, and vs today's pace),
+  // in the units of `alertRule.threshold`: the check holds exactly when
+  // volRatio >= threshold (both ratios need 4×).
+  volRatio: number;
+  // The window's |move| vs the median |move| of the same window in prior
+  // sessions; the move check needs priceMultiple.
+  moveRatio: number;
+  shares: number; // the window's volume; the alert needs minVolume
+  movePct: number; // the window's |move| %; the alert needs minMovePercent
+  // The window's direction: its close vs the close before it.
+  side: AlertSide;
+}
+
+// JSON has no Infinity: a ratio over a zero median shows at this cap.
+const ratioCap = 99;
+
+/**
+ * The quantities `alerts` checks at minute `m`, computed for `m` alone (the
+ * pace from today's minutes up to m − window, as `alerts` accumulates it).
+ * Null where the alert cannot be evaluated (a missing bar, too little
+ * history).
+ */
+export function measureAt(
+  bars: readonly MinuteBar[],
+  hist: readonly Windows[],
+  m: number,
+): AlertMeasure | null {
+  const r = alertRule;
+  const W = r.window;
+  if (m < W || m >= 390) return null;
+  const by = new Map(bars.map((b) => [b.m, b]));
+  for (let k = m - W; k <= m; k++) if (!by.has(k)) return null;
+  let actual = 0;
+  for (let k = m - W + 1; k <= m; k++) actual += by.get(k)!.v;
+  const last = by.get(m)!.c;
+  const before = by.get(m - W)!.c;
+  const move = Math.abs(last / before - 1) * 100;
+  const samples = hist
+    .map((h) => h[m])
+    .filter((x): x is [number, number] => !!x);
+  if (samples.length < r.minSamples) return null;
+  const expected = median(samples.map((s) => s[0]));
+  const expectedMove = median(samples.map((s) => s[1]));
+  const pace = (q: number) => r.paceSkipOpen <= q && q <= 389 - r.paceSkipClose;
+  let paceVol = 0;
+  let paceN = 0;
+  for (let k = 0; k <= m - W; k++)
+    if (pace(k) && by.has(k)) {
+      paceVol += by.get(k)!.v;
+      paceN++;
+    }
+  let inPace = true;
+  for (let q = m - W + 1; q <= m; q++) if (!pace(q)) inPace = false;
+  // In units of the threshold, so the pace ratio (its own 4×) compares.
+  let volume = 0;
+  if (expected > 0) volume = actual / expected / r.threshold;
+  if (inPace && paceN >= r.paceMinMinutes && paceVol > 0)
+    volume = Math.max(volume, actual / ((paceVol / paceN) * W) / r.pace);
+  let moveRatio = 0;
+  if (expectedMove > 0) moveRatio = move / expectedMove;
+  else if (move > 0) moveRatio = ratioCap;
+  return {
+    minute: m,
+    volRatio: Math.min(ratioCap, volume * r.threshold),
+    moveRatio: Math.min(ratioCap, moveRatio),
+    shares: actual,
+    movePct: move,
+    side: last >= before ? "up" : "down",
+  };
+}
+
+/** How close a stock is to an alert: 1 once both ratio checks are met. */
+export const alertCloseness = (x: { volRatio: number; moveRatio: number }) =>
+  Math.min(
+    x.volRatio / alertRule.threshold,
+    x.moveRatio / alertRule.priceMultiple,
+  );

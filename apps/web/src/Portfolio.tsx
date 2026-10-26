@@ -20,7 +20,9 @@ import { OrderActions, StopMover } from "./OrderControls.js";
 import { BotChip, BotPanel, useBotContracts } from "./BotPanel.js";
 import { BotSettingsPage } from "./BotSettings.js";
 import { RiskSettingsPage } from "./RiskSettings.js";
-import { StrangleActivity, StrangleSettingsPage } from "./StranglePanel.js";
+import { StrangleActivity } from "./StrangleActivity.js";
+import { StrangleBenchmark } from "./StrangleBenchmark.js";
+import { StrangleSettingsPage } from "./StranglePanel.js";
 import { Orders, useDecisions, WhyButton } from "./Orders.js";
 import { PositionList, useControlAccess } from "./Positions.js";
 import {
@@ -308,6 +310,7 @@ const groups = [
     [
       ["s-activity", "Activity"],
       ["s-trades", "Trades"],
+      ["s-bench", "Benchmark"],
       ["s-settings", "Settings"],
       ["s-risk", "Risk"],
     ],
@@ -423,6 +426,7 @@ export function Portfolio({
           />
         </div>
       );
+    if (page === "s-bench") return <StrangleBenchmark />;
     if (page === "s-settings" && canTrade)
       return (
         <StrangleSettingsPage onBack={() => open("strangle", "s-activity")} />
