@@ -243,31 +243,47 @@ function median(xs: readonly number[]): number {
   return v.length % 2 ? v[mid]! : (v[mid - 1]! + v[mid]!) / 2;
 }
 
-/** Where a stock stands at minute `m` (for the live scan): signed t-stat and volume ratio. */
+/**
+ * Where a stock stands at minute `m` (for the live scan): signed t-stat,
+ * volume ratio, and D2 on the t-stat's side over the last `d2Window`
+ * minutes (null without the stock's typical move), as cSignal counts it.
+ */
 export function cState(
   day: readonly MinuteBar[],
   spy: readonly MinuteBar[],
   prior: Prior,
   m: number,
-): { t: number; rvol: number } | null {
+  d2Window: number = defaultSignalParams.d2Window,
+): { t: number; rvol: number; d2: number | null } | null {
   if (prior.curves.length < 10 || prior.beta === null || m < 1) return null;
   const c = closes(day);
   const s = closes(spy);
   const steps: number[] = [];
-  for (let k = 1; k <= Math.min(m, SESSION - 1); k++) {
+  const last = Math.min(m, SESSION - 1);
+  let d2Call = 0;
+  let d2Put = 0;
+  for (let k = 1; k <= last; k++) {
     const ck = c[k],
       c0 = c[k - 1],
       sk = s[k],
       s0 = s[k - 1];
-    if (ck && c0 && sk && s0)
-      steps.push(ck / c0 - 1 - prior.beta * (sk / s0 - 1));
+    if (!(ck && c0 && sk && s0)) continue;
+    const spyMove = sk / s0 - 1;
+    const x = ck / c0 - 1 - prior.beta * spyMove;
+    steps.push(x);
+    if (k <= last - d2Window) continue;
+    if (spyMove < 0) d2Call += x;
+    if (spyMove > 0) d2Put -= x;
   }
   if (steps.length < 2) return null;
   const sd = pstdev(steps);
   const t = sd ? (mean(steps) / sd) * Math.sqrt(steps.length) : 0;
+  const unit = prior.unit;
+  let d2: number | null = null;
+  if (unit) d2 = (t < 0 ? d2Put : d2Call) / unit;
   const usual = median(
     prior.curves.map((curve) => curve[Math.min(m, SESSION - 1)]!),
   );
   const cum = cumulativeVolume(day)[Math.min(m, SESSION - 1)]!;
-  return { t, rvol: usual ? cum / usual : 0 };
+  return { t, rvol: usual ? cum / usual : 0, d2 };
 }

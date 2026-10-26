@@ -39,6 +39,7 @@ import {
 } from "../packages/trading/src/bot/picker.js";
 import {
   cSignal,
+  cState,
   defaultSignalParams,
   priorFrom,
   type MinuteBar,
@@ -199,6 +200,10 @@ test("signal (2.5): the D2 bonus enters at t 1.2 when the stock held up on SPY's
   // Without the stock's unit (short history) there is no D2: t 1.8 only.
   const noUnit = cSignal(held, spy, { ...prior, unit: null }, 374, bonus);
   assert.equal(noUnit?.minute, plain.minute);
+  // The live scan's D2 is the signal's own at the same minute; no unit, no D2.
+  const now = cState(held, spy, prior, early.minute);
+  assert.equal(now?.d2?.toFixed(9), early.d2!.toFixed(9));
+  assert.equal(cState(held, spy, { ...prior, unit: null }, 100)?.d2, null);
 });
 
 // ---- exits ----
