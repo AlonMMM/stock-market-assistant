@@ -93,6 +93,14 @@ const sellWaitMs = 3 * 60_000;
 
 type NewsState = "off" | "pending" | "ok" | "failed";
 
+/** On a Wednesday, the date of that week's Friday; else null. */
+export function wednesdaysFriday(date: string): string | null {
+  const d = new Date(`${date}T12:00:00Z`);
+  if (d.getUTCDay() !== 3) return null;
+  d.setUTCDate(d.getUTCDate() + 2);
+  return d.toISOString().slice(0, 10);
+}
+
 function nextSession(date: string): string {
   let d = date;
   do
@@ -612,9 +620,12 @@ export class StrangleBot {
     };
     this.o.store.saveTrade(trade);
     const pct = (s.confirmUnits * unit * 100).toFixed(2);
+    let expiryWords = "";
+    if (expiry === wednesdaysFriday(date)) expiryWords = "; Friday's expiry";
+    else if (expiry !== date) expiryWords = "; 1DTE";
     return {
       outcome: "watching",
-      detail: `stock ${ref.toFixed(2)}; the side at ${pct}% either way${expiry === date ? "" : "; 1DTE"}`,
+      detail: `stock ${ref.toFixed(2)}; the side at ${pct}% either way${expiryWords}`,
     };
   }
 
@@ -629,21 +640,25 @@ export class StrangleBot {
     }
   }
 
-  /** The day's expiry: today's, else the next session's when nextDay is on. */
+  /**
+   * The day's expiry: today's, else the next session's when nextDay is on,
+   * else on a Wednesday that week's Friday when wednesdayFriday is on.
+   */
   private async expiryFor(
     symbol: string,
     date: string,
     s: StrangleSettings,
   ): Promise<string | null> {
     const next = nextSession(date);
-    const chain = await this.o.trading.chain(
-      symbol,
-      "call",
-      date,
-      s.nextDay ? next : date,
-    );
+    const friday = wednesdaysFriday(date);
+    let to = date;
+    if (s.nextDay) to = next;
+    if (s.wednesdayFriday && friday && friday > to) to = friday;
+    const chain = await this.o.trading.chain(symbol, "call", date, to);
     if (chain.some((q) => q.expiry === date)) return date;
     if (s.nextDay && chain.some((q) => q.expiry === next)) return next;
+    if (s.wednesdayFriday && friday && chain.some((q) => q.expiry === friday))
+      return friday;
     return null;
   }
 

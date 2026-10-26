@@ -37,6 +37,11 @@ export interface StrangleSettings {
   // Thursdays): the same rule on that expiry's leg, still sold the same day
   // (user 2026-10-25, "implement it"; leg_1dte.py: better on both lists).
   nextDay: boolean;
+  // On a Wednesday with neither, that week's Friday expiry (2 days out),
+  // still sold the same day (user 2026-10-26, "add the Wednesday trade";
+  // leg_friday2.py: +$29K a year at live spreads on the watchlist, a smaller
+  // worst drop; Monday and Tuesday lose after spreads, so not them).
+  wednesdayFriday: boolean;
   lastMinute: number;
   delta: number;
   minPrice: number; // each leg's mid
@@ -88,6 +93,7 @@ export const defaultStrangleSettings: StrangleSettings = {
   safetyStopPct: 70,
   firstMinute: 10,
   nextDay: true,
+  wednesdayFriday: true,
   lastMinute: 209,
   delta: 0.35,
   minPrice: 0.2,
@@ -140,6 +146,7 @@ const booleans: BooleanKey[] = [
   "enabled",
   "followFavorites",
   "nextDay",
+  "wednesdayFriday",
   "liquidFallback",
   "strengthFilter",
   "skipEarnings",
@@ -234,6 +241,9 @@ export function strangleSteps(
   const nextDayWords = s.nextDay
     ? " (or, when there is none, one the next session: 1DTE)"
     : "";
+  let wednesdayWords = "";
+  if (s.wednesdayFriday)
+    wednesdayWords = "; on a Wednesday with neither, that week's Friday expiry";
   // One trade a stock a day, or a later burst once it has nothing open.
   let perStockWords = ". One trade per stock a day";
   if (s.maxPerStock > 1)
@@ -250,7 +260,7 @@ export function strangleSteps(
   return [
     {
       name: "The alert",
-      text: `On a day with a same-day expiry${nextDayWords}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.`,
+      text: `On a day with a same-day expiry${nextDayWords}${wednesdayWords}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.`,
     },
     {
       name: "News filter",
