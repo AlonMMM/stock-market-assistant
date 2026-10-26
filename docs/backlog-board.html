@@ -1,0 +1,1049 @@
+<title>SMA Backlog</title>
+<meta name="claude:viewport-fit-sides" content="cover" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+/>
+<style>
+  /* Layout: a trading desk's board. Four lanes (Now, Next, Later, Done) side by side,
+   stacked on a phone; filters on top; each item a compact ticket. */
+  :root {
+    --bg: #f2f3ee;
+    --panel: #ffffff;
+    --ink: #142b29;
+    --muted: #5d6e69;
+    --line: #dde3dc;
+    --accent: #1d6b5c;
+    --now: #b45309;
+    --now-soft: #fbefd9;
+    --next: #2a5ba8;
+    --next-soft: #e4ecf8;
+    --later: #5d6e69;
+    --later-soft: #eceee9;
+    --done: #1d6b3a;
+    --done-soft: #e1f2e7;
+    --wait: #8a1c14;
+    --wait-soft: #fbeceb;
+    --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+    --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16191f;
+      --panel: #1d2128;
+      --ink: #e6e8eb;
+      --muted: #8d95a1;
+      --line: #2c313a;
+      --accent: #5cc9b0;
+      --now: #f0b45a;
+      --now-soft: #2d2412;
+      --next: #8fb4f2;
+      --next-soft: #18233a;
+      --later: #a3abb6;
+      --later-soft: #23272e;
+      --done: #6fd393;
+      --done-soft: #13261b;
+      --wait: #f19a93;
+      --wait-soft: #2d1717;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16191f;
+    --panel: #1d2128;
+    --ink: #e6e8eb;
+    --muted: #8d95a1;
+    --line: #2c313a;
+    --accent: #5cc9b0;
+    --now: #f0b45a;
+    --now-soft: #2d2412;
+    --next: #8fb4f2;
+    --next-soft: #18233a;
+    --later: #a3abb6;
+    --later-soft: #23272e;
+    --done: #6fd393;
+    --done-soft: #13261b;
+    --wait: #f19a93;
+    --wait-soft: #2d1717;
+    color-scheme: dark;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 15px;
+    line-height: 1.45;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 20px 40px;
+  }
+  .wrap {
+    max-width: 1240px;
+    margin: 0 auto;
+    display: grid;
+    gap: 18px;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px 24px;
+  }
+  h1 {
+    margin: 0;
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 34px;
+    letter-spacing: -0.01em;
+    line-height: 1.05;
+    text-wrap: balance;
+  }
+  h1 .dot {
+    color: var(--accent);
+  }
+  .sub {
+    margin: 4px 0 0;
+    color: var(--muted);
+    max-width: 62ch;
+  }
+  .tally {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-family: var(--mono);
+    font-size: 12.5px;
+  }
+  .tally span {
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .tally b {
+    font-weight: 500;
+  }
+  .bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .bar .left {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .find {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 260px;
+    max-width: 420px;
+  }
+  .find input {
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: var(--panel);
+  }
+  .find button {
+    white-space: nowrap;
+  }
+  .matches {
+    font: 400 12.5px var(--mono);
+    color: var(--muted);
+  }
+  .topic {
+    font: 500 12px var(--body);
+    padding: 1px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .topic:hover {
+    color: var(--ink);
+    border-color: var(--muted);
+  }
+  .chip {
+    font: 500 13px var(--body);
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .chip[aria-pressed="true"] {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+  }
+  .chip:focus-visible,
+  button:focus-visible,
+  select:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .btn {
+    font: 600 13.5px var(--body);
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--bg);
+    cursor: pointer;
+  }
+  .btn.ghost {
+    background: transparent;
+    color: var(--accent);
+  }
+  .btn.danger {
+    border-color: var(--wait);
+    background: transparent;
+    color: var(--wait);
+  }
+  .add {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px;
+    display: grid;
+    gap: 10px;
+  }
+  .add[hidden] {
+    display: none;
+  }
+  .add .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 150px 130px;
+    gap: 8px;
+  }
+  label.f {
+    display: grid;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  input,
+  select,
+  textarea {
+    font: 400 14.5px var(--body);
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    width: 100%;
+    min-width: 0;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  textarea {
+    resize: vertical;
+    min-height: 80px;
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+  .lane {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+  }
+  .lane h2 {
+    margin: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0 2px 6px;
+    border-bottom: 2px solid currentColor;
+  }
+  .lane h2 small {
+    font-family: var(--mono);
+    font-weight: 400;
+    font-size: 12px;
+    letter-spacing: 0;
+    color: var(--muted);
+  }
+  .lane h2 em {
+    font-style: normal;
+    margin-left: auto;
+    font: 400 12px var(--body);
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--muted);
+  }
+  .lane.now h2 {
+    color: var(--now);
+  }
+  .lane.next h2 {
+    color: var(--next);
+  }
+  .lane.later h2 {
+    color: var(--later);
+  }
+  .lane.done h2 {
+    color: var(--done);
+  }
+  .empty {
+    color: var(--muted);
+    font-size: 13.5px;
+    padding: 10px 2px;
+  }
+  .item {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    min-width: 0;
+  }
+  .item summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 10px 12px;
+    display: grid;
+    gap: 6px;
+  }
+  .item summary::-webkit-details-marker {
+    display: none;
+  }
+  .item .t {
+    font-weight: 600;
+    font-size: 14.5px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  .done .item .t {
+    color: var(--muted);
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+  }
+  .tag {
+    font: 500 11.5px var(--mono);
+    padding: 1px 7px;
+    border-radius: 5px;
+    background: var(--later-soft);
+    color: var(--later);
+  }
+  .tag.wait {
+    background: var(--wait-soft);
+    color: var(--wait);
+    font-family: var(--body);
+    font-size: 12px;
+  }
+  .body {
+    padding: 0 12px 12px;
+    display: grid;
+    gap: 10px;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    margin-top: 0;
+  }
+  .notes {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 14px;
+  }
+  .src {
+    margin: 0;
+    font: 400 12px var(--mono);
+    color: var(--muted);
+    overflow-wrap: anywhere;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .actions select {
+    width: auto;
+    padding: 6px 8px;
+    font-size: 13px;
+  }
+  .actions .btn {
+    padding: 6px 10px;
+    font-size: 12.5px;
+  }
+  .edit {
+    display: grid;
+    gap: 8px;
+  }
+  .status-line {
+    font-size: 13px;
+    color: var(--muted);
+    min-height: 1.2em;
+  }
+  .status-line.err {
+    color: var(--wait);
+  }
+  footer {
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+  @media (max-width: 980px) {
+    .board {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 620px) {
+    .board {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .add .row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    h1 {
+      font-size: 28px;
+    }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .item {
+      transition: border-color 120ms ease-out;
+    }
+    .item:hover {
+      border-color: var(--muted);
+    }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>SMA backlog<span class="dot">.</span></h1>
+      <p class="sub">
+        What is next for the Stock Market Assistant: the site, the two paper
+        bots, the alert pipeline and the research. Items move from Later to Now;
+        a red tag says what an item is waiting on. The repo's docs/backlog.md
+        holds the same list.
+      </p>
+    </div>
+    <div class="tally" id="tally" aria-live="polite"></div>
+  </header>
+
+  <div class="bar">
+    <div class="left">
+      <label class="find" for="q"
+        ><span class="sr-only">Search the backlog</span>
+        <input
+          type="search"
+          id="q"
+          placeholder="Search, e.g. main bot performance"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </label>
+      <span class="matches" id="matches" aria-live="polite"></span>
+    </div>
+    <button class="btn" id="add-toggle" type="button" hidden>Add item</button>
+  </div>
+  <div class="chips" id="areas" role="group" aria-label="Show area"></div>
+
+  <form class="add" id="add-form" hidden>
+    <div class="row">
+      <label class="f"
+        >Item<input
+          id="add-title"
+          required
+          maxlength="140"
+          placeholder="What should happen"
+      /></label>
+      <label class="f">Area<select id="add-area"></select></label>
+      <label class="f">Lane<select id="add-status"></select></label>
+    </div>
+    <label class="f"
+      >Notes<textarea
+        id="add-notes"
+        placeholder="Why it matters, how we know it is done"
+      ></textarea>
+    </label>
+    <div class="row">
+      <label class="f"
+        >Tags (comma-separated)<input
+          id="add-tags"
+          maxlength="120"
+          placeholder="Main bot, Performance"
+      /></label>
+      <label class="f" style="grid-column: span 2"
+        >Waiting on (optional)<input
+          id="add-wait"
+          maxlength="120"
+          placeholder="A person, a key, a decision"
+      /></label>
+    </div>
+    <div class="actions">
+      <button class="btn" type="submit">Add to the backlog</button
+      ><button class="btn ghost" type="button" id="add-cancel">Cancel</button>
+    </div>
+  </form>
+
+  <p class="status-line" id="status" role="status">Loading the backlog…</p>
+
+  <section class="board" id="board" aria-label="Backlog lanes"></section>
+
+  <footer>
+    Kept in this page's shared store: everyone who opens it sees the same items.
+    Only people with edit access see the controls.
+  </footer>
+</div>
+
+<script>
+  (() => {
+    const LANES = [
+      ["now", "Now", "being worked on"],
+      ["next", "Next", "up after that"],
+      ["later", "Later", "when there is room"],
+      ["done", "Done", "recently finished"],
+    ];
+    const AREAS = ["Bots", "Research", "App", "Alerts", "Ops"];
+    const $ = (id) => document.getElementById(id);
+    let items = []; // [{id, ...data}]
+    let area = "all";
+    let query = "";
+    let canWrite = false;
+    let db = null;
+    let open = new Set(); // expanded item ids, kept across renders
+    let editing = null; // id being edited
+
+    try {
+      const a = localStorage.getItem("sma-backlog-area");
+      if (a) area = a;
+      query = localStorage.getItem("sma-backlog-query") || "";
+    } catch {}
+    const words = () => query.toLowerCase().split(/\s+/).filter(Boolean);
+    // Every word must appear somewhere in the item: "main bot performance".
+    const matches = (it, ws) => {
+      if (!ws.length) return true;
+      const hay = [
+        it.title,
+        it.notes,
+        it.area,
+        it.waiting,
+        it.source,
+        it.done,
+        ...(Array.isArray(it.tags) ? it.tags : []),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return ws.every((w) => hay.includes(w));
+    };
+    const tagsOf = (it) => (Array.isArray(it.tags) ? it.tags : []);
+    const parseTags = (text) =>
+      text
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+    const slug = (title) => {
+      const base =
+        title
+          .toLowerCase()
+          .normalize("NFKD")
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 60) || "item";
+      let id = base,
+        n = 2;
+      while (items.some((i) => i.id === id)) id = `${base}-${n++}`;
+      return id;
+    };
+    const setQuery = (q) => {
+      query = q;
+      $("q").value = q;
+      try {
+        localStorage.setItem("sma-backlog-query", q);
+      } catch {}
+      render();
+    };
+
+    const say = (text, err) => {
+      const s = $("status");
+      s.textContent = text;
+      s.classList.toggle("err", !!err);
+    };
+    const el = (tag, props = {}, ...kids) => {
+      const n = document.createElement(tag);
+      for (const [k, v] of Object.entries(props)) {
+        if (k === "class") n.className = v;
+        else if (k === "text") n.textContent = v;
+        else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+        else if (v !== undefined && v !== null && v !== false)
+          n.setAttribute(k, v === true ? "" : v);
+      }
+      for (const k of kids) if (k) n.append(k);
+      return n;
+    };
+    const fill = (sel, values, labels) => {
+      sel.replaceChildren(
+        ...values.map((v, i) =>
+          el("option", { value: v, text: labels ? labels[i] : v }),
+        ),
+      );
+    };
+
+    function renderAreas() {
+      const box = $("areas");
+      const all = ["all", ...AREAS];
+      box.replaceChildren(
+        ...all.map((a) =>
+          el("button", {
+            class: "chip",
+            type: "button",
+            "aria-pressed": String(area === a),
+            text: a === "all" ? "All areas" : a,
+            onclick: () => {
+              area = a;
+              try {
+                localStorage.setItem("sma-backlog-area", a);
+              } catch {}
+              render();
+            },
+          }),
+        ),
+      );
+    }
+
+    function renderTally() {
+      const n = (s) => items.filter((i) => i.status === s).length;
+      $("tally").replaceChildren(
+        ...LANES.map(([s, label]) =>
+          el(
+            "span",
+            {},
+            el("b", { text: String(n(s)) }),
+            ` ${label.toLowerCase()}`,
+          ),
+        ),
+      );
+    }
+
+    async function write(fn, ok) {
+      try {
+        await fn();
+        if (ok) say(ok);
+      } catch (e) {
+        if (e && e.code === "invalid_argument" && !canWrite)
+          say("This page is read-only for you.", true);
+        else if (e && e.code === "quota_exceeded")
+          say("The store is full. Delete finished items to make room.", true);
+        else
+          say(
+            "That change was not saved. Check the connection and try again.",
+            true,
+          );
+      }
+    }
+
+    function rankAfter(status) {
+      const ranks = items
+        .filter((i) => i.status === status)
+        .map((i) => Number(i.rank) || 0);
+      return (ranks.length ? Math.max(...ranks) : 0) + 1;
+    }
+
+    function move(item, dir) {
+      const lane = items.filter((i) => i.status === item.status).sort(byRank);
+      const at = lane.findIndex((i) => i.id === item.id);
+      const other = lane[at + dir];
+      if (!other) return;
+      const a = Number(item.rank) || 0,
+        b = Number(other.rank) || 0;
+      write(async () => {
+        await db
+          .collection("items")
+          .doc(item.id)
+          .update({
+            rank: b === a ? a + dir : b,
+            updated: new Date().toISOString(),
+          });
+        await db
+          .collection("items")
+          .doc(other.id)
+          .update({ rank: b === a ? b : a });
+      });
+    }
+
+    const byRank = (a, b) =>
+      (Number(a.rank) || 0) - (Number(b.rank) || 0) ||
+      String(a.title).localeCompare(String(b.title));
+
+    function itemCard(it) {
+      const d = el("details", { class: "item" });
+      if (open.has(it.id)) d.open = true;
+      d.addEventListener("toggle", () => {
+        d.open ? open.add(it.id) : open.delete(it.id);
+      });
+      const meta = el(
+        "span",
+        { class: "meta" },
+        el("span", { class: "tag", text: it.area || "—" }),
+      );
+      for (const t of tagsOf(it))
+        meta.append(
+          el("button", {
+            class: "topic",
+            type: "button",
+            text: t,
+            title: `Show items tagged ${t}`,
+            onclick: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setQuery(t);
+            },
+          }),
+        );
+      if (it.waiting)
+        meta.append(
+          el("span", { class: "tag wait", text: `Waiting: ${it.waiting}` }),
+        );
+      d.append(
+        el(
+          "summary",
+          {},
+          el("span", { class: "t", text: it.title || "Untitled" }),
+          meta,
+        ),
+      );
+
+      const body = el("div", { class: "body" });
+      if (editing === it.id && canWrite) {
+        const t = el("input", {
+          value: it.title || "",
+          maxlength: "140",
+          "aria-label": "Item",
+          id: `e-t-${it.id}`,
+        });
+        const a = el("select", { "aria-label": "Area", id: `e-a-${it.id}` });
+        fill(a, AREAS);
+        a.value = it.area || AREAS[0];
+        const n = el("textarea", { "aria-label": "Notes", id: `e-n-${it.id}` });
+        n.value = it.notes || "";
+        const w = el("input", {
+          value: it.waiting || "",
+          maxlength: "120",
+          "aria-label": "Waiting on",
+          placeholder: "Waiting on (optional)",
+          id: `e-w-${it.id}`,
+        });
+        const g = el("input", {
+          value: tagsOf(it).join(", "),
+          maxlength: "120",
+          "aria-label": "Tags",
+          placeholder: "Tags, comma-separated",
+          id: `e-g-${it.id}`,
+        });
+        body.append(
+          el(
+            "div",
+            { class: "edit" },
+            t,
+            a,
+            n,
+            g,
+            w,
+            el(
+              "div",
+              { class: "actions" },
+              el("button", {
+                class: "btn",
+                type: "button",
+                text: "Save",
+                onclick: () => {
+                  const title = t.value.trim();
+                  if (!title) {
+                    say("An item needs a title.", true);
+                    return;
+                  }
+                  editing = null;
+                  write(
+                    () =>
+                      db
+                        .collection("items")
+                        .doc(it.id)
+                        .update({
+                          title,
+                          area: a.value,
+                          notes: n.value.trim(),
+                          tags: parseTags(g.value),
+                          waiting: w.value.trim(),
+                          updated: new Date().toISOString(),
+                        }),
+                    "Saved.",
+                  );
+                },
+              }),
+              el("button", {
+                class: "btn ghost",
+                type: "button",
+                text: "Cancel",
+                onclick: () => {
+                  editing = null;
+                  render();
+                },
+              }),
+            ),
+          ),
+        );
+      } else {
+        if (it.notes) body.append(el("p", { class: "notes", text: it.notes }));
+        if (it.done)
+          body.append(el("p", { class: "src", text: `Done: ${it.done}` }));
+        if (it.source)
+          body.append(el("p", { class: "src", text: `Source: ${it.source}` }));
+        if (canWrite) {
+          const lane = el("select", {
+            "aria-label": "Move to lane",
+            id: `m-${it.id}`,
+          });
+          fill(
+            lane,
+            LANES.map((l) => l[0]),
+            LANES.map((l) => l[1]),
+          );
+          lane.value = it.status;
+          lane.addEventListener("change", () =>
+            write(
+              () =>
+                db
+                  .collection("items")
+                  .doc(it.id)
+                  .update({
+                    status: lane.value,
+                    rank: rankAfter(lane.value),
+                    updated: new Date().toISOString(),
+                  }),
+              `Moved to ${lane.options[lane.selectedIndex].text}.`,
+            ),
+          );
+          let armed = false;
+          const del = el("button", {
+            class: "btn danger",
+            type: "button",
+            text: "Delete",
+            onclick: () => {
+              if (!armed) {
+                armed = true;
+                del.textContent = "Delete for good?";
+                return;
+              }
+              open.delete(it.id);
+              write(
+                () => db.collection("items").doc(it.id).delete(),
+                "Deleted.",
+              );
+            },
+          });
+          body.append(
+            el(
+              "div",
+              { class: "actions" },
+              lane,
+              el("button", {
+                class: "btn ghost",
+                type: "button",
+                text: "↑",
+                "aria-label": "Move up",
+                onclick: () => move(it, -1),
+              }),
+              el("button", {
+                class: "btn ghost",
+                type: "button",
+                text: "↓",
+                "aria-label": "Move down",
+                onclick: () => move(it, 1),
+              }),
+              el("button", {
+                class: "btn ghost",
+                type: "button",
+                text: "Edit",
+                onclick: () => {
+                  editing = it.id;
+                  open.add(it.id);
+                  render();
+                },
+              }),
+              del,
+            ),
+          );
+        }
+        if (!body.childNodes.length)
+          body.append(el("p", { class: "src", text: "No notes yet." }));
+      }
+      d.append(body);
+      return d;
+    }
+
+    function render() {
+      renderAreas();
+      renderTally();
+      const ws = words();
+      const shown = items.filter(
+        (i) => (area === "all" || i.area === area) && matches(i, ws),
+      );
+      $("matches").textContent = ws.length
+        ? `${shown.length} of ${items.length} match`
+        : "";
+      $("board").replaceChildren(
+        ...LANES.map(([s, label, hint]) => {
+          const list = shown.filter((i) => i.status === s).sort(byRank);
+          return el(
+            "div",
+            { class: `lane ${s}` },
+            el(
+              "h2",
+              {},
+              label,
+              el("small", { text: String(list.length) }),
+              el("em", { text: hint }),
+            ),
+            ...(list.length
+              ? list.map(itemCard)
+              : [
+                  el("p", {
+                    class: "empty",
+                    text: ws.length
+                      ? "No match in this lane."
+                      : s === "done"
+                        ? "Nothing finished here yet."
+                        : "Nothing in this lane.",
+                  }),
+                ]),
+          );
+        }),
+      );
+    }
+
+    function setupAdd() {
+      fill($("add-area"), AREAS);
+      fill(
+        $("add-status"),
+        LANES.map((l) => l[0]),
+        LANES.map((l) => l[1]),
+      );
+      $("add-status").value = "next";
+      $("add-toggle").hidden = !canWrite;
+      $("add-toggle").addEventListener("click", () => {
+        $("add-form").hidden = false;
+        $("add-toggle").hidden = true;
+        $("add-title").focus();
+      });
+      $("add-cancel").addEventListener("click", () => {
+        $("add-form").hidden = true;
+        $("add-toggle").hidden = false;
+      });
+      $("add-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const title = $("add-title").value.trim();
+        if (!title) return;
+        const status = $("add-status").value;
+        const now = new Date().toISOString();
+        const data = {
+          title,
+          area: $("add-area").value,
+          status,
+          rank: rankAfter(status),
+          tags: parseTags($("add-tags").value),
+          notes: $("add-notes").value.trim(),
+          waiting: $("add-wait").value.trim(),
+          source: `Added on the board, ${now.slice(0, 10)}`,
+          done: "",
+          created: now,
+          updated: now,
+        };
+        write(async () => {
+          await db.collection("items").doc(slug(title)).set(data);
+          $("add-form").reset();
+          $("add-status").value = "next";
+          $("add-form").hidden = true;
+          $("add-toggle").hidden = false;
+        }, "Added.");
+      });
+    }
+
+    $("q").value = query;
+    let typing;
+    $("q").addEventListener("input", () => {
+      clearTimeout(typing);
+      const v = $("q").value;
+      typing = setTimeout(() => setQuery(v), 120);
+    });
+
+    render();
+
+    (async () => {
+      db = await window.claude?.use?.("db");
+      if (!db) {
+        say(
+          "The backlog could not be loaded here. Open the page signed in to claude.ai to see it.",
+        );
+        return;
+      }
+      const user = await window.claude.use("user");
+      const may = user ? await user.can("data.write") : null;
+      canWrite = may !== false;
+      setupAdd();
+      db.collection("items").onSnapshot(
+        (snap) => {
+          items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          say(
+            items.length
+              ? ""
+              : "The backlog is empty. Add the first item with “Add item”.",
+          );
+          render();
+        },
+        (e) =>
+          say(
+            e && e.code === "revoked"
+              ? "This page is no longer shared with you."
+              : "The backlog stopped updating. Reload the page.",
+            true,
+          ),
+      );
+    })();
+  })();
+</script>

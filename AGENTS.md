@@ -9,6 +9,7 @@ Preserve unrelated changes and use a task branch for implementation.
 - User behavior, alerts, scope: [product](docs/product.md).
 - Architecture or technology choices: [decisions](docs/decisions.md).
 - Substantial tasks and handoff: [workflow](docs/workflow.md) and [task template](docs/task-template.md).
+- What is next: [backlog](docs/backlog.md).
 - Role sessions and parallel work: [session guide](docs/sessions.md); read only the selected [role](docs/roles/index.md).
 
 ## Rules
@@ -21,6 +22,21 @@ Preserve unrelated changes and use a task branch for implementation.
 - Do not force-push, discard unrelated changes, trade, or deploy without authorization for that action. Honor authorization already given in the session.
 - Deploy only what is on `main`: merge first, then deploy from a clean checkout of `origin/main`. Never deploy a pull request's branch or uncommitted changes. This applies to every deploy target (the website Worker, the connector Worker, the Railway services).
 - Add dependencies and automation to meet concrete needs, not to fill out a scaffold.
+
+## Backlog
+
+[docs/backlog.md](docs/backlog.md) is the backlog; the board at https://claude.ai/artifact/VzgHGHzP5SYWhVefpvTmRH
+shows the same items. Keep both live in every session:
+
+- When the user asks for work that is on the backlog, say so in your first reply and name the item.
+- When that work is finished (merged), move the item to Done with the date and the PR; Done keeps the latest 10.
+- When work stops unfinished, or a change leaves something out (a "not done" list, a blocker, a follow-up the
+  user agreed to), add an item or update the existing one with a note on what is left and why. A blocker goes in
+  `waiting`. New ideas go to Later unless the user says otherwise.
+- After editing, run `npm run backlog`: it checks the format and prints the items as JSON.
+- The user also edits the board. A session that can read and write it (the Artifact tools) first brings the
+  board's changes into the file, then makes its own, then writes every item to the board as `items/<id>` and
+  deletes board items no longer in the file. A session that cannot says in its reply that the board needs a sync.
 
 ## Verify and finish
 

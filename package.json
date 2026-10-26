@@ -21,6 +21,7 @@
     "format:check": "prettier --check .",
     "check": "npm run format:check && npm run typecheck && npm test && npm run build",
     "doctor": "node scripts/doctor.mjs",
+    "backlog": "node scripts/backlog.mjs",
     "backtest": "node --import tsx scripts/backtest.ts",
     "session": "node scripts/session.mjs",
     "start:collector": "node --import tsx apps/collector/src/main.ts",
