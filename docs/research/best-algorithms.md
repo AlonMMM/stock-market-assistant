@@ -857,6 +857,16 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     $153,504 / 5.2% (live caps $136,458 / 4.0% vs $134,128), fair $315,386 / 4.4% (live caps $265,953 / 4.8% vs
     $260,156 / 5.5%); at 10 min $154,729 and $319,856. Only 5 and 4 trades go (sides after 15 minutes lose), so a small
     gain on both lists; the waitMinutes setting (10-120), not changed.
+    **More than one trade a stock a day (`leg_twice.py`, the user, 2026-10-26: "what if we can enter to stock twice, even
+    if option is open. And even if not").** Every alert event (an alert minute after a minute without one) 09:40-13:00
+    runs the live rule (side within 10 min). Favorites (1,072 stock-days, 2+ events on 448): first only 431 trades
+    $154,224 / 5.7% (live caps $137,057 / 4.4%); again only when flat 783, $199,721 / 8.2% (caps $149,462 / 5.9%; the
+    351 later trades +$33,092, 38% winners); again even while open 1,095, $236,133 / 7.6% (caps $129,171 / 6.7%). Fair
+    (1,903, 2+ on 884): first $317,972 / 4.4% (caps $269,762 / 4.4%); flat $717,451 / 7.0% (caps $454,452 / 4.1%; 941
+    later trades +$249,625); open $1,190,278 / 8.7% (caps $434,896 / 5.3%). The later alerts trade about as well per
+    trade as the first (fair +265 vs +262 at 1%; favorites +94 vs +126). Without caps more trades = more money and more
+    drop; with the live caps "again when flat" is better on both lists, "while open" fills the 3-open / 5-a-day caps
+    with one stock and loses on the favorites. Candidate: re-entry after the sale, with the caps.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
