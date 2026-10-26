@@ -74,7 +74,7 @@ test("buy checks: a good order passes all of them", () => {
   const v = checkBuy(good());
   assert.deepEqual(v.refused, []);
   assert.equal(v.ok, true);
-  assert.equal(v.checks.length, 16);
+  assert.equal(v.checks.length, 17);
   assert.deepEqual(v.notes, []);
 });
 
@@ -284,4 +284,34 @@ test("buy checks: an open risk limit of 0 is off", () => {
   c.positions = [held(50, 0.03, 50)];
   const v = checkBuy(c, { ...defaultBuyLimits, maxOpenRiskPct: 0 });
   assert.equal(v.ok, true, v.refused.join(" | "));
+});
+
+test("buy checks: open positions refuse a new contract past the limit, not an add", () => {
+  const limits = { ...defaultBuyLimits, maxOpenPositions: 2 };
+  const c = good();
+  c.positions = [
+    held(10, 1.2),
+    { ...held(10, 1.2), symbol: "AMD261016P00600000" },
+  ];
+  const v = checkBuy(c, limits);
+  assert.equal(v.ok, false);
+  assert.deepEqual(v.refused, ["open positions: 2 open; at most 2 at once"]);
+  // A working buy counts as open.
+  const w = good();
+  w.positions = [held(10, 1.2)];
+  w.working = [{ symbol: "AMD261016P00600000", qty: 1, price: 1 }];
+  assert.equal(checkBuy(w, limits).ok, false);
+  // Adding to a contract already held is not a new position.
+  const add = good();
+  add.positions = [
+    { ...held(10, 1.2), symbol },
+    { ...held(10, 1.2), symbol: "AMD261016P00600000" },
+  ];
+  assert.equal(
+    checkBuy(add, limits).ok,
+    true,
+    checkBuy(add, limits).refused.join(" | "),
+  );
+  // 0 is off.
+  assert.equal(checkBuy(c, { ...limits, maxOpenPositions: 0 }).ok, true);
 });

@@ -34,6 +34,7 @@ type Field =
   | "tradeRiskPct"
   | "openRiskPct"
   | "maxPositionPct"
+  | "maxOpenPositions"
   | "buysPerDay"
   | "drawdownPct";
 
@@ -71,6 +72,13 @@ const fields: {
     help: "What one stock and side may cost in all.",
     unit: "%",
     step: 0.5,
+  },
+  {
+    key: "maxOpenPositions",
+    label: "Open positions",
+    help: "Different contracts open at once, held or being bought; adding to one already open does not count. 0 turns it off.",
+    unit: "",
+    step: 1,
   },
   {
     key: "buysPerDay",
@@ -114,6 +122,8 @@ function outOfBounds(r: AccountRisk, b: Bounds): string | null {
       return `${name} per day must be from ${b.day[0]} to ${b.day[1]}`;
   }
   if (!Number.isInteger(r.buysPerDay)) return "Buys per day is a whole number";
+  if (!Number.isInteger(r.maxOpenPositions))
+    return "Open positions is a whole number";
   return null;
 }
 
