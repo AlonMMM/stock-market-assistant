@@ -127,8 +127,20 @@ export function useWatchlists() {
 
 export type Watchlists = ReturnType<typeof useWatchlists>;
 
-/** One chip per list, and a way to start a new one. */
-export function WatchlistSwitcher({ w }: { w: Watchlists }) {
+/**
+ * One chip per list, a way to start a new one, and "Edit list" for the chosen
+ * one (user 2026-10-26: the editor at the foot of the page was hard to find).
+ */
+export function WatchlistSwitcher({
+  w,
+  editing = false,
+  onEdit,
+}: {
+  w: Watchlists;
+  editing?: boolean;
+  onEdit?: () => void;
+}) {
+  const editable = Boolean(onEdit && w.current && !w.current.builtIn);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -141,27 +153,42 @@ export function WatchlistSwitcher({ w }: { w: Watchlists }) {
     ) : null;
   return (
     <div className="wl-lists">
-      <div className="wl-chips" role="group" aria-label="Watchlist">
-        {w.own.map((l) => (
+      <div className="wl-chips-row">
+        <div className="wl-chips" role="group" aria-label="Watchlist">
+          {w.own.map((l) => (
+            <button
+              type="button"
+              key={l.id}
+              aria-pressed={w.chosenId === l.id}
+              onClick={() => w.choose(l.id)}
+            >
+              {l.name} <span className="count num">{l.tickers.length}</span>
+            </button>
+          ))}
+          {!naming && (
+            <button
+              type="button"
+              className="wl-new"
+              onClick={() => {
+                setNaming(true);
+                setMessage("");
+              }}
+            >
+              + New list
+            </button>
+          )}
+        </div>
+        {editable && (
           <button
             type="button"
-            key={l.id}
-            aria-pressed={w.chosenId === l.id}
-            onClick={() => w.choose(l.id)}
+            className="wl-edit"
+            aria-pressed={editing}
+            aria-label={
+              editing ? "Close the list editor" : `Edit ${w.current!.name}`
+            }
+            onClick={onEdit}
           >
-            {l.name} <span className="count num">{l.tickers.length}</span>
-          </button>
-        ))}
-        {!naming && (
-          <button
-            type="button"
-            className="wl-new"
-            onClick={() => {
-              setNaming(true);
-              setMessage("");
-            }}
-          >
-            + New list
+            {editing ? "Done" : "Edit list"}
           </button>
         )}
       </div>
@@ -220,7 +247,7 @@ export function WatchlistSwitcher({ w }: { w: Watchlists }) {
   );
 }
 
-/** Add and remove symbols of the chosen list, rename it or delete it. */
+/** Add and remove symbols of the chosen list, rename it or delete it; shown under the list chips. */
 export function WatchlistEditor({
   w,
   onChanged,
@@ -254,13 +281,14 @@ export function WatchlistEditor({
   };
   const typed = parseSymbols(input);
   return (
-    <details
+    <section
       className="engine-tickers wl-editor"
-      open={list.tickers.length === 0}
+      aria-label={`Edit ${list.name}`}
     >
-      <summary>
-        Edit “{list.name}” ({list.tickers.length})
-      </summary>
+      <h3 className="wl-editor-title">
+        Edit “{list.name}”{" "}
+        <span className="count num">{list.tickers.length}</span>
+      </h3>
       <form
         className="engine-ticker-add"
         onSubmit={(e) => {
@@ -320,7 +348,7 @@ export function WatchlistEditor({
               run(() => w.change(list.id, { remove: [t] }), `Removed ${t}.`)
             }
           >
-            {t} ×
+            {t} <span aria-hidden="true">×</span>
           </button>
         ))}
       </div>
@@ -383,7 +411,7 @@ export function WatchlistEditor({
           {message}
         </p>
       )}
-    </details>
+    </section>
   );
 }
 

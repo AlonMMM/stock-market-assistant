@@ -90,3 +90,52 @@ export function ensureBotAccount(
   );
   return id;
 }
+
+// The strangle bot's own Alpaca paper account (user 2026-10-25: "create
+// another test with this strategy and test it - not mix them"), next to the
+// owner's and the Indi bot's. Its keys are STRANGLE_ALPACA_API_KEY /
+// STRANGLE_ALPACA_API_SECRET; without them the strangle bot does not run at
+// all: it never falls back to another account (docs/tasks/backend-strangle-bot.md).
+export const strangleAccountSuffix = "strangle";
+export const strangleKeyVariable = "STRANGLE_ALPACA_API_KEY";
+export const strangleSecretVariable = "STRANGLE_ALPACA_API_SECRET";
+
+/** The owner's strangle account, if it was added. */
+export function strangleAccount(store: TradeStore): BrokerAccount | null {
+  const owner = store.users().find((u) => u.isAdmin);
+  if (!owner) return null;
+  return (
+    store
+      .accounts(owner.id)
+      .find((a) => a.id === `${owner.id}-${strangleAccountSuffix}`) ?? null
+  );
+}
+
+/** Adds the strangle account once both key variables are set; its id when added, else null. */
+export function ensureStrangleAccount(
+  store: TradeStore,
+  env: Env,
+  now: number,
+): string | null {
+  if (!env[strangleKeyVariable] || !env[strangleSecretVariable]) return null;
+  const owner = store.users().find((u) => u.isAdmin);
+  if (!owner || strangleAccount(store)) return null;
+  const id = `${owner.id}-${strangleAccountSuffix}`;
+  store.addAccount(
+    {
+      id,
+      userId: owner.id,
+      broker: "alpaca",
+      mode: "paper",
+      isDefault: false,
+      credentials: {
+        key: { env: strangleKeyVariable },
+        secret: { env: strangleSecretVariable },
+      },
+      gatewayUrl: null,
+      enabled: true,
+    },
+    now,
+  );
+  return id;
+}

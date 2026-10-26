@@ -4427,6 +4427,44 @@ dialog.why::backdrop {
   border: 1px dashed #b9c3b6;
   color: #3d4f48;
 }
+.wl-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.wl-chips-row > .wl-chips {
+  flex: 1 1 auto;
+}
+.wl-chips-row > button.wl-edit {
+  flex: none;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid #b9c3b6;
+  color: #142b29;
+  font-weight: 600;
+}
+.wl-chips-row > button.wl-edit[aria-pressed="true"] {
+  background: #142b29;
+  border-color: #142b29;
+  color: #fff;
+}
+.wl-editor .chips {
+  margin-bottom: 14px;
+}
+.wl-editor-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
 .wl-name-form {
   display: flex;
   flex-wrap: wrap;
@@ -7110,5 +7148,153 @@ i.added {
   }
   .bs-actions button {
     flex: 1;
+  }
+}
+
+/* The strangle bot's tab (docs/tasks/backend-strangle-bot.md): the Bot tab's
+   cards and tokens, plus its trade table. */
+.bot-panel .st-total {
+  margin: 4px 0 0;
+  font-size: 26px;
+  font-weight: 650;
+}
+.bot-panel .up {
+  color: var(--bot-up);
+}
+.bot-panel .down {
+  color: var(--bot-down);
+}
+.st-table-wrap {
+  overflow-x: auto;
+}
+.st-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.st-table th,
+.st-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--bot-line);
+  text-align: left;
+  white-space: nowrap;
+}
+.st-table th {
+  color: var(--bot-faint);
+  font-weight: 600;
+}
+.st-table .num {
+  text-align: right;
+}
+.st-row {
+  cursor: pointer;
+}
+.st-row:hover td {
+  background: var(--bot-up-soft);
+}
+.st-detail td {
+  white-space: normal;
+}
+.st-fills {
+  margin: 4px 0 6px;
+  padding-left: 1.4em;
+}
+.st-alerts,
+.st-events,
+.st-tickers {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.st-tickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.st-ev-error {
+  color: var(--bot-down);
+}
+.st-ev-order {
+  font-weight: 600;
+}
+
+/* Risk settings per account (RiskSettings.tsx, user 2026-10-26). */
+.risk-page {
+  display: grid;
+  gap: 16px;
+}
+.risk-card .bs-card-head {
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.risk-card h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.risk-state {
+  font-size: 13px;
+  color: #3d4f48;
+}
+.risk-state.brake {
+  color: #c0322b;
+  font-weight: 600;
+}
+.risk-state.recovery {
+  color: #8a5a00;
+}
+.risk-control,
+.risk-pair {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.risk-pairs {
+  display: grid;
+  gap: 8px;
+}
+.risk-pair > .small {
+  min-width: 72px;
+}
+.risk-input {
+  width: 84px;
+  font: inherit;
+  font-size: 15px;
+  padding: 7px 9px;
+  border: 1px solid #d0d6ca;
+  border-radius: 8px;
+  background: #fff;
+  color: #142b29;
+}
+.risk-input:disabled {
+  background: transparent;
+  color: #3d4f48;
+}
+.risk-unit {
+  font-size: 13px;
+  color: #3d4f48;
+}
+.risk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+@media (max-width: 600px) {
+  .risk-pair {
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .risk-pair .risk-input {
+    width: 60px;
+    padding: 6px 7px;
+  }
+  .risk-pair > .small {
+    min-width: 58px;
   }
 }

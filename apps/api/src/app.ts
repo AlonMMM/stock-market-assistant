@@ -92,6 +92,7 @@ export function buildApp(
   const app = Fastify({ logger: logging });
   const portfolio = new PortfolioCache();
   const botPortfolio = new PortfolioCache(); // the bot's own account
+  const stranglePortfolio = new PortfolioCache(); // the strangle bot's account
   app.post("/api/backtest", async (request, reply) => {
     const result = await handleBacktest(
       request.body,
@@ -252,6 +253,87 @@ export function buildApp(
       .header("Cache-Control", "no-store")
       .send(result.body);
   });
+  // The strangle bot (docs/tasks/backend-strangle-bot.md).
+  app.get("/api/strangle", async (_request, reply) => {
+    const result = await handleBotStatus(
+      { url: process.env.TRADER_URL, token: process.env.TRADER_READ_TOKEN },
+      fetch,
+      "/v1/strangle",
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.get("/api/strangle/settings", async (_request, reply) => {
+    const result = await handleBotSettings(
+      { url: process.env.TRADER_URL, readToken: process.env.TRADER_READ_TOKEN },
+      null,
+      { method: "GET", origin: "", requestOrigin: null },
+      fetch,
+      "/v1/strangle/settings",
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.put("/api/strangle/settings", async (_request, reply) =>
+    reply
+      .code(403)
+      .send({ error: "Saving settings works on the hosted site only" }),
+  );
+  const strangleAt = (period: unknown) =>
+    handleBotPortfolio(
+      {
+        key: process.env.STRANGLE_ALPACA_API_KEY,
+        secret: process.env.STRANGLE_ALPACA_API_SECRET,
+      },
+      period,
+      stranglePortfolio,
+      alpaca.fetcher,
+      Date.now(),
+      "The strangle bot's Alpaca paper account is not connected (STRANGLE_ALPACA_API_KEY and STRANGLE_ALPACA_API_SECRET)",
+    );
+  app.get("/api/portfolio/strangle", async (_request, reply) => {
+    const result = await strangleAt(undefined);
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.get<{ Querystring: { period?: string } }>(
+    "/api/portfolio/strangle/history",
+    async (request, reply) => {
+      const result = await strangleAt(request.query.period ?? "");
+      return reply
+        .code(result.status)
+        .header("Cache-Control", "no-store")
+        .send(result.body);
+    },
+  );
+  // The risk settings: read here, saved on the hosted site only.
+  app.get("/api/risk", async (_request, reply) => {
+    const result = await handleBotSettings(
+      {
+        url: process.env.TRADER_URL,
+        readToken: process.env.TRADER_READ_TOKEN,
+      },
+      null,
+      { method: "GET", origin: "", requestOrigin: null },
+      fetch,
+      "/v1/risk",
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.put("/api/risk", async (_request, reply) =>
+    reply
+      .code(403)
+      .send({ error: "Saving settings works on the hosted site only" }),
+  );
   // Saving settings needs the hosted site's sign-in; here they can be read only.
   app.get("/api/bot/settings", async (_request, reply) => {
     const result = await handleBotSettings(

@@ -2,6 +2,14 @@
 // broker keys, runs orders as jobs and keeps the trade records. Only the
 // hosted site talks to it, with TRADER_TOKEN; Claude reaches it through the
 // site's connector and never sees a key.
+import { TelegramSender } from "../../../packages/notifications/src/telegram.js";
+import { TelegramNotifier } from "../../../packages/trading/src/notifier.js";
+import {
+  accountRiskBounds,
+  defaultAccountRisk,
+  parseAccountRisk,
+  withDefaults,
+} from "../../../packages/trading/src/account-risk.js";
 import { timingSafeEqual } from "node:crypto";
 import { newYork } from "../../../packages/market-data/src/calendar.js";
 import { mkdirSync } from "node:fs";
@@ -12,9 +20,17 @@ import { StoqeyTws } from "../../../packages/trading/src/tws-client.js";
 import { ensureOwnerIbkr, seedOwner } from "./seed.js";
 import {
   botAccountFor,
+  botAccountSuffix,
   botBrokerFromEnv,
   ensureBotAccount,
+  ensureStrangleAccount,
+  strangleAccount,
+  strangleAccountSuffix,
+  strangleKeyVariable,
 } from "./seed-bot.js";
+import { StrangleBot, strangleTag } from "./strangle.js";
+import { StrangleStore } from "./strangle-store.js";
+import { parseStrangleSettings } from "../../../packages/trading/src/strangle/settings.js";
 import { EquityLog } from "./equity-log.js";
 import { botHistory, botPortfolio } from "./bot-portfolio.js";
 import { ShortWatch } from "./short-watch.js";
@@ -56,9 +72,23 @@ const ibkr = ensureOwnerIbkr(store, process.env, Date.now());
 if (ibkr) log(`added the owner's IBKR paper account "${ibkr}"`);
 const botAdded = ensureBotAccount(store, process.env, Date.now());
 if (botAdded) log(`added the bot's own Alpaca paper account "${botAdded}"`);
+const strangleAdded = ensureStrangleAccount(store, process.env, Date.now());
+if (strangleAdded)
+  log(`added the strangle bot's own Alpaca paper account "${strangleAdded}"`);
 const vaultKey = env("TRADER_VAULT_KEY");
+// The Alert leg bot's own Telegram chat (bot-channel.ts): both values, or neither.
+const legToken = process.env.ALERT_LEG_TELEGRAM_BOT_TOKEN ?? "";
+const legChat = process.env.ALERT_LEG_TELEGRAM_CHAT_ID ?? "";
+if (!legToken !== !legChat)
+  throw new Error(
+    "Set both ALERT_LEG_TELEGRAM_BOT_TOKEN and ALERT_LEG_TELEGRAM_CHAT_ID, or neither",
+  );
+const legNotifier = legToken
+  ? new TelegramNotifier(new TelegramSender(legToken, legChat))
+  : null;
 const traders = new Traders({
   store,
+  bots: legNotifier ? { notifier: legNotifier, tags: [strangleTag] } : null,
   secrets: {
     env: process.env,
     ...(vaultKey ? { vault: new Vault(vaultKey) } : {}),
@@ -189,6 +219,62 @@ api.post<{ Params: { id: string } }>("/v1/jobs/:id/cancel", async (request) =>
 api.post("/v1/cancel", async (request) =>
   service(request).cancel(body(request.body)),
 );
+// The owner's risk settings, per account (account-risk.ts; user 2026-10-26).
+const riskLabel = (a: { id: string; broker: string; userId: string }) => {
+  const labels: Record<string, string> = {
+    [`${a.userId}-alpaca`]: "Your Alpaca account",
+    [`${a.userId}-${botAccountSuffix}`]: "Main bot · Alpaca",
+    [`${a.userId}-ibkr`]: "Interactive Brokers · you and the main bot",
+    [`${a.userId}-${strangleAccountSuffix}`]: "Volume bot · Alpaca",
+  };
+  return labels[a.id] ?? `${a.broker} · ${a.id}`;
+};
+const riskAccounts = () =>
+  store
+    .users()
+    .flatMap((u) => store.accounts(u.id))
+    .filter((a) => a.enabled);
+api.get("/v1/risk", async () => {
+  const accounts = await Promise.all(
+    riskAccounts().map(async (a) => {
+      // The account's state now, if it answers in time (IBKR may not).
+      const status = await Promise.race([
+        traders
+          .forAccount(a.id)
+          .engine.status()
+          .catch(() => null),
+        new Promise<null>((done) => setTimeout(() => done(null), 8000)),
+      ]);
+      return {
+        id: a.id,
+        broker: a.broker,
+        label: riskLabel(a),
+        settings: withDefaults(store.accountRisk(a.id)),
+        saved: store.accountRisk(a.id) !== null,
+        now: status
+          ? {
+              equity: status.equity,
+              dayChangePct: status.dayChangePct,
+              state: status.limits.riskManager.state,
+              reason: status.limits.riskManager.reason,
+            }
+          : null,
+      };
+    }),
+  );
+  return { accounts, defaults: defaultAccountRisk, bounds: accountRiskBounds };
+});
+api.put("/v1/risk", async (request) => {
+  const b = body(request.body);
+  const account = riskAccounts().find((a) => a.id === b.accountId);
+  if (!account) throw new RequestError("No such account");
+  const risk = parseAccountRisk(b.settings);
+  if (typeof risk === "string") throw new RequestError(risk);
+  store.setAccountRisk(account.id, risk, Date.now());
+  traders.reloadRisk(account.id);
+  log(`risk settings of ${account.id}: ${JSON.stringify(risk)}`);
+  return { id: account.id, settings: risk };
+});
 api.get("/v1/positions", async (request) => service(request).status());
 api.get<{ Querystring: { limit?: string } }>("/v1/decisions", async (request) =>
   service(request).decisions(Number(request.query.limit)),
@@ -286,17 +372,16 @@ api.get("/v1/bot", async () => {
   return bot.status();
 });
 // The site sends the user's favorites list before each session.
+// The strangle bot follows the same favorites list (docs/tasks/backend-strangle-bot.md).
 api.post("/v1/bot/watchlist", async (request) => {
-  if (!bot) throw new RequestError(botOff, 409);
+  if (!bot && !strangle) throw new RequestError(botOff, 409);
   const b = body(request.body);
   if (typeof b.name !== "string" || !Array.isArray(b.tickers))
     throw new RequestError("Need name and tickers");
-  return {
-    tickers: bot.setWatchlist(
-      b.name.slice(0, 40),
-      b.tickers.map(String).slice(0, 200),
-    ),
-  };
+  const name = b.name.slice(0, 40);
+  const tickers = b.tickers.map(String).slice(0, 200);
+  strangle?.setWatchlist(name, tickers);
+  return { tickers: bot ? bot.setWatchlist(name, tickers) : tickers };
 });
 api.post("/v1/bot", async (request) => {
   if (!bot) throw new RequestError(botOff, 409);
@@ -357,6 +442,69 @@ api.get("/v1/bot/portfolio/history", async (request) => {
   return history.body;
 });
 
+// The alert strangle (docs/tasks/backend-strangle-bot.md): a second bot on
+// its own Alpaca paper account only (STRANGLE_ALPACA_API_KEY / _SECRET); it
+// never trades another account. Its on/off and dry run are its own settings,
+// saved from the site's Strangle settings page; market data comes from the
+// owner's Alpaca keys, as the Indi bot's.
+const strangleStore = new StrangleStore(dbPath);
+let strangleOff = `The strangle bot has no account: set ${strangleKeyVariable} and its secret`;
+const strangle = (() => {
+  const key = env("ALPACA_API_KEY", "APCA_API_KEY_ID");
+  const secret = env("ALPACA_API_SECRET", "APCA_API_SECRET_KEY");
+  const account = strangleAccount(store);
+  if (!key || !secret || !account || !account.enabled) return null;
+  let t: ReturnType<typeof traders.forAccount>;
+  try {
+    t = traders.forAccount(account.id);
+  } catch (error) {
+    strangleOff = `The strangle bot's account cannot start: ${error instanceof Error ? error.message : String(error)}`;
+    log(strangleOff);
+    return null;
+  }
+  log(`the strangle bot trades its own account "${account.id}"`);
+  const owner = () => traders.forCaller(undefined);
+  return new StrangleBot({
+    store: strangleStore,
+    market: new AlpacaBotMarket(key, secret, "sip"),
+    account: account.id,
+    trading: {
+      chain: (u, right, from, to) => t.broker.chain(u, right, from, to),
+      quote: (c) => t.broker.quote(c),
+      held: async (c) => {
+        const p = await t.broker.position(c).catch(() => null);
+        return p && p.qty > 0 ? p : null;
+      },
+      equity: () => t.broker.equity(),
+      buy: (b) => t.service.buy(b),
+      sell: (b) => t.service.sell(b),
+      job: (id) => t.service.job(id),
+    },
+    // The Alert leg's own chat when set, else the owner's channels.
+    notify: (title, lines) =>
+      (legNotifier ?? owner().notifier).notice(title, lines),
+    earnings: (date) => nasdaqEarnings(date),
+    log,
+  });
+})();
+const strangleTimer = strangle
+  ? setInterval(() => void strangle.tick(), 10_000)
+  : null;
+api.get("/v1/strangle", async () => {
+  if (!strangle) throw new RequestError(strangleOff, 409);
+  return strangle.status();
+});
+api.get("/v1/strangle/settings", async () => {
+  if (!strangle) throw new RequestError(strangleOff, 409);
+  return strangle.settings();
+});
+api.put("/v1/strangle/settings", async (request) => {
+  if (!strangle) throw new RequestError(strangleOff, 409);
+  const parsed = parseStrangleSettings(request.body);
+  if (!parsed.ok) throw new RequestError(parsed.error);
+  return strangle.setSettings(parsed.value);
+});
+
 // A stop that sells is reported within this long.
 const stopWatchMs = 15_000;
 const watchAll = () =>
@@ -400,7 +548,9 @@ async function stop() {
   clearInterval(stopWatch);
   clearInterval(shortWatch);
   if (botTimer) clearInterval(botTimer);
+  if (strangleTimer) clearInterval(strangleTimer);
   botStore.close();
+  strangleStore.close();
   await api.close();
   // A job cut off here is settled by `reconcile` on the next start.
   store.close();

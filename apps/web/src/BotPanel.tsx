@@ -89,8 +89,8 @@ export function useBotContracts(): ReadonlySet<string> {
 
 export function BotChip() {
   return (
-    <span className="bot-chip" title="Opened by the bot">
-      🤖 Bot
+    <span className="bot-chip" title="Opened by the main bot">
+      🤖 Main bot
     </span>
   );
 }
@@ -1096,7 +1096,7 @@ export function BotPanel({ onSettings }: { onSettings?: () => void }) {
       <div className="bot-panel">
         <div className="bot-head">
           <div>
-            <h2 className="portfolio-title">🤖 Bot</h2>
+            <h2 className="portfolio-title">🤖 Main bot</h2>
             <p className="muted small">
               {value.version && `Version ${value.version} · `}
               Delta {value.delta} · {value.sizePct}% a trade · paper account

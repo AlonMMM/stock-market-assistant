@@ -29,6 +29,25 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
 - **Portfolio navigation (2026-10-25, `feat/portfolio-two-tabs`):** two tabs, Trade (Live trades · New trade ·
   Orders · History) and 🤖 Bot (Activity · Trades · Settings), each with a pill row of pages that remembers where
   it was; the owner-only pages (New trade, Settings) are hidden from visitors. Was six flat tabs.
+- **Names (2026-10-26, the user's):** the Indi bot is the **Main bot** (🤖 Main bot) and the Alert leg bot is the
+  **Volume bot** (🎯 Volume bot), in the Portfolio tabs, pages, Risk cards and Telegram posts. The code keeps its
+  module names (`bot.ts`, `strangle.ts`).
+- **Alert leg bot's own Telegram chat (2026-10-26):** with `ALERT_LEG_TELEGRAM_BOT_TOKEN` and
+  `ALERT_LEG_TELEGRAM_CHAT_ID` set on `sma-trader` (Railway references to the collector's `TELEGRAM_BOT_TOKEN` and
+  `TELEGRAM_CHAT_ID`: tradisiomos_bot in "Trade ideas", the volume alerts' chat), the Alert leg bot's buys, sales,
+  stop fills and notices go there. The Indi bot, the owner's trades and every urgent alert stay on almo_ot_bot
+  ("almo191 trades"). Unset: nothing changes (`apps/trader/src/bot-channel.ts`). The volume alerts themselves are
+  muted for now (the collector's `PUT /notifications {muted: true}`); they still show in the app.
+- **Risk settings per account (2026-10-26):** Portfolio → Trade → Risk: each account (yours, the Indi bot's,
+  IBKR, the Alert leg's) has its own daily loss limit (default 5%), risk per trade, open risk, largest position,
+  buys per day and drawdown brake with its brake / recovery limits; the owner saves, the next buy uses them
+  (`packages/trading/src/account-risk.ts`, the trading service's `account_risk` table, `/api/risk`). A trade with a
+  stop is now counted at its stop (a 2% trade at the 50% stop is 1%), so after a 4% losing day it still fits 5%.
+  The 3% size cap per trade stays fixed in code.
+- **Option bid / ask on every bot record (2026-10-25):** the accounts are paper accounts, so their fills are not
+  real-world prices. Both bots (Indi and Alert leg) keep the option's bid / ask at the decision: on the signal (the
+  contract picked, a too-cheap one too), on each account's buy (`entryBook`) and on every sale or order (`book`), each with the broker whose quote it is (alpaca or ibkr), in
+  the trading service's SQLite (`apps/trader/src/option-book.ts`). Records before this date have none.
 - **IBKR (2026-10-24, #140 and #142 deployed):** the Bot settings page gets a Broker
   switch (Alpaca | Interactive Brokers | Both) for new entries; a position is sold where it was bought. "Both"
   buys the same contract at each account, to compare fills and fees; the Bot trades tab shows either account by
@@ -46,6 +65,15 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
   the deployed bot on `main` would read no bars and never signal.
 
 See the [task](tasks/backend-indi-bot.md).
+
+## In progress: the alert leg, a second bot (2026-10-25)
+
+A separate bot on its own Alpaca paper account (`STRANGLE_ALPACA_API_KEY`), with its own Portfolio tab
+(🎯 Alert leg: Activity, Trades, Settings): on the first volume alert of an expiry day it waits for the side (a
+quarter of the stock's typical 30-minute move), buys only that side's 0.35-delta leg of the day's expiry (0DTE, or
+1DTE on days whose nearest expiry is the next session, since 2026-10-25) and sells when the
+stock gives back 0.75 of that move from its best. Parity 497/499 with the backtest. Waiting for the account;
+starts off and in dry run. See the [task](tasks/backend-strangle-bot.md).
 
 ## Live prices every second: Watchlist and charts (2026-10-19)
 

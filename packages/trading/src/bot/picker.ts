@@ -31,6 +31,8 @@ export type Picked =
   | {
       ok: false;
       reason: "no_expiry" | "no_strikes" | "no_prices" | "too_cheap";
+      // too_cheap: the contract it would have taken, so its book can be kept
+      quote?: OptionQuote;
     };
 
 const day = 86_400_000;
@@ -83,6 +85,7 @@ export function pickContract(
       best = { quote: q, mid: (q.bid + q.ask) / 2, delta };
   }
   if (!best) return { ok: false, reason: "no_prices" };
-  if (best.mid < r.minPrice) return { ok: false, reason: "too_cheap" };
+  if (best.mid < r.minPrice)
+    return { ok: false, reason: "too_cheap", quote: best.quote };
   return { ok: true, ...best };
 }

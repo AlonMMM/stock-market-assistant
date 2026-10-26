@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { bookOf, type OptionBook } from "./option-book.js";
 import {
   coreClose,
   newYork,
@@ -144,7 +145,7 @@ export interface BotOptions {
   log?: (line: string) => void;
 }
 
-export const botTag = "🤖 Bot";
+export const botTag = "🤖 Main bot";
 // A buy keeps raising its price to the ask for up to this long; a sale is
 // re-priced at the bid for up to this long (docs/tasks/backend-indi-bot.md,
 // "Orders").
@@ -764,6 +765,14 @@ export class IndiBot {
       date,
       pick,
     );
+    // The picked contract's bid / ask, kept with the signal (paper fills are not real ones).
+    const chosen = picked.quote;
+    const pickedBook = bookOf(chosen, this.o.now(), legs[0]!);
+    if (chosen && pickedBook)
+      this.o.store.setSignalBook(date, symbol, {
+        ...pickedBook,
+        contract: chosen.symbol,
+      });
     if (!picked.ok) return this.outcome(date, symbol, picked.reason, "");
     const contract = picked.quote.symbol;
     const volume = await this.o.market.optionVolume30(contract, date, minute);
@@ -808,7 +817,18 @@ export class IndiBot {
     };
     const results: { broker: BotBroker; outcome: string; detail: string }[] =
       [];
-    for (const broker of legs)
+    for (const [i, broker] of legs.entries()) {
+      // The first account's book is the chain's at the pick; another account's is its own quote.
+      const book =
+        i === 0
+          ? pickedBook
+          : bookOf(
+              await this.trading(broker)
+                .quote(contract)
+                .catch(() => null),
+              this.o.now(),
+              broker,
+            );
       results.push({
         broker,
         ...(await this.enterAt(
@@ -818,8 +838,10 @@ export class IndiBot {
           s,
           why,
           legs.length > 1,
+          book,
         )),
       });
+    }
     // The signal's one outcome: an entry if any leg entered, else the first miss.
     const entered = results.filter(
       (r) => r.outcome === "bought" || r.outcome === "would-buy",
@@ -848,6 +870,7 @@ export class IndiBot {
     s: BotSettings,
     why: string,
     named: boolean,
+    book?: OptionBook,
   ): Promise<{ outcome: string; detail: string }> {
     const { symbol, contract } = base;
     const at = named ? ` · ${brokerNames[broker]}` : "";
@@ -857,7 +880,12 @@ export class IndiBot {
         outcome: "held",
         detail: `${this.words(contract)} is already in the account${at}`,
       };
-    const position: BotPosition = { ...base, id: randomUUID(), broker };
+    const position: BotPosition = {
+      ...base,
+      id: randomUUID(),
+      broker,
+      ...(book ? { entryBook: book } : {}),
+    };
     if (s.mode === "dry") {
       const equity = await this.equity(broker);
       const qty = Math.floor((equity * s.sizePct) / 100 / (mid * 100));
@@ -1113,7 +1141,14 @@ export class IndiBot {
           quote && quote.bid > 0 && quote.ask > 0
             ? (quote.bid + quote.ask) / 2
             : null;
-        await this.sell(p, p.qty, "failed-break", mid, s);
+        await this.sell(
+          p,
+          p.qty,
+          "failed-break",
+          mid,
+          s,
+          bookOf(quote, this.o.now(), this.brokerOf(p)),
+        );
         continue;
       }
       const expiry = expiryOf(p.contract);
@@ -1163,7 +1198,15 @@ export class IndiBot {
         // The overnight cap: sell what is worth more than the cap first, hold the rest.
         const cap = await this.nightCap(p, mid, date, s);
         const keep = p.qty - cap.sell;
-        if (cap.sell > 0) await this.sell(next, cap.sell, cap.reason, mid, s);
+        if (cap.sell > 0)
+          await this.sell(
+            next,
+            cap.sell,
+            cap.reason,
+            mid,
+            s,
+            bookOf(quote, this.o.now(), this.brokerOf(p)),
+          );
         else this.o.store.savePosition(next);
         if (keep <= 0) continue;
         this.event(
@@ -1187,7 +1230,14 @@ export class IndiBot {
           );
         continue;
       }
-      await this.sell(next, decision.sell, decision.reason, mid, s);
+      await this.sell(
+        next,
+        decision.sell,
+        decision.reason,
+        mid,
+        s,
+        bookOf(quote, this.o.now(), this.brokerOf(p)),
+      );
     }
   }
 
@@ -1290,6 +1340,7 @@ export class IndiBot {
     reason: ExitReason,
     mid: number | null,
     s: BotSettings,
+    book?: OptionBook,
   ) {
     const ask = Math.min(qty, p.qty);
     let why = reasonText(reason, s);
@@ -1309,6 +1360,7 @@ export class IndiBot {
             reason,
             jobId: null,
             ...(mid === null ? {} : { price: mid }),
+            ...(book ? { book } : {}),
           },
         ],
         ...(left === 0
@@ -1354,7 +1406,13 @@ export class IndiBot {
       ...p,
       sales: [
         ...p.sales,
-        { at: this.o.now(), qty: ask, reason, jobId: answer.jobId },
+        {
+          at: this.o.now(),
+          qty: ask,
+          reason,
+          jobId: answer.jobId,
+          ...(book ? { book } : {}),
+        },
       ],
     });
     this.event(

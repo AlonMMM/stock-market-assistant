@@ -19,6 +19,8 @@ import { usePolling } from "./Live.js";
 import { OrderActions, StopMover } from "./OrderControls.js";
 import { BotChip, BotPanel, useBotContracts } from "./BotPanel.js";
 import { BotSettingsPage } from "./BotSettings.js";
+import { RiskSettingsPage } from "./RiskSettings.js";
+import { StrangleActivity, StrangleSettingsPage } from "./StranglePanel.js";
 import { Orders, useDecisions, WhyButton } from "./Orders.js";
 import { PositionList, useControlAccess } from "./Positions.js";
 import {
@@ -285,22 +287,34 @@ const groups = [
       ["new", "New trade"],
       ["orders", "Orders"],
       ["history", "History"],
+      ["risk", "Risk"],
     ],
   ],
   [
     "bot",
-    "🤖 Bot",
+    "🤖 Main bot",
     [
       ["activity", "Activity"],
       ["trades", "Trades"],
       ["settings", "Settings"],
     ],
   ],
+  // The alert strangle, a separate bot on its own paper account
+  // (docs/tasks/backend-strangle-bot.md, user 2026-10-25: "not mix them").
+  [
+    "strangle",
+    "🎯 Volume bot",
+    [
+      ["s-activity", "Activity"],
+      ["s-trades", "Trades"],
+      ["s-settings", "Settings"],
+    ],
+  ],
 ] as const;
 type Group = (typeof groups)[number][0];
 type Page = (typeof groups)[number][2][number][0];
 // Pages for the account owner only: the trade ticket and the bot's settings.
-const ownerPages: readonly Page[] = ["new", "settings"];
+const ownerPages: readonly Page[] = ["new", "settings", "s-settings"];
 
 /** Arrow keys move along a tab row and focus the tab they land on. */
 function arrowTo<K extends string>(
@@ -334,6 +348,7 @@ export function Portfolio({
   const [pages, setPages] = useState<Record<Group, Page>>({
     trade: tradeSymbol ? "new" : "live",
     bot: "activity",
+    strangle: "s-activity",
   });
   // The trade ticket and the bot's settings are for the account owner only.
   const { canTrade } = useControlAccess();
@@ -374,6 +389,7 @@ export function Portfolio({
       );
     if (page === "orders") return <Orders onError={ignore} />;
     if (page === "history") return <History onError={ignore} />;
+    if (page === "risk") return <RiskSettingsPage canSave={canTrade} />;
     if (page === "activity")
       return canTrade ? (
         <BotPanel onSettings={() => open("bot", "settings")} />
@@ -383,6 +399,28 @@ export function Portfolio({
     if (page === "trades") return <BotTrades onError={ignore} />;
     if (page === "settings" && canTrade)
       return <BotSettingsPage onBack={() => open("bot", "activity")} />;
+    if (page === "s-activity")
+      return canTrade ? (
+        <StrangleActivity onSettings={() => open("strangle", "s-settings")} />
+      ) : (
+        <StrangleActivity />
+      );
+    if (page === "s-trades")
+      return (
+        <div className="portfolio">
+          <BotAccount
+            broker="alpaca"
+            base="/api/portfolio/strangle"
+            label="🎯 Volume bot · Alpaca paper"
+            onError={ignore}
+          />
+        </div>
+      );
+    if (page === "s-settings" && canTrade)
+      return (
+        <StrangleSettingsPage onBack={() => open("strangle", "s-activity")} />
+      );
+    if (group === "strangle") return <StrangleActivity />;
     return <BotPanel />;
   };
   return (
@@ -698,13 +736,18 @@ function BotTrades({ onError }: { onError: (m: string) => void }) {
 function BotAccount({
   broker,
   onError,
+  // Another bot's own account (the strangle's: /api/portfolio/strangle).
+  base = "/api/portfolio/bot",
+  label,
 }: {
   broker: BotBroker;
   onError: (m: string) => void;
+  base?: string;
+  label?: string;
 }) {
   const query = broker === "alpaca" ? "" : `broker=${broker}`;
   const { value, at, error } = usePolling<PortfolioData>(
-    `/api/portfolio/bot${query ? `?${query}` : ""}`,
+    `${base}${query ? `?${query}` : ""}`,
     botRefreshMs,
     onError,
   );
@@ -724,7 +767,7 @@ function BotAccount({
     <div className="portfolio">
       <p className="portfolio-meta">
         <span className="account-tag paper">
-          🤖 Bot · {brokerNames[broker]} paper
+          {label ?? `🤖 Main bot · ${brokerNames[broker]} paper`}
         </span>
         <span className="muted">
           {error
@@ -801,12 +844,7 @@ function BotAccount({
         <p className="muted">No open orders.</p>
       )}
       <h2 className="portfolio-title">Closed trades</h2>
-      <History
-        onError={onError}
-        base="/api/portfolio/bot"
-        chips={false}
-        query={query}
-      />
+      <History onError={onError} base={base} chips={false} query={query} />
     </div>
   );
 }

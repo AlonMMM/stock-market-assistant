@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import type { BreakWatch } from "../../../packages/trading/src/bot/levels.js";
 import type { BotBroker } from "../../../packages/trading/src/bot/settings.js";
+import type { OptionBook } from "./option-book.js";
 
 // The bot's records (docs/tasks/backend-indi-bot.md), in the trading
 // service's database: every signal and what came of it, and every position
@@ -21,6 +22,9 @@ export interface BotSignal {
   at: number;
   // The bot version in force (versions.ts); missing on signals before versions.
   version?: string;
+  // The contract picked and its bid / ask at the pick (also for a too-cheap
+  // one); missing when no contract was picked, and on signals before 2026-10-25.
+  book?: OptionBook & { contract: string };
 }
 
 export interface BotSale {
@@ -30,6 +34,7 @@ export interface BotSale {
   jobId: string | null; // null in a dry run
   settled?: boolean; // the sale's job has ended and `qty` is what sold
   price?: number; // average fill (the mid in a dry run), for the drawdown pause
+  book?: OptionBook; // bid / ask when the sale was decided (missing before 2026-10-25)
 }
 
 export type BotStatus = "buying" | "open" | "closed";
@@ -68,6 +73,8 @@ export interface BotPosition {
   // The broker it was bought at; its sales go there too. Missing on positions
   // opened before the broker setting: those were bought at the start-up default.
   broker?: BotBroker;
+  // Bid / ask at this account when the buy was sent; missing before 2026-10-25.
+  entryBook?: OptionBook;
   status: BotStatus;
   jobId: string | null;
   dry: boolean;
@@ -141,6 +148,19 @@ export class BotStore {
     this.db
       .prepare("UPDATE bot_signals SET data = ? WHERE day = ? AND symbol = ?")
       .run(JSON.stringify({ ...s, outcome, detail }), day, symbol);
+  }
+
+  /** The picked contract's book on the day's signal of `symbol`. */
+  setSignalBook(
+    day: string,
+    symbol: string,
+    book: OptionBook & { contract: string },
+  ) {
+    const s = this.signal(day, symbol);
+    if (!s) return;
+    this.db
+      .prepare("UPDATE bot_signals SET data = ? WHERE day = ? AND symbol = ?")
+      .run(JSON.stringify({ ...s, book }), day, symbol);
   }
 
   signal(day: string, symbol: string): BotSignal | undefined {
