@@ -150,6 +150,27 @@ export function openRisk(positions: HeldPosition[]): number {
     }, spreads);
 }
 
+/** The open-risk check: everything at risk at the stops against the account's limit; a limit of 0 is off. */
+function openRiskCheck(
+  risk: number,
+  equity: number,
+  limitPct: number,
+  what: string,
+): [string, boolean, string] {
+  if (limitPct <= 0)
+    return [
+      "risk at the same time",
+      true,
+      `${money(risk)} at risk with ${what}; no limit on this account`,
+    ];
+  const riskLimit = (equity * limitPct) / 100;
+  return [
+    "risk at the same time",
+    risk <= riskLimit + 1e-9,
+    `${money(risk)} at risk with ${what}; the limit is ${limitPct}% of the account, ${money(riskLimit)}`,
+  ];
+}
+
 /** Held contracts outside spreads that no stop fully covers. */
 export function withoutStop(positions: HeldPosition[]): HeldPosition[] {
   const pairs = spreadPairs(positions);
@@ -210,12 +231,7 @@ export function checkBuy(
   const tradeRisk =
     (ceiling * qty * 100 * (c.order.noStop ? 100 : stopPct)) / 100;
   const risk = openRisk(c.positions) + tradeRisk;
-  const riskLimit = (c.equity * limits.maxOpenRiskPct) / 100;
-  add(
-    "risk at the same time",
-    risk <= riskLimit + 1e-9,
-    `${money(risk)} at risk with this trade; the limit is ${limits.maxOpenRiskPct}% of the account, ${money(riskLimit)}`,
-  );
+  add(...openRiskCheck(risk, c.equity, limits.maxOpenRiskPct, "this trade"));
   if (limits.requireStops) {
     const bare = withoutStop(c.positions);
     add(
@@ -428,12 +444,7 @@ export function checkSpread(
     `the account is ${pct(Math.abs(dayLossPct))} ${dayLossPct > 0 ? "down" : "up"} today; no buys beyond ${limits.maxDayLossPct}% down`,
   );
   const risk = openRisk(c.positions) + cost;
-  const riskLimit = (c.equity * limits.maxOpenRiskPct) / 100;
-  add(
-    "risk at the same time",
-    risk <= riskLimit + 1e-9,
-    `${money(risk)} at risk with this spread; the limit is ${limits.maxOpenRiskPct}% of the account, ${money(riskLimit)}`,
-  );
+  add(...openRiskCheck(risk, c.equity, limits.maxOpenRiskPct, "this spread"));
   if (limits.requireStops) {
     const bare = withoutStop(c.positions);
     add(

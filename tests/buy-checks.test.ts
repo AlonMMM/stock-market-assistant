@@ -278,3 +278,10 @@ test("buy checks: risk of open positions, a missing stop counts in full", () => 
   // A stop above the entry risks nothing; a short position is not this check's.
   assert.equal(openRisk([held(10, 2.5), held(0, null, -3)]), 0);
 });
+
+test("buy checks: an open risk limit of 0 is off", () => {
+  const c = good();
+  c.positions = [held(50, 0.03, 50)];
+  const v = checkBuy(c, { ...defaultBuyLimits, maxOpenRiskPct: 0 });
+  assert.equal(v.ok, true, v.refused.join(" | "));
+});

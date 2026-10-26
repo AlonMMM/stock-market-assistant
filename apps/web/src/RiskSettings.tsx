@@ -61,7 +61,7 @@ const fields: {
   {
     key: "openRiskPct",
     label: "Open risk",
-    help: "All open trades at their stops, plus the new one.",
+    help: "All open trades at their stops, plus the new one. 0 turns it off.",
     unit: "%",
     step: 0.5,
   },

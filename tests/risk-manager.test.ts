@@ -152,3 +152,14 @@ test("account risk: defaults, a saved record over them, the bounds, and the rule
   assert.deepEqual(r.riskRules.limits.full, { trade: 5, day: 6 });
   assert.deepEqual(r.riskRules.limits.brake, { trade: 1, day: 2 });
 });
+
+test("account risk: the open risk limit may be 0 (off), not below", () => {
+  assert.equal(
+    typeof parseAccountRisk({ ...defaultAccountRisk, openRiskPct: 0 }),
+    "object",
+  );
+  assert.equal(
+    typeof parseAccountRisk({ ...defaultAccountRisk, openRiskPct: -1 }),
+    "string",
+  );
+});

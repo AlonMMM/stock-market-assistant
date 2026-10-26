@@ -13,7 +13,8 @@ export interface AccountRisk {
   dayLossPct: number;
   // One trade's risk at its stop, % of the account, at full.
   tradeRiskPct: number;
-  // The risk at the stops of every open position plus the new one.
+  // The risk at the stops of every open position plus the new one; 0: no limit
+  // (user 2026-10-26, "remove the risk 10% from the account").
   openRiskPct: number;
   // The most one position (one stock and side) may cost.
   maxPositionPct: number;
@@ -40,7 +41,7 @@ export const defaultAccountRisk: AccountRisk = {
 export const accountRiskBounds = {
   dayLossPct: [0.5, 25],
   tradeRiskPct: [0.25, 10],
-  openRiskPct: [1, 50],
+  openRiskPct: [0, 50],
   maxPositionPct: [0.5, 25],
   buysPerDay: [1, 100],
   drawdownPct: [2, 50],
