@@ -15,6 +15,7 @@ import {
   type IPriceLine,
   type IPrimitivePaneRenderer,
   type ISeriesApi,
+  type Logical,
   type ISeriesMarkersPluginApi,
   type LogicalRange,
   type MouseEventParams,
@@ -67,6 +68,7 @@ const colors = {
   expired: "#6b7a76",
   signal: "#2f4b8f",
   touch: "#b5651d",
+  held: "rgba(47, 75, 143, 0.07)",
 };
 // Marker labels are drawn when the bars are at least this far apart.
 const labelSpacing = 5.5;
@@ -88,6 +90,142 @@ const crosshairClock = new Intl.DateTimeFormat("en-GB", {
 /** "Tue 30 Sep · 17:03" from a chart time (the Israel wall clock, read as UTC). */
 export const chartClock = (seconds: number): string =>
   `${crosshairDay.format(seconds * 1000)} · ${crosshairClock.format(seconds * 1000)}`;
+
+/** One fill drawn across the panes: when, at what option price, its label. */
+interface FillMark {
+  time: number; // chart time (the Israel wall clock, read as UTC)
+  kind: "buy" | "sell" | "expired";
+  price: number | null;
+  label: string;
+}
+
+/** The chart x of a time, or of the nearest bar when that minute has none. */
+function xOf(chart: IChartApi, time: number): number | null {
+  const scale = chart.timeScale();
+  const exact = scale.timeToCoordinate(time as UTCTimestamp);
+  if (exact !== null) return exact;
+  const index = scale.timeToIndex(time as UTCTimestamp, true);
+  return index === null
+    ? null
+    : scale.logicalToCoordinate(index as unknown as Logical);
+}
+
+/**
+ * The trade drawn on every pane at the fills' own minutes (user 2026-10-26:
+ * the entry and exit were not shown where they happened): the time held as a
+ * shaded band, a line at the buy and at each sale, their labels along the top
+ * of the price pane, and on the option pane a dot at each fill's price. Not
+ * tied to the option's bars, which a thin contract lacks in many minutes.
+ */
+function tradeMarks(
+  chart: IChartApi,
+  fills: () => FillMark[],
+  role: "stock" | "option" | "other",
+  option: () => ISeriesApi<"Line"> | ISeriesApi<"Candlestick"> | null,
+): IPanePrimitive<Time> {
+  const band: IPrimitivePaneRenderer = {
+    draw: (target) =>
+      target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+        const list = fills();
+        const buy = list.find((f) => f.kind === "buy");
+        const last = list.filter((f) => f.kind !== "buy").at(-1);
+        if (!buy || !last) return;
+        const a = xOf(chart, buy.time);
+        const b = xOf(chart, last.time);
+        if (a === null || b === null) return;
+        context.fillStyle = colors.held;
+        context.fillRect(
+          Math.min(a, b),
+          0,
+          Math.max(2, Math.abs(b - a)),
+          mediaSize.height,
+        );
+      }),
+  };
+  const marks: IPrimitivePaneRenderer = {
+    draw: (target) =>
+      target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+        context.save();
+        context.font = "600 11px Inter, ui-sans-serif, system-ui, sans-serif";
+        context.textBaseline = "middle";
+        let labelRow = 0;
+        let lastLabelEnd = -Infinity;
+        for (const f of fills()) {
+          const x = xOf(chart, f.time);
+          if (x === null) continue;
+          const color =
+            f.kind === "buy"
+              ? colors.buy
+              : f.kind === "sell"
+                ? colors.sell
+                : colors.expired;
+          const px = Math.round(x) + 0.5;
+          context.strokeStyle = color;
+          context.globalAlpha = 0.85;
+          context.lineWidth = 1.5;
+          context.setLineDash([]);
+          context.beginPath();
+          context.moveTo(px, 0);
+          context.lineTo(px, mediaSize.height);
+          context.stroke();
+          context.globalAlpha = 1;
+          if (role === "stock") {
+            // A label chip at the top; a second row when two would overlap.
+            const text = f.label;
+            const w = context.measureText(text).width + 12;
+            const left = Math.min(
+              Math.max(2, px - w / 2),
+              mediaSize.width - w - 2,
+            );
+            labelRow = left < lastLabelEnd + 4 ? labelRow + 1 : 0;
+            lastLabelEnd = left + w;
+            const top = 4 + labelRow * 22;
+            context.fillStyle = color;
+            context.beginPath();
+            context.roundRect(left, top, w, 18, 4);
+            context.fill();
+            context.fillStyle = "#fff";
+            context.fillText(text, left + 6, top + 9.5);
+          }
+          if (role === "option" && f.price !== null) {
+            const series = option();
+            const y = series?.priceToCoordinate(f.price);
+            if (y === null || y === undefined) continue;
+            context.fillStyle = "#fff";
+            context.strokeStyle = color;
+            context.lineWidth = 2.5;
+            context.beginPath();
+            context.arc(px, y, 5, 0, Math.PI * 2);
+            context.fill();
+            context.stroke();
+            const text = f.price.toFixed(2);
+            const w = context.measureText(text).width + 10;
+            // A buy's tag to the right of its dot, a sale's to the left,
+            // clear of the price lines' titles on the right edge.
+            const right = f.kind === "buy";
+            const left =
+              right && px + 8 + w <= mediaSize.width
+                ? px + 8
+                : !right && px - 8 - w >= 0
+                  ? px - 8 - w
+                  : px + 8;
+            context.fillStyle = color;
+            context.beginPath();
+            context.roundRect(left, y - 9, w, 18, 4);
+            context.fill();
+            context.fillStyle = "#fff";
+            context.fillText(text, left + 5, y + 0.5);
+          }
+        }
+        context.restore();
+      }),
+  };
+  const views: IPanePrimitivePaneView[] = [
+    { zOrder: () => "bottom", renderer: () => band },
+    { zOrder: () => "top", renderer: () => marks },
+  ];
+  return { paneViews: () => views };
+}
 
 // Dashed vertical lines where each day after the first starts.
 function dayLines(chart: IChartApi, times: () => Time[]): IPanePrimitive<Time> {
@@ -181,6 +319,19 @@ function markerShape(m: Marker): SeriesMarker<Time> {
   };
 }
 
+const fillClock = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Jerusalem",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+/** "Buy 16:53", "Sell 18:47": the fill's side and Israel time. */
+function fillLabel(m: Marker): string {
+  const side =
+    m.kind === "buy" ? "Buy" : m.kind === "sell" ? "Sell" : "Expired";
+  return m.ms > 0 ? `${side} ${fillClock.format(m.ms)}` : side;
+}
+
 function lineStyle(kind: LevelLine["kind"]): {
   color: string;
   style: LineStyle;
@@ -215,6 +366,7 @@ interface Parts {
   }[];
   ruleLines: IPriceLine[];
   dayStarts: Time[];
+  fills: FillMark[];
   stockLevels: number[];
   optionLevels: number[];
   rvol: Map<number, number>;
@@ -433,8 +585,22 @@ export function TradeStoryChart({
       ?.priceScale("right")
       .applyOptions({ scaleMargins: { top: 0.15, bottom: 0 } });
     p.dayStarts = [];
-    for (const pane of panes)
+    p.fills = [];
+    const optionSeries = () =>
+      p.optionCandles?.options().visible
+        ? p.optionCandles
+        : (p.optionLine ?? null);
+    panes.forEach((pane, i) => {
       pane.attachPrimitive(dayLines(api, () => p.dayStarts ?? []));
+      pane.attachPrimitive(
+        tradeMarks(
+          api,
+          () => p.fills ?? [],
+          i === 0 ? "stock" : i === 3 && hasOption ? "option" : "other",
+          optionSeries,
+        ),
+      );
+    });
     p.stockMarkers = [
       createSeriesMarkers(p.stockLine, []),
       createSeriesMarkers(p.stockCandles, []),
@@ -568,7 +734,13 @@ export function TradeStoryChart({
     p.lines = [];
     p.stockLevels = [];
     p.optionLevels = [];
+    // The watched level and its touch and fall-back lines matter when the
+    // exit was a failed break; otherwise the level is drawn when in view but
+    // does not stretch the price scale, and its two helper lines are left out.
+    const failedBreak = story.exits.some((x) => x.title === "Failed break");
     for (const l of levelLines(story)) {
+      if (!failedBreak && (l.kind === "touch" || l.kind === "fallback"))
+        continue;
       const onStock = l.pane === "stock";
       const targets = onStock
         ? [p.stockLine, p.stockCandles]
@@ -588,8 +760,9 @@ export function TradeStoryChart({
           }),
         });
       }
-      if (onStock) p.stockLevels.push(l.price);
-      else p.optionLevels.push(l.price);
+      if (onStock) {
+        if (l.kind === "entry" || failedBreak) p.stockLevels.push(l.price);
+      } else p.optionLevels.push(l.price);
     }
     // The strength pane: zero, and the rule the signal needed (its side
     // marked, the other faint).
@@ -625,14 +798,22 @@ export function TradeStoryChart({
         }),
       );
     }
+    p.fills = story.markers
+      .filter(
+        (m): m is Marker & { kind: FillMark["kind"] } =>
+          m.kind === "buy" || m.kind === "sell" || m.kind === "expired",
+      )
+      .map((m) => ({
+        time: barTime(m.at.date, m.at.minute),
+        kind: m.kind,
+        price: m.price,
+        label: fillLabel(m),
+      }));
     const stockMarks = story.markers
       .filter((m) => m.pane === "stock")
       .map(markerShape);
-    const optionMarks = story.markers
-      .filter((m) => m.pane === "option")
-      .map(markerShape);
     for (const plugin of p.stockMarkers) plugin.setMarkers(stockMarks);
-    for (const plugin of p.optionMarkers) plugin.setMarkers(optionMarks);
+    for (const plugin of p.optionMarkers) plugin.setMarkers([]);
     if (keep) p.chart.timeScale().setVisibleRange(keep);
   }, [chart, story, ready]);
 
@@ -666,13 +847,13 @@ export function TradeStoryChart({
       scale.setVisibleRange({
         from: barTime(
           entry.date,
-          Math.max(0, entry.minute - 20),
+          Math.max(0, entry.minute - 30),
         ) as UTCTimestamp,
         to: barTime(
           end.date,
           Math.min(
             end.minutes - 1,
-            (end.date === exit.date ? exit.minute : 0) + 40,
+            (end.date === exit.date ? exit.minute : 0) + 60,
           ),
         ) as UTCTimestamp,
       });
@@ -705,11 +886,7 @@ export function TradeStoryChart({
       const stockMarks = story.markers
         .filter((m) => m.pane === "stock")
         .map((m) => strip(markerShape(m)));
-      const optionMarks = story.markers
-        .filter((m) => m.pane === "option")
-        .map((m) => strip(markerShape(m)));
       for (const plugin of p.stockMarkers) plugin.setMarkers(stockMarks);
-      for (const plugin of p.optionMarkers) plugin.setMarkers(optionMarks);
     };
     p.chart.timeScale().subscribeVisibleLogicalRangeChange(onRange);
     onRange();

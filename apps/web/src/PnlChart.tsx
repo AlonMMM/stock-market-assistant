@@ -2,16 +2,20 @@ import { useId, useState } from "react";
 import type { PortfolioHistory } from "../../../packages/trading/src/portfolio.js";
 import {
   cumulativeTrades,
-  monotonePath,
+  israelDayTicks,
+  moneyTick,
   nearestPoint,
   niceTicks,
+  percentTick,
+  stepPath,
+  tickStep,
   tradeTimeDomain,
   timeTicks,
 } from "./trade-history-model.js";
 import {
+  israelClock,
   israelDateTime,
   israelLabel,
-  israelShortDate,
   israelWallSeconds,
 } from "./time.js";
 import { useWidth } from "./use-width.js";
@@ -30,22 +34,21 @@ const money = (n: number) =>
   `${n < 0 ? "−" : n > 0 ? "+" : ""}$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 const percent = (n: number) =>
   `${n < 0 ? "−" : n > 0 ? "+" : ""}${Math.abs(n).toFixed(2)}%`;
-// Axis labels: compact, no forced sign.
-const axisMoney = (n: number) =>
-  `${n < 0 ? "−" : ""}$${Math.abs(n).toLocaleString("en-US", {
-    notation: Math.abs(n) >= 10000 ? "compact" : "standard",
-    maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 2,
-  })}`;
-const axisPercent = (n: number) =>
-  `${n < 0 ? "−" : ""}${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
+const dayLabel = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Jerusalem",
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+});
 const tone = (n: number) =>
   n > 0 ? colors.up : n < 0 ? colors.down : colors.flat;
 
-const margin = { top: 14, right: 18, bottom: 30, left: 64 };
+const margin = { top: 18, right: 18, bottom: 30, left: 70 };
 
 /**
- * Realized P&L through each close as a smooth line on a true time axis;
- * each dot is one closed trade.
+ * Realized account value (or P&L) on a true time axis, as steps: it changes
+ * only when a trade closes, so it runs flat between closes and to now. Each
+ * dot is one closed trade, coloured by that trade's result.
  */
 export function PnlChart({ history }: { history: PortfolioHistory }) {
   const [unit, setUnit] = useState<"usd" | "pct">("usd");
@@ -58,7 +61,6 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
   const pctAvailable = history.baseEquity !== null && history.baseEquity > 0;
   const showPct = unit === "pct" && pctAvailable;
   const format = showPct ? percent : money;
-  const axisFormat = showPct ? axisPercent : axisMoney;
   const value = (p: (typeof points)[number]) =>
     showPct ? p.pct! : equityChart ? history.baseEquity! + p.pnl : p.pnl;
   const tradeValue = (p: (typeof points)[number]) =>
@@ -73,34 +75,38 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
   const dataMax = Math.max(...values, baseline);
   const padding = Math.max(1, (dataMax - dataMin) * 0.12);
   const yTicks = niceTicks(dataMin - padding, dataMax + padding, 5);
+  const yStep = tickStep(yTicks);
+  const axisFormat = (v: number) =>
+    showPct ? percentTick(v, yStep) : moneyTick(v, yStep);
   const min = yTicks[0]!;
   const max = yTicks.at(-1)!;
-  const [start, end] = tradeTimeDomain(
+  const [start, padEnd] = tradeTimeDomain(
     points.map((p) => p.time),
     Date.parse(history.from),
     Date.parse(history.at),
   );
+  // The value holds until now: the line runs on to the time of the answer.
+  const now = Date.parse(history.at);
+  const end = Math.max(padEnd, now);
   const x = (time: number) =>
     margin.left + ((time - start) / (end - start)) * plotW;
   const y = (v: number) => margin.top + ((max - v) / (max - min)) * plotH;
+  // Day ticks at each Israel midnight; within a single day, hours.
+  const tickCount = Math.max(3, Math.floor(plotW / 90));
+  const days = israelDayTicks(start, end, tickCount);
   const offset = israelWallSeconds(start / 1000) * 1000 - start;
-  const xTicks = timeTicks(
-    start,
-    end,
-    Math.max(3, Math.floor(plotW / 100)),
-    offset,
-  );
+  const xTicks =
+    days.length >= 2
+      ? { ticks: days, daily: true }
+      : timeTicks(start, end, tickCount, offset);
 
-  // Show only the realized path between closes; do not imply a flat $0 line
-  // during periods with no closed trades.
-  const tradeVertices: [number, number][] = points.map(
-    (p): [number, number] => [x(p.time), y(value(p))],
+  // Flat at the starting value until the first close, a step at each close,
+  // flat again to now: realized value does not move between closes.
+  const line = stepPath(
+    [x(start), y(baseline)],
+    points.map((p): [number, number] => [x(p.time), y(value(p))]),
+    x(end),
   );
-  const vertices: [number, number][] =
-    !showPct && points.length > 0 && equityChart
-      ? [[x(points[0]!.time) - 1, y(history.baseEquity!)], ...tradeVertices]
-      : tradeVertices;
-  const line = monotonePath(vertices);
   const area = `${line} V ${y(baseline)} H ${x(start)} Z`;
 
   const shown = hover ?? selected;
@@ -147,6 +153,18 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
               {showPct || !equityChart
                 ? format(value(last))
                 : `$${value(last).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
+            </span>
+          )}
+          {last && equityChart && !showPct && (
+            <span className="trade-pnl-change num">
+              <b style={{ color: tone(last.pnl) }}>
+                {money(Math.round(last.pnl))}
+                {last.pct !== null && ` (${percent(last.pct)})`}
+              </b>{" "}
+              since $
+              {history.baseEquity!.toLocaleString("en-US", {
+                maximumFractionDigits: 0,
+              })}
             </span>
           )}
         </div>
@@ -237,8 +255,8 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
                 x2="0"
                 y2="1"
               >
-                <stop offset="0%" stopColor={colors.up} stopOpacity={0.28} />
-                <stop offset="100%" stopColor={colors.up} stopOpacity={0.03} />
+                <stop offset="0%" stopColor={colors.up} stopOpacity={0.16} />
+                <stop offset="100%" stopColor={colors.up} stopOpacity={0.01} />
               </linearGradient>
               <linearGradient
                 id={`${clip}-fill-down`}
@@ -247,11 +265,11 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
                 x2="0"
                 y2="0"
               >
-                <stop offset="0%" stopColor={colors.down} stopOpacity={0.28} />
+                <stop offset="0%" stopColor={colors.down} stopOpacity={0.16} />
                 <stop
                   offset="100%"
                   stopColor={colors.down}
-                  stopOpacity={0.03}
+                  stopOpacity={0.01}
                 />
               </linearGradient>
             </defs>
@@ -300,7 +318,7 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
                   fill={colors.text}
                   fontSize={11}
                 >
-                  {xTicks.daily ? israelShortDate(time) : israelDateTime(time)}
+                  {xTicks.daily ? dayLabel.format(time) : israelClock(time)}
                 </text>
               </g>
             ))}
@@ -311,6 +329,20 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
               y2={margin.top + plotH}
               stroke={colors.zero}
             />
+            {/* The starting value, named where the dashed line ends. */}
+            <text
+              x={margin.left + plotW}
+              y={y(baseline) - 6}
+              textAnchor="end"
+              fill={colors.text}
+              fontSize={11}
+            >
+              {showPct
+                ? "start 0%"
+                : equityChart
+                  ? `start $${baseline.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+                  : "$0"}
+            </text>
             <path
               d={area}
               fill={`url(#${clip}-fill-up)`}
@@ -325,18 +357,16 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
               d={line}
               fill="none"
               stroke={colors.up}
-              strokeWidth={2.25}
-              strokeLinejoin="round"
-              strokeLinecap="round"
+              strokeWidth={2}
+              strokeLinejoin="miter"
               clipPath={`url(#${clip}-up)`}
             />
             <path
               d={line}
               fill="none"
               stroke={colors.down}
-              strokeWidth={2.25}
-              strokeLinejoin="round"
-              strokeLinecap="round"
+              strokeWidth={2}
+              strokeLinejoin="miter"
               clipPath={`url(#${clip}-down)`}
             />
             {active && (
@@ -366,7 +396,7 @@ export function PnlChart({ history }: { history: PortfolioHistory }) {
                 key={`${p.trade.symbol}:${p.trade.openedAt}:${p.trade.closedAt}`}
                 cx={x(p.time)}
                 cy={y(value(p))}
-                r={shown === i ? 6 : points.length > 60 ? 2.5 : 3.5}
+                r={shown === i ? 5.5 : points.length > 60 ? 2.5 : 3.5}
                 fill={tone(p.trade.pnl)}
                 stroke="#fff"
                 strokeWidth={1.5}

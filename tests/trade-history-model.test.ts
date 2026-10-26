@@ -2,11 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   cumulativeTrades,
-  monotonePath,
   nearestPoint,
   niceTicks,
   timeTicks,
   tradeTimeDomain,
+  israelDayTicks,
+  israelMidnight,
+  moneyTick,
+  percentTick,
+  stepPath,
+  tickStep,
 } from "../apps/web/src/trade-history-model.js";
 import type { ClosedTrade } from "../packages/trading/src/portfolio.js";
 const trade = (pnl: number, closedAt: string): ClosedTrade => ({
@@ -91,24 +96,65 @@ test("nearest point finds the closest trade time", () => {
   assert.equal(nearestPoint([], 5), -1);
 });
 
-test("monotone curve passes through every point without overshooting", () => {
-  const path = monotonePath([
-    [0, 0],
-    [10, 10],
-    [20, 10],
-    [30, 0],
-  ]);
-  assert.match(path, /^M 0 0 C /);
-  const numbers = path.match(/-?[\d.]+/g)!.map(Number);
-  const ys = numbers.filter((_, i) => i % 2 === 1);
-  assert.ok(ys.every((v) => v >= 0 && v <= 10));
-  assert.ok(path.endsWith(" 30 0"));
-  assert.equal(monotonePath([[5, 5]]), "M 5 5");
-  assert.match(
-    monotonePath([
-      [0, 0],
-      [0, 5],
-    ]),
-    / L 0 5$/,
+test("step path: flat from the start, a jump at each close, flat to the end", () => {
+  assert.equal(
+    stepPath(
+      [0, 50],
+      [
+        [10, 60],
+        [30, 40],
+      ],
+      100,
+    ),
+    "M 0 50 H 10 V 60 H 30 V 40 H 100",
   );
+  assert.equal(stepPath([5, 50], [], 80), "M 5 50 H 80");
+});
+
+test("day ticks sit on each Israel midnight, across the clock change", () => {
+  // Israel left summer time on 2026-10-25 (UTC+3 → UTC+2).
+  assert.equal(
+    israelMidnight("2026-10-24"),
+    Date.parse("2026-10-23T21:00:00Z"),
+  );
+  assert.equal(
+    israelMidnight("2026-10-26"),
+    Date.parse("2026-10-25T22:00:00Z"),
+  );
+  const ticks = israelDayTicks(
+    Date.parse("2026-10-23T12:00:00Z"),
+    Date.parse("2026-10-26T18:00:00Z"),
+    5,
+  );
+  assert.deepEqual(ticks, [
+    Date.parse("2026-10-23T21:00:00Z"), // Sat 24 Oct
+    Date.parse("2026-10-24T21:00:00Z"), // Sun 25 Oct
+    Date.parse("2026-10-25T22:00:00Z"), // Mon 26 Oct
+  ]);
+  // Many days: every second day at most.
+  const month = israelDayTicks(
+    Date.parse("2026-10-01T00:00:00Z"),
+    Date.parse("2026-10-10T23:00:00Z"),
+    5,
+  );
+  assert.ok(month.length <= 5);
+});
+
+test("axis labels are as precise as the step, never two alike", () => {
+  const ticks = [98500, 99000, 99500, 100000, 100500];
+  const labels = ticks.map((t) => moneyTick(t, tickStep(ticks)));
+  assert.deepEqual(labels, [
+    "$98,500",
+    "$99,000",
+    "$99,500",
+    "$100,000",
+    "$100,500",
+  ]);
+  assert.equal(new Set(labels).size, labels.length);
+  assert.equal(moneyTick(100000, 5000), "$100K");
+  assert.equal(moneyTick(-250, 50), "−$250");
+  assert.equal(moneyTick(12.5, 0.5), "$12.50");
+  assert.equal(percentTick(-1.25, 0.25), "−1.3%");
+  assert.equal(percentTick(0.05, 0.05), "+0.05%");
+  assert.equal(percentTick(0, 1), "0%");
 });

@@ -34,13 +34,17 @@ import {
   botStory,
   chartWindow,
   decisionFor,
-  lastClosedSession,
+  heldText,
+  lastOpenSession,
   mergeSessions,
   ownerStory,
   pageDays,
   tradeChartUrl,
+  tradeStats,
   unknownStory,
+  type PricePoint,
   type Story,
+  type TradeStats,
 } from "./trade-story-model.js";
 import type { ChartStyle, ChartView, Hover } from "./TradeStoryChart.js";
 
@@ -123,6 +127,126 @@ function Readout({ hover, chart }: { hover: Hover; chart: TradeChartData }) {
   );
 }
 
+const pctText = (n: number) =>
+  `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(1)}%`;
+const pctTone = (n: number) => (n > 0 ? " up" : n < 0 ? " down" : "");
+
+function Point({ label, p }: { label: string; p: PricePoint | null }) {
+  if (!p) return null;
+  return (
+    <span>
+      {label} <b className="num">{p.price.toFixed(2)}</b>{" "}
+      <b className={`num${pctTone(p.pct)}`}>{pctText(p.pct)}</b>{" "}
+      <span className="muted num">at {israelClock(p.ms)}</span>
+    </span>
+  );
+}
+
+/**
+ * The trade at a glance, above the chart (user 2026-10-26: "make it easy to a
+ * human to analyze the enter and exit"): the entry, each exit, the time held
+ * and the result, the option's best and worst while held, how the stock and
+ * SPY moved, and what the option did after the sale.
+ */
+function Summary({
+  stats,
+  t,
+  unit,
+}: {
+  stats: TradeStats;
+  t: ClosedTrade;
+  unit: string;
+}) {
+  const plural = (n: number) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  return (
+    <div className="ts-summary">
+      <div className="ts-cell buy">
+        <h4>Entry</h4>
+        <p className="num">
+          <b>{israelClock(stats.entry.ms)}</b> · bought{" "}
+          {plural(stats.entry.qty)} at <b>{stats.entry.price.toFixed(2)}</b>
+        </p>
+        {stats.entry.stock !== null && (
+          <p className="muted num">
+            {t.underlying} at ${stats.entry.stock.toFixed(2)}
+          </p>
+        )}
+      </div>
+      <div className="ts-cell sell">
+        <h4>Exit{stats.exits.length === 1 ? "" : "s"}</h4>
+        {stats.exits.length === 0 && <p className="muted">No sale recorded.</p>}
+        {stats.exits.map((x, i) => (
+          <p key={`${x.ms}-${i}`} className="num">
+            <b>{israelClock(x.ms)}</b> · {plural(x.qty)}
+            {x.price !== null && (
+              <>
+                {" "}
+                at <b>{x.price.toFixed(2)}</b>{" "}
+                <span className={pctTone(x.price - stats.entry.price)}>
+                  {pctText((x.price / stats.entry.price - 1) * 100)}
+                </span>
+              </>
+            )}{" "}
+            · {x.title}
+          </p>
+        ))}
+      </div>
+      <div className="ts-cell">
+        <h4>Held</h4>
+        <p className="num">
+          <b>{heldText(stats.heldMs)}</b> ·{" "}
+          <b className={tone(t.pnl).trim()}>
+            {signedUsd(t.pnl)}
+            {t.pnlPct !== null && ` (${signedPct(t.pnlPct)})`}
+          </b>
+        </p>
+        {stats.stock && (
+          <p className="muted num">
+            {t.underlying} ${stats.stock.from.toFixed(2)} → $
+            {stats.stock.to.toFixed(2)}{" "}
+            <span className={pctTone(stats.stock.pct)}>
+              {pctText(stats.stock.pct)}
+            </span>
+            {stats.spyPct !== null && (
+              <>
+                {" "}
+                · SPY{" "}
+                <span className={pctTone(stats.spyPct)}>
+                  {pctText(stats.spyPct)}
+                </span>
+              </>
+            )}
+          </p>
+        )}
+      </div>
+      <div className="ts-cell">
+        <h4>While held</h4>
+        {stats.best || stats.worst ? (
+          <p className="ts-points">
+            <Point label="Best" p={stats.best} />
+            <Point label="Worst" p={stats.worst} />
+          </p>
+        ) : (
+          <p className="muted">The option did not trade while held.</p>
+        )}
+      </div>
+      <div className="ts-cell">
+        <h4>After the sale</h4>
+        {stats.afterBest || stats.afterClose ? (
+          <p className="ts-points">
+            <Point label="Highest" p={stats.afterBest} />
+            <Point label="Last" p={stats.afterClose} />
+          </p>
+        ) : (
+          <p className="muted">
+            No trade in the option after the sale that day.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** The window: chart, why entered, why exited, the fills. */
 export function TradeStory({
   t,
@@ -140,7 +264,8 @@ export function TradeStory({
   }, []);
   const [chart, setChart] = useState<TradeChartData | null>(null);
   const [chartError, setChartError] = useState("");
-  const [view, setView] = useState<ChartView>("day");
+  // The trade's own minutes first: the entry and the exit up close.
+  const [view, setView] = useState<ChartView>("trade");
   const [viewKey, setViewKey] = useState(0);
   const [style, setStyle] = useState<ChartStyle>(savedStyle);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -188,8 +313,8 @@ export function TradeStory({
         from = previousSessions(first, pageDays)[0]!;
         to = previousSessions(first, 1)[0]!;
       } else {
-        const closed = lastClosedSession(Date.now());
-        const after = nextSessions(last, pageDays).filter((d) => d <= closed);
+        const open = lastOpenSession(Date.now());
+        const after = nextSessions(last, pageDays).filter((d) => d <= open);
         if (after.length === 0) {
           edge.done = true;
           return;
@@ -243,6 +368,10 @@ export function TradeStory({
     }
     return ownerStory(t, decisionFor(t, orders?.decisions ?? []));
   }, [t, bot, botView, orders]);
+  const stats = useMemo(
+    () => (story && chart ? tradeStats(t, story, chart) : null),
+    [t, story, chart],
+  );
   const multiplier = t.option ? 100 : 1;
   const fills = t.fills ?? [];
   const opened = israelDateTime(Date.parse(t.openedAt));
@@ -287,6 +416,9 @@ export function TradeStory({
             ×
           </button>
         </header>
+        {stats && (
+          <Summary stats={stats} t={t} unit={t.option ? "contract" : "share"} />
+        )}
         <section className="ts-chart-section">
           <div className="ts-bar">
             <div

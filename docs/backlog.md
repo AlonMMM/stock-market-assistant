@@ -54,6 +54,18 @@ After the deploy, open the watchlist between 20:00 and 04:00 New York (02:00 to 
 changes its clocks on Nov 1, then 03:00 to 11:00) and confirm night prices show with a moon. If every row shows C,
 Alpaca refused the BOATS request and the endpoint fell back to SIP.
 
+### Check the trade page and the account chart on real trades
+
+- id: trade-page-live
+- area: App
+- tags: Main bot, Portfolio, Charts
+- waiting: The deploy
+- source: Session of Oct 26
+
+After the deploy, open the CRWV 66 call of Oct 26 (Portfolio → Bot → Trades): the chart should show Oct 26 with
+"Buy 16:53" and "Sell 18:47" at their minutes, the time held shaded, and the summary above it. Check the account
+chart's day labels and steps. Built and checked on synthetic data only; no live data was reachable from the session.
+
 ### Compare the Main bot's paper trades with the backtest
 
 - id: main-bot-vs-backtest
@@ -310,6 +322,18 @@ The build warns that a chunk is over 500 KB. Load Backtest, Portfolio and the bo
 watchlist opens faster on a phone.
 
 ## Done
+
+### Trade page shows the real entry and exit; a cleaner account chart
+
+- id: done-trade-page
+- area: App
+- tags: Main bot, Portfolio, Charts
+- source: Session of Oct 26
+- done: 2026-10-26, this PR
+
+The trade's own day is drawn even during its session; fills are drawn at their minutes with the time held shaded; a
+summary gives the entry, exits, time held, best and worst while held and the option after the sale. The account
+chart is a step line with precise axis labels and day ticks that survive Israel's clock change.
 
 ### The backlog in the repo, kept live by every session
 
