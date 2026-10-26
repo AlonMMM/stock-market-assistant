@@ -156,7 +156,7 @@ function statusPill(v: BotView) {
 }
 
 /** "12 s ago", "4 min ago": how fresh the bot's last check is. */
-function ago(at: number, now: number): string {
+export function ago(at: number, now: number): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
   if (s < 60) return `${s} s ago`;
   const m = Math.round(s / 60);
@@ -165,7 +165,7 @@ function ago(at: number, now: number): string {
 }
 
 /** Re-renders every few seconds, for "ago" labels and the now line. */
-function useNow(everyMs: number): number {
+export function useNow(everyMs: number): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), everyMs);
@@ -349,7 +349,7 @@ function Funnel({ v }: { v: BotView }) {
 const pad = { l: 40, r: 14, t: 14, b: 34 };
 
 /** The map's drawing width: its box's width, so text keeps its size on phones. */
-function useBoxWidth(fallback: number) {
+export function useBoxWidth(fallback: number) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(fallback);
   useEffect(() => {
@@ -522,7 +522,7 @@ function SignalMap({
   );
 }
 
-function Meter({
+export function Meter({
   value,
   of,
   label,

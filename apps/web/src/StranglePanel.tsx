@@ -8,25 +8,21 @@ import {
   type StrangleNumberKey,
   type StrangleSettings,
 } from "../../../packages/trading/src/strangle/settings.js";
-import type {
-  StrangleTradeView,
-  StrangleView,
-} from "../../../packages/trading/src/strangle/view.js";
+import type { StrangleTradeView } from "../../../packages/trading/src/strangle/view.js";
 import { readJson } from "./api.js";
-import { usePolling } from "./Live.js";
-import { israelClock, israelLabel } from "./time.js";
+import { israelClock } from "./time.js";
 
-// The alert leg bot's tab (docs/tasks/backend-strangle-bot.md): what it does
-// today, its trades, and, for the account owner, its settings. A separate
+// The alert leg bot's tab (docs/tasks/backend-strangle-bot.md): its trade
+// rows and, for the account owner, its settings. The activity page is in
+// StrangleActivity.tsx, the benchmark in StrangleBenchmark.tsx. A separate
 // bot on its own paper account; nothing here touches the Indi bot.
 
-const ignore = () => {};
-const usd = (v: number) =>
+export const usd = (v: number) =>
   `${v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-const signedUsd = (v: number) =>
+export const signedUsd = (v: number) =>
   `${v > 0 ? "+" : v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-const tone = (v: number) => (v > 0 ? " up" : v < 0 ? " down" : "");
-const legWords = (contract: string) => {
+export const tone = (v: number) => (v > 0 ? " up" : v < 0 ? " down" : "");
+export const legWords = (contract: string) => {
   const m = /([CP])(\d{8})$/.exec(contract);
   return m
     ? `${Number(m[2]) / 1000} ${m[1] === "C" ? "call" : "put"}`
@@ -39,7 +35,7 @@ const phaseWords: Record<StrangleTradeView["phase"], string> = {
   closing: "selling",
   closed: "closed",
 };
-const outcomeWords: Record<string, string> = {
+export const outcomeWords: Record<string, string> = {
   watching: "watching for the side",
   traded: "bought the leg",
   "would-trade": "would buy (dry run)",
@@ -61,13 +57,16 @@ const outcomeWords: Record<string, string> = {
 };
 
 /** The trade's result: what came back plus what is still held at its mark. */
-function result(t: StrangleTradeView): { pnl: number; pct: number | null } {
+export function result(t: StrangleTradeView): {
+  pnl: number;
+  pct: number | null;
+} {
   const value = t.got + (t.phase === "closed" ? 0 : (t.openValue ?? 0));
   const pnl = value - t.paid;
   return { pnl, pct: t.paid > 0 ? (pnl / t.paid) * 100 : null };
 }
 
-function TradeRow({ t }: { t: StrangleTradeView }) {
+export function TradeRow({ t }: { t: StrangleTradeView }) {
   const [open, setOpen] = useState(false);
   const r = result(t);
   const leg = t.leg;
@@ -138,163 +137,6 @@ function TradeRow({ t }: { t: StrangleTradeView }) {
         </tr>
       )}
     </>
-  );
-}
-
-export function StrangleActivity({ onSettings }: { onSettings?: () => void }) {
-  const { value: v, error } = usePolling<StrangleView>(
-    "/api/strangle",
-    10000,
-    ignore,
-  );
-  if (!v)
-    return (
-      <p className={error ? "notice error" : "chart-status"}>
-        {error
-          ? `The volume bot is unavailable: ${error}`
-          : "Loading the volume bot…"}
-      </p>
-    );
-  const closed = v.trades.filter((t) => t.phase === "closed");
-  const total = closed.reduce((sum, t) => sum + (t.got - t.paid), 0);
-  const winners = closed.filter((t) => t.got > t.paid).length;
-  const alerts = v.signals;
-  let state = v.enabled ? "On" : "Off";
-  if (v.enabled)
-    state +=
-      v.mode === "dry"
-        ? " · dry run, no orders"
-        : " · trading its paper account";
-  return (
-    <div className="bot-panel">
-      <section className="bot-card">
-        <div className="bs-card-head">
-          <h2>🎯 Volume bot</h2>
-          <span className={v.enabled ? "small bs-good" : "small muted"}>
-            {state}
-          </span>
-          {onSettings && (
-            <button type="button" className="bs-link" onClick={onSettings}>
-              Settings
-            </button>
-          )}
-        </div>
-        <p className="muted small">
-          A separate bot on its own paper account ({v.account}). Watching{" "}
-          {v.watching.length} stocks
-          {v.favorites ? ` from "${v.favorites.name}"` : ""}
-          {v.lastWork
-            ? `, last checked ${israelClock(v.lastWork)} ${israelLabel}`
-            : ""}
-          .
-        </p>
-        <ol className="bs-rules-list">
-          {v.steps.map((s) => (
-            <li key={s.name}>
-              <b>{s.name}.</b> {s.text}
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section className="bot-card">
-        <div className="bs-card-head">
-          <h2>Last 30 days</h2>
-          <span className="muted small">
-            {closed.length} closed, {winners} winners
-          </span>
-        </div>
-        <p className={`num st-total${tone(total)}`}>{signedUsd(total)}</p>
-      </section>
-
-      {v.open.length > 0 && (
-        <section className="bot-card">
-          <div className="bs-card-head">
-            <h2>Open now</h2>
-          </div>
-          <div className="st-table-wrap">
-            <table className="st-table">
-              <tbody>
-                {v.open.map((t) => (
-                  <TradeRow key={t.id} t={t} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      <section className="bot-card">
-        <div className="bs-card-head">
-          <h2>Today's alerts</h2>
-          <span className="muted small">{alerts.length}</span>
-        </div>
-        {alerts.length === 0 ? (
-          <p className="muted small">
-            None yet. Alerts on each stock between{" "}
-            {clockOf(v.settings.firstMinute)} and{" "}
-            {clockOf(v.settings.lastMinute)} New York count.
-          </p>
-        ) : (
-          <ul className="st-alerts">
-            {alerts.map((a) => (
-              <li key={`${a.symbol}-${a.minute}`}>
-                <b>{a.symbol}</b> {clockOf(a.minute)}{" "}
-                {a.side === "up" ? "▲" : "▼"}{" "}
-                <span className="muted small">
-                  {outcomeWords[a.outcome] ?? a.outcome}
-                  {a.detail ? ` · ${a.detail}` : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="bot-card">
-        <div className="bs-card-head">
-          <h2>Trades</h2>
-          <span className="muted small">Tap a trade for its fills</span>
-        </div>
-        {v.trades.length === 0 ? (
-          <p className="muted small">No trades yet.</p>
-        ) : (
-          <div className="st-table-wrap">
-            <table className="st-table">
-              <thead>
-                <tr>
-                  <th>Day</th>
-                  <th>Stock</th>
-                  <th>Alert</th>
-                  <th>Leg</th>
-                  <th>State</th>
-                  <th className="num">Paid</th>
-                  <th className="num">Result</th>
-                </tr>
-              </thead>
-              <tbody>
-                {v.trades.map((t) => (
-                  <TradeRow key={t.id} t={t} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="bot-card">
-        <div className="bs-card-head">
-          <h2>Activity</h2>
-        </div>
-        <ul className="st-events">
-          {v.events.slice(0, 60).map((e, i) => (
-            <li key={i} className={`st-ev-${e.kind}`}>
-              <span className="muted small">{israelClock(e.at)}</span> {e.text}
-            </li>
-          ))}
-        </ul>
-      </section>
-    </div>
   );
 }
 

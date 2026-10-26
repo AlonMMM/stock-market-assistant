@@ -42,6 +42,28 @@ export interface StrangleTradeView {
   got: number;
   marks: { leg: number | null; stock: number | null; at: number } | null;
   openValue: number | null;
+  // Open trades only (watching to closing): the stock's minute closes from
+  // the alert minute on, [session minute, close], for the app's small charts.
+  path?: [number, number][];
+}
+
+/** One watched stock's alert checks at the last closed minute (alert.ts measureAt). */
+export interface StrangleScanRow {
+  symbol: string;
+  minute: number;
+  volRatio: number;
+  moveRatio: number;
+  shares: number;
+  movePct: number;
+  side: "up" | "down";
+}
+
+/** The live (not dry) trades' result per day, since the first. */
+export interface StrangleLiveDay {
+  day: string;
+  pnl: number; // closed trades' got − paid, plus open trades at their mark
+  trades: number;
+  winners: number;
 }
 
 export interface StrangleView {
@@ -67,4 +89,11 @@ export interface StrangleView {
   open: StrangleTradeView[];
   trades: StrangleTradeView[];
   events: { at: number; kind: string; text: string }[];
+  // Every watched stock with data at the last closed minute, closest to an
+  // alert first (alert.ts alertCloseness); empty before the first minute.
+  scan: StrangleScanRow[];
+  // The account's value when the bot's day started (its day-loss limit's base).
+  dayStartEquity: number | null;
+  // The live trades' result per day, since the first.
+  live: StrangleLiveDay[];
 }

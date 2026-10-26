@@ -7251,6 +7251,224 @@ i.added {
   font-weight: 600;
 }
 
+/* The volume bot's activity and benchmark pages (StrangleActivity.tsx,
+   StrangleBenchmark.tsx): the Main bot's bot-* cards plus these. */
+.bot-panel {
+  --vb-wait: #2f6fb3;
+  --vb-quiet: #a7b1ab;
+}
+.bot-strip-signal.wait {
+  background: var(--vb-wait);
+}
+.bot-strip-signal.quiet {
+  background: var(--vb-quiet);
+}
+.bot-strip-legend .key.wait,
+.bot-strip-legend .key.quiet {
+  width: 4px;
+}
+.bot-strip-legend .key.wait {
+  background: var(--vb-wait);
+}
+.bot-strip-legend .key.quiet {
+  background: var(--vb-quiet);
+}
+.vb-limits {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin-top: 12px;
+}
+.vb-limits > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+@media (max-width: 720px) {
+  .vb-limits {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.bot-meter-fill.limit {
+  background: var(--bot-warn);
+}
+.vb-funnel {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+@media (max-width: 720px) {
+  .vb-funnel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .vb-funnel li:nth-child(5)::before {
+    display: none;
+  }
+}
+.bot-panel .bot-dot circle.bot-dot-hit {
+  fill: transparent;
+  stroke: none;
+}
+.vb-wait {
+  min-width: 0;
+}
+.vb-countdown {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--vb-wait);
+}
+.vb-gauge {
+  position: relative;
+  height: 18px;
+  margin: 10px 4px 4px;
+  border-radius: 6px;
+  background: #eceee8;
+}
+.vb-gauge-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.vb-gauge-zone.down {
+  border-radius: 6px 0 0 6px;
+  background: var(--bot-down-soft);
+}
+.vb-gauge-zone.up {
+  border-radius: 0 6px 6px 0;
+  background: var(--bot-up-soft);
+}
+.vb-gauge-mid {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--bot-faint);
+}
+.vb-gauge-dot {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--bot-card);
+  border-radius: 50%;
+  background: #142b29;
+  transform: translate(-50%, -50%);
+}
+.vb-gauge-marks {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.vb-wait p,
+.vb-holds p {
+  margin: 4px 0 0;
+}
+.vb-hold-chart {
+  display: block;
+  margin-top: 8px;
+  overflow: visible;
+}
+.vb-stock-line {
+  fill: none;
+  stroke: #142b29;
+  stroke-width: 2;
+}
+.vb-stock-dot {
+  fill: #142b29;
+  stroke: var(--bot-card);
+  stroke-width: 2;
+}
+.vb-sale-line {
+  fill: none;
+  stroke: var(--bot-warn);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.vb-hold-legend {
+  display: flex;
+  gap: 12px;
+}
+.vb-hold-legend .key {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  margin-right: 4px;
+  vertical-align: middle;
+  border-top: 2px solid #142b29;
+}
+.vb-hold-legend .key.sale {
+  border-top: 2px dashed var(--bot-warn);
+}
+.vb-hold-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 6px 0 0;
+}
+.vb-hold-stats dt {
+  color: var(--bot-faint);
+  font-size: 11px;
+}
+.vb-hold-stats dd {
+  margin: 0;
+}
+.vb-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vb-kpis li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+@media (max-width: 520px) {
+  .vb-kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.vb-band {
+  fill: #dfe7f1;
+}
+.vb-band-mid {
+  fill: none;
+  stroke: var(--vb-wait);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.vb-live-line {
+  fill: none;
+  stroke: #142b29;
+  stroke-width: 2;
+}
+.vb-live-dot {
+  fill: #142b29;
+  stroke: var(--bot-card);
+  stroke-width: 2;
+}
+.bot-strip-legend .key.live,
+.bot-strip-legend .key.mid,
+.bot-strip-legend .key.band {
+  width: 14px;
+}
+.bot-strip-legend .key.live {
+  height: 2px;
+  background: #142b29;
+}
+.bot-strip-legend .key.mid {
+  height: 0;
+  border-top: 2px dashed var(--vb-wait);
+  background: none;
+}
+.bot-strip-legend .key.band {
+  height: 10px;
+  background: #dfe7f1;
+}
+
 /* Risk settings per account (RiskSettings.tsx, user 2026-10-26). */
 .risk-page {
   display: grid;

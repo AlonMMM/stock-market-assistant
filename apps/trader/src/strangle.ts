@@ -26,8 +26,10 @@ import {
   type Prior,
 } from "../../../packages/trading/src/bot/signal.js";
 import {
+  alertCloseness,
   alerts,
   firstAlert,
+  measureAt,
   windows,
   type Windows,
 } from "../../../packages/trading/src/strangle/alert.js";
@@ -49,7 +51,11 @@ import {
   type StrangleSettings,
 } from "../../../packages/trading/src/strangle/settings.js";
 import { contractWords } from "../../../packages/trading/src/options.js";
-import type { StrangleView } from "../../../packages/trading/src/strangle/view.js";
+import type {
+  StrangleLiveDay,
+  StrangleScanRow,
+  StrangleView,
+} from "../../../packages/trading/src/strangle/view.js";
 import type { BotMarket, BotTrading } from "./bot.js";
 import {
   tradeCash,
@@ -154,6 +160,8 @@ export class StrangleBot {
   private earningsState: NewsState = "off";
   private preRatio = new Map<string, number | null>();
   private preState: NewsState = "off";
+  // Every watched stock's alert checks at the last closed minute (the app's map).
+  private scanned: StrangleScanRow[] = [];
   // Each open trade's live marks, for the status (not stored).
   private marks = new Map<
     string,
@@ -259,6 +267,7 @@ export class StrangleBot {
       await this.refresh(date, Math.max(0, this.done - 2), last);
       for (let m = Math.max(this.done + 1, last - 2); m <= last; m++)
         if (s.enabled) await this.entries(date, m);
+      this.scanned = this.scan(last);
       this.done = last;
     }
     // The trades every tick (10 s), on the stock's last trade and fresh quotes.
@@ -312,6 +321,7 @@ export class StrangleBot {
       if (lastDay?.length) this.priorClose.set(sym, lastDay.at(-1)!.c);
     }
     this.today.clear();
+    this.scanned = [];
     this.done = -1;
     this.day = date;
     this.dayStartEquity = await this.o.trading.equity().catch(() => null);
@@ -436,6 +446,18 @@ export class StrangleBot {
         .filter((b) => b.m <= m)
         .at(-1)?.c ?? null
     );
+  }
+
+  /** Every watched stock's alert checks at minute m, closest to an alert first. */
+  private scan(m: number): StrangleScanRow[] {
+    const rows: StrangleScanRow[] = [];
+    for (const symbol of this.symbols) {
+      const hist = this.hist.get(symbol);
+      if (!hist) continue;
+      const got = measureAt(this.barsOf(symbol), hist, m);
+      if (got) rows.push({ symbol, ...got });
+    }
+    return rows.sort((a, b) => alertCloseness(b) - alertCloseness(a));
   }
 
   // ---- the alert: watch for the side ----
@@ -733,6 +755,8 @@ export class StrangleBot {
         continue;
       const stock = await this.stockNow(t.symbol, m);
       if (t.phase === "watching") {
+        // The stock's price for the app's side gauge (not stored).
+        this.marks.set(t.id, { leg: null, stock, at: this.o.now() });
         if (t.day !== date) {
           this.close(t, "no side in time");
           continue;
@@ -1074,6 +1098,32 @@ export class StrangleBot {
       return { ...t, paid: cash.paid, got: cash.got, marks, openValue };
     };
     const fav = this.watchlist();
+    const pathOf = (t: StrangleTrade): [number, number][] => {
+      if (t.day !== this.day) return [];
+      return this.barsOf(t.symbol)
+        .filter((b) => b.m >= t.alertMinute)
+        .map((b) => [b.m, b.c]);
+    };
+    // The live trades' result by day since the first (the app's benchmark).
+    const byDay = new Map<string, StrangleLiveDay>();
+    for (const t of this.o.store.recentTrades("")) {
+      if (t.dry || !t.leg || t.leg.bought <= 0) continue;
+      const v = view(t);
+      let value = v.got;
+      if (t.phase !== "closed") value += v.openValue ?? 0;
+      const pnl = value - v.paid;
+      const d = byDay.get(t.day) ?? {
+        day: t.day,
+        pnl: 0,
+        trades: 0,
+        winners: 0,
+      };
+      d.pnl += pnl;
+      d.trades += 1;
+      if (pnl > 0) d.winners += 1;
+      byDay.set(t.day, d);
+    }
+    const live = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
     return {
       enabled: s.enabled,
       mode: s.mode,
@@ -1088,12 +1138,17 @@ export class StrangleBot {
         : null,
       news: { earnings: this.earningsState, premarket: this.preState },
       signals: this.o.store.signals(day),
-      open: this.o.store.openTrades().map(view),
+      open: this.o.store
+        .openTrades()
+        .map((t) => ({ ...view(t), path: pathOf(t) })),
       trades: this.o.store
         .recentTrades(since)
         .filter((t) => t.leg !== null && t.leg.bought > 0)
         .map(view),
       events: this.o.store.events(200),
+      scan: this.scanned,
+      dayStartEquity: this.dayStartEquity,
+      live,
     };
   }
 }

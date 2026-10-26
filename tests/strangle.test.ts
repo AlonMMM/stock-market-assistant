@@ -16,8 +16,11 @@ import type { MinuteBar } from "../packages/trading/src/bot/signal.js";
 import type { OptionQuote } from "../packages/trading/src/options.js";
 import { liquidOrder } from "../packages/trading/src/bot/picker.js";
 import {
+  alertCloseness,
+  alertRule,
   alerts,
   firstAlert,
+  measureAt,
   windows,
 } from "../packages/trading/src/strangle/alert.js";
 import {
@@ -87,6 +90,47 @@ test("alert: a 3-minute burst of 4x volume and 3x the usual move is an alert, th
     (m) => (m === 38 || m === 39 ? 20000 : 1000),
   );
   assert.equal(firstAlert(alerts(down, hist), 10, 209)?.side, "down");
+});
+
+test("scan: a bursting stock measures at or over the alert's thresholds and sorts first; quiet stocks below", () => {
+  const hist = Array.from({ length: 20 }, () => windows(quietDay()));
+  const burst = measureAt(burstDay(), hist, 39)!;
+  assert.equal(burst.minute, 39);
+  assert.equal(burst.side, "up");
+  assert.ok(burst.volRatio >= alertRule.threshold);
+  assert.ok(burst.moveRatio >= alertRule.priceMultiple);
+  assert.ok(burst.shares >= alertRule.minVolume);
+  assert.ok(burst.movePct >= alertRule.minMovePercent);
+  const quiet = measureAt(quietDay(), hist, 39)!;
+  assert.ok(quiet.volRatio < alertRule.threshold);
+  assert.ok(quiet.moveRatio < alertRule.priceMultiple);
+  assert.ok(alertCloseness(quiet) < 1);
+  assert.ok(alertCloseness(burst) >= 1);
+  const rows = [
+    { symbol: "QUIET", ...quiet },
+    { symbol: "BURST", ...burst },
+  ].sort((a, b) => alertCloseness(b) - alertCloseness(a));
+  assert.equal(rows[0]!.symbol, "BURST");
+  // The same quantities as the alert: wherever it fires, every check is met.
+  const day = burstDay();
+  const sides = alerts(day, hist);
+  for (let m = 0; m < 390; m++) {
+    if (!sides[m]) continue;
+    const x = measureAt(day, hist, m)!;
+    assert.ok(x.volRatio >= alertRule.threshold, `volume at ${m}`);
+    assert.ok(x.moveRatio >= alertRule.priceMultiple, `move at ${m}`);
+    assert.ok(x.shares >= alertRule.minVolume && x.movePct >= 0.5);
+  }
+  // Too little history or a missing bar: nothing to measure.
+  assert.equal(measureAt(burstDay(), hist.slice(0, 9), 39), null);
+  assert.equal(
+    measureAt(
+      burstDay().filter((b) => b.m !== 37),
+      hist,
+      39,
+    ),
+    null,
+  );
 });
 
 test("decide: the side, the strength filter, the wait, the give-back, the size", () => {
@@ -342,6 +386,15 @@ test("runner (dry): first alert -> watching -> the side -> only that leg -> sold
   let [t] = h.store.openTrades();
   assert.equal(t!.phase, "watching");
   assert.equal(t!.leg, null);
+  // The status: the scan of the last closed minute, the watching trade's price and path.
+  const st = h.bot.status();
+  assert.equal(st.scan[0]!.symbol, "NVDA");
+  assert.equal(st.scan[0]!.minute, 39);
+  assert.ok(st.scan[0]!.volRatio >= 4 && st.scan[0]!.moveRatio >= 3);
+  assert.equal(st.open[0]!.phase, "watching");
+  assert.ok(st.open[0]!.marks!.stock! > 0);
+  assert.equal(st.open[0]!.path![0]![0], 39);
+  assert.deepEqual(st.live, []);
   // The stock keeps climbing: the side is the call; 1% of $100,000 at the 0.61 ask: 16.
   await h.run(611, 612);
   [t] = h.store.openTrades();
@@ -391,6 +444,12 @@ test("runner (live): one buy with the tag and the safety stop; one sale of all o
   assert.equal(h.held.get("NVDA261023C00101000"), 0);
   assert.equal(h.store.openTrades().length, 0);
   for (const [, n] of h.held) assert.ok(n >= 0, "never short");
+  // The live result by day, for the benchmark page.
+  const [liveDay] = h.bot.status().live;
+  assert.equal(liveDay!.day, DAY);
+  assert.equal(liveDay!.trades, 1);
+  assert.equal(liveDay!.winners, 1);
+  assert.ok(liveDay!.pnl > 0);
   // The bid / ask is kept on the signal and on the buy and the sale (paper fills are not real ones).
   const book = h.store.signal(DAY, "NVDA")!.book;
   assert.equal(book?.contract, "NVDA261023C00101000");
