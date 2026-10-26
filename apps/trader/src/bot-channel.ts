@@ -6,16 +6,16 @@ import type {
 } from "../../../packages/trading/src/message.js";
 import type { ExitResult } from "../../../packages/trading/src/exit.js";
 import type { LadderResult } from "../../../packages/trading/src/ladder.js";
-import { botAccountSuffix, strangleAccountSuffix } from "./seed-bot.js";
+import { strangleAccountSuffix } from "./seed-bot.js";
 
-// The bots' own Telegram chat (user 2026-10-26: the Tradisimo chat through
-// tradisiomos_bot). The bots' buys, sales, stop fills and notices go there;
-// the owner's own trades stay on the owner's channel. An urgent alert (a short
-// option position) always goes to the owner's channel, whoever caused it.
+// The Alert leg bot's own Telegram chat (user 2026-10-26: "the leg bot should
+// use the chat of the volume [alerts]; the other bot should not be touched"):
+// tradisiomos_bot in "Trade ideas". Its buys, sales, stop fills and notices go
+// there; the Indi bot's and the owner's posts stay on the owner's channel. An
+// urgent alert (a short option position) always goes to the owner's channel.
 
-/** The accounts only a bot trades: everything they post is the bots'. */
+/** The accounts only the Alert leg bot trades: everything they post is its. */
 export const botAccountIds = (userId: string) => [
-  `${userId}-${botAccountSuffix}`,
   `${userId}-${strangleAccountSuffix}`,
 ];
 

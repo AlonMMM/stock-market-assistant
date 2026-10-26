@@ -22,7 +22,7 @@ function recorder(name: string, calls: string[]): Notifier {
 
 const note = (tag?: string) =>
   ({ symbol: "NVDA", paper: true, ...(tag ? { tag } : {}) }) as never;
-const tags = ["🤖 Bot", "🎯 Alert leg"];
+const tags = ["🎯 Alert leg"];
 
 test("bots chat: a bot-only account posts everything there, but an urgent alert goes to the owner", async () => {
   const calls: string[] = [];
@@ -54,20 +54,20 @@ test("bots chat: on a shared account the order's tag decides; the owner's own tr
     false,
     tags,
   );
-  await n.entry(note("🤖 Bot"), {} as never);
+  await n.entry(note("🎯 Alert leg"), {} as never);
   await n.exit(note("🎯 Alert leg"), {} as never);
+  await n.entry(note("🤖 Bot"), {} as never); // the Indi bot stays on the owner's channel
   await n.entry(note(), {} as never);
-  await n.exit(note("something else"), {} as never);
   await n.notice("t", []);
   assert.deepEqual(calls, [
     "bots:entry",
     "bots:exit",
     "owner:entry",
-    "owner:exit",
+    "owner:entry",
     "owner:notice",
   ]);
 });
 
-test("bots chat: the bot-only accounts are the bot's and the Alert leg's", () => {
-  assert.deepEqual(botAccountIds("owner"), ["owner-bot", "owner-strangle"]);
+test("Alert leg chat: only the Alert leg's account is routed whole; the Indi bot's is not touched", () => {
+  assert.deepEqual(botAccountIds("owner"), ["owner-strangle"]);
 });
