@@ -831,6 +831,14 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     1.31%) vs flat 1.31% $436,803 / 6.6%; favorites $167,425 / 6.5% (1.38%) vs flat 1.38% $179,159 / 7.2%. Cuts 50-100%
     and the reverse (2% when IV ≥ 70%) track their average size the same way. Not better: the gain is the bigger size,
     not the IV; at the same average size it is a tie (fair) or less money (favorites). The size slider is the lever.
+    **The 5% day-loss limit and the live bot's caps (`leg_daycap.py`, the user, 2026-10-26: "test this bot when it can't
+    loose more than 5% in one day").** New trades refused once the day's closed trades lost 5% of the morning's
+    account (the live dayLossPct); also the live 5 trades a day and 3 open. At 1-2% the loss limit never fires (fair
+    worst day -1.7% / -3.4%; favorites -2.7% / -5.6%, reached by trades already open). At 3%+ on the favorites it
+    helps: 4% $494,955 / 21.1% → $529,110 / 15.9%, 6% $968,602 / 30.5% → $1,172,804 / 23.4%; fair only at 6%. It
+    refuses new trades, so the worst day still passes 5% at 4%+ (open trades run on: -7.8%, -10.9%). The caps cost
+    money: 1% fair $308,991 → $260,156 (57 trades refused, drop 4.9% → 5.5%), favorites $151,341 → $134,128 (62 refused,
+    drop 5.2% → 4.1%, worst day -2.7% → -1.8%). 24 fair and 25 favorite days have 6+ trades (up to 15).
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
