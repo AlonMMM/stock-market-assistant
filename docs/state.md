@@ -1,7 +1,17 @@
 # Current state
 
-Updated: 2026-10-15
+Updated: 2026-10-26
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
+
+## Watchlist: overnight prices and IBKR's look (2026-10-26, not deployed)
+
+From 20:00 to 04:00 New York `GET /api/prices` reads Alpaca's overnight feed (BOATS) instead of SIP, falling back
+to SIP if refused. The Watchlist and the stock page show those prices with a moon, measured from the day's regular
+close; "C" marks a close (overnight without a print, a closed market, before a stock's first pre-market trade).
+The table follows the user's IBKR screenshot: Instrument, Last price, Chng, Chg %, Volume on phones, Roboto
+numbers with tabular figures, plain green/red, a short flash on each change; Volume turns orange at 2× usual. Wider
+screens keep Today, vs SPY/sector, Score, Rel vol, Day range and Alerts. Charts still stop at 20:00. See the
+[task](tasks/watchlist-night-prices.md).
 
 ## Indi bot on the paper account (2026-10-21, in review)
 
@@ -80,7 +90,8 @@ starts off and in dry run. See the [task](tasks/backend-strangle-bot.md).
 
 `GET /api/prices?symbols=…` answers Alpaca's latest SIP trade for every symbol in one
 request. The page reads it once a second, one request shared by everything on screen,
-while the tab is visible and the session shown is trading (04:00–20:00 New York):
+while the tab is visible and the session shown is trading (04:00–20:00 New York, and
+the overnight session after it since 2026-10-26):
 
 - Watchlist: each price is the close of its 5-minute bar, so Last, Change %, vs
   SPY/sector, the day line and the day range follow every trade; Rel vol, volume and

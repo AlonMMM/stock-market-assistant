@@ -12,6 +12,10 @@ import {
 } from "../../../packages/market-data/src/calendar.js";
 import type { LiveStatus } from "../../../packages/market-data/src/live.js";
 import {
+  overnightSession,
+  type OvernightSession,
+} from "../../../packages/market-data/src/overnight.js";
+import {
   israelClock,
   israelDate,
   israelDayLabel,
@@ -406,6 +410,12 @@ export interface WatchRow {
   sector: string | null; // sector benchmark ETF
   against: string; // benchmark in use for the row
   last: number | null;
+  // What Last is (IBKR-like): "live" a print of the session shown, "night"
+  // an overnight print (BOATS), "close" the day's regular close when nothing
+  // trades now. Overnight and when closed, change is measured from that
+  // close; a stock without a night print then shows no change.
+  mark: "live" | "night" | "close";
+  changeUsd: number | null; // Last − the reference close, dollars
   change: number | null;
   benchChange: number | null;
   excess: number | null; // change − benchmark change, % points
@@ -420,26 +430,112 @@ export interface WatchRow {
   alerts: number;
 }
 
+/**
+ * The day's regular-session close: the close of the last 5-minute bar that
+ * starts before the close (the last print before 16:00, within cents of the
+ * official closing print). Null when the stock had no regular trade.
+ */
+export function regularClose(
+  board: Board,
+  s: BoardSeries | undefined,
+): number | null {
+  if (!s) return null;
+  for (let i = s.points.length - 1; i >= 0; i--)
+    if (s.points[i]![0] < board.close) return s.points[i]![1];
+  return null;
+}
+
+/** The overnight session right after the board's day, if `now` is in it. */
+export function boardNight(
+  board: Board,
+  now = Date.now(),
+): OvernightSession | null {
+  const night = overnightSession(now);
+  return night && night.date > board.date ? night : null;
+}
+
+/** 20:00 New York on the board's day (Unix ms): where after-hours ends. */
+const dayEnd = (board: Board) => newYorkToUtc(board.date, 1200);
+
+/** The latest prints that came after the board's day (overnight, BOATS). */
+export type NightPrices = Record<string, { price: number; at: number }>;
+
+/** How a symbol's Last is read now: live, an overnight print, or the close. */
+function quoteOf(
+  board: Board,
+  s: BoardSeries | undefined,
+  now: number | undefined,
+  night: NightPrices,
+): { last: number | null; reference: number | null; mark: WatchRow["mark"] } {
+  const live = {
+    last: s?.points.at(-1)?.[1] ?? null,
+    reference: s?.previousClose ?? null,
+    mark: "live" as const,
+  };
+  if (now === undefined || !s) return live;
+  const nightNow = boardNight(board, now);
+  const trading = !nightNow && boardTrading(board, now);
+  if (trading) {
+    // No print yet today (early pre-market): the previous close, IBKR's "C".
+    return s.points.length > 0
+      ? live
+      : { last: s.previousClose, reference: null, mark: "close" };
+  }
+  const close = regularClose(board, s);
+  const print = night[s.ticker];
+  if (nightNow && close !== null && print && print.at >= dayEnd(board))
+    return { last: print.price, reference: close, mark: "night" };
+  if (close === null)
+    return { last: s.previousClose, reference: null, mark: "close" };
+  // Overnight without a print: the close, no change; closed (weekend,
+  // holiday): the close and the day's change.
+  return {
+    last: close,
+    reference: nightNow ? null : s.previousClose,
+    mark: "close",
+  };
+}
+
+const changeOf = (q: { last: number | null; reference: number | null }) =>
+  q.last !== null && q.reference
+    ? {
+        change: (q.last / q.reference - 1) * 100,
+        usd: q.last - q.reference,
+      }
+    : { change: null, usd: null };
+
+/**
+ * Watchlist rows. With `live` (the time now and the overnight prints), Last
+ * follows the session as IBKR does: overnight a BOATS print against the
+ * day's close, and the close itself ("C") when nothing trades. Without it
+ * every row is the board's latest price against the previous close.
+ */
 export function watchRows(
   board: Board,
   alertCounts: Map<string, number>,
   compare: Compare,
+  live?: { now: number; night?: NightPrices },
 ): WatchRow[] {
   const bySymbol = new Map(board.series.map((s) => [s.ticker, s]));
+  const quote = (s: BoardSeries | undefined) =>
+    quoteOf(board, s, live?.now, live?.night ?? {});
   return board.watchlist.map((ticker, index) => {
     const s = bySymbol.get(ticker);
     const sector = board.benchmarks[ticker] ?? null;
     const against = compare === "sector" && sector ? sector : "SPY";
-    const change = boardChange(s);
+    const q = quote(s);
+    const { change, usd } = changeOf(q);
     const benchChange =
-      against === ticker ? null : boardChange(bySymbol.get(against));
+      against === ticker ? null : changeOf(quote(bySymbol.get(against))).change;
     const stats = statsOf(s);
     return {
       ticker,
       index,
       sector,
       against,
-      last: s?.points.at(-1)?.[1] ?? null,
+      last: q.last,
+      mark: q.mark,
+      changeUsd: usd,
       change,
       benchChange,
       excess:
@@ -536,17 +632,23 @@ export function sortRows(
 }
 
 // Live prices on the Watchlist (user 2026-10-19): read every second while the
-// board's session is trading, 04:00–20:00 New York.
+// board's session is trading, 04:00–20:00 New York, and through the overnight
+// session after it (20:00–04:00, BOATS; user 2026-10-26).
 export const livePriceMs = 1000;
 const barSeconds = 300;
 const preMarketSeconds = 5.5 * 3600; // 04:00 is 5½ hours before the 09:30 open
 const afterHoursSeconds = 4 * 3600; // 20:00 is 4 hours after a 16:00 close
 
-/** Whether prices can still change in the session the board shows. */
+/**
+ * Whether prices can still change in the session the board shows, or in the
+ * overnight session right after it (20:00–04:00 New York, BOATS).
+ */
 export function boardTrading(board: Board, now = Date.now()) {
   const s = now / 1000;
   return (
-    s >= board.open - preMarketSeconds && s < board.close + afterHoursSeconds
+    (s >= board.open - preMarketSeconds &&
+      s < board.close + afterHoursSeconds) ||
+    boardNight(board, now) !== null
   );
 }
 
@@ -565,7 +667,8 @@ export function withLivePrices(
     series: board.series.map((s) => {
       const live = prices[s.ticker];
       const lastBar = s.points.at(-1);
-      if (!live || !lastBar) return s;
+      // An overnight print is not part of the day's line (see watchRows).
+      if (!live || !lastBar || live.at >= dayEnd(board)) return s;
       const at = Math.floor(live.at / 1000);
       if (at < lastBar[0]) return s;
       const start = Math.floor(at / barSeconds) * barSeconds;
@@ -587,4 +690,32 @@ export function withLivePrices(
       return { ...s, points, ...(stats ? { stats } : {}) };
     }),
   };
+}
+
+// ---------------------------------------------------------------- numbers
+
+// The table's numbers as IBKR writes them (user 2026-10-26, from a screenshot
+// of IBKR's watchlist): plain prices, "+0.53" / "-1.63", "0.07%" / "-0.23%",
+// and volume to three digits ("41.2K", "151K", "897").
+export const ibPrice = (n: number) => n.toFixed(2);
+// Rounded first, so a move under half a cent reads +0.00, not -0.00.
+const cents = (n: number) => Math.round(n * 100) / 100 || 0;
+export const ibChange = (n: number) =>
+  `${cents(n) >= 0 ? "+" : "-"}${Math.abs(cents(n)).toFixed(2)}`;
+export const ibPct = (n: number) =>
+  `${cents(n) < 0 ? "-" : ""}${Math.abs(cents(n)).toFixed(2)}%`;
+export function ibVolume(n: number | null): string {
+  if (n === null) return "—";
+  const v = Math.round(n);
+  for (const [size, unit] of [
+    [1e9, "B"],
+    [1e6, "M"],
+    [1e3, "K"],
+  ] as const) {
+    if (v >= size * 0.9995) {
+      const x = v / size;
+      return `${x >= 99.95 ? x.toFixed(0) : x >= 9.995 ? x.toFixed(1) : x.toFixed(2)}${unit}`;
+    }
+  }
+  return String(v);
 }

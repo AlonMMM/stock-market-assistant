@@ -130,7 +130,8 @@ export function WatchlistPage({
         <TickerPage
           key={page}
           ticker={page}
-          board={board.value}
+          board={shown}
+          night={prices.prices}
           alerts={status ? kept.current : []}
           onBack={close}
           onShowAlerts={() => onShowAlerts(page)}
@@ -174,6 +175,7 @@ export function WatchlistPage({
           ) : board.value ? (
             <WatchTable
               board={shown!}
+              night={prices.prices}
               livePrices={prices.state}
               alerts={status ? kept.current : []}
               onShowAlerts={onShowAlerts}

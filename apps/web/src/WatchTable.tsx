@@ -1,6 +1,14 @@
 import type { LivePriceState } from "./live-prices.js";
-import { lazy, Suspense, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { Board } from "../../../packages/market-data/src/board.js";
+import { newYorkToUtc } from "../../../packages/market-data/src/calendar.js";
 import type { FeedAlert } from "./AlertFeed.js";
 import {
   alertDate,
@@ -13,7 +21,12 @@ import {
   sortsDescending,
   statsOf,
   watchRows,
+  ibChange,
+  ibPct,
+  ibPrice,
+  ibVolume,
   type Compare,
+  type NightPrices,
   type WatchRow,
   type WatchSort,
 } from "./live-model.js";
@@ -53,17 +66,45 @@ const shares = (n: number | null) =>
 /** Rel vol bar is full at this ratio. */
 const relVolScale = 4;
 
-// [sort key, label, alignment, shown on phones]
+/**
+ * A number that lights up for a moment when it changes, as IBKR's cells do.
+ * The first value shown does not flash.
+ */
+function Flash({ value, children }: { value: string; children: ReactNode }) {
+  const before = useRef(value);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (before.current !== value) {
+      before.current = value;
+      setTick((t) => t + 1);
+    }
+  }, [value]);
+  return (
+    <span key={tick} className={tick > 0 ? "wl-flash" : undefined}>
+      {children}
+    </span>
+  );
+}
+
+/** The moon IBKR puts next to an overnight price. */
+const Moon = () => (
+  <svg className="wl-moon" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M10.6 1.4a6.6 6.6 0 1 0 4 10.3A6 6 0 0 1 10.6 1.4z" />
+  </svg>
+);
+
+// [sort key, label, alignment, shown on phones]. Phones get IBKR's five
+// columns (user 2026-10-26): Instrument, Last price, Chng, Chg %, Volume.
 const columns: [WatchSort | null, string, "left" | "right", boolean][] = [
-  ["ticker", "Symbol", "left", true],
-  [null, "Today", "left", true],
-  ["last", "Last", "right", true],
+  ["ticker", "Instrument", "left", true],
+  [null, "Today", "left", false],
+  ["last", "Last price", "right", true],
+  [null, "Chng", "right", true],
   ["change", "Chg %", "right", true],
   ["excess", "", "right", false], // vs SPY | vs sector
   ["rsScore", "Score", "right", false],
-  ["relVolume", "Rel vol", "right", true],
-  // Today's regular-session shares (user 2026-10-17); a column on phones too
-  // (user 2026-10-19).
+  ["relVolume", "Rel vol", "right", false],
+  // Today's regular-session shares (user 2026-10-17).
   ["volume", "Volume", "right", true],
   ["range", "Day range", "left", false],
   ["alerts", "Alerts", "right", false],
@@ -82,10 +123,7 @@ function RowDetail({
   onShowAlerts: () => void;
   onTrade?: (() => void) | undefined;
 }) {
-  const changeUsd =
-    row.last !== null && row.previousClose !== null
-      ? row.last - row.previousClose
-      : null;
+  const changeUsd = row.changeUsd;
   const beta = statsOf(board.series.find((s) => s.ticker === row.ticker))?.beta;
   return (
     <div className="wl-detail">
@@ -209,12 +247,15 @@ export function WatchTable({
   compare,
   onCompare,
   livePrices,
+  night,
   tools,
 }: {
   // Shown at the start of the toolbar, on Find's line ("+ Add ticker").
   tools?: ReactNode;
   // Whether Last and Change % follow each trade (live-prices.ts).
   livePrices?: LivePriceState;
+  // The latest prints; those after the board's day are overnight (BOATS).
+  night?: NightPrices;
   // A row opens the stock's own page (user 2026-10-18).
   onOpen?: (ticker: string) => void;
   board: Board;
@@ -235,7 +276,10 @@ export function WatchTable({
   const today = alerts.filter((a) => alertDate(a) === board.date);
   const counts = new Map<string, number>();
   for (const a of today) counts.set(a.ticker, (counts.get(a.ticker) ?? 0) + 1);
-  const all = watchRows(board, counts, compare);
+  const all = watchRows(board, counts, compare, {
+    now: Date.now(),
+    night: night ?? {},
+  });
   const rows = sortRows(filterRows(all, "all", find), sort, descending);
   const bySymbol = new Map(board.series.map((s) => [s.ticker, s]));
   // Picked, but the board with sector ETFs has not arrived yet.
@@ -331,16 +375,7 @@ export function WatchTable({
                 aria-label={`Sort by ${text}${key === "change" ? " (size of move)" : ""}${active ? (descending ? ", highest first" : ", lowest first") : ""}`}
                 onClick={() => pick(key)}
               >
-                {key === "relVolume" || key === "volume" ? (
-                  <>
-                    <span className="wl-short" aria-hidden="true">
-                      {key === "volume" ? "Vol" : "RVol"}
-                    </span>
-                    <span className="wl-long">{text}</span>
-                  </>
-                ) : (
-                  text
-                )}
+                {text}
                 <span aria-hidden="true" className="wl-arrow">
                   {active ? (descending ? "▼" : "▲") : "↕"}
                 </span>
@@ -369,36 +404,66 @@ export function WatchTable({
                   }
                 >
                   <span className="wl-cell wl-symbol">
-                    <strong>
-                      {r.ticker}
-                      {r.alerts > 0 && (
-                        <span className="wl-dot" title="Alert today">
-                          <span className="sr-only">
-                            , {r.alerts} alert{r.alerts === 1 ? "" : "s"} today
-                          </span>
-                        </span>
-                      )}
-                    </strong>
+                    <strong>{r.ticker}</strong>
                     {r.sector && <small>{r.sector}</small>}
+                    {r.alerts > 0 && (
+                      <span className="wl-dot" title="Alert today">
+                        <span className="sr-only">
+                          , {r.alerts} alert{r.alerts === 1 ? "" : "s"} today
+                        </span>
+                      </span>
+                    )}
                   </span>
-                  <span className="wl-cell wl-spark">
+                  <span className="wl-cell wl-spark wl-wide">
                     <DaySpark
                       points={s?.points ?? []}
                       previousClose={r.previousClose}
                     />
                   </span>
-                  <span className="wl-cell right wl-last num">
-                    {price(r.last)}
-                  </span>
-                  <span className="wl-cell right">
-                    {r.change === null ? (
+                  <span
+                    className={`wl-cell right wl-num wl-last${r.mark === "night" ? " night" : ""}`}
+                    title={
+                      r.mark === "night"
+                        ? "Overnight price (20:00–04:00 New York)"
+                        : r.mark === "close"
+                          ? "Closing price"
+                          : undefined
+                    }
+                  >
+                    {r.last === null ? (
                       <span className="muted">—</span>
                     ) : (
-                      <span
-                        className={`wl-chg num ${r.change >= 0 ? "up" : "down"}`}
-                      >
-                        {pct(r.change)}
-                      </span>
+                      <Flash value={ibPrice(r.last)}>
+                        {r.mark === "night" && (
+                          <>
+                            <Moon />
+                            <span className="sr-only">overnight </span>
+                          </>
+                        )}
+                        {r.mark === "close" && (
+                          <span className="wl-c">
+                            <span aria-hidden="true">C</span>
+                            <span className="sr-only">close </span>
+                          </span>
+                        )}
+                        {ibPrice(r.last)}
+                      </Flash>
+                    )}
+                  </span>
+                  <span
+                    className={`wl-cell right wl-num${r.changeUsd === null ? "" : r.changeUsd >= 0 ? " up" : " down"}`}
+                  >
+                    {r.changeUsd !== null && (
+                      <Flash value={ibChange(r.changeUsd)}>
+                        {ibChange(r.changeUsd)}
+                      </Flash>
+                    )}
+                  </span>
+                  <span
+                    className={`wl-cell right wl-num${r.change === null ? "" : r.change >= 0 ? " up" : " down"}`}
+                  >
+                    {r.change !== null && (
+                      <Flash value={ibPct(r.change)}>{ibPct(r.change)}</Flash>
                     )}
                   </span>
                   <span
@@ -412,7 +477,7 @@ export function WatchTable({
                   </span>
                   <ScoreCell score={r.rsScore} />
                   <span
-                    className={`wl-cell right wl-rv num${hot ? " hot" : ""}`}
+                    className={`wl-cell right wl-rv wl-wide num${hot ? " hot" : ""}`}
                   >
                     {r.relVolume === null ? "—" : `${r.relVolume.toFixed(1)}×`}
                     <i aria-hidden="true">
@@ -423,8 +488,17 @@ export function WatchTable({
                       />
                     </i>
                   </span>
-                  <span className="wl-cell num right wl-vol">
-                    {shares(r.volume)}
+                  <span
+                    className={`wl-cell right wl-num wl-vol${hot ? " hot" : ""}`}
+                    title={
+                      r.relVolume === null
+                        ? undefined
+                        : `${r.relVolume.toFixed(1)}× the usual volume by now`
+                    }
+                  >
+                    <Flash value={ibVolume(r.volume)}>
+                      {ibVolume(r.volume)}
+                    </Flash>
                   </span>
                   <span className="wl-cell wl-wide">
                     {position === null ? (
@@ -465,11 +539,18 @@ export function WatchTable({
       <details className="wl-help">
         <summary>How to read the columns</summary>
         <p>
-          Today: the day&apos;s price, green above the previous close (dashed)
-          and red below. Last: latest price. Volume: shares traded in
-          today&apos;s regular session so far (under Last on a phone). Chg %:
-          since the previous close. vs SPY / vs sector: today&apos;s change
-          minus the benchmark&apos;s, in % points. Score: 0–100, always vs SPY (
+          Last price: the latest trade. From{" "}
+          {israelClock(newYorkToUtc(board.date, 1200))} to{" "}
+          {israelClock(newYorkToUtc(board.date, 1200) + 8 * 3600000)}{" "}
+          (20:00–04:00 New York) it is the overnight session&apos;s price,
+          marked with a moon, and Chng and Chg % are measured from the
+          day&apos;s close. A C in front marks the close: nothing trades now, or
+          the stock has not traded yet. Chng: dollars, and Chg %: percent, since
+          the previous close. Volume: shares traded in today&apos;s regular
+          session so far, orange when it is {moving.relVolume}× its usual or
+          more. Today: the day&apos;s price, green above the previous close
+          (dashed) and red below. vs SPY / vs sector: today&apos;s change minus
+          the benchmark&apos;s, in % points. Score: 0–100, always vs SPY (
           {scoreNote}), scaled by how large that weighted sum usually is for the
           stock at this minute over the previous 20 sessions; green ≥{" "}
           {scoreStrong} stronger, red ≤ {scoreWeak} weaker. Rel vol:
