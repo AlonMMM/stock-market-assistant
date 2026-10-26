@@ -824,6 +824,13 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     0.35 / 0.25 → $154,316 / 6.0%), so a split is fitting noise. 0.45 and 0.50 are the same leg (the picker scans only
     OTM strikes; real delta median 0.42-0.45). Low deltas lose trades to the $0.20 / 200-contract floor (0.20: 625 vs
     842 on the fair list). 0.35 stays: best on the favorites, within 6% of the best on the fair list.
+    **Size by the leg's IV (`leg_iv.py`, the user, 2026-10-26: "if the IV is higher than 70% use regular size, if it's
+    lower double it").** The live rule (0DTE + 1DTE by 15:30, 0.35), IV = the picker's at the side. Leg IV median 88%
+    fair (0DTE 102%, 1DTE 75%), 81% favorites. Per trade by IV band no order: the lowest band (<40%) is the weakest on
+    both lists, 80-100% the best on both, 60-70% and 100-150% middling. 70% rule: fair $433,767 / 6.7% (average size
+    1.31%) vs flat 1.31% $436,803 / 6.6%; favorites $167,425 / 6.5% (1.38%) vs flat 1.38% $179,159 / 7.2%. Cuts 50-100%
+    and the reverse (2% when IV ≥ 70%) track their average size the same way. Not better: the gain is the bigger size,
+    not the IV; at the same average size it is a tie (fair) or less money (favorites). The size slider is the lever.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
