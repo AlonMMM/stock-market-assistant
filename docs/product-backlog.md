@@ -1,5 +1,8 @@
 # Stock Market Assistant — Product Backlog
 
+> Superseded on 2026-10-26 by [the backlog](backlog.md), which every session keeps live. This page stays for the
+> detailed acceptance criteria of items 1–8 and the product constraints at the end; the backlog's items point here.
+
 **Updated:** 2026-10-15
 **Product goal:** Help the owner monitor US stocks, understand unusual moves, test alert rules, and manage a paper options account from one mobile-friendly product.
 
