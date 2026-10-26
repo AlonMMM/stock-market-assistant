@@ -62,6 +62,11 @@ export function WatchlistPage({
   // "vs sector" needs the collector's sector ETFs: asked for only then.
   const [compare, setCompare] = useState<Compare>("SPY");
   const lists = useWatchlists();
+  // The chosen list's editor, opened from "Edit list" by the chips; an empty list opens it.
+  const [editing, setEditing] = useState(false);
+  const emptyList =
+    Boolean(lists.current && !lists.current.builtIn) &&
+    lists.current!.tickers.length === 0;
   const query = new URLSearchParams({
     ...(lists.chosenId !== "all" ? { list: lists.chosenId } : {}),
     ...(compare === "sector" ? { sectors: "1" } : {}),
@@ -151,13 +156,20 @@ export function WatchlistPage({
               {armedAlerts > 0 && <span className="num">{armedAlerts}</span>}
             </button>
           </h2>
-          <WatchlistSwitcher w={lists} />
+          <WatchlistSwitcher
+            w={lists}
+            editing={editing || emptyList}
+            onEdit={() => setEditing(!(editing || emptyList))}
+          />
+          {(editing || emptyList) && (
+            <WatchlistEditor w={lists} onChanged={board.reload} />
+          )}
           {board.value &&
           board.value.watchlist.length === 0 &&
           lists.current &&
           !lists.current.builtIn ? (
             <p className="chart-status">
-              This list is empty. Add tickers with “+ Add ticker”.
+              This list is empty. Add tickers in the editor above.
             </p>
           ) : board.value ? (
             <WatchTable
@@ -178,7 +190,6 @@ export function WatchlistPage({
                 : "Loading watchlist…"}
             </p>
           )}
-          <WatchlistEditor w={lists} onChanged={board.reload} />
           <EngineTickers />
         </>
       )}
