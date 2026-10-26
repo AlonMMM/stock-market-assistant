@@ -92,8 +92,9 @@ test("decide: the side, the strength filter, the wait, the give-back, the size",
   assert.equal(strengthAgrees("C", 1.2), true);
   assert.equal(strengthAgrees("C", -0.3), false);
   assert.equal(strengthAgrees("P", null), false);
-  assert.equal(waitedOut(99, 40, s), false);
-  assert.equal(waitedOut(100, 40, s), true);
+  // The give-up: 10 minutes after the alert by default.
+  assert.equal(waitedOut(49, 40, s), false);
+  assert.equal(waitedOut(50, 40, s), true);
   // The give-back: 0.75 x 0.4% = 0.3% from the best, the side's way.
   assert.equal(bestOf(101, 102, "C"), 102);
   assert.equal(bestOf(99, 98, "P"), 98);
@@ -386,7 +387,7 @@ test("runner (live): one buy with the tag and the safety stop; one sale of all o
   );
 });
 
-test("runner: no side within the hour is no trade; one alert per stock a day; off means nothing", async () => {
+test("runner: no side within 10 minutes is no trade; one alert per stock a day; off means nothing", async () => {
   const flat = session(
     100,
     (m) => (m === 38 || m === 39 ? 0.003 : 0),

@@ -80,7 +80,9 @@ export const defaultStrangleSettings: StrangleSettings = {
   minPrice: 0.2,
   minVolume: 200,
   confirmUnits: 0.25,
-  waitMinutes: 60,
+  // 10, not the backtest's first 60 (user 2026-10-26, "implement the 10 minutes give up";
+  // leg_entry.py: a side after 10 minutes loses on both lists).
+  waitMinutes: 10,
   giveBackUnits: 0.75,
   endMinute: 360,
   strengthFilter: false,
