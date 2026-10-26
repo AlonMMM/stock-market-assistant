@@ -419,6 +419,7 @@ const groups: { title: string; specs: Spec[] }[] = [
 const switches: {
   key:
     | "nextDay"
+    | "liquidFallback"
     | "strengthFilter"
     | "skipEarnings"
     | "skipPremarket"
@@ -430,6 +431,11 @@ const switches: {
     key: "nextDay",
     label: "Also 1DTE days",
     help: "Days with no same-day expiry but one the next session (mostly Thursdays): the same rule on that expiry, still sold the same day.",
+  },
+  {
+    key: "liquidFallback",
+    label: "Liquid fallback",
+    help: "The leg too thin: buy the nearest strike that trades enough, further out (to delta 0.25) first, then toward the money (to 0.50).",
   },
   {
     key: "strengthFilter",

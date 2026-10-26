@@ -14,6 +14,7 @@ import {
 } from "../packages/market-data/src/calendar.js";
 import type { MinuteBar } from "../packages/trading/src/bot/signal.js";
 import type { OptionQuote } from "../packages/trading/src/options.js";
+import { liquidOrder } from "../packages/trading/src/bot/picker.js";
 import {
   alerts,
   firstAlert,
@@ -181,7 +182,12 @@ const q = (
 
 function harness(
   settings: Partial<StrangleSettings>,
-  opts: { day?: MinuteBar[]; expiry?: string } = {},
+  opts: {
+    day?: MinuteBar[];
+    expiry?: string;
+    // contracts each leg traded in the last 30 minutes; 500 when not given
+    volume?: (contract: string) => number;
+  } = {},
 ) {
   const store = new StrangleStore(
     join(mkdtempSync(join(tmpdir(), "strangle-")), "t.sqlite"),
@@ -222,8 +228,8 @@ function harness(
         ]),
       );
     },
-    async optionVolume30() {
-      return 500;
+    async optionVolume30(contract) {
+      return opts.volume?.(contract) ?? 500;
     },
   };
   void days;
@@ -238,8 +244,16 @@ function harness(
       const e = opts.expiry ?? DAY;
       const all =
         right === "call"
-          ? [q("call", 101, 0.35, 0.59, e), q("call", 103, 0.2, 0.3, e)]
-          : [q("put", 99, 0.36, 0.49, e), q("put", 97, 0.2, 0.25, e)];
+          ? [
+              q("call", 101, 0.35, 0.59, e),
+              q("call", 102, 0.28, 0.42, e),
+              q("call", 103, 0.2, 0.3, e),
+            ]
+          : [
+              q("put", 99, 0.36, 0.49, e),
+              q("put", 98, 0.28, 0.35, e),
+              q("put", 97, 0.2, 0.25, e),
+            ];
       return all.filter((x) => x.expiry >= from && x.expiry <= to);
     },
     async quote(c) {
@@ -532,4 +546,44 @@ test("store: the one-a-day signals of before re-entry are copied to the alerts t
   store.close();
   // Opened again: not copied twice.
   assert.equal(new StrangleStore(path).signals(DAY).length, 2);
+});
+
+test("runner (dry): a thin leg takes the liquid fallback's strike, or no trade with it off", async () => {
+  const thin = (c: string) => (c.endsWith("C00101000") ? 90 : 500);
+  const h = harness({ mode: "dry" }, { day: climbThenFall(), volume: thin });
+  await h.run(565, 612);
+  const [t] = h.store.openTrades();
+  // The 0.35 call traded 90: the next strike out, 0.28, trades enough.
+  assert.equal(t!.leg!.contract, "NVDA261023C00102000");
+  assert.ok(h.notes.some((n) => /liquid fallback/.test(n)));
+  const off = harness(
+    { mode: "dry", liquidFallback: false },
+    { day: climbThenFall(), volume: thin },
+  );
+  await off.run(565, 612);
+  assert.equal(off.store.openTrades().length, 0);
+  assert.equal(off.store.signal(DAY, "NVDA")!.outcome, "thin");
+});
+
+test("liquid order: further out first, nearest the target first, then toward the money", () => {
+  const e = DAY;
+  const chain = [
+    q("call", 100, 0.48, 1.1, e),
+    q("call", 101, 0.35, 0.59, e),
+    q("call", 102, 0.3, 0.42, e),
+    q("call", 103, 0.26, 0.3, e),
+    q("call", 104, 0.2, 0.22, e),
+    q("call", 105, 0.15, 0.1, e),
+  ];
+  const picked = { quote: chain[1]!, delta: 0.35 };
+  const order = liquidOrder(chain, 100, "call", e, picked, {
+    otmScanMax: 0.2,
+    maxStrikes: 16,
+    minPrice: 0.2,
+  });
+  // 0.30, 0.26 out (0.20 is under the band); then 0.48 toward the money.
+  assert.deepEqual(
+    order.map((c) => c.quote.strike),
+    [102, 103, 100],
+  );
 });

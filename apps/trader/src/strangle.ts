@@ -14,7 +14,11 @@ import {
   type EarningsReport,
   type NewsCalendar,
 } from "../../../packages/trading/src/bot/news.js";
-import { pickContract } from "../../../packages/trading/src/bot/picker.js";
+import type { OptionQuote } from "../../../packages/trading/src/options.js";
+import {
+  liquidOrder,
+  pickContract,
+} from "../../../packages/trading/src/bot/picker.js";
 import {
   cState,
   priorFrom,
@@ -771,6 +775,29 @@ export class StrangleBot {
     }
   }
 
+  /** The liquid fallback: the first strike in liquidOrder's order with enough volume, or null. */
+  private async liquidLeg(
+    quotes: OptionQuote[],
+    stock: number,
+    right: "call" | "put",
+    expiry: string,
+    picked: { quote: OptionQuote; delta: number },
+    rules: { otmScanMax: number; maxStrikes: number; minPrice: number },
+    day: string,
+    minute: number,
+    minVolume: number,
+  ): Promise<{ quote: OptionQuote; mid: number; delta: number } | null> {
+    for (const c of liquidOrder(quotes, stock, right, expiry, picked, rules)) {
+      const volume = await this.o.market.optionVolume30(
+        c.quote.symbol,
+        day,
+        minute,
+      );
+      if (volume >= minVolume) return c;
+    }
+    return null;
+  }
+
   /** The side came: pick that leg and buy it, or end the trade with why not. */
   private async buyLeg(
     t: StrangleTrade,
@@ -816,13 +843,8 @@ export class StrangleBot {
       minVolume30: s.minVolume,
       cheapFallback: false, // the Volume bot keeps its own legs: no fallback
     };
-    const got = pickContract(
-      await this.o.trading.chain(t.symbol, right, expiry, expiry),
-      stock,
-      right,
-      t.day,
-      pick,
-    );
+    const quotes = await this.o.trading.chain(t.symbol, right, expiry, expiry);
+    let got = pickContract(quotes, stock, right, t.day, pick);
     // The picked leg's bid / ask, kept with the signal (paper fills are not real ones).
     const chosen = got.quote;
     const book = bookOf(chosen, this.o.now(), "alpaca"); // its own Alpaca paper account
@@ -832,15 +854,34 @@ export class StrangleBot {
         contract: chosen.symbol,
       });
     if (!got.ok) return fail(got.reason, right);
-    const contract = got.quote.symbol;
+    let fallback = "";
     if (s.minVolume > 0) {
-      const volume = await this.o.market.optionVolume30(contract, t.day, m);
-      if (volume < s.minVolume)
-        return fail(
-          "thin",
-          `${this.words(contract)}: ${volume} contracts in 30 minutes`,
-        );
+      const first = got.quote.symbol;
+      const volume = await this.o.market.optionVolume30(first, t.day, m);
+      if (volume < s.minVolume) {
+        const liquid = s.liquidFallback
+          ? await this.liquidLeg(
+              quotes,
+              stock,
+              right,
+              expiry,
+              got,
+              pick,
+              t.day,
+              m,
+              s.minVolume,
+            )
+          : null;
+        if (!liquid)
+          return fail(
+            "thin",
+            `${this.words(first)}: ${volume} contracts in 30 minutes`,
+          );
+        got = { ok: true, ...liquid };
+        fallback = ` (liquid fallback: ${this.words(first)} traded ${volume})`;
+      }
     }
+    const contract = got.quote.symbol;
     if (await this.o.trading.held(contract))
       return fail("refused", `${this.words(contract)} is already held`);
     const equity = await this.o.trading.equity();
@@ -858,7 +899,7 @@ export class StrangleBot {
       cost: got.mid,
       orders: [],
     };
-    const why = `Volume alert ${t.alertSide} at ${clockOf(t.alertMinute)}; the side (${right}) at ${clockOf(m)}, stock ${stock.toFixed(2)} from ${t.stockRef.toFixed(2)}`;
+    const why = `Volume alert ${t.alertSide} at ${clockOf(t.alertMinute)}; the side (${right}) at ${clockOf(m)}, stock ${stock.toFixed(2)} from ${t.stockRef.toFixed(2)}${fallback}`;
     if (t.dry) {
       t.leg.qty = t.leg.bought = qty;
       t.leg.cost = got.quote.ask;

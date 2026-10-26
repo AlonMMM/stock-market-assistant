@@ -128,3 +128,48 @@ function cheapUp<T extends { mid: number; delta: number }>(
   }
   return out;
 }
+
+/**
+ * The liquid fallback's strikes, in the order to try them (the Volume bot,
+ * user 2026-10-26 "implement the liquid fallback"; leg_fb2.py "liquid": on the
+ * 167 watchlist stocks it made the most at the live limits with a smaller
+ * worst drop). When the picked contract is too thin: first further out, down
+ * to delta `band[0]`, the one nearest the target first; then toward the
+ * money, up to `band[1]`. Each must cost `minPrice` or more; the caller takes
+ * the first with enough volume.
+ */
+export function liquidOrder(
+  quotes: readonly OptionQuote[],
+  spot: number,
+  right: "call" | "put",
+  expiry: string,
+  picked: { quote: OptionQuote; delta: number },
+  r: Pick<PickRules, "otmScanMax" | "maxStrikes" | "minPrice">,
+  band: readonly [number, number] = [0.25, 0.5],
+): { quote: OptionQuote; mid: number; delta: number }[] {
+  const call = right === "call";
+  const priced: { quote: OptionQuote; mid: number; delta: number }[] = [];
+  for (const q of quotes
+    .filter((q) => q.right === right && q.expiry === expiry)
+    .filter((q) =>
+      call
+        ? spot <= q.strike && q.strike <= spot * (1 + r.otmScanMax)
+        : spot * (1 - r.otmScanMax) <= q.strike && q.strike <= spot,
+    )
+    .sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot))
+    .slice(0, r.maxStrikes)) {
+    if (q.symbol === picked.quote.symbol) continue;
+    if (q.delta === null || !(q.bid > 0) || !(q.ask > 0)) continue;
+    const mid = (q.bid + q.ask) / 2;
+    if (mid < r.minPrice) continue;
+    priced.push({ quote: q, mid, delta: Math.abs(q.delta) });
+  }
+  const [low, high] = band;
+  const out = priced
+    .filter((c) => low <= c.delta && c.delta < picked.delta)
+    .sort((a, b) => b.delta - a.delta);
+  const toward = priced
+    .filter((c) => picked.delta < c.delta && c.delta <= high)
+    .sort((a, b) => a.delta - b.delta);
+  return [...out, ...toward];
+}
