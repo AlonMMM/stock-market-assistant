@@ -147,6 +147,8 @@ export class StrangleBot {
   private hist = new Map<string, Windows[]>();
   private prior = new Map<string, Prior>();
   private unit = new Map<string, number | null>();
+  // Today's watched stocks with no expiry the rule can use (expiryFor).
+  private noExpiry = new Set<string>();
   private priorClose = new Map<string, number>();
   private openClose = new Map<string, Map<string, { o: number; c: number }>>();
   private priorDays: string[] = [];
@@ -333,6 +335,9 @@ export class StrangleBot {
     this.preRatio.clear();
     this.preState = this.o.market.premarket ? "pending" : "off";
     await this.loadEarnings(date);
+    // In the background: one chain read a stock, so the warm-up does not wait.
+    this.noExpiry = new Set();
+    void this.findNoExpiry(date, s);
   }
 
   private async loadEarnings(date: string) {
@@ -611,6 +616,17 @@ export class StrangleBot {
       outcome: "watching",
       detail: `stock ${ref.toFixed(2)}; the side at ${pct}% either way${expiry === date ? "" : "; 1DTE"}`,
     };
+  }
+
+  /** The watched stocks with no usable expiry today, for the activity map. */
+  private async findNoExpiry(date: string, s: StrangleSettings) {
+    for (const symbol of this.symbols) {
+      if (this.day !== date) return;
+      const expiry = await this.expiryFor(symbol, date, s).catch(
+        () => undefined,
+      );
+      if (expiry === null) this.noExpiry.add(symbol);
+    }
   }
 
   /** The day's expiry: today's, else the next session's when nextDay is on. */
@@ -1138,6 +1154,7 @@ export class StrangleBot {
       lastWork: this.lastWork,
       day: this.day,
       watching: this.symbols,
+      noExpiry: [...this.noExpiry],
       favorites: fav
         ? { name: fav.name, count: fav.tickers.length, at: fav.at }
         : null,

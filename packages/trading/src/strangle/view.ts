@@ -96,4 +96,8 @@ export interface StrangleView {
   dayStartEquity: number | null;
   // The live trades' result per day, since the first.
   live: StrangleLiveDay[];
+  // Watched stocks with no option expiring today (nor the next session when
+  // 1DTE days are on): they can alert but never trade today. Checked once
+  // when the day starts; a stock whose chain could not be read is not listed.
+  noExpiry: string[];
 }

@@ -351,7 +351,7 @@ function lacking(r: StrangleScanRow): string {
       `a ${pctText(r.movePct, 2)} move of ${alertRule.minMovePercent}%`,
     );
   if (needs.length === 0)
-    return "Every check met: an alert once the minute's bar closes its way";
+    return "All four checks met: it alerts when its last 1-minute bar also closes the same way (up: above its open and the minute before)";
   return `Needs ${needs.join(", ")}`;
 }
 
@@ -595,6 +595,9 @@ const dayEnders: Record<string, string> = {
 /** The stocks out for the rest of today, with why: filtered, or their trades used. */
 function outToday(v: StrangleView, day: string): Map<string, string> {
   const out = new Map<string, string>();
+  // Known from the day's start: no option expiring today or the next session.
+  for (const symbol of v.noExpiry ?? [])
+    out.set(symbol, "no option expiring today or the next session");
   for (const a of v.signals) {
     const why = dayEnders[a.outcome];
     if (why) out.set(a.symbol, why);
@@ -729,8 +732,8 @@ function WhatItSees({ v, day }: { v: StrangleView; day: string }) {
         price move against its usual 3-minute move ({needMove}× or more, and{" "}
         {alertRule.minMovePercent}%). A stock in a shaded corner alerts; the bot
         then waits for its side. A ring marks the stocks waiting now. Stocks the
-        bot cannot trade any more today (news filter, no expiry, their trades
-        used) are left out.
+        bot cannot trade any more today (no option expiring today or the next
+        session, the news filter, their trades used) are left out.
       </p>
       {out.size > 0 && (
         <button
