@@ -9,11 +9,13 @@ overnight cap at each size; Favorites = the app's Favorites watchlist (86 symbol
 What the live bot runs when its settings are reset to defaults: the default version in
 `packages/trading/src/bot/versions.ts` on `origin/main`. It changes only when a version is merged and deployed.
 
-- **2.5** (merged as #147 and deployed 2026-10-26; the live bot shows "2.5*": the owner keeps the minimum price at $0.15
-  and the pre-market volume skip off): 2.4 + the D2 bonus entry (t >= 1.2 and D2 >= 1.5), without the failed-break sale.
-- Research twin: trade files `sg_c12_15_*`, exits `d2_failed_break.CHAMP`; benchmark slug `d2-bonus`.
-- Fair list $1,108,678 / 11% at 1% ($5,321,917 / 21% at 2%), $360,684 without the best 5.
-  Favorites (68, 2025-10-23 to 2026-10-23) $192,845 / 12% at 1% ($268,088 / 23% at 2%).
+- **2.6** (merged as #158 and deployed 2026-10-26; the live bot shows "2.6*": the owner keeps the minimum price at
+  $0.15 and the pre-market volume skip off, so the cheap fallback steps in under $0.15, not $0.20): 2.5 + the cheap
+  fallback. 2.5 = 2.4 + the D2 bonus entry (t >= 1.2 and D2 >= 1.5), without the failed-break sale.
+- Research twin: trade files `sg_c12_15_*`, exits `d2_failed_break.CHAMP`, fallback `cheap`; benchmark slug `d25-cheap`.
+- Fair list $1,297,233 / 11% at 1% ($6,599,909 / 21% at 2%), $422,022 without the best 5. Favorites (68, 2025-10-23
+  to 2026-10-23) $246,637 / 14% at 1% ($396,848 / 26% at 2%); the cheap trades' money is mostly IBIT.
+- Before it, 2.5 (live 2026-10-26 morning): fair list $1,108,678 / 11%; Favorites $192,845 / 12%; benchmark `d2-bonus`.
 - The previous production, 2.4 (t >= 1.8 only, with the failed-break sale): fair list $719,945 / 9%; benchmark `bot24`.
 
 ## Candidate
