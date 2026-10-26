@@ -14,6 +14,8 @@ if os.environ.get("BT_UNIVERSE") == "wide":  # his 40 + S&P 100 + Nasdaq-100 (me
     P["universe"] = P["universe_wide"]
 if os.environ.get("BT_UNIVERSE") == "fav":  # the user's favorites watchlist in the app (2026-10-22)
     P["universe"] = P["universe_fav"]
+if os.environ.get("BT_UNIVERSE") == "watch":  # every ticker on the user's watchlists: the app's and IBKR's (2026-10-26)
+    P["universe"] = P["universe_watch"]
 DATA = os.environ.get("BT_DATA", "data/local/x/bt")
 os.makedirs(DATA, exist_ok=True)
 db = sqlite3.connect(os.path.join(DATA, "market.sqlite"), timeout=120)

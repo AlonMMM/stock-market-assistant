@@ -62,7 +62,8 @@ def one(job):
         got, why = sim.pick(sym, date, ct, right, spot)
         if got is None or (kind == "1" and got[1] != CAL[CAL.index(date) + 1]): trades.append(dict(n=n, minute=m, trade=None)); continue
         w = LF.walk(sym, date, ct, right, got[0], spot, u)
-        trades.append(dict(n=n, minute=m, trade=dict(buy=w[0], sell=w[1], bm=w[2], xm=w[3], ct=ct, contract=got[0]) if w else None))
+        trades.append(dict(n=n, minute=m, trade=dict(buy=w[0], sell=w[1], bm=w[2], xm=w[3], ct=ct, contract=got[0], delta=abs(got[3]),
+                                                     alert=side_al, kept="call" if right == "C" else "put", stock0=stock0, sd30=u * 100) if w else None))
     return dict(first_minute=ev[0][0], events=trades)
 
 
@@ -151,6 +152,26 @@ def main():
         for sym, G in top:
             ag = [r for r in G if r["nth"] > 1]
             print(f"| {sym} | {len(G)} | {len(ag)} | {len({r['date'] for r in G})} | {sum(r['pnl'] for r in ag):+,.0f} |")
+
+    if os.environ.get("BT_EXPORT"):   # for the benchmark page: sets w10 (first alert only) and re2 (again when flat, 2 a stock a day)
+        import csv
+        from leg_export import path_rows
+        out, lst = os.environ["BT_EXPORT"], os.environ.get("BT_LIST", "fav")
+        T, PT, seen = [], [], set()
+        for t in sorted(keep, key=lambda t: (t["date"], t["first_minute"] if "first_minute" in t else t["minute"])):
+            for setname, evs in (("w10", pick(t["r"], "first")), ("re2", pick(t["r"], "flat")[:2])):
+                for e in evs:
+                    x = e["trade"]; pid = f"{lst}|{t['date']}|{t['sym']}|{x['contract']}|{e['minute']}"
+                    T.append(dict(key=f"{setname}|{pid}", set=setname, list=lst, pid=pid, date=t["date"], sym=t["sym"], minute=e["minute"], alert=x["alert"],
+                                  prev_date=CAL[CAL.index(t["date"]) - 1], sd30=round(x["sd30"], 3), stock_at_alert=round(x["stock0"], 2), kept=x["kept"],
+                                  side_minute=x["ct"], leg=x["contract"], delta=round(x["delta"], 2), buy_minute=x["bm"], buy_price=round(x["buy"], 4),
+                                  exit_day="t", exit_minute=x["xm"], exit_price=round(x["sell"], 4), half_minute="", half_price=""))
+                    if pid not in seen:
+                        seen.add(pid); PT.extend(dict(pid=pid, **r) for r in path_rows(t["sym"], t["date"], x["contract"], False))
+        for name, data in ((f"trades_{lst}_re", T), (f"paths_{lst}_re", PT)):
+            with open(f"{out}/{name}.csv", "w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=list(data[0])); w.writeheader(); w.writerows(data)
+            print(name, len(data), "rows", flush=True)
 
 
 if __name__ == "__main__":
