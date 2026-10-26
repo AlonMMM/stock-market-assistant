@@ -188,6 +188,28 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 | 2026-10-25 | + D2 bonus entry (t ≥ 1.2 and D2 ≥ 1.5 enters too)                     | $1,005,221 / 11%            | $127,303 / 11% | +$194K, same drop; unseen +$2.8K, +1 pt                  | 🏆 champion (backtest only)                     |
 | 2026-10-25 | D2 champion + the failed-break sale (the live bot's exits, `BT_TAG=b`)  | $669,237 / 14%              | $137,446 / 9%  | −$336K, +3 pts drop vs the D2 champion; unseen +$10K, −2 pts | not better: the sale cuts the early D2 entries (2024 +1,513 a trade vs +2,839); on the Bot vs Indi dashboard as `d2-bot` |
 
+### Real quotes check (2026-10-26)
+
+The user: "we have now real bid and ask from databento. I would like to run our main bot tests with this real data to
+confirm." `real_bench.py`: every Bot vs Indi benchmark version, the fair list, Feb 2024 - Oct 16, 2026, the same trades
+priced twice: old (trade bar mid ± 2%) and real (Databento OPRA cbbo-1m at the end of the minute before the fill; buy at
+mid + half the way to the ask, or the next ask up to +10% when it ran away; sale at the bid). Quotes for all but 2 of
+~3,000 fills a version. Dashboard: https://claude.ai/artifact/8hwVRYjvFphR4Ro6kQC1am
+
+| Version | Old 1% / drop | Real 1% / drop | Real 2% / drop | Real without best 5 |
+| --- | --- | --- | --- | --- |
+| 2.4 | $719,943 / 9% | $574,459 / 11% | $1,775,077 / 20% | $216,017 |
+| 2.5 | $1,108,662 / 11% | $839,088 / 12% | $3,011,787 / 23% | $282,830 |
+| 2.6 (live, 2.5 + cheap) | $1,297,219 / 11% | $910,069 / 14% | $3,278,794 / 26% | $306,756 |
+| 2.5 + D2 under 200 | $2,725,559 / 12% | $1,484,595 / 13% | $7,672,495 / 24% | $501,595 |
+| 2.6 + D2 under 200 | $2,899,149 / 13% | $1,427,171 / 15% | $6,488,479 / 29% | $482,193 |
+
+Real costs 20-50% of the end at 1% (about -$300 a trade at $10K; the bot's normal contracts have a median half-spread of
+2.6%, so the 2% guess was close). Every version stays profitable every year; the order holds: 2.6 > 2.5 > 2.4, the
+failed-break sale worse everywhere, D2 under 200 still the most money although its contracts pay most for the spread
+(median half-spread 7.7%, -$1,040 a trade; order size at the bid/ask is not modelled). Wide-spread entries (12%+) are
+the big winners on average, so a max-spread filter would cut winners.
+
 ## Tested, not better (V2, 2026-10-21)
 
 - D2 bonus entry + the failed-break sale (2026-10-25, `d2_failed_break.py`; the user: "is there a place for both?"; the
