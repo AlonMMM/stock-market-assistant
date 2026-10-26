@@ -34,6 +34,10 @@ export interface BuyLimits {
   // stock and side, plus the new order (user 2026-10-12). A buy may add to an
   // open position up to this.
   maxPositionPct: number;
+  // Positions open at once: different contracts held or with a working buy; a
+  // buy that adds to one of them does not count. 0: no limit (user 2026-10-26,
+  // "this is not in the configuration in the risk page").
+  maxOpenPositions: number;
   // PROPOSED values below, not yet confirmed by the user.
   maxQuoteAgeMs: number;
   repeatMs: number; // a second buy of the same underlying and right
@@ -51,6 +55,7 @@ export const defaultBuyLimits: BuyLimits = {
   maxOpenRiskPct: 10,
   maxDayLossPct: 5,
   maxPositionPct: 5,
+  maxOpenPositions: 0,
   maxQuoteAgeMs: 120_000,
   repeatMs: 60_000,
   lastMinutes: 15,
@@ -171,6 +176,31 @@ function openRiskCheck(
   ];
 }
 
+/** The open-positions check: the contracts open after this buy against the limit; a limit of 0 is off. */
+function openPositionsCheck(
+  positions: HeldPosition[],
+  working: { symbol: string }[],
+  buying: string[],
+  limit: number,
+): [string, boolean, string] {
+  const open = new Set([
+    ...positions.filter((p) => p.qty > 0).map((p) => p.symbol),
+    ...working.map((w) => w.symbol),
+  ]);
+  if (limit <= 0)
+    return [
+      "open positions",
+      true,
+      `${open.size} open; no limit on this account`,
+    ];
+  const added = buying.filter((s) => !open.has(s)).length;
+  return [
+    "open positions",
+    open.size + added <= limit,
+    `${open.size} open; at most ${limit} at once`,
+  ];
+}
+
 /** Held contracts outside spreads that no stop fully covers. */
 export function withoutStop(positions: HeldPosition[]): HeldPosition[] {
   const pairs = spreadPairs(positions);
@@ -232,6 +262,14 @@ export function checkBuy(
     (ceiling * qty * 100 * (c.order.noStop ? 100 : stopPct)) / 100;
   const risk = openRisk(c.positions) + tradeRisk;
   add(...openRiskCheck(risk, c.equity, limits.maxOpenRiskPct, "this trade"));
+  add(
+    ...openPositionsCheck(
+      c.positions,
+      c.working ?? [],
+      [c.order.quote.symbol],
+      limits.maxOpenPositions,
+    ),
+  );
   if (limits.requireStops) {
     const bare = withoutStop(c.positions);
     add(
@@ -445,6 +483,15 @@ export function checkSpread(
   );
   const risk = openRisk(c.positions) + cost;
   add(...openRiskCheck(risk, c.equity, limits.maxOpenRiskPct, "this spread"));
+  // Each leg of a spread is a contract of its own.
+  add(
+    ...openPositionsCheck(
+      c.positions,
+      c.working ?? [],
+      [long.symbol, short.symbol],
+      limits.maxOpenPositions,
+    ),
+  );
   if (limits.requireStops) {
     const bare = withoutStop(c.positions);
     add(

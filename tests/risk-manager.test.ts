@@ -163,3 +163,19 @@ test("account risk: the open risk limit may be 0 (off), not below", () => {
     "string",
   );
 });
+
+test("account risk: open positions is a whole number from 0 (off) to 50", () => {
+  assert.equal(defaultAccountRisk.maxOpenPositions, 0);
+  assert.equal(
+    typeof parseAccountRisk({ ...defaultAccountRisk, maxOpenPositions: 5 }),
+    "object",
+  );
+  assert.match(
+    String(parseAccountRisk({ ...defaultAccountRisk, maxOpenPositions: 2.5 })),
+    /whole number/,
+  );
+  assert.match(
+    String(parseAccountRisk({ ...defaultAccountRisk, maxOpenPositions: 51 })),
+    /from 0 to 50/,
+  );
+});

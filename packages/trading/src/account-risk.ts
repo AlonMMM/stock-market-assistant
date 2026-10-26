@@ -18,6 +18,8 @@ export interface AccountRisk {
   openRiskPct: number;
   // The most one position (one stock and side) may cost.
   maxPositionPct: number;
+  // Different contracts open at once; 0: no limit (user 2026-10-26).
+  maxOpenPositions: number;
   buysPerDay: number;
   // A fall this far below the account's high puts the brake on.
   drawdownPct: number;
@@ -31,6 +33,7 @@ export const defaultAccountRisk: AccountRisk = {
   tradeRiskPct: 5,
   openRiskPct: 10,
   maxPositionPct: 5,
+  maxOpenPositions: 0,
   buysPerDay: 10,
   drawdownPct: 12.5,
   brake: { trade: 2, day: 3 },
@@ -43,6 +46,7 @@ export const accountRiskBounds = {
   tradeRiskPct: [0.25, 10],
   openRiskPct: [0, 50],
   maxPositionPct: [0.5, 25],
+  maxOpenPositions: [0, 50],
   buysPerDay: [1, 100],
   drawdownPct: [2, 50],
   trade: [0.25, 10],
@@ -71,6 +75,7 @@ export function applyAccountRisk(
       maxDayLossPct: risk.dayLossPct,
       maxOpenRiskPct: risk.openRiskPct,
       maxPositionPct: risk.maxPositionPct,
+      maxOpenPositions: risk.maxOpenPositions,
       maxBuysPerDay: risk.buysPerDay,
     },
     riskRules: {
@@ -122,6 +127,11 @@ export function parseAccountRisk(value: unknown): AccountRisk | string {
       "The largest position",
       b.maxPositionPct,
     ),
+    maxOpenPositions: num(
+      v.maxOpenPositions,
+      "Open positions",
+      b.maxOpenPositions,
+    ),
     buysPerDay: num(v.buysPerDay, "Buys per day", b.buysPerDay),
     drawdownPct: num(v.drawdownPct, "The brake's drawdown", b.drawdownPct),
     brake: pair(v.brake, "The brake's"),
@@ -129,5 +139,7 @@ export function parseAccountRisk(value: unknown): AccountRisk | string {
   };
   if (!Number.isInteger(risk.buysPerDay) && errors.length === 0)
     errors.push("Buys per day must be a whole number");
+  if (!Number.isInteger(risk.maxOpenPositions) && errors.length === 0)
+    errors.push("Open positions must be a whole number");
   return errors.length ? errors.join("; ") : risk;
 }

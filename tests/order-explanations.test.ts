@@ -99,7 +99,7 @@ test("explanation: a buy records what was asked, what was default, and how it wa
     // Counted at the order's 40% stop (2026-10-26), not 80% by days to expiry.
     ["full", 4, 40, 164.8],
   );
-  assert.equal(e.checks.length, 16);
+  assert.equal(e.checks.length, 17);
   assert.ok(e.checks.every((c) => c.ok));
   assert.deepEqual(d.result, {
     filledQty: 4,
