@@ -15,6 +15,12 @@ export interface AlgorithmStep {
 const plural = (n: number, word: string): string =>
   `${n} ${word}${n === 1 ? "" : "s"}`;
 
+// The D2 bonus (version 2.5): a lower strength enters when the stock held up on the market's bad minutes.
+function bonusWords(r: Rules): string {
+  if (!r.d2Entry) return "";
+  return `Also from t ${r.d2T} when the stock held up on SPY's down minutes of the last 30 (D2 ${r.minD2}+: its move beyond beta × SPY on those minutes, in typical 30-minute moves). `;
+}
+
 export function algorithmSteps(r: Rules): AlgorithmStep[] {
   const steps: AlgorithmStep[] = [];
   steps.push({
@@ -22,7 +28,7 @@ export function algorithmSteps(r: Rules): AlgorithmStep[] {
     text:
       `From ${r.firstEntryMin} minutes after the open to 16 minutes before the close, checked once a minute: ` +
       `the stock's move against SPY is t ${r.minT}+ (its strength, normalised by its own volatility) and its volume is ${r.minRvol}× normal or more. ` +
-      "A call on strength, a put on weakness. One entry per stock a day, on the side that comes first.",
+      `${bonusWords(r)}A call on strength, a put on weakness. One entry per stock a day, on the side that comes first.`,
   });
   const news: string[] = [];
   if (r.skipEarnings) news.push("on the stock's earnings reaction day");

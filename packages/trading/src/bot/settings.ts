@@ -91,6 +91,11 @@ export interface BotSettings {
   minVolume: number;
   // Signal (advanced)
   minT: number;
+  // The D2 bonus (version 2.5): t d2T or more also enters when the stock held
+  // up on SPY's bad minutes of the last 30, D2 minD2 or more (signal.ts).
+  d2Entry: boolean;
+  d2T: number;
+  minD2: number;
   minRvol: number;
   firstEntryMin: number;
   skipEarnings: boolean;
@@ -124,7 +129,7 @@ export const defaultSettings: BotSettings = {
   checks: true,
   sellOnWeakness: true,
   weaknessT: 0.5,
-  sellFailedBreak: true,
+  sellFailedBreak: false,
   holdFromPct: 50,
   maxNights: 2,
   nightCapPct: 10,
@@ -133,6 +138,9 @@ export const defaultSettings: BotSettings = {
   minPrice: 0.2,
   minVolume: 200,
   minT: 1.8,
+  d2Entry: true,
+  d2T: 1.2,
+  minD2: 1.5,
   minRvol: 1.5,
   firstEntryMin: 10,
   skipEarnings: true,
@@ -174,6 +182,8 @@ export const limits: Record<
   minPrice: [0.05, 1, 0.05],
   minVolume: [0, 1000, 50],
   minT: [1, 4, 0.1],
+  d2T: [1, 1.8, 0.1],
+  minD2: [0.5, 3, 0.1],
   minRvol: [1, 3, 0.1],
   firstEntryMin: [5, 60, 5],
 };
@@ -184,6 +194,7 @@ const booleans: BooleanKey[] = [
   "checks",
   "sellOnWeakness",
   "sellFailedBreak",
+  "d2Entry",
   "skipEarnings",
   "skipPremarket",
 ];
@@ -293,6 +304,8 @@ export const signalParams = (s: BotSettings): SignalParams => ({
   firstMinute: s.firstEntryMin,
   strengthT: s.minT,
   rvolDay: s.minRvol,
+  bonusT: s.d2Entry ? s.d2T : null,
+  bonusD2: s.minD2,
 });
 
 export const pickRules = (s: BotSettings): PickRules => ({

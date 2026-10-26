@@ -24,6 +24,9 @@ export type RuleKey =
   | "minPrice"
   | "minVolume"
   | "minT"
+  | "d2Entry"
+  | "d2T"
+  | "minD2"
   | "minRvol"
   | "firstEntryMin"
   | "skipEarnings"
@@ -46,6 +49,9 @@ export const ruleKeys: readonly RuleKey[] = [
   "minPrice",
   "minVolume",
   "minT",
+  "d2Entry",
+  "d2T",
+  "minD2",
   "minRvol",
   "firstEntryMin",
   "skipEarnings",
@@ -76,6 +82,9 @@ const v1: Rules = {
   minPrice: 0.2,
   minVolume: 200,
   minT: 2,
+  d2Entry: false,
+  d2T: 1.2,
+  minD2: 1.5,
   minRvol: 1.5,
   firstEntryMin: 10,
   skipEarnings: false,
@@ -100,6 +109,11 @@ const v23: Rules = { ...v22, holdFromPct: 50 };
 // on the entry day (the user, 2026-10-24: be more careful with trades we
 // already cut; the 2026-10-24 night champion, rest_stop2.py).
 const v24: Rules = { ...v23, restStopPct: 20 };
+// 2.5: the D2 bonus entry (the 2026-10-25 champion, the user's idea: holding
+// up on the market's bad minutes earns an earlier entry), without the
+// failed-break sale, which loses with it (d2_failed_break.py: fair list
+// $669,231 / 14% with it vs $1,005,207 / 11% without).
+const v25: Rules = { ...v24, sellFailedBreak: false, d2Entry: true };
 
 /** Every version, oldest first. */
 export const botVersions: readonly BotVersion[] = [
@@ -149,6 +163,14 @@ export const botVersions: readonly BotVersion[] = [
     notes:
       "Once the 10-minute check sold half, the rest is sold at −20% (was −30%) with the stock against, on the entry day.",
     rules: v24,
+  },
+  {
+    id: "2.5",
+    name: "V2.4 + the D2 bonus entry",
+    since: "2026-10-25",
+    notes:
+      "Also enters at strength t 1.2 when the stock held up on SPY's down minutes of the last 30 (D2 1.5 or more); no failed-break sale.",
+    rules: v25,
   },
 ];
 

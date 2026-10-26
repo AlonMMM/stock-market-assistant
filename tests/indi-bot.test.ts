@@ -56,6 +56,7 @@ import {
   type BotTrading,
 } from "../apps/trader/src/bot.js";
 import { BotStore } from "../apps/trader/src/bot-store.js";
+import { applyVersion } from "../packages/trading/src/bot/versions.js";
 
 // ---- synthetic bars ----
 
@@ -154,6 +155,47 @@ test("signal (V2): the threshold is t 1.8; a slow climb signals earlier than it 
     ),
     null,
   );
+});
+
+test("signal (2.5): the D2 bonus enters at t 1.2 when the stock held up on SPY's down minutes", () => {
+  assert.equal(defaultSignalParams.bonusT, null);
+  const prior = priorFrom(priorDays());
+  assert.ok(prior.beta !== null && prior.unit !== null);
+  const beta = prior.beta;
+  // SPY falls every third minute and rises otherwise.
+  const spyStep = (m: number) => (m % 3 === 0 ? -0.0008 : 0.0004);
+  const spy = session(500, spyStep, () => 50000);
+  // On SPY's down minutes the stock falls only part of beta × SPY; otherwise
+  // it moves with it, noisily, drifting a little down.
+  const stock = (hold: number, drift: number) =>
+    session(
+      100,
+      (m) =>
+        m % 3 === 0
+          ? beta * spyStep(m) * (1 - hold)
+          : beta * spyStep(m) + drift + (m % 2 ? 0.0006 : -0.0006),
+      () => 2000,
+    );
+  const bonus = { ...defaultSignalParams, bonusT: 1.2 };
+  const held = stock(0.6, -0.0002);
+  const plain = cSignal(held, spy, prior);
+  const early = cSignal(held, spy, prior, 374, bonus);
+  assert.ok(plain && early);
+  assert.equal(plain.bonus, false);
+  assert.ok(plain.t >= 1.8);
+  assert.equal(early.right, "C");
+  assert.equal(early.bonus, true);
+  assert.ok(early.t >= 1.2 && early.t < 1.8);
+  assert.ok(early.d2! >= 1.5);
+  assert.ok(early.minute < plain.minute);
+  // Held up less (D2 under 1.5): the bonus does not fire; the entry waits for t 1.8.
+  const weak = stock(0.4, -0.0001);
+  const late = cSignal(weak, spy, prior, 374, bonus);
+  assert.equal(late?.bonus, false);
+  assert.equal(late?.minute, cSignal(weak, spy, prior)?.minute);
+  // Without the stock's unit (short history) there is no D2: t 1.8 only.
+  const noUnit = cSignal(held, spy, { ...prior, unit: null }, 374, bonus);
+  assert.equal(noUnit?.minute, plain.minute);
 });
 
 // ---- exits ----
@@ -1100,30 +1142,30 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
 
 test("versions: every entry is stamped with the version in force; changed rules star it; the owner can pick an older one", async () => {
   const h = harness("live");
-  assert.equal(h.bot.status().version, "2.4");
+  assert.equal(h.bot.status().version, "2.5");
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy");
-  assert.match(String(buy?.body.note), /· bot 2\.4$/);
+  assert.match(String(buy?.body.note), /· bot 2\.5$/);
   const [p] = h.store.openPositions();
-  assert.equal(p!.version, "2.4");
-  assert.equal(h.store.signals(DAY)[0]!.version, "2.4");
-  assert.equal(h.bot.status().positions[0]!.version, "2.4");
+  assert.equal(p!.version, "2.5");
+  assert.equal(h.store.signals(DAY)[0]!.version, "2.5");
+  assert.equal(h.bot.status().positions[0]!.version, "2.5");
   const texts = () =>
     h.bot
       .status()
       .activity.map((e) => e.text)
       .join("\n");
-  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.4$/m);
+  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.5$/m);
 
-  // The stop changed from 2.4's: the next entry is stamped "2.4*".
+  // The stop changed from 2.5's: the next entry is stamped "2.5*".
   const edited = harness("live");
   edited.bot.setSettings({ ...edited.bot.settings(), stopPct: 40 });
-  assert.equal(edited.bot.status().version, "2.4*");
+  assert.equal(edited.bot.status().version, "2.5*");
   await edited.run(DAY, 565, 600);
-  assert.equal(edited.store.openPositions()[0]!.version, "2.4*");
+  assert.equal(edited.store.openPositions()[0]!.version, "2.5*");
   assert.match(
     String(edited.calls.find((c) => c.kind === "buy")?.body.note),
-    /· bot 2\.4\*$/,
+    /· bot 2\.5\*$/,
   );
 
   // Version 1.0 picked: its rules (t 2, no night cap, no news filter) run, and the feed says so.
@@ -1139,6 +1181,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
     sellOnWeakness: false,
     holdFromPct: 100,
     restStopPct: 0,
+    d2Entry: false,
   });
   assert.equal(picked.version, "1.0");
   assert.equal(old.bot.status().version, "1.0");
@@ -1147,7 +1190,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
       .status()
       .activity.map((e) => e.text)
       .join("\n"),
-    /Settings changed: version "2\.4" → "1\.0"; restStopPct 20 → 0; sellOnWeakness true → false; sellFailedBreak true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2/,
+    /Settings changed: version "2\.5" → "1\.0"; restStopPct 20 → 0; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false/,
   );
 });
 
@@ -1449,6 +1492,8 @@ const failedBreakDay = (beta: number): MinuteBar[] => {
 
 test("runner (live): a failed break at the day's high sells all, with the level in the note", async () => {
   const h = harness("live", {}, failedBreakDay);
+  // Version 2.5 has the sale off; 2.4 has it.
+  h.bot.setSettings(applyVersion(h.bot.settings(), "2.4"));
   await h.run(DAY, 565, 640);
   const [p] = h.store.recentPositions(DAY);
   assert.equal(p!.breakWatch?.name, "the day's high");

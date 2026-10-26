@@ -57,7 +57,7 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
   manager's drawdown brake works there too. The Bot trades tab still shows the Alpaca bot account. See
   [the task](tasks/backend-bot-ibkr.md).
 - **Versions (2026-10-23, `feat/bot-version`):** the rules have a version (1.0 the first bot, 2.0 the V2
-  champion, 2.1 with the failed-break sale, 2.2 with the t-stat exit of 2026-10-24, 2.3 holding overnight from +50%, 2.4 with the rest at −20% after the 10-minute half); every signal, position and buy note is stamped with the version in
+  champion, 2.1 with the failed-break sale, 2.2 with the t-stat exit of 2026-10-24, 2.3 holding overnight from +50%, 2.4 with the rest at −20% after the 10-minute half, 2.5 with the D2 bonus entry and without the failed-break sale); every signal, position and buy note is stamped with the version in
   force (starred when its rules were changed), and the owner picks the version on the settings page. See
   "Versions" in [the settings task](tasks/backend-bot-settings.md).
 - **Parity:** signal and exits match the Python backtest exactly (26,049 stock-days, 875 trades).
