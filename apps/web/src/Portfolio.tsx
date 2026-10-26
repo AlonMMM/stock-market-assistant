@@ -292,7 +292,7 @@ const groups = [
   ],
   [
     "bot",
-    "🤖 Bot",
+    "🤖 Main bot",
     [
       ["activity", "Activity"],
       ["trades", "Trades"],
@@ -303,7 +303,7 @@ const groups = [
   // (docs/tasks/backend-strangle-bot.md, user 2026-10-25: "not mix them").
   [
     "strangle",
-    "🎯 Alert leg",
+    "🎯 Volume bot",
     [
       ["s-activity", "Activity"],
       ["s-trades", "Trades"],
@@ -411,7 +411,7 @@ export function Portfolio({
           <BotAccount
             broker="alpaca"
             base="/api/portfolio/strangle"
-            label="🎯 Alert leg · Alpaca paper"
+            label="🎯 Volume bot · Alpaca paper"
             onError={ignore}
           />
         </div>
@@ -767,7 +767,7 @@ function BotAccount({
     <div className="portfolio">
       <p className="portfolio-meta">
         <span className="account-tag paper">
-          {label ?? `🤖 Bot · ${brokerNames[broker]} paper`}
+          {label ?? `🤖 Main bot · ${brokerNames[broker]} paper`}
         </span>
         <span className="muted">
           {error

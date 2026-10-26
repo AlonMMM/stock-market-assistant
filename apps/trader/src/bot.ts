@@ -145,7 +145,7 @@ export interface BotOptions {
   log?: (line: string) => void;
 }
 
-export const botTag = "🤖 Bot";
+export const botTag = "🤖 Main bot";
 // A buy keeps raising its price to the ask for up to this long; a sale is
 // re-priced at the bid for up to this long (docs/tasks/backend-indi-bot.md,
 // "Orders").

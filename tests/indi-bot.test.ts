@@ -409,7 +409,7 @@ test("posts: a tag and a reason appear on the bot's entry and exit", () => {
     {
       symbol: "NVDA261023C00110000",
       paper: true,
-      tag: "🤖 Bot",
+      tag: "🤖 Main bot",
       note: "Signal call at 10:15",
     },
     {
@@ -425,13 +425,13 @@ test("posts: a tag and a reason appear on the bot's entry and exit", () => {
       prices: [0.6],
     } as never,
   );
-  assert.match(entry, /🧪 PAPER\n🤖 Bot\n/);
+  assert.match(entry, /🧪 PAPER\n🤖 Main bot\n/);
   assert.match(entry, /Signal call at 10:15/);
   const exit = formatExit(
     {
       symbol: "NVDA261023C00110000",
       paper: true,
-      tag: "🤖 Bot",
+      tag: "🤖 Main bot",
       note: "10-min check",
     },
     {
@@ -446,7 +446,7 @@ test("posts: a tag and a reason appear on the bot's entry and exit", () => {
       stop: null,
     },
   );
-  assert.match(exit, /🤖 Bot/);
+  assert.match(exit, /🤖 Main bot/);
   assert.match(exit, /10-min check/);
 });
 
@@ -639,7 +639,7 @@ test("runner (live): signal -> buy with the bot tag -> no check sale while winni
   assert.ok(buy);
   assert.equal(buy.body.contract, "NVDA261023C00110000");
   assert.equal(buy.body.sizePct, 2);
-  assert.equal(buy.body.tag, "🤖 Bot");
+  assert.equal(buy.body.tag, "🤖 Main bot");
   const [p] = h.store.openPositions();
   assert.equal(p!.status, "open");
   assert.equal(p!.qty, 33);
@@ -1251,7 +1251,7 @@ test("runner (live): at 15:50 the night cap sells the excess first, then holds a
   const sells = h.calls.filter((c) => c.kind === "sell");
   assert.equal(sells.length, 1);
   assert.equal(sells[0]!.body.qty, "7");
-  assert.equal(sells[0]!.body.tag, "🤖 Bot");
+  assert.equal(sells[0]!.body.tag, "🤖 Main bot");
   assert.match(String(sells[0]!.body.note), /Overnight cap.*8%/);
   const [p] = h.store.openPositions();
   assert.equal(p!.qty, 26);

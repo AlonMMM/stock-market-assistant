@@ -14,7 +14,7 @@ import { strangleAccountSuffix } from "./seed-bot.js";
 // there; the Indi bot's and the owner's posts stay on the owner's channel. An
 // urgent alert (a short option position) always goes to the owner's channel.
 
-/** The accounts only the Alert leg bot trades: everything they post is its. */
+/** The accounts only the volume bot (Alert leg) trades: everything they post is its. */
 export const botAccountIds = (userId: string) => [
   `${userId}-${strangleAccountSuffix}`,
 ];

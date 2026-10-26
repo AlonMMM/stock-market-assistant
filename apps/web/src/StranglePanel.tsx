@@ -151,8 +151,8 @@ export function StrangleActivity({ onSettings }: { onSettings?: () => void }) {
     return (
       <p className={error ? "notice error" : "chart-status"}>
         {error
-          ? `The alert leg bot is unavailable: ${error}`
-          : "Loading the alert leg bot…"}
+          ? `The volume bot is unavailable: ${error}`
+          : "Loading the volume bot…"}
       </p>
     );
   const closed = v.trades.filter((t) => t.phase === "closed");
@@ -169,7 +169,7 @@ export function StrangleActivity({ onSettings }: { onSettings?: () => void }) {
     <div className="bot-panel">
       <section className="bot-card">
         <div className="bs-card-head">
-          <h2>🎯 Alert leg</h2>
+          <h2>🎯 Volume bot</h2>
           <span className={v.enabled ? "small bs-good" : "small muted"}>
             {state}
           </span>
@@ -477,8 +477,8 @@ export function StrangleSettingsPage({ onBack }: { onBack: () => void }) {
     return (
       <p className={state.step === "failed" ? "notice error" : "notice"}>
         {state.step === "failed"
-          ? `The alert leg bot's settings are unavailable: ${state.message}`
-          : "Loading the alert leg bot's settings…"}
+          ? `The volume bot's settings are unavailable: ${state.message}`
+          : "Loading the volume bot's settings…"}
       </p>
     );
   const put = (patch: Partial<StrangleSettings>) => {
@@ -518,7 +518,7 @@ export function StrangleSettingsPage({ onBack }: { onBack: () => void }) {
       "Unsaved changes. Stocks apply from the next session, the rest from the next minute.";
     statusTone = "bs-changed";
   } else if (state.step === "saved") {
-    status = "Saved. The alert leg bot uses the new settings.";
+    status = "Saved. The volume bot uses the new settings.";
     statusTone = "bs-good";
   }
   const addTickers = () => {
@@ -534,11 +534,11 @@ export function StrangleSettingsPage({ onBack }: { onBack: () => void }) {
       <div className="bs-head">
         <div className="bs-title">
           <button type="button" className="bs-back" onClick={onBack}>
-            ← Back to the alert leg
+            ← Back to the volume bot
           </button>
-          <h2 className="portfolio-title">Alert leg settings</h2>
+          <h2 className="portfolio-title">Volume bot settings</h2>
           <p className="muted small">
-            Only you see this page. Everyone else sees the Alert leg tab,
+            Only you see this page. Everyone else sees the Volume bot tab,
             read-only.
           </p>
         </div>
