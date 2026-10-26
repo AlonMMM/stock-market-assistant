@@ -23,8 +23,8 @@ The code keeps the name `strangle` for its module, routes, tables and environmen
    One trade per stock a day; a later alert the same day does not count.
 2. News filter as the Indi bot's: no trade on the earnings reaction day or with pre-market volume 4× or more.
 3. Watch: the side is the first time the stock is 0.25 of its typical 30-minute move (`priorLevels(...).unit`,
-   the failed break's unit) from its price when the alert was read, up or down. No side within 60 minutes of
-   the alert: no trade. Optional strength filter: buy only when the C t-stat since the open agrees.
+   the failed break's unit) from its price when the alert was read, up or down. No side within 10 minutes of
+   the alert (60 until 2026-10-26; `leg_entry.py`): no trade. Optional strength filter: buy only when the C t-stat since the open agrees.
 4. Buy only that side's leg: the 0.35-delta call (up) or put (down) of that day's expiry (`pickContract`), 1% of
    the account at the ask; its mid ≥ $0.20 and ≥ 200 contracts in the last 30 minutes.
 5. Sell all when the stock gives back 0.75 of its typical 30-minute move from its best since the buy (its high
