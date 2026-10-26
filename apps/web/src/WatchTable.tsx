@@ -1,12 +1,5 @@
 import type { LivePriceState } from "./live-prices.js";
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import type { Board } from "../../../packages/market-data/src/board.js";
 import { newYorkToUtc } from "../../../packages/market-data/src/calendar.js";
 import type { FeedAlert } from "./AlertFeed.js";
@@ -65,26 +58,6 @@ const shares = (n: number | null) =>
         : String(Math.round(n));
 /** Rel vol bar is full at this ratio. */
 const relVolScale = 4;
-
-/**
- * A number that lights up for a moment when it changes, as IBKR's cells do.
- * The first value shown does not flash.
- */
-function Flash({ value, children }: { value: string; children: ReactNode }) {
-  const before = useRef(value);
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    if (before.current !== value) {
-      before.current = value;
-      setTick((t) => t + 1);
-    }
-  }, [value]);
-  return (
-    <span key={tick} className={tick > 0 ? "wl-flash" : undefined}>
-      {children}
-    </span>
-  );
-}
 
 /** The moon IBKR puts next to an overnight price. */
 const Moon = () => (
@@ -433,7 +406,7 @@ export function WatchTable({
                     {r.last === null ? (
                       <span className="muted">—</span>
                     ) : (
-                      <Flash value={ibPrice(r.last)}>
+                      <span>
                         {r.mark === "night" && (
                           <>
                             <Moon />
@@ -447,24 +420,20 @@ export function WatchTable({
                           </span>
                         )}
                         {ibPrice(r.last)}
-                      </Flash>
+                      </span>
                     )}
                   </span>
                   <span
                     className={`wl-cell right wl-num${r.changeUsd === null ? "" : r.changeUsd >= 0 ? " up" : " down"}`}
                   >
                     {r.changeUsd !== null && (
-                      <Flash value={ibChange(r.changeUsd)}>
-                        {ibChange(r.changeUsd)}
-                      </Flash>
+                      <span>{ibChange(r.changeUsd)}</span>
                     )}
                   </span>
                   <span
                     className={`wl-cell right wl-num${r.change === null ? "" : r.change >= 0 ? " up" : " down"}`}
                   >
-                    {r.change !== null && (
-                      <Flash value={ibPct(r.change)}>{ibPct(r.change)}</Flash>
-                    )}
+                    {r.change !== null && <span>{ibPct(r.change)}</span>}
                   </span>
                   <span
                     className={
@@ -496,9 +465,7 @@ export function WatchTable({
                         : `${r.relVolume.toFixed(1)}× the usual volume by now`
                     }
                   >
-                    <Flash value={ibVolume(r.volume)}>
-                      {ibVolume(r.volume)}
-                    </Flash>
+                    <span>{ibVolume(r.volume)}</span>
                   </span>
                   <span className="wl-cell wl-wide">
                     {position === null ? (

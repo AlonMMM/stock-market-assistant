@@ -1,6 +1,6 @@
-# Task: Overnight prices and the IBKR-style watchlist
+# Task: Overnight prices, the IBKR-style watchlist and dark mode
 
-Status: completed (not deployed)
+Status: completed
 Owner: integration (unattended session; touches the price API and the watchlist UI)
 Branch: claude/zero-dte-experiment-review-u1auv1
 Spec/contract revision: user requests of 2026-10-26 ("why we can't see night prices in our app", "Build it. Use
@@ -27,8 +27,13 @@ Alpaca's BOATS feed, included in the account's Algo Trader Plus plan). The Watch
 - **Table design** (IBKR screenshot): on phones five columns, Instrument (symbol with the sector ETF beside it),
   Last price, Chng, Chg %, Volume. Numbers in Roboto (Android's system face, IBKR's), regular weight, tabular
   figures, as large as the symbol; plain green and red instead of tinted pills; "+0.53", "-1.63", "0.07%",
-  "-0.23%", volume to three digits ("41.2K", "151K"); a cell flashes yellow for a moment when its value changes.
+  "-0.23%", volume to three digits ("41.2K", "151K"). A first version flashed changed cells yellow; the user chose
+  the look without it.
   From 760px the other columns stay: Today, vs SPY/sector, Score, Rel vol, Day range, Alerts.
+- **Dark mode** (user 2026-10-26, "Show also dark mode"): IBKR's dark colours for the Watchlist list view
+  (`apps/web/src/theme.ts`, `.wl-dark` on <html>). It follows the phone's setting until the sun/moon button by the
+  title is used; that choice is kept in the browser. Other sections, a stock's page and the price alerts' page stay
+  light for now.
 - **Rel vol on phones**: the Today and Rel vol columns left the phone layout to fit IBKR's five; Volume turns
   orange at 2× usual volume or more (the Rel vol threshold) and its tooltip gives the ratio.
 
@@ -37,7 +42,7 @@ Alpaca's BOATS feed, included in the account's Algo Trader Plus plan). The Watch
 - Charts (candles on the stock page, full screen, day chart, market cards) still end at 20:00: they read SIP bars.
   Overnight candles need BOATS minute bars in `/api/candles` and a "night" session in the charts.
 - Price alerts and the board's volume numbers stay on SIP (regular and extended hours).
-- The app's light theme is kept; the table is not switched to IBKR's dark look.
+- Dark mode covers the Watchlist list only, not a stock's page, Alerts, Portfolio or Backtest.
 
 ## Verification evidence
 
@@ -46,7 +51,7 @@ Alpaca's BOATS feed, included in the account's Algo Trader Plus plan). The Watch
   night, the eve of Thanksgiving), BOATS at night and the SIP fallback, night rows, "C" rows, weekend rows, the
   pre-market before a first print, IBKR's number formats.
 - Headless Chromium on the dev server with mocked, synthetic board and prices, the browser clock pinned to 21:30
-  New York on a Monday and to a Saturday, at 412px and 1180px: moon prices with change vs the close, "C" rows
-  without change, the yellow flash on changed cells, the weekend's "C" closes with the day's change.
+  New York on a Monday, 11:05 New York and a Saturday, at 412px and 1180px, light and dark (the browser set to dark):
+  moon prices with change vs the close, "C" rows without change, the weekend's "C" closes with the day's change.
 - Not verified: real BOATS answers through the deployed Worker (no Alpaca keys in the session); Roboto itself
   (the headless browser has no Roboto, so it drew a fallback face).

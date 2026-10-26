@@ -3937,7 +3937,6 @@ dialog.why::backdrop {
    ------------------------------------------------------------------------ */
 .wl {
   --wl-font: Roboto, "Roboto Flex", "Helvetica Neue", Arial, sans-serif;
-  --wl-flash: #f2dc86;
   --wl-night: #5a67d8;
   --wl-night-text: #26306b;
   --wl-up: #0e7a43;
@@ -4196,25 +4195,6 @@ dialog.why::backdrop {
 .wl-num > span {
   display: inline-flex;
   align-items: center;
-  padding: 1px 2px;
-  margin: -1px -2px;
-  border-radius: 3px;
-}
-.wl-flash {
-  animation: wl-flash 0.9s ease-out;
-}
-@keyframes wl-flash {
-  from {
-    background: var(--wl-flash);
-  }
-  to {
-    background: transparent;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .wl-flash {
-    animation: none;
-  }
 }
 .wl-c {
   margin-right: 1px;
@@ -7309,5 +7289,201 @@ i.added {
   }
   .risk-pair > .small {
     min-width: 58px;
+  }
+}
+
+/* Watchlist dark mode (user 2026-10-26, after IBKR's dark watchlist): set on
+   <html> by the Watchlist list view (theme.ts); the phone's setting decides
+   until the button by the title is used. */
+.wl-theme {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-left: auto;
+  border: 1px solid #cdd7ce;
+  border-radius: 999px;
+  background: #fff;
+  color: #142b29;
+}
+.wl-theme + .wl-pa {
+  margin-left: 0;
+}
+.wl-theme svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+:root.wl-dark {
+  color-scheme: dark;
+  color: #e6e8eb;
+  background: #16191f;
+}
+.wl-dark .muted,
+.wl-dark .chart-status,
+.wl-dark .wl-help,
+.wl-dark .wl-title .count,
+.wl-dark .wl-source {
+  color: #8d95a1;
+}
+.wl-dark .notice {
+  background: #1f232a;
+  border-color: #343a43;
+  color: #c3c8cf;
+}
+.wl-dark .modes {
+  border-color: #343a43;
+}
+.wl-dark .modes button {
+  color: #e6e8eb;
+}
+.wl-dark .modes .selected {
+  background: #e6e8eb;
+  color: #16191f;
+}
+.wl-dark .pill.green {
+  background: #13261b;
+  border-color: #24543a;
+  color: #7fd99a;
+}
+.wl-dark .pill.grey {
+  background: #22262d;
+  border-color: #343a43;
+  color: #c3c8cf;
+}
+.wl-dark .pill.amber {
+  background: #2d2412;
+  border-color: #6b4f1c;
+  color: #f0c46c;
+}
+.wl-dark .pill.red {
+  background: #2d1717;
+  border-color: #6a2a28;
+  color: #f19a93;
+}
+.wl-dark .status-popover {
+  background: #1f232a;
+  border-color: #343a43;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+.wl-dark .status-popover dt {
+  color: #8d95a1;
+}
+.wl-dark .mkt-card {
+  background: #1b1e24;
+  border-color: #2a2f37;
+}
+.wl-dark .mkt-card:hover {
+  border-color: #3a414b;
+}
+.wl-dark .mkt-card small {
+  color: #8d95a1;
+}
+.wl-dark .mkt-card .up {
+  color: #3fcf7f;
+}
+.wl-dark .mkt-card .down {
+  color: #ff5c5c;
+}
+.wl-dark .wl-theme,
+.wl-dark .wl-pa {
+  background: #1f232a;
+  border-color: #343a43;
+  color: #e6e8eb;
+}
+.wl-dark .wl-pa .num {
+  background: #e6e8eb;
+  color: #16191f;
+}
+.wl-dark .wl-add {
+  border-color: #5d6672;
+  color: #e6e8eb;
+}
+.wl-dark .engine-tickers {
+  border-color: #2a2f37;
+}
+.wl-dark input {
+  background: #1f232a;
+  border-color: #343a43;
+  color: #e6e8eb;
+}
+.wl-dark .wl {
+  --wl-up: #3fcf7f;
+  --wl-up-soft: #13261b;
+  --wl-down: #ff5c5c;
+  --wl-down-soft: #2d1717;
+  --wl-hot: #f0a030;
+  --wl-line: #2a2f37;
+  --wl-faint: #8d95a1;
+  --wl-chip: #262a31;
+  --wl-night: #8f9bff;
+  --wl-night-text: #c8ceff;
+}
+.wl-dark .wl-chips button {
+  color: #c3c8cf;
+}
+.wl-dark .wl-chips button[aria-pressed="true"] {
+  background: #e6e8eb;
+  color: #16191f;
+}
+.wl-dark .wl-find input {
+  background: transparent;
+}
+.wl-dark .wl-table,
+.wl-dark .wl-head {
+  background: #1b1e24;
+}
+.wl-dark .wl-head button:hover,
+.wl-dark .wl-head button.active,
+.wl-dark .wl-head button.active .wl-arrow {
+  color: #e6e8eb;
+}
+.wl-dark .wl-row:hover,
+.wl-dark .wl-table li.open .wl-row {
+  background: #22262d;
+}
+.wl-dark .wl-row:focus-visible,
+.wl-dark .wl-head button:focus-visible,
+.wl-dark .wl-find:focus-within {
+  outline-color: #e6e8eb;
+}
+.wl-dark .wl-rv i span {
+  background: #8d95a1;
+}
+.wl-dark .range::before {
+  background: #3a414b;
+}
+.wl-dark .range i {
+  background: #e6e8eb;
+}
+.wl-dark .score-chip.stronger {
+  background: #13261b;
+  border-color: #24543a;
+  color: #7fd99a;
+}
+.wl-dark .score-chip.weaker {
+  background: #2d1717;
+  border-color: #6a2a28;
+  color: #f19a93;
+}
+.wl-dark .score-chip.normal {
+  background: #22262d;
+  border-color: #343a43;
+  color: #c3c8cf;
+}
+@media (max-width: 720px) {
+  .wl-dark .tabbar {
+    background: rgba(22, 25, 31, 0.96);
+    border-top-color: #2a2f37;
+  }
+  .wl-dark .tabbar button {
+    color: #8d95a1;
+  }
+  .wl-dark .tabbar button[aria-current="page"] {
+    color: #e6e8eb;
   }
 }

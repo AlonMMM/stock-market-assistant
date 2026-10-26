@@ -3,14 +3,15 @@
 Updated: 2026-10-26
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
 
-## Watchlist: overnight prices and IBKR's look (2026-10-26, not deployed)
+## Watchlist: overnight prices, IBKR's look and dark mode (2026-10-26)
 
 From 20:00 to 04:00 New York `GET /api/prices` reads Alpaca's overnight feed (BOATS) instead of SIP, falling back
 to SIP if refused. The Watchlist and the stock page show those prices with a moon, measured from the day's regular
 close; "C" marks a close (overnight without a print, a closed market, before a stock's first pre-market trade).
 The table follows the user's IBKR screenshot: Instrument, Last price, Chng, Chg %, Volume on phones, Roboto
-numbers with tabular figures, plain green/red, a short flash on each change; Volume turns orange at 2× usual. Wider
-screens keep Today, vs SPY/sector, Score, Rel vol, Day range and Alerts. Charts still stop at 20:00. See the
+numbers with tabular figures, plain green/red; Volume turns orange at 2× usual. Wider screens keep Today, vs
+SPY/sector, Score, Rel vol, Day range and Alerts. A dark mode (IBKR's colours) follows the phone's setting, with a
+sun/moon button to override it; it covers the list only. Charts still stop at 20:00. See the
 [task](tasks/watchlist-night-prices.md).
 
 ## Indi bot on the paper account (2026-10-21, in review)
