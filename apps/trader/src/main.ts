@@ -2,6 +2,8 @@
 // broker keys, runs orders as jobs and keeps the trade records. Only the
 // hosted site talks to it, with TRADER_TOKEN; Claude reaches it through the
 // site's connector and never sees a key.
+import { TelegramSender } from "../../../packages/notifications/src/telegram.js";
+import { TelegramNotifier } from "../../../packages/trading/src/notifier.js";
 import { timingSafeEqual } from "node:crypto";
 import { newYork } from "../../../packages/market-data/src/calendar.js";
 import { mkdirSync } from "node:fs";
@@ -18,7 +20,7 @@ import {
   strangleAccount,
   strangleKeyVariable,
 } from "./seed-bot.js";
-import { StrangleBot } from "./strangle.js";
+import { StrangleBot, strangleTag } from "./strangle.js";
 import { StrangleStore } from "./strangle-store.js";
 import { parseStrangleSettings } from "../../../packages/trading/src/strangle/settings.js";
 import { EquityLog } from "./equity-log.js";
@@ -28,7 +30,7 @@ import { RequestError, type TraderService } from "./service.js";
 import { TradeStore } from "./store.js";
 import { Traders } from "./traders.js";
 import botUniverse from "../../../config/bot-universe.json" with { type: "json" };
-import { IndiBot } from "./bot.js";
+import { botTag, IndiBot } from "./bot.js";
 import { nasdaqEarnings } from "./bot-news.js";
 import { AlpacaBotMarket } from "./bot-market.js";
 import { BotStore } from "./bot-store.js";
@@ -66,8 +68,21 @@ const strangleAdded = ensureStrangleAccount(store, process.env, Date.now());
 if (strangleAdded)
   log(`added the strangle bot's own Alpaca paper account "${strangleAdded}"`);
 const vaultKey = env("TRADER_VAULT_KEY");
+// The bots' own Telegram chat (bot-channel.ts): both values, or neither.
+const botsToken = process.env.BOTS_TELEGRAM_BOT_TOKEN ?? "";
+const botsChat = process.env.BOTS_TELEGRAM_CHAT_ID ?? "";
+if (!botsToken !== !botsChat)
+  throw new Error(
+    "Set both BOTS_TELEGRAM_BOT_TOKEN and BOTS_TELEGRAM_CHAT_ID, or neither",
+  );
+const botsNotifier = botsToken
+  ? new TelegramNotifier(new TelegramSender(botsToken, botsChat))
+  : null;
 const traders = new Traders({
   store,
+  bots: botsNotifier
+    ? { notifier: botsNotifier, tags: [botTag, strangleTag] }
+    : null,
   secrets: {
     env: process.env,
     ...(vaultKey ? { vault: new Vault(vaultKey) } : {}),
@@ -279,7 +294,9 @@ const bot = (() => {
     },
     store: botStore,
     market: new AlpacaBotMarket(key, secret, "sip"),
-    notify: (title, lines) => owner().notifier.notice(title, lines),
+    // The bots' chat when set, else the owner's channels.
+    notify: (title, lines) =>
+      (botsNotifier ?? owner().notifier).notice(title, lines),
     universe: botUniverse.symbols,
     earnings: (date) => nasdaqEarnings(date),
     mode: process.env.BOT_MODE === "live" ? "live" : "dry",
@@ -403,7 +420,9 @@ const strangle = (() => {
       sell: (b) => t.service.sell(b),
       job: (id) => t.service.job(id),
     },
-    notify: (title, lines) => owner().notifier.notice(title, lines),
+    // The bots' chat when set, else the owner's channels.
+    notify: (title, lines) =>
+      (botsNotifier ?? owner().notifier).notice(title, lines),
     earnings: (date) => nasdaqEarnings(date),
     log,
   });
