@@ -62,30 +62,34 @@ export function tradeChartUrl(
   return `/api/trade-chart?${new URLSearchParams({ symbol, from, to })}`;
 }
 
-// A session's bars are final about 20 minutes after its close (the data
-// feed's delay); before that the day before is the last one to draw.
-const settleMs = 20 * 60000;
-
-/** The last US session whose bars are complete at `now`. */
-export function lastClosedSession(now: number): string {
+/**
+ * The latest US session that has opened by `now`: its minutes so far can be
+ * drawn (the chart's data runs up to now on real-time SIP).
+ */
+export function lastOpenSession(now: number): string {
   const date = usSessionDate(now);
   const close = coreClose(date);
-  if (close !== null && now >= newYorkToUtc(date, close) + settleMs)
-    return date;
+  if (close !== null && now >= newYorkToUtc(date, sessionOpen)) return date;
   return previousSessions(date, 1)[0]!;
 }
 
-/** The days the window opens on: the trade's and a couple each side, up to the last closed one. */
+/**
+ * The days the window opens on: the trade's own, always (it was traded, so
+ * its session has opened), and a couple each side up to the latest session
+ * that has opened. Until 2026-10-26 the window stopped at the last closed
+ * session, so a trade viewed during its own session showed the days before
+ * it, with its entry and exit marked on the wrong bars.
+ */
 export function chartWindow(
   t: ClosedTrade,
   now: number,
 ): { from: string; to: string } {
   const { from, to } = tradeDates(t);
-  const last = lastClosedSession(now);
+  const last = lastOpenSession(now);
   const after = nextSessions(to, contextDays).filter((d) => d <= last);
   return {
     from: previousSessions(from, contextDays)[0]!,
-    to: after.at(-1) ?? (to <= last ? to : last),
+    to: after.at(-1) ?? to,
   };
 }
 
@@ -526,4 +530,167 @@ export function ownerStory(t: ClosedTrade, decision: Decision | null): Story {
     markers: fillMarkers(t),
     decision,
   };
+}
+
+// ---------------------------------------------------------------- the trade measured
+
+/** A price at a moment, and how far it is from a reference, in percent. */
+export interface PricePoint {
+  ms: number;
+  price: number;
+  pct: number;
+}
+
+/**
+ * The trade measured on the chart's minutes, for reading the entry and the
+ * exit at a glance (user 2026-10-26: "make it easy to a human to analyze the
+ * enter and exit"): what was paid and when, each exit, the time held, the
+ * option's best and worst while held (against what was paid), the stock's and
+ * SPY's move from the entry to the last exit, and the option after the last
+ * sale until that session's close (did it run after it was sold?).
+ */
+export interface TradeStats {
+  entry: { ms: number; price: number; qty: number; stock: number | null };
+  exits: { ms: number; price: number | null; qty: number; title: string }[];
+  heldMs: number;
+  best: PricePoint | null; // the option's highest while held
+  worst: PricePoint | null; // the option's lowest while held
+  stock: { from: number; to: number; pct: number } | null;
+  spyPct: number | null;
+  afterBest: PricePoint | null; // the option's highest after the last sale, that session
+  afterClose: PricePoint | null; // the option's last price that session
+}
+
+type Bar = {
+  start: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
+const barsOf = (chart: TradeChart, pick: "stock" | "option"): Bar[] =>
+  chart.sessions.flatMap((s) =>
+    s[pick].map(([m, o, h, l, c]) => ({
+      start: newYorkToUtc(s.date, sessionOpen + m),
+      open: o,
+      high: h,
+      low: l,
+      close: c,
+    })),
+  );
+
+/** The close of the bar containing `ms`, else of the last bar before it. */
+function closeAt(
+  bars: { start: number; close: number }[],
+  ms: number,
+): number | null {
+  let found: number | null = null;
+  for (const b of bars) {
+    if (b.start > ms) break;
+    found = b.close;
+  }
+  return found;
+}
+
+const pctOf = (price: number, from: number) => (price / from - 1) * 100;
+
+export function tradeStats(
+  t: ClosedTrade,
+  story: Story,
+  chart: TradeChart,
+): TradeStats | null {
+  const buys = (t.fills ?? []).filter((f) => f.side === "buy");
+  if (buys.length === 0 || !(t.entry > 0)) return null;
+  const entryMs = Date.parse(buys[0]!.at);
+  const qty = buys.reduce((n, f) => n + f.qty, 0);
+  const exits =
+    story.exits.length > 0
+      ? story.exits.map((x) => ({
+          ms: x.ms,
+          price: x.price,
+          qty: x.qty,
+          title: x.title,
+        }))
+      : (t.fills ?? [])
+          .filter((f) => f.side !== "buy")
+          .map((f) => ({
+            ms: Date.parse(f.at),
+            price: f.side === "expired" ? 0 : f.price,
+            qty: f.qty,
+            title: f.side === "expired" ? "Expired" : "Sale",
+          }));
+  const exitMs =
+    exits.length > 0
+      ? Math.max(...exits.map((x) => x.ms))
+      : Date.parse(t.closedAt);
+  const stockBars = barsOf(chart, "stock");
+  const spyBars = chart.sessions.flatMap((s) =>
+    s.spy.map(([m, c]) => ({
+      start: newYorkToUtc(s.date, sessionOpen + m),
+      close: c,
+    })),
+  );
+  const option = barsOf(chart, "option");
+  // The bars the position was open in: from the entry's minute to the exit's.
+  const held = option.filter(
+    (b) => b.start + 60000 > entryMs && b.start <= exitMs,
+  );
+  const extreme = (
+    bars: Bar[],
+    high: boolean,
+    from: number,
+  ): PricePoint | null => {
+    let best: Bar | null = null;
+    for (const b of bars)
+      if (!best || (high ? b.high > best.high : b.low < best.low)) best = b;
+    if (!best) return null;
+    const price = high ? best.high : best.low;
+    return { ms: best.start, price, pct: pctOf(price, from) };
+  };
+  const stockFrom = story.stockEntry ?? closeAt(stockBars, entryMs);
+  const stockTo = closeAt(stockBars, exitMs);
+  const spyFrom = closeAt(spyBars, entryMs);
+  const spyTo = closeAt(spyBars, exitMs);
+  // After the last sale, to the close of that session.
+  const lastExit = exits.find((x) => x.ms === exitMs);
+  const exitDay = momentOf(exitMs).date;
+  const dayEnd = (() => {
+    const close = coreClose(exitDay);
+    return close === null ? exitMs : newYorkToUtc(exitDay, close);
+  })();
+  const after = option.filter((b) => b.start > exitMs && b.start < dayEnd);
+  const soldAt = lastExit?.price ?? null;
+  const lastAfter = after.at(-1);
+  return {
+    entry: { ms: entryMs, price: t.entry, qty, stock: stockFrom },
+    exits,
+    heldMs: Math.max(0, exitMs - entryMs),
+    best: extreme(held, true, t.entry),
+    worst: extreme(held, false, t.entry),
+    stock:
+      stockFrom !== null && stockTo !== null
+        ? { from: stockFrom, to: stockTo, pct: pctOf(stockTo, stockFrom) }
+        : null,
+    spyPct: spyFrom !== null && spyTo !== null ? pctOf(spyTo, spyFrom) : null,
+    afterBest: soldAt && soldAt > 0 ? extreme(after, true, soldAt) : null,
+    afterClose:
+      soldAt && soldAt > 0 && lastAfter
+        ? {
+            ms: lastAfter.start,
+            price: lastAfter.close,
+            pct: pctOf(lastAfter.close, soldAt),
+          }
+        : null,
+  };
+}
+
+/** "1 h 54 min", "35 min", "2 days 3 h": how long the position was held. */
+export function heldText(ms: number): string {
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h ${minutes % 60} min`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ${hours % 24} h`;
 }

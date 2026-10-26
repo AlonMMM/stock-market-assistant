@@ -60,6 +60,24 @@ opens a window with:
   sections. `packages/market-data/src/calendar.ts`: `nextSessions`.
 - The window is 1240 px wide on a desktop; on a phone (≤ 640 px) a full-screen sheet with a shorter chart.
 
+## The entry and the exit at a glance (2026-10-26)
+
+User: "we are not showing the real enter and exit. Also it very not ux fun… make it easy to a human to analyze the
+enter and exit" (a CRWV 66 call bought and sold the same morning, viewed during that session).
+
+- **Bug fixed:** the window stopped at the last _closed_ session, so a trade viewed during its own session drew the
+  days before it, and its markers fell on an older day's last bar. The window now runs to the latest session that has
+  opened (`lastOpenSession`); the trade's own days are always drawn (the API serves today's minutes up to now).
+- **The fills drawn at their own minutes:** a vertical line at the buy and at each sale through every pane, a tag
+  along the top ("Buy 16:53", "Sell 18:47"), a dot at each fill's price on the option pane, and the time held shaded.
+  They no longer ride the option's series markers, which a thin contract lacks in many minutes.
+- **A summary above the chart** (`tradeStats`): the entry (time, contracts, price, the stock), each exit (time,
+  price, % from what was paid, the rule), the time held and the result, the stock's and SPY's move over the trade,
+  the option's best and worst while held, and its highest and last price after the sale that day.
+- **The view opens on "The trade"** (30 minutes before the entry to 60 after the exit). The watched level's touch
+  and fall-back lines show only when the exit was a failed break; otherwise a far level no longer stretches the
+  price scale.
+
 ## Verification evidence
 
 - `tests/trade-chart.test.ts`: the stock, SPY, the strength and the contract by session minute (regular hours

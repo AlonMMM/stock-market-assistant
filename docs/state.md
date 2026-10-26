@@ -139,26 +139,26 @@ SPY/sector, the score, the day range and alert counts. Filters: All, Moving, Rel
 With alerts. A row opens the day chart, key numbers, and links to its alerts and to Trade.
 The board's load time is unchanged.
 
-## History: cumulative P&L at trade closes
+## History: realized account value at trade closes
 
-Cumulative realized P&L as a smooth monotone curve (no overshoot between
-trades) on a true time axis (Israel time), one
-dot per closed trade, green above zero and red below. The chart fills its
-container width, uses rounded axis ticks and day-aligned date labels, and shows
-a crosshair tooltip with the trade and cumulative result on hover, tap or
-arrow keys. Dollar/percent controls use Alpaca's starting account value for
-cumulative returns, rather than adding individual trade returns. Missing
-starting equity disables percentage mode. In dollars, the graph starts at the period's
-account base value and changes at each close, with vertical padding above and below the
-balance range; percentage mode remains cumulative realized return. Unrealized P&L is not
-part of this chart. The x-axis fits dates with closes while preserving their true spacing.
+Realized account value (or P&L) as steps on a true time axis (Israel time): flat between closes, a jump at each
+close, flat on to now, one dot per closed trade coloured by its result, the starting value dashed and named, and
+"−$1,331 (−1.33%) since $100,000" under the title. Axis labels are as precise as their step (no "$100K" twice), and
+day ticks sit on each Israel midnight, so they stay right across a clock change (2026-10-26; it was a smooth curve
+whose day labels slipped a day after Israel's change on Oct 25). A crosshair tooltip shows the trade and the
+cumulative result on hover, tap or the keyboard.
+Dollar/percent controls use Alpaca's starting account value for cumulative returns, rather than adding individual
+trade returns. Missing starting equity disables percentage mode. Unrealized P&L is not part of this chart.
 
 **A trade's story (2026-10-24).** A tap on a closed trade, the owner's or the bot's, opens a window: a chart on
 the regular chart's library (zoom, scroll, more days on a drag) with the stock and SPY, the volume, the bot's
 strength against SPY minute by minute, the option and its volume, the entry, each exit, the signal and the level
 the bot watched with its touch and fall-back lines marked, line or candles; why it was entered (the bot's signal
 and rules, or the owner's buy order); why each exit happened (the bot's rule, or what the fills show); the fills.
-`GET /api/trade-chart` serves the minutes. See [the task](tasks/frontend-trade-story.md).
+`GET /api/trade-chart` serves the minutes. Since 2026-10-26 the trade's own day is drawn even while its session is
+open (it was missing, so the entry and exit landed on older bars), the fills are lines and price dots at their own
+minutes with the time held shaded, and a summary above the chart gives the entry, each exit, the time held, the
+option's best and worst while held and what it did after the sale. See [the task](tasks/frontend-trade-story.md).
 
 ## Portfolio: pre/post-market option estimates
 

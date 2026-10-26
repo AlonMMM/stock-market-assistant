@@ -10,7 +10,8 @@ import {
   botStory,
   chartWindow,
   decisionFor,
-  lastClosedSession,
+  heldText,
+  lastOpenSession,
   levelLines,
   mergeSessions,
   momentOf,
@@ -18,6 +19,7 @@ import {
   rulesFor,
   tradeChartUrl,
   tradeDates,
+  tradeStats,
   unknownStory,
 } from "../apps/web/src/trade-story-model.js";
 
@@ -108,24 +110,31 @@ test("story: the trade's sessions, the days the window opens on, the chart's tim
   // An expiry is stamped 20:00Z: still that session.
   assert.equal(momentOf(Date.parse("2026-10-03T20:00:00Z")).date, "2026-10-03");
   // A session is complete 20 minutes after its close; before that, the day before.
+  // The latest session that has opened: from 09:30 New York.
   assert.equal(
-    lastClosedSession(Date.parse("2026-10-02T20:30:00Z")),
-    "2026-10-02",
-  );
-  assert.equal(
-    lastClosedSession(Date.parse("2026-10-02T20:10:00Z")),
+    lastOpenSession(Date.parse("2026-10-01T13:31:00Z")),
     "2026-10-01",
   );
   assert.equal(
-    lastClosedSession(Date.parse("2026-10-04T12:00:00Z")),
+    lastOpenSession(Date.parse("2026-10-01T13:29:00Z")),
+    "2026-09-30",
+  );
+  assert.equal(
+    lastOpenSession(Date.parse("2026-10-04T12:00:00Z")),
     "2026-10-02",
   ); // a Sunday
-  // Two days each side of the trade, up to the last closed one.
+  // Two days each side of the trade, up to the latest session that has opened.
   assert.deepEqual(chartWindow(trade, Date.parse("2026-10-20T12:00:00Z")), {
     from: "2026-09-28",
     to: "2026-10-02",
   });
   assert.deepEqual(chartWindow(trade, Date.parse("2026-10-01T15:00:00Z")), {
+    from: "2026-09-28",
+    to: "2026-10-01",
+  });
+  // Viewed during its own session (the bug of 2026-10-26): the trade's day is
+  // drawn, not only the days before it.
+  assert.deepEqual(chartWindow(trade, Date.parse("2026-09-30T15:00:00Z")), {
     from: "2026-09-28",
     to: "2026-09-30",
   });
@@ -364,4 +373,68 @@ test("story: the owner's trade is told from the buy order and the fills", () => 
     [["Expired", null]],
   );
   assert.equal(expired.markers[1]!.kind, "expired");
+});
+
+test("the trade measured: entry, exits, held, best and worst, after the sale", () => {
+  const story = botStory(trade, view, defaultSettings)!;
+  // Synthetic minutes of 2026-09-30 (minute since 09:30 New York).
+  const bar = (
+    m: number,
+    c: number,
+    h = c,
+    l = c,
+  ): [number, number, number, number, number, number] => [m, c, h, l, c, 10];
+  const chart: TradeChart = {
+    symbol: contract,
+    underlying: "RKLB",
+    option: true,
+    skipped: 0,
+    at: 0,
+    sessions: [
+      {
+        date: "2026-09-30",
+        minutes: 390,
+        stock: [bar(28, 73.9), bar(29, 74.1), bar(40, 73.8), bar(46, 73.5)],
+        spy: [
+          [29, 500],
+          [46, 501],
+        ],
+        strength: [],
+        option: [
+          bar(25, 0.38), // before the entry: not counted
+          bar(29, 0.4, 0.42, 0.39),
+          bar(31, 0.45, 0.5, 0.44), // the best while held
+          bar(35, 0.27, 0.3, 0.25), // the worst while held
+          bar(40, 0.32),
+          bar(46, 0.28),
+          bar(50, 0.4, 0.45, 0.39), // after the sale: it ran to 0.45
+          bar(380, 0.3), // that day's last trade
+        ],
+      },
+    ],
+  };
+  const s = tradeStats(trade, story, chart)!;
+  assert.equal(s.entry.ms, bought);
+  assert.equal(s.entry.price, 0.4);
+  assert.equal(s.entry.qty, 2);
+  assert.equal(s.entry.stock, 74.0); // the bot's own entry price of the stock
+  assert.deepEqual(
+    s.exits.map((x) => [x.ms, x.qty, x.price, x.title]),
+    [
+      [half, 1, 0.32, "10-minute check"],
+      [rest, 1, 0.28, "Failed break"],
+    ],
+  );
+  assert.equal(heldText(s.heldMs), "17 min");
+  assert.equal(s.best!.price, 0.5);
+  assert.ok(Math.abs(s.best!.pct - 25) < 1e-9);
+  assert.equal(s.worst!.price, 0.25);
+  assert.ok(Math.abs(s.worst!.pct + 37.5) < 1e-9);
+  assert.ok(Math.abs(s.stock!.pct - (73.5 / 74 - 1) * 100) < 1e-9);
+  assert.ok(Math.abs(s.spyPct! - 0.2) < 1e-9);
+  assert.equal(s.afterBest!.price, 0.45);
+  assert.ok(Math.abs(s.afterBest!.pct - (0.45 / 0.28 - 1) * 100) < 1e-9);
+  assert.equal(s.afterClose!.price, 0.3);
+  assert.equal(heldText(125 * 60000), "2 h 5 min");
+  assert.equal(heldText(27 * 3600000), "1 day 3 h");
 });

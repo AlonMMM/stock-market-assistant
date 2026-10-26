@@ -106,43 +106,90 @@ export function nearestPoint(times: number[], time: number) {
 }
 
 /**
- * SVG path through the points as a monotone cubic curve (Fritsch–Carlson):
- * smooth, but never above or below its neighbouring points, so it shows no
- * peaks or dips that did not happen. Points must be sorted by x.
+ * SVG path of a realized-value curve as steps (user 2026-10-26: "make it more
+ * professional"): realized value only changes when a trade closes, so the
+ * line runs flat from `startX` at the starting value, jumps at each close and
+ * runs flat again to `endX`. Points must be sorted by x.
  */
-export function monotonePath(points: [number, number][]) {
-  const n = points.length;
-  if (n === 0) return "";
-  const [x0, y0] = points[0]!;
-  if (n === 1) return `M ${x0} ${y0}`;
-  const dx: number[] = [];
-  const slope: number[] = [];
-  for (let i = 0; i < n - 1; i++) {
-    const [xa, ya] = points[i]!;
-    const [xb, yb] = points[i + 1]!;
-    dx.push(xb - xa);
-    slope.push(xb > xa ? (yb - ya) / (xb - xa) : 0);
+export function stepPath(
+  start: [number, number],
+  points: [number, number][],
+  endX: number,
+): string {
+  let path = `M ${start[0]} ${start[1]}`;
+  for (const [x, y] of points) path += ` H ${x} V ${y}`;
+  return `${path} H ${Math.max(endX, points.at(-1)?.[0] ?? start[0])}`;
+}
+
+const israelDayParts = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Jerusalem",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+const israelParts = (ms: number) =>
+  Object.fromEntries(
+    israelDayParts.formatToParts(ms).map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
+
+/** The instant of 00:00 Israel time on an Israel date ("2026-10-26"). */
+export function israelMidnight(date: string): number {
+  const wall = Date.parse(`${date}T00:00:00Z`);
+  // Israel is UTC+2 in winter and UTC+3 in summer.
+  for (const hours of [2, 3]) {
+    const at = wall - hours * 3_600_000;
+    const p = israelParts(at);
+    if (`${p.year}-${p.month}-${p.day}` === date && p.hour === "00") return at;
   }
-  const tangent = points.map((_, i) => {
-    if (i === 0) return slope[0]!;
-    if (i === n - 1) return slope[n - 2]!;
-    const a = slope[i - 1]!;
-    const b = slope[i]!;
-    // Flat at a local high or low keeps the curve inside the data range.
-    if (a * b <= 0) return 0;
-    const wa = 2 * dx[i]! + dx[i - 1]!;
-    const wb = dx[i]! + 2 * dx[i - 1]!;
-    return (wa + wb) / (wa / a + wb / b);
-  });
-  let path = `M ${x0} ${y0}`;
-  for (let i = 0; i < n - 1; i++) {
-    const [xa, ya] = points[i]!;
-    const [xb, yb] = points[i + 1]!;
-    const h = dx[i]! / 3;
-    path +=
-      h > 0
-        ? ` C ${xa + h} ${ya + tangent[i]! * h} ${xb - h} ${yb - tangent[i + 1]! * h} ${xb} ${yb}`
-        : ` L ${xb} ${yb}`;
+  return wall - 2 * 3_600_000;
+}
+
+/**
+ * Ticks at Israel midnights inside [start, end], every 1, 2, 7 or 14 days so
+ * that at most `count` show. Each tick is that day's own midnight, so labels
+ * stay right across a clock change (the old fixed offset named Monday "25 Oct"
+ * after Israel's change on 2026-10-25).
+ */
+export function israelDayTicks(start: number, end: number, count = 5) {
+  const p = israelParts(start);
+  let date = `${p.year}-${p.month}-${p.day}`;
+  const days: number[] = [];
+  for (let guard = 0; guard < 800; guard++) {
+    const at = israelMidnight(date);
+    if (at > end) break;
+    if (at >= start) days.push(at);
+    const d = new Date(`${date}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    date = d.toISOString().slice(0, 10);
   }
-  return path;
+  const every = [1, 2, 7, 14, 30].find((n) => days.length / n <= count) ?? 30;
+  return days.filter((_, i) => i % every === 0);
+}
+
+/** The step between two neighbouring ticks (0 for fewer than two). */
+export const tickStep = (ticks: number[]) =>
+  ticks.length > 1 ? Math.abs(ticks[1]! - ticks[0]!) : 0;
+
+/**
+ * A dollar axis label as precise as the ticks' step needs, so no two ticks
+ * read the same ("$99,500" and "$100,000", never "$100K" twice).
+ */
+export function moneyTick(value: number, step: number): string {
+  const sign = value < 0 ? "−" : "";
+  const a = Math.abs(value);
+  if (step >= 1000 && step % 1000 === 0 && a >= 10000)
+    return `${sign}$${(a / 1000).toLocaleString("en-US")}K`;
+  return `${sign}$${a.toLocaleString("en-US", {
+    minimumFractionDigits: step > 0 && step < 1 ? 2 : 0,
+    maximumFractionDigits: step > 0 && step < 1 ? 2 : 0,
+  })}`;
+}
+
+/** A percent axis label as precise as the ticks' step needs. */
+export function percentTick(value: number, step: number): string {
+  const digits = step > 0 && step < 0.1 ? 2 : step > 0 && step < 1 ? 1 : 0;
+  return `${value < 0 ? "−" : value > 0 ? "+" : ""}${Math.abs(value).toFixed(digits)}%`;
 }
