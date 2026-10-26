@@ -6,7 +6,7 @@ import type {
 import { readJson } from "./api.js";
 
 // The risk manager's numbers, per account (user 2026-10-26): each account (the
-// owner's own, the Indi bot's, IBKR, the Alert leg's) has its own. It reads and
+// owner's own, the main bot's, IBKR, the volume bot's) has its own. It reads and
 // saves `/api/risk`; saving is the owner's, the others see the numbers.
 
 type Bounds = typeof accountRiskBounds;

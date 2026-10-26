@@ -223,9 +223,9 @@ api.post("/v1/cancel", async (request) =>
 const riskLabel = (a: { id: string; broker: string; userId: string }) => {
   const labels: Record<string, string> = {
     [`${a.userId}-alpaca`]: "Your Alpaca account",
-    [`${a.userId}-${botAccountSuffix}`]: "Indi bot · Alpaca",
-    [`${a.userId}-ibkr`]: "Interactive Brokers · you and the Indi bot",
-    [`${a.userId}-${strangleAccountSuffix}`]: "Alert leg bot · Alpaca",
+    [`${a.userId}-${botAccountSuffix}`]: "Main bot · Alpaca",
+    [`${a.userId}-ibkr`]: "Interactive Brokers · you and the main bot",
+    [`${a.userId}-${strangleAccountSuffix}`]: "Volume bot · Alpaca",
   };
   return labels[a.id] ?? `${a.broker} · ${a.id}`;
 };

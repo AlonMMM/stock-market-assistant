@@ -77,7 +77,7 @@ export interface StrangleOptions {
   log?: (line: string) => void;
 }
 
-export const strangleTag = "🎯 Alert leg";
+export const strangleTag = "🎯 Volume bot";
 const chaseBuyMs = 3 * 60_000;
 const sellWaitMs = 3 * 60_000;
 
