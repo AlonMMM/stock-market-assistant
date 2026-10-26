@@ -583,14 +583,59 @@ function StockFocus({
   );
 }
 
+// Alert outcomes that end a stock's day: no later burst can trade it (user
+// 2026-10-26: "maybe it's good to remove it from the map, because now it's
+// confusing").
+const dayEnders: Record<string, string> = {
+  earnings: "earnings day",
+  premarket: "busy pre-market",
+  no_expiry: "no expiry today or next session",
+};
+
+/** The stocks out for the rest of today, with why: filtered, or their trades used. */
+function outToday(v: StrangleView, day: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const a of v.signals) {
+    const why = dayEnders[a.outcome];
+    if (why) out.set(a.symbol, why);
+  }
+  const traded = new Map<string, number>();
+  for (const t of todaysTrades(v, day))
+    if (t.leg && t.leg.bought > 0)
+      traded.set(t.symbol, (traded.get(t.symbol) ?? 0) + 1);
+  for (const [symbol, n] of traded)
+    if (n >= v.settings.maxPerStock) out.set(symbol, `${n} trades today: done`);
+  return out;
+}
+
+/** A stock's latest alert that found no side: it can try again on a new burst. */
+function noSides(v: StrangleView, day: string): Map<string, string> {
+  const last = new Map<string, Signal>();
+  for (const a of v.signals) {
+    const seen = last.get(a.symbol);
+    if (!seen || a.minute > seen.minute) last.set(a.symbol, a);
+  }
+  const out = new Map<string, string>();
+  for (const [symbol, a] of last)
+    if (a.outcome === "no_side")
+      out.set(
+        symbol,
+        `No side after the ${israelAt(day, a.minute)} alert · a new burst can retry`,
+      );
+  return out;
+}
+
 function StockList({
   scan,
   waiting,
+  notes,
   selected,
   onSelect,
 }: {
   scan: StrangleScanRow[];
   waiting: ReadonlySet<string>;
+  // why a stock is out today, or its last alert found no side
+  notes: ReadonlyMap<string, string>;
   selected: string | null;
   onSelect: (symbol: string) => void;
 }) {
@@ -606,7 +651,7 @@ function StockList({
       <ul>
         {rows.map((r) => {
           const up = r.side === "up";
-          let state = lacking(r);
+          let state = notes.get(r.symbol) ?? lacking(r);
           if (waiting.has(r.symbol)) state = "Alerted · waiting for the side";
           return (
             <li key={r.symbol}>
@@ -651,7 +696,11 @@ function StockList({
 
 function WhatItSees({ v, day }: { v: StrangleView; day: string }) {
   const [picked, setPicked] = useState<string | null>(null);
-  const selected = picked ?? v.scan[0]?.symbol ?? null;
+  const [showOut, setShowOut] = useState(false);
+  const out = outToday(v, day);
+  const notes = new Map([...noSides(v, day), ...out]);
+  const scan = showOut ? v.scan : v.scan.filter((r) => !out.has(r.symbol));
+  const selected = picked ?? scan[0]?.symbol ?? null;
   const row = v.scan.find((r) => r.symbol === selected);
   const waiting = new Set(
     v.open.filter((t) => t.phase === "watching").map((t) => t.symbol),
@@ -660,6 +709,9 @@ function WhatItSees({ v, day }: { v: StrangleView; day: string }) {
     (t) => t.symbol === selected,
   ).length;
   const first = v.scan[0];
+  const outLabel = showOut
+    ? `Hide the ${out.size} out for today`
+    : `Show the ${out.size} out for today`;
   return (
     <section className="bot-card" aria-labelledby="vb-sees-title">
       <div className="bot-card-head">
@@ -676,8 +728,20 @@ function WhatItSees({ v, day }: { v: StrangleView; day: string }) {
         {alertRule.minVolume.toLocaleString("en-US")} shares). <b>Move</b>: its
         price move against its usual 3-minute move ({needMove}× or more, and{" "}
         {alertRule.minMovePercent}%). A stock in a shaded corner alerts; the bot
-        then waits for its side. A ring marks the stocks waiting now.
+        then waits for its side. A ring marks the stocks waiting now. Stocks the
+        bot cannot trade any more today (news filter, no expiry, their trades
+        used) are left out.
       </p>
+      {out.size > 0 && (
+        <button
+          type="button"
+          className="bot-more"
+          aria-pressed={showOut}
+          onClick={() => setShowOut(!showOut)}
+        >
+          {outLabel}
+        </button>
+      )}
       {v.scan.length === 0 ? (
         <p className="notice">
           The map fills from the first minutes after the US open on trading
@@ -687,7 +751,7 @@ function WhatItSees({ v, day }: { v: StrangleView; day: string }) {
         <div className="bot-sees">
           <div className="bot-sees-map">
             <AlertMap
-              scan={v.scan}
+              scan={scan}
               waiting={waiting}
               selected={selected}
               onSelect={setPicked}
@@ -701,8 +765,9 @@ function WhatItSees({ v, day }: { v: StrangleView; day: string }) {
             )}
           </div>
           <StockList
-            scan={v.scan}
+            scan={scan}
             waiting={waiting}
+            notes={notes}
             selected={selected}
             onSelect={setPicked}
           />
