@@ -42,6 +42,7 @@ export type SwitchKey =
   | "checks"
   | "sellOnWeakness"
   | "sellFailedBreak"
+  | "cheapFallback"
   | "d2Entry"
   | "skipEarnings"
   | "skipPremarket";

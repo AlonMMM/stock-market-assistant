@@ -260,7 +260,7 @@ function groups(): Group[] {
         {
           key: "minPrice",
           label: "Cheapest contract",
-          help: "Skip contracts under this price.",
+          help: "Skip contracts under this price (with the cheap fallback on, take a nearer strike instead).",
           min: 0.05,
           max: 1,
           step: 0.05,
@@ -276,7 +276,13 @@ function groups(): Group[] {
           fmt: (v) => `${v} contracts`,
         },
       ],
-      switches: [],
+      switches: [
+        [
+          "cheapFallback",
+          "Cheap fallback",
+          "When the chosen option costs under the cheapest price, buy the nearest strike toward the money that costs at least that, instead of skipping (version 2.6).",
+        ],
+      ],
     },
   ];
 }

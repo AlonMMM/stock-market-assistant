@@ -182,6 +182,28 @@ gave the same trades).
   instead of after the minute closes, and −30% is seen within 10 s. Entries still need closed
   minute bars and run once per minute; the level watch (failed break) reads closed bars only.
 
+## The cheap fallback (version 2.6, 2026-10-26)
+
+When the 0.15-delta contract's mid is under the cheapest price (`minPrice`), the bot no longer skips the signal:
+it takes, of the strikes at `minPrice` or more that are at least as close to the money as that contract (delta as
+high or higher), the cheapest one, the nearest step toward the money that pays the minimum (`picker.ts`
+`cheapFallback`; the research's `cheap_up.py` "cheap"). The 200-contract floor is then checked on that contract as
+usual. The buy's note says so, and the signal record keeps `fallback: "cheap"`. The setting is `cheapFallback` (on in
+2.6, off in every older version, so a running 2.5 stays 2.5 until 2.6 is chosen). The Volume bot's legs never fall back.
+
+Backtest (fair list, Feb 2024 – Oct 2026, 1% from $100,000, the 10% night cap): 2.5 $1,108,678 / 11% → 2.6
+$1,297,233 / 11% (2%: $5,321,917 / 21% → $6,599,909 / 21%), every year positive, $360,684 → $422,022 without the best 5.
+The user's Favorites, last 12 months: $192,534 / 12% → $239,826 / 14%; there the cheap trades' money is mostly IBIT.
+On the 151 unseen stocks it loses (the user set that test aside for the fallbacks).
+
+### What each signal and trade records (bid / ask and liquidity)
+
+The accounts are paper accounts, so the bot keeps what a real fill would be judged against (`bot-store.ts`), since
+2026-10-25 unless noted: on the signal, the picked contract's bid / ask at the pick (`book`, also for a too-cheap one),
+its contracts traded in the 30 minutes before (`volume30`, since 2026-10-26) and the fallback that chose it; on each
+position, the bid / ask at that account when the buy was sent (`entryBook`) and the average fill (`cost`); on each sale,
+the bid / ask when it was decided (`book`) and the average fill (`price`).
+
 ## The D2 bonus entry (version 2.5, the 2026-10-25 champion)
 
 The user (2026-10-24): "holding against this kind of drop should give a huge bonus". With the volume test as always,

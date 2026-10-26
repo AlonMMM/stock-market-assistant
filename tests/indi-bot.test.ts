@@ -33,7 +33,10 @@ import {
   type BotPositionState,
   type ExitMarket,
 } from "../packages/trading/src/bot/exits.js";
-import { pickContract } from "../packages/trading/src/bot/picker.js";
+import {
+  defaultPickRules,
+  pickContract,
+} from "../packages/trading/src/bot/picker.js";
 import {
   cSignal,
   defaultSignalParams,
@@ -442,6 +445,50 @@ test("picker: nearest expiry 1-7 days out, OTM, the delta closest to 0.15; too c
     q(90, 0.05, 0.21, "2026-10-23", "put"),
   ];
   assert.equal(pickContract(puts, 102, "put", "2026-10-21").ok && 95, 95);
+});
+
+test("picker: the cheap fallback takes the cheapest strike toward the money at the minimum or more", () => {
+  const rules = { ...defaultPickRules, cheapFallback: true };
+  // 0.15-delta strike 115 costs 0.11 (mid); 112 costs 0.21, 110 0.41: the fallback takes 112, the cheapest at $0.20+
+  const chain = [
+    q(115, 0.15, 0.1),
+    q(112, 0.2, 0.2),
+    q(110, 0.25, 0.4),
+    q(118, 0.1, 0.25),
+  ];
+  const off = pickContract(chain, 102, "call", "2026-10-21");
+  assert.equal(!off.ok && off.reason, "too_cheap");
+  const on = pickContract(chain, 102, "call", "2026-10-21", rules);
+  assert.ok(on.ok);
+  assert.equal(on.quote.strike, 112);
+  assert.equal(on.fallback, "cheap");
+  // never further out of the money than the too-cheap pick (118 has a lower delta)
+  const none = pickContract(
+    [q(115, 0.15, 0.1), q(118, 0.1, 0.3)],
+    102,
+    "call",
+    "2026-10-21",
+    rules,
+  );
+  assert.equal(!none.ok && none.reason, "too_cheap");
+  // a pick that already costs enough is not a fallback
+  const plain = pickContract(
+    [q(110, 0.16, 0.6)],
+    102,
+    "call",
+    "2026-10-21",
+    rules,
+  );
+  assert.ok(plain.ok);
+  assert.equal(plain.fallback, undefined);
+  // puts: toward the money is a higher strike
+  const puts = [
+    q(90, 0.15, 0.1, "2026-10-23", "put"),
+    q(93, 0.22, 0.3, "2026-10-23", "put"),
+  ];
+  const put = pickContract(puts, 102, "put", "2026-10-21", rules);
+  assert.ok(put.ok);
+  assert.equal(put.quote.strike, 93);
 });
 
 // ---- posts ----
@@ -1142,30 +1189,30 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
 
 test("versions: every entry is stamped with the version in force; changed rules star it; the owner can pick an older one", async () => {
   const h = harness("live");
-  assert.equal(h.bot.status().version, "2.5");
+  assert.equal(h.bot.status().version, "2.6");
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy");
-  assert.match(String(buy?.body.note), /· bot 2\.5$/);
+  assert.match(String(buy?.body.note), /· bot 2\.6$/);
   const [p] = h.store.openPositions();
-  assert.equal(p!.version, "2.5");
-  assert.equal(h.store.signals(DAY)[0]!.version, "2.5");
-  assert.equal(h.bot.status().positions[0]!.version, "2.5");
+  assert.equal(p!.version, "2.6");
+  assert.equal(h.store.signals(DAY)[0]!.version, "2.6");
+  assert.equal(h.bot.status().positions[0]!.version, "2.6");
   const texts = () =>
     h.bot
       .status()
       .activity.map((e) => e.text)
       .join("\n");
-  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.5$/m);
+  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.6$/m);
 
-  // The stop changed from 2.5's: the next entry is stamped "2.5*".
+  // The stop changed from 2.6's: the next entry is stamped "2.6*".
   const edited = harness("live");
   edited.bot.setSettings({ ...edited.bot.settings(), stopPct: 40 });
-  assert.equal(edited.bot.status().version, "2.5*");
+  assert.equal(edited.bot.status().version, "2.6*");
   await edited.run(DAY, 565, 600);
-  assert.equal(edited.store.openPositions()[0]!.version, "2.5*");
+  assert.equal(edited.store.openPositions()[0]!.version, "2.6*");
   assert.match(
     String(edited.calls.find((c) => c.kind === "buy")?.body.note),
-    /· bot 2\.5\*$/,
+    /· bot 2\.6\*$/,
   );
 
   // Version 1.0 picked: its rules (t 2, no night cap, no news filter) run, and the feed says so.
@@ -1182,6 +1229,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
     holdFromPct: 100,
     restStopPct: 0,
     d2Entry: false,
+    cheapFallback: false,
   });
   assert.equal(picked.version, "1.0");
   assert.equal(old.bot.status().version, "1.0");
@@ -1190,7 +1238,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
       .status()
       .activity.map((e) => e.text)
       .join("\n"),
-    /Settings changed: version "2\.5" → "1\.0"; restStopPct 20 → 0; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false/,
+    /Settings changed: version "2\.6" → "1\.0"; restStopPct 20 → 0; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; cheapFallback true → false; minT 1\.8 → 2; d2Entry true → false/,
   );
 });
 

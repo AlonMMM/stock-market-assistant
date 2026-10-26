@@ -30,9 +30,9 @@ import {
 test("versions: distinct ids oldest first; the defaults are the current version's rules", () => {
   const ids = botVersions.map((v) => v.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(currentVersion, "2.5");
+  assert.equal(currentVersion, "2.6");
   assert.equal(defaultSettings.version, currentVersion);
-  assert.equal(matchingVersion(defaultSettings)?.id, "2.5");
+  assert.equal(matchingVersion(defaultSettings)?.id, "2.6");
   assert.deepEqual(rulesOf(defaultSettings), botVersions.at(-1)!.rules);
   // Each version differs from the one before, and 2.1 is 2.0 plus the failed-break sale.
   for (let i = 1; i < botVersions.length; i++)
@@ -57,15 +57,19 @@ test("versions: distinct ids oldest first; the defaults are the current version'
     "sellFailedBreak true → false",
     "d2Entry false → true",
   ]);
+  // 2.6 is 2.5 with the cheap fallback.
+  assert.deepEqual(ruleChanges(botVersions[7]!.rules, botVersions[6]!), [
+    "cheapFallback false → true",
+  ]);
 });
 
 test("versions: the label is the version, starred when its rules were changed; an own label stays", () => {
-  assert.equal(versionLabel(defaultSettings), "2.5");
-  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.5*");
+  assert.equal(versionLabel(defaultSettings), "2.6");
+  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.6*");
   // The owner's limits and lists are not rules: no star.
   assert.equal(
     versionLabel({ ...defaultSettings, sizePct: 1, off: ["TSLA"] }),
-    "2.5",
+    "2.6",
   );
   const own = { ...defaultSettings, version: "2.2-test", stopPct: 40 };
   assert.equal(versionLabel(own), "2.2-test");
@@ -81,7 +85,7 @@ test("versions: applying one sets its rules and keeps the owner's limits", () =>
   assert.equal(s.sellFailedBreak, false);
   assert.equal(s.sizePct, 1);
   assert.equal(versionLabel(s), "1.0");
-  const back = applyVersion(s, "2.5");
+  const back = applyVersion(s, "2.6");
   assert.deepEqual(rulesOf(back), rulesOf(defaultSettings));
   assert.equal(applyVersion(s, "mine").version, "mine");
 });
@@ -95,9 +99,14 @@ test("versions: parse checks the label; a record saved before versions gets the 
   assert.equal(parseSettings({ ...defaultSettings, version: "<x>" }).ok, false);
   const own = parseSettings({ ...defaultSettings, version: " 2.2 test " });
   assert.equal(own.ok && own.value.version, "2.2 test");
-  // Saved with the defaults' rules: 2.5. With the failed break and no D2 bonus: 2.4; also no rest stop and holding from +100%: 2.2; without the t-stat exit too: 2.1; also without the failed-break sale: 2.0. Odd rules: the current version.
-  assert.equal(withDefaults({ stopPct: 30 }).version, "2.5");
-  const before25 = { sellFailedBreak: true, d2Entry: false };
+  // Saved with the defaults' rules: 2.6. Without the cheap fallback: 2.5. With the failed break and no D2 bonus either: 2.4; also no rest stop and holding from +100%: 2.2; without the t-stat exit too: 2.1; also without the failed-break sale: 2.0. Odd rules: the current version.
+  assert.equal(withDefaults({ stopPct: 30 }).version, "2.6");
+  assert.equal(withDefaults({ cheapFallback: false }).version, "2.5");
+  const before25 = {
+    sellFailedBreak: true,
+    d2Entry: false,
+    cheapFallback: false,
+  };
   assert.equal(withDefaults(before25).version, "2.4");
   assert.equal(
     withDefaults({ ...before25, holdFromPct: 100, restStopPct: 0 }).version,
@@ -123,7 +132,7 @@ test("versions: parse checks the label; a record saved before versions gets the 
     "2.0",
   );
   assert.equal(withDefaults({ stopPct: 40 }).version, currentVersion);
-  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.5*");
+  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.6*");
   // A saved version is kept as saved.
   assert.equal(withDefaults({ version: "1.0", minT: 2 }).version, "1.0");
   // A rule saved before it existed takes the saved version's value: a running
@@ -137,6 +146,11 @@ test("versions: parse checks the label; a record saved before versions gets the 
   assert.equal(live24.d2Entry, false);
   assert.equal(versionLabel(live24), "2.4");
   assert.equal(withDefaults({ version: "2.5" }).d2Entry, true);
+  // A running 2.5 gets no cheap fallback until 2.6 is chosen.
+  const live25 = withDefaults({ version: "2.5" });
+  assert.equal(live25.cheapFallback, false);
+  assert.equal(versionLabel(live25), "2.5");
+  assert.equal(withDefaults({ version: "2.6" }).cheapFallback, true);
 });
 
 test("parse: the defaults pass; values are checked, snapped to the step and tickers cleaned", () => {

@@ -89,6 +89,9 @@ export interface BotSettings {
   maxDte: number;
   minPrice: number;
   minVolume: number;
+  // Under minPrice, the cheapest strike toward the money at minPrice or more
+  // (version 2.6; picker.ts).
+  cheapFallback: boolean;
   // Signal (advanced)
   minT: number;
   // The D2 bonus (version 2.5): t d2T or more also enters when the stock held
@@ -137,6 +140,7 @@ export const defaultSettings: BotSettings = {
   maxDte: 7,
   minPrice: 0.2,
   minVolume: 200,
+  cheapFallback: true,
   minT: 1.8,
   d2Entry: true,
   d2T: 1.2,
@@ -194,6 +198,7 @@ const booleans: BooleanKey[] = [
   "checks",
   "sellOnWeakness",
   "sellFailedBreak",
+  "cheapFallback",
   "d2Entry",
   "skipEarnings",
   "skipPremarket",
@@ -314,6 +319,7 @@ export const pickRules = (s: BotSettings): PickRules => ({
   dteMax: s.maxDte,
   minPrice: s.minPrice,
   minVolume30: s.minVolume,
+  cheapFallback: s.cheapFallback,
 });
 
 /** The rest's stop after the 10-minute half, as an option return; null when off. */
