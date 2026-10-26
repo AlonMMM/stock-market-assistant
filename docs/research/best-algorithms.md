@@ -839,6 +839,14 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     refuses new trades, so the worst day still passes 5% at 4%+ (open trades run on: -7.8%, -10.9%). The caps cost
     money: 1% fair $308,991 → $260,156 (57 trades refused, drop 4.9% → 5.5%), favorites $151,341 → $134,128 (62 refused,
     drop 5.2% → 4.1%, worst day -2.7% → -1.8%). 24 fair and 25 favorite days have 6+ trades (up to 15).
+    **The liquidity floor at 100 (`leg_vol.py`, the user, 2026-10-26: "how my favorite will look like if the threshold
+    for trades was 100 contracts?").** Contracts in the 30 minutes before the side, 50 / 100 / 150 / 200 (live 200), 1%,
+    ±2%, no limits / the live caps. Favorites 12 months: 200 $151,341 / 5.2%, 150 $156,365 / 5.6%, **100 $159,986 /
+    5.8%** (+74 trades, +$6,949), 50 $154,624 / 6.7%; live caps 200 $134,128 / 4.1% → 100 $140,882 / 4.8%; ±4%
+    $125,184 → $128,816; last 2 months $109,760 → $112,117. Fair: 200 $308,991 / 4.9%, 150 $378,995, 100 $388,144 /
+    5.4%, 50 $459,183 / 4.6% (±4% $211,991 → $250,307 at 100). Better on both lists at 100 (the favorites by a little,
+    with about half a point more drop); the fill model is the same bar middle ± 2% on thinner contracts, so part of the
+    gain may go to the spread live. A setting (minVolume), not changed.
 - The signal's t-stat as an exit with the -30% stop (`thesis.py`, 2026-10-24; the user's follow-up). Sell all on the
   entry day when the signal's own cumulative t-stat vs SPY x beta falls to 0.5 or under (the entry needs 1.8). With
   the bot today (failed break on): fair list $549,153 / 9% at 1% ($2,183,362 / 18% at 2%) vs $526,469 / 10%
