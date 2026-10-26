@@ -42,6 +42,8 @@ import { IndiBot } from "./bot.js";
 import { nasdaqEarnings } from "./bot-news.js";
 import { AlpacaBotMarket } from "./bot-market.js";
 import { BotStore } from "./bot-store.js";
+import { QuoteSampler } from "./quote-sampler.js";
+import { pickRules } from "../../../packages/trading/src/bot/settings.js";
 import {
   botBrokers,
   parseSettings,
@@ -367,6 +369,42 @@ const bot = (() => {
 // Every 10 s: the exit checks run each tick, the entries once per closed
 // minute (user 2026-10-23).
 const botTimer = bot ? setInterval(() => void bot.tick(), 10_000) : null;
+// The quote sampler: the books the bot would trade, every 15 minutes a stock,
+// for the backtest's fill model; market data only, on its own timer.
+const sampler = (() => {
+  const key = env("ALPACA_API_KEY", "APCA_API_KEY_ID");
+  const secret = env("ALPACA_API_SECRET", "APCA_API_SECRET_KEY");
+  if (!bot || !key || !secret) return null;
+  let alpaca: ReturnType<typeof botTraderFor>;
+  try {
+    alpaca = botTraderFor("alpaca");
+  } catch {
+    log("the quote sampler needs the bot's Alpaca account; it is off");
+    return null;
+  }
+  const market = new AlpacaBotMarket(key, secret, "sip");
+  return new QuoteSampler({
+    store: botStore,
+    chain: (u, right, from, to) => alpaca.broker.chain(u, right, from, to),
+    volumes30: (contracts, date, minute) =>
+      market.optionVolumes30(contracts, date, minute),
+    symbols: () => bot.watched(),
+    spot: (symbol) => bot.stockPrice(symbol),
+    rules: () => pickRules(bot.settings()),
+    now: () => Date.now(),
+    log,
+  });
+})();
+const samplerTimer = sampler
+  ? setInterval(() => void sampler.tick(), 20_000)
+  : null;
+// The day's samples, for the research export (scripts/research).
+api.get("/v1/bot/quotes", async (request) => {
+  const day = body(request.query).day;
+  if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day))
+    throw new RequestError("Need day=YYYY-MM-DD");
+  return { day, samples: botStore.quoteSamples(day) };
+});
 api.get("/v1/bot", async () => {
   if (!bot) throw new RequestError(botOff, 409);
   return bot.status();
@@ -548,6 +586,7 @@ async function stop() {
   clearInterval(stopWatch);
   clearInterval(shortWatch);
   if (botTimer) clearInterval(botTimer);
+  if (samplerTimer) clearInterval(samplerTimer);
   if (strangleTimer) clearInterval(strangleTimer);
   botStore.close();
   strangleStore.close();

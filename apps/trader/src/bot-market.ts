@@ -106,8 +106,19 @@ export class AlpacaBotMarket implements BotMarket {
   }
 
   async optionVolume30(contract: string, date: string, minute: number) {
+    return (
+      (await this.optionVolumes30([contract], date, minute)).get(contract) ?? 0
+    );
+  }
+
+  /** Contracts traded in the 30 minutes up to `minute`, for several at once. */
+  async optionVolumes30(
+    contracts: string[],
+    date: string,
+    minute: number,
+  ): Promise<Map<string, number>> {
     const url = new URL("/v1beta1/options/bars", "https://data.alpaca.markets");
-    url.searchParams.set("symbols", contract);
+    url.searchParams.set("symbols", contracts.join(","));
     url.searchParams.set("timeframe", "1Min");
     url.searchParams.set(
       "start",
@@ -117,7 +128,7 @@ export class AlpacaBotMarket implements BotMarket {
       "end",
       new Date(newYorkToUtc(date, 570 + minute + 1)).toISOString(),
     );
-    url.searchParams.set("limit", "1000");
+    url.searchParams.set("limit", "10000");
     const response = await this.fetcher(url, {
       headers: {
         "APCA-API-KEY-ID": this.key,
@@ -130,9 +141,11 @@ export class AlpacaBotMarket implements BotMarket {
     const body = (await response.json()) as {
       bars?: Record<string, { v?: number }[] | null>;
     };
-    return (body.bars?.[contract] ?? []).reduce(
-      (sum, b) => sum + (b.v ?? 0),
-      0,
+    return new Map(
+      contracts.map((c) => [
+        c,
+        (body.bars?.[c] ?? []).reduce((sum, b) => sum + (b.v ?? 0), 0),
+      ]),
     );
   }
 }

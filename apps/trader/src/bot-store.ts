@@ -93,6 +93,28 @@ interface PositionRow {
   data: string;
 }
 
+/** One sampled option book: what the backtest's fill model is fitted on. */
+export interface QuoteSample {
+  day: string;
+  minute: number; // session minute (0 = 09:30 New York)
+  at: number; // when the chain was read (ms)
+  symbol: string;
+  spot: number;
+  right: "C" | "P";
+  slot: "pick" | "in" | "out"; // the bot's pick, or the next strike in / out
+  contract: string;
+  expiry: string;
+  strike: number;
+  delta: number | null;
+  bid: number;
+  ask: number;
+  quotedAt?: number; // the broker's quote time (ms), when it gives one
+  volume30: number | null; // contracts traded in the 30 minutes before
+  // Contracts open at the last count (user 2026-10-26: spread by OI 50 / 100
+  // / 200 / 500+); null when the feed gives none.
+  openInterest: number | null;
+}
+
 export class BotStore {
   private db: DatabaseSync;
   constructor(path: string) {
@@ -112,6 +134,10 @@ export class BotStore {
       CREATE TABLE IF NOT EXISTS bot_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL,
         kind TEXT NOT NULL, text TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS quote_samples (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT NOT NULL,
+        data TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS quote_samples_day ON quote_samples (day);
     `);
   }
 
@@ -135,6 +161,22 @@ export class BotStore {
 
   close() {
     this.db.close();
+  }
+
+  /** Sampled option books (quote-sampler.ts), kept for the backtest's fill model. */
+  addQuoteSamples(rows: QuoteSample[]) {
+    const insert = this.db.prepare(
+      "INSERT INTO quote_samples (day, data) VALUES (?, ?)",
+    );
+    for (const r of rows) insert.run(r.day, JSON.stringify(r));
+  }
+
+  quoteSamples(day: string): QuoteSample[] {
+    return (
+      this.db
+        .prepare("SELECT data FROM quote_samples WHERE day = ? ORDER BY id")
+        .all(day) as { data: string }[]
+    ).map((r) => JSON.parse(r.data) as QuoteSample);
   }
 
   /** One signal per stock per day; false when the day already has one. */
