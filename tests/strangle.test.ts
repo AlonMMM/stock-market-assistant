@@ -40,7 +40,11 @@ import {
   type StrangleSettings,
 } from "../packages/trading/src/strangle/settings.js";
 import type { BotMarket, BotTrading } from "../apps/trader/src/bot.js";
-import { StrangleBot, strangleTag } from "../apps/trader/src/strangle.js";
+import {
+  StrangleBot,
+  strangleTag,
+  wednesdaysFriday,
+} from "../apps/trader/src/strangle.js";
 import {
   StrangleStore,
   tradeCash,
@@ -233,8 +237,11 @@ function harness(
     volume?: (contract: string) => number;
     // the last asked minute's bar not in yet (it lands seconds after the close)
     lag?: boolean;
+    // the session to run (DAY, a Friday, when not given)
+    date?: string;
   } = {},
 ) {
+  const day0 = opts.date ?? DAY;
   const store = new StrangleStore(
     join(mkdtempSync(join(tmpdir(), "strangle-")), "t.sqlite"),
   );
@@ -248,7 +255,7 @@ function harness(
       ...settings,
     }),
   );
-  const days = previousSessions(DAY, 20);
+  const days = previousSessions(day0, 20);
   const today = opts.day ?? burstDay();
   const market: BotMarket = {
     async sessions(symbols, dates) {
@@ -270,7 +277,7 @@ function harness(
           s,
           (s === "SPY" ? session(500, wiggle, () => 50000) : today).filter(
             (b) =>
-              date === DAY &&
+              date === day0 &&
               b.m >= from &&
               b.m <= to &&
               !(opts.lag && b.m === to),
@@ -291,7 +298,7 @@ function harness(
   const isCall = (c: string) => /C\d{8}$/.test(c);
   const trading: BotTrading = {
     async chain(_u, right, from, to) {
-      const e = opts.expiry ?? DAY;
+      const e = opts.expiry ?? day0;
       const all =
         right === "call"
           ? [
@@ -348,7 +355,7 @@ function harness(
       return jobs.get(id)!;
     },
   };
-  let now = at(DAY, 560);
+  let now = at(day0, 560);
   const bot = new StrangleBot({
     store,
     market,
@@ -361,7 +368,7 @@ function harness(
   });
   const run = async (from: number, to: number) => {
     for (let w = from; w <= to; w++) {
-      now = at(DAY, w);
+      now = at(day0, w);
       await bot.tick();
     }
   };
@@ -671,4 +678,27 @@ test("status: stocks with no expiry today or the next session are listed for the
   await today.run(565, 566);
   await new Promise((done) => setTimeout(done, 20));
   assert.deepEqual(today.bot.status().noExpiry, []);
+});
+
+test("runner (dry): on a Wednesday with no expiry today or tomorrow, the Friday option; off skips it", async () => {
+  const WED = "2026-10-21";
+  const FRI = "2026-10-23";
+  assert.equal(wednesdaysFriday(WED), FRI);
+  assert.equal(wednesdaysFriday(FRI), null);
+  const h = harness(
+    { mode: "dry" },
+    { day: climbThenFall(), expiry: FRI, date: WED },
+  );
+  await h.run(565, 612);
+  const [t] = h.store.openTrades();
+  assert.equal(t!.expiry, FRI);
+  assert.equal(t!.leg!.contract, "NVDA261023C00101000");
+  assert.match(h.store.signal(WED, "NVDA")!.detail, /would|101/);
+  const off = harness(
+    { mode: "dry", wednesdayFriday: false },
+    { day: climbThenFall(), expiry: FRI, date: WED },
+  );
+  await off.run(565, 612);
+  assert.equal(off.store.openTrades().length, 0);
+  assert.equal(off.store.signal(WED, "NVDA")!.outcome, "no_expiry");
 });

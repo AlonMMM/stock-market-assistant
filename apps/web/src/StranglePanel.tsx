@@ -261,6 +261,7 @@ const groups: { title: string; specs: Spec[] }[] = [
 const switches: {
   key:
     | "nextDay"
+    | "wednesdayFriday"
     | "liquidFallback"
     | "strengthFilter"
     | "skipEarnings"
@@ -273,6 +274,11 @@ const switches: {
     key: "nextDay",
     label: "Also 1DTE days",
     help: "Days with no same-day expiry but one the next session (mostly Thursdays): the same rule on that expiry, still sold the same day.",
+  },
+  {
+    key: "wednesdayFriday",
+    label: "Wednesday: the Friday option",
+    help: "On a Wednesday when the stock has no expiry today or tomorrow: that week's Friday option (2 days out), still sold the same day.",
   },
   {
     key: "liquidFallback",
