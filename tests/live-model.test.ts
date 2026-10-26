@@ -335,6 +335,8 @@ test("watch sort by today's volume: most shares first, missing last", () => {
 test("watchlist: phone columns fit the longest value, the same in every row", () => {
   const row = (over: Partial<WatchRow>) =>
     ({
+      ticker: "NU",
+      alerts: 0,
       mark: "live",
       last: 11.15,
       changeUsd: -4.01,
@@ -344,28 +346,30 @@ test("watchlist: phone columns fit the longest value, the same in every row", ()
       ...over,
     }) as WatchRow;
   assert.equal(textWidthCh("-26.45%").toFixed(1), "6.7");
-  const cols = phoneColumns([
+  const grid = phoneColumns([
     row({}),
     row({
+      ticker: "GOOGL",
       last: 895.05,
       changeUsd: 17.5,
       change: 1.99,
       relVolume: 12.3,
       volume: 2.4e7,
     }),
-  ]).split(" max(");
-  assert.equal(cols[0], "minmax(0, 1fr)");
-  // Last 895.05 (5.6ch), Chng +17.50 (5.6ch), Chg % -26.45% (6.7ch),
-  // Rel vol 12.3× (4.6ch), Volume 24.0M (5.1ch), each + 0.3ch.
-  assert.deepEqual(cols.slice(1), [
-    "5.9ch, 44px)",
-    "5.9ch, 40px)",
-    "7.0ch, 50px)",
-    "4.9ch, 34px)",
-    "5.4ch, 48px)",
   ]);
-  // A close or overnight mark in front of a price widens Last.
-  assert.match(phoneColumns([row({ mark: "close" })]), /max\(6.2ch, 44px\)/);
+  // GOOGL (5 × 1.3ch), Last 895.05 (5.6ch), Chng +17.50 (5.6ch), Chg %
+  // -26.45% (6.7ch), Rel vol 12.3× (4.6ch), Volume 24.0M (5.1ch), each + 0.3ch.
+  assert.equal(
+    grid.columns,
+    "minmax(max(6.8ch, 56px), 1fr) max(5.9ch, 44px) max(5.9ch, 40px) max(7.0ch, 50px) max(4.9ch, 34px) max(5.4ch, 48px)",
+  );
+  assert.equal(
+    grid.width,
+    "max(100%, calc(max(6.8ch, 56px) + max(5.9ch, 44px) + max(5.9ch, 40px) + max(7.0ch, 50px) + max(4.9ch, 34px) + max(5.4ch, 48px) + 5 * var(--wl-gap) + 2 * var(--wl-pad)))",
+  );
+  // A close mark widens Last; an alert dot widens Instrument.
+  const marked = phoneColumns([row({ mark: "close", alerts: 1 })]).columns;
+  assert.match(marked, /^minmax\(max\(4.5ch, 56px\), 1fr\) max\(6.2ch, 44px\)/);
 });
 
 test("watchlist: a kept order holds while values change; new rows go last", () => {
