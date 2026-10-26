@@ -129,7 +129,11 @@ export function WatchlistPage({
         {modes}
       </header>
       {page === "alerts" ? (
-        <PriceAlertsPage onBack={close} onOpenTicker={open} />
+        <PriceAlertsPage
+          onBack={close}
+          onOpenTicker={open}
+          canEdit={canTrade}
+        />
       ) : page ? (
         <TickerPage
           key={page}
@@ -183,9 +187,12 @@ export function WatchlistPage({
           <WatchlistSwitcher
             w={lists}
             editing={editing || emptyList}
-            onEdit={() => setEditing(!(editing || emptyList))}
+            onEdit={
+              canTrade ? () => setEditing(!(editing || emptyList)) : undefined
+            }
+            canEdit={canTrade}
           />
-          {(editing || emptyList) && (
+          {canTrade && (editing || emptyList) && (
             <WatchlistEditor w={lists} onChanged={board.reload} />
           )}
           {board.value &&
@@ -204,7 +211,11 @@ export function WatchlistPage({
               onShowAlerts={onShowAlerts}
               onTrade={canTrade ? onTrade : undefined}
               onOpen={open}
-              tools={<AddTicker w={lists} onAdded={board.reload} />}
+              tools={
+                canTrade ? (
+                  <AddTicker w={lists} onAdded={board.reload} />
+                ) : undefined
+              }
               compare={compare}
               onCompare={setCompare}
             />
@@ -215,7 +226,7 @@ export function WatchlistPage({
                 : "Loading watchlist…"}
             </p>
           )}
-          <EngineTickers />
+          {canTrade && <EngineTickers />}
         </>
       )}
     </div>

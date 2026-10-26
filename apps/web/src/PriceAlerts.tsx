@@ -352,11 +352,14 @@ export function PriceAlertList({
   api,
   showTicker,
   onOpenTicker,
+  canEdit = true,
 }: {
   alerts: PriceAlert[];
   api: PriceAlertsApi;
   showTicker: boolean;
   onOpenTicker?: (ticker: string) => void;
+  // Only the owner arms and deletes alerts; everyone else reads them.
+  canEdit?: boolean;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -402,27 +405,29 @@ export function PriceAlertList({
                 ) : (
                   <span className="pa-pill">Armed</span>
                 )}
-                <span className="pa-row-actions">
-                  {fired && (
+                {canEdit && (
+                  <span className="pa-row-actions">
+                    {fired && (
+                      <button
+                        type="button"
+                        className="action"
+                        disabled={busy === a.id}
+                        onClick={() => run(a.id, api.rearm(a.id))}
+                      >
+                        Arm again
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="action"
                       disabled={busy === a.id}
-                      onClick={() => run(a.id, api.rearm(a.id))}
+                      aria-label={`Delete ${a.ticker} ${alertRule(a)}`}
+                      onClick={() => run(a.id, api.remove(a.id))}
                     >
-                      Arm again
+                      Delete
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    className="action"
-                    disabled={busy === a.id}
-                    aria-label={`Delete ${a.ticker} ${alertRule(a)}`}
-                    onClick={() => run(a.id, api.remove(a.id))}
-                  >
-                    Delete
-                  </button>
-                </span>
+                  </span>
+                )}
               </span>
             </li>
           );
@@ -441,9 +446,11 @@ export function PriceAlertList({
 export function PriceAlertsPage({
   onBack,
   onOpenTicker,
+  canEdit,
 }: {
   onBack: () => void;
   onOpenTicker: (ticker: string) => void;
+  canEdit: boolean;
 }) {
   const api = usePriceAlerts();
   const armed = (api.alerts ?? []).filter((a) => a.firedAt === null);
@@ -482,6 +489,7 @@ export function PriceAlertsPage({
             api={api}
             showTicker
             onOpenTicker={onOpenTicker}
+            canEdit={canEdit}
           />
         </section>
       )}
@@ -493,6 +501,7 @@ export function PriceAlertsPage({
             api={api}
             showTicker
             onOpenTicker={onOpenTicker}
+            canEdit={canEdit}
           />
         </section>
       )}

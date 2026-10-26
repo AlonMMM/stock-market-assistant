@@ -82,6 +82,7 @@ import { handleCandles } from "../../../packages/market-data/src/candles.js";
 import { handleChartBars } from "../../../packages/market-data/src/chart-bars.js";
 import { handleTradeChart } from "../../../packages/market-data/src/trade-chart.js";
 import { handleControl } from "../../../packages/trading/src/control-api.js";
+import { changeRefusal } from "./owner-only.js";
 import { verifyAccess, type AccessIdentity } from "./access.js";
 
 declare const __STATIC_ASSETS__: Record<
@@ -286,6 +287,17 @@ export default {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
     const path = new URL(request.url).pathname;
+    const refusal = changeRefusal(
+      request.method,
+      path,
+      identity,
+      env.TRADE_OWNER_EMAIL,
+    );
+    if (refusal)
+      return Response.json(
+        { error: refusal },
+        { status: 403, headers: { "Cache-Control": "no-store" } },
+      );
     if (path.startsWith("/api/portfolio/control")) {
       let body: unknown;
       if (request.method === "POST")
