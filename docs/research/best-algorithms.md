@@ -212,6 +212,21 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### Candidates on real quotes: delta, what the exits read, sizing (2026-10-26)
+
+The user: "lets try to find more candidates - after that we will take the candidate and test them on my favorite".
+`cand_real.py` on 2.6, the fair list, real Databento quotes; tuned on 2024-2025, 2026 held out. 2.6 flat: 2024-25
+$390,392 / 12%, 2026 $233,116 / 14%.
+- Delta 0.20 / 0.25 / 0.30: all far worse (2024-25 $139K-$270K): 0.15 stays.
+- Exits reading the real quote every minute instead of trade bars: worse (mid $342,165 / 13%, bid $276,805 / 15%). The
+  live bot reads live quotes, so the live bot may trail the backtest on this count.
+- Sizing: pyramid (a D2 entry full + half of 2.4's entry later that day while held and up on the real mid) $483,650 /
+  13%, 2026 $243,614 / 16%; pyramid + cheap-fallback trades at half $521,715 / 11% (without the best 5 $200,684 vs
+  $145,270), 2026 $218,888 / 14% (2026's big winners were cheap-fallback trades); cheap at half alone $420,831 / 11%,
+  2026 $208,777; half size under 500 contracts $313,038 / 11%.
+Candidates for the Favorites check: the pyramid, and the pyramid + cheap at half. Dashboard tab "Candidates":
+https://claude.ai/artifact/8hwVRYjvFphR4Ro6kQC1am
+
 ### Spread rules, sale limits, a lower floor on real quotes (2026-10-26, not better; the sale limit is unproven)
 
 The user: "1. when spread is more than 15% - go one delta down and one delta up to see if the spread is better. if yes -
