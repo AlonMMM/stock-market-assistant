@@ -135,10 +135,13 @@ export function WatchlistSwitcher({
   w,
   editing = false,
   onEdit,
+  canEdit = true,
 }: {
   w: Watchlists;
   editing?: boolean;
   onEdit?: () => void;
+  // Only the owner changes lists; everyone else picks among them.
+  canEdit?: boolean;
 }) {
   const editable = Boolean(onEdit && w.current && !w.current.builtIn);
   const [naming, setNaming] = useState(false);
@@ -165,7 +168,7 @@ export function WatchlistSwitcher({
               {l.name} <span className="count num">{l.tickers.length}</span>
             </button>
           ))}
-          {!naming && (
+          {canEdit && !naming && (
             <button
               type="button"
               className="wl-new"

@@ -3,6 +3,7 @@ import type { Board } from "../../../packages/market-data/src/board.js";
 import type { TickerInfo } from "../../../packages/market-data/src/ticker.js";
 import type { Portfolio } from "../../../packages/trading/src/portfolio.js";
 import { readJson } from "./api.js";
+import { useControlAccess } from "./Positions.js";
 import type { FeedAlert } from "./AlertFeed.js";
 import { usePolling } from "./Live.js";
 import {
@@ -170,6 +171,7 @@ export function TickerPage({
   }, [ticker]);
   // The user's own price alerts on it, apart from the volume alerts.
   const priceAlerts = usePriceAlerts(ticker);
+  const { canTrade: canEdit } = useControlAccess();
   const mine = priceAlerts.alerts ?? [];
   const [sheet, setSheet] = useState(false);
   // What is held of it, and its open orders (any visitor sees the portfolio).
@@ -262,14 +264,16 @@ export function TickerPage({
             </button>
           </>
         )}
-        <button
-          type="button"
-          className="pos-cancel tk-bell"
-          onClick={() => setSheet(true)}
-        >
-          <BellIcon />
-          Price alert
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            className="pos-cancel tk-bell"
+            onClick={() => setSheet(true)}
+          >
+            <BellIcon />
+            Price alert
+          </button>
+        )}
         <button type="button" className="pos-cancel" onClick={onShowAlerts}>
           Volume alerts{today.length > 0 ? ` · ${today.length}` : ""}
         </button>
@@ -277,10 +281,15 @@ export function TickerPage({
       {mine.length > 0 && (
         <section className="tk-card pa-mine" aria-label="Your price alerts">
           <h3>Your price alerts</h3>
-          <PriceAlertList alerts={mine} api={priceAlerts} showTicker={false} />
+          <PriceAlertList
+            alerts={mine}
+            api={priceAlerts}
+            showTicker={false}
+            canEdit={canEdit}
+          />
         </section>
       )}
-      {sheet && (
+      {canEdit && sheet && (
         <PriceAlertSheet
           ticker={ticker}
           last={last}
