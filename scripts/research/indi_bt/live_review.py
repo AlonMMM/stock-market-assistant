@@ -184,7 +184,8 @@ def leg():
             x = e["trade"]
             bt.append(dict(date=t["date"], sym=t["sym"], kind=t["kind"], alert_minute=e["minute"], side_minute=x["ct"], right="C" if x["kept"] == "call" else "P",
                            contract=x["contract"], buy=round(x["buy"], 4), sell=round(x["sell"], 4), buy_minute=x["bm"], exit_minute=x["xm"],
-                           ret=round(x["sell"] / x["buy"] - 1 - 2 * 0.62 / (x["buy"] * 100), 4), skipped=news))
+                           ret=round(x["sell"] / x["buy"] - 1 - 2 * 0.62 / (x["buy"] * 100), 4), skipped=news,
+                           unit=x["sd30"] / 100, stock_ref=x["stock0"], nth=len([b for b in bt if b["date"] == t["date"] and b["sym"] == t["sym"]]) + 1))
     trades = []
     for t in (LEG.get("trades") or []) + (LEG.get("open") or []):
         if not (A <= t["day"] <= Z) or t.get("dry") or not t.get("leg"): continue
@@ -202,6 +203,7 @@ def leg():
         sold = sum(s["qty"] for s in sales)
         m = next((r for r in bt if r["date"] == t["day"] and r["sym"] == t["symbol"] and r["right"] == t["side"]), None)
         trades.append(dict(bot="leg", day=t["day"], sym=t["symbol"], right=t["side"], contract=lg["contract"], qty=lg["bought"], alert_minute=t["alertMinute"],
+                           unit=t["unit"], stock_ref=t["stockRef"], side_minute=t.get("sideMinute"),
                            entry_minute=minute_of(b["at"])[1], entry_il=il_time(t["day"], minute_of(b["at"])[1]), paper_buy=lg["cost"], real_buy=rb, real_buy_how=rb_how,
                            entry_book=b.get("book"), buy_prints=rb_pr, buy_ms=b["at"], sales=sales, close_reason=t.get("closeReason"),
                            paper_ret=sum(s["qty"] * s["paper"] for s in sales) / (sold * lg["cost"]) - 1 if sold else None,
@@ -278,12 +280,72 @@ def chart(t, name):
     return f"{name}.png"
 
 
+def leg_chart(bt, live, name):
+    """One Alert leg trade, step by step: the alert, the side levels (±0.25 S30 for 10 minutes), the buy, the best
+    since the buy and the give-back line (0.75 S30) that ends it. bt: the backtest row, live: the live trade (either
+    may be None)."""
+    import matplotlib; matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    src = live or bt
+    d, sym, side = src["day"] if live else bt["date"], src["sym"], src["right"]
+    u, ref, a = src["unit"], src["stock_ref"], src["alert_minute"]
+    sb = {b[0]: b for b in day(sym, d)}
+    if not sb or not u: return None
+    contract = live["contract"] if live else bt["contract"]
+    ob = {b[0]: b for b in day(contract, d)}
+    sm = (live or {}).get("side_minute") or (bt or {}).get("side_minute") or a
+    bm = live["entry_minute"] if live else bt["buy_minute"]
+    xm = live["sales"][-1]["minute"] if live and live["sales"] else (bt or {}).get("exit_minute", 360)
+    up = side == "C"
+    lo, hi = max(0, a - 30), min(389, xm + 30)
+    xs = [m for m in range(lo, hi + 1) if m in sb]
+    best, bests, trig = sb.get(sm, sb[min(sb)])[4], [], []
+    for m in range(sm, xm + 1):
+        if m in sb: best = max(best, sb[m][4]) if up else min(best, sb[m][4])
+        bests.append((m, best)); trig.append((m, best * (1 - 0.75 * u) if up else best * (1 + 0.75 * u)))
+    fig, ax = plt.subplots(3, 1, figsize=(11, 8), sharex=True, gridspec_kw=dict(height_ratios=[3, 1, 2.2]))
+    ax[0].plot(xs, [sb[m][4] for m in xs], color="#1f6feb", lw=1.4, label=sym)
+    for lvl in (ref * (1 + 0.25 * u), ref * (1 - 0.25 * u)):
+        ax[0].hlines(lvl, a, a + 10, color="#9a6700", lw=1.2, ls="--")
+    ax[0].plot([], [], ls="--", color="#9a6700", label=f"side levels: ±0.25 × {u * 100:.2f}% (30-min move), 10 min")
+    ax[0].plot([m for m, _ in bests], [b for _, b in bests], color="#1a7f37", lw=1, ls=":", label="best since the buy")
+    ax[0].plot([m for m, _ in trig], [v for _, v in trig], color="#cf222e", lw=1, ls=":", label="exit: give back 0.75")
+    ax[1].bar(xs, [sb[m][5] for m in xs], width=1, color="#8b949e")
+    if a in sb: ax[1].bar([a], [sb[a][5]], width=1, color="#9a6700")
+    ox = [m for m in xs if m in ob]
+    ax[2].plot(ox, [ob[m][4] for m in ox], color="#6e40c9", lw=1.3, label=f"{contract} close")
+    if live:
+        ax[2].scatter([bm], [live["paper_buy"]], marker="^", s=90, color="#1a7f37", zorder=5, label=f"live buy {live['paper_buy']:.2f}")
+        if live["real_buy"]: ax[2].scatter([bm], [live["real_buy"]], marker="^", s=90, facecolors="none", edgecolors="#1a7f37", zorder=5, label=f"real price {live['real_buy']:.2f}")
+        for s in live["sales"]:
+            ax[2].scatter([s["minute"]], [s["paper"]], marker="v", s=90, color="#cf222e", zorder=5, label=f"live sell {s['paper']:.2f} ({s['reason']})")
+            if s["real"]: ax[2].scatter([s["minute"]], [s["real"]], marker="v", s=90, facecolors="none", edgecolors="#cf222e", zorder=5, label=f"real price {s['real']:.2f}")
+    if bt:
+        ax[2].scatter([bt["buy_minute"], bt["exit_minute"]], [bt["buy"], bt["sell"]], marker="x" if live else "o", s=70, color="#57606a" if live else "#1a7f37",
+                      zorder=6, label=f"backtest buy {bt['buy']:.2f} / sell {bt['sell']:.2f} ({bt['ret']:+.0%})")
+    for axx in ax:
+        axx.axvline(a, color="#9a6700", lw=1); axx.axvline(bm, color="#1a7f37", lw=1); axx.axvline(xm, color="#cf222e", lw=1)
+        axx.grid(alpha=.25)
+    step = 15 if hi - lo <= 150 else 30
+    ticks = [m for m in range(lo - lo % step, hi + 1, step) if m >= lo]
+    ax[2].set_xticks(ticks, [il_time(d, m) for m in ticks], fontsize=8)
+    tag = "LIVE" if live else ("BACKTEST · news skip: " + bt["skipped"] if bt.get("skipped") else "BACKTEST")
+    ax[0].set_title(f"{tag} · Alert leg · {sym} {'Call' if up else 'Put'} · {d} · alert {il_time(d, a)} Israel", loc="left", fontsize=11)
+    ax[0].legend(fontsize=8); ax[2].legend(fontsize=8)
+    ax[0].set_ylabel("stock $"); ax[1].set_ylabel("volume"); ax[2].set_ylabel("option $")
+    fig.tight_layout(); fig.savefig(f"{OUT}/{name}.png", dpi=110); plt.close(fig)
+    return f"{name}.png"
+
+
 def main():
     res = dict(first=A, last=Z, days=DAYS, indi=indi(), leg=leg(),
                settings=dict(indi=BOT.get("settings"), leg=LEG.get("settings")), version=BOT.get("version"))
-    for b in ("indi", "leg"):
-        for t in res[b]["trades"]:
-            t["chart"] = chart(t, f"{b}_{t['day']}_{t['sym']}_{t['right']}")
+    for t in res["indi"]["trades"]:
+        t["chart"] = chart(t, f"indi_{t['day']}_{t['sym']}_{t['right']}")
+    for t in res["leg"]["trades"]:
+        t["chart"] = leg_chart(t["backtest"], t, f"leg_{t['day']}_{t['sym']}_{t['right']}_{t['alert_minute']}")
+    for r in res["leg"]["backtest_only"]:
+        r["chart"] = leg_chart(r, None, f"leg_bt_{r['date']}_{r['sym']}_{r['right']}_{r['alert_minute']}")
     json.dump(res, open(f"{OUT}/review.json", "w"), default=str, indent=1)
     for b in ("indi", "leg"):
         r = res[b]
