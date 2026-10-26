@@ -4059,11 +4059,18 @@ dialog.why::backdrop {
 .wl .wl-grid {
   display: grid;
   /* IBKR's phone columns (user 2026-10-26): Instrument, Last price, Chng,
-     Chg %, Volume. */
-  grid-template-columns: minmax(0, 1fr) auto auto auto minmax(44px, auto);
+     Chg %, Rel vol, Volume. --wl-cols sizes each to its longest value in ch
+     (phoneColumns), the same in every row; the grid's own font sets ch, so
+     it is the numbers' font and size. */
+  grid-template-columns: var(
+    --wl-cols,
+    minmax(0, 1fr) 64px 52px 60px 40px 50px
+  );
   align-items: center;
-  column-gap: 10px;
+  column-gap: 8px;
   padding: 0 12px;
+  font-family: var(--wl-font);
+  font-size: 14px;
 }
 .wl-wide,
 .wl-compare {
@@ -4081,10 +4088,12 @@ dialog.why::backdrop {
   background: #fff;
   border-bottom: 1px solid var(--wl-line);
   padding-block: 9px;
-  font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--wl-faint);
+}
+.wl-head > .wl-cell {
+  font-size: 11px;
 }
 .wl-head button {
   all: unset;
@@ -4129,7 +4138,7 @@ dialog.why::backdrop {
 }
 .wl-symbol strong {
   font-family: var(--wl-font);
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 500;
   white-space: nowrap;
 }
@@ -4186,7 +4195,7 @@ dialog.why::backdrop {
    alone carries up and down, no pills. */
 .wl-num {
   font-family: var(--wl-font);
-  font-size: 16.5px;
+  font-size: 14px;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
@@ -4219,12 +4228,12 @@ dialog.why::backdrop {
   flex-direction: column;
   align-items: flex-end;
   gap: 4px;
-  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+/* The bar only on wide screens; a phone has the number alone. */
 .wl-rv i {
   position: relative;
-  display: block;
+  display: none;
   width: 28px;
   height: 3px;
   border-radius: 2px;
@@ -4323,6 +4332,21 @@ dialog.why::backdrop {
   }
   .wl-wide {
     display: block !important;
+  }
+  .wl .wl-grid {
+    column-gap: 10px;
+  }
+  .wl-symbol strong {
+    font-size: 17px;
+  }
+  .wl-num {
+    font-size: 16.5px;
+  }
+  .wl-rv {
+    font-size: 13px;
+  }
+  .wl-rv i {
+    display: block;
   }
   .wl-compare {
     display: flex !important;
@@ -5655,9 +5679,13 @@ button.pa-ticker {
   padding-block: 0;
   min-height: 46px;
   background: #f6f8f4;
-  font-size: 12px;
   letter-spacing: 0.05em;
   color: #526461;
+}
+/* The labels' size is on the cells: the head grid keeps the numbers' font,
+   so its ch-sized columns match the rows'. */
+.wl .wl-head > .wl-cell {
+  font-size: 12px;
 }
 .wl-head button {
   min-height: 46px;
@@ -5689,15 +5717,22 @@ button.pa-ticker {
 .wl-toolbar > .wl-add-form {
   flex: 1 1 260px;
 }
-/* A phone: IBKR's five columns, edge to edge. */
+/* A phone: IBKR's columns and Rel vol, edge to edge. A label longer than
+   its column wraps to a second line. */
 @media (max-width: 759px) {
   .wl .wl-grid {
-    column-gap: 8px;
     padding: 0 10px;
   }
   .wl .wl-head {
-    font-size: 10.5px;
     letter-spacing: 0.03em;
+  }
+  .wl .wl-head > .wl-cell {
+    font-size: 10.5px;
+    white-space: normal;
+    line-height: 1.2;
+  }
+  .wl .wl-head > button.right {
+    justify-content: flex-end;
   }
   /* Only the column it is sorted by shows its arrow on a phone. */
   .wl-head button:not(.active) .wl-arrow {
@@ -5706,14 +5741,15 @@ button.pa-ticker {
 }
 @media (max-width: 380px) {
   .wl .wl-grid {
-    column-gap: 6px;
+    column-gap: 5px;
     padding: 0 8px;
+    font-size: 13px;
   }
   .wl-num {
-    font-size: 15px;
+    font-size: 13px;
   }
   .wl-symbol strong {
-    font-size: 15.5px;
+    font-size: 14px;
   }
   .wl-symbol small {
     display: none;
@@ -7399,9 +7435,15 @@ i.added {
   background: #e6e8eb;
   color: #16191f;
 }
-.wl-dark .wl-add {
+.wl-dark .wl-add,
+.wl-dark .wl-chips-row > button.wl-edit {
   border-color: #5d6672;
   color: #e6e8eb;
+}
+.wl-dark .wl-chips-row > button.wl-edit[aria-pressed="true"] {
+  background: #e6e8eb;
+  border-color: #e6e8eb;
+  color: #16191f;
 }
 .wl-dark .engine-tickers {
   border-color: #2a2f37;

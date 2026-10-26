@@ -719,3 +719,56 @@ export function ibVolume(n: number | null): string {
   }
   return String(v);
 }
+
+/** Rel vol as the table writes it: "1.2×", "—" before the open. */
+export const ibRelVolume = (n: number | null) =>
+  n === null ? "—" : `${n.toFixed(1)}×`;
+
+// Widths in the digit width (ch) of the table's tabular figures: a dot or a
+// minus is narrower than a digit, % and the unit letters wider.
+const narrow = new Set([".", "-", ",", "—"]);
+const wide = new Set(["%", "K", "M", "B"]);
+export function textWidthCh(text: string): number {
+  let w = 0;
+  for (const c of text) {
+    if (narrow.has(c)) w += 0.6;
+    else if (wide.has(c)) w += 1.5;
+    else w += 1;
+  }
+  return w;
+}
+
+/**
+ * The phone grid's columns (Instrument, Last price, Chng, Chg %, Rel vol,
+ * Volume), each as wide as its longest value, so every row lines up with the
+ * header (user 2026-10-26: "not aligned"). Rows are separate grids, so
+ * content-sized ("auto") columns would differ from row to row.
+ */
+export function phoneColumns(rows: WatchRow[]): string {
+  const widest = (texts: string[], extra = 0) =>
+    Math.max(0, ...texts.map(textWidthCh)) + extra;
+  const marked = rows.some((r) => r.mark !== "live");
+  const last = widest(
+    rows.map((r) => (r.last === null ? "—" : ibPrice(r.last))),
+    marked ? 1.3 : 0,
+  );
+  const chng = widest(
+    rows.map((r) => (r.changeUsd === null ? "" : ibChange(r.changeUsd))),
+  );
+  const pct = widest(
+    rows.map((r) => (r.change === null ? "" : ibPct(r.change))),
+  );
+  const rv = widest(rows.map((r) => ibRelVolume(r.relVolume)));
+  const vol = widest(rows.map((r) => ibVolume(r.volume)));
+  // Room for the header's longest word ("Volume", "Chg % ▼") at its size.
+  const track = (ch: number, min: number) =>
+    `max(${(ch + 0.3).toFixed(1)}ch, ${min}px)`;
+  return [
+    "minmax(0, 1fr)",
+    track(last, 44),
+    track(chng, 40),
+    track(pct, 50),
+    track(rv, 34),
+    track(vol, 48),
+  ].join(" ");
+}
