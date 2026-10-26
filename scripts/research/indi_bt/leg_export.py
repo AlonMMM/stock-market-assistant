@@ -28,7 +28,10 @@ from signals import series
 CAL = calendar()
 C = sim.C
 DELTA, K, WAIT = 0.35, 0.25, 60
-ONE_D = (("d1", None), ("b1", "b1"), ("b1f", "b1f"), ("b1hc", "b1hc"))
+MV = os.environ.get("BT_MINVOL")            # another liquidity floor (contracts in 30 minutes; the live rule's is 200)
+SUF = f"_{MV}" if MV else ""                # its sets are named plain_<floor> / d1_<floor>
+ONLY = bool(os.environ.get("BT_ONLY_D1"))   # only the plain and d1 sets (the live rule)
+ONE_D = (("d1", None),) if ONLY else (("d1", None), ("b1", "b1"), ("b1f", "b1f"), ("b1hc", "b1hc"))
 
 
 def entries():
@@ -62,6 +65,7 @@ def path_rows(sym, date, contract, nights):
 
 def one(sig):
     date, sym, m, kind, alert = sig
+    if MV: C.update(min_vol30=int(MV))
     sb = {b[0]: b for b in day(sym, date)}
     x = ctx(sym, date)
     if m not in sb or not x or not x.get("sd"): return None
@@ -80,12 +84,12 @@ def one(sig):
         if first is None and why not in ("too_cheap", "illiquid"): return None
         cands = candidates(sym, date, ct, right, spot)
         plain = LF.choose(cands, "plain")
-        for mode in ("plain", "cheap", "liquid", "both"):
+        for mode in (("plain",) if ONLY else ("plain", "cheap", "liquid", "both")):
             c = LF.choose(cands, mode)
             if not c or (mode != "plain" and plain): continue   # a fallback set holds only the trades it adds
             w = LF.walk(sym, date, ct, right, c[0], spot, u)
             if not w: continue
-            rows.append(dict(base, set=mode, leg=c[0], delta=round(abs(c[3]), 2), buy_minute=w[2], buy_price=round(w[0], 4),
+            rows.append(dict(base, set=mode + SUF, leg=c[0], delta=round(abs(c[3]), 2), buy_minute=w[2], buy_price=round(w[0], 4),
                              exit_day="t", exit_minute=w[3], exit_price=round(w[1], 4), half_minute="", half_price=""))
             paths[c[0]] = False
     else:
@@ -96,7 +100,7 @@ def one(sig):
             w = L1.walk(sym, date, ct, right, got[0], spot, u, None if run50 is None else "all", run50)
             if not w: continue
             info = w[3]
-            rows.append(dict(base, set=name, leg=got[0], delta=round(abs(got[3]), 2), buy_minute=info["b"], buy_price=round(w[0], 4),
+            rows.append(dict(base, set=name + SUF, leg=got[0], delta=round(abs(got[3]), 2), buy_minute=info["b"], buy_price=round(w[0], 4),
                              exit_day=info["d"], exit_minute=info["m"], exit_price=round(w[1], 4),
                              half_minute=info.get("half_m") or "", half_price=round(info["half"], 4) if info.get("half") else ""))
             paths[got[0]] = paths.get(got[0], False) or info["d"] == "n"
@@ -127,11 +131,11 @@ def main():
         for c, pr in ps.items():
             pid = f"{lst}|{t['date']}|{t['sym']}|{c}"
             PT.extend(dict(pid=pid, **p) for p in pr)
-    for name, data in ((f"trades_{lst}", T), (f"paths_{lst}", PT)):
+    for name, data in ((f"trades_{lst}{SUF}", T), (f"paths_{lst}{SUF}", PT)):
         with open(f"{out}/{name}.csv", "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=list(data[0])); w.writeheader(); w.writerows(data)
         print(name, len(data), "rows", flush=True)
-    for s in ("plain", "cheap", "liquid", "both", "d1", "b1", "b1f", "b1hc"): print(s, sum(r["set"] == s for r in T))
+    for s in sorted({r["set"] for r in T}): print(s, sum(r["set"] == s for r in T))
 
 
 if __name__ == "__main__":
