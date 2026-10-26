@@ -624,6 +624,7 @@ function harness(
   let mid = 0.6;
   let equity = 100000;
   let equityFails = false;
+  let ibkrBuyFails = false;
   // What each account holds; `held` is Alpaca's, as the older tests use it.
   const heldBy: Record<BotBroker, Map<string, number>> = {
     alpaca: new Map<string, number>(),
@@ -655,6 +656,10 @@ function harness(
       return equity;
     },
     async buy(body) {
+      if (broker === "ibkr" && ibkrBuyFails)
+        throw new Error(
+          "market data requires additional subscription (synthetic)",
+        );
       calls.push({ kind: "buy", body, broker });
       // IBKR fills one contract fewer: the accounts should differ a little.
       const qty = broker === "ibkr" ? 32 : 33;
@@ -718,6 +723,7 @@ function harness(
     setMid: (v: number) => (mid = v),
     setEquity: (v: number) => (equity = v),
     failEquity: (on: boolean) => (equityFails = on),
+    failIbkrBuy: (on: boolean) => (ibkrBuyFails = on),
   };
 }
 
@@ -1607,4 +1613,22 @@ test("exits run on every tick, between minutes, on the stock's last trade", asyn
   const sells = h.calls.filter((c) => c.kind === "sell");
   assert.equal(sells.length, 1);
   assert.match(String(sells[0]!.body.note), /10-min check/);
+});
+
+test("broker setting 'both': an account that throws does not undo the other's entry", async () => {
+  const h = harness("live");
+  h.bot.setSettings({ ...h.bot.settings(), broker: "both" });
+  h.failIbkrBuy(true);
+  await h.run(DAY, 565, 600);
+  assert.deepEqual(
+    h.store.openPositions().map((p) => [p.broker, p.qty]),
+    [["alpaca", 33]],
+  );
+  // The signal counts as bought, and its words keep the IBKR error.
+  const signal = h.store.signals(DAY)[0]!;
+  assert.equal(signal.outcome, "bought");
+  assert.match(
+    signal.detail ?? "",
+    /Alpaca: 33 .*; Interactive Brokers: market data requires additional subscription/,
+  );
 });

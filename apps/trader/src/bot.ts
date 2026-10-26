@@ -837,18 +837,21 @@ export class IndiBot {
               this.o.now(),
               broker,
             );
-      results.push({
+      // A leg that throws (IBKR refusing the contract's market data, user
+      // 2026-10-26) is that account's miss; the other account's entry stands.
+      const result = await this.enterAt(
         broker,
-        ...(await this.enterAt(
-          broker,
-          base,
-          picked.mid,
-          s,
-          why,
-          legs.length > 1,
-          book,
-        )),
-      });
+        base,
+        picked.mid,
+        s,
+        why,
+        legs.length > 1,
+        book,
+      ).catch((error: unknown) => ({
+        outcome: "error",
+        detail: error instanceof Error ? error.message : String(error),
+      }));
+      results.push({ broker, ...result });
     }
     // The signal's one outcome: an entry if any leg entered, else the first miss.
     const entered = results.filter(
