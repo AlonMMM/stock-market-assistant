@@ -96,7 +96,8 @@ test("explanation: a buy records what was asked, what was default, and how it wa
   assert.equal(e.stop.atCeiling, 0.62);
   assert.deepEqual(
     [e.risk.state, e.risk.daysToExpiry, e.risk.sharePct, e.risk.tradeRisk],
-    ["full", 4, 80, 329.6],
+    // Counted at the order's 40% stop (2026-10-26), not 80% by days to expiry.
+    ["full", 4, 40, 164.8],
   );
   assert.equal(e.checks.length, 16);
   assert.ok(e.checks.every((c) => c.ok));

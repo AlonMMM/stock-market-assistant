@@ -133,6 +133,10 @@ export interface RiskRequest {
   todayLoss: number; // $ lost so far on today's trades; 0 when ahead
   premium: number; // $ the new order can cost
   daysToExpiry: number; // calendar days
+  // The order's stop, % of the premium: its risk is counted at the stop
+  // (user 2026-10-26: "our default stop is 50%"). Without one, the share he
+  // counts as lost by days to expiry (lossShare).
+  stopPct?: number;
 }
 
 export interface RiskVerdict {
@@ -156,7 +160,10 @@ export function checkRisk(
 ): RiskVerdict {
   const account = accountState(request.history, rules);
   const limits = rules.limits[account.state];
-  const share = lossShare(request.daysToExpiry);
+  const atStop = request.stopPct !== undefined && request.stopPct > 0;
+  const share = atStop
+    ? Math.min(request.stopPct! / 100, 1)
+    : lossShare(request.daysToExpiry);
   const tradeRisk = request.premium * share;
   const tradeLimit = (request.equity * limits.trade) / 100;
   const dayRisk = Math.max(request.todayLoss, 0) + tradeRisk;
@@ -164,7 +171,7 @@ export function checkRisk(
   const reasons: string[] = [];
   if (tradeRisk > tradeLimit + 1e-9)
     reasons.push(
-      `Risk manager (${account.state}): this trade risks ${money(tradeRisk)}, ${Math.round(share * 100)}% of its premium; the limit per trade is ${limits.trade}% of the account, ${money(tradeLimit)}`,
+      `Risk manager (${account.state}): this trade risks ${money(tradeRisk)}, ${Math.round(share * 100)}% of its premium${atStop ? " at its stop" : ""}; the limit per trade is ${limits.trade}% of the account, ${money(tradeLimit)}`,
     );
   if (dayRisk > dayLimit + 1e-9)
     reasons.push(

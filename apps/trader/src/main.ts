@@ -4,6 +4,12 @@
 // site's connector and never sees a key.
 import { TelegramSender } from "../../../packages/notifications/src/telegram.js";
 import { TelegramNotifier } from "../../../packages/trading/src/notifier.js";
+import {
+  accountRiskBounds,
+  defaultAccountRisk,
+  parseAccountRisk,
+  withDefaults,
+} from "../../../packages/trading/src/account-risk.js";
 import { timingSafeEqual } from "node:crypto";
 import { newYork } from "../../../packages/market-data/src/calendar.js";
 import { mkdirSync } from "node:fs";
@@ -14,10 +20,12 @@ import { StoqeyTws } from "../../../packages/trading/src/tws-client.js";
 import { ensureOwnerIbkr, seedOwner } from "./seed.js";
 import {
   botAccountFor,
+  botAccountSuffix,
   botBrokerFromEnv,
   ensureBotAccount,
   ensureStrangleAccount,
   strangleAccount,
+  strangleAccountSuffix,
   strangleKeyVariable,
 } from "./seed-bot.js";
 import { StrangleBot, strangleTag } from "./strangle.js";
@@ -211,6 +219,62 @@ api.post<{ Params: { id: string } }>("/v1/jobs/:id/cancel", async (request) =>
 api.post("/v1/cancel", async (request) =>
   service(request).cancel(body(request.body)),
 );
+// The owner's risk settings, per account (account-risk.ts; user 2026-10-26).
+const riskLabel = (a: { id: string; broker: string; userId: string }) => {
+  const labels: Record<string, string> = {
+    [`${a.userId}-alpaca`]: "Your Alpaca account",
+    [`${a.userId}-${botAccountSuffix}`]: "Indi bot · Alpaca",
+    [`${a.userId}-ibkr`]: "Interactive Brokers · you and the Indi bot",
+    [`${a.userId}-${strangleAccountSuffix}`]: "Alert leg bot · Alpaca",
+  };
+  return labels[a.id] ?? `${a.broker} · ${a.id}`;
+};
+const riskAccounts = () =>
+  store
+    .users()
+    .flatMap((u) => store.accounts(u.id))
+    .filter((a) => a.enabled);
+api.get("/v1/risk", async () => {
+  const accounts = await Promise.all(
+    riskAccounts().map(async (a) => {
+      // The account's state now, if it answers in time (IBKR may not).
+      const status = await Promise.race([
+        traders
+          .forAccount(a.id)
+          .engine.status()
+          .catch(() => null),
+        new Promise<null>((done) => setTimeout(() => done(null), 8000)),
+      ]);
+      return {
+        id: a.id,
+        broker: a.broker,
+        label: riskLabel(a),
+        settings: withDefaults(store.accountRisk(a.id)),
+        saved: store.accountRisk(a.id) !== null,
+        now: status
+          ? {
+              equity: status.equity,
+              dayChangePct: status.dayChangePct,
+              state: status.limits.riskManager.state,
+              reason: status.limits.riskManager.reason,
+            }
+          : null,
+      };
+    }),
+  );
+  return { accounts, defaults: defaultAccountRisk, bounds: accountRiskBounds };
+});
+api.put("/v1/risk", async (request) => {
+  const b = body(request.body);
+  const account = riskAccounts().find((a) => a.id === b.accountId);
+  if (!account) throw new RequestError("No such account");
+  const risk = parseAccountRisk(b.settings);
+  if (typeof risk === "string") throw new RequestError(risk);
+  store.setAccountRisk(account.id, risk, Date.now());
+  traders.reloadRisk(account.id);
+  log(`risk settings of ${account.id}: ${JSON.stringify(risk)}`);
+  return { id: account.id, settings: risk };
+});
 api.get("/v1/positions", async (request) => service(request).status());
 api.get<{ Querystring: { limit?: string } }>("/v1/decisions", async (request) =>
   service(request).decisions(Number(request.query.limit)),

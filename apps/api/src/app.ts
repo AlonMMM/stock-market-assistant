@@ -312,6 +312,28 @@ export function buildApp(
         .send(result.body);
     },
   );
+  // The risk settings: read here, saved on the hosted site only.
+  app.get("/api/risk", async (_request, reply) => {
+    const result = await handleBotSettings(
+      {
+        url: process.env.TRADER_URL,
+        readToken: process.env.TRADER_READ_TOKEN,
+      },
+      null,
+      { method: "GET", origin: "", requestOrigin: null },
+      fetch,
+      "/v1/risk",
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.put("/api/risk", async (_request, reply) =>
+    reply
+      .code(403)
+      .send({ error: "Saving settings works on the hosted site only" }),
+  );
   // Saving settings needs the hosted site's sign-in; here they can be read only.
   app.get("/api/bot/settings", async (_request, reply) => {
     const result = await handleBotSettings(

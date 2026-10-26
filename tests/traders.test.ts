@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { defaultAccountRisk } from "../packages/trading/src/account-risk.js";
 import { randomBytes } from "node:crypto";
 import test from "node:test";
 import { readSecret, Vault } from "../apps/trader/src/secrets.js";
@@ -406,4 +407,24 @@ test("bot account: BOT_BROKER is the start-up default; each broker maps to the o
   );
   assert.equal(botAccountFor(store, "alpaca")?.id, "owner-bot");
   assert.equal(botAccountFor(store, "ibkr")?.id, "owner-ibkr");
+});
+
+test("risk settings: an account's saved numbers reach its trader, at once once built", async () => {
+  const { traders, store } = setup();
+  const before = await traders.get("owner").engine.status();
+  assert.equal(before.limits.maxDayLossPct, 5);
+  assert.equal(before.limits.riskManager.day, 5); // the default daily loss limit
+  store.setAccountRisk(
+    "owner-alpaca",
+    { ...defaultAccountRisk, dayLossPct: 7, buysPerDay: 4 },
+    monday,
+  );
+  traders.reloadRisk("owner-alpaca");
+  const after = await traders.get("owner").engine.status();
+  assert.equal(after.limits.maxDayLossPct, 7);
+  assert.equal(after.limits.maxBuysPerDay, 4);
+  assert.equal(after.limits.riskManager.day, 7);
+  // Another account keeps its own (the defaults).
+  const friend = await traders.get("friend").engine.status();
+  assert.equal(friend.limits.maxDayLossPct, 5);
 });

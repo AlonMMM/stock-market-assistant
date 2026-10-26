@@ -683,6 +683,47 @@ export default {
         headers: { "Cache-Control": "no-store" },
       });
     }
+    // The owner's risk settings per account (account-risk.ts): read by any
+    // signed-in viewer, saved by the owner only.
+    if (path === "/api/risk") {
+      let body: unknown;
+      if (request.method === "PUT")
+        try {
+          const text = await request.text();
+          if (text.length > 16384)
+            return Response.json(
+              { error: "Request too large" },
+              { status: 413 },
+            );
+          body = JSON.parse(text);
+        } catch {
+          return Response.json(
+            { error: "Expected JSON object" },
+            { status: 400 },
+          );
+        }
+      const result = await handleBotSettings(
+        {
+          owner: env.TRADE_OWNER_EMAIL,
+          url: env.TRADER_URL,
+          token: env.TRADER_TOKEN,
+          readToken: env.TRADER_READ_TOKEN,
+        },
+        identity,
+        {
+          method: request.method,
+          body,
+          origin: new URL(request.url).origin,
+          requestOrigin: request.headers.get("Origin"),
+        },
+        fetch,
+        "/v1/risk",
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
     if (path === "/api/bot/settings") {
       let body: unknown;
       if (request.method === "PUT")

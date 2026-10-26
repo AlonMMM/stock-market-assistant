@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  applyAccountRisk,
+  defaultAccountRisk,
+  parseAccountRisk,
+  withDefaults,
+} from "../packages/trading/src/account-risk.js";
+import { defaultBuyLimits } from "../packages/trading/src/checks.js";
+import {
   accountState,
   checkRisk,
+  defaultRiskRules,
   lossShare,
 } from "../packages/trading/src/risk-manager.js";
 
@@ -87,4 +95,60 @@ test("risk manager: today's loss counts toward the daily limit", () => {
   assert.match(v.reasons[0]!, /limit per day is 7% of the account, \$7,000/);
   // A day that is ahead does not add room.
   assert.equal(checkRisk({ ...order, todayLoss: -9000 }).dayRisk, 1800);
+});
+
+test("risk manager: a trade with a stop is counted at its stop; the user's case: 4% down, a 2% trade at the 50% stop fits a 5% day", () => {
+  const rules = applyAccountRisk(
+    defaultBuyLimits,
+    defaultRiskRules,
+    defaultAccountRisk,
+  ).riskRules;
+  const order = {
+    history: days(100_000),
+    equity: 100_000,
+    premium: 2000, // 2% of the account
+    daysToExpiry: 2,
+    stopPct: 50,
+  };
+  const ok = checkRisk({ ...order, todayLoss: 4000 }, rules);
+  assert.equal(ok.ok, true);
+  assert.equal(ok.tradeRisk, 1000);
+  assert.equal(ok.dayRisk, 5000);
+  assert.equal(ok.dayLimit, 5000);
+  // 4.5% down: 5.5% with this trade, over the 5% limit.
+  const no = checkRisk({ ...order, todayLoss: 4500 }, rules);
+  assert.equal(no.ok, false);
+  assert.match(no.reasons[0]!, /limit per day is 5% of the account/);
+  // Without a stop it is the share lost by expiry, as before (90% at 2 days).
+  const { stopPct: _, ...bare } = order;
+  assert.equal(checkRisk({ ...bare, todayLoss: 0 }, rules).tradeRisk, 1800);
+});
+
+test("account risk: defaults, a saved record over them, the bounds, and the rules they make", () => {
+  assert.equal(defaultAccountRisk.dayLossPct, 5);
+  const merged = withDefaults({
+    dayLossPct: 6,
+    brake: { trade: 1, day: 2 },
+  } as never);
+  assert.equal(merged.dayLossPct, 6);
+  assert.equal(merged.tradeRiskPct, 5);
+  assert.deepEqual(merged.brake, { trade: 1, day: 2 });
+  assert.deepEqual(merged.recovery, defaultAccountRisk.recovery);
+  assert.deepEqual(
+    parseAccountRisk({ ...defaultAccountRisk }),
+    defaultAccountRisk,
+  );
+  assert.match(
+    String(parseAccountRisk({ ...defaultAccountRisk, dayLossPct: 40 })),
+    /daily loss limit must be from 0.5 to 25/,
+  );
+  assert.match(
+    String(parseAccountRisk({ ...defaultAccountRisk, buysPerDay: 2.5 })),
+    /whole number/,
+  );
+  const r = applyAccountRisk(defaultBuyLimits, defaultRiskRules, merged);
+  assert.equal(r.limits.maxDayLossPct, 6);
+  assert.equal(r.limits.maxSizePct, defaultBuyLimits.maxSizePct); // the size cap stays
+  assert.deepEqual(r.riskRules.limits.full, { trade: 5, day: 6 });
+  assert.deepEqual(r.riskRules.limits.brake, { trade: 1, day: 2 });
 });
