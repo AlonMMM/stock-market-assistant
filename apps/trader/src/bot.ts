@@ -427,6 +427,16 @@ export class IndiBot {
     );
   }
 
+  /** Today's watched stocks (the quote sampler follows them). */
+  watched(): string[] {
+    return this.symbols.length ? [...this.symbols] : this.universe();
+  }
+
+  /** A stock's last closed-minute price today, or null before its first bar. */
+  stockPrice(symbol: string): number | null {
+    return this.barsOf(symbol).at(-1)?.c ?? null;
+  }
+
   /** Called every few seconds; does each closed minute's work once. */
   async tick(): Promise<void> {
     if (this.busy) return;

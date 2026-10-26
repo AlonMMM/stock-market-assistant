@@ -149,6 +149,13 @@ Branch `feat/indi-bot-news-filter`. From the V2 research (`news_filter.py` on `r
 - **Fails open:** if the calendar or the pre-market read fails, an `error` line says the bot trades today without
   that filter, and it does; each is read once a session. The Bot tab also notes it above the live scan.
 - **Live scan:** a "News filter" column shows a stock that is blocked today.
+- **Quote samples (2026-10-26):** the backtest has option trades but no quotes, so it charges a flat 2% a fill.
+  `apps/trader/src/quote-sampler.ts` samples the books the bot would trade, on its own 20-second timer (never inside
+  the bot's tick): each watched stock every 15 minutes, 09:40–15:55 New York; per side the bot's pick (its delta, any
+  price) and the next strike toward and away from the money, with bid, ask, delta, open interest and the 30-minute
+  volume (`table quote_samples`). Market data only, no orders; a failure skips that stock. `GET /v1/bot/quotes?day=`
+  returns a day's rows for the research: the half-spread by 30-minute volume and by open interest (under 50,
+  50–100, 100–200, 200–500, 500+), then a per-contract fill cost in the backtest instead of the flat 2%.
 - **Live scan, D2 (2026-10-26):** each stock's row carries D2 on its side over the last 30 minutes (`cState`, the
   same sum `cSignal` uses; null without the stock's typical move). With the D2 bonus on, the Bot tab shows it as a
   third bar in the stock list and the stock's detail, and the "needs" words count the bonus path.
