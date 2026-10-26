@@ -6316,6 +6316,11 @@ dialog.trade-story .why-head h2 {
 .bot-strip-signal.down {
   background: var(--bot-down);
 }
+/* A signal the bot did not buy (too thin, refused...) is faded; a buy is solid. */
+.bot-strip-signal.skipped,
+.bot-strip-legend .key.skipped {
+  opacity: 0.3;
+}
 .bot-strip-now {
   position: absolute;
   top: -6px;
