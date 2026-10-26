@@ -1183,3 +1183,6 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
     12 months half under 500 $182,857 / 10% (= base), double 500 $225,567 / 15% (+4%); 6 months every sizing below the base
     at its drop (-4% to -12%). For 2.5, half size on the thinner contracts adds money at no extra drop on both periods; the
     double size on the liquid ones only adds drop. Thin-contract fills unproven; one list, one year.
+    The user's next split, 100-399 at half and 400+ at 1x: 2.5 $209,284 / 13% on 12 months (+8%), $140,544 / 13% on 6
+    (+11%), against $208,829 / 12% and $141,245 / 12% for the 500 split; 2.4 $176,373 / 11% (-6%) and $111,157 / 11%
+    (-10%). Within a point of the 500 split either way; the 500 split keeps the drop at the base's 12%.

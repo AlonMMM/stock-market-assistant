@@ -6,6 +6,7 @@ minute, the floor at 100). Sizes by that volume, set before running:
   base 200        under 200 skipped, 1x (the bot today)
   flat 100        under 100 skipped, 1x
   half under 500  100-499 at half, 500+ at 1x
+  half under 400  100-399 at half, 400+ at 1x (asked after the 500 run)
   double 500      under 200 skipped, 200-499 1x, 500+ 2x
   half / 1x / 2x  100-199 half, 200-499 1x, 500+ 2x
 1% from $100,000 (a half trade's return taken at the 1% cap, a double at the 2% cap); the yardstick is the base at
@@ -34,6 +35,7 @@ def size_of(rule, v):
     if rule == "base 200": return 1.0 if v >= 200 else 0
     if rule == "flat 100": return 1.0
     if rule == "half under 500": return 1.0 if v >= 500 else 0.5
+    if rule == "half under 400": return 1.0 if v >= 400 else 0.5  # the user, 2026-10-26: "full 400 and above and 0.5 all the rest"
     if rule == "double 500":
         if v < 200: return 0
         return 2.0 if v >= 500 else 1.0
@@ -66,7 +68,7 @@ def main():
         for title, a in (("last 12 months", A12), ("last 6 months", A6)):
             flat = [(account(T, "base 200", a, f)[1], account(T, "base 200", a, f)[0]) for f in (0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)]
             print(f"\n{bot}, {title}\n| Sizing | Account at 1% | Worst drop | Base at the size with the same drop | Edge |\n|---|---|---|---|---|")
-            for rule in ("base 200", "flat 100", "half under 500", "double 500", "half / 1x / 2x"):
+            for rule in ("base 200", "flat 100", "half under 400", "half under 500"):
                 e, d = account(T, rule, a)
                 f = sw.edge(flat, d, e)
                 print(f"| {rule} | ${e:,.0f} | {d:.0%} | {'$%s' % format(round(f), ',') if f else 'beyond'} | {f'{e / f - 1:+.0%}' if f else ''} |", flush=True)
