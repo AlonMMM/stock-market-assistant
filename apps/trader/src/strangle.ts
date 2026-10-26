@@ -814,6 +814,7 @@ export class StrangleBot {
       maxStrikes: 16,
       minPrice: s.minPrice,
       minVolume30: s.minVolume,
+      cheapFallback: false, // the Volume bot keeps its own legs: no fallback
     };
     const got = pickContract(
       await this.o.trading.chain(t.symbol, right, expiry, expiry),

@@ -41,6 +41,8 @@ export function algorithmSteps(r: Rules): AlgorithmStep[] {
       : "Off: no entry is skipped for news.",
   });
   let floors = `skipped under $${r.minPrice.toFixed(2)}`;
+  if (r.cheapFallback)
+    floors = `under $${r.minPrice.toFixed(2)}, the nearest strike toward the money at $${r.minPrice.toFixed(2)} or more`;
   if (r.minVolume > 0)
     floors += ` or under ${r.minVolume} contracts traded in 30 minutes`;
   steps.push({

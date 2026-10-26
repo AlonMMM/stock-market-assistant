@@ -23,6 +23,7 @@ export type RuleKey =
   | "maxDte"
   | "minPrice"
   | "minVolume"
+  | "cheapFallback"
   | "minT"
   | "d2Entry"
   | "d2T"
@@ -48,6 +49,7 @@ export const ruleKeys: readonly RuleKey[] = [
   "maxDte",
   "minPrice",
   "minVolume",
+  "cheapFallback",
   "minT",
   "d2Entry",
   "d2T",
@@ -81,6 +83,7 @@ const v1: Rules = {
   maxDte: 7,
   minPrice: 0.2,
   minVolume: 200,
+  cheapFallback: false,
   minT: 2,
   d2Entry: false,
   d2T: 1.2,
@@ -114,6 +117,11 @@ const v24: Rules = { ...v23, restStopPct: 20 };
 // failed-break sale, which loses with it (d2_failed_break.py: fair list
 // $669,231 / 14% with it vs $1,005,207 / 11% without).
 const v25: Rules = { ...v24, sellFailedBreak: false, d2Entry: true };
+// 2.6: the cheap fallback (the user, 2026-10-26, after the 2026-10-25 tests):
+// when the 0.15-delta option costs under the minimum, the nearest strike toward
+// the money at the minimum or more. Fair list $1,297,233 / 11% vs $1,108,678 /
+// 11% for 2.5 at 1%; the Favorites' year $239,826 / 14% vs $192,534 / 12%.
+const v26: Rules = { ...v25, cheapFallback: true };
 
 /** Every version, oldest first. */
 export const botVersions: readonly BotVersion[] = [
@@ -171,6 +179,14 @@ export const botVersions: readonly BotVersion[] = [
     notes:
       "Also enters at strength t 1.2 when the stock held up on SPY's down minutes of the last 30 (D2 1.5 or more); no failed-break sale.",
     rules: v25,
+  },
+  {
+    id: "2.6",
+    name: "V2.5 + the cheap fallback",
+    since: "2026-10-26",
+    notes:
+      "When the 0.15-delta option costs under the minimum, buys the nearest strike toward the money that costs the minimum or more, instead of skipping the signal.",
+    rules: v26,
   },
 ];
 

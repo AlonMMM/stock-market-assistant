@@ -776,6 +776,11 @@ export class IndiBot {
     if (!picked.ok) return this.outcome(date, symbol, picked.reason, "");
     const contract = picked.quote.symbol;
     const volume = await this.o.market.optionVolume30(contract, date, minute);
+    // Kept with the signal: the floor is judged against real fills later.
+    this.o.store.setSignalPick(date, symbol, {
+      volume30: volume,
+      ...(picked.fallback ? { fallback: picked.fallback } : {}),
+    });
     if (volume < pick.minVolume30)
       return this.outcome(
         date,
@@ -785,7 +790,10 @@ export class IndiBot {
       );
     // The entry's note carries the version, so the trade's record has it too.
     const version = versionLabel(s);
-    const why = `Signal ${side} at ${clock(minute)}: strength t ${t.toFixed(1)}, volume ${rvol.toFixed(1)}× normal · bot ${version}`;
+    let fallback = "";
+    if (picked.fallback === "cheap")
+      fallback = ` · the 0.15-delta option was under $${pick.minPrice.toFixed(2)}, so the nearest strike at $${pick.minPrice.toFixed(2)} or more`;
+    const why = `Signal ${side} at ${clock(minute)}: strength t ${t.toFixed(1)}, volume ${rvol.toFixed(1)}× normal${fallback} · bot ${version}`;
     const base: Omit<BotPosition, "id" | "broker"> = {
       day: date,
       symbol,

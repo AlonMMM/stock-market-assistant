@@ -25,6 +25,11 @@ export interface BotSignal {
   // The contract picked and its bid / ask at the pick (also for a too-cheap
   // one); missing when no contract was picked, and on signals before 2026-10-25.
   book?: OptionBook & { contract: string };
+  // Contracts of the picked option traded in the 30 minutes before the signal,
+  // the liquidity the floor is checked on; missing before 2026-10-26.
+  volume30?: number;
+  // Set when the cheap fallback chose the contract (version 2.6).
+  fallback?: "cheap";
 }
 
 export interface BotSale {
@@ -161,6 +166,19 @@ export class BotStore {
     this.db
       .prepare("UPDATE bot_signals SET data = ? WHERE day = ? AND symbol = ?")
       .run(JSON.stringify({ ...s, book }), day, symbol);
+  }
+
+  /** The picked contract's 30-minute volume, and the fallback that chose it, on the day's signal of `symbol`. */
+  setSignalPick(
+    day: string,
+    symbol: string,
+    pick: Pick<BotSignal, "volume30" | "fallback">,
+  ) {
+    const s = this.signal(day, symbol);
+    if (!s) return;
+    this.db
+      .prepare("UPDATE bot_signals SET data = ? WHERE day = ? AND symbol = ?")
+      .run(JSON.stringify({ ...s, ...pick }), day, symbol);
   }
 
   signal(day: string, symbol: string): BotSignal | undefined {
