@@ -37,11 +37,13 @@ def write(path, rows):
 
 def main():
     d = sys.argv[1]
-    keys = {r["key"] for r in csv.DictReader(open(f"{d}/all_trades_v3.csv"))}
+    trades = f"{d}/all_trades_v3.csv" if os.path.exists(f"{d}/all_trades_v3.csv") else f"{d}/all_trades.csv"
+    keys = {r["key"] for r in csv.DictReader(open(trades))}
     base = {}
-    for name in ("paths", "paths_fb", "paths_fav", "paths_fav_fb", "paths_champ", "paths_early"):
+    for name in ("paths", "paths_fb", "paths_fav", "paths_fav_fb", "paths_champ", "paths_early", "paths_favlong"):
         p = f"{d}/{name}.csv"
-        if not os.path.exists(p): p = os.path.join(os.path.dirname(d), "out", f"{name}.csv")
+        for alt in ("out", "v2"):
+            if not os.path.exists(p): p = os.path.join(os.path.dirname(d), alt, f"{name}.csv")
         for r in csv.DictReader(open(p)):
             if r["key"] in keys and r["key"] not in base: base[r["key"]] = (float(r["cost"]), r["steps"])
     write(f"{d}/rets_extra.csv", [dict(key=k, **rets(k, c, parse(s))) for k, (c, s) in base.items()])

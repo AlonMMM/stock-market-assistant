@@ -200,6 +200,21 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### The Favorites over 2 and 3 years (2026-10-27)
+
+The user: "also add favorite 3 years and 2 yers". `export_fav_long.py`: today's 69 Favorites, signals Oct 2023 - Oct 2026
+(lists.py; the first year's quotes bought for $2.21), real quotes, 1% (fav36 / fav24, end / worst drop):
+
+| Version | 36 months real | 24 months real | 36 months +-2% |
+| --- | --- | --- | --- |
+| 2.4 | $366,710 / 13% | | $745,031 / 9% |
+| 2.5 | $413,123 / 18% | | $876,078 / 12% |
+| 2.6 | $386,958 / 28% | $298,550 / 18% | $1,023,030 / 20% |
+| champion (minute fills) | $612,717 / 18% | $403,258 / 17% | $1,386,464 / 14% |
+
+The 2.6 cheap fallback adds 10 points of drop over 3 years and less money than 2.5 on real quotes; the champion leads.
+On Bot vs Indi (Stocks: 24 / 36 months); the early-entry version needs the first year's 1-second data (not bought).
+
 ### Second-level entries; the fair-price limit re-checked (2026-10-27: enter early BETTER; the fair limit UNPROVEN)
 
 The user: "Timing with 1-second stock moves"; "you can wait 5 seconds ... go up to the next price every 5 seconds".
