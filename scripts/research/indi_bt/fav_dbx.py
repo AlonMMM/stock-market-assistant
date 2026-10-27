@@ -16,9 +16,10 @@ import cheap_up as cu
 from store import calendar
 
 B = "data/local/x/bt"
-A, Z = "2025-10-23", "2026-10-23"
-LISTS = ("fav68_24", "fav68_25")
-OUT_LIST = os.path.join(HERE, "fav_dbx_list.csv")
+# another period (the user, 2026-10-27: "6 12 24 months"): FAV_A / FAV_Z / FAV_LISTS / FAV_OUT_LIST
+A, Z = os.environ.get("FAV_A", "2025-10-23"), os.environ.get("FAV_Z", "2026-10-23")
+LISTS = tuple(os.environ.get("FAV_LISTS", "fav68_24,fav68_25").split(","))
+OUT_LIST = os.path.join(HERE, os.environ.get("FAV_OUT_LIST", "fav_dbx_list.csv"))
 CAL = calendar()
 STATUS = {"bought": "ok", "no contract: illiquid": "illiquid", "no contract: too_cheap": "too_cheap"}
 

@@ -316,6 +316,12 @@ Databento quotes for every fill ($4.76, fav_dbx.py). Old prices reproduce the ea
 The pyramid holds (+3% at 1%, +1 point of drop; better without the best 5 and over 6 months); cheap at half loses (the
 Favorites' cheap trades are winners). 2.6 stays ahead of 2.4 and 2.5 on real prices. Dashboard tab "Favorites".
 
+**24 months (the user: "6 12 24 months"; `fav_real.py` with the first year's lists fav69_24 / fav69_25, Oct 23 2024 –
+Oct 22 2025, quotes bought for $4.11, every fill on the book), at 1%:** 2.4 $277,457 / 13%; 2.5 $289,276 / 16%; 2.6
+$298,548 / 18%; pyramid $330,993 / 19%; pyramid + cheap at half $329,054 / 18%. Over two years the cheap fallback adds
++$9K over 2.5 (+$26K in the last 12 months, so it lost in the first); the pyramid holds (+$32K over 2.6). Today's
+Favorites, so the first year knows which stocks were kept. Dashboard tab "Favorites", "Last 24 months".
+
 ### Candidates on real quotes: delta, what the exits read, sizing (2026-10-26)
 
 The user: "lets try to find more candidates - after that we will take the candidate and test them on my favorite".

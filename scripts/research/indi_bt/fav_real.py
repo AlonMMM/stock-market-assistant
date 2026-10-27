@@ -8,7 +8,7 @@ the ask, a sale at the bid). Versions:
   pyramid            2.6, a D2 entry (t < 1.8) at full size plus half a size of 2.4's entry later that day, same side, while
                      the D2 position is still held and above its cost on the real mid (cand_real.py)
   pyramid+fb-half    the same, a cheap-fallback trade at half size
-Last 12 and last 6 months, 1% and 2% from $100,000, the 10% overnight cap at each size, $0.62 a contract each way.
+Last 24, 12 and 6 months, 1% and 2% from $100,000, the 10% overnight cap at each size, $0.62 a contract each way.
 
   node --env-file=.env <dir>/run.mjs fav_real.py      (from the app repo root)
 -> data/local/x/bt/fav_real_summary.json, fav_real_trades.csv
@@ -28,15 +28,17 @@ from score_sum import account
 RB.DBX = os.path.join(HERE, "dbx_cache", "fav")
 B = "data/local/x/bt"
 CAL = RB.CAL
-A12, A6, Z = "2025-10-23", "2026-04-23", "2026-10-23"
+A24, A12, A6, Z = "2024-10-23", "2025-10-23", "2026-04-23", "2026-10-23"
 STATUS = {"bought": "ok", "no contract: illiquid": "illiquid", "no contract: too_cheap": "too_cheap"}
-LISTS = {"24": ("fav68_24", "tsem_24"), "25": ("fav68_25", "tsem_25")}
+# (list, first day, last day); the year before (the user, 2026-10-27: "6 12 24 months"): the same 69, TSEM included
+LISTS = {"24": (("fav68_24", A12, Z), ("tsem_24", A12, Z), ("fav69_24", A24, "2025-10-22")),
+         "25": (("fav68_25", A12, Z), ("tsem_25", A12, Z), ("fav69_25", A24, "2025-10-22"))}
 
 
 def signals(entry):
     out = []
-    for name in LISTS[entry]:
-        path = f"{B}/list_{name}_{A12}_{Z}.json"
+    for name, a, z in LISTS[entry]:
+        path = f"{B}/list_{name}_{a}_{z}.json"
         if not os.path.exists(path): print("missing", path); continue
         for r in json.load(open(path)):
             st = STATUS.get(r["status"])
@@ -112,11 +114,12 @@ def main():
                         share, up = r["held"].get(a["minute"], (0, None))
                         if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a[f"{price}05"], a[f"{price}1"], a["sym"]))
                         break
-            for period, a in (("12m", A12), ("6m", A6)):
+            for period, a in (("24m", A24), ("12m", A12), ("6m", A6)):
                 for size in (0.01, 0.02):
                     out[f"{name}|{price}|{period}|{int(size * 100)}"] = dict(version=name, price=price, period=period, size=size, **stats(E, a, size))
         o, rl = out[f"{name}|old|12m|1"], out[f"{name}|real|12m|1"]
-        print(f"| {name} | {o['trades']} | ${o['acct']:,} / {o['dd']:.0%} | ${rl['acct']:,} / {rl['dd']:.0%} | ${out[f'{name}|real|12m|2']['acct']:,} / {out[f'{name}|real|12m|2']['dd']:.0%} | ${rl['no_best5']:,} | ${out[f'{name}|real|6m|1']['acct']:,} / {out[f'{name}|real|6m|1']['dd']:.0%} |", flush=True)
+        r24, r6 = out[f"{name}|real|24m|1"], out[f"{name}|real|6m|1"]
+        print(f"| {name} | real 24m ${r24['acct']:,} / {r24['dd']:.0%} ({r24['trades']}) | 12m ${rl['acct']:,} / {rl['dd']:.0%} ({rl['trades']}) | 6m ${r6['acct']:,} / {r6['dd']:.0%} | old 12m ${o['acct']:,} |", flush=True)
     nq = sum(r["no_quote"] for r in res); nf_ = sum(r["fills"] for r in res)
     print(f"fills without a quote: {nq} of {nf_}")
     json.dump(dict(rows=out, no_quote=nq, fills=nf_), open(f"{B}/fav_real_summary.json", "w"), indent=1)
