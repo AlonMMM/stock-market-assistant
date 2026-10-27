@@ -1,6 +1,6 @@
 # Backlog
 
-Updated: 2026-10-26
+Updated: 2026-10-27
 
 What is next for the Stock Market Assistant. This file is the source of truth; the board at
 https://claude.ai/artifact/VzgHGHzP5SYWhVefpvTmRH shows the same items with lanes, filters and search. How every
@@ -176,16 +176,6 @@ files show stale statuses (for example, Indi bot work "on feat/indi-bot"). Bring
 
 ## Later
 
-### Dark mode for the rest of the app
-
-- id: dark-mode-rest
-- area: App
-- tags: Dark mode
-- source: PR #160, not included
-
-Dark mode covers the watchlist list only. Extend it to a stock's page, the price alerts page, Alerts, Portfolio
-and Backtest, with the same switch.
-
 ### Deploy automatically from main
 
 - id: auto-deploy
@@ -322,6 +312,18 @@ The build warns that a chunk is over 500 KB. Load Backtest, Portfolio and the bo
 watchlist opens faster on a phone.
 
 ## Done
+
+### Dark mode for the whole app
+
+- id: done-dark-mode
+- area: App
+- tags: Dark mode
+- source: PR #160, not included; the user on Oct 27
+- done: 2026-10-27, PR #PR
+
+Every section, a stock's page, the price alerts, the trade window and the charts follow one theme, with the
+sun/moon button in every page's header. Colours are tokens with a light and a dark value; a test keeps new rules
+on them. Checked on synthetic data in screenshots only.
 
 ### The account chart as one clean line
 

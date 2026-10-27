@@ -14,6 +14,7 @@ import { readJson } from "./api.js";
 import { chartTrading, minuteSlot, withLiveCandles } from "./chart-live.js";
 import { useLatestPrices, useRunningBar } from "./live-prices.js";
 import { FullscreenButton } from "./FullscreenButton.js";
+import { isDarkNow, useDark } from "./theme.js";
 import {
   israelClock,
   israelLabel,
@@ -27,7 +28,7 @@ import {
 // forming.
 
 const refreshMs = 3000;
-const colors = {
+const lightColors = {
   up: "#16a34a",
   down: "#dc2626",
   upVolume: "rgba(22, 163, 74, 0.35)",
@@ -36,6 +37,18 @@ const colors = {
   text: "#52514e",
   grid: "#e7ece6",
 };
+// The dark theme's pairs (user 2026-10-27: dark mode for the whole app).
+const darkColors: typeof lightColors = {
+  up: "#3fcf7f",
+  down: "#ff5c5c",
+  upVolume: "rgba(63, 207, 127, 0.35)",
+  downVolume: "rgba(255, 92, 92, 0.35)",
+  surface: "#1f232a",
+  text: "#b9bcc1",
+  grid: "#2a2f37",
+};
+// Read when the chart is built; it is built again when the theme changes.
+const palette = () => (isDarkNow() ? darkColors : lightColors);
 const clockSeconds = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Jerusalem",
   hour: "2-digit",
@@ -44,13 +57,13 @@ const clockSeconds = new Intl.DateTimeFormat("en-GB", {
   hourCycle: "h23",
 });
 
-export function CandleChart({
-  ticker,
-  date,
-}: {
-  ticker: string;
-  date: string;
-}) {
+/** The chart in the page's theme; a theme change draws it again. */
+export function CandleChart(props: { ticker: string; date: string }) {
+  const dark = useDark();
+  return <Chart key={dark ? "dark" : "light"} {...props} />;
+}
+
+function Chart({ ticker, date }: { ticker: string; date: string }) {
   const host = useRef<HTMLDivElement>(null);
   const parts = useRef<{
     chart: IChartApi;
@@ -112,15 +125,15 @@ export function CandleChart({
     const chart = createChart(host.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: colors.surface },
-        textColor: colors.text,
+        background: { type: ColorType.Solid, color: palette().surface },
+        textColor: palette().text,
         fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
         fontSize: 11,
         attributionLogo: false,
       },
       grid: {
-        vertLines: { color: colors.grid },
-        horzLines: { color: colors.grid },
+        vertLines: { color: palette().grid },
+        horzLines: { color: palette().grid },
       },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderVisible: false },
@@ -131,10 +144,10 @@ export function CandleChart({
       },
     });
     const candles = chart.addSeries(CandlestickSeries, {
-      upColor: colors.up,
-      downColor: colors.down,
-      wickUpColor: colors.up,
-      wickDownColor: colors.down,
+      upColor: palette().up,
+      downColor: palette().down,
+      wickUpColor: palette().up,
+      wickDownColor: palette().down,
       borderVisible: false,
     });
     const volume = chart.addSeries(HistogramSeries, {
@@ -178,7 +191,7 @@ export function CandleChart({
       data.candles.map((c) => ({
         time: time(c.start),
         value: c.volume,
-        color: c.close >= c.open ? colors.upVolume : colors.downVolume,
+        color: c.close >= c.open ? palette().upVolume : palette().downVolume,
       })),
     );
     // Fitted once: later refreshes keep where the viewer scrolled to.

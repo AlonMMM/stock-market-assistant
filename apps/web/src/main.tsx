@@ -4,6 +4,7 @@ import { parseAlertLink } from "../../../packages/contracts/src/alert-link.js";
 import { Backtest } from "./Backtest.js";
 import { Live } from "./Live.js";
 import { Portfolio } from "./Portfolio.js";
+import { ThemeButton } from "./ThemeButton.js";
 import { WatchlistPage } from "./WatchlistPage.js";
 import "./styles.css";
 
@@ -65,20 +66,24 @@ function App() {
     setTradeSymbol(null);
     setMode(m);
   };
+  // The sections and the dark mode switch, at the end of each page's header.
   const modes = (
-    <nav className="modes" aria-label="Sections">
-      {modeNames.map(([value, label]) =>
-        value === mode ? (
-          <span className="selected" key={value} aria-current="page">
-            {label}
-          </span>
-        ) : (
-          <button type="button" key={value} onClick={() => go(value)}>
-            {label}
-          </button>
-        ),
-      )}
-    </nav>
+    <div className="header-end">
+      <nav className="modes" aria-label="Sections">
+        {modeNames.map(([value, label]) =>
+          value === mode ? (
+            <span className="selected" key={value} aria-current="page">
+              {label}
+            </span>
+          ) : (
+            <button type="button" key={value} onClick={() => go(value)}>
+              {label}
+            </button>
+          ),
+        )}
+      </nav>
+      <ThemeButton />
+    </div>
   );
   return (
     <>
