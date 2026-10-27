@@ -382,6 +382,19 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### Exits to cut the losers (2026-10-27, not better)
+
+The user: "lets take care of the huge drops ... improve our exits - strategy and cut the big losers". The champion's
+loss on the tune weeks is the same-day trades (465, -$1,156,219 at $10K; overnight 78, +$2,584,905), mostly -20% to
+-50% (293, -$970,705), the -30% stop alone 134 trades -$512,958; 194 of 432 same-day losers had been up 30%+ first.
+`exit_tests.py` on the champion (real quotes, minute model), tune (fair / Favorites 24m): base $255,238 / 17% and
+$289,355 / 11%; out at cost once up 30% $257,663 / $286,371, at +10% $265,383 / $288,582; once up 50% at cost $255,759
+/ $285,629, at +10% $255,858 / 9% and $297,277 / 9%; the first stop at -20% $264,721 / $288,413, at -25% $266,077 /
+$299,649; overnight from +25% $241,522 / $269,963, from +35% $244,845 / $278,037. Picked -25% (both tune lists up
+4%): check $211,772 / 16% and $131,041 / 18% vs $360,295 / 12% and $139,363 / 15%: it stops out winners that dip
+before they run. The protect-the-gain stops cut 9-25 overnight carries each; holding from a lower gain carries more
+losers. The exits sit close to their best; the drop is the same-day bleed of the entries, not an exit that is off.
+
 ### A second try for the looser D2 entries only (2026-10-27, not better)
 
 The user, after d2_window.py: "Can we test second try only for enters with D2 bonus?". `d2_second.py`: the champion

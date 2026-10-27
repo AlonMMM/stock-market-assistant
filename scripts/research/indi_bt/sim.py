@@ -29,8 +29,8 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                (with `below`) only while the gain is under `below`
   K locks (locks [[arm, floor], ...]): once the option's peak is up `arm`, sell all when it falls to `floor`
   T time stop (time_stop {min, need}): `min` minutes after the entry, sell all unless up `need`
-  G guard (guard {arm, floor | trail}): once the option has been up `arm` (peak close vs the entry fill),
-               sell all when the gain falls to `floor`, or the price falls `trail` from its peak
+  G guard (guard {arm, floor | trail, day0}): once the option has been up `arm` (peak close vs the entry fill),
+               sell all when the gain falls to `floor`, or the price falls `trail` from its peak; day0: the entry day only
   N night trail (night_trail x): on a carried day, after the morning rule kept a part, sell it when the option
                closes x under its highest close since the morning
   U your stop (user_stop {every: {from, to, share}} sells `share` at the first minute in the window the stock is
@@ -399,8 +399,9 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
             if TS and k == 0 and not st.get("ts_done") and t - minute >= TS["min"]:
                 st["ts_done"] = True
                 if g < TS["need"]: pending = ("all", "T_stop"); continue
-            G = X.get("guard")  # give-back guard: once the option has been up `arm`, protect the gain (every day held)
-            if G and peak / cost - 1 >= G["arm"]:
+            G = X.get("guard")  # give-back guard: once the option has been up `arm`, protect the gain (every day held;
+            # day0: the entry day only, the overnight hold untouched; exit_tests.py, the user 2026-10-27)
+            if G and (not G.get("day0") or k == 0) and peak / cost - 1 >= G["arm"]:
                 if "floor" in G and g <= G["floor"]: pending = ("all", "G_floor"); continue
                 if "trail" in G and c <= peak * (1 - G["trail"]): pending = ("all", "G_trail"); continue
             R_ = X.get("roll")
