@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type RefObject } from "react";
 import {
   coreClose,
   newYork,
@@ -16,8 +16,16 @@ import type {
 } from "../../../packages/trading/src/strangle/view.js";
 import type { Portfolio as PortfolioData } from "../../../packages/trading/src/portfolio.js";
 import { EntryBanners, InTradeSign, type HeldTrade } from "./BotEntries.js";
-import { BotMap, type MapPoint } from "./BotMap.js";
-import { FindStock, Meter, ago, useNow } from "./BotPanel.js";
+import { BotMap, useMapPick, type MapPoint } from "./BotMap.js";
+import {
+  FindStock,
+  Meter,
+  StockLink,
+  ago,
+  rowKeys,
+  useNow,
+  withPicked,
+} from "./BotPanel.js";
 import { usePolling } from "./Live.js";
 import {
   TradeRow,
@@ -361,12 +369,14 @@ function AlertMap({
   waiting,
   selected,
   trades,
+  onSelect,
   onOpen,
 }: {
   scan: StrangleScanRow[];
   waiting: ReadonlySet<string>;
   selected: string | null;
   trades: ReadonlyMap<string, "C" | "P">;
+  onSelect: (symbol: string) => void;
   onOpen?: (symbol: string) => void;
 }) {
   const maxVol = Math.min(
@@ -390,6 +400,7 @@ function AlertMap({
     <BotMap
       points={points}
       selected={selected}
+      onSelect={onSelect}
       onOpen={onOpen}
       axes={{
         xMax: maxVol,
@@ -547,16 +558,20 @@ function StockList({
   notes,
   selected,
   onSelect,
+  onOpen,
+  listRef,
 }: {
   scan: StrangleScanRow[];
   // the stocks out for today: on the map, in the list only when searched
-  // for (user 2026-10-27)
+  // for or picked on the map (user 2026-10-27)
   out: ReadonlyMap<string, string>;
   waiting: ReadonlySet<string>;
   // why a stock is out today, or its last alert found no side
   notes: ReadonlyMap<string, string>;
   selected: string | null;
   onSelect: (symbol: string) => void;
+  onOpen?: (symbol: string) => void;
+  listRef: RefObject<HTMLDivElement | null>;
 }) {
   const [all, setAll] = useState(false);
   const [find, setFind] = useState("");
@@ -564,9 +579,13 @@ function StockList({
   const live = query
     ? scan.filter((r) => r.symbol.startsWith(query))
     : scan.filter((r) => !out.has(r.symbol));
-  const rows = all || query ? live : live.slice(0, 12);
+  const rows = withPicked(
+    all || query ? live : live.slice(0, 12),
+    scan,
+    selected,
+  );
   return (
-    <div className="bot-stocks">
+    <div className="bot-stocks" ref={listRef}>
       <FindStock value={find} onChange={setFind} />
       <div className="bot-stocks-head muted small" aria-hidden="true">
         <span>Stock</span>
@@ -580,11 +599,15 @@ function StockList({
           let state = notes.get(r.symbol) ?? "";
           if (waiting.has(r.symbol)) state = "Alerted · waiting for the side";
           return (
-            <li key={r.symbol}>
-              <button
-                type="button"
+            <li key={r.symbol} data-symbol={r.symbol}>
+              <div
+                role="button"
+                tabIndex={0}
+                className="bot-stock-row"
                 aria-pressed={selected === r.symbol}
+                aria-label={`Find ${r.symbol} on the map`}
                 onClick={() => onSelect(r.symbol)}
+                onKeyDown={rowKeys(() => onSelect(r.symbol))}
               >
                 <span className="bot-stock-name">
                   <span
@@ -593,7 +616,7 @@ function StockList({
                   >
                     {up ? "▲" : "▼"}
                   </span>
-                  <strong>{r.symbol}</strong>
+                  <StockLink symbol={r.symbol} onOpen={onOpen} />
                 </span>
                 <Meter
                   value={r.volRatio}
@@ -606,7 +629,7 @@ function StockList({
                   label={`${r.moveRatio.toFixed(1)}×`}
                 />
                 {state && <span className="bot-stock-state">{state}</span>}
-              </button>
+              </div>
             </li>
           );
         })}
@@ -634,7 +657,7 @@ function WhatItSees({
   trades: ReadonlyMap<string, "C" | "P">;
   onOpen?: (symbol: string) => void;
 }) {
-  const [picked, setPicked] = useState<string | null>(null);
+  const { picked, fromMap, fromList, mapRef, listRef } = useMapPick();
   const [showOut, setShowOut] = useState(false);
   const out = outToday(v, day);
   const notes = new Map([...noSides(v, day), ...out]);
@@ -664,7 +687,8 @@ function WhatItSees({
       </div>
       <p className="muted small bot-explain">
         Last 3 minutes against usual. A shaded corner alerts · ○ waiting for its
-        side · ◆ held · tap a stock for its page.
+        side · ◆ held · tap a dot to find it in the list · tap a name for its
+        page.
       </p>
       {out.size > 0 && (
         <button
@@ -683,12 +707,13 @@ function WhatItSees({
         </p>
       ) : (
         <div className="bot-sees">
-          <div className="bot-sees-map">
+          <div className="bot-sees-map" ref={mapRef}>
             <AlertMap
               scan={scan}
               waiting={waiting}
               selected={selected}
               trades={trades}
+              onSelect={fromMap}
               onOpen={onOpen}
             />
             {row && (
@@ -706,7 +731,9 @@ function WhatItSees({
             waiting={waiting}
             notes={notes}
             selected={selected}
-            onSelect={setPicked}
+            onSelect={fromList}
+            onOpen={onOpen}
+            listRef={listRef}
           />
         </div>
       )}
