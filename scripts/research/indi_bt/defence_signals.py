@@ -38,6 +38,12 @@ SUFFIX = os.environ.get("BT_SIG_SUFFIX", "")
 # The weighted t keeps the scale: weighted mean / weighted spread x sqrt(the weights' effective n).
 VWEIGHT = os.environ.get("BT_VWEIGHT", "")
 VW_PARTS = os.environ.get("BT_VW_PARTS", "both")
+# Every minute a rule holds, not only the first (the user, 2026-10-27: a second try on the same stock after an early first
+# trade; a roll of a big winner when the stock is still where the bot would enter): BT_ALL=1 writes
+# s_all_<rule><suffix>_<year>.csv, one row per stock, day and side with the minutes (and their t) where the rule holds.
+# BT_SYMS (comma list) replaces the universe; BT_SPAN_END moves the last day of 2026.
+ALL = bool(os.environ.get("BT_ALL"))
+if os.environ.get("BT_SPAN_END"): SPAN["2026"] = (SPAN["2026"][0], os.environ["BT_SPAN_END"])
 VW_CAP = 10.0
 T_MIN, RV_MIN = 1.8, 1.5
 
@@ -73,6 +79,7 @@ def passes(rule, t, rv, d, e):
 
 def stock(sym):
     cal = calendar(); out = {k: [] for k in RULES}
+    every = {k: collections.defaultdict(list) for k in RULES}   # BT_ALL: (date, side) -> [(minute, t)]
     for i, date in enumerate(cal):
         if not any(a <= date <= b for a, b in SPAN.values()) or i < 21: continue
         bars = day(sym, date)
@@ -136,6 +143,11 @@ def stock(sym):
             med = sorted(h[m] for h in hist); k = len(med) // 2
             usual = med[k] if len(med) % 2 else (med[k - 1] + med[k]) / 2
             rv = cum[m] / usual if usual else 0.0
+            if ALL:
+                for name in RULES:
+                    if passes(RULES[name], t, rv, dsum[0], dsum[2]): every[name][(date, "C")].append((m, round(t, 2)))
+                    if passes(RULES[name], -t, rv, dsum[1], dsum[3]): every[name][(date, "P")].append((m, round(-t, 2)))
+                continue
             for name in list(left):
                 if passes(RULES[name], t, rv, dsum[0], dsum[2]): side, d_, e_, t_ = "C", dsum[0], dsum[2], t
                 elif passes(RULES[name], -t, rv, dsum[1], dsum[3]): side, d_, e_, t_ = "P", dsum[1], dsum[3], -t
@@ -145,16 +157,21 @@ def stock(sym):
                                       price=c[m], b_minute="", a_minute="", c_t=round(t_, 2), c_rvol=round(rv, 2),
                                       c_d=round(d_, 2), c_e=round(e_, 2), sector=""))
             if not left: break
+    if ALL:
+        return {k: [dict(date=d, sym=sym, right=r, minutes=" ".join(str(x[0]) for x in v), ts=" ".join(str(x[1]) for x in v))
+                    for (d, r), v in sorted(every[k].items())] for k in RULES}
     return out
 
 
 def main():
-    with mp.Pool(8) as pool: parts = pool.map(stock, P["universe"])
+    syms = os.environ["BT_SYMS"].split(",") if os.environ.get("BT_SYMS") else P["universe"]
+    with mp.Pool(8) as pool: parts = pool.map(stock, syms)
     for name in RULES:
         rows = sorted((r for p in parts for r in p[name]), key=lambda r: (r["date"], r["sym"]))
         for y in SPAN:
             ys = [r for r in rows if r["date"][:4] == y]
-            with open(f"{B}/s_sig_{name}{SUFFIX}_{y}.csv", "w") as f:
+            if not ys: continue
+            with open(f"{B}/s_{'all' if ALL else 'sig'}_{name}{SUFFIX}_{y}.csv", "w") as f:
                 w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(ys)
         print(name, len(rows), flush=True)
 

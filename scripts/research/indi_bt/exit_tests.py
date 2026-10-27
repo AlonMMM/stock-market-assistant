@@ -62,6 +62,11 @@ V = {
     "stk1000": {"big_trail": {"arm": 10.0, "k": 1.0}},
     "stk1500": {"big_trail": {"arm": 15.0, "k": 1.0}},
     "stk2000": {"big_trail": {"arm": 20.0, "k": 1.0}},
+    # a looser give-back for the giants, and a looser loss stop (the user, 2026-10-27: "if I put 45% stop?"); EXIT_RUN=big45
+    "opt1000t45": {"guard": {"arm": 10.0, "trail": 0.45}},
+    "opt1500t45": {"guard": {"arm": 15.0, "trail": 0.45}},
+    "opt2000t45": {"guard": {"arm": 20.0, "trail": 0.45}},
+    "stop45": {"user_stop": {**CHAMP["user_stop"], "out": -0.45}},
     "be30": {"guard": {"arm": 0.3, "floor": 0.0, "day0": True}},
     "be30p10": {"guard": {"arm": 0.3, "floor": 0.1, "day0": True}},
     "be50": {"guard": {"arm": 0.5, "floor": 0.0, "day0": True}},
@@ -77,8 +82,9 @@ RUN = os.environ.get("EXIT_RUN")
 if RUN == "stock": V = {k: v for k, v in V.items() if k in STOCK}
 elif RUN == "hold": V = {k: v for k, v in V.items() if k in HOLD}
 elif RUN == "hold2": V = {k: v for k, v in V.items() if k in ("base", "hold25", "hold40", "hold60", "hold75")}
-elif RUN == "big": V = {k: v for k, v in V.items() if k == "base" or k.startswith(("opt", "stk"))}
-else: V = {k: v for k, v in V.items() if (k not in STOCK and k not in HOLD and k not in ("hold40", "hold60", "hold75") and not k.startswith(("opt", "stk"))) or k == "base"}
+elif RUN == "big": V = {k: v for k, v in V.items() if k == "base" or (k.startswith(("opt", "stk")) and not k.endswith("t45"))}
+elif RUN == "big45": V = {k: v for k, v in V.items() if k in ("base", "opt1000", "opt1000t45", "opt1500t45", "opt2000t45", "stop45")}
+else: V = {k: v for k, v in V.items() if (k not in STOCK and k not in HOLD and k not in ("hold40", "hold60", "hold75", "stop45") and not k.startswith(("opt", "stk"))) or k == "base"}
 
 
 def one(job):
@@ -161,6 +167,10 @@ def main():
     score = lambda v: min(out[f"tune|{v}"]["fair"]["acct"] / base["fair"]["acct"], out[f"tune|{v}"]["fav"]["acct"] / base["fav"]["acct"])
     best = max(list(V)[1:], key=score)
     print(f"\nPicked on tune: {best}; better than the champion on both tune lists: {score(best) > 1}\n")
+    out["best"] = best
+    if os.environ.get("EXIT_NO_CHECK"):
+        json.dump(out, open(f"{B}/exit_tests_summary_{os.environ.get('EXIT_RUN', 'loss')}_{SIZE}.json", "w"), indent=1)
+        return
     print("### Check weeks, one run\n\n| Variant | Fair list | Favorites 24m | Without the best 5 (fair / fav) |\n|---|---|---|---|")
     for v in ("base", best):
         f, g = stats(entries(R, adds, "fair", v, "check")), stats(entries(R, adds, "fav", v, "check", FR.A24))

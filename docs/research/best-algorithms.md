@@ -397,7 +397,7 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
-### A stop for the huge winners, from +1000 / +1500 / +2000% (2026-10-27, not better: fails the check)
+### A stop for the huge winners, from +1000 / +1500 / +2000% (2026-10-27, not better: fails the check; CLOSED, 3 of 3 looks)
 
 The user: "when we hit 1000% gain we start a stop of 30% of the trade. lets make another test for moving the stock - only
 those that have more than 1000% gain. do the same for 1500% and 2000% ... in max 2 days trades there is a percentile of
@@ -427,6 +427,62 @@ smaller ones (TSLA 2024-11-08 +518% -> +781%, QCOM 2026-05-07 +447% -> +755%). I
 (QCOM 2025-10-27 +51% -> +720%). 11-19 trades over 2.5 years reach +1000%: the result is which giants fall in which half.
 Verdict: not better; the champion keeps riding its huge winners. On the Bot vs Indi page as big-opt / big-stk (export_big.py,
 fair list and fav24:), with a Weeks filter and "Only the trades the stop changed".
+
+**The same at 45% (the user: "if I put 45% stop?", EXIT_RUN=big45).** Tune weeks (fair / Favorites 24m) at 2%: champion
+$418,875 / $511,670; 45% from +1000% $585,314 / $685,543 (8 / 10 trades changed, worst drop unchanged 30% / 21%, without
+the best 5 $138,422 / $156,148); from +1500% $493,094 / $593,157; from +2000% $410,233 / $501,114. At 3%: champion $460,190
+/ $629,548; 45% from +1000% $715,180 / $927,721. **Check, the 3rd and last look (2%):** champion $928,510 / $160,100
+against $771,581 / $140,584. Less bad than 30% ($545,259) but still below on both lists; the 3% check was stopped at the
+user's word. The 45% level was set after seeing the 30% check, so this look was not clean either. The idea is closed.
+Also run: the loss stop at -45% (stop45, the option -45% with the stock against the entry), tune only: $407,588 / 33% and
+$512,722 / 19% at 2%, 133 / 129 trades changed: about the same money, a bigger drop on the fair list; not better.
+
+### A second try on the same stock after an early first trade (2026-10-27, not better)
+
+The user: "try again the same ticker - but only if the first attemp was in the first 30minutes of open". retry_roll.py
+(on defence_signals.py BT_ALL=1: every minute the champion's rule holds, s_all_<rule>_<year>.csv; its first minutes match
+the signal files 7,241 of 7,241). After a champion trade that entered before 10:00 and was fully sold the same day, a full
+size trade at the first minute after that sale where the champion's rule holds again; set before running: the same side
+(retry), either side (retry-any), the same side after a loss only (retry-loss). New legs' fills 98% on the real book.
+
+| 2% | Tune fair | Tune fav 24m | Check fair | Check fav 24m |
+|---|---|---|---|---|
+| champion | $418,875 / 30% | $511,670 / 21% | $928,510 / 22% | $160,100 / 28% |
+| retry (picked) | $396,223 / 34% | $485,986 / 21% | $777,113 / 24% | $134,343 / 33% |
+| retry-any | the same | the same | $759,702 / 25% | $131,409 / 33% |
+| retry-loss | the same | the same | $781,056 / 24% | $134,343 / 33% |
+
+56 / 54 retries on tune, together -$24,415 / -$23,407 at $10K a trade, +3-5 points of drop; 3% says the same (tune
+$419,796 / $578,123 vs $460,190 / $629,548). On tune every retry came after a loss on the same side (an early trade sold
+the same day is nearly always a loser), so the three versions read the same there. The early stop-out was right.
+
+### Rolling a big winner while the stock still looks good (2026-10-27, not better on tune; the check disagrees)
+
+The user: "when big winner come a close/into the mony - we start to check if and when the stock is still locking good.
+when the stock in a place that the bot would enter (t > 1.8 bla bla) we are rolling and buy with half of the gain the next
+0.15 delta. we sell all the old position and keep going with the half". retry_roll.py: once the stock has reached the
+strike (any day held), at the first minute after that the rule holds on the same side, sell all at the bid and put half of
+the gain into a fresh 0.15-delta pick with the champion's exits; return = old + old / 2 x new; one roll a trade. Set
+before running: at the money with the champion's rule (roll), with t >= 1.8 only (roll-t18), at 75% of the way to the
+strike (roll-near25). New legs' fills 70-85% on the real book (the rest at the walk's +-2%: partly unproven).
+
+| | 2% tune fair | 2% tune fav | 2% check fair | 2% check fav | 3% check fair | 3% check fav |
+|---|---|---|---|---|---|---|
+| champion | $418,875 / 30% | $511,670 / 21% | $928,510 / 22% | $160,100 / 28% | $1,538,450 / 31% | $155,881 / 39% |
+| roll (picked) | $365,240 / 30% | $445,560 / 21% | $1,398,739 / 22% | $173,375 / 25% | $3,367,307 / 31% | $195,374 / 34% |
+| roll-t18 | $339,301 | $413,908 | $1,513,872 | $158,759 | $3,655,810 | $171,614 |
+| roll-near25 | $324,556 / 27% | $381,619 / 24% | $543,456 | $143,878 | $1,474,390 | $200,759 |
+
+At 3% on tune: roll $462,143 / $595,167 vs $460,190 / $629,548. Without the best 5 on check (2%): roll $150,153 / $56,545
+vs $211,442 / $55,123, so the check win is a few trades. 14 / 15 tune rolls: it cuts the tune giants (SMCI 2025-05-13
++2,093% -> +605%, ORCL 2026-04-13 +1,892% -> +560%, AAPL 2025-08-06 +1,201% -> +229%: the stock at the strike is often the
+middle of the move, and the new far-out leg rarely matches the old in-the-money one) and saves the faders (SMCI 2024-06-13
+-48% -> +67%, QCOM 2025-10-27 +51% -> +330%, GOOGL 2026-10-01 -87% -> +169%). Verdict by the rule: not better (loses the
+tune pick); the check-week rolls are being listed. Follow-ups the user asked (running): roll when the option reaches delta
+0.65 (0.80 beside it), roll before the night (15:30 / 15:00 to 15:44 on a carry day, the new leg held that night), and the
+new leg at 0.25 delta instead of 0.15 for every roll version.
+
+
 
 ### A volume-weighted strength and D2 (2026-10-27, not better)
 

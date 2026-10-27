@@ -328,7 +328,10 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 dte = (dt.date.fromisoformat(exp) - dt.date.fromisoformat(d)).days
                 rp = sd.range_pos[min(t, 389)] if sd.ok else None
                 fri = dt.date.fromisoformat(d).weekday() == 4
-                if g >= X["carry_min_gain"] and (rp or 0) >= X["carry_range_pos"] and dte >= X["carry_min_dte"] and not (fri and X["carry_no_friday"]) and k + 1 < len(dates) and k < X.get("carry_max_days", 99):
+                # carry_force_first: the first night is held whatever the gain (retry_roll.py's roll before the night, 2026-10-27)
+                first = bool(X.get("carry_force_first")) and k == 0
+                good = g >= X["carry_min_gain"] and (rp or 0) >= X["carry_range_pos"]
+                if (first or good) and dte >= X["carry_min_dte"] and not (fri and X["carry_no_friday"]) and k + 1 < len(dates) and k < X.get("carry_max_days", 99):
                     steps.append((d, t, "carry", round(rem, 4), round(c, 4), "eod_carry"))
                 else:
                     pending = ("all", "eod_close")
