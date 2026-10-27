@@ -21,7 +21,9 @@ of the option's bid, mid and ask at the buy and a dot at the fill ("0.01 under t
 of the mid), and where it stands now (time held, P&L, the stock, SPY, best and worst); a smaller chart with the
 stock and the option only; why it entered folded. The bid and ask come from the records each source keeps at the
 buy: the Main bot's `entryBook`, the volume bot's buy order's `book`, the owner's order (`pricing`). A closed
-trade's window shows the same bar under its entry.
+trade's window shows the same bar under its entry. The bots' map sections were cut down the same day ("too much
+text"): one line above the map, the stock card shows its two meters (the share and price-move checks only while
+they fall short), and a row says something only where its bars cannot (blocked, waiting for its side, signaled).
 
 **The maps** (the Main bot's signal map, the volume bot's alert map; `BotMap.tsx`): zoom with a pinch, the wheel,
 a double tap or + / − (Fit returns), and drag when zoomed; ticks follow the zoom with the bot's threshold always

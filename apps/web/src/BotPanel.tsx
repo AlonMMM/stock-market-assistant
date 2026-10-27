@@ -164,6 +164,17 @@ function lacking(r: ScanRow, rules: BotSettings): string {
   return "Needs strength and volume";
 }
 
+/**
+ * Words under a stock only for what its bars cannot show (user 2026-10-27:
+ * "too much text"): blocked today, or met by the D2 bonus.
+ */
+function note(r: ScanRow, rules: BotSettings): string {
+  if (r.blocked) return `Blocked today: ${blockedText[r.blocked]}`;
+  if (r.t < rules.minT && d2Covers(r, rules) && r.rvol >= rules.minRvol)
+    return "Met by the D2 bonus";
+  return "";
+}
+
 /** D2 in words for a bar: "D2 1.3", or "D2 —" without the stock's typical move. */
 const d2Label = (d2: number | null | undefined) =>
   d2 === undefined || d2 === null ? "D2 —" : `D2 ${d2.toFixed(1)}`;
@@ -456,9 +467,9 @@ function StockFocus({
   const rules = useRules();
   const { minT: needT, minRvol: needVolume } = rules;
   const lean = r.side === "C" ? "up vs SPY → a call" : "down vs SPY → a put";
-  let state = lacking(r, rules);
+  let state = note(r, rules);
   if (signal)
-    state = `Signaled at ${israelAt(day, 570 + signal.minute)}: ${outcomeText[signal.outcome] ?? signal.outcome}. No second signal today.`;
+    state = `Signaled ${israelAt(day, 570 + signal.minute)}: ${outcomeText[signal.outcome] ?? signal.outcome}.`;
   return (
     <div className="bot-focus" aria-live="polite">
       <div className="bot-focus-head">
@@ -502,7 +513,7 @@ function StockFocus({
           </span>
         )}
       </div>
-      <p className="small">{state}</p>
+      {state && <p className="small">{state}</p>}
     </div>
   );
 }
@@ -538,7 +549,7 @@ function StockList({
       <ul>
         {rows.map((r) => {
           const s = fired.get(r.symbol);
-          let state = lacking(r, rules);
+          let state = note(r, rules);
           if (s) state = `Signaled · ${outcomeText[s.outcome] ?? s.outcome}`;
           return (
             <li key={r.symbol}>
@@ -570,13 +581,15 @@ function StockList({
                     label={d2Label(r.d2)}
                   />
                 )}
-                <span
-                  className={
-                    r.blocked ? "bot-stock-state blocked" : "bot-stock-state"
-                  }
-                >
-                  {state}
-                </span>
+                {state && (
+                  <span
+                    className={
+                      r.blocked ? "bot-stock-state blocked" : "bot-stock-state"
+                    }
+                  >
+                    {state}
+                  </span>
+                )}
               </button>
             </li>
           );
@@ -620,7 +633,6 @@ function WhatItSees({
   onOpen?: (symbol: string) => void;
 }) {
   const rules = useRules();
-  const { minT: needT, minRvol: needVolume } = rules;
   const [picked, setPicked] = useState<string | null>(null);
   const selected = picked ?? v.scan[0]?.symbol ?? null;
   const row = v.scan.find((r) => r.symbol === selected);
@@ -636,22 +648,8 @@ function WhatItSees({
         )}
       </div>
       <p className="muted small bot-explain">
-        Two checks per stock, every minute. <b>Strength</b>: how steadily its
-        1-minute moves beat SPY × its beta (a t-stat, {needT} or more).{" "}
-        <b>Volume</b>: shares since the open against its usual by this time (
-        {needVolume}× or more). A stock that reaches a shaded corner signals: up
-        buys a call, down a put. A ring marks today's signals, a ◆ the stocks
-        the bot is in a trade on. Pinch, scroll or + to zoom; tap a stock for
-        its page.
-        {rules.d2Entry && (
-          <>
-            {" "}
-            <b>D2</b>: how well the stock held up on SPY&apos;s bad minutes of
-            the last 30 (its move beyond beta × SPY, in typical 30-minute
-            moves); with D2 {rules.minD2}+ strength from t {rules.d2T} is
-            enough.
-          </>
-        )}
+        Strength vs SPY and volume vs usual. A shaded corner signals: up a call,
+        down a put · ○ today&apos;s signals · ◆ held · tap a stock for its page.
       </p>
       {newsNote(v.news)}
       {v.scan.length === 0 ? (
