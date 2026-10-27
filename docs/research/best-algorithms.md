@@ -1,5 +1,7 @@
 # Best algorithms log
 
+> 🏆 **New champion 2026-10-27: 2.5 + IBIT down to $0.10 + the pyramid (no cheap fallback).** Real quotes: fair list 2024-25 $415,971 / 14% vs the live 2.6 $302,905 / 16%; Favorites 24 months $403,255 / 17% vs $299,707 / 18%. Not live yet.
+
 Every time a backtested version beats the current champion, it is added here, and the user gets a big signal
 (see the rule in [AGENTS.md](../../AGENTS.md)). Losers and ties are not logged here; they go in the research log
 (`docs/tasks/research-indi-backtest.md`) and the report doc.
@@ -79,6 +81,7 @@ output (`U_rest`, `T_tstat`, `F_break`) checked against the version before anyth
 
 | Since      | Version                                                                                                                                                                                         | Fair list: end / worst drop / years           | 151 unseen: end / worst drop |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ---------------------------- |
+| 2026-10-27 | 🏆 **2.5 + IBIT down to $0.10 + the pyramid, no cheap fallback** (the user's call: "lets make this our champion"): 2.5's entries and exits; IBIT's 0.15-delta option bought down to $0.10, every other stock $0.20, no cheap fallback; on a D2 entry, half a size more when the same stock reaches t >= 1.8 that day while the first leg is held and up on the real mid (`floor_exception.py`, `export_champ.py` slug `champ`) | +-2%: $1,790,161 at 1% (2.6: $1,297,233); **real quotes: 2024-25 $415,971 / 14%, 2026 $228,296 / 14%** (2.6: $302,905 / 16%, $207,079 / 15%); Favorites 24m real $403,255 / 17% (2.6 $299,707 / 18%) | not run (IBIT is not in it; the pyramid on 2.5 alone loses on 2024-25 by $16K to the same without IBIT) |
 | 2026-10-25 | **D2 bonus entry**: the rest-stop champion below, plus an entry when t ≥ 1.2 and D2 ≥ 1.5 (D2: the stock's excess move, stock minus beta × SPY, summed over the SPY-down minutes of the last 30, in S30 units; day volume ≥ 1.5× as always; `defence_signals.py` rule c12_15), the user's idea | $1,005,221 / 11% / +3,062 +2,382 +2,630 a trade | $127,303 / 11%               |
 | 2026-10-24 | **Rest stop -20%**: the overnight-from-+50% champion below, plus on the entry day, once the +10 check sold half, the rest out at -20% (not -30%) with the stock against (the user's idea: be more careful with trades we already cut) | $811,353 / 11% / every year higher: +692K +865K +768K at $10K | $124,471 / 10% |
 | 2026-10-24 | **Overnight from +50%**: the t-stat exit champion below, holding winners up 50% (not 100%) overnight at 15:50 (the user's number; +75% also beats +100%) | $795,638 / 11% / +3,329 +2,417 +3,018 a trade | $122,890 / 10%               |

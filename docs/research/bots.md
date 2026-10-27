@@ -20,9 +20,11 @@ What the live bot runs when its settings are reset to defaults: the default vers
 
 ## Candidate
 
-Not chosen yet (2026-10-26). Proposed: the pyramid with both fallbacks at half size (2.5 + cheap + the next strike for D2,
-fallback trades at half, the half-size add on the real signal; fair list $1,667,924 / 12%). Until the user picks one,
-tests build on production 2.5.
+**The champion, the next bot to go live (the user, 2026-10-27: "lets make this our champion"):** 2.5 + IBIT bought
+down to $0.10 + the pyramid, no cheap fallback (`floor_exception.py`; benchmark slug `champ`, `export_champ.py`). Real
+quotes, 1%: fair list 2024-25 $415,971 / 14%, 2026 $228,296 / 14%; Favorites 24 months $403,255 / 17%, 12 months
+$189,705 / 17%. Production 2.6 stays live until it is built (two parts: the IBIT floor without the fallback, a setting;
+the pyramid add, new code) and is the line it has to beat. New tests build on the champion.
 
 ## Features under test
 
