@@ -28,6 +28,7 @@ from cheap_up import candidates
 import leg_twice as TW
 import leg_fallback as LF
 import leg_daycap as D
+import week_count as WC
 
 C, CAL = sim.C, TW.CAL
 FROM = os.environ.get("SEC_FROM", "2025-10-23")   # SEC_FROM=2024-02-01 SEC_TAG=3y: the 3 years (cmbp-1 before cbbo-1s exists)
@@ -75,8 +76,13 @@ def events_of(job):
     if not x or not x.get("sd"): return []
     sb = {b[0]: b for b in day(sym, date)}
     nxt = CAL[CAL.index(date) + 1] if kind == "1" else date
-    return [dict(date=date, sym=sym, kind=kind, nxt=nxt, m=q, u=x["sd"], stock0=sb[q][4]) for q in range(FIRST, LAST + 1)
-            if al[q] and not al[q - 1] and q in sb]
+    if kind == "w": nxt = WC.week_expiry(sym, date)   # the nearest expiry later this week (2-4 DTE)
+    out = [dict(date=date, sym=sym, kind=kind, nxt=nxt, m=q, u=x["sd"], stock0=sb[q][4]) for q in range(FIRST, LAST + 1)
+           if al[q] and not al[q - 1] and q in sb]
+    if os.environ.get("SEC_AM_PRE"):   # keep only a burst this strong either way (before any download)
+        k = float(os.environ["SEC_AM_PRE"])
+        out = [e for e in out if e["m"] - 3 in sb and abs(sb[e["m"]][4] / sb[e["m"] - 3][4] - 1) / e["u"] >= k]
+    return out
 
 
 def stock_path(e):
@@ -138,6 +144,7 @@ def pick_for(job):
     """The contract each version buys for each entry: picked on the last whole minute before the entry."""
     e, trig = job
     C.update(dte_min=0, dte_max=0, delta=0.35) if e["kind"] == "0" else C.update(dte_min=1, dte_max=5, delta=0.35)
+    if e["kind"] == "w": C.update(dte_min=0, dte_max=(datetime.fromisoformat(e["nxt"]) - datetime.fromisoformat(e["date"])).days)
     out = {}
     for entry, tg in trig.items():
         if not tg: continue
@@ -313,7 +320,12 @@ def main():
     if step == "list":
         if os.environ.get("SEC_ALERT") == "fast": ev = fast_events()
         else:
-            with mp.Pool(8) as pool: res = pool.map(events_of, TW.days(), chunksize=8)
+            jobs = TW.days()
+            if os.environ.get("SEC_WEEK"):   # only the days with no 0/1 DTE but an expiry later that week
+                top = json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "50"))]
+                with mp.Pool(8) as pool: kinds = pool.map(WC.kind, [(s, d) for s in top for i, d in enumerate(CAL) if d >= FROM and i >= 21], chunksize=16)
+                jobs = [(d, s, "w") for (s, d), k in zip([(s, d) for s in top for i, d in enumerate(CAL) if d >= FROM and i >= 21], kinds) if k == "w"]
+            with mp.Pool(8) as pool: res = pool.map(events_of, jobs, chunksize=8)
             ev = [e for r in res for e in r]
         if os.environ.get("STR_TOP"):
             top = set(json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ["STR_TOP"])])
@@ -333,6 +345,9 @@ def main():
         json.dump([dict(t=t, p={f"{k[0]}|{k[1]}": x for k, x in p.items()}) for t, p in zip(trig, picks)], open(pk_file, "w"))
         print(sum(len(p) for p in picks), "picks"); return
     pk = json.load(open(pk_file))
+    if step == "run" and os.environ.get("SEC_ADD_TAG"):   # SEC_ADD_TAG=3y50w: the same-week alerts too, in one account
+        add = os.environ["SEC_ADD_TAG"]
+        ev += json.load(open(os.path.join(OUT, f"events{add}.json"))); pk += json.load(open(os.path.join(OUT, f"picks{add}{WTAG}{KTAG}.json")))
     if step == "option2":   # the limit-buy test's books (cross, live 0.20 rule)
         jobs = sorted({(i, pk[i]["p"]["cross|plain20"][0], pk[i]["t"]["cross"][0]) for i in range(len(ev)) if "cross|plain20" in pk[i]["p"]})
         with ThreadPoolExecutor(40) as ex:
@@ -341,6 +356,17 @@ def main():
         return
     if step == "option":
         jobs = sorted({(i, x[0], pk[i]["t"][k.split("|")[0]][0]) for i in range(len(ev)) for k, x in pk[i]["p"].items() if not k.startswith("close") and k in os.environ.get("SEC_OPT_ONLY", k)})   # SEC_OPT_ONLY="cross|plain20": only those
+        if os.environ.get("SEC_OPT_CROSS_MAX"):   # only alerts whose stock crosses within this many seconds (less to download)
+            a_sec = lambda e: e.get("sec0", (e["m"] + 1) * 60)
+            jobs = [j for j in jobs if j[2] - a_sec(ev[j[0]]) <= int(os.environ["SEC_OPT_CROSS_MAX"])]
+        if os.environ.get("SEC_OPT_AM_MIN"):   # only alerts whose burst points the side's way at least this much
+            def am_ok(i):
+                e, side = ev[i], pk[i]["t"]["cross"][1]
+                sb = {b[0]: b[4] for b in day(e["sym"], e["date"])}
+                if e["m"] not in sb or e["m"] - 3 not in sb: return False
+                return (1 if side == "C" else -1) * (sb[e["m"]] / sb[e["m"] - 3] - 1) / e["u"] >= float(os.environ["SEC_OPT_AM_MIN"])
+            jobs = [j for j in jobs if am_ok(j[0])]
+        print(len(jobs), "option windows to fetch", flush=True)
         with ThreadPoolExecutor(40) as ex:
             for n, _ in enumerate(ex.map(lambda j: fetch_opt((ev[j[0]], j[1], j[2])), jobs)):
                 if n % 200 == 0: print(n, "/", len(jobs), flush=True)

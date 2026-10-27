@@ -26,6 +26,26 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### Same-week expiries (2-4 DTE) for the winner (2026-10-28)
+
+The user: trade the alerts on days with no 0/1 DTE too, on the nearest expiry later that week (never past its last
+trading day). `week_count.py`: 13,284 more alerts on the top 50 over 3 years (0 DTE 6,202, 1 DTE 6,096), 3,495 with a
+burst >= 1.1 either way. `leg_seconds.py list` with `SEC_WEEK=1 SEC_AM_PRE=1.1` (tag 3y50w, kind "w", `nxt` = the week's
+expiry), stock seconds for all 3,495, the per-second option book only for the 569 that cross within 15 s with the burst
+the side's way (`SEC_OPT_CROSS_MAX`, `SEC_OPT_AM_MIN`), their minute quotes (`extra_quotes.py EXQ_HAVE_OPT=1`, 523
+contract-days); `SEC_ADD_TAG=3y50w` runs both in one account. Winner rules, live limits, 2%:
+
+| Expiries | Trades | Win | Avg | $100K becomes | Drop | Without best 5 | Tune / check | Check without 2025-10-10 | 2024 / 2025 / 2026 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0-1 DTE (the winner) | 194 | 74 | +25.4% | $226,355 | 18.1% | +$1,699 | +28.9 / +22.5 | +1.2 | +16.8 / +39.1 / +15.0 |
+| 2-4 DTE only | 220 | 68 | +4.2% | $114,115 | 25.2% | -$33,251 | -5.9 / +13.7 | +13.7 | -21.5 / +18.1 / -2.3 |
+| Both, one account | 412 | 141 | +14.0% | $252,742 | 24.3% | -$10,321 | +9.9 / +17.7 | +7.6 | -2.1 / +26.8 / +6.2 |
+
+At 3%: 0-1 DTE $320,189 / 26%, both $368,794 / 35%. The same-week trades alone are about break-even: they lose in the
+tune half and in 2024, and one trade (QCOM 2025-10-27, +$24.5K) carries them. Added to the winner they raise the end
+account but cut the average a trade from +25% to +14%, deepen the drop by 6 points and turn "without the best 5"
+negative; their only plus is a better check half without 2025-10-10 (+7.6 against +1.2). Not adopted.
+
 ### The early-sign alerts with the winning strategy (2026-10-27, night)
 
 The early alerts were only tested with today's plain rules. Now with the whole winning strategy (cross <= 15 s,

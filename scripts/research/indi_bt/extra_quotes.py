@@ -37,8 +37,11 @@ if __name__ == "__main__":
     ev = json.load(open(os.path.join(HERE, "sec_cache", f"events{TAG}.json")))
     pk = json.load(open(os.path.join(HERE, "sec_cache", f"picks{TAG}{WTAG}{KTAG}.json")))
     need = {}
+    # EXQ_HAVE_OPT=1: only the contracts whose per-second book was fetched (the trades that pass the filters)
+    have_opt = {tuple(f.split("_")[:2]) for f in os.listdir(os.path.join(HERE, "sec_cache", "opt"))} if os.environ.get("EXQ_HAVE_OPT") else None
     for i, e in enumerate(ev):
         for k, x in pk[i]["p"].items():
+            if have_opt is not None and (e["date"], x[0]) not in have_opt: continue
             m = max(0, e["m"] - 1)
             cur = need.setdefault(e["date"], {})
             cur[x[0]] = min(m, cur.get(x[0], 999))
