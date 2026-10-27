@@ -83,8 +83,9 @@ def side_of(rows, mis):
 def summarize(path, only=None):
     z = np.load(path, allow_pickle=False)
     rows, sym, date, days = z["rows"], z["sym"], z["date"], int(z["days"])
+    sources = [str(x) for x in z["sources"]] if "sources" in z else SOURCES
     out = []
-    for si, src in enumerate(SOURCES):
+    for si, src in enumerate(sources):
         for wi, w in enumerate(WAITS):
             sub = (rows[:, 0] == si) & (rows[:, 1] == wi)
             if not sub.any():
@@ -121,7 +122,7 @@ def main():
         json.dump(s, open(a.json, "w"), indent=1)
     rows = s["rows"]
     fmt = lambda r: (
-        f"{r['source']:9} {r['wait']:4} {r['method']:10} {r['per']:5} {r['perDay']:6.1f}/d "
+        f"{r['source']:22} {r['wait']:4} {r['method']:10} {r['per']:5} {r['perDay']:6.1f}/d "
         f"win {r['win']:.3f} (rnd {r['randomWin']:.3f}) avg {r['avg']:+.3f} [{r['avgCI'][0]:+.3f},{r['avgCI'][1]:+.3f}] "
         f"edge {r['edge']:+.3f} [{r['edgeCI'][0]:+.3f},{r['edgeCI'][1]:+.3f}] u/day {r['perDayUnits']:+.1f} win30 {r['win30']:.3f}"
     )

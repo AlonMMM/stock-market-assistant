@@ -60,7 +60,7 @@ def trade(path, entry, u, side, up=2.0, down=1.0):
 
 
 def work(job):
-    symbol, opens, full, dates, spy_rows, alerts = job
+    symbol, opens, full, dates, spy_rows, alerts, sources = job
     db = sqlite3.connect(f"file:{fv.DB}?mode=ro", uri=True)
     m = er.load(db, symbol, opens)
     keep = full & (m["V"].sum(axis=1) > 0)
@@ -87,7 +87,7 @@ def work(job):
     lo60 = er.trailing_min(L, 6)
     day = {d: i for i, d in enumerate(ds)}
     rows = []
-    for si, src in enumerate(SOURCES):
+    for si, src in enumerate(sources):
         for date, t, _ in alerts.get(src, []):
             d = day.get(date)
             if d is None or t < 6:
@@ -140,12 +140,14 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--alerts", help="early_rules.py run (default /tmp/claude-501/fv/er_<split>.json)")
+    ap.add_argument("--sources", help="comma-separated alert names (default SOURCES)")
     a = ap.parse_args()
+    sources = a.sources.split(",") if a.sources else SOURCES
     run = json.load(open(a.alerts or f"/tmp/claude-501/fv/er_{a.split}.json"))
     db = sqlite3.connect(f"file:{fv.DB}?mode=ro", uri=True)
     dates, opens, full = fv.sessions(db)
     spy = fv.ffill(er.load(db, "SPY", opens)["C"])
-    jobs = [(s, opens, full, dates, spy, r["alerts"]) for s, r in run["symbols"].items()]
+    jobs = [(s, opens, full, dates, spy, r["alerts"], sources) for s, r in run["symbols"].items()]
     out, syms, sdates = [], [], {}
     with ProcessPoolExecutor(a.workers) as ex:
         for i, res in enumerate(ex.map(work, jobs)):
@@ -163,7 +165,7 @@ def main():
     date = np.concatenate([o[1] for o in out])
     rows = np.concatenate([o[2] for o in out])
     days = max(r["days"] for r in run["symbols"].values())
-    np.savez_compressed(a.out, sym=sym, date=date, rows=rows, syms=np.array(syms), days=days)
+    np.savez_compressed(a.out, sym=sym, date=date, rows=rows, syms=np.array(syms), days=days, sources=np.array(sources))
 
 
 if __name__ == "__main__":
