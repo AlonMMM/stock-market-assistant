@@ -322,7 +322,7 @@ watchlist opens faster on a phone.
 - area: App
 - tags: Main bot, Volume bot, Portfolio, Charts
 - source: Session of Oct 27
-- done: 2026-10-27, PR #PR
+- done: 2026-10-27, PR #185
 
 An open position shows three numbers (the rest folded), the stop, then the trade in brief: the entry on a bid /
 mid / ask bar with where the fill landed, where it stands now, and a smaller chart of the stock and the option.
