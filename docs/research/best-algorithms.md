@@ -303,6 +303,29 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### Drawdown sizing on the champion (2026-10-27, not better: a smaller flat size does more)
+
+The user: "if we're down 12.5 from the top use 0.5 size. until we claim half the way back - than move to regular
+size. on the top you can double the size until we loosing 5%". `dd_sizing_rule.py` on the champion's real-quote
+trades (export_champ.py), each return recomputed at its size with the 10% overnight cap; neighbours 10% / 15%. End /
+worst drop:
+
+| Base | Rule | Fair 2024-25 | Fair 2026 | Favorites 12m | Favorites 6m |
+| --- | --- | --- | --- | --- | --- |
+| 1% | off | $415,954 / 14% | $228,295 / 14% | $191,006 / 18% | $141,544 / 18% |
+| 1% | 12.5% rule | $290,775 / 14% | $192,553 / 15% | $143,819 / 17% | $111,941 / 17% |
+| 2% | off | $1,147,942 / 27% | $324,558 / 25% | $231,482 / 32% | $152,070 / 32% |
+| 2% | 12.5% rule | $455,388 / 23% | $228,278 / 21% | $172,399 / 25% | $122,129 / 25% |
+| 3% | off | $2,095,111 / 37% | $316,663 / 35% | $198,925 / 44% | $123,976 / 44% |
+| 3% | 12.5% rule | $696,107 / 30% | $270,221 / 28% | $212,436 / 33% | $138,323 / 33% |
+
+The 10% and 15% triggers land the same way. The rule loses money on every list at 1% and 2%; at 3% it gains on the
+Favorites ($212K / 33% vs $199K / 44%) but 2% flat beats it there ($231K / 32%) and on the fair list. Why: the bot's
+money comes in a few big days after long losing runs, so the half size is on when the winners come (fair 2024-25 at
+2%: 181 of 337 days at half size) and the double size after a high meets the next losing run. The Favorites' early
+drop is real (Oct 2025 - Jan 2026, -11% at 1%), but the worst one is May - Aug 2026 (-18%), recovered by IBIT and
+MSTR on 2026-08-19. At 3% on real quotes the flat size is past the best: 2% is the better live size on the Favorites.
+
 ### Optimizing the cheap fallback (2026-10-27, not better: no fallback beats none on 2024-25)
 
 The user: "Can we optimized the cheaper fallback?" `cheap_opt.py`, on 2.5's entries and exits, every signal re-picked,
