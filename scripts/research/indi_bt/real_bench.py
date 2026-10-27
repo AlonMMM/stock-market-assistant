@@ -56,11 +56,15 @@ def oi(date, c):
 
 
 def quote(c, date, minute):
-    """The book at the end of `minute`, at most 5 minutes old."""
+    """The book at the end of `minute`, at most 5 minutes old. A cache row's minute is the book as that minute BEGAN
+    (dbx_fetch.py: cbbo-1m's ts_recv is the interval's end), so the end of `minute` is the row labelled minute + 1.
+    Fixed 2026-10-27 (entry audit): this read the row labelled `minute`, a book one minute too early, so every fill was
+    priced on the quote from before the bar that triggered it (option trade bars: the bar's last print sits inside the
+    row labelled j + 1 86% of the time, j 65%, j - 1 52%; label_test in the log)."""
     v = book(date).get(c)
     if not v: return None
-    i = bisect.bisect(v, (minute + 1, 1e9, 1e9)) - 1
-    if i < 0 or v[i][0] < minute - 4: return None
+    i = bisect.bisect(v, (minute + 2, 1e9, 1e9)) - 1
+    if i < 0 or v[i][0] < minute - 3: return None
     return v[i][1], v[i][2]
 
 
