@@ -11,7 +11,11 @@ before running:
   band10   2.6, but only when the 0.15-delta option is still $0.10 or more (else no trade)
 The 200-contract floor applies to every final pick. Lists: the fair list (2024-25 tuning, 2026 held out), at the bar's
 middle +- 2% and on the real book (opt_spread.price "bid", the fair list's Databento cache; `cov` = the share of fills
-on the book), and the 151 unseen stocks (+- 2% only), where 2.6's fallback lost before. 1% / 2% from $100,000, the 10%
+on the book), the 151 unseen stocks (+- 2% only), where 2.6's fallback lost before, and, the user's out-of-sample check
+(2026-10-27: "since we know indy trade "hot" stocks we need the sort of the same"), the hot stocks: hot_universe.py's
+monthly top 50 by daily volatility over the 6 months before (the whole optionable market, liquid, point in time),
+minus Indi's 40, kept to the 67 whose options fit the bot (opt_fit.py, an Oct 2026 snapshot), each traded only in a
+month it is hot (hot_6m.json); 2.5's signals there are lists.py's hotfit_25 (+- 2% only: no quotes cached). 1% / 2% from $100,000, the 10%
 overnight cap, $0.62 a contract each way.
 
   node --env-file=.env <dir>/run.mjs cheap_opt.py      (from the app repo root)
@@ -65,7 +69,8 @@ def choose(cands, rule):
 def one(t):
     m, spot = int(t["minute"]), float(t["price"])
     cands = cu.candidates(t["sym"], t["date"], m, t["right"], spot)
-    fair = t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]]
+    fair = t.get("src") != "hot" and t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]]
+    lname = t.get("src") or ("fair" if fair else ("unseen" if t["sym"] not in HIS40 else "other"))
     walked, out = {}, []
     for name, rule in V.items():
         c, src = choose(cands, rule)
@@ -82,7 +87,7 @@ def one(t):
                            cov=sum(bool(RB.quote(c[0], s[0], max(s[1] - 1, 0))) for s in fills) / len(fills))
             walked[c[0]] = row
         if not walked[c[0]]: continue
-        out.append(dict(version=name, list="fair" if fair else ("unseen" if t["sym"] not in HIS40 else "other"), date=t["date"], minute=m,
+        out.append(dict(version=name, list=lname, date=t["date"], minute=m,
                         sym=t["sym"], right=t["right"], contract=c[0], delta=round(abs(c[3]), 3), price=c[4], vol30=c[5], src=src, **walked[c[0]]))
     return out
 
@@ -104,12 +109,16 @@ def main():
     nf.features(T)
     T = [t for t in T if t["e_next"] != 0 and (t["pre_rvol"] is None or t["pre_rvol"] < 4) and t["date"] <= RB.LAST
          and (t["sym"] not in HIS40 or t["sym"] in PRIOR[t["date"][:4]])]
-    print(len(T), "signals", flush=True)
+    HOT6 = {m: set(v) for m, v in json.load(open(f"{B}/hot_6m.json")).items()}
+    for r in json.load(open(f"{B}/list_hotfit_25_2024-02-01_2026-10-23.json")):
+        st = {"bought": "ok", "no contract: illiquid": "illiquid", "no contract: too_cheap": "too_cheap"}.get(r["status"])
+        if st and r["sym"] in HOT6.get(r["date"][:7], ()) and r["date"] <= RB.LAST: T.append(dict(r, status=st, src="hot", minute=str(r["minute"])))
+    print(len(T), "signals,", sum(t.get("src") == "hot" for t in T), "on the hot stocks", flush=True)
     with mp.Pool(8) as pool: R = [r for rows in pool.map(one, T, chunksize=4) for r in rows]
     with open(f"{B}/cheap_opt_trades.csv", "w") as f:
         w = csv.DictWriter(f, fieldnames=list(dict.fromkeys(k for r in R for k in r))); w.writeheader(); w.writerows(R)
     out = {}
-    for lname, cuts in (("fair", (("2024-25", "2024-01-01", "2025-12-31"), ("2026", "2026-01-01", "2026-12-31"))), ("unseen", (("all", "", "9"),))):
+    for lname, cuts in (("fair", (("2024-25", "2024-01-01", "2025-12-31"), ("2026", "2026-01-01", "2026-12-31"))), ("unseen", (("all", "", "9"),)), ("hot", (("2024-25", "2024-01-01", "2025-12-31"), ("2026", "2026-01-01", "2026-12-31"), ("all", "", "9")))):
         print(f"\n### {lname}\n")
         print("| Version | Period | Trades | Fallback trades | Winners | Per trade | ±2% 1% / drop | ±2% 2% / drop | Real 1% / drop | Real 2% / drop | Without best 5 (1%, real or ±2%) | Years ±2% | Fully on the book |")
         print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")

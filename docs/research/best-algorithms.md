@@ -351,6 +351,15 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### Fridays (2026-10-27, not better: keep trading them)
+
+The user: "on friday- consider buy for next week"; then "(c) On Fridays buy the nearest Monday or Wednesday expiry when
+one is listed". (c) is the rule already (the nearest expiry 1-7 days out): of the champion's 180 Friday trades 33 buy a
+Monday (3 days, +1,299 a trade at $10K), 142 next Friday (7 days, +617) where no nearer one was listed (before 2026 only
+IWM and GLD). Skip or halve the Friday next-week trades (champion, real quotes, from the export): tune $262,697 /
+$260,483 vs $257,985; check $341,020 / 14% and $354,995 vs $368,104 / 12%; Favorites 12m $180,501 / $185,858 vs
+$191,008. Weak but positive trades; dropping them loses on check.
+
 ### Drawdown sizing on the champion (2026-10-27, not better: a smaller flat size does more)
 
 The user: "if we're down 12.5 from the top use 0.5 size. until we claim half the way back - than move to regular
