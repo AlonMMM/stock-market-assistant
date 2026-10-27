@@ -224,6 +224,10 @@ minute is spread evenly, no SPY seconds: live, the bot has SPY's ticks). The fai
 only a falling ask proves a fill (check $387,078 vs $490,110); fair_fill.py's +11-25% counted a print at or under the
 limit in the minute, which a resting bid would catch, but not provably. So the fair limit is UNPROVEN until paper
 fills settle it (3 of 3 check looks used: closed unless the user reopens it).
+At the live bot's pace (early5 / early10: the rule checked every 5 / 10 seconds, the 60-s look-ahead): tune $328,276 /
+$374,326 and $310,054 / $355,900 vs $330,459 / $377,912 every second and $306,551 / $342,239 at the minute's end;
+check $477,551 / $171,081 and $461,107 / $167,403 vs $484,035 / $174,439 and $428,880 / $155,442. Every 5 s keeps
+almost all of it; every 10 s about half: the live bot should look at least every 5 seconds.
 
 ### Buy near the fair price: a limit at the microprice, 1 minute, then the usual price (2026-10-27, better on the minute model; UNPROVEN on the second data, see above)
 
@@ -377,6 +381,16 @@ failed-break sale worse everywhere, D2 under 200 still the most money although i
 the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
+
+### A second try for the looser D2 entries only (2026-10-27, not better)
+
+The user, after d2_window.py: "Can we test second try only for enters with D2 bonus?". `d2_second.py`: the champion
+unchanged, plus an EXTRA trade from a looser D2 signal that fires before the champion's own entry on that stock and day.
+Tune (fair / Favorites, extra trades and their P&L at $10K a unit): base $260,535 / $289,355; t 0.8 full $213,624 /
+$238,946 (111 / 123, -197K / -189K), half $235,992 / $263,046; t 0.6 full $212,660 / $241,846, half $235,468 / $264,640;
+120-min full $258,970 / 18% and $305,680 / 13% (69 / 66, +60K / +123K), half $260,247 / $298,054. None beats the
+champion on both lists; check (120-min, half) $368,173 / $135,196 vs $372,332 / $139,363. The early weak D2 signals
+lose on their own; the 2-hour one is a small, uneven plus.
 
 ### D2 over 2 hours, D2 at t >= 0.8 / 0.6 (2026-10-27, not better)
 
