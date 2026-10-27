@@ -397,6 +397,17 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### Stock-move exits: support / resistance and a big move against (2026-10-27, not better)
+
+The user: "exit by the moving of the stock too. Lets re testing the support and resistance approch to stop. Also big
+move against - more than a correction might be an exit even if we are winning". `exit_tests.py` EXIT_RUN=stock, sim.py
+`level_stop` (new) and `stock_trail`, on the champion, real quotes, tune (fair / Favorites 24m): base $255,238 / 17% and
+$289,355 / 11%; the support / resistance behind the entry broken by 0 / 0.25 / 0.5 S30: $259,855 / $286,466, $254,614 /
+$284,285, $255,180 / $287,951; the second level behind, 0.25: $259,498 / $292,358; a give-back of 2.5 S30 from the
+stock's best (winning or not) $178,433 / $190,304, of 3.0 $213,548 / $207,369. Picked the second level: check $340,261 /
+16% and $128,863 / 18% vs $360,295 / 12% and $139,363 / 15%. The level stops cut the same-day loss a little and as many
+overnight carries; a big give-back sells the winners in their normal swings (it halves the overnight holds).
+
 ### Exits to cut the losers (2026-10-27, not better)
 
 The user: "lets take care of the huge drops ... improve our exits - strategy and cut the big losers". The champion's

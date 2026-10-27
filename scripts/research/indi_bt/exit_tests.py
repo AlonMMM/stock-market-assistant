@@ -36,6 +36,15 @@ B = "data/local/x/bt"
 CAL = calendar()
 V = {
     "base": {},
+    # the stock's own move (the user, 2026-10-27: "exit by the moving of the stock too ... the support and resistance
+    # approach to stop. Also big move against - more than a correction might be an exit even if we are winning"); run
+    # with EXIT_RUN=stock
+    "lvl0": {"level_stop": {"buffer": 0.0}},
+    "lvl25": {"level_stop": {"buffer": 0.25}},
+    "lvl50": {"level_stop": {"buffer": 0.5}},
+    "lvl2nd25": {"level_stop": {"buffer": 0.25, "nth": 2}},
+    "trail25": {"stock_trail": {"k": 2.5}},
+    "trail30": {"stock_trail": {"k": 3.0}},
     "be30": {"guard": {"arm": 0.3, "floor": 0.0, "day0": True}},
     "be30p10": {"guard": {"arm": 0.3, "floor": 0.1, "day0": True}},
     "be50": {"guard": {"arm": 0.5, "floor": 0.0, "day0": True}},
@@ -45,6 +54,9 @@ V = {
     "hold25": {"carry_min_gain": 0.25},
     "hold35": {"carry_min_gain": 0.35},
 }
+STOCK = ("base", "lvl0", "lvl25", "lvl50", "lvl2nd25", "trail25", "trail30")
+if os.environ.get("EXIT_RUN") == "stock": V = {k: v for k, v in V.items() if k in STOCK}
+else: V = {k: v for k, v in V.items() if k not in STOCK or k == "base"}
 
 
 def one(job):

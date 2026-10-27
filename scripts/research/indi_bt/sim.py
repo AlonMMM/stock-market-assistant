@@ -47,6 +47,9 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
   Q still (still {window, k, under}): entry day, from `window` minutes after the entry, the stock's high-low range over the
                last `window` minutes under k x its usual move for that span (S30 x sqrt(window/30), levels.py); with `under`
                only while the option is under that gain                 -> sell all
+  S level stop (level_stop {buffer, nth}): on the entry day, the stock closes `buffer` x S30 beyond the nth nearest level
+               behind the entry price (levels.py: yesterday's / the 5-day high and low, the first 15 minutes', the day's so far)
+                                                           -> sell all
   first_exit_min N: on the entry day no -X% stop and no failed-break sale in the first N minutes (the checks keep their times)
   hold_first N: on the entry day no stop of any kind (the checks, -X%, the rest, the t-stat exit, the failed break) in the
                first N minutes after the entry; then the rules as usual, a check whose time has passed fires at once
@@ -344,6 +347,19 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                     kk = SG.get("early_k") if t - minute < SG.get("early_min", 0) else SG["k"]
                     losing = g < 0 or not SG.get("only_losing")  # only_losing: a stop for losers, winners keep the bot's own exits
                     if kk is not None and losing and bet * (px / best - 1) <= -kk * unit: pending = ("all", "S_trail"); continue
+            LS = X.get("level_stop")  # {buffer, nth}: the support (a call) / resistance (a put) behind the entry broken, the entry day
+            # (the user, 2026-10-27: "exit by the moving of the stock ... the support and resistance approach to stop"): the nth
+            # nearest levels.py level behind the entry price at the entry minute; out at a close `buffer` x S30 beyond it
+            if LS and k == 0 and sd.ok:
+                if "ls" not in st:
+                    from levels import ctx, levels_at
+                    cx = ctx(und, d); p0 = sd.c[minute]; st["ls"] = None
+                    if cx and p0:
+                        behind = sorted((v for v in levels_at(cx, minute).values() if v and bet * (p0 - v) > 0), key=lambda v: bet * (p0 - v))
+                        n = LS.get("nth", 1)
+                        if len(behind) >= n: st["ls"] = (behind[n - 1], cx["sd"] * p0)
+                px = sd.c[min(t, 389)]
+                if st["ls"] and px and bet * (st["ls"][0] - px) >= LS["buffer"] * st["ls"][1]: pending = ("all", "S_level"); continue
             Z = X.get("stall_rs")  # {hours, gain, rs}: the option never up `gain` since the entry, `hours` on (user, 2026-10-24)
             if Z and k == 0 and sd.ok and t - minute >= Z["hours"] * 60 and peak / cost - 1 < Z["gain"]:
                 bad = True  # with rs: the stock's move vs SPY x beta since the entry ("entry") or over the last hour ("hour") is against us
