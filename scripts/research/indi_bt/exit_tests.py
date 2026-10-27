@@ -50,6 +50,10 @@ V = {
     "hold100": {"carry_min_gain": 1.0},
     "hold150": {"carry_min_gain": 1.5},
     "hold200": {"carry_min_gain": 2.0},
+    # around +50% (the user: "Can you show me the overnight for 25 75 60 40?"); EXIT_RUN=hold2
+    "hold40": {"carry_min_gain": 0.4},
+    "hold60": {"carry_min_gain": 0.6},
+    "hold75": {"carry_min_gain": 0.75},
     "be30": {"guard": {"arm": 0.3, "floor": 0.0, "day0": True}},
     "be30p10": {"guard": {"arm": 0.3, "floor": 0.1, "day0": True}},
     "be50": {"guard": {"arm": 0.5, "floor": 0.0, "day0": True}},
@@ -64,7 +68,8 @@ HOLD = ("base", "hold100", "hold150", "hold200")
 RUN = os.environ.get("EXIT_RUN")
 if RUN == "stock": V = {k: v for k, v in V.items() if k in STOCK}
 elif RUN == "hold": V = {k: v for k, v in V.items() if k in HOLD}
-else: V = {k: v for k, v in V.items() if (k not in STOCK and k not in HOLD) or k == "base"}
+elif RUN == "hold2": V = {k: v for k, v in V.items() if k in ("base", "hold25", "hold40", "hold60", "hold75")}
+else: V = {k: v for k, v in V.items() if (k not in STOCK and k not in HOLD and k not in ("hold40", "hold60", "hold75")) or k == "base"}
 
 
 def one(job):
