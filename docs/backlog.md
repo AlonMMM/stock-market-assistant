@@ -322,7 +322,7 @@ watchlist opens faster on a phone.
 - area: App
 - tags: Main bot, Volume bot, Portfolio, Charts
 - source: Session of Oct 27
-- done: 2026-10-27, PR #PR
+- done: 2026-10-27, PR #184
 
 An open position under Live trades shows the trade's window instead of the day chart. Both bots' maps zoom, read
 every 2 seconds, mark held stocks with a ◆, open a stock's page on a tap, and a green or red banner and an "In
