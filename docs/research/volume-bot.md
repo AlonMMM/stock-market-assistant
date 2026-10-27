@@ -9,6 +9,78 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### Status at the end of 2026-10-27 (read this first)
+
+- Top 50, 3 years, today's rules: -8.9% a trade (fresh run; the -9.1% of the morning moved with quotes added later in
+  the day). 1,610 trades, 2.4 a day, side right 49.7% of the time (`dir_label.py`).
+- The backtest's exit is the walk on minute closes; the live bot checks every 10 s and does worse (-11.9% a trade):
+  move the live give-back to minute closes (not done, needs the user's go).
+- Best candidate so far: only alerts whose stock crosses the side line within 15 s and whose burst points the same way,
+  no give-back for the first 30 minutes: 301 trades, +15.9% a trade, $100K -> $151,387, worst drop 11.2%, positive in
+  every year and both halves, but -$2,275 without the best 5 trades. The 30-minute grace looks like a peak (20 and 45
+  minutes are weaker), so part of it may be luck. Not live.
+- Running at the end of the day: the filters with no account limits at 1%, 2% and 3% a trade
+  (`STR_NO_LIMITS=1 STR_SIZE=`), with and without 2025-10-10; the rest of the sweep (burst 0.8 / 1.5, never stop).
+- Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
+- Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
+
+### Missed big winners: what blocks them, and news days (2026-10-27)
+
+`STR_DUMP_ALL` dumps every simulated trade before the filters and the account (6,406 alerts with a side and quotes,
+no stop for 30 minutes); `blockers.py` replays the account per trade. Of 377 trades of +100% or more: news-day filter
+162 (of 3,161 trades, -14.4% a trade), slow cross with the burst agreeing 69 (of 1,241, -13.6%), slow cross against
+the burst 60 (-12.7%), fast cross against the burst 25 (-12.3%), passed the filter but blocked by the account 19 (of
+113, +42.4%), traded 42 (of 301, +15.9%).
+
+Of the 414 that pass the filter: traded 301 (+15.9%); "5 positions open" 19 (+274%, 11 big winners), almost all
+2025-10-10 10:59, the market-wide drop (AMZN, NVDA, QQQ, AVGO, META, DELL, AAPL, IREN, HOOD, HIMS, RKLB puts, +164% to
++849%); "same stock still open" 87 (-5.8%, 7 big winners: second alerts on a runner, e.g. META 2026-04-08 12:17 and
+12:22); "2 trades on the stock" 6 (-16.2%); too pricey for 1% 1.
+
+News days (`news_filter`: earnings reaction day, or pre-market volume >= 4x): no cut rescues them. With the filter:
+earnings day 237 trades -15.7%, pre-market 4x 239 trades -19.8%; by time of day, pre-market gap, day move, option
+price: every slice negative. The alert (4x a normal minute's volume) is an ordinary minute on a day when all volume is
+high, and the options are dear. A news-day strategy needs its own alert (volume against the same day's earlier
+minutes). Keep the filter.
+
+Grid before the account, normal days (cross seconds x burst in S30): cross <= 15 s with burst 1.1-2: 180 trades
++31.8% (tune +24.7, check +37.2); burst >= 2: 65 trades +55.5%; burst 0.5-1.1: +0.5%; every slow-cross cell with a
+weak burst loses. Cross <= 15 s & burst >= 1.1: 245 trades +38.1%; cross <= 30 s & burst >= 1.1: 342, +26.5% (tune
++14.4, check +35.8); cross <= 60 s & burst >= 1.1: 435, +22.3% (tune only +3.6).
+
+### Fewer trades: the fast cross and the burst (2026-10-27)
+
+The user: "1600 trades are too many, maybe we are not filtering enough for the direction". `trade_features.py`
+computes what each trade looked like at the buy; a quintile scan over 15 features, tune (to 2025-06) and check
+(2025-07 on). Two held in both halves: seconds from the alert to the cross (under 8 s: +2.0 / +1.7, every other
+quintile negative) and the burst (`am`: the 3 minutes to the alert, the side's way, in S30; above 1.1: +0.1 / +3.7,
+below -1.2: -11 / -16). Both are the same idea: buy when the stock breaks out the way the burst was already going.
+Filters applied before the account (`STR_CROSS_MAX`, `STR_AM_MIN`), live limits, top 50, 3 years:
+
+| Filter | Exit | Trades | Win | Avg per trade | $100K becomes | Worst drop | Tune / check | 2024 / 2025 / 2026 | Without best 5 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| none | live | 1,610 | 23% | -8.9% | $25,255 | 79.6% | -7.7 / -9.8 | -6.2 / -10.6 / -8.8 | -$103K |
+| burst >= 1.1 | live | 429 | 30% | +1.8% | $106,546 | 12.9% | -5.1 / +6.7 | +0.0 / -3.2 / +8.0 | -$22K |
+| burst >= 1.1 | no stop 30 min | 393 | 32% | +10.6% | $144,800 | 14.5% | +5.1 / +14.5 | -0.9 / +19.2 / +9.9 | -$4.7K |
+| cross <= 15 s, burst >= 0 | live | 330 | 29% | +2.5% | $106,355 | 12.1% | -1.0 / +5.5 | +3.9 / -2.4 / +9.0 | -$20K |
+| cross <= 15 s, burst >= 0 | no stop 30 min | 301 | 36% | +15.9% | $151,387 | 11.2% | +18.6 / +13.6 | +3.6 / +26.1 / +10.4 | -$2.3K |
+| cross <= 8 s | live | 373 | 31% | +2.1% | $105,527 | 11.9% | -0.1 / +4.3 | +5.9 / -2.1 / +5.4 | -$16K |
+| cross <= 8 s | no stop 30 min | 326 | 35% | +13.9% | $147,822 | 8.4% | +13.4 / +14.3 | +2.8 / +23.7 / +8.5 | -$1.8K |
+
+Sweep around it (no stop 30 min unless named; cross alone): cross <= 5 s +14.3% (216), 10 s +8.7% (388), 15 s +3.6%
+(504), 20 s +0.6%, 30 s -0.6%. Cross <= 15 s & burst >= 0 with no stop for 10 / 20 / 30 / 45 minutes: +5.3 / +8.2 /
++15.9 / +9.8% (30 is a peak: some of it may be luck). Burst >= 0.5 instead of 0: +16.1% (291).
+
+### Other notes from 2026-10-27
+
+- The $0.69 bid on the TSLA example (2025-09-12) is real: raw cbbo-1s (`peek_quote.py`) shows 1.31/1.36 at 9:58:00
+  and 0.69/0.73 at 9:59:00 as TSLA fell from 385.70 to 383.69; the $1.62 buy was the fill model's chase (bid 1.56 at
+  +10 s above the 1.51 usual price, pay the ask). The page said "9:58" for the minute that closes at 9:59:00: fixed.
+- Around the cross the option's mid rises about 5% on every kind of trade (spike not a loser's mark); 60 s after the
+  buy the quick losers are -7% and the winners +4.5%.
+- The day's move before the alert (`mv_close`) shows no clean fade/follow rule on its own.
+- `explain_paths.py` (second-by-second trade pictures) feeds the dashboard's "how a trade works".
+
 ### No give-back stop for the first N minutes (2026-10-27)
 
 `STR_NOSTOP_MIN=N` (leg_fallback.walk): the give-back can't sell in the first N minutes after the buy; the best is still

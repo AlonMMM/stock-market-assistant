@@ -295,7 +295,9 @@ def trade(job):
     mv_open = sign * (spot / bars[0][1] - 1) / e["u"] if bars and bars[0][0] <= 5 else None
     mv_close = sign * (spot / pb[-1][4] - 1) / e["u"] if pb else None
     if not (entry == "cross" and os.environ.get("STR_BUY")): fill, waited = "usual", 0
-    return dict(fill=fill, waited=waited, entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
+    bx = {x[0]: x for x in bars}
+    am = sign * (bx[e["m"]][4] / bx[e["m"] - 3][4] - 1) / e["u"] if e["m"] in bx and e["m"] - 3 in bx else None
+    return dict(am=am, to_cross=sec - (e["m"] + 1) * 60, fill=fill, waited=waited, entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
                 t=t_side, d2=d2_side, mv_open=mv_open, mv_close=mv_close, side=side, mid_in=mid_in, mid_out=(qs[0] + qs[1]) / 2,
                 stock_in=stock_in, stock_out=stock_out)
 
@@ -344,9 +346,16 @@ def main():
         top = set(json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "999"))]) if os.environ.get("STR_TOP") else None
         jobs = [(ev[i], k.split("|")[0], k.split("|")[1], x[0], x[1], pk[i]["t"][k.split("|")[0]]) for i in range(len(ev)) for k, x in pk[i]["p"].items() if (top is None or ev[i]["sym"] in top) and ev[i]["sym"] not in os.environ.get("STR_EXCL", "").split(",")]
         with mp.Pool(8) as pool: T = [t for t in pool.map(trade, jobs, chunksize=8) if t]
+        if os.environ.get("STR_AM_MIN"):   # the burst's own 3-minute move (to the alert minute), the side's way, x S30
+            T = [t for t in T if t["am"] is not None and t["am"] >= float(os.environ["STR_AM_MIN"])]
+        if os.environ.get("STR_CROSS_MAX"):   # seconds from the alert to the cross
+            T = [t for t in T if t["to_cross"] <= int(os.environ["STR_CROSS_MAX"])]
         rows = [dict(date=d, sym=s, minute=0, right="C") for d, s in {(t["date"], t["sym"]) for t in T}]
         nf.features(rows)
         skip = {(r["date"], r["sym"]) for r in rows if r["e_next"] == 0 or (r["pre_rvol"] is not None and r["pre_rvol"] >= 4)}
+        if os.environ.get("STR_DUMP_ALL"):   # every simulated trade before the filters and the account (cross, live rule)
+            json.dump([dict(t, news_skip=int((t["date"], t["sym"]) in skip)) for t in T if t["entry"] == "cross" and t["v"] == "plain20"],
+                      open(os.environ["STR_DUMP_ALL"], "w"), default=str)
         spans = (("12 months", "2025-10-23", "9999"), ("6 months", "2026-04-23", "9999"))
         if TAG: spans = ((f"3 years ({FROM} on)", FROM, "9999"), ("2024", "2024", "2025"), ("2025", "2025", "2026"), ("2026", "2026", "9999")) + spans
         FILTERS = {"all": lambda t: True}
@@ -391,8 +400,9 @@ def main():
                     for t in S: by.setdefault((t["date"], t["sym"]), []).append(dict(minute=t["minute"], trade=t))
                     keep = []
                     for k, evs in by.items():
-                        for x in TW.pick(dict(events=sorted(evs, key=lambda z: z["minute"])), "flat")[:2]: keep.append(x["trade"])
-                    eL, dL, R, _, _ = D.account(keep, 1, 2, loss=7.5, max_trades=15, max_open=5)
+                        for x in TW.pick(dict(events=sorted(evs, key=lambda z: z["minute"])), "open" if os.environ.get("STR_NO_LIMITS") else "flat")[:int(os.environ.get("STR_PER_STOCK", "2"))]: keep.append(x["trade"])
+                    if os.environ.get("STR_NO_LIMITS"): eL, dL, R, _, _ = D.account(keep, float(os.environ.get("STR_SIZE", "1")), 2)   # no day loss, trade, open or per-stock limit
+                    else: eL, dL, R, _, _ = D.account(keep, float(os.environ.get("STR_SIZE", "1")), 2, loss=7.5, max_trades=int(os.environ.get("STR_MAX_TRADES", "15")), max_open=int(os.environ.get("STR_MAX_OPEN", "5")))
                     avg = sum((r["sell"] * 100 - 0.62) / (r["buy"] * 100 + 0.62) - 1 for r in R) / max(1, len(R))
                     if os.environ.get("STR_DETAIL") and v == "plain20" and entry == "cross" and lab == "12 months":
                         import collections
