@@ -19,10 +19,29 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
   no give-back for the first 30 minutes: 301 trades, +15.9% a trade, $100K -> $151,387, worst drop 11.2%, positive in
   every year and both halves, but -$2,275 without the best 5 trades. The 30-minute grace looks like a peak (20 and 45
   minutes are weaker), so part of it may be luck. Not live.
-- Running at the end of the day: the filters with no account limits at 1%, 2% and 3% a trade
-  (`STR_NO_LIMITS=1 STR_SIZE=`), with and without 2025-10-10; the rest of the sweep (burst 0.8 / 1.5, never stop).
+- Not finished (stopped for low memory): the filters with no account limits at 1%, 2% and 3% a trade
+  (`STR_NO_LIMITS=1 STR_SIZE=`); the rest of the sweep (burst 0.8 / 1.5, never stop). Rerun one batch at a time.
+- Without 2025-10-10 the burst >= 0 filter's check half is flat ("One day carries the check half"); burst >= 1.1
+  holds up better: +13.4% a trade without that day, positive every year.
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
+
+### One day carries the check half: 2025-10-10 (2026-10-27, late)
+
+Re-reading the filtered runs without 2025-10-10 (the market-wide drop; every name alerted at 10:59, puts ran +150% to
++850%). No stop for 30 minutes, live limits unless named:
+
+| Filter | Max open | Trades | Avg per trade | $100K becomes | Drop | Check half | Without 2025-10-10: avg, check half, $100K becomes, drop |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| cross <= 15 s, burst >= 0 | 5 | 301 | +15.9% | $151,387 | 11.2% | +13.6 | +7.8%, -2.0, $121,242, 19.0% |
+| cross <= 15 s, burst >= 0 | 10 | 309 | +23.7% | $180,962 | 11.1% | +28.6 | +7.5%, -2.0, $120,790, 21.4% |
+| cross <= 15 s, burst >= 0 | 20 | 309 | +31.1% | $207,924 | 10.7% | +42.3 | +7.5%, -2.0, $120,402, 23.5% |
+| cross <= 15 s, burst >= 1.1 | 5 | 193 | +24.6% | $151,693 | 9.3% | +22.5 | +13.4%, +1.2, $125,371, 12.0% |
+
+Without that day the check half (Jul 2025 on) is flat or slightly negative for the burst >= 0 filter; raising the open
+limit only adds more of that day. The burst >= 1.1 version stays positive every year without it (+13.3 / +12.0 /
++15.0) and is the sturdier candidate. The no-limit runs at 1/2/3% and the rest of the sweep were stopped by the
+system for low memory (too many runs at once) and are not done.
 
 ### Missed big winners: what blocks them, and news days (2026-10-27)
 
