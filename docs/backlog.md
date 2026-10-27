@@ -326,7 +326,7 @@ watchlist opens faster on a phone.
 
 An open position shows three numbers (the rest folded), the stop, then the trade in brief: the entry on a bid /
 mid / ask bar with where the fill landed, where it stands now, and a smaller chart of the stock and the option.
-Closed trades' windows show the same bar.
+Closed trades' windows show the same bar. The Watchlist opens sorted by today's volume, most first.
 
 ### Ongoing trades open their window; the bots' maps zoom and mark trades
 
