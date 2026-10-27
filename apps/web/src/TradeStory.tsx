@@ -42,8 +42,10 @@ import {
   pageDays,
   tradeChartUrl,
   tradeStats,
+  quotePlace,
   unknownStory,
   volumeStory,
+  type EntryQuote,
   type PricePoint,
   type Story,
   type TradeStats,
@@ -145,6 +147,114 @@ function Point({ label, p }: { label: string; p: PricePoint | null }) {
 }
 
 /**
+ * The entry against the option's bid and ask when the buy was decided (user
+ * 2026-10-27: "I want to see the enter in term of bid ask price mid"): the
+ * spread as a bar, the mid marked on it and a dot where the fill landed.
+ */
+function QuoteBar({ q, price }: { q: EntryQuote; price: number }) {
+  const mid = (q.bid + q.ask) / 2;
+  const lo = Math.min(q.bid, price);
+  const hi = Math.max(q.ask, price);
+  const span = hi - lo || 1;
+  const at = (v: number) => `${((v - lo) / span) * 100}%`;
+  const spread = q.ask - q.bid;
+  const place = quotePlace(price, q);
+  return (
+    <div className="ts-quote">
+      <div
+        className="ts-quote-bar"
+        role="img"
+        aria-label={`Bid ${q.bid.toFixed(2)}, mid ${mid.toFixed(3)}, ask ${q.ask.toFixed(2)}; bought ${price.toFixed(2)}, ${place}`}
+      >
+        <span
+          className="ts-quote-spread"
+          style={{ left: at(q.bid), width: `${(spread / span) * 100}%` }}
+        />
+        <span className="ts-quote-mid" style={{ left: at(mid) }} />
+        <span className="ts-quote-fill" style={{ left: at(price) }} />
+      </div>
+      <p className="ts-quote-nums num">
+        <span>bid {q.bid.toFixed(2)}</span>
+        <span>mid {Number(mid.toFixed(3))}</span>
+        <span>ask {q.ask.toFixed(2)}</span>
+      </p>
+      <p className="muted num">
+        Paid {price.toFixed(2)}: <b>{place}</b>
+        {mid > 0 &&
+          ` · spread ${spread.toFixed(2)} (${((spread / mid) * 100).toFixed(0)}% of the mid)`}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * An open trade in brief, under its position (user 2026-10-27: "we can
+ * reduce the information. Its too much"): the entry against its bid and ask,
+ * and where it stands now.
+ */
+function CompactSummary({
+  stats,
+  t,
+  unit,
+  quote,
+}: {
+  stats: TradeStats;
+  t: ClosedTrade;
+  unit: string;
+  quote: EntryQuote | null;
+}) {
+  const plural = (n: number) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  const moves: [string, number][] = [];
+  if (stats.stock) moves.push([t.underlying, stats.stock.pct]);
+  if (stats.spyPct !== null) moves.push(["SPY", stats.spyPct]);
+  if (stats.best) moves.push(["best", stats.best.pct]);
+  if (stats.worst) moves.push(["worst", stats.worst.pct]);
+  return (
+    <div className="ts-summary compact">
+      <div className="ts-cell buy">
+        <h4>Entry</h4>
+        <p className="num">
+          <b>{israelClock(stats.entry.ms)}</b> · {plural(stats.entry.qty)} at{" "}
+          <b>{stats.entry.price.toFixed(2)}</b>
+        </p>
+        {quote ? (
+          <QuoteBar q={quote} price={stats.entry.price} />
+        ) : (
+          <p className="muted">The bid and ask at the entry were not kept.</p>
+        )}
+      </div>
+      <div className="ts-cell">
+        <h4>Now</h4>
+        <p className="num">
+          <b>{heldText(stats.heldMs)}</b> ·{" "}
+          <b className={tone(t.pnl).trim()}>
+            {signedUsd(t.pnl)}
+            {t.pnlPct !== null && ` (${signedPct(t.pnlPct)})`}
+          </b>
+        </p>
+        {moves.length > 0 && (
+          <p className="muted num">
+            {moves.map(([label, pct], i) => (
+              <span key={label}>
+                {i > 0 && " · "}
+                {label} <span className={pctTone(pct)}>{pctText(pct)}</span>
+              </span>
+            ))}
+          </p>
+        )}
+        {stats.exits.map((x, i) => (
+          <p key={`${x.ms}-${i}`} className="num">
+            Sold {plural(x.qty)}
+            {x.price !== null && ` at ${x.price.toFixed(2)}`} ·{" "}
+            {israelClock(x.ms)} · {x.title}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The trade at a glance, above the chart (user 2026-10-26: "make it easy to a
  * human to analyze the enter and exit"): the entry, each exit, the time held
  * and the result, the option's best and worst while held, how the stock and
@@ -155,11 +265,13 @@ function Summary({
   t,
   unit,
   live,
+  quote,
 }: {
   stats: TradeStats;
   t: ClosedTrade;
   unit: string;
   live: boolean;
+  quote: EntryQuote | null;
 }) {
   const plural = (n: number) => `${n} ${unit}${n === 1 ? "" : "s"}`;
   return (
@@ -175,6 +287,7 @@ function Summary({
             {t.underlying} at ${stats.entry.stock.toFixed(2)}
           </p>
         )}
+        {quote && <QuoteBar q={quote} price={stats.entry.price} />}
       </div>
       <div className="ts-cell sell">
         <h4>
@@ -337,10 +450,14 @@ export function TradeStoryBody({
   t,
   source,
   live,
+  compact = false,
 }: {
   t: ClosedTrade;
   source: TradeSource;
   live?: { held: number };
+  // Under a position: the brief summary, the stock and option panes, the
+  // reasons folded, no fills table.
+  compact?: boolean;
 }) {
   const [chart, setChart] = useState<TradeChartData | null>(null);
   const [chartError, setChartError] = useState("");
@@ -495,7 +612,23 @@ export function TradeStoryBody({
   const plural = (n: number) => `${n} ${unit}${n === 1 ? "" : "s"}`;
   return (
     <>
-      {stats && <Summary stats={stats} t={t} unit={unit} live={isLive} />}
+      {stats &&
+        (compact ? (
+          <CompactSummary
+            stats={stats}
+            t={t}
+            unit={unit}
+            quote={story?.entryQuote ?? null}
+          />
+        ) : (
+          <Summary
+            stats={stats}
+            t={t}
+            unit={unit}
+            live={isLive}
+            quote={story?.entryQuote ?? null}
+          />
+        ))}
       <section className="ts-chart-section">
         <div className="ts-bar">
           <div
@@ -542,6 +675,7 @@ export function TradeStoryBody({
               style={style}
               onEdge={onEdge}
               onHover={setHover}
+              compact={compact}
             />
           </Suspense>
         ) : (
@@ -550,97 +684,120 @@ export function TradeStoryBody({
           </p>
         )}
       </section>
-      {story ? (
-        <>
-          <section>
-            <h3>
-              {story.entryTitle}
-              {story.version && (
-                <span className="muted small"> · bot {story.version}</span>
-              )}
-            </h3>
-            <ul className="ts-why">
-              {story.entry.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-            {story.decision && (
-              <p className="ts-more">
-                <WhyButton decision={story.decision} /> opens the full order:
-                every input, the chain and each check.
-              </p>
+      {compact && story && (
+        <details className="ts-why-more">
+          <summary>
+            {story.entryTitle}
+            {story.version && (
+              <span className="muted"> · bot {story.version}</span>
             )}
-          </section>
-          <section>
-            <h3>{isLive ? "Exits so far" : "Why it was exited"}</h3>
-            {story.exits.length > 0 && (
-              <ol className="ts-exits">
-                {story.exits.map((x, i) => (
-                  <li key={`${x.ms}-${i}`}>
-                    <div className="ts-exit-head">
-                      <strong>{x.title}</strong>
-                      <span className="muted num">
-                        {israelClock(x.ms)} · {plural(x.qty)}
-                        {x.price !== null && ` at ${x.price.toFixed(2)}`}
-                      </span>
-                    </div>
-                    {x.text && <p>{x.text}</p>}
-                  </li>
-                ))}
-              </ol>
-            )}
-            {live ? (
-              <p className="muted">Still open: {plural(live.held)} held.</p>
-            ) : (
-              story.exits.length === 0 && (
-                <p className="muted">No sale is recorded for this trade.</p>
-              )
-            )}
-          </section>
-        </>
-      ) : (
-        <p className="chart-status">Loading the bot&apos;s records…</p>
-      )}
-      <section>
-        <h3>Fills</h3>
-        <table className="trade-fills num">
-          <thead>
-            <tr>
-              <th scope="col">When ({israelLabel})</th>
-              <th scope="col">Side</th>
-              <th scope="col">Qty</th>
-              <th scope="col">Price</th>
-              <th scope="col">Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {fills.map((f, i) => (
-              <tr key={i} className={f.side}>
-                <td>
-                  {f.side === "expired"
-                    ? f.at.slice(0, 10)
-                    : israelDateTime(Date.parse(f.at))}
-                </td>
-                <td>{fillWord(f.side)}</td>
-                <td>{f.qty}</td>
-                <td>{f.side === "expired" ? "—" : f.price.toFixed(2)}</td>
-                <td>
-                  {f.side === "buy" ? "−" : "+"}
-                  {usd(f.qty * f.price * multiplier)}
-                </td>
-              </tr>
+          </summary>
+          <ul className="ts-why">
+            {story.entry.map((line) => (
+              <li key={line}>{line}</li>
             ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <th scope="row" colSpan={4}>
-                {isLive ? "Result so far, at the last price" : "Result"}
-              </th>
-              <td className={tone(t.pnl).trim()}>{signedUsd(t.pnl)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </section>
+          </ul>
+          {story.decision && (
+            <p className="ts-more">
+              <WhyButton decision={story.decision} /> opens the full order.
+            </p>
+          )}
+        </details>
+      )}
+      {!compact &&
+        (story ? (
+          <>
+            <section>
+              <h3>
+                {story.entryTitle}
+                {story.version && (
+                  <span className="muted small"> · bot {story.version}</span>
+                )}
+              </h3>
+              <ul className="ts-why">
+                {story.entry.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+              {story.decision && (
+                <p className="ts-more">
+                  <WhyButton decision={story.decision} /> opens the full order:
+                  every input, the chain and each check.
+                </p>
+              )}
+            </section>
+            <section>
+              <h3>{isLive ? "Exits so far" : "Why it was exited"}</h3>
+              {story.exits.length > 0 && (
+                <ol className="ts-exits">
+                  {story.exits.map((x, i) => (
+                    <li key={`${x.ms}-${i}`}>
+                      <div className="ts-exit-head">
+                        <strong>{x.title}</strong>
+                        <span className="muted num">
+                          {israelClock(x.ms)} · {plural(x.qty)}
+                          {x.price !== null && ` at ${x.price.toFixed(2)}`}
+                        </span>
+                      </div>
+                      {x.text && <p>{x.text}</p>}
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {live ? (
+                <p className="muted">Still open: {plural(live.held)} held.</p>
+              ) : (
+                story.exits.length === 0 && (
+                  <p className="muted">No sale is recorded for this trade.</p>
+                )
+              )}
+            </section>
+          </>
+        ) : (
+          <p className="chart-status">Loading the bot&apos;s records…</p>
+        ))}
+      {!compact && (
+        <section>
+          <h3>Fills</h3>
+          <table className="trade-fills num">
+            <thead>
+              <tr>
+                <th scope="col">When ({israelLabel})</th>
+                <th scope="col">Side</th>
+                <th scope="col">Qty</th>
+                <th scope="col">Price</th>
+                <th scope="col">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fills.map((f, i) => (
+                <tr key={i} className={f.side}>
+                  <td>
+                    {f.side === "expired"
+                      ? f.at.slice(0, 10)
+                      : israelDateTime(Date.parse(f.at))}
+                  </td>
+                  <td>{fillWord(f.side)}</td>
+                  <td>{f.qty}</td>
+                  <td>{f.side === "expired" ? "—" : f.price.toFixed(2)}</td>
+                  <td>
+                    {f.side === "buy" ? "−" : "+"}
+                    {usd(f.qty * f.price * multiplier)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row" colSpan={4}>
+                  {isLive ? "Result so far, at the last price" : "Result"}
+                </th>
+                <td className={tone(t.pnl).trim()}>{signedUsd(t.pnl)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </section>
+      )}
     </>
   );
 }

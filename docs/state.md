@@ -14,6 +14,15 @@ account's history, which now also returns the trades still open (`open` in `/api
 chart. The volume bot's trades, open or closed, are told from its own records (`volumeStory`: the alert, the side
 it waited for, the leg, the sale); they used to show the Main bot's "no longer available".
 
+**Less under a position, and the entry against its bid and ask** (user 2026-10-27: "too much"; "see the enter
+in term of bid ask price mid"). An open position shows three numbers (of account, delta exposure, the session's
+change), the rest under "More numbers"; the stop and the controls; then the trade in brief: the entry with a bar
+of the option's bid, mid and ask at the buy and a dot at the fill ("0.01 under the mid", the spread and its share
+of the mid), and where it stands now (time held, P&L, the stock, SPY, best and worst); a smaller chart with the
+stock and the option only; why it entered folded. The bid and ask come from the records each source keeps at the
+buy: the Main bot's `entryBook`, the volume bot's buy order's `book`, the owner's order (`pricing`). A closed
+trade's window shows the same bar under its entry.
+
 **The maps** (the Main bot's signal map, the volume bot's alert map; `BotMap.tsx`): zoom with a pinch, the wheel,
 a double tap or + / − (Fit returns), and drag when zoomed; ticks follow the zoom with the bot's threshold always
 among them (`bot-map-model.ts`). A ◆ marks the stocks the bot holds a trade on. A tap on a stock opens its page in

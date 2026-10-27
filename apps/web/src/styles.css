@@ -8228,3 +8228,80 @@ i.added {
 .in-trade-tag.down {
   color: var(--red-54);
 }
+
+/* The entry against the bid and ask, and an open trade in brief (2026-10-27). */
+.ts-quote {
+  margin-top: 6px;
+}
+.ts-quote-bar {
+  position: relative;
+  height: 14px;
+  margin: 6px 6px 2px;
+}
+.ts-quote-bar::before {
+  content: "";
+  position: absolute;
+  inset: 6px 0;
+  background: var(--gray-92b);
+  border-radius: 2px;
+}
+.ts-quote-spread {
+  position: absolute;
+  top: 4px;
+  height: 6px;
+  background: var(--gray-80);
+  border-radius: 3px;
+}
+.ts-quote-mid {
+  position: absolute;
+  top: 1px;
+  width: 2px;
+  height: 12px;
+  margin-left: -1px;
+  background: var(--gray-49);
+}
+.ts-quote-fill {
+  position: absolute;
+  top: 2px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--green-51);
+}
+.ts-quote-nums {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--gray-49);
+}
+.ts-summary.compact {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.ts-chart.compact {
+  height: 380px;
+}
+.ts-why-more {
+  margin-top: 10px;
+  font-size: 13px;
+}
+.ts-why-more summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--gray-49);
+}
+.pos-more,
+.ts-why-more {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.pos-more {
+  margin: 4px 0 8px;
+  font-size: 13px;
+}
+.pos-more summary {
+  cursor: pointer;
+  color: var(--gray-49);
+}

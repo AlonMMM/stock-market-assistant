@@ -10,6 +10,8 @@ export interface StrangleOrderView {
   jobId: string | null;
   settled: boolean;
   price?: number;
+  // The leg's bid / ask when the order was decided (absent before 2026-10-25).
+  book?: { bid: number; ask: number; at: number };
 }
 
 export interface StrangleLegView {

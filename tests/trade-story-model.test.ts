@@ -22,6 +22,7 @@ import {
   tradeStats,
   unknownStory,
   liveTrade,
+  quotePlace,
   volumeStory,
 } from "../apps/web/src/trade-story-model.js";
 import type { StrangleView } from "../packages/trading/src/strangle/view.js";
@@ -533,4 +534,16 @@ test("a volume bot trade is told from the volume bot's records", () => {
   assert.equal(volumeStory({ ...t, symbol: "OTHER" }, view), null);
   // Without its record: the fills alone, in the volume bot's words.
   assert.match(unknownStory(t, "volume").entry[0]!, /volume bot has no record/);
+});
+
+test("the entry against the bid and ask, in words", () => {
+  // User 2026-10-27: "see the enter in term of bid ask price mid".
+  const q = { bid: 1.3, ask: 1.4, at: 0 };
+  assert.equal(quotePlace(1.35, q), "at the mid");
+  assert.equal(quotePlace(1.37, q), "0.02 over the mid");
+  assert.equal(quotePlace(1.32, q), "0.03 under the mid");
+  assert.equal(quotePlace(1.4, q), "at the ask");
+  assert.equal(quotePlace(1.3, q), "at the bid");
+  assert.equal(quotePlace(1.45, q), "0.05 over the ask");
+  assert.equal(quotePlace(1.25, q), "0.05 under the bid");
 });

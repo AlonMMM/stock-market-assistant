@@ -151,6 +151,33 @@ export interface Story {
   rule: number | null; // the strength the signal needed (t), for the strength pane
   markers: Marker[];
   decision: Decision | null; // the owner's buy order, for its full details
+  // The option's bid and ask when the buy was decided (user 2026-10-27: "see
+  // the enter in term of bid ask price mid"); null when it was not kept.
+  entryQuote: EntryQuote | null;
+}
+
+export interface EntryQuote {
+  bid: number;
+  ask: number;
+  at: number;
+}
+
+/**
+ * Where a fill sits in the bid / ask at the entry, in words: "at the mid",
+ * "0.02 over the mid", "at the ask", "0.03 over the ask".
+ */
+export function quotePlace(price: number, q: EntryQuote): string {
+  const mid = (q.bid + q.ask) / 2;
+  const cents = (n: number) => Math.abs(n).toFixed(2);
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.005;
+  if (near(price, mid)) return "at the mid";
+  if (near(price, q.ask)) return "at the ask";
+  if (near(price, q.bid)) return "at the bid";
+  if (price > q.ask) return `${cents(price - q.ask)} over the ask`;
+  if (price < q.bid) return `${cents(q.bid - price)} under the bid`;
+  return price > mid
+    ? `${cents(price - mid)} over the mid`
+    : `${cents(mid - price)} under the mid`;
 }
 
 /** A line drawn across a pane at a price. */
@@ -411,6 +438,9 @@ export function botStory(
     rule: r.minT,
     markers,
     decision: null,
+    entryQuote: p.entryBook
+      ? { bid: p.entryBook.bid, ask: p.entryBook.ask, at: p.entryBook.at }
+      : null,
   };
 }
 
@@ -447,6 +477,7 @@ export function unknownStory(
     rule: null,
     markers: fillMarkers(t),
     decision: null,
+    entryQuote: null,
   };
 }
 
@@ -541,6 +572,9 @@ export function ownerStory(t: ClosedTrade, decision: Decision | null): Story {
     rule: null,
     markers: fillMarkers(t),
     decision,
+    entryQuote: e
+      ? { bid: e.pricing.bid, ask: e.pricing.ask, at: decision!.at }
+      : null,
   };
 }
 
@@ -774,6 +808,8 @@ export function volumeStory(
     rule: null,
     markers,
     decision: null,
+    entryQuote:
+      v.leg?.orders.find((o) => o.side === "buy" && o.book)?.book ?? null,
   };
 }
 

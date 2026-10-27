@@ -63,7 +63,7 @@ export function LiveTrade({
   return (
     <div className="live-trade">
       <Suspense fallback={<p className="chart-status">Loading the trade…</p>}>
-        <TradeStoryBody t={t} source={source} live={{ held: p.qty }} />
+        <TradeStoryBody t={t} source={source} live={{ held: p.qty }} compact />
       </Suspense>
     </div>
   );
