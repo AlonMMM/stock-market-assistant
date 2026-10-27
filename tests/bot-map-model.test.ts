@@ -3,6 +3,10 @@ import test from "node:test";
 import {
   mapTicks,
   panDomain,
+  scaleX,
+  scaleY,
+  unscaleX,
+  unscaleY,
   zoomDomain,
 } from "../apps/web/src/bot-map-model.js";
 
@@ -44,4 +48,15 @@ test("map ticks: round steps in view, the threshold always among them", () => {
   assert.deepEqual(mapTicks(0.8, 2.3, 1.2), [1, 1.2, 1.5, 2]);
   assert.deepEqual(mapTicks(-2, 2, 2.5, true), [-2, -1, 0, 1, 2]);
   assert.deepEqual(mapTicks(1, 4, 3, true), [1, 2, 3, 4]);
+});
+
+test("map scales: logarithmic, 0 to 2× wider than 4× to 6×, signed both ways", () => {
+  // User 2026-10-27: "the scales of the map should not be linear".
+  assert.ok(scaleX(2) - scaleX(0) > 2 * (scaleX(6) - scaleX(4)));
+  assert.equal(scaleY(-3), -scaleY(3));
+  assert.equal(scaleY(0), 0);
+  for (const v of [0, 0.5, 1.5, 4, 10])
+    assert.ok(Math.abs(unscaleX(scaleX(v)) - v) < 1e-9);
+  for (const v of [-6, -1, 0, 2.5])
+    assert.ok(Math.abs(unscaleY(scaleY(v)) - v) < 1e-9);
 });

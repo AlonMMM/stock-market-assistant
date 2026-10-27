@@ -17,7 +17,7 @@ import type {
 import type { Portfolio as PortfolioData } from "../../../packages/trading/src/portfolio.js";
 import { EntryBanners, InTradeSign, type HeldTrade } from "./BotEntries.js";
 import { BotMap, type MapPoint } from "./BotMap.js";
-import { Meter, ago, useNow } from "./BotPanel.js";
+import { FindStock, Meter, ago, useNow } from "./BotPanel.js";
 import { usePolling } from "./Live.js";
 import {
   TradeRow,
@@ -542,12 +542,16 @@ function noSides(v: StrangleView, day: string): Map<string, string> {
 
 function StockList({
   scan,
+  out,
   waiting,
   notes,
   selected,
   onSelect,
 }: {
   scan: StrangleScanRow[];
+  // the stocks out for today: on the map, in the list only when searched
+  // for (user 2026-10-27)
+  out: ReadonlyMap<string, string>;
   waiting: ReadonlySet<string>;
   // why a stock is out today, or its last alert found no side
   notes: ReadonlyMap<string, string>;
@@ -555,9 +559,15 @@ function StockList({
   onSelect: (symbol: string) => void;
 }) {
   const [all, setAll] = useState(false);
-  const rows = all ? scan : scan.slice(0, 12);
+  const [find, setFind] = useState("");
+  const query = find.trim().toUpperCase();
+  const live = query
+    ? scan.filter((r) => r.symbol.startsWith(query))
+    : scan.filter((r) => !out.has(r.symbol));
+  const rows = all || query ? live : live.slice(0, 12);
   return (
     <div className="bot-stocks">
+      <FindStock value={find} onChange={setFind} />
       <div className="bot-stocks-head muted small" aria-hidden="true">
         <span>Stock</span>
         <span>Volume</span>
@@ -601,9 +611,12 @@ function StockList({
           );
         })}
       </ul>
-      {scan.length > 12 && (
+      {query && rows.length === 0 && (
+        <p className="muted small">No watched stock starts with {query}.</p>
+      )}
+      {!query && live.length > 12 && (
         <button type="button" className="bot-more" onClick={() => setAll(!all)}>
-          {all ? "Show the closest 12" : `Show all ${scan.length}`}
+          {all ? "Show the closest 12" : `Show all ${live.length}`}
         </button>
       )}
     </div>
@@ -626,7 +639,8 @@ function WhatItSees({
   const out = outToday(v, day);
   const notes = new Map([...noSides(v, day), ...out]);
   const scan = showOut ? v.scan : v.scan.filter((r) => !out.has(r.symbol));
-  const selected = picked ?? scan[0]?.symbol ?? null;
+  const selected =
+    picked ?? v.scan.find((r) => !out.has(r.symbol))?.symbol ?? null;
   const row = v.scan.find((r) => r.symbol === selected);
   const waiting = new Set(
     v.open.filter((t) => t.phase === "watching").map((t) => t.symbol),
@@ -687,7 +701,8 @@ function WhatItSees({
             )}
           </div>
           <StockList
-            scan={scan}
+            scan={v.scan}
+            out={out}
             waiting={waiting}
             notes={notes}
             selected={selected}

@@ -518,6 +518,28 @@ function StockFocus({
   );
 }
 
+/** A box to find one stock in a bot's list, the ones out for today too. */
+export function FindStock({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="bot-find">
+      <span className="sr-only">Find a stock</span>
+      <input
+        type="search"
+        placeholder="Find a stock"
+        autoCapitalize="characters"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  );
+}
+
 /** Every stock's two conditions as bars, closest to a signal first. */
 function StockList({
   scan,
@@ -533,10 +555,19 @@ function StockList({
   const rules = useRules();
   const { minT: needT, minRvol: needVolume } = rules;
   const [all, setAll] = useState(false);
+  const [find, setFind] = useState("");
   const fired = new Map(signals.map((s) => [s.symbol, s]));
-  const rows = all ? scan : scan.slice(0, 12);
+  // The stocks already out for today (blocked, or signaled: one a day) stay
+  // on the map but not at the top of the list; a search finds them (user
+  // 2026-10-27).
+  const query = find.trim().toUpperCase();
+  const live = query
+    ? scan.filter((r) => r.symbol.startsWith(query))
+    : scan.filter((r) => !r.blocked && !fired.has(r.symbol));
+  const rows = all || query ? live : live.slice(0, 12);
   return (
     <div className="bot-stocks">
+      <FindStock value={find} onChange={setFind} />
       <div
         className={`bot-stocks-head muted small${rules.d2Entry ? " d2" : ""}`}
         aria-hidden="true"
@@ -595,9 +626,12 @@ function StockList({
           );
         })}
       </ul>
-      {scan.length > 12 && (
+      {query && rows.length === 0 && (
+        <p className="muted small">No watched stock starts with {query}.</p>
+      )}
+      {!query && live.length > 12 && (
         <button type="button" className="bot-more" onClick={() => setAll(!all)}>
-          {all ? "Show the closest 12" : `Show all ${scan.length} stocks`}
+          {all ? "Show the closest 12" : `Show all ${live.length} stocks`}
         </button>
       )}
     </div>
@@ -634,7 +668,12 @@ function WhatItSees({
 }) {
   const rules = useRules();
   const [picked, setPicked] = useState<string | null>(null);
-  const selected = picked ?? v.scan[0]?.symbol ?? null;
+  const fired = new Set(v.signals.map((s) => s.symbol));
+  const selected =
+    picked ??
+    (v.scan.find((r) => !r.blocked && !fired.has(r.symbol)) ?? v.scan[0])
+      ?.symbol ??
+    null;
   const row = v.scan.find((r) => r.symbol === selected);
   const signal = v.signals.find((s) => s.symbol === selected);
   return (
