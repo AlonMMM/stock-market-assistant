@@ -20,7 +20,10 @@ def summarize(run):
     biggest = [m for m in moves if m["units"] >= 6]
     cover = sum(r["covered"] for r in syms.values()) / sum(r["slots"] for r in syms.values())
     rows = []
-    for name in ORDER:
+    # Known rules in their usual order, then any other rule found in the run.
+    found = {k for r in syms.values() for k in r["alerts"]}
+    names = [n for n in ORDER if n in found] + sorted(found - set(ORDER))
+    for name in names:
         alerts = [a for r in syms.values() for a in r["alerts"].get(name, [])]
         caught = [m["caught"][name] for m in moves if name in m["caught"]]
         caught_m = [m for m in moves if name in m["caught"]]
