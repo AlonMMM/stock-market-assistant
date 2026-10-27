@@ -188,6 +188,18 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 | 2026-10-25 | + D2 bonus entry (t ≥ 1.2 and D2 ≥ 1.5 enters too)                     | $1,005,221 / 11%            | $127,303 / 11% | +$194K, same drop; unseen +$2.8K, +1 pt                  | 🏆 champion (backtest only)                     |
 | 2026-10-25 | D2 champion + the failed-break sale (the live bot's exits, `BT_TAG=b`)  | $669,237 / 14%              | $137,446 / 9%  | −$336K, +3 pts drop vs the D2 champion; unseen +$10K, −2 pts | not better: the sale cuts the early D2 entries (2024 +1,513 a trade vs +2,839); on the Bot vs Indi dashboard as `d2-bot` |
 
+### The Volume bot's stock give-back as a Main bot stop; the Main bot on real quotes (2026-10-27)
+
+- **The stock trail as a stop** (`indi_trail.py`, `sim.py` option `stock_trail`): sell on the entry day when the stock
+  gives back K x S30 from its best since the buy (K 0.75 to 2.0, one part or two: a tighter K for the first 10 or 20
+  minutes, all trades or the losing ones only). Fair list 2024-25 on 2.6 (and 2.5): every version is worse; the best,
+  2.0 on the losing trades only, nearly ties the fair list but on Favorites 2026 cuts 2.6 from $409K to $288K with a
+  deeper drop. Not better.
+- **Real quotes for the Main bot** (`indi_real.py`, Databento cbbo-1m of every candidate strike, the fill mid + half
+  to the ask with the chase, sold at the bid), 2%: 2.6 2024-25 $1.52M -> $973K, 2026 $434K -> $337K, all $6.6M ->
+  $3.28M; 2.5 $1.85M -> $1.28M and $288K -> $235K; 2.4 $854K -> $651K and $321K -> $273K. About 3 points a trade lower,
+  still +18-22% a trade; the bars' sim acts on the next bar (bar vs real mid: buys +0.9%, sales 0%), so no look-ahead.
+
 ### Entry audit: the real quotes were read one minute early (2026-10-27, CORRECTION)
 
 The user: "go and review yourself and try to find issues with the entries - we had huge issue in the volume bot".

@@ -43,6 +43,34 @@ up to 2 trades a stock a day. Buy = mid + half to the ask (the chase when the ne
   side's way), top 15, 3 years, cross: t >= 0 (agrees) 189 trades, +11.8%, $121,840 / 7.0%, every year about +12%
   (the disagreeing trades lose in 2024 and 2025); t >= 1.2 -2.4%; t >= 1.8 -11.3%; D2 >= 1.5 +5.9% (26 trades);
   t >= 1.2 and D2 >= 1.5 -9.7%; the Main bot's 2.6 rule -6.5%. A strong t means the move is already made.
+- **The fill model** (the user: buying at the ask and selling at the bid "is never true"; then "ok to use bid for
+  selling, but for buy use the price you think it going to make"): the buy is the bot's ladder (`ladder.ts`: starts at
+  the mid, 5 steps 3 s apart up to mid + 85% to the ask, then chases to the ask for 3 minutes) modelled as mid + half
+  to the ask; when the next minute's bid is already above it, min(next ask, price x 1.1) (about 30% of buys chase).
+  The sale is at the bid; the sell ladder (mid - half to the bid, else the next bid) is shown beside it.
+- **Contract rules on real quotes, all 167 names, 12 months, 1% a trade, sold at the bid / with the sell ladder**
+  (`leg_realspread.py`; stepT = step to the next strike while the spread is over T%, cC = block over C%). None wins:
+
+  | Version | Trades | $100K becomes (bid / ladder) | Avg spread |
+  | --- | --- | --- | --- |
+  | plain20 (live, 0.20 delta) | 1,033 | $23,396 / $33,337 | 23% |
+  | step10 | - | $34,209 | - |
+  | step8c25 (the user's pick) | 878 | $42,703 / $48,849 | 11% |
+  | step8c20 | - | $41,499 | - |
+  | step8c15 | - | $44,962 | - |
+  | step8c10 | 552 | $60,306 | 6% |
+  | step8c8 (block over 8%) | 456 | $66,249 | 5.1% |
+  | now35 (0.35 delta) | - | $32,015 | - |
+
+  Why a 6% spread still loses (step8c10, a trade): the move +1.5%, paid over the mid -4.2%, sold under the mid -4.8%,
+  commission -1.7%: net -9%. The sell ladder adds ~6-14% to the end amount, not enough. The bar test's "±4" was ±4%
+  of the option price a fill, not the spread; the real cost was the look-ahead above.
+- **A worked example of the look-ahead** (page https://claude.ai/artifact/2Mdj3RBYLs4M6RREs69fjV, 10-second candles
+  from Databento seconds): META 615C on 2026-04-08, the confirming bar 12:12: high 1.24, low 0.49, its middle 0.865 was
+  the bar test's buy; the book at 12:13:00 was 1.25 / 1.33, the real buy 1.44 (the asks a second later 1.44, 1.49).
+- **Live 2026-10-27:** the bot follows the Favorites list only (the user: "only on our favorites list for now"):
+  settings `added` (167 watchlist tickers) emptied, `followFavorites` on (69 names then). Delta 0.20, size 2%,
+  strengthFilter off, unchanged.
 - **Live:** the bot already checked the side on the stock's last trade every 10 s (not the minute close); PR #180
   (merged and deployed 2026-10-27) adds a 1-second side watch. Not changed yet (the user to decide): the strength
   filter (setting `strengthFilter`, the t >= 0 rule) and limiting the bot to the top 15.
