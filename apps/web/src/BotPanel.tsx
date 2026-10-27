@@ -1,4 +1,11 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type KeyboardEvent,
+  type RefObject,
+} from "react";
 import {
   coreClose,
   newYork,
@@ -17,7 +24,7 @@ import {
   contractsInWords,
   parseOccSymbol,
 } from "../../../packages/trading/src/options.js";
-import { BotMap, type MapPoint } from "./BotMap.js";
+import { BotMap, useMapPick, type MapPoint } from "./BotMap.js";
 import { EntryBanners, InTradeSign, type HeldTrade } from "./BotEntries.js";
 import { usePolling } from "./Live.js";
 import { israelClock, israelLabel, israelShortDate } from "./time.js";
@@ -380,12 +387,14 @@ function SignalMap({
   signals,
   selected,
   trades,
+  onSelect,
   onOpen,
 }: {
   scan: ScanRow[];
   signals: Signal[];
   selected: string | null;
   trades: ReadonlyMap<string, "C" | "P">;
+  onSelect: (symbol: string) => void;
   onOpen?: (symbol: string) => void;
 }) {
   const rules = useRules();
@@ -407,6 +416,7 @@ function SignalMap({
     <BotMap
       points={points}
       selected={selected}
+      onSelect={onSelect}
       onOpen={onOpen}
       axes={{
         xMax: maxVol,
@@ -540,17 +550,66 @@ export function FindStock({
   );
 }
 
+/** A stock's name in a bot's list: the link to its page (user 2026-10-27). */
+export function StockLink({
+  symbol,
+  onOpen,
+}: {
+  symbol: string;
+  onOpen?: (symbol: string) => void;
+}) {
+  if (!onOpen) return <strong>{symbol}</strong>;
+  return (
+    <button
+      type="button"
+      className="bot-stock-link"
+      aria-label={`${symbol}'s page`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen(symbol);
+      }}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      {symbol}
+    </button>
+  );
+}
+
+/** Enter or Space on a list row picks it, as a click does. */
+export function rowKeys(pick: () => void) {
+  return (e: KeyboardEvent) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    pick();
+  };
+}
+
+/** The rows to show, with the picked stock always among them. */
+export function withPicked<T extends { symbol: string }>(
+  rows: T[],
+  all: T[],
+  selected: string | null,
+): T[] {
+  if (!selected || rows.some((r) => r.symbol === selected)) return rows;
+  const picked = all.find((r) => r.symbol === selected);
+  return picked ? [picked, ...rows] : rows;
+}
+
 /** Every stock's two conditions as bars, closest to a signal first. */
 function StockList({
   scan,
   signals,
   selected,
   onSelect,
+  onOpen,
+  listRef,
 }: {
   scan: ScanRow[];
   signals: Signal[];
   selected: string | null;
   onSelect: (symbol: string) => void;
+  onOpen?: (symbol: string) => void;
+  listRef: RefObject<HTMLDivElement | null>;
 }) {
   const rules = useRules();
   const { minT: needT, minRvol: needVolume } = rules;
@@ -564,9 +623,14 @@ function StockList({
   const live = query
     ? scan.filter((r) => r.symbol.startsWith(query))
     : scan.filter((r) => !r.blocked && !fired.has(r.symbol));
-  const rows = all || query ? live : live.slice(0, 12);
+  // A stock picked on the map shows here even when it is out for today.
+  const rows = withPicked(
+    all || query ? live : live.slice(0, 12),
+    scan,
+    selected,
+  );
   return (
-    <div className="bot-stocks">
+    <div className="bot-stocks" ref={listRef}>
       <FindStock value={find} onChange={setFind} />
       <div
         className={`bot-stocks-head muted small${rules.d2Entry ? " d2" : ""}`}
@@ -583,12 +647,15 @@ function StockList({
           let state = note(r, rules);
           if (s) state = `Signaled · ${outcomeText[s.outcome] ?? s.outcome}`;
           return (
-            <li key={r.symbol}>
-              <button
-                type="button"
-                className={rules.d2Entry ? "d2" : undefined}
+            <li key={r.symbol} data-symbol={r.symbol}>
+              <div
+                role="button"
+                tabIndex={0}
+                className={rules.d2Entry ? "bot-stock-row d2" : "bot-stock-row"}
                 aria-pressed={selected === r.symbol}
+                aria-label={`Find ${r.symbol} on the map`}
                 onClick={() => onSelect(r.symbol)}
+                onKeyDown={rowKeys(() => onSelect(r.symbol))}
               >
                 <span className="bot-stock-name">
                   <span
@@ -597,7 +664,7 @@ function StockList({
                   >
                     {r.side === "C" ? "▲" : "▼"}
                   </span>
-                  <strong>{r.symbol}</strong>
+                  <StockLink symbol={r.symbol} onOpen={onOpen} />
                 </span>
                 <Meter value={r.t} of={needT} label={`t ${r.t.toFixed(1)}`} />
                 <Meter
@@ -621,7 +688,7 @@ function StockList({
                     {state}
                   </span>
                 )}
-              </button>
+              </div>
             </li>
           );
         })}
@@ -667,7 +734,7 @@ function WhatItSees({
   onOpen?: (symbol: string) => void;
 }) {
   const rules = useRules();
-  const [picked, setPicked] = useState<string | null>(null);
+  const { picked, fromMap, fromList, mapRef, listRef } = useMapPick();
   const fired = new Set(v.signals.map((s) => s.symbol));
   const selected =
     picked ??
@@ -688,7 +755,8 @@ function WhatItSees({
       </div>
       <p className="muted small bot-explain">
         Strength vs SPY and volume vs usual. A shaded corner signals: up a call,
-        down a put · ○ today&apos;s signals · ◆ held · tap a stock for its page.
+        down a put · ○ today&apos;s signals · ◆ held · tap a dot to find it in
+        the list · tap a name for its page.
       </p>
       {newsNote(v.news)}
       {v.scan.length === 0 ? (
@@ -698,12 +766,13 @@ function WhatItSees({
         </p>
       ) : (
         <div className="bot-sees">
-          <div className="bot-sees-map">
+          <div className="bot-sees-map" ref={mapRef}>
             <SignalMap
               scan={v.scan}
               signals={v.signals}
               selected={selected}
               trades={trades}
+              onSelect={fromMap}
               onOpen={onOpen}
             />
             {row && (
@@ -714,7 +783,9 @@ function WhatItSees({
             scan={v.scan}
             signals={v.signals}
             selected={selected}
-            onSelect={setPicked}
+            onSelect={fromList}
+            onOpen={onOpen}
+            listRef={listRef}
           />
         </div>
       )}

@@ -14,7 +14,8 @@ import {
 // The bots' maps (the Main bot's signal map, the volume bot's alert map):
 // every watched stock placed by the bot's two checks, the corners where it
 // acts shaded. User 2026-10-27: zoom in, refresh every 2 seconds, a mark on
-// the stocks the bot is in a trade on, and a tap on a stock opens its page.
+// the stocks the bot is in a trade on. A tap on a dot picks the stock in the
+// list beside the map; only its name opens its page (user 2026-10-27).
 
 export interface MapPoint {
   symbol: string;
@@ -43,17 +44,68 @@ export interface MapAxes {
 const pad = { l: 40, r: 14, t: 14, b: 34 };
 // A tap moves less than this; more is a drag.
 const tapPx = 6;
+// Zoom steps: the buttons and a double tap, and how fast a wheel or a pinch
+// zooms (it was too sensitive, user 2026-10-27).
+const buttonStep = 1.3;
+const doubleTapStep = 1.5;
+const wheelRate = 0.0015; // per pixel of wheel
+const pinchDamp = 0.7; // power on the fingers' spread ratio
+
+/**
+ * The stock picked on a bot's map or in its list, and the scrolling that
+ * links the two: picked in the list, the map scrolls into view; picked on
+ * the map, its row scrolls into view when the list sits beside the map.
+ */
+export function useMapPick() {
+  const [pick, setPick] = useState<{
+    symbol: string;
+    from: "map" | "list";
+    n: number;
+  } | null>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pick) return;
+    const map = mapRef.current;
+    const list = listRef.current;
+    if (!map || !list) return;
+    const smooth = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth";
+    if (pick.from === "list") {
+      map.scrollIntoView({ block: "nearest", behavior: smooth });
+      return;
+    }
+    const row = list.querySelector(`[data-symbol="${pick.symbol}"]`);
+    const m = map.getBoundingClientRect();
+    const beside = list.getBoundingClientRect().top < m.bottom;
+    if (row && beside)
+      row.scrollIntoView({ block: "nearest", behavior: smooth });
+  }, [pick]);
+  const pickFrom = (from: "map" | "list") => (symbol: string) =>
+    setPick((p) => ({ symbol, from, n: (p?.n ?? 0) + 1 }));
+  return {
+    picked: pick?.symbol ?? null,
+    fromMap: pickFrom("map"),
+    fromList: pickFrom("list"),
+    mapRef,
+    listRef,
+  };
+}
 
 export function BotMap({
   points,
   axes,
   selected,
+  onSelect,
   onOpen,
 }: {
   points: MapPoint[];
   axes: MapAxes;
   selected: string | null;
-  // The stock's own page; without it a tap does nothing.
+  // A tap on a dot picks the stock.
+  onSelect?: (symbol: string) => void;
+  // The stock's own page, from a tap on its name.
   onOpen?: (symbol: string) => void;
 }) {
   const box = useBoxWidth(640);
@@ -125,20 +177,40 @@ export function BotMap({
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
       const at = latest.current.toData(e.clientX, e.clientY);
-      latest.current.zoomAt(e.deltaY < 0 ? 1.25 : 1 / 1.25, at.x, at.y);
+      // Proportional to the wheel's travel, so a trackpad's many small
+      // events don't race; lines count as 16 pixels.
+      const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      const factor = Math.min(1.25, Math.max(0.8, Math.exp(-px * wheelRate)));
+      latest.current.zoomAt(factor, at.x, at.y);
     };
     el.addEventListener("wheel", wheel, { passive: false });
     return () => el.removeEventListener("wheel", wheel);
   }, []);
 
   const centre = { x: (d.x0 + d.x1) / 2, y: (d.y0 + d.y1) / 2 };
+  // A stock picked in the list while zoomed elsewhere: pan to its dot.
+  const target = points.find((p) => p.symbol === selected);
+  const tx = target ? scaleX(Math.min(target.x, axes.xMax)) : null;
+  const ty = target
+    ? scaleY(Math.max(-axes.yMax, Math.min(axes.yMax, target.y)))
+    : null;
+  useEffect(() => {
+    if (tx === null || ty === null) return;
+    setZoom((z) => {
+      if (!z) return z;
+      const inside = tx >= z.x0 && tx <= z.x1 && ty >= z.y0 && ty <= z.y1;
+      if (inside) return z;
+      return panDomain(z, full, tx - (z.x0 + z.x1) / 2, ty - (z.y0 + z.y1) / 2);
+    });
+    // Only a new pick moves the view, not the 2-second refresh.
+  }, [selected]);
   return (
     <div ref={box.ref} className="bot-map-box">
       <div className="bot-map-zoom" role="group" aria-label="Zoom the map">
         <button
           type="button"
           aria-label="Zoom in"
-          onClick={() => zoomAt(1.6, centre.x, centre.y)}
+          onClick={() => zoomAt(buttonStep, centre.x, centre.y)}
         >
           +
         </button>
@@ -146,7 +218,7 @@ export function BotMap({
           type="button"
           aria-label="Zoom out"
           disabled={!zoomed}
-          onClick={() => zoomAt(1 / 1.6, centre.x, centre.y)}
+          onClick={() => zoomAt(1 / buttonStep, centre.x, centre.y)}
         >
           −
         </button>
@@ -188,7 +260,7 @@ export function BotMap({
             const after = Math.hypot(now.x - other.x, now.y - other.y);
             if (before > 0) {
               const mid = toData((now.x + other.x) / 2, (now.y + other.y) / 2);
-              zoomAt(after / before, mid.x, mid.y);
+              zoomAt((after / before) ** pinchDamp, mid.x, mid.y);
             }
             moved.current = true;
           } else if (zoomed && pointers.current.size === 1) {
@@ -202,7 +274,7 @@ export function BotMap({
         onPointerCancel={(e) => pointers.current.delete(e.pointerId)}
         onDoubleClick={(e) => {
           const at = toData(e.clientX, e.clientY);
-          zoomAt(2, at.x, at.y);
+          zoomAt(doubleTapStep, at.x, at.y);
         }}
       >
         <defs>
@@ -317,9 +389,8 @@ export function BotMap({
               <g
                 key={p.symbol}
                 className={`bot-dot ${p.tone}${isSelected ? " selected" : ""}${p.trade ? " in-trade" : ""}`}
-                role={onOpen ? "link" : undefined}
                 onClick={() => {
-                  if (!moved.current) onOpen?.(p.symbol);
+                  if (!moved.current) onSelect?.(p.symbol);
                 }}
               >
                 <title>
@@ -328,6 +399,9 @@ export function BotMap({
                     : p.title}
                 </title>
                 <circle className="bot-dot-hit" cx={cx} cy={cy} r={12} />
+                {isSelected && (
+                  <circle className="bot-dot-halo" cx={cx} cy={cy} r={13} />
+                )}
                 {p.trade && (
                   <rect
                     className={`bot-dot-trade ${p.trade === "C" ? "up" : "down"}`}
@@ -344,7 +418,17 @@ export function BotMap({
                 )}
                 <circle cx={cx} cy={cy} r={isSelected ? 7 : 5} />
                 {name && (
-                  <text x={cx + 12} y={cy + 4}>
+                  <text
+                    className={onOpen ? "bot-dot-name" : undefined}
+                    x={cx + 12}
+                    y={cy + 4}
+                    role={onOpen ? "link" : undefined}
+                    onClick={(e) => {
+                      if (!onOpen || moved.current) return;
+                      e.stopPropagation();
+                      onOpen(p.symbol);
+                    }}
+                  >
                     {p.trade ? `◆ ${p.symbol}` : p.symbol}
                   </text>
                 )}

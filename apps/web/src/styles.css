@@ -6833,7 +6833,7 @@ dialog.trade-story .why-head h2 {
   list-style: none;
 }
 .bot-stocks-head,
-.bot-stocks li button {
+.bot-stocks .bot-stock-row {
   display: grid;
   grid-template-columns: 4.5rem minmax(0, 1fr) minmax(0, 1fr);
   gap: 2px 10px;
@@ -6841,13 +6841,13 @@ dialog.trade-story .why-head h2 {
 }
 /* With the D2 bonus on, a third bar: D2 over the last 30 minutes. */
 .bot-stocks-head.d2,
-.bot-stocks li button.d2 {
+.bot-stocks .bot-stock-row.d2 {
   grid-template-columns: 4.5rem repeat(3, minmax(0, 1fr));
 }
 .bot-stocks-head {
   padding: 0 8px 4px;
 }
-.bot-stocks li button {
+.bot-stocks .bot-stock-row {
   width: 100%;
   padding: 7px 8px;
   border: 0;
@@ -6860,10 +6860,10 @@ dialog.trade-story .why-head h2 {
   text-align: left;
   cursor: pointer;
 }
-.bot-stocks li button:hover {
+.bot-stocks .bot-stock-row:hover {
   background: var(--gray-95b);
 }
-.bot-stocks li button[aria-pressed="true"] {
+.bot-stocks .bot-stock-row[aria-pressed="true"] {
   background: var(--gray-95b);
   box-shadow: inset 3px 0 0 var(--gray-27);
 }
@@ -6871,6 +6871,43 @@ dialog.trade-story .why-head h2 {
   display: flex;
   gap: 5px;
   align-items: center;
+}
+.bot-stocks .bot-stock-row:focus-visible {
+  outline: 2px solid var(--gray-27);
+  outline-offset: -2px;
+}
+/* The name opens the stock's page; the rest of the row picks it on the map
+   (user 2026-10-27). */
+.bot-stock-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-underline-offset: 3px;
+}
+.bot-stock-link:hover,
+.bot-stock-link:focus-visible {
+  text-decoration: underline;
+}
+.bot-dot .bot-dot-name {
+  cursor: pointer;
+}
+.bot-dot .bot-dot-name:hover {
+  text-decoration: underline;
+}
+.bot-dot circle.bot-dot-halo {
+  fill: none;
+  stroke: var(--gray-27);
+  stroke-width: 2;
+  stroke-dasharray: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bot-dot circle.bot-dot-halo {
+    animation: trade-pulse 1.6s ease-in-out 3;
+  }
 }
 .bot-stock-state {
   grid-column: 2 / -1;
