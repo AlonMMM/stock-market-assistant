@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#111a1b" />
     <title>Stock Market Assistant</title>
+    <script>
+      // Dark before the first paint, so a dark page does not flash white
+      // (theme.ts keeps it in step afterwards).
+      try {
+        var t =
+          localStorage.getItem("sma.theme.v1") ||
+          localStorage.getItem("sma.watchlist.theme.v1");
+        if (
+          t === "dark" ||
+          (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)
+        )
+          document.documentElement.classList.add("dark");
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

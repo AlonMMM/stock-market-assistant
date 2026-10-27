@@ -31,6 +31,7 @@ import {
   type Marker,
   type Story,
 } from "./trade-story-model.js";
+import { isDarkNow, useDark } from "./theme.js";
 
 // The trade's chart (docs/tasks/frontend-trade-story.md), on the library the
 // regular chart uses, so it zooms and scrolls the same way: the stock with
@@ -42,7 +43,7 @@ import {
 export type ChartView = "trade" | "day" | "all";
 export type ChartStyle = "line" | "candles";
 
-const colors = {
+const lightColors = {
   surface: "#fafbf8",
   text: "#52514e",
   grid: "#e7ece6",
@@ -69,7 +70,42 @@ const colors = {
   signal: "#2f4b8f",
   touch: "#b5651d",
   held: "rgba(47, 75, 143, 0.07)",
+  tagText: "#fff", // on the coloured fill labels
+  dot: "#fff", // inside a fill's dot on the option
 };
+// The dark theme's pairs (user 2026-10-27: dark mode for the whole app).
+const darkColors: typeof lightColors = {
+  surface: "#1f232a",
+  text: "#b9bcc1",
+  grid: "#2a2f37",
+  divider: "#343a43",
+  up: "#3fcf7f",
+  down: "#ff5c5c",
+  upVolume: "rgba(63, 207, 127, 0.3)",
+  downVolume: "rgba(255, 92, 92, 0.3)",
+  stock: "#8ea8f0",
+  option: "#c6c9ce",
+  optionVolume: "rgba(198, 201, 206, 0.22)",
+  spy: "#7d89a8",
+  strength: "#8ea8f0",
+  rule: "#3fcf7f",
+  otherRule: "#ff5c5c",
+  zero: "#343a43",
+  level: "#e0a060",
+  entry: "#8ea8f0",
+  paid: "#8d95a1",
+  stop: "#ff5c5c",
+  buy: "#3fcf7f",
+  sell: "#ff5c5c",
+  expired: "#8d95a1",
+  signal: "#8ea8f0",
+  touch: "#e0a060",
+  held: "rgba(142, 168, 240, 0.1)",
+  tagText: "#16191f",
+  dot: "#1f232a",
+};
+// Read at each draw; the chart is built again when the theme changes.
+const palette = () => (isDarkNow() ? darkColors : lightColors);
 // Marker labels are drawn when the bars are at least this far apart.
 const labelSpacing = 5.5;
 // Dragging this far past the first or last bar asks for more days.
@@ -133,7 +169,7 @@ function tradeMarks(
         const a = xOf(chart, buy.time);
         const b = xOf(chart, last.time);
         if (a === null || b === null) return;
-        context.fillStyle = colors.held;
+        context.fillStyle = palette().held;
         context.fillRect(
           Math.min(a, b),
           0,
@@ -155,10 +191,10 @@ function tradeMarks(
           if (x === null) continue;
           const color =
             f.kind === "buy"
-              ? colors.buy
+              ? palette().buy
               : f.kind === "sell"
-                ? colors.sell
-                : colors.expired;
+                ? palette().sell
+                : palette().expired;
           const px = Math.round(x) + 0.5;
           context.strokeStyle = color;
           context.globalAlpha = 0.85;
@@ -184,14 +220,14 @@ function tradeMarks(
             context.beginPath();
             context.roundRect(left, top, w, 18, 4);
             context.fill();
-            context.fillStyle = "#fff";
+            context.fillStyle = palette().tagText;
             context.fillText(text, left + 6, top + 9.5);
           }
           if (role === "option" && f.price !== null) {
             const series = option();
             const y = series?.priceToCoordinate(f.price);
             if (y === null || y === undefined) continue;
-            context.fillStyle = "#fff";
+            context.fillStyle = palette().dot;
             context.strokeStyle = color;
             context.lineWidth = 2.5;
             context.beginPath();
@@ -213,7 +249,7 @@ function tradeMarks(
             context.beginPath();
             context.roundRect(left, y - 9, w, 18, 4);
             context.fill();
-            context.fillStyle = "#fff";
+            context.fillStyle = palette().tagText;
             context.fillText(text, left + 5, y + 0.5);
           }
         }
@@ -233,7 +269,7 @@ function dayLines(chart: IChartApi, times: () => Time[]): IPanePrimitive<Time> {
     draw: (target) =>
       target.useMediaCoordinateSpace(({ context, mediaSize }) => {
         context.save();
-        context.strokeStyle = colors.divider;
+        context.strokeStyle = palette().divider;
         context.setLineDash([4, 4]);
         context.lineWidth = 1;
         for (const t of times()) {
@@ -278,7 +314,7 @@ function markerShape(m: Marker): SeriesMarker<Time> {
       time,
       position: "belowBar",
       shape: "arrowUp",
-      color: colors.buy,
+      color: palette().buy,
       text: m.label,
       size: 1.4,
     };
@@ -287,7 +323,7 @@ function markerShape(m: Marker): SeriesMarker<Time> {
       time,
       position: "aboveBar",
       shape: "arrowDown",
-      color: colors.sell,
+      color: palette().sell,
       text: m.label,
       size: 1.4,
     };
@@ -296,7 +332,7 @@ function markerShape(m: Marker): SeriesMarker<Time> {
       time,
       position: "aboveBar",
       shape: "circle",
-      color: colors.expired,
+      color: palette().expired,
       text: m.label,
       size: 1,
     };
@@ -305,7 +341,7 @@ function markerShape(m: Marker): SeriesMarker<Time> {
       time,
       position: "aboveBar",
       shape: "circle",
-      color: colors.touch,
+      color: palette().touch,
       text: m.label,
       size: 1,
     };
@@ -313,7 +349,7 @@ function markerShape(m: Marker): SeriesMarker<Time> {
     time,
     position: "belowBar",
     shape: "circle",
-    color: colors.signal,
+    color: palette().signal,
     text: m.label,
     size: 1,
   };
@@ -336,14 +372,17 @@ function lineStyle(kind: LevelLine["kind"]): {
   color: string;
   style: LineStyle;
 } {
-  if (kind === "entry") return { color: colors.entry, style: LineStyle.Dashed };
-  if (kind === "level") return { color: colors.level, style: LineStyle.Dashed };
+  if (kind === "entry")
+    return { color: palette().entry, style: LineStyle.Dashed };
+  if (kind === "level")
+    return { color: palette().level, style: LineStyle.Dashed };
   if (kind === "touch")
-    return { color: colors.level, style: LineStyle.SparseDotted };
+    return { color: palette().level, style: LineStyle.SparseDotted };
   if (kind === "fallback")
-    return { color: colors.level, style: LineStyle.Dotted };
-  if (kind === "paid") return { color: colors.paid, style: LineStyle.Dashed };
-  return { color: colors.stop, style: LineStyle.Dotted };
+    return { color: palette().level, style: LineStyle.Dotted };
+  if (kind === "paid")
+    return { color: palette().paid, style: LineStyle.Dashed };
+  return { color: palette().stop, style: LineStyle.Dotted };
 }
 
 interface Parts {
@@ -401,7 +440,15 @@ export interface Hover {
   volume: number | null;
 }
 
-export function TradeStoryChart({
+type ChartProps = Parameters<typeof StoryChart>[0];
+
+/** The chart in the page's theme; a theme change draws it again. */
+export function TradeStoryChart(props: ChartProps) {
+  const dark = useDark();
+  return <StoryChart key={dark ? "dark" : "light"} {...props} />;
+}
+
+function StoryChart({
   chart,
   story,
   view,
@@ -435,16 +482,16 @@ export function TradeStoryChart({
     const api = createChart(el, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: colors.surface },
-        textColor: colors.text,
+        background: { type: ColorType.Solid, color: palette().surface },
+        textColor: palette().text,
         fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
         fontSize: 11,
         attributionLogo: false,
-        panes: { separatorColor: colors.divider, enableResize: false },
+        panes: { separatorColor: palette().divider, enableResize: false },
       },
       grid: {
-        vertLines: { color: colors.grid },
-        horzLines: { color: colors.grid },
+        vertLines: { color: palette().grid },
+        horzLines: { color: palette().grid },
       },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderVisible: false },
@@ -469,7 +516,7 @@ export function TradeStoryChart({
     const stockPrices = () => p.stockLevels ?? [];
     const optionPrices = () => p.optionLevels ?? [];
     p.stockLine = api.addSeries(LineSeries, {
-      color: colors.stock,
+      color: palette().stock,
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
@@ -477,10 +524,10 @@ export function TradeStoryChart({
         withPrices(original, stockPrices),
     });
     p.stockCandles = api.addSeries(CandlestickSeries, {
-      upColor: colors.up,
-      downColor: colors.down,
-      wickUpColor: colors.up,
-      wickDownColor: colors.down,
+      upColor: palette().up,
+      downColor: palette().down,
+      wickUpColor: palette().up,
+      wickDownColor: palette().down,
       borderVisible: false,
       priceLineVisible: false,
       lastValueVisible: false,
@@ -490,7 +537,7 @@ export function TradeStoryChart({
     });
     p.spy = api.addSeries(LineSeries, {
       priceScaleId: "left",
-      color: colors.spy,
+      color: palette().spy,
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: true,
@@ -509,7 +556,7 @@ export function TradeStoryChart({
     p.strength = api.addSeries(
       LineSeries,
       {
-        color: colors.strength,
+        color: palette().strength,
         lineWidth: 2,
         priceLineVisible: false,
         lastValueVisible: false,
@@ -521,7 +568,7 @@ export function TradeStoryChart({
       p.optionLine = api.addSeries(
         LineSeries,
         {
-          color: colors.option,
+          color: palette().option,
           lineWidth: 2,
           priceLineVisible: false,
           lastValueVisible: false,
@@ -534,10 +581,10 @@ export function TradeStoryChart({
       p.optionCandles = api.addSeries(
         CandlestickSeries,
         {
-          upColor: colors.up,
-          downColor: colors.down,
-          wickUpColor: colors.up,
-          wickDownColor: colors.down,
+          upColor: palette().up,
+          downColor: palette().down,
+          wickUpColor: palette().up,
+          wickDownColor: palette().down,
           borderVisible: false,
           priceLineVisible: false,
           lastValueVisible: false,
@@ -551,7 +598,7 @@ export function TradeStoryChart({
       p.optionVolume = api.addSeries(
         HistogramSeries,
         {
-          color: colors.optionVolume,
+          color: palette().optionVolume,
           priceFormat: { type: "volume" },
           priceLineVisible: false,
           lastValueVisible: false,
@@ -702,7 +749,7 @@ export function TradeStoryChart({
         volume.push({
           time: t,
           value: v,
-          color: c >= o ? colors.upVolume : colors.downVolume,
+          color: c >= o ? palette().upVolume : palette().downVolume,
         });
       }
       for (const [m, c] of s.spy) spy.push({ time: time(s.date, m), value: c });
@@ -770,7 +817,7 @@ export function TradeStoryChart({
     p.ruleLines = [
       p.strength.createPriceLine({
         price: 0,
-        color: colors.zero,
+        color: palette().zero,
         lineWidth: 1,
         lineStyle: LineStyle.Solid,
         axisLabelVisible: false,
@@ -782,7 +829,7 @@ export function TradeStoryChart({
       p.ruleLines.push(
         p.strength.createPriceLine({
           price: sign * story.rule,
-          color: colors.rule,
+          color: palette().rule,
           lineWidth: 1,
           lineStyle: LineStyle.Dashed,
           axisLabelVisible: true,
@@ -790,7 +837,7 @@ export function TradeStoryChart({
         }),
         p.strength.createPriceLine({
           price: -sign * story.rule,
-          color: colors.otherRule,
+          color: palette().otherRule,
           lineWidth: 1,
           lineStyle: LineStyle.SparseDotted,
           axisLabelVisible: false,

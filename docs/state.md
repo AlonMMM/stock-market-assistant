@@ -1,7 +1,19 @@
 # Current state
 
-Updated: 2026-10-26
+Updated: 2026-10-27
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
+
+## Dark mode for the whole app (2026-10-27)
+
+Every section, a stock's page, the price alerts, the trade window and the charts follow one theme: the phone's
+setting until the sun/moon button in the header (every page, phones too) picks light or dark; the pick is kept in
+this browser (`sma.theme.v1`, which takes over the Watchlist's old one). `.dark` on `<html>` switches it, set
+before the first paint by `index.html` so a dark page does not flash white, then by `theme.ts`. Every colour in
+`styles.css` is a token at its top with a light value and a dark one (IBKR's dark greys, from the Watchlist);
+`tests/theme-tokens.test.ts` fails on a colour written straight into a rule. The canvas charts (a stock's candles,
+the trade's chart) and the account chart have a dark palette and are drawn again when the theme changes. The
+full-screen chart and the day chart were dark already and stay so. The light theme is unchanged: a few shades
+nobody can tell apart were merged into one token.
 
 ## Watchlist: overnight prices, IBKR's look and dark mode (2026-10-26)
 
@@ -11,7 +23,7 @@ close; "C" marks a close (overnight without a print, a closed market, before a s
 The table follows the user's IBKR screenshot: Instrument, Last price, Chng, Chg %, Volume on phones, Roboto
 numbers with tabular figures, plain green/red; Volume turns orange at 2× usual. Wider screens keep Today, vs
 SPY/sector, Score, Rel vol, Day range and Alerts. A dark mode (IBKR's colours) follows the phone's setting, with a
-sun/moon button to override it; it covers the list only. Charts still stop at 20:00. See the
+sun/moon button to override it; since 2026-10-27 it covers the whole app (below). Charts still stop at 20:00. See the
 [task](tasks/watchlist-night-prices.md).
 
 ## Indi bot on the paper account (2026-10-21, in review)

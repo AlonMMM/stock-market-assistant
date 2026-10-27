@@ -5,6 +5,7 @@ import {
   dayLabels,
   nearestPoint,
 } from "./trade-history-model.js";
+import { useDark } from "./theme.js";
 import { israelDateTime, israelLabel } from "./time.js";
 import { useWidth } from "./use-width.js";
 
@@ -14,13 +15,24 @@ import { useWidth } from "./use-width.js";
 // leave no gaps, with no grid, no axis numbers and no dots but the last.
 // Dragging across it shows each trade's value in the header.
 
-const colors = {
+const lightColors = {
   up: "#0e7a43",
   down: "#b42318",
   flat: "#5d6e69",
   start: "#9aa59f",
   muted: "#5d6e69",
   crosshair: "#142b29",
+  ring: "#fff", // around the dot, the card's colour
+};
+// The dark theme's pairs (user 2026-10-27: dark mode for the whole app).
+const darkColors: typeof lightColors = {
+  up: "#3fcf7f",
+  down: "#ff5c5c",
+  flat: "#8d95a1",
+  start: "#5d6672",
+  muted: "#99a0ab",
+  crosshair: "#e6e8eb",
+  ring: "#1b1e24",
 };
 
 const usd = (n: number) =>
@@ -29,7 +41,7 @@ const signedUsd = (n: number) =>
   `${n < 0 ? "−" : n > 0 ? "+" : ""}${usd(Math.round(n))}`;
 const signedPct = (n: number) =>
   `${n < 0 ? "−" : n > 0 ? "+" : ""}${Math.abs(n).toFixed(2)}%`;
-const tone = (n: number) =>
+const toneIn = (colors: typeof lightColors, n: number) =>
   n > 0 ? colors.up : n < 0 ? colors.down : colors.flat;
 
 const pad = { top: 26, right: 10, bottom: 26, left: 10 };
@@ -43,6 +55,8 @@ export function PnlChart({
   periodLabel?: string;
 }) {
   const [active, setActive] = useState<number | null>(null);
+  const colors = useDark() ? darkColors : lightColors;
+  const tone = (n: number) => toneIn(colors, n);
   const [frame, width] = useWidth<HTMLDivElement>();
   const gradient = useId().replace(/:/g, "");
   const points = cumulativeTrades(history.trades, history.baseEquity);
@@ -222,7 +236,7 @@ export function PnlChart({
                   cy={y(values[i]!)}
                   r={active !== null ? 5 : 4}
                   fill={dot}
-                  stroke="#fff"
+                  stroke={colors.ring}
                   strokeWidth={2}
                 />
               );
