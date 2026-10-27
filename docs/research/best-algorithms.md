@@ -198,6 +198,36 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### Buy near the fair price: a limit at the microprice, 1 minute, then the usual price (2026-10-27, BETTER on both halves)
+
+The user: "can we calculate the real stock equity before we buy? ... if we add a order with 1.06 which is behind the
+mid we probably get it done no? ... start with couple of click above the value"; "do it all". `fair_fill.py` on the
+champion, real quotes, tune / check by entry week (split.py). Step 1: at our buys fair sits at or above the mid, not
+under it: the size-weighted microprice +0.08 / +0.13 half-spreads (fair list / Favorites; under the mid at 44-46% of
+buys), the chain-IV price +0.32 / +0.22 (under at 28-32%); winners and losers alike. Step 2, 48 settings set before
+running (fair micro / chain; +0-3 ticks; wait 1-3 min; not filled: skip or chase). A limit fills only when the option
+prints at or below it or the ask comes down to it; never above what the bot pays now; the chase keeps the fill model's
+runaway rule. Look 1 had a chase without that rule (too kind: $458,486 / $165,585 on check); look 2 (fixed) counts:
+
+| Buy | Fair tune | Favorites tune | Fair check | Favorites check | Without the best 5, check (fair / fav) |
+| --- | --- | --- | --- | --- | --- |
+| now (mid + half to the ask) | $257,982 / 16% | $289,355 / 11% | $368,105 / 12% | $139,363 / 15% | $152,135 / $75,608 |
+| **microprice + 3 ticks, 1 min, then the usual price** | $321,727 / 15% | $363,827 / 10% | **$428,607 / 12%** | **$155,291 / 13%** | $171,208 / $83,225 |
+
++25% / +26% on tune, +16% / +11% on check, the same or a smaller drop, better without the best 5. A filled limit saves
+1.2% of the premium; the chase settings beat every skip setting (missing a runaway costs more than the saving). The
+whole family is above "now" with the chase (+20-25% on tune), so it is not a knife edge. The fill proof is strict (a
+print at or under the limit), so live fills can only be as good or better. Looks used on check: 2 of 3.
+
+### Open interest as the strike choice (2026-10-27, not better: fails the check)
+
+The user: "OI as the strike choice: among strikes near 0.15 delta, take the one with the most OI". `oi_strike.py` on
+the champion, the morning's OI. Tune: the most OI of the 0.15 strike and its neighbours $324,772 / 17% (fair) and
+$403,764 / 20% (Favorites) vs $257,982 / 16% and $289,355 / 11%; within delta 0.12-0.18 $234,071 / $240,094 and
+0.10-0.20 $229,998 / $257,148 (both lose on tune). Check, the picked rule: $211,068 / 26% and $91,722 / 30% vs
+$368,105 / 12% and $139,363 / 15%. Its tune gain was ~250 trades today's rule skips (a thin 0.15 strike): a liquidity
+fallback again, and it falls apart on the odd weeks.
+
 ### A $0.10 floor for IBIT, and for the tickers with options 3+ days a week (2026-10-27)
 
 The user: "IBIT is special - because it have best trades for al the times. I want you to add IBIT as a default to have a
