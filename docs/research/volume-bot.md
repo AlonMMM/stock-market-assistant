@@ -9,6 +9,27 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### A wider early give-back and a bigger side line (2026-10-27)
+
+Why the 1-minute stops: the give-back (0.75 x S30 from the best) sits about 0.5 x S30 under the alert price, and a burst
+minute's high-low range is about 0.97 x S30 (median, the 177 trades out within 2 minutes). 47% of trades are out within
+10 minutes at -30% on average; 30 minutes after the buy those stocks were still 0.9 x S30 against us (median), but 29%
+later went 1 x S30 our way. `STR_EARLY_GIVE` / `STR_EARLY_MIN` (leg_fallback.walk) and `SEC_K` (the side line) test it.
+Top 50, 3 years, cross:
+
+| Version | Trades | Win rate | Avg per trade | $100K becomes | Worst drop | Top 15 avg |
+| --- | --- | --- | --- | --- | --- | --- |
+| baseline (0.25 line, 0.75 give-back) | 1,591 | 23.4% | -9.1% | $25,196 | 79.7% | +0.2% |
+| 1.25x for the first 3 min | 1,589 | - | -8.7% | $27,036 | 78.6% | +0.9% |
+| 1.25x for the first 5 min | 1,586 | - | -8.5% | $27,745 | 77.9% | +0.3% |
+| 1.5x for the first 3 min | 1,587 | - | -8.7% | $27,092 | 78.5% | +1.1% |
+| 1.5x for the first 5 min | 1,580 | 24.6% | -8.5% | $28,010 | 77.6% | +0.5% |
+| side line 0.5 | 1,407 | 24.3% | -8.2% | $31,659 | 73.7% | +3.3% |
+| side line 0.5 + 1.25x for 5 min | 1,393 | 25.0% | -8.0% | $32,205 | 73.5% | +5.0% |
+
+Each helps a little (about 1 point a trade together), none comes near break-even on the top 50: names 16-50 stay at
+-10..-11% a trade. The early exits only move later (out within 10 minutes 47% -> 44%), they don't turn into winners.
+
 ### A 40% option stop-loss (2026-10-27)
 
 The NVDA call of 2024-06-28 rode from $0.27 to $0.02: the stock crept up and drifted sideways for 3 hours, never giving

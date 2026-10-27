@@ -34,11 +34,13 @@ FROM = os.environ.get("SEC_FROM", "2025-10-23")   # SEC_FROM=2024-02-01 SEC_TAG=
 TAG = os.environ.get("SEC_TAG", "")
 if os.environ.get("SEC_WAIT"): TW.WAIT = int(os.environ["SEC_WAIT"])   # the side's give-up, minutes (live 10)
 WTAG = "" if TW.WAIT == 10 else f"_w{TW.WAIT}"
+if os.environ.get("SEC_K"): TW.K = float(os.environ["SEC_K"])   # the side line, x S30 (live 0.25)
+KTAG = "" if TW.K == 0.25 else f"_k{TW.K}"
 SEC1 = "2025-02-20"
 OUT = os.path.join(HERE, "sec_cache")
 NY = ZoneInfo("America/New_York")
 LAG = 2
-ENTRIES = ("close", "cross", "hold5", "hold10")
+ENTRIES = ("close", "cross", "hold5", "hold10", "hold30")
 VERSIONS = ("plain20", "step8c25")
 
 
@@ -86,7 +88,7 @@ def fast_events():
     """The fast alert's events (fast_alerts.py): the alert's 10-second slot end, the stock's price then."""
     import leg_1dte as L1
     out = []
-    for a in json.load(open(os.path.join(OUT, "fast_alerts.json"))):
+    for a in json.load(open(os.path.join(OUT, os.environ.get("SEC_ALERT_FILE", "fast_alerts.json")))):   # or an early_prep.py file
         if a["date"] < FROM or a["date"] not in CAL: continue
         k = L1.kind_of(a["sym"], a["date"])
         x = ctx(a["sym"], a["date"])
@@ -127,7 +129,7 @@ def triggers(e):
         if side and side == side0: run += 1
         elif side: run, side0 = 1, side
         else: run, side0 = 0, None
-        for n in (5, 10):
+        for n in (5, 10, 30):
             if side and run >= n and out[f"hold{n}"] is None: out[f"hold{n}"] = (s, side, c)
     return out
 
@@ -248,7 +250,7 @@ def main():
             for i, _ in enumerate(ex.map(fetch_stock, ev)):
                 if i % 200 == 0: print(i, "/", len(ev), flush=True)
         return
-    pk_file = os.path.join(OUT, f"picks{TAG}{WTAG}.json")
+    pk_file = os.path.join(OUT, f"picks{TAG}{WTAG}{KTAG}.json")
     if step == "pick":
         with mp.Pool(8) as pool: trig = pool.map(triggers, ev, chunksize=8)
         with mp.Pool(8) as pool: picks = pool.map(pick_for, list(zip(ev, trig)), chunksize=4)
@@ -256,7 +258,7 @@ def main():
         print(sum(len(p) for p in picks), "picks"); return
     pk = json.load(open(pk_file))
     if step == "option":
-        jobs = sorted({(i, x[0], pk[i]["t"][k.split("|")[0]][0]) for i in range(len(ev)) for k, x in pk[i]["p"].items() if not k.startswith("close")})
+        jobs = sorted({(i, x[0], pk[i]["t"][k.split("|")[0]][0]) for i in range(len(ev)) for k, x in pk[i]["p"].items() if not k.startswith("close") and k in os.environ.get("SEC_OPT_ONLY", k)})   # SEC_OPT_ONLY="cross|plain20": only those
         with ThreadPoolExecutor(40) as ex:
             for n, _ in enumerate(ex.map(lambda j: fetch_opt((ev[j[0]], j[1], j[2])), jobs)):
                 if n % 200 == 0: print(n, "/", len(jobs), flush=True)
@@ -322,8 +324,10 @@ def main():
                         for r in R: by_s[r["sym"]].append(r["pnl"])
                         for sy, ps in sorted(by_s.items(), key=lambda x: -len(x[1])): print(f"  {sy}: {len(ps)} trades, {sum(p > 0 for p in ps)} won, ${sum(ps):,.0f}")
                         print("  months:", dict(sorted(collections.Counter(r["date"][:7] for r in R).items())))
-                    if os.environ.get("STR_DUMP") and v == "plain20" and entry == "cross" and lab.startswith("3 years") and fname in ("all", "all: all"):
-                        json.dump(R, open(os.environ["STR_DUMP"], "w"), default=str)   # the kept trades, for a chart
+                    if os.environ.get("STR_DUMP") and v == "plain20" and entry != "close" and lab.startswith("3 years") and fname in ("all", "all: all"):
+                        dp = os.environ["STR_DUMP"]   # the kept trades, for a chart; cross at STR_DUMP, a hold at <name>_<entry>.json
+                        if entry != "cross": dp = dp.replace(".json", f"_{entry}.json")
+                        json.dump(R, open(dp, "w"), default=str)
                     if os.environ.get("STR_DIAG") and v == "plain20" and entry == "cross" and R:
                         import statistics as stt
                         sg = lambda r: 1 if r["side"] == "C" else -1

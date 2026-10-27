@@ -12,6 +12,8 @@ import dbx_fetch as F
 TAG = os.environ.get("SEC_TAG", "")
 WAIT = int(os.environ.get("SEC_WAIT", "10"))
 WTAG = "" if WAIT == 10 else f"_w{WAIT}"
+K = float(os.environ.get("SEC_K", "0.25"))
+KTAG = "" if K == 0.25 else f"_k{K}"
 OUT = os.path.join(HERE, "dbx_cache", "extra")
 
 
@@ -33,7 +35,7 @@ def fetch(item):
 
 if __name__ == "__main__":
     ev = json.load(open(os.path.join(HERE, "sec_cache", f"events{TAG}.json")))
-    pk = json.load(open(os.path.join(HERE, "sec_cache", f"picks{TAG}{WTAG}.json")))
+    pk = json.load(open(os.path.join(HERE, "sec_cache", f"picks{TAG}{WTAG}{KTAG}.json")))
     need = {}
     for i, e in enumerate(ev):
         for k, x in pk[i]["p"].items():

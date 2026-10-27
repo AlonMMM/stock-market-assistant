@@ -25,6 +25,8 @@ import zero5
 from cheap_up import candidates
 
 DELTA, K, WAIT, GIVE, END, SH, COMM = 0.35, 0.25, 60, 0.75, 360, 0.02, 0.62
+EARLY_GIVE = float(os.environ.get("STR_EARLY_GIVE", "0"))   # a wider give-back for the first EARLY_MIN minutes (0: off)
+EARLY_MIN = int(os.environ.get("STR_EARLY_MIN", "5"))
 LOW, HIGH = 0.25, 0.50
 MODES = ("plain", "cheap", "liquid", "both")
 C = sim.C
@@ -59,7 +61,9 @@ def walk(sym, date, ct, side, contract, spot_side, u):
         if t in kb: last = kb[t]
         spot = sb[t][4] if t in sb else None
         if spot: best = max(best, spot) if side == "C" else min(best, spot)
-        if t >= END or (spot and abs(spot / best - 1) >= GIVE * u):
+        give = GIVE
+        if EARLY_GIVE and t - b0[0] <= EARLY_MIN: give = EARLY_GIVE
+        if t >= END or (spot and abs(spot / best - 1) >= give * u):
             return buy, max(sim.mid(last) * (1 - SH), 0.01), b0[0], t
     return buy, max(sim.mid(last) * (1 - SH), 0.01), b0[0], END
 
