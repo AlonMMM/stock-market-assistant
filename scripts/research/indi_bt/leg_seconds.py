@@ -75,13 +75,30 @@ def events_of(job):
             if al[q] and not al[q - 1] and q in sb]
 
 
-def stock_path(e): return os.path.join(OUT, "stock", f"{e['date']}_{e['sym']}_{e['m']}.csv.gz")
+def stock_path(e):
+    if "sec0" in e: return os.path.join(OUT, "stock", f"{e['date']}_{e['sym']}_s{e['sec0']}.csv.gz")
+    return os.path.join(OUT, "stock", f"{e['date']}_{e['sym']}_{e['m']}.csv.gz")
+
+
+def fast_events():
+    """The fast alert's events (fast_alerts.py): the alert's 10-second slot end, the stock's price then."""
+    import leg_1dte as L1
+    out = []
+    for a in json.load(open(os.path.join(OUT, "fast_alerts.json"))):
+        if a["date"] < FROM or a["date"] not in CAL: continue
+        k = L1.kind_of(a["sym"], a["date"])
+        x = ctx(a["sym"], a["date"])
+        if not k or not x or not x.get("sd"): continue
+        nxt = CAL[CAL.index(a["date"]) + 1] if k == "1" else a["date"]
+        out.append(dict(date=a["date"], sym=a["sym"], kind=k, nxt=nxt, m=a["sec"] // 60, sec0=a["sec"], u=x["sd"], stock0=a["price"]))
+    return out
 
 
 def fetch_stock(e):
     p = stock_path(e)
     if os.path.exists(p): return
-    a = (e["m"] + 1) * 60; z = (e["m"] + TW.WAIT + 1) * 60
+    a = e["sec0"] if "sec0" in e else (e["m"] + 1) * 60
+    z = a + TW.WAIT * 60
     text = get("EQUS.MINI", "ohlcv-1s", e["sym"], e["date"], a, z)
     rows = [(sec_of(r["ts_event"]), r["close"]) for r in csv.DictReader(io.StringIO(text))]
     os.makedirs(os.path.dirname(p), exist_ok=True)
@@ -196,8 +213,10 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     ev_file = os.path.join(OUT, f"events{TAG}.json")
     if step == "list":
-        with mp.Pool(8) as pool: res = pool.map(events_of, TW.days(), chunksize=8)
-        ev = [e for r in res for e in r]
+        if os.environ.get("SEC_ALERT") == "fast": ev = fast_events()
+        else:
+            with mp.Pool(8) as pool: res = pool.map(events_of, TW.days(), chunksize=8)
+            ev = [e for r in res for e in r]
         if os.environ.get("STR_TOP"):
             top = set(json.load(open(os.path.join(HERE, "strangle_top40.json")))[:int(os.environ["STR_TOP"])])
             if os.environ.get("STR_FAV"): top |= set(P["universe_fav"])   # and every favorite
@@ -225,7 +244,7 @@ def main():
     if step == "run":
         import news_filter as nf
         top = set(json.load(open(os.path.join(HERE, "strangle_top40.json")))[:int(os.environ.get("STR_TOP", "999"))]) if os.environ.get("STR_TOP") else None
-        jobs = [(ev[i], k.split("|")[0], k.split("|")[1], x[0], x[1], pk[i]["t"][k.split("|")[0]]) for i in range(len(ev)) for k, x in pk[i]["p"].items() if top is None or ev[i]["sym"] in top]
+        jobs = [(ev[i], k.split("|")[0], k.split("|")[1], x[0], x[1], pk[i]["t"][k.split("|")[0]]) for i in range(len(ev)) for k, x in pk[i]["p"].items() if (top is None or ev[i]["sym"] in top) and ev[i]["sym"] not in os.environ.get("STR_EXCL", "").split(",")]
         with mp.Pool(8) as pool: T = [t for t in pool.map(trade, jobs, chunksize=8) if t]
         rows = [dict(date=d, sym=s, minute=0, right="C") for d, s in {(t["date"], t["sym"]) for t in T}]
         nf.features(rows)

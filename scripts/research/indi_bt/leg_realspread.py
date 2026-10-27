@@ -61,8 +61,8 @@ def quotes(date):
     if date not in QUOTES:
         QUOTES.clear()
         by = {}
-        path = os.path.join(HERE, "dbx_cache", f"{date}.csv.gz")
-        if os.path.exists(path):
+        for path in (os.path.join(HERE, "dbx_cache", f"{date}.csv.gz"), os.path.join(HERE, "dbx_cache", "extra", f"{date}.csv.gz")):
+            if not os.path.exists(path): continue
             for r in csv.DictReader(gzip.open(path, "rt")):
                 if r["bid"] and r["ask"] and float(r["ask"]) > 0: by.setdefault(r["contract"], []).append((int(r["minute"]), float(r["bid"]), float(r["ask"])))
         for v in by.values(): v.sort()

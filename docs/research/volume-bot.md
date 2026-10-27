@@ -9,6 +9,28 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### CORRECTION: the per-second results were inflated by missing sale quotes; the fast alert (2026-10-27)
+
+`leg_seconds.py` sold at the real minute bid from `dbx_cache`, which holds only the contracts picked at the old
+minute-close side. When the per-second entry picked another strike there was no quote and the trade silently dropped,
+and the dropped trades were mostly losers. Fixed: `extra_quotes.py` downloads the missing contracts to
+`dbx_cache/extra/`, `leg_realspread.quotes()` reads both. Corrected (live 0.20 rule, cross = 2 s after the side line):
+
+| Top 15 | Before | Corrected |
+| --- | --- | --- |
+| 3 years, all | 321, +5.8%, $117,177 / 12.5% | 367, +0.2%, $99,106 / 17.5% (2024 -3.9%, 2025 -2.1%, 2026 +4.7%) |
+| 3 years, t >= 0 | 189, +11.8%, $121,840 / 7.0% | 219, +4.2%, $107,460 / 11.1% (2024 +10.3%, 2025 +5.4%, 2026 -0.7%) |
+| 12 months, 14 names (no GOOG), all | 134, +10.4%, $113,092 | 158, +2.9%, $103,865 / 7.2%; 6 months -6.8% |
+
+The entries below that use the per-second entry (the top 10/15/20/40 table, the 3-year and strength numbers) are the
+inflated ones; the minute-close rows and the strangle are not affected. The all-names per-second rows are not re-run.
+
+**The fast alert** (stock-market-assistant #182, `fast_volume.py` rule R60 at 4x: a rolling 60-s window every 10 s,
+120-min cooldown; `fast_alerts.py`; everything after the alert the same), 14 names, 12 months (the 10-s bars start
+2025-10-23): 833 alerts in 09:40-13:00 (old rule A with the same cooldown 270; the Volume bot's own onsets 561),
+634 on expiry days, 625 reach a side, 414 trades. Cross -6.8% a trade, $75,030 / 33%; t >= 0 -4.0%, $91,312 / 20%;
+close -10.1%. Worse than the old alert (+2.9%). Not better.
+
 ### Real quotes: the bar test's look-ahead, the strangle, the entry on the second (2026-10-27)
 
 All on real bid/ask (Databento OPRA), 1% a trade, the live limits (15 a day, 5 open, 7.5% day loss), the news skip,
