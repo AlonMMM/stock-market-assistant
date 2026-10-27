@@ -351,6 +351,19 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### An analyst-action bonus (2026-10-27, not better: too rare to matter)
+
+The user: "what do you think about testing a bonus for stock that had upgrade/downgrade from an know analyst
+organisation?". `analyst_news.py` (Benzinga through Alpaca, 82 stocks, 2024 - today: 14,019 analyst headlines; from 25
+big houses with a direction 500 upgrades / downgrades and 6,415 target changes), `analyst_bonus.py` on the champion,
+an action between the previous close and the signal. Only 10 of the champion's trades are confirmed by an upgrade /
+downgrade, 6 go against one, 16 pre-market-skipped signals are confirmed. Tune (fair / Favorites): base $257,982 /
+$289,355; 1.5x on upgrade / downgrade $257,200 / $288,949; 1.5x incl. target changes $253,152 / $280,909; skip against
+$257,782 / $290,900; trade the confirmed pre-market skips $259,838 / $288,196; all three $259,742 / $288,745. None beats
+the champion on both tune lists; check (skip against) $368,105 / $140,443 vs $368,105 / $139,363. The bot's signals
+rarely fall on an analyst day (an upgrade mostly moves the stock before the open, a day the news filter and the
+pre-market skip already treat as news).
+
 ### Fridays (2026-10-27, not better: keep trading them)
 
 The user: "on friday- consider buy for next week"; then "(c) On Fridays buy the nearest Monday or Wednesday expiry when
