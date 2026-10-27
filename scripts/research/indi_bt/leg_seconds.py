@@ -212,10 +212,12 @@ def limit_buy(rows, t0, mode):
     tick = 0.01 if ask < 3 else 0.05
     lim = min(micro + 3 * tick, start)
     if mode == "pct": lim = min(micro * (1 + float(os.environ.get("STR_BUY_PCT", "0")) / 100), start)   # microprice + x%
-    if mode == "pct": lim = min(micro * (1 + float(os.environ.get("STR_BUY_PCT", "0")) / 100), start)   # microprice + x%
+    if mode == "mid": lim = (bid + ask) / 2   # the mid for the wait, then the usual price
+    if mode == "micro_mid": lim = min(micro, (bid + ask) / 2)   # the microprice for 1 s, the mid for the next, then the usual
     wait = int(os.environ.get("STR_BUY_WAIT", "60"))   # seconds before paying the usual price
     for s in range(t0 + 1, t0 + wait + 1):
         if mode == "step5" and (s - t0) % 5 == 0: lim = min(lim + tick, start)
+        if mode == "micro_mid" and s - t0 == 2: lim = (bid + ask) / 2
         b = book_at(rows, s)
         if b and b[1] <= lim + 1e-9: return min(lim, b[1]), "limit", s - t0
     late = usual_buy(rows, t0 + wait)

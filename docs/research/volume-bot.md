@@ -9,6 +9,14 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### The mid for 1 second (2026-10-27)
+
+`STR_BUY=mid STR_BUY_WAIT=1`: a limit at the mid for 1 s, then the usual price: fills 3% of buys (top 15 13%) at 5.2%
+under the usual price; all buys +0.07%; -9.4% a trade (top 15 +1.5%, names 16-50 -11.3%). `micro_mid` (the microprice
+for 1 s, then the mid for 1 s, then the usual): fills 6% (top 15 21%), all buys +0.18%, -9.4% (top 15 +1.4%). The
+same as the 2-second microprice limits: a limit inside the spread rarely fills in 1-2 s, and the rest pay a little more
+a second or two later. The top 15's +1.2..1.7 points appear with every short-delay version, fills or not.
+
 ### Microprice + x%, 2 seconds at most (2026-10-27)
 
 The user's version: limit at the microprice + x% (never above the usual price), 2 s, then the usual price
