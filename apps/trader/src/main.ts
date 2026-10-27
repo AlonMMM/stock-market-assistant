@@ -490,6 +490,10 @@ const strangle = (() => {
 const strangleTimer = strangle
   ? setInterval(() => void strangle.tick(), 10_000)
   : null;
+// The stocks waiting for their side, every second (one price call, only while one waits).
+const sideTimer = strangle
+  ? setInterval(() => void strangle.watchSides(), 1_000)
+  : null;
 api.get("/v1/strangle", async () => {
   if (!strangle) throw new RequestError(strangleOff, 409);
   return strangle.status();
@@ -549,6 +553,7 @@ async function stop() {
   clearInterval(shortWatch);
   if (botTimer) clearInterval(botTimer);
   if (strangleTimer) clearInterval(strangleTimer);
+  if (sideTimer) clearInterval(sideTimer);
   botStore.close();
   strangleStore.close();
   await api.close();

@@ -233,6 +233,8 @@ function harness(
     volume?: (contract: string) => number;
     // the last asked minute's bar not in yet (it lands seconds after the close)
     lag?: boolean;
+    // the stock's last trade (the one-second side watch); none: no live prices
+    last?: () => number;
   } = {},
 ) {
   const store = new StrangleStore(
@@ -281,6 +283,13 @@ function harness(
     async optionVolume30(contract) {
       return opts.volume?.(contract) ?? 500;
     },
+    ...(opts.last
+      ? {
+          async lastPrices(symbols: string[]) {
+            return new Map(symbols.map((s) => [s, opts.last!()]));
+          },
+        }
+      : {}),
   };
   void days;
   const mids = { C: 0.6, P: 0.5 };
@@ -365,7 +374,12 @@ function harness(
       await bot.tick();
     }
   };
-  return { bot, store, run, calls, notes, held, mids };
+  // The one-second side watch at second sec of New York minute w.
+  const watch = async (w: number, sec: number) => {
+    now = at(DAY, w) + sec * 1000;
+    await bot.watchSides();
+  };
+  return { bot, store, run, watch, calls, notes, held, mids };
 }
 
 // The burst at 10:08-10:09, a climb to 10:29, then a fall.
@@ -429,6 +443,33 @@ test("runner (dry): first alert -> watching -> the side -> only that leg -> sold
   assert.ok(
     h.notes.some((n) => n.startsWith(`${strangleTag} (dry run): would sell`)),
   );
+});
+
+test("side watch: the leg is bought the second the stock crosses, once, between the 10-second ticks", async () => {
+  let last = 0;
+  const h = harness(
+    { mode: "live" },
+    { day: climbThenFall(), last: () => last },
+  );
+  await h.run(565, 610); // watching from the 10:09 alert
+  const [w] = h.store.openTrades();
+  assert.equal(w!.phase, "watching");
+  // Not across the line yet: nothing.
+  last = w!.stockRef;
+  await h.watch(610, 3);
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.store.openTrades()[0]!.phase, "watching");
+  // Across it at 10:10:04: bought then, the side the stock's way.
+  last = w!.stockRef * 1.01;
+  await h.watch(610, 4);
+  const buys = () => h.calls.filter((c) => c.kind === "buy");
+  assert.equal(buys().length, 1);
+  const [t] = h.store.openTrades();
+  assert.equal(t!.side, "C");
+  assert.equal(t!.sideMinute, 40);
+  // The tick and the watch at once still buy one leg.
+  await Promise.all([h.watch(610, 5), h.bot.tick(), h.watch(610, 6)]);
+  assert.equal(buys().length, 1);
 });
 
 test("runner (live): one buy with the tag and the safety stop; one sale of all of it; never short", async () => {

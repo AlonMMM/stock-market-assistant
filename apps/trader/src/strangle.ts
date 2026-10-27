@@ -155,6 +155,8 @@ export class StrangleBot {
   private today = new Map<string, Map<number, MinuteBar>>();
   private done = -1;
   private busy = false;
+  // Trades whose leg is being bought (the 10-second tick and the 1-second watch both look).
+  private entering = new Set<string>();
   private summarized: string | null = null;
   private lastWork: number | null = null;
   private dayStartEquity: number | null = null;
@@ -281,6 +283,78 @@ export class StrangleBot {
     if (wall >= close + 5 && this.summarized !== date) {
       this.summarized = date;
       await this.summary(date);
+    }
+  }
+
+  /**
+   * Called every second: the stocks waiting for their side, on their last
+   * trade, so the leg is bought within seconds of the stock crossing the line,
+   * not at the next 10-second tick (backtest: leg_seconds.py, 2026-10-27).
+   */
+  async watchSides(): Promise<void> {
+    if (this.day === null || !this.o.market.lastPrices) return;
+    const { date, minute: wall } = newYork(this.o.now());
+    const close = coreClose(date);
+    if (close === null || date !== this.day) return;
+    const closeMinute = close - 570;
+    const m = Math.min(wall - 570, closeMinute - 1);
+    if (m < 0) return;
+    const waiting = this.o.store
+      .openTrades()
+      .filter(
+        (t) =>
+          t.phase === "watching" &&
+          t.day === date &&
+          !this.pending(t) &&
+          !this.entering.has(t.id),
+      );
+    if (!waiting.length) return;
+    const saved = this.settings();
+    const s = {
+      ...saved,
+      endMinute: Math.min(saved.endMinute, closeMinute - 30),
+    };
+    let prices: Map<string, number>;
+    try {
+      prices = await this.o.market.lastPrices([
+        ...new Set(waiting.map((t) => t.symbol)),
+      ]);
+    } catch {
+      return; // the tick checks again within 10 seconds
+    }
+    try {
+      for (const t of waiting) {
+        const stock = prices.get(t.symbol);
+        // Past the wait or the end the tick closes it; only the side here.
+        if (!stock || waitedOut(m, t.alertMinute, s) || m >= s.endMinute)
+          continue;
+        const side = sideOf(stock, t.stockRef, t.unit, s);
+        if (side) await this.enter(t.id, side, m, stock, s);
+      }
+    } catch (error) {
+      this.event(
+        "error",
+        `Side watch failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /** Buys the side's leg once, whichever loop saw the side first. */
+  private async enter(
+    id: string,
+    side: Leg,
+    m: number,
+    stock: number,
+    s: StrangleSettings,
+  ) {
+    if (this.entering.has(id)) return;
+    this.entering.add(id);
+    try {
+      const t = this.o.store.openTrades().find((x) => x.id === id);
+      if (t?.phase !== "watching") return;
+      await this.buyLeg(t, side, m, stock, s);
+    } finally {
+      this.entering.delete(id);
     }
   }
 
@@ -772,7 +846,12 @@ export class StrangleBot {
 
   private async manage(date: string, m: number, s: StrangleSettings) {
     for (const t of this.o.store.openTrades()) {
-      if (t.phase === "buying" || t.phase === "closing" || this.pending(t))
+      if (
+        t.phase === "buying" ||
+        t.phase === "closing" ||
+        this.pending(t) ||
+        this.entering.has(t.id)
+      )
         continue;
       const stock = await this.stockNow(t.symbol, m);
       if (t.phase === "watching") {
@@ -785,7 +864,7 @@ export class StrangleBot {
         const side =
           stock !== null ? sideOf(stock, t.stockRef, t.unit, s) : null;
         if (side) {
-          await this.buyLeg(t, side, m, stock!, s);
+          await this.enter(t.id, side, m, stock!, s);
           continue;
         }
         if (waitedOut(m, t.alertMinute, s) || m >= s.endMinute) {
