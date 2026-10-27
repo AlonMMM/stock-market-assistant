@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import {
   coreClose,
   newYork,
@@ -17,6 +17,8 @@ import {
   contractsInWords,
   parseOccSymbol,
 } from "../../../packages/trading/src/options.js";
+import { BotMap, type MapPoint } from "./BotMap.js";
+import { EntryBanners, InTradeSign, type HeldTrade } from "./BotEntries.js";
 import { usePolling } from "./Live.js";
 import { israelClock, israelLabel, israelShortDate } from "./time.js";
 
@@ -25,7 +27,8 @@ import { israelClock, israelLabel, israelShortDate } from "./time.js";
 // the same paper account, so its positions also appear under Live trades and
 // History, marked with the Bot chip.
 
-const refreshMs = 15000;
+// Every 2 seconds (user 2026-10-27), while the page is in view.
+const refreshMs = 2000;
 const ignore = () => {};
 
 // The bot's settings as it reports them (the defaults from a trading service
@@ -361,179 +364,57 @@ function Funnel({ v }: { v: BotView }) {
 // ---------------------------------------------------------------------------
 // The signal map: every stock placed by the two things the bot checks
 
-const pad = { l: 40, r: 14, t: 14, b: 34 };
-
-/** The map's drawing width: its box's width, so text keeps its size on phones. */
-export function useBoxWidth(fallback: number) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(fallback);
-  useEffect(() => {
-    const box = ref.current;
-    if (!box) return;
-    const watch = new ResizeObserver(([entry]) => {
-      if (entry) setWidth(Math.round(entry.contentRect.width));
-    });
-    watch.observe(box);
-    return () => watch.disconnect();
-  }, []);
-  return { ref, width };
-}
-
 function SignalMap({
   scan,
   signals,
   selected,
-  onSelect,
+  trades,
+  onOpen,
 }: {
   scan: ScanRow[];
   signals: Signal[];
   selected: string | null;
-  onSelect: (symbol: string) => void;
+  trades: ReadonlyMap<string, "C" | "P">;
+  onOpen?: (symbol: string) => void;
 }) {
   const rules = useRules();
   const { minT: needT, minRvol: needVolume } = rules;
-  const box = useBoxWidth(640);
-  const mapW = Math.max(300, Math.min(760, box.width));
-  const mapH = mapW < 520 ? 320 : 340;
   const maxVol = Math.min(6, Math.max(3, ...scan.map((r) => r.rvol * 1.1)));
   const maxT = Math.min(6, Math.max(3, ...scan.map((r) => r.t * 1.1)));
-  const right = mapW - pad.r;
-  const bottom = mapH - pad.b;
-  const x = (v: number) =>
-    pad.l + (Math.min(v, maxVol) / maxVol) * (right - pad.l);
-  // Leaning up (a call) is above the middle, down (a put) below it.
-  const y = (t: number) =>
-    pad.t +
-    ((maxT - Math.max(-maxT, Math.min(maxT, t))) / (2 * maxT)) *
-      (bottom - pad.t);
   const fired = new Set(signals.map((s) => s.symbol));
-  // Names on the closest stocks only, so the labels stay readable.
-  const named = new Set(scan.slice(0, 8).map((r) => r.symbol));
-  if (selected) named.add(selected);
-  const volTicks = [0, 1, needVolume, 2, 3, 4, 5, 6].filter((v) => v <= maxVol);
-  const tTicks = [-4, -needT, 0, needT, 4].filter((t) => Math.abs(t) <= maxT);
-  const zoneX = x(needVolume);
+  const points: MapPoint[] = scan.map((r) => ({
+    symbol: r.symbol,
+    x: r.rvol,
+    // Leaning up (a call) is above the middle, down (a put) below it.
+    y: r.side === "C" ? r.t : -r.t,
+    tone: r.blocked ? "blocked" : r.side === "C" ? "up" : "down",
+    ring: fired.has(r.symbol),
+    trade: trades.get(r.symbol) ?? null,
+    title: `${r.symbol}: t ${r.t.toFixed(1)}, volume ${r.rvol.toFixed(1)}×. ${lacking(r, rules)}`,
+  }));
   return (
-    <div ref={box.ref}>
-      <svg
-        className="bot-map"
-        viewBox={`0 0 ${mapW} ${mapH}`}
-        width="100%"
-        role="img"
-        aria-label="Each watched stock by strength against SPY and volume against normal. A stock in a shaded corner signals."
-      >
-        <rect
-          className="bot-map-zone up"
-          x={zoneX}
-          y={pad.t}
-          width={right - zoneX}
-          height={y(needT) - pad.t}
-        />
-        <rect
-          className="bot-map-zone down"
-          x={zoneX}
-          y={y(-needT)}
-          width={right - zoneX}
-          height={bottom - y(-needT)}
-        />
-        <text
-          className="bot-map-zone-label up"
-          x={right - 6}
-          y={pad.t + 16}
-          textAnchor="end"
-        >
-          Call signal
-        </text>
-        <text
-          className="bot-map-zone-label down"
-          x={right - 6}
-          y={bottom - 8}
-          textAnchor="end"
-        >
-          Put signal
-        </text>
-        {tTicks.map((t) => (
-          <g key={`t${t}`}>
-            <line
-              className={
-                Math.abs(t) === needT ? "bot-map-need" : "bot-map-grid"
-              }
-              x1={pad.l}
-              x2={right}
-              y1={y(t)}
-              y2={y(t)}
-            />
-            <text
-              className="bot-map-tick"
-              x={pad.l - 6}
-              y={y(t) + 4}
-              textAnchor="end"
-            >
-              {t === 0 ? "0" : `${t > 0 ? "+" : "−"}${Math.abs(t)}`}
-            </text>
-          </g>
-        ))}
-        {volTicks.map((v) => (
-          <g key={`v${v}`}>
-            <line
-              className={v === needVolume ? "bot-map-need" : "bot-map-grid"}
-              x1={x(v)}
-              x2={x(v)}
-              y1={pad.t}
-              y2={bottom}
-            />
-            <text
-              className="bot-map-tick"
-              x={x(v)}
-              y={bottom + 14}
-              textAnchor="middle"
-            >
-              {v}×
-            </text>
-          </g>
-        ))}
-        <text
-          className="bot-map-axis"
-          x={(pad.l + right) / 2}
-          y={mapH - 3}
-          textAnchor="middle"
-        >
-          Volume since the open vs normal →
-        </text>
-        <text
-          className="bot-map-axis"
-          transform={`translate(11 ${(pad.t + bottom) / 2}) rotate(-90)`}
-          textAnchor="middle"
-        >
-          ↓ weaker · strength vs SPY (t) · stronger ↑
-        </text>
-        {scan.map((r) => {
-          const cx = x(r.rvol);
-          const cy = y(r.side === "C" ? r.t : -r.t);
-          const isSelected = selected === r.symbol;
-          let tone = r.side === "C" ? "up" : "down";
-          if (r.blocked) tone = "blocked";
-          return (
-            <g
-              key={r.symbol}
-              className={`bot-dot ${tone}${isSelected ? " selected" : ""}`}
-              onClick={() => onSelect(r.symbol)}
-            >
-              <title>{`${r.symbol}: t ${r.t.toFixed(1)}, volume ${r.rvol.toFixed(1)}×. ${lacking(r, rules)}`}</title>
-              {fired.has(r.symbol) && (
-                <circle className="bot-dot-ring" cx={cx} cy={cy} r={10} />
-              )}
-              <circle cx={cx} cy={cy} r={isSelected ? 7 : 5} />
-              {named.has(r.symbol) && (
-                <text x={cx + 9} y={cy + 4}>
-                  {r.symbol}
-                </text>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-    </div>
+    <BotMap
+      points={points}
+      selected={selected}
+      onOpen={onOpen}
+      axes={{
+        xMax: maxVol,
+        yMax: maxT,
+        needX: needVolume,
+        needY: needT,
+        xTicks: [0, 1, needVolume, 2, 3, 4, 5, 6].filter((v) => v <= maxVol),
+        yTicks: [-4, -needT, 0, needT, 4].filter((t) => Math.abs(t) <= maxT),
+        yTick: (t) =>
+          t === 0
+            ? "0"
+            : `${t > 0 ? "+" : "−"}${Number(Math.abs(t).toFixed(2))}`,
+        zones: ["Call signal", "Put signal"],
+        xTitle: "Volume since the open vs normal →",
+        yTitle: "↓ weaker · strength vs SPY (t) · stronger ↑",
+        label:
+          "Each watched stock by strength against SPY and volume against normal. A stock in a shaded corner signals.",
+      }}
+    />
   );
 }
 
@@ -565,10 +446,12 @@ function StockFocus({
   r,
   signal,
   day,
+  onOpen,
 }: {
   r: ScanRow;
   signal: Signal | undefined;
   day: string;
+  onOpen?: (symbol: string) => void;
 }) {
   const rules = useRules();
   const { minT: needT, minRvol: needVolume } = rules;
@@ -583,6 +466,15 @@ function StockFocus({
         <span className={`bot-lean ${r.side === "C" ? "up" : "down"}`}>
           {r.side === "C" ? "▲" : "▼"} {lean}
         </span>
+        {onOpen && (
+          <button
+            type="button"
+            className="bot-open"
+            onClick={() => onOpen(r.symbol)}
+          >
+            {r.symbol}&apos;s page ›
+          </button>
+        )}
       </div>
       <div className="bot-focus-meters">
         <span>
@@ -718,7 +610,15 @@ function newsNote(news: BotView["news"]) {
   return <p className="bot-warn small">News filter: {parts.join("; ")}.</p>;
 }
 
-function WhatItSees({ v }: { v: BotView }) {
+function WhatItSees({
+  v,
+  trades,
+  onOpen,
+}: {
+  v: BotView;
+  trades: ReadonlyMap<string, "C" | "P">;
+  onOpen?: (symbol: string) => void;
+}) {
   const rules = useRules();
   const { minT: needT, minRvol: needVolume } = rules;
   const [picked, setPicked] = useState<string | null>(null);
@@ -740,7 +640,9 @@ function WhatItSees({ v }: { v: BotView }) {
         1-minute moves beat SPY × its beta (a t-stat, {needT} or more).{" "}
         <b>Volume</b>: shares since the open against its usual by this time (
         {needVolume}× or more). A stock that reaches a shaded corner signals: up
-        buys a call, down a put. A ring marks today's signals.
+        buys a call, down a put. A ring marks today's signals, a ◆ the stocks
+        the bot is in a trade on. Pinch, scroll or + to zoom; tap a stock for
+        its page.
         {rules.d2Entry && (
           <>
             {" "}
@@ -764,9 +666,12 @@ function WhatItSees({ v }: { v: BotView }) {
               scan={v.scan}
               signals={v.signals}
               selected={selected}
-              onSelect={setPicked}
+              trades={trades}
+              onOpen={onOpen}
             />
-            {row && <StockFocus r={row} signal={signal} day={v.day} />}
+            {row && (
+              <StockFocus r={row} signal={signal} day={v.day} onOpen={onOpen} />
+            )}
           </div>
           <StockList
             scan={v.scan}
@@ -1128,7 +1033,14 @@ function Rules({ v }: { v: BotView }) {
   );
 }
 
-export function BotPanel({ onSettings }: { onSettings?: () => void }) {
+export function BotPanel({
+  onSettings,
+  onOpenTicker,
+}: {
+  onSettings?: () => void;
+  // A stock's own page (the Watchlist's), from the map.
+  onOpenTicker?: (symbol: string) => void;
+}) {
   const { value: answer, error } = usePolling<BotView>(
     "/api/bot",
     refreshMs,
@@ -1144,6 +1056,14 @@ export function BotPanel({ onSettings }: { onSettings?: () => void }) {
     );
   const open = value.positions.filter((p) => p.status !== "closed");
   const closed = value.positions.filter((p) => p.status === "closed").reverse();
+  const held: HeldTrade[] = open.map((p) => ({
+    id: p.id,
+    symbol: p.symbol,
+    side: p.right,
+    at: p.openedAt,
+    what: `${contractName(p.contract, p.day)} · ${p.bought} contract${p.bought === 1 ? "" : "s"} at $${p.cost.toFixed(2)}${p.dry ? " · dry run" : ""}`,
+  }));
+  const trades = new Map(held.map((t) => [t.symbol, t.side]));
   return (
     <RulesContext.Provider value={value.settings ?? defaultSettings}>
       <div className="bot-panel">
@@ -1158,6 +1078,7 @@ export function BotPanel({ onSettings }: { onSettings?: () => void }) {
             </p>
           </div>
           <div className="bot-head-side">
+            <InTradeSign trades={held} target="bot-hold-title" />
             {statusPill(value)}
             {onSettings && (
               <button type="button" className="bot-more" onClick={onSettings}>
@@ -1171,9 +1092,10 @@ export function BotPanel({ onSettings }: { onSettings?: () => void }) {
             Could not refresh; showing the last answer.
           </p>
         )}
+        <EntryBanners bot="Main bot" trades={held} />
         <SessionStrip day={value.day} signals={value.signals} now={now} />
         <Funnel v={value} />
-        <WhatItSees v={value} />
+        <WhatItSees v={value} trades={trades} onOpen={onOpenTicker} />
         <div className="bot-two">
           <Holdings open={open} day={value.day} now={now} />
           <Signals v={value} />

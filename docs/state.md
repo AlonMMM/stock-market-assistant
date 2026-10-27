@@ -3,6 +3,26 @@
 Updated: 2026-10-27
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
 
+## Ongoing trades and the bots' maps (2026-10-27)
+
+**An ongoing trade opens its window.** Under Live trades (the owner's account, the Main bot's and the volume
+bot's), tapping an open position shows the trade's window in place of the plain day chart: the summary ("Held so
+far", "Sold so far"), the chart with the buy and any sales at their minutes and the last session read again every
+20 seconds, why it was entered, the exits so far and the fills, valued at the last price. Its fills come from the
+account's history, which now also returns the trades still open (`open` in `/api/portfolio/history`, built by
+`tradeLots` in `portfolio.ts` from the same fills); a trade older than the activity read falls back to the day
+chart. The volume bot's trades, open or closed, are told from its own records (`volumeStory`: the alert, the side
+it waited for, the leg, the sale); they used to show the Main bot's "no longer available".
+
+**The maps** (the Main bot's signal map, the volume bot's alert map; `BotMap.tsx`): zoom with a pinch, the wheel,
+a double tap or + / − (Fit returns), and drag when zoomed; ticks follow the zoom with the bot's threshold always
+among them (`bot-map-model.ts`). A ◆ marks the stocks the bot holds a trade on. A tap on a stock opens its page in
+the Watchlist section, and Back returns to the bot's tab (the Portfolio tab is kept for the visit). Both pages read
+the bot's state every 2 seconds while in view (it was 15 and 10). When the bot enters a trade while the page is
+open (or in the 3 minutes before it was opened), a banner shows it, green for a call and red for a put, for a
+minute, and the phone vibrates where it can; an "In trade" sign by the bot's name lists what it holds and scrolls
+to it. Checked on synthetic data in screenshots only.
+
 ## Dark mode for the whole app (2026-10-27)
 
 Every section, a stock's page, the price alerts, the trade window and the charts follow one theme: the phone's

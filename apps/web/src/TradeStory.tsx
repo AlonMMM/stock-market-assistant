@@ -17,6 +17,7 @@ import type { BotView } from "../../../packages/trading/src/bot-api.js";
 import { defaultSettings } from "../../../packages/trading/src/bot/settings.js";
 import type { OrderDecisions } from "../../../packages/trading/src/decisions-api.js";
 import type { ClosedTrade } from "../../../packages/trading/src/portfolio.js";
+import type { StrangleView } from "../../../packages/trading/src/strangle/view.js";
 import { readJson } from "./api.js";
 import { BotChip } from "./BotPanel.js";
 import {
@@ -42,6 +43,7 @@ import {
   tradeChartUrl,
   tradeStats,
   unknownStory,
+  volumeStory,
   type PricePoint,
   type Story,
   type TradeStats,
@@ -152,10 +154,12 @@ function Summary({
   stats,
   t,
   unit,
+  live,
 }: {
   stats: TradeStats;
   t: ClosedTrade;
   unit: string;
+  live: boolean;
 }) {
   const plural = (n: number) => `${n} ${unit}${n === 1 ? "" : "s"}`;
   return (
@@ -173,8 +177,12 @@ function Summary({
         )}
       </div>
       <div className="ts-cell sell">
-        <h4>Exit{stats.exits.length === 1 ? "" : "s"}</h4>
-        {stats.exits.length === 0 && <p className="muted">No sale recorded.</p>}
+        <h4>
+          {live ? "Sold so far" : `Exit${stats.exits.length === 1 ? "" : "s"}`}
+        </h4>
+        {stats.exits.length === 0 && (
+          <p className="muted">{live ? "Nothing yet." : "No sale recorded."}</p>
+        )}
         {stats.exits.map((x, i) => (
           <p key={`${x.ms}-${i}`} className="num">
             <b>{israelClock(x.ms)}</b> · {plural(x.qty)}
@@ -192,7 +200,7 @@ function Summary({
         ))}
       </div>
       <div className="ts-cell">
-        <h4>Held</h4>
+        <h4>{live ? "Held so far" : "Held"}</h4>
         <p className="num">
           <b>{heldText(stats.heldMs)}</b> ·{" "}
           <b className={tone(t.pnl).trim()}>
@@ -230,31 +238,38 @@ function Summary({
           <p className="muted">The option did not trade while held.</p>
         )}
       </div>
-      <div className="ts-cell">
-        <h4>After the sale</h4>
-        {stats.afterBest || stats.afterClose ? (
-          <p className="ts-points">
-            <Point label="Highest" p={stats.afterBest} />
-            <Point label="Last" p={stats.afterClose} />
-          </p>
-        ) : (
-          <p className="muted">
-            No trade in the option after the sale that day.
-          </p>
-        )}
-      </div>
+      {!live && (
+        <div className="ts-cell">
+          <h4>After the sale</h4>
+          {stats.afterBest || stats.afterClose ? (
+            <p className="ts-points">
+              <Point label="Highest" p={stats.afterBest} />
+              <Point label="Last" p={stats.afterClose} />
+            </p>
+          ) : (
+            <p className="muted">
+              No trade in the option after the sale that day.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-/** The window: chart, why entered, why exited, the fills. */
+/** Whose trade: the owner's, the Main bot's or the volume bot's. */
+export type TradeSource = "owner" | "main" | "volume";
+
+/** The window over the History list: a closed trade's story. */
 export function TradeStory({
   t,
   bot,
+  source = bot ? "main" : "owner",
   onClose,
 }: {
   t: ClosedTrade;
   bot: boolean;
+  source?: TradeSource;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -262,6 +277,71 @@ export function TradeStory({
     const dialog = ref.current;
     if (dialog && !dialog.open) dialog.showModal();
   }, []);
+  const opened = israelDateTime(Date.parse(t.openedAt));
+  const closed = t.expired
+    ? `expiry ${t.closedAt.slice(0, 10)}`
+    : israelDateTime(Date.parse(t.closedAt));
+  const unit = t.option ? "contract" : "share";
+  return createPortal(
+    <dialog
+      ref={ref}
+      className="why trade-story"
+      aria-labelledby="ts-title"
+      onClose={onClose}
+      onClick={(event) => {
+        // A click on the backdrop lands on the dialog element itself.
+        if (event.target === ref.current) ref.current?.close();
+      }}
+    >
+      <div className="why-body">
+        <header className="why-head">
+          <div>
+            <h2 id="ts-title">
+              {optionName(t)} {source !== "owner" && <BotChip />}
+            </h2>
+            <p className="muted">
+              {t.option ? `${expiryLabel(t.option.expiry)} · ` : ""}
+              {t.qty} {unit}
+              {t.qty === 1 ? "" : "s"} · {opened} → {closed} · {israelLabel}
+            </p>
+          </div>
+          <span className={`ts-result num${tone(t.pnl)}`}>
+            {signedUsd(t.pnl)}
+            {t.pnlPct !== null && ` (${signedPct(t.pnlPct)})`}
+          </span>
+          <button
+            type="button"
+            className="why-close"
+            aria-label="Close"
+            onClick={() => ref.current?.close()}
+          >
+            ×
+          </button>
+        </header>
+        <TradeStoryBody t={t} source={source} />
+      </div>
+    </dialog>,
+    document.body,
+  );
+}
+
+// An open trade's chart reads its last session again this often.
+const liveChartMs = 20000;
+
+/**
+ * The trade's story: summary, chart, why entered, the exits and the fills.
+ * In the window for a closed trade, and in place of the plain chart under an
+ * open position (`live`: the contracts still held; user 2026-10-27).
+ */
+export function TradeStoryBody({
+  t,
+  source,
+  live,
+}: {
+  t: ClosedTrade;
+  source: TradeSource;
+  live?: { held: number };
+}) {
   const [chart, setChart] = useState<TradeChartData | null>(null);
   const [chartError, setChartError] = useState("");
   // The trade's own minutes first: the entry and the exit up close.
@@ -277,22 +357,48 @@ export function TradeStory({
   });
   const chartRef = useRef(chart);
   chartRef.current = chart;
+  // A live trade's `t` is rebuilt with each price; the chart is read once
+  // per trade, then its last session again while it is open.
+  const opened = t.openedAt;
+  const symbol = t.symbol;
+  const isLive = live !== undefined;
+  const closedAt = isLive ? null : t.closedAt;
 
   useEffect(() => {
-    let live = true;
-    const { from, to } = chartWindow(t, Date.now());
-    fetch(tradeChartUrl(t.symbol, from, to))
+    let active = true;
+    const { from, to } = chartWindow(
+      { openedAt: opened, closedAt: closedAt ?? new Date().toISOString() },
+      Date.now(),
+    );
+    fetch(tradeChartUrl(symbol, from, to))
       .then((r) => readJson<TradeChartData>(r))
       .then((c) => {
-        if (live) setChart(c);
+        if (active) setChart(c);
       })
       .catch((e: Error) => {
-        if (live) setChartError(e.message);
+        if (active) setChartError(e.message);
       });
     return () => {
-      live = false;
+      active = false;
     };
-  }, [t]);
+  }, [symbol, opened, closedAt]);
+
+  useEffect(() => {
+    if (!isLive) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      const last = lastOpenSession(Date.now());
+      fetch(tradeChartUrl(symbol, last, last))
+        .then((r) => readJson<TradeChartData>(r))
+        .then((more) =>
+          setChart((old) => (old ? mergeSessions(old, more) : more)),
+        )
+        .catch(() => {
+          // Keep what is drawn; the next read may work.
+        });
+    }, liveChartMs);
+    return () => clearInterval(timer);
+  }, [isLive, symbol]);
 
   const onEdge = useCallback(
     (side: "before" | "after") => {
@@ -323,7 +429,7 @@ export function TradeStory({
         to = after.at(-1)!;
       }
       edge.loading = true;
-      fetch(tradeChartUrl(t.symbol, from, to))
+      fetch(tradeChartUrl(symbol, from, to))
         .then((r) => readJson<TradeChartData>(r))
         .then((more) => {
           if (more.sessions.length === 0) edge.done = true;
@@ -336,7 +442,7 @@ export function TradeStory({
           edge.loading = false;
         });
     },
-    [t.symbol],
+    [symbol],
   );
 
   const chooseView = (v: ChartView) => {
@@ -352,7 +458,12 @@ export function TradeStory({
     }
   };
 
-  const { value: botView } = usePolling<BotView>("/api/bot", refreshMs, ignore);
+  // The bot's records: the Main bot's or the volume bot's.
+  const { value: records } = usePolling<BotView | StrangleView>(
+    source === "volume" ? "/api/strangle" : "/api/bot",
+    refreshMs,
+    ignore,
+  );
   const { value: orders } = usePolling<OrderDecisions>(
     "/api/portfolio/orders",
     refreshMs,
@@ -361,203 +472,176 @@ export function TradeStory({
   // The story is built once per answer: the chart redraws its lines and
   // markers when it changes, and the crosshair readout re-renders often.
   const story = useMemo<Story | null>(() => {
-    if (bot) {
+    if (source === "volume") {
+      const own = volumeStory(t, records as StrangleView | null);
+      if (own) return own;
+      return records ? unknownStory(t, "volume") : null;
+    }
+    if (source === "main") {
+      const botView = records as BotView | null;
       const own = botStory(t, botView, botView?.settings ?? defaultSettings);
       if (own) return own;
       return botView ? unknownStory(t) : null;
     }
     return ownerStory(t, decisionFor(t, orders?.decisions ?? []));
-  }, [t, bot, botView, orders]);
+  }, [t, source, records, orders]);
   const stats = useMemo(
     () => (story && chart ? tradeStats(t, story, chart) : null),
     [t, story, chart],
   );
   const multiplier = t.option ? 100 : 1;
   const fills = t.fills ?? [];
-  const opened = israelDateTime(Date.parse(t.openedAt));
-  const closed = t.expired
-    ? `expiry ${t.closedAt.slice(0, 10)}`
-    : israelDateTime(Date.parse(t.closedAt));
   const unit = t.option ? "contract" : "share";
-  return createPortal(
-    <dialog
-      ref={ref}
-      className="why trade-story"
-      aria-labelledby="ts-title"
-      onClose={onClose}
-      onClick={(event) => {
-        // A click on the backdrop lands on the dialog element itself.
-        if (event.target === ref.current) ref.current?.close();
-      }}
-    >
-      <div className="why-body">
-        <header className="why-head">
-          <div>
-            <h2 id="ts-title">
-              {optionName(t)} {bot && <BotChip />}
-            </h2>
-            <p className="muted">
-              {t.option ? `${expiryLabel(t.option.expiry)} · ` : ""}
-              {t.qty} {unit}
-              {t.qty === 1 ? "" : "s"} · {opened} → {closed} · {israelLabel}
-              {story?.version ? ` · bot ${story.version}` : ""}
-            </p>
-          </div>
-          <span className={`ts-result num${tone(t.pnl)}`}>
-            {signedUsd(t.pnl)}
-            {t.pnlPct !== null && ` (${signedPct(t.pnlPct)})`}
-          </span>
-          <button
-            type="button"
-            className="why-close"
-            aria-label="Close"
-            onClick={() => ref.current?.close()}
+  const plural = (n: number) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  return (
+    <>
+      {stats && <Summary stats={stats} t={t} unit={unit} live={isLive} />}
+      <section className="ts-chart-section">
+        <div className="ts-bar">
+          <div
+            className="segmented small"
+            role="group"
+            aria-label="What the chart shows"
           >
-            ×
-          </button>
-        </header>
-        {stats && (
-          <Summary stats={stats} t={t} unit={t.option ? "contract" : "share"} />
-        )}
-        <section className="ts-chart-section">
-          <div className="ts-bar">
-            <div
-              className="segmented small"
-              role="group"
-              aria-label="What the chart shows"
-            >
-              {views.map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  aria-pressed={view === v.id}
-                  onClick={() => chooseView(v.id)}
-                >
-                  {v.label}
-                </button>
-              ))}
-            </div>
-            <div
-              className="segmented small"
-              role="group"
-              aria-label="How prices are drawn"
-            >
-              {styles.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  aria-pressed={style === s.id}
-                  onClick={() => chooseStyle(s.id)}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-            {hover && chart && <Readout hover={hover} chart={chart} />}
+            {views.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                aria-pressed={view === v.id}
+                onClick={() => chooseView(v.id)}
+              >
+                {v.label}
+              </button>
+            ))}
           </div>
-          {chart && story ? (
-            <Suspense fallback={<div className="ts-chart" />}>
-              <TradeStoryChart
-                chart={chart}
-                story={story}
-                view={view}
-                viewKey={viewKey}
-                style={style}
-                onEdge={onEdge}
-                onHover={setHover}
-              />
-            </Suspense>
-          ) : (
-            <p className="chart-status">
-              {chartError ? `No chart: ${chartError}` : "Loading the chart…"}
-            </p>
-          )}
-        </section>
-        {story ? (
-          <>
-            <section>
-              <h3>{story.entryTitle}</h3>
-              <ul className="ts-why">
-                {story.entry.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
-              {story.decision && (
-                <p className="ts-more">
-                  <WhyButton decision={story.decision} /> opens the full order:
-                  every input, the chain and each check.
-                </p>
-              )}
-            </section>
-            <section>
-              <h3>Why it was exited</h3>
-              {story.exits.length > 0 ? (
-                <ol className="ts-exits">
-                  {story.exits.map((x, i) => (
-                    <li key={`${x.ms}-${i}`}>
-                      <div className="ts-exit-head">
-                        <strong>{x.title}</strong>
-                        <span className="muted num">
-                          {israelClock(x.ms)} · {x.qty} {unit}
-                          {x.qty === 1 ? "" : "s"}
-                          {x.price !== null && ` at ${x.price.toFixed(2)}`}
-                        </span>
-                      </div>
-                      {x.text && <p>{x.text}</p>}
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="muted">No sale is recorded for this trade.</p>
-              )}
-            </section>
-          </>
+          <div
+            className="segmented small"
+            role="group"
+            aria-label="How prices are drawn"
+          >
+            {styles.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                aria-pressed={style === s.id}
+                onClick={() => chooseStyle(s.id)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          {hover && chart && <Readout hover={hover} chart={chart} />}
+        </div>
+        {chart && story ? (
+          <Suspense fallback={<div className="ts-chart" />}>
+            <TradeStoryChart
+              chart={chart}
+              story={story}
+              view={view}
+              viewKey={viewKey}
+              style={style}
+              onEdge={onEdge}
+              onHover={setHover}
+            />
+          </Suspense>
         ) : (
-          <p className="chart-status">Loading the bot&apos;s records…</p>
+          <p className="chart-status">
+            {chartError ? `No chart: ${chartError}` : "Loading the chart…"}
+          </p>
         )}
-        <section>
-          <h3>Fills</h3>
-          <table className="trade-fills num">
-            <thead>
-              <tr>
-                <th scope="col">When ({israelLabel})</th>
-                <th scope="col">Side</th>
-                <th scope="col">Qty</th>
-                <th scope="col">Price</th>
-                <th scope="col">Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fills.map((f, i) => (
-                <tr key={i} className={f.side}>
-                  <td>
-                    {f.side === "expired"
-                      ? f.at.slice(0, 10)
-                      : israelDateTime(Date.parse(f.at))}
-                  </td>
-                  <td>{fillWord(f.side)}</td>
-                  <td>{f.qty}</td>
-                  <td>{f.side === "expired" ? "—" : f.price.toFixed(2)}</td>
-                  <td>
-                    {f.side === "buy" ? "−" : "+"}
-                    {usd(f.qty * f.price * multiplier)}
-                  </td>
-                </tr>
+      </section>
+      {story ? (
+        <>
+          <section>
+            <h3>
+              {story.entryTitle}
+              {story.version && (
+                <span className="muted small"> · bot {story.version}</span>
+              )}
+            </h3>
+            <ul className="ts-why">
+              {story.entry.map((line) => (
+                <li key={line}>{line}</li>
               ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th scope="row" colSpan={4}>
-                  Result
-                </th>
-                <td className={tone(t.pnl).trim()}>{signedUsd(t.pnl)}</td>
+            </ul>
+            {story.decision && (
+              <p className="ts-more">
+                <WhyButton decision={story.decision} /> opens the full order:
+                every input, the chain and each check.
+              </p>
+            )}
+          </section>
+          <section>
+            <h3>{isLive ? "Exits so far" : "Why it was exited"}</h3>
+            {story.exits.length > 0 && (
+              <ol className="ts-exits">
+                {story.exits.map((x, i) => (
+                  <li key={`${x.ms}-${i}`}>
+                    <div className="ts-exit-head">
+                      <strong>{x.title}</strong>
+                      <span className="muted num">
+                        {israelClock(x.ms)} · {plural(x.qty)}
+                        {x.price !== null && ` at ${x.price.toFixed(2)}`}
+                      </span>
+                    </div>
+                    {x.text && <p>{x.text}</p>}
+                  </li>
+                ))}
+              </ol>
+            )}
+            {live ? (
+              <p className="muted">Still open: {plural(live.held)} held.</p>
+            ) : (
+              story.exits.length === 0 && (
+                <p className="muted">No sale is recorded for this trade.</p>
+              )
+            )}
+          </section>
+        </>
+      ) : (
+        <p className="chart-status">Loading the bot&apos;s records…</p>
+      )}
+      <section>
+        <h3>Fills</h3>
+        <table className="trade-fills num">
+          <thead>
+            <tr>
+              <th scope="col">When ({israelLabel})</th>
+              <th scope="col">Side</th>
+              <th scope="col">Qty</th>
+              <th scope="col">Price</th>
+              <th scope="col">Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fills.map((f, i) => (
+              <tr key={i} className={f.side}>
+                <td>
+                  {f.side === "expired"
+                    ? f.at.slice(0, 10)
+                    : israelDateTime(Date.parse(f.at))}
+                </td>
+                <td>{fillWord(f.side)}</td>
+                <td>{f.qty}</td>
+                <td>{f.side === "expired" ? "—" : f.price.toFixed(2)}</td>
+                <td>
+                  {f.side === "buy" ? "−" : "+"}
+                  {usd(f.qty * f.price * multiplier)}
+                </td>
               </tr>
-            </tfoot>
-          </table>
-        </section>
-      </div>
-    </dialog>,
-    document.body,
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row" colSpan={4}>
+                {isLive ? "Result so far, at the last price" : "Result"}
+              </th>
+              <td className={tone(t.pnl).trim()}>{signedUsd(t.pnl)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+    </>
   );
 }
 

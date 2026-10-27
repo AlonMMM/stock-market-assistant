@@ -64,7 +64,10 @@ Alpaca refused the BOATS request and the endpoint fell back to SIP.
 
 After the deploy, open the CRWV 66 call of Oct 26 (Portfolio → Bot → Trades): the chart should show Oct 26 with
 "Buy 16:53" and "Sell 18:47" at their minutes, the time held shaded, and the summary above it. Check the account
-chart's day labels and drag across it to see each trade. Built and checked on synthetic data only; no live data was reachable from the session.
+chart's day labels and drag across it to see each trade. Then, with a trade open, tap it under Live trades: its
+window should show the buy at its minute and "Still open"; on the bots' pages, zoom the map, see the ◆ on the held
+stock and the banner on the next entry. Built and checked on synthetic data only; no live data was reachable from
+the session.
 
 ### Compare the Main bot's paper trades with the backtest
 
@@ -312,6 +315,18 @@ The build warns that a chunk is over 500 KB. Load Backtest, Portfolio and the bo
 watchlist opens faster on a phone.
 
 ## Done
+
+### Ongoing trades open their window; the bots' maps zoom and mark trades
+
+- id: done-live-trade-maps
+- area: App
+- tags: Main bot, Volume bot, Portfolio, Charts
+- source: Session of Oct 27
+- done: 2026-10-27, PR #PR
+
+An open position under Live trades shows the trade's window instead of the day chart. Both bots' maps zoom, read
+every 2 seconds, mark held stocks with a ◆, open a stock's page on a tap, and a green or red banner and an "In
+trade" sign show the bot's entries. The volume bot's trades are told from its own records.
 
 ### Dark mode for the whole app
 

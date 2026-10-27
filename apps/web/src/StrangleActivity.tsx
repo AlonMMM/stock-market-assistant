@@ -15,7 +15,9 @@ import type {
   StrangleView,
 } from "../../../packages/trading/src/strangle/view.js";
 import type { Portfolio as PortfolioData } from "../../../packages/trading/src/portfolio.js";
-import { Meter, ago, useBoxWidth, useNow } from "./BotPanel.js";
+import { EntryBanners, InTradeSign, type HeldTrade } from "./BotEntries.js";
+import { BotMap, type MapPoint } from "./BotMap.js";
+import { Meter, ago, useNow } from "./BotPanel.js";
 import { usePolling } from "./Live.js";
 import {
   TradeRow,
@@ -331,7 +333,6 @@ function Funnel({ v }: { v: StrangleView }) {
 // ---------------------------------------------------------------------------
 // What the bot sees: each stock by its two ratio checks
 
-const pad = { l: 40, r: 14, t: 14, b: 34 };
 const signedMove = (r: StrangleScanRow) =>
   r.side === "up" ? r.moveRatio : -r.moveRatio;
 
@@ -359,16 +360,15 @@ function AlertMap({
   scan,
   waiting,
   selected,
-  onSelect,
+  trades,
+  onOpen,
 }: {
   scan: StrangleScanRow[];
   waiting: ReadonlySet<string>;
   selected: string | null;
-  onSelect: (symbol: string) => void;
+  trades: ReadonlyMap<string, "C" | "P">;
+  onOpen?: (symbol: string) => void;
 }) {
-  const box = useBoxWidth(640);
-  const mapW = Math.max(300, Math.min(760, box.width));
-  const mapH = mapW < 520 ? 320 : 340;
   const maxVol = Math.min(
     10,
     Math.max(6, ...scan.map((r) => r.volRatio * 1.1)),
@@ -377,142 +377,37 @@ function AlertMap({
     8,
     Math.max(4.5, ...scan.map((r) => r.moveRatio * 1.1)),
   );
-  const right = mapW - pad.r;
-  const bottom = mapH - pad.b;
-  const x = (v: number) =>
-    pad.l + (Math.min(v, maxVol) / maxVol) * (right - pad.l);
-  const y = (m: number) =>
-    pad.t +
-    ((maxMove - Math.max(-maxMove, Math.min(maxMove, m))) / (2 * maxMove)) *
-      (bottom - pad.t);
-  const named = new Set(scan.slice(0, 8).map((r) => r.symbol));
-  if (selected) named.add(selected);
-  const volTicks = [0, 1, 2, needVolume, 6, 8, 10].filter((v) => v <= maxVol);
-  const moveTicks = [-6, -needMove, 0, needMove, 6].filter(
-    (m) => Math.abs(m) <= maxMove,
-  );
-  const zoneX = x(needVolume);
+  const points: MapPoint[] = scan.map((r) => ({
+    symbol: r.symbol,
+    x: r.volRatio,
+    y: signedMove(r),
+    tone: r.side === "up" ? "up" : "down",
+    ring: waiting.has(r.symbol),
+    trade: trades.get(r.symbol) ?? null,
+    title: `${r.symbol}: volume ${r.volRatio.toFixed(1)}×, move ${r.moveRatio.toFixed(1)}× (${pctText(r.movePct, 2)}). ${lacking(r)}`,
+  }));
   return (
-    <div ref={box.ref}>
-      <svg
-        className="bot-map"
-        viewBox={`0 0 ${mapW} ${mapH}`}
-        width="100%"
-        role="img"
-        aria-label="Each watched stock by its last 3 minutes' volume and move against its usual. A stock in a shaded corner alerts."
-      >
-        <rect
-          className="bot-map-zone up"
-          x={zoneX}
-          y={pad.t}
-          width={right - zoneX}
-          height={y(needMove) - pad.t}
-        />
-        <rect
-          className="bot-map-zone down"
-          x={zoneX}
-          y={y(-needMove)}
-          width={right - zoneX}
-          height={bottom - y(-needMove)}
-        />
-        <text
-          className="bot-map-zone-label up"
-          x={right - 6}
-          y={pad.t + 16}
-          textAnchor="end"
-        >
-          Alert, moving up
-        </text>
-        <text
-          className="bot-map-zone-label down"
-          x={right - 6}
-          y={bottom - 8}
-          textAnchor="end"
-        >
-          Alert, moving down
-        </text>
-        {moveTicks.map((m) => (
-          <g key={`m${m}`}>
-            <line
-              className={
-                Math.abs(m) === needMove ? "bot-map-need" : "bot-map-grid"
-              }
-              x1={pad.l}
-              x2={right}
-              y1={y(m)}
-              y2={y(m)}
-            />
-            <text
-              className="bot-map-tick"
-              x={pad.l - 6}
-              y={y(m) + 4}
-              textAnchor="end"
-            >
-              {m === 0 ? "0" : `${Math.abs(m)}×`}
-            </text>
-          </g>
-        ))}
-        {volTicks.map((v) => (
-          <g key={`v${v}`}>
-            <line
-              className={v === needVolume ? "bot-map-need" : "bot-map-grid"}
-              x1={x(v)}
-              x2={x(v)}
-              y1={pad.t}
-              y2={bottom}
-            />
-            <text
-              className="bot-map-tick"
-              x={x(v)}
-              y={bottom + 14}
-              textAnchor="middle"
-            >
-              {v}×
-            </text>
-          </g>
-        ))}
-        <text
-          className="bot-map-axis"
-          x={(pad.l + right) / 2}
-          y={mapH - 3}
-          textAnchor="middle"
-        >
-          Volume, last 3 minutes vs usual →
-        </text>
-        <text
-          className="bot-map-axis"
-          transform={`translate(11 ${(pad.t + bottom) / 2}) rotate(-90)`}
-          textAnchor="middle"
-        >
-          ↓ down · move vs its usual 3 minutes · up ↑
-        </text>
-        {scan.map((r) => {
-          const cx = x(r.volRatio);
-          const cy = y(signedMove(r));
-          const isSelected = selected === r.symbol;
-          const side = r.side === "up" ? "up" : "down";
-          return (
-            <g
-              key={r.symbol}
-              className={`bot-dot ${side}${isSelected ? " selected" : ""}`}
-              onClick={() => onSelect(r.symbol)}
-            >
-              <title>{`${r.symbol}: volume ${r.volRatio.toFixed(1)}×, move ${r.moveRatio.toFixed(1)}× (${pctText(r.movePct, 2)}). ${lacking(r)}`}</title>
-              <circle className="bot-dot-hit" cx={cx} cy={cy} r={12} />
-              {waiting.has(r.symbol) && (
-                <circle className="bot-dot-ring" cx={cx} cy={cy} r={10} />
-              )}
-              <circle cx={cx} cy={cy} r={isSelected ? 7 : 5} />
-              {named.has(r.symbol) && (
-                <text x={cx + 9} y={cy + 4}>
-                  {r.symbol}
-                </text>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-    </div>
+    <BotMap
+      points={points}
+      selected={selected}
+      onOpen={onOpen}
+      axes={{
+        xMax: maxVol,
+        yMax: maxMove,
+        needX: needVolume,
+        needY: needMove,
+        xTicks: [0, 1, 2, needVolume, 6, 8, 10].filter((v) => v <= maxVol),
+        yTicks: [-6, -needMove, 0, needMove, 6].filter(
+          (m) => Math.abs(m) <= maxMove,
+        ),
+        yTick: (m) => (m === 0 ? "0" : `${Number(Math.abs(m).toFixed(2))}×`),
+        zones: ["Alert, moving up", "Alert, moving down"],
+        xTitle: "Volume, last 3 minutes vs usual →",
+        yTitle: "↓ down · move vs its usual 3 minutes · up ↑",
+        label:
+          "Each watched stock by its last 3 minutes' volume and move against its usual. A stock in a shaded corner alerts.",
+      }}
+    />
   );
 }
 
@@ -520,10 +415,12 @@ function StockFocus({
   r,
   traded,
   maxPerStock,
+  onOpen,
 }: {
   r: StrangleScanRow;
   traded: number;
   maxPerStock: number;
+  onOpen?: (symbol: string) => void;
 }) {
   const up = r.side === "up";
   let today = "Not traded today.";
@@ -537,6 +434,15 @@ function StockFocus({
         <span className={`bot-lean ${up ? "up" : "down"}`}>
           {up ? "▲ moving up" : "▼ moving down"}
         </span>
+        {onOpen && (
+          <button
+            type="button"
+            className="bot-open"
+            onClick={() => onOpen(r.symbol)}
+          >
+            {r.symbol}&apos;s page ›
+          </button>
+        )}
       </div>
       <div className="bot-focus-meters">
         <span>
@@ -697,7 +603,17 @@ function StockList({
   );
 }
 
-function WhatItSees({ v, day }: { v: StrangleView; day: string }) {
+function WhatItSees({
+  v,
+  day,
+  trades,
+  onOpen,
+}: {
+  v: StrangleView;
+  day: string;
+  trades: ReadonlyMap<string, "C" | "P">;
+  onOpen?: (symbol: string) => void;
+}) {
   const [picked, setPicked] = useState<string | null>(null);
   const [showOut, setShowOut] = useState(false);
   const out = outToday(v, day);
@@ -731,9 +647,11 @@ function WhatItSees({ v, day }: { v: StrangleView; day: string }) {
         {alertRule.minVolume.toLocaleString("en-US")} shares). <b>Move</b>: its
         price move against its usual 3-minute move ({needMove}× or more, and{" "}
         {alertRule.minMovePercent}%). A stock in a shaded corner alerts; the bot
-        then waits for its side. A ring marks the stocks waiting now. Stocks the
-        bot cannot trade any more today (no option expiring today or the next
-        session, the news filter, their trades used) are left out.
+        then waits for its side. A ring marks the stocks waiting now, a ◆ the
+        stocks it holds a leg on. Pinch, scroll or + to zoom; tap a stock for
+        its page. Stocks the bot cannot trade any more today (no option expiring
+        today or the next session, the news filter, their trades used) are left
+        out.
       </p>
       {out.size > 0 && (
         <button
@@ -757,13 +675,15 @@ function WhatItSees({ v, day }: { v: StrangleView; day: string }) {
               scan={scan}
               waiting={waiting}
               selected={selected}
-              onSelect={setPicked}
+              trades={trades}
+              onOpen={onOpen}
             />
             {row && (
               <StockFocus
                 r={row}
                 traded={traded}
                 maxPerStock={v.settings.maxPerStock}
+                onOpen={onOpen}
               />
             )}
           </div>
@@ -1123,10 +1043,18 @@ function statusPill(v: StrangleView) {
   return <span className="pill green">On · trading its paper account</span>;
 }
 
-export function StrangleActivity({ onSettings }: { onSettings?: () => void }) {
+export function StrangleActivity({
+  onSettings,
+  onOpenTicker,
+}: {
+  onSettings?: () => void;
+  // A stock's own page (the Watchlist's), from the map.
+  onOpenTicker?: (symbol: string) => void;
+}) {
+  // Every 2 seconds (user 2026-10-27), while the page is in view.
   const { value: v, error } = usePolling<StrangleView>(
     "/api/strangle",
-    10000,
+    2000,
     ignore,
   );
   // The account's day change, for the day-loss meter (the Trades page's source).
@@ -1149,6 +1077,21 @@ export function StrangleActivity({ onSettings }: { onSettings?: () => void }) {
   if (v.lastWork !== null) lastCheck = ` · last check ${ago(v.lastWork, now)}`;
   let favorites = "";
   if (v.favorites) favorites = ` from "${v.favorites.name}"`;
+  // The legs held: bought, or being bought or sold.
+  const held: HeldTrade[] = v.open.flatMap((t) =>
+    t.phase !== "watching" && t.side
+      ? [
+          {
+            id: t.id,
+            symbol: t.symbol,
+            side: t.side,
+            at: t.openedAt,
+            what: `${t.leg ? `${t.leg.qty} × ${legWords(t.leg.contract)}` : "buying the leg"}${t.paid > 0 ? ` · paid ${usd(t.paid)}` : ""}${t.dry ? " · dry run" : ""}`,
+          },
+        ]
+      : [],
+  );
+  const trades = new Map(held.map((t) => [t.symbol, t.side]));
   return (
     <div className="bot-panel">
       <div className="bot-head">
@@ -1161,6 +1104,7 @@ export function StrangleActivity({ onSettings }: { onSettings?: () => void }) {
           </p>
         </div>
         <div className="bot-head-side">
+          <InTradeSign trades={held} target="vb-hold-title" />
           {statusPill(v)}
           {onSettings && (
             <button type="button" className="bot-more" onClick={onSettings}>
@@ -1174,6 +1118,7 @@ export function StrangleActivity({ onSettings }: { onSettings?: () => void }) {
           Could not refresh; showing the last answer.
         </p>
       )}
+      <EntryBanners bot="Volume bot" trades={held} />
       <SessionStrip
         v={v}
         day={day}
@@ -1181,7 +1126,7 @@ export function StrangleActivity({ onSettings }: { onSettings?: () => void }) {
         dayChangePct={account?.account.dayChangePct ?? null}
       />
       <Funnel v={v} />
-      <WhatItSees v={v} day={day} />
+      <WhatItSees v={v} day={day} trades={trades} onOpen={onOpenTicker} />
       <div className="bot-two">
         <Waiting v={v} now={now} />
         <Holding v={v} />

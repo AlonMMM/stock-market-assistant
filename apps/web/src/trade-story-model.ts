@@ -19,8 +19,12 @@ import {
 import type { Decision } from "../../../packages/trading/src/explain.js";
 import type {
   ClosedTrade,
+  OpenTrade,
+  PortfolioPosition,
   TradeFill,
 } from "../../../packages/trading/src/portfolio.js";
+import { alertRule } from "../../../packages/trading/src/strangle/alert.js";
+import type { StrangleView } from "../../../packages/trading/src/strangle/view.js";
 import { israelWallSeconds, usSessionDate } from "./time.js";
 
 // A closed trade's story (docs/tasks/frontend-trade-story.md): where it sits
@@ -47,7 +51,10 @@ export const momentOf = (ms: number): Moment => {
 };
 
 /** The trade's first and last session. */
-export function tradeDates(t: ClosedTrade): { from: string; to: string } {
+export function tradeDates(t: Pick<ClosedTrade, "openedAt" | "closedAt">): {
+  from: string;
+  to: string;
+} {
   return {
     from: momentOf(Date.parse(t.openedAt)).date,
     to: momentOf(Date.parse(t.closedAt)).date,
@@ -81,7 +88,7 @@ export function lastOpenSession(now: number): string {
  * it, with its entry and exit marked on the wrong bars.
  */
 export function chartWindow(
-  t: ClosedTrade,
+  t: Pick<ClosedTrade, "openedAt" | "closedAt">,
   now: number,
 ): { from: string; to: string } {
   const { from, to } = tradeDates(t);
@@ -408,7 +415,10 @@ export function botStory(
 }
 
 /** A bot trade the bot no longer has a record of: the fills alone. */
-export function unknownStory(t: ClosedTrade): Story {
+export function unknownStory(
+  t: ClosedTrade,
+  who: "main" | "volume" = "main",
+): Story {
   const exits: ExitRow[] = (t.fills ?? [])
     .filter((f) => f.side !== "buy")
     .map((f) => ({
@@ -423,7 +433,9 @@ export function unknownStory(t: ClosedTrade): Story {
     version: null,
     entryTitle: "Why the bot entered",
     entry: [
-      "The bot keeps its records for five sessions; this trade's signal and reasons are no longer available.",
+      who === "volume"
+        ? "The volume bot has no record of this trade any more; only its fills are known."
+        : "The bot keeps its records for five sessions; this trade's signal and reasons are no longer available.",
     ],
     exits,
     paid: t.entry,
@@ -693,4 +705,104 @@ export function heldText(ms: number): string {
   if (hours < 24) return `${hours} h ${minutes % 60} min`;
   const days = Math.floor(hours / 24);
   return `${days} day${days === 1 ? "" : "s"} ${hours % 24} h`;
+}
+
+/**
+ * The volume bot's trade from its own records (user 2026-10-27: its trades
+ * opened the Main bot's words, "no longer available"): the alert, the side it
+ * waited for, the leg and why it was sold. Null when it has no record.
+ */
+export function volumeStory(
+  t: ClosedTrade,
+  view: StrangleView | null,
+): Story | null {
+  const { from } = tradeDates(t);
+  const v = [...(view?.open ?? []), ...(view?.trades ?? [])].find(
+    (x) => x.leg?.contract === t.symbol && x.day === from,
+  );
+  if (!v || !view) return null;
+  const at = (minute: number) => newYorkToUtc(v.day, sessionOpen + minute);
+  const right = v.side;
+  const entry = [
+    `Alert at ${time(at(v.alertMinute))}: ${v.symbol}'s last 3 minutes traded ${alertRule.threshold}× or more its usual volume and moved ${alertRule.priceMultiple}× or more its usual 3-minute move, ${v.alertSide}.`,
+  ];
+  if (right && v.sideMinute !== null)
+    entry.push(
+      `The bot then waited for the side: ${v.symbol} chose ${right === "C" ? "up, so a call" : "down, so a put"} at ${time(at(v.sideMinute))}.`,
+    );
+  if (t.option)
+    entry.push(
+      `The leg: ${t.underlying} ${t.option.strike} ${right ? sideWord(right) : "option"}, expiry ${t.option.expiry}. Paid ${t.entry.toFixed(2)}.`,
+    );
+  if (v.dry) entry.push("A dry run: the bot noted the entry without an order.");
+  const rule = `Sold when the stock gave back ${view.settings.giveBackUnits}× its typical 30-minute move from its best.`;
+  const sales = (t.fills ?? []).filter((f) => f.side !== "buy");
+  const exits: ExitRow[] = sales.map((f, i) => ({
+    ms: Date.parse(f.at),
+    qty: f.qty,
+    price: f.side === "expired" ? null : f.price,
+    title:
+      f.side === "expired"
+        ? "Expired"
+        : i === sales.length - 1 && v.closeReason
+          ? v.closeReason
+          : "Sale",
+    text:
+      f.side === "expired" ? "What was still held expired worthless." : rule,
+  }));
+  const markers = fillMarkers(t);
+  markers.push({
+    kind: "signal",
+    pane: "stock",
+    at: { date: v.day, minute: v.alertMinute },
+    ms: at(v.alertMinute),
+    price: null,
+    label: `alert ${time(at(v.alertMinute))}`,
+  });
+  return {
+    bot: true,
+    version: null,
+    entryTitle: "Why the volume bot entered",
+    entry,
+    exits,
+    paid: t.entry,
+    stop: null,
+    stopLabel: "stop",
+    stockEntry: v.stockRef > 0 ? v.stockRef : null,
+    wall: null,
+    right,
+    rule: null,
+    markers,
+    decision: null,
+  };
+}
+
+/**
+ * An open position as a trade for its window (user 2026-10-27: an ongoing
+ * trade opens the trade's window, not the plain chart): its fills so far, and
+ * what is still held valued at the last price, as if sold `now`.
+ */
+export function liveTrade(
+  lot: OpenTrade,
+  p: Pick<PortfolioPosition, "price" | "qty">,
+  now: number,
+): ClosedTrade {
+  const multiplier = lot.option ? 100 : 1;
+  const mark = p.price ?? lot.entry;
+  const back = lot.sold + p.qty * mark;
+  const cost = lot.qty * lot.entry;
+  return {
+    symbol: lot.symbol,
+    underlying: lot.underlying,
+    option: lot.option,
+    openedAt: lot.openedAt,
+    closedAt: new Date(now).toISOString(),
+    qty: lot.qty,
+    entry: lot.entry,
+    exit: lot.qty > 0 ? back / lot.qty : 0,
+    pnl: Math.round((back - cost) * multiplier * 100) / 100,
+    pnlPct: cost > 0 ? Math.round(((back - cost) / cost) * 1000) / 10 : null,
+    expired: false,
+    fills: lot.fills,
+  };
 }

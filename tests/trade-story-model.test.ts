@@ -21,7 +21,10 @@ import {
   tradeDates,
   tradeStats,
   unknownStory,
+  liveTrade,
+  volumeStory,
 } from "../apps/web/src/trade-story-model.js";
+import type { StrangleView } from "../packages/trading/src/strangle/view.js";
 
 // A synthetic RKLB call: bought 16:59 Israel time (09:59 New York) on
 // 2026-09-30, half sold at the 10-minute check, the rest on the failed break.
@@ -437,4 +440,97 @@ test("the trade measured: entry, exits, held, best and worst, after the sale", (
   assert.equal(s.afterClose!.price, 0.3);
   assert.equal(heldText(125 * 60000), "2 h 5 min");
   assert.equal(heldText(27 * 3600000), "1 day 3 h");
+});
+
+test("an open trade: its fills so far, what is held at the last price", () => {
+  // User 2026-10-27: an ongoing trade opens the trade's window.
+  const t = liveTrade(
+    {
+      symbol: "NVDA261030P00180000",
+      underlying: "NVDA",
+      option: { right: "put", strike: 180, expiry: "2026-10-30" },
+      openedAt: "2026-10-27T15:05:00Z",
+      qty: 6,
+      held: 4,
+      entry: 2.1,
+      sold: 3.8, // 2 sold at 1.90
+      fills: [
+        { side: "buy", at: "2026-10-27T15:05:00Z", qty: 6, price: 2.1 },
+        { side: "sell", at: "2026-10-27T15:40:00Z", qty: 2, price: 1.9 },
+      ],
+    },
+    { price: 1.85, qty: 4 },
+    Date.parse("2026-10-27T16:30:00Z"),
+  );
+  // Back 3.80 + 4 × 1.85 = 11.20 for 6 × 2.10 = 12.60: −1.40 × 100.
+  assert.equal(t.pnl, -140);
+  assert.equal(t.pnlPct, -11.1);
+  assert.equal(t.closedAt, "2026-10-27T16:30:00.000Z");
+  assert.equal(t.fills!.length, 2);
+});
+
+test("a volume bot trade is told from the volume bot's records", () => {
+  const t: ClosedTrade = {
+    symbol: "NVDA261027C00182500",
+    underlying: "NVDA",
+    option: { right: "call", strike: 182.5, expiry: "2026-10-27" },
+    openedAt: "2026-10-27T16:28:00Z",
+    closedAt: "2026-10-27T17:10:00Z",
+    qty: 5,
+    entry: 1.2,
+    exit: 1.5,
+    pnl: 150,
+    pnlPct: 25,
+    expired: false,
+    fills: [
+      { side: "buy", at: "2026-10-27T16:28:00Z", qty: 5, price: 1.2 },
+      { side: "sell", at: "2026-10-27T17:10:00Z", qty: 5, price: 1.5 },
+    ],
+  };
+  const trade = {
+    id: "s1",
+    day: "2026-10-27",
+    symbol: "NVDA",
+    alertMinute: 175, // 12:25 New York, 18:25 Israel (after its clock change)
+    alertSide: "up" as const,
+    unit: 0.006,
+    stockRef: 182,
+    side: "C" as const,
+    sideMinute: 177,
+    best: 184,
+    leg: {
+      contract: t.symbol,
+      strike: 182.5,
+      qty: 0,
+      bought: 5,
+      cost: 1.2,
+      orders: [],
+    },
+    phase: "closed" as const,
+    closeReason: "Gave back from its best",
+    dry: false,
+    openedAt: Date.parse(t.openedAt),
+    closedAt: Date.parse(t.closedAt),
+    paid: 600,
+    got: 750,
+    marks: null,
+    openValue: null,
+  };
+  const view = {
+    settings: { giveBackUnits: 0.75 },
+    open: [],
+    trades: [trade],
+  } as unknown as StrangleView;
+  const story = volumeStory(t, view)!;
+  assert.equal(story.entryTitle, "Why the volume bot entered");
+  assert.match(story.entry[0]!, /^Alert at 18:25: NVDA's last 3 minutes/);
+  assert.match(story.entry[1]!, /up, so a call at 18:27/);
+  assert.deepEqual(
+    story.exits.map((x) => [x.title, x.qty, x.price]),
+    [["Gave back from its best", 5, 1.5]],
+  );
+  assert.equal(story.stockEntry, 182);
+  assert.equal(volumeStory({ ...t, symbol: "OTHER" }, view), null);
+  // Without its record: the fills alone, in the volume bot's words.
+  assert.match(unknownStory(t, "volume").entry[0]!, /volume bot has no record/);
 });
