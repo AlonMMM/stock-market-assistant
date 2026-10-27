@@ -22,6 +22,8 @@ import {
   tradeStats,
   unknownStory,
   liveTrade,
+  askMoved,
+  legEntryQuote,
   quotePlace,
   volumeStory,
 } from "../apps/web/src/trade-story-model.js";
@@ -546,4 +548,27 @@ test("the entry against the bid and ask, in words", () => {
   assert.equal(quotePlace(1.3, q), "at the bid");
   assert.equal(quotePlace(1.45, q), "0.05 over the ask");
   assert.equal(quotePlace(1.25, q), "0.05 under the bid");
+});
+
+test("a chased buy: judged against the book at its fill", () => {
+  // User 2026-10-27: "how can we buy higher than the ask?" The SPCX put: sent
+  // at 0.57 with 0.57 / 0.58, raised as the ask moved, filled at 0.60.
+  const orders = [
+    {
+      side: "buy",
+      book: { bid: 0.57, ask: 0.58, at: 1 },
+      fillBook: { bid: 0.58, ask: 0.6, at: 2 },
+    },
+  ];
+  const q = legEntryQuote(orders)!;
+  assert.deepEqual(q.fill, { bid: 0.58, ask: 0.6, at: 2 });
+  assert.equal(quotePlace(0.6, q.fill!), "at the ask");
+  assert.equal(askMoved(q), "the ask moved 0.58 → 0.60 while buying");
+  // Before 2026-10-27: the decision's book only.
+  const old = legEntryQuote([
+    { side: "buy", book: { bid: 0.57, ask: 0.58, at: 1 } },
+  ])!;
+  assert.equal(old.fill, undefined);
+  assert.equal(askMoved(old), null);
+  assert.equal(legEntryQuote([{ side: "sell" }]), null);
 });

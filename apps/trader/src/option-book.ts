@@ -22,3 +22,24 @@ export function bookOf(
     return undefined;
   return { bid: quote.bid, ask: quote.ask, at, broker };
 }
+
+/**
+ * The book at a buy's last raise, from its job's result (the engine's
+ * BuyDone: `result.quote`, read just before the last raise or the fill). The
+ * book at the decision alone made a chased fill look "over the ask" when the
+ * ask had moved up meanwhile (user 2026-10-27). Undefined without a quote.
+ */
+export function lastBookOf(
+  result: unknown,
+  at: number,
+  broker: BotBroker,
+): OptionBook | undefined {
+  const r = result as {
+    result?: { quote?: { bid?: unknown; ask?: unknown; quotedAt?: unknown } };
+  } | null;
+  const q = r?.result?.quote;
+  if (!q || typeof q.bid !== "number" || typeof q.ask !== "number")
+    return undefined;
+  const when = typeof q.quotedAt === "number" ? q.quotedAt : at;
+  return bookOf({ bid: q.bid, ask: q.ask }, when, broker);
+}

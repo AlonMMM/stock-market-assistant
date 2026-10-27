@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { bookOf } from "./option-book.js";
+import { bookOf, lastBookOf } from "./option-book.js";
 import {
   coreClose,
   newYork,
@@ -743,6 +743,8 @@ export class StrangleBot {
           const price = priceOf(job.result) ?? held?.avgEntryPrice ?? leg.cost;
           o.qty = filled;
           o.price = price;
+          const fillBook = lastBookOf(job.result, this.o.now(), "alpaca");
+          if (fillBook) o.fillBook = fillBook;
           leg.bought += filled;
           leg.qty = now;
           if (held) leg.cost = held.avgEntryPrice;

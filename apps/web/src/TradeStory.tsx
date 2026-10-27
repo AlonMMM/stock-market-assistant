@@ -42,6 +42,7 @@ import {
   pageDays,
   tradeChartUrl,
   tradeStats,
+  askMoved,
   quotePlace,
   unknownStory,
   volumeStory,
@@ -158,7 +159,12 @@ function QuoteBar({ q, price }: { q: EntryQuote; price: number }) {
   const span = hi - lo || 1;
   const at = (v: number) => `${((v - lo) / span) * 100}%`;
   const spread = q.ask - q.bid;
-  const place = quotePlace(price, q);
+  // Judged against the book at the fill when known: a chased buy follows the
+  // ask up, so the book at the decision alone looked "over the ask" (user
+  // 2026-10-27: "how can we buy higher than the ask?").
+  const place = quotePlace(price, q.fill ?? q);
+  const moved = askMoved(q);
+  const stale = !q.fill && price > q.ask + 0.005;
   return (
     <div className="ts-quote">
       <div
@@ -180,6 +186,8 @@ function QuoteBar({ q, price }: { q: EntryQuote; price: number }) {
       </p>
       <p className="muted num">
         Paid {price.toFixed(2)}: <b>{place}</b>
+        {stale && " when the order was sent (the ask moved up while buying)"}
+        {moved && ` · ${moved}`}
         {mid > 0 &&
           ` · spread ${spread.toFixed(2)} (${((spread / mid) * 100).toFixed(0)}% of the mid)`}
       </p>
