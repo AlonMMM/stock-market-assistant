@@ -177,6 +177,31 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### A $0.10 floor for IBIT, and for the tickers with options 3+ days a week (2026-10-27)
+
+The user: "IBIT is special - because it have best trades for al the times. I want you to add IBIT as a default to have a
+limit of 0.1$ in premina and not 0.2. also test after it what will happen if we add like this all the tickers that have
+options 3 times or more a week". `floor_exception.py`, `expiry_days.py`. On the list the 0.15-delta option is bought
+down to $0.10 (the cheap fallback, where on, under $0.10). Lists: IBIT; today's 3+-expiry-days tickers (AAPL AMD AMZN
+AVGO GLD GOOGL IBIT INTC IWM META MSFT MU NVDA SPCX TSLA) over the whole period; the same point in time (single stocks
+got them from 2026-02; before that only GLD / IWM). Real quotes, every trade fully on the book, 1%:
+
+| Bot | Fair 2024-25 | Fair 2026 | Favorites 24m | Favorites 12m |
+| --- | --- | --- | --- | --- |
+| 2.6 (live) | $302,905 / 16% | $207,079 / 15% | $299,707 / 18% | $166,361 / 18% |
+| 2.5 | $366,671 / 16% | $168,101 / 13% | $290,395 / 16% | $140,439 / 16% |
+| 2.5 + IBIT $0.10 | $352,856 / 16% | $227,661 / 13% | $378,539 / 16% | $191,537 / 16% |
+| pyramid (with cheap) | $363,710 / 14% | $216,868 / 17% | $332,278 / 20% | $170,452 / 20% |
+| pyramid, no cheap | $432,235 / 14% | $168,569 / 14% | $309,341 / 17% | $139,095 / 17% |
+| **pyramid, no cheap + IBIT $0.10** | $415,971 / 14% | $228,296 / 14% | **$403,255 / 17%** | $189,705 / 17% |
+
+IBIT is the only fair-list ticker the floor changes. It costs 4% on 2024-25 (-$14-16K) and adds ~$60K in 2026 and
+$88-94K on the Favorites over 24 months, at the same drop. The 3+-days list adds nothing over IBIT on the fair list
+and loses $25-28K on the Favorites over 24 months (its other names' $0.10-0.20 options lose); point in time it is
+small. Against the live 2.6, 2.5 + IBIT is ahead on every list and period; the pyramid without the fallback + IBIT is
+ahead of the current candidate (the pyramid with the fallback) on every list and period. Caveat: IBIT was named after
+seeing its trades, so this is in-sample in the stock; the 2024-25 cost is the honest part of the check.
+
 | Date       | Version                                                                | Fair list: end / worst drop | 151 unseen     | vs champion                                             | Status                                          |
 | ---------- | ---------------------------------------------------------------------- | --------------------------- | -------------- | ------------------------------------------------------- | ----------------------------------------------- |
 | 2026-10-21 | V1                                                                     | $257,698 / 26%              | $107,869 / 21% | —                                                       | paper bot (deploy pending)                      |
