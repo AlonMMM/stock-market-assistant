@@ -9,6 +9,25 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### Microprice + x%, 2 seconds at most (2026-10-27)
+
+The user's version: limit at the microprice + x% (never above the usual price), 2 s, then the usual price
+(`STR_BUY=pct STR_BUY_PCT=x STR_BUY_WAIT=2`). Top 50, 3 years, cross:
+
+| x | Filled at the limit | Top 15 filled | Filled price vs usual | All buys vs usual | Avg per trade | Top 15 | Names 16-50 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| baseline | - | - | - | - | -9.1% | +0.2% | -10.9% |
+| 0% | 5% | 17% | -4.0% | +0.18% | -9.4% | +1.3% | -11.4% |
+| 1% | 7% | 22% | -3.5% | +0.18% | -9.4% | +1.3% | -11.4% |
+| 2% | 8% | 25% | -3.4% | +0.16% | -9.4% | +1.6% | -11.4% |
+| 3% | 9% | 28% | -3.2% | +0.17% | -9.4% | +1.6% | -11.4% |
+| 5% | 10% | 31% | -3.0% | +0.17% | -9.4% | +1.6% | -11.4% |
+
+The limit is capped at the usual price, which sits inside the spread, so in 2 s it fills only when the ask ticks down to
+it (5-10% of buys, quotes only; sellers hitting our bid are not seen). The fills save 3-4%, but the other 90% pay the
+usual price 2 s later, after the option has moved up a little: overall the buy costs the same (+0.2%). Top 15 +1.3..1.6%
+(vs +0.2%), names 16-50 a little worse. x barely matters.
+
 ### The Main bot's fair-price limit buy on the Volume bot (2026-10-27)
 
 The rule (the Main bot's, from another session): limit at the microprice (bid and ask weighted by their sizes) + 3
