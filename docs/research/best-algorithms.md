@@ -405,6 +405,11 @@ real quotes, tune (fair / Favorites 24m; overnight trades on the fair list): +50
 14% and $268,298 / 12% (33). The fair list gains a little with a smaller drop, the Favorites lose; the picked +100%
 on check $286,229 / 12% and $124,889 / 15% vs $360,295 / 12% and $139,363 / 15%. The +50-100% winners held overnight
 are worth more the next morning than at 15:50. Keep +50%.
+At 2% / 3% a trade (EXIT_SIZE; the cap at each size), tune fair / Favorites: +50% $402,140 / 31% and $511,670 / 21% |
+$432,964 / 41% and $629,548 / 30%; +100% $422,268 / 30% and $505,635 / 21% | $467,803 / 40% and $623,340 / 29%; +150%
+$448,074 / 27% and $484,332 / 21% | $503,732 / 37% and $577,412 / 30%; +200% $438,985 / 26% and $451,708 / 23% |
+$490,303 / 36% and $519,046 / 33%. Check (+100%): 2% $561,510 / 23% and $129,782 / 28% vs $869,036 / 23% and $160,100 /
+28%; 3% $797,840 / 33% and $116,175 / 39% vs $1,392,030 / 33% and $155,881 / 39%. Same verdict at every size.
 
 ### Stock-move exits: support / resistance and a big move against (2026-10-27, not better)
 

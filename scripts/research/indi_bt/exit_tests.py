@@ -81,7 +81,9 @@ def one(job):
         cost, steps, _ = sim.walk(t["sym"], t["date"], m0, t["right"], c[0], c[1], CAL)
         if cost is None: continue
         rcost, real = OS.price(steps, c[0], cost, "bid")
-        row = dict(r1=sim.result(rcost, real, 0.01), r05=sim.result(rcost, real, 0.005), over=int(any(s[2] == "carry" for s in steps)))
+        # each size with the overnight cap at that size; an add is half a trade at half the size (2%: 1%, 3%: 1.5%)
+        row = dict(r1=sim.result(rcost, real, 0.01), r05=sim.result(rcost, real, 0.005), r2=sim.result(rcost, real, 0.02),
+                   r3=sim.result(rcost, real, 0.03), r15=sim.result(rcost, real, 0.015), over=int(any(s[2] == "carry" for s in steps)))
         if kind == "main":
             sells = [s for s in real if s[2] == "sell" and s[0] == t["date"]]
             held = {}
@@ -93,17 +95,22 @@ def one(job):
     return out
 
 
+SIZE = float(os.environ.get("EXIT_SIZE", "0.01"))   # 0.02 / 0.03: the returns at that size (the user: "show it on 2 and 3%")
+FULL = {0.01: "r1", 0.02: "r2", 0.03: "r3"}[SIZE]
+HALF = {0.01: "r05", 0.02: "r1", 0.03: "r15"}[SIZE]
+
+
 def entries(R, adds, src, v, part, a=""):
     E = []
     for r in R:
         if r["src"] != src or r["kind"] != "main" or half(r["date"]) != part or r["date"] < a or v not in r["v"]: continue
         x = r["v"][v]
-        E.append((r["date"], r["minute"], 1.0, x["r1"], x["over"]))
+        E.append((r["date"], r["minute"], 1.0, x[FULL], x["over"]))
         if not r["d2"]: continue
         for ad in sorted(adds.get((src, r["date"], r["sym"], r["right"]), []), key=lambda q: q["minute"]):
             if ad["minute"] <= r["minute"] or v not in ad["v"]: continue
             share, up = x["held"].get(ad["minute"], (0, None))
-            if share > 0 and up is not None and up > 0: E.append((ad["date"], ad["minute"], 0.5, ad["v"][v]["r05"], ad["v"][v]["over"]))
+            if share > 0 and up is not None and up > 0: E.append((ad["date"], ad["minute"], 0.5, ad["v"][v][HALF], ad["v"][v]["over"]))
             break
     return E
 
@@ -111,9 +118,9 @@ def entries(R, adds, src, v, part, a=""):
 def stats(E):
     R = sorted(E)
     pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[3]))) for e in R]
-    acct, dd = account(pnl)
+    acct, dd = account(pnl, SIZE)
     top = set(sorted(range(len(R)), key=lambda i: -R[i][2] * R[i][3])[:5])
-    a5, _ = account([p for i, p in enumerate(pnl) if i not in top])
+    a5, _ = account([p for i, p in enumerate(pnl) if i not in top], SIZE)
     same = [e for e in R if not e[4]]
     return dict(acct=round(acct), dd=round(dd, 3), no5=round(a5), trades=len(R), win=round(sum(e[3] > 0 for e in R) / max(1, len(R)), 3),
                 sameday=round(sum(1e4 * e[2] * max(-1, e[3]) for e in same)), overnight=sum(1 for e in R if e[4]))
@@ -128,7 +135,7 @@ def main():
     for r in R:
         if r["kind"] == "add": adds[(r["src"], r["date"], r["sym"], r["right"])].append(r)
     out = {}
-    print("\n### Tune weeks, real quotes, 1% from $100,000\n\n| Variant | Fair list | Favorites 24m | Without the best 5 (fair / fav) | Winners (fair) | Same-day P&L at $10K (fair) | Overnight trades (fair) |\n|---|---|---|---|---|---|---|")
+    print(f"\n### Tune weeks, real quotes, {SIZE:.0%} from $100,000\n\n| Variant | Fair list | Favorites 24m | Without the best 5 (fair / fav) | Winners (fair) | Same-day P&L at $10K (fair) | Overnight trades (fair) |\n|---|---|---|---|---|---|---|")
     for v in V:
         f, g = stats(entries(R, adds, "fair", v, "tune")), stats(entries(R, adds, "fav", v, "tune", FR.A24))
         out[f"tune|{v}"] = dict(fair=f, fav=g)
@@ -143,7 +150,7 @@ def main():
         out[f"check|{v}"] = dict(fair=f, fav=g)
         print(f"| {v} | ${f['acct']:,} / {f['dd']:.0%} | ${g['acct']:,} / {g['dd']:.0%} | ${f['no5']:,} / ${g['no5']:,} |", flush=True)
     out["best"] = best
-    json.dump(out, open(f"{B}/exit_tests_summary.json", "w"), indent=1)
+    json.dump(out, open(f"{B}/exit_tests_summary_{os.environ.get('EXIT_RUN', 'loss')}_{SIZE}.json", "w"), indent=1)
 
 
 if __name__ == "__main__":
