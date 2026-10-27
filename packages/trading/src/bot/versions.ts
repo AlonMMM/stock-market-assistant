@@ -31,7 +31,12 @@ export type RuleKey =
   | "minRvol"
   | "firstEntryMin"
   | "skipEarnings"
-  | "skipPremarket";
+  | "skipPremarket"
+  | "lowFloorSymbols"
+  | "lowFloorPrice"
+  | "pyramid"
+  | "pyramidSharePct"
+  | "earlyEntry";
 
 export type Rules = Pick<BotSettings, RuleKey>;
 
@@ -58,6 +63,11 @@ export const ruleKeys: readonly RuleKey[] = [
   "firstEntryMin",
   "skipEarnings",
   "skipPremarket",
+  "lowFloorSymbols",
+  "lowFloorPrice",
+  "pyramid",
+  "pyramidSharePct",
+  "earlyEntry",
 ];
 
 export interface BotVersion {
@@ -92,6 +102,11 @@ const v1: Rules = {
   firstEntryMin: 10,
   skipEarnings: false,
   skipPremarket: false,
+  lowFloorSymbols: [],
+  lowFloorPrice: 0.1,
+  pyramid: false,
+  pyramidSharePct: 50,
+  earlyEntry: false,
 };
 // 2.0: the V2 champion (t 1.8, the overnight cap, the news filter).
 const v2: Rules = {
@@ -122,6 +137,25 @@ const v25: Rules = { ...v24, sellFailedBreak: false, d2Entry: true };
 // the money at the minimum or more. Fair list $1,297,233 / 11% vs $1,108,678 /
 // 11% for 2.5 at 1%; the Favorites' year $239,826 / 14% vs $192,534 / 12%.
 const v26: Rules = { ...v25, cheapFallback: true };
+// 2.7: the 2026-10-27 champion (research/indi-v2, best-algorithms.md; the
+// user: "lets make this our champion"): 2.5 without the cheap fallback, IBIT
+// bought down to $0.10 (its 0.15-delta option is often cheap and its trades
+// are among the best), the pyramid (after a D2 bonus entry, half a size more
+// in a fresh 0.15-delta option when the stock reaches the full signal that
+// day while the first position is up), and early entry (the signal checked
+// inside the minute on the latest trades, bought at the first check it holds).
+// Real quotes, fair list, tune / check weeks (split.py): without early entry
+// $257,982 / $368,105 vs 2.6's $229,933 / $272,798; early entry adds 8-13% on
+// the 1-second data (sec_timing.py), checked every 5 seconds (every 10 keeps
+// about half of it).
+const v27: Rules = {
+  ...v25,
+  lowFloorSymbols: ["IBIT"],
+  lowFloorPrice: 0.1,
+  pyramid: true,
+  pyramidSharePct: 50,
+  earlyEntry: true,
+};
 
 /** Every version, oldest first. */
 export const botVersions: readonly BotVersion[] = [
@@ -188,6 +222,14 @@ export const botVersions: readonly BotVersion[] = [
       "When the 0.15-delta option costs under the minimum, buys the nearest strike toward the money that costs the minimum or more, instead of skipping the signal.",
     rules: v26,
   },
+  {
+    id: "2.7",
+    name: "Champion: IBIT $0.10, the pyramid, early entry",
+    since: "2026-10-27",
+    notes:
+      "2.5 without the cheap fallback; IBIT is bought down to $0.10; after a D2 entry, half a size more when the stock reaches the full signal that day while the first position is up; and the signal is checked every few seconds inside the minute, buying at the first check it holds.",
+    rules: v27,
+  },
 ];
 
 /** The version a new bot runs. */
@@ -207,20 +249,27 @@ export function rulesOf(s: Rules): Rules {
   return out as Rules;
 }
 
+// A rule is a number, a boolean or a list of tickers (compared in order).
+const sameValue = (a: unknown, b: unknown): boolean =>
+  Array.isArray(a) && Array.isArray(b) ? a.join() === b.join() : a === b;
+
 export const sameRules = (a: Rules, b: Rules): boolean =>
-  ruleKeys.every((key) => a[key] === b[key]);
+  ruleKeys.every((key) => sameValue(a[key], b[key]));
 
 /** The newest version whose rules are exactly these, if any. */
 export function matchingVersion(s: Rules): BotVersion | undefined {
   return [...botVersions].reverse().find((v) => sameRules(v.rules, s));
 }
 
+const ruleText = (v: unknown): string =>
+  Array.isArray(v) ? v.join(", ") || "none" : String(v);
+
 /** Where the rules differ from a version's, in words ("stopPct 30 → 40"). */
 export function ruleChanges(s: Rules, v: BotVersion): string[] {
   const out: string[] = [];
   for (const key of ruleKeys)
-    if (s[key] !== v.rules[key])
-      out.push(`${key} ${String(v.rules[key])} → ${String(s[key])}`);
+    if (!sameValue(s[key], v.rules[key]))
+      out.push(`${key} ${ruleText(v.rules[key])} → ${ruleText(s[key])}`);
   return out;
 }
 

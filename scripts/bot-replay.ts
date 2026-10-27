@@ -13,7 +13,12 @@
 //
 // BOT_REPLAY_FAVORITES: the favorites list the site would send (comma-separated).
 // BOT_REPLAY_SETTINGS: a JSON file of the owner's settings (GET /v1/bot/settings).
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+// BOT_REPLAY_TICK_S: seconds between ticks (default 60: one tick a minute at :20;
+// the live bot ticks every 5, which early entry, version 2.7, needs).
+// BOT_REPLAY_10S: the 10-second bars database (default data/local/bars-10s.sqlite,
+// npm run bars:10s) the stocks' latest trades come from inside a minute.
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { IndiBot, type BotTrading } from "../apps/trader/src/bot.js";
@@ -286,6 +291,42 @@ const clock = () => {
     minute: "2-digit",
   });
 };
+// The stocks' latest trades at the replay's own moment: the live reader would
+// give today's. A completed 10-second bar (no later price), else the close of
+// the last closed minute.
+const tenPath = process.env.BOT_REPLAY_10S ?? "data/local/bars-10s.sqlite";
+const ten = existsSync(tenPath)
+  ? new DatabaseSync(tenPath, { readOnly: true })
+  : null;
+const tenAt = ten?.prepare(
+  "SELECT close FROM bars WHERE symbol = ? AND start >= ? AND start + 10 <= ? ORDER BY start DESC LIMIT 1",
+);
+let tenHits = 0;
+let tenMisses = 0;
+async function lastPricesAt(symbols: string[]): Promise<Map<string, number>> {
+  const t = Math.floor(now / 1000);
+  const open = Math.floor(newYorkToUtc(date!, 570) / 1000);
+  const out = new Map<string, number>();
+  for (const s of symbols) {
+    const row = tenAt?.get(s, open, t) as { close: number } | undefined;
+    if (row) {
+      out.set(s, row.close);
+      tenHits++;
+      continue;
+    }
+    tenMisses++;
+    const c = await stockAt(s, sessionMinute() - 1);
+    if (c !== null) out.set(s, c);
+  }
+  return out;
+}
+const replayMarket = new Proxy(market, {
+  get(target, prop) {
+    if (prop === "lastPrices") return lastPricesAt;
+    const v = Reflect.get(target, prop) as unknown;
+    return typeof v === "function" ? v.bind(target) : v;
+  },
+});
 const store = new BotStore(
   join(mkdtempSync(join(tmpdir(), "bot-replay-")), "bot.sqlite"),
 );
@@ -296,7 +337,7 @@ const universe = (
 ).symbols;
 const bot = new IndiBot({
   store,
-  market,
+  market: replayMarket,
   // One simulated broker, named alpaca: the setting cannot send it elsewhere.
   trading: () => trading,
   brokers: ["alpaca"],
@@ -332,15 +373,25 @@ const close = coreClose(date)!;
 const settle = async () => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
 };
-for (let wall = 565; wall <= close + 15; wall++) {
-  now = newYorkToUtc(date, wall) + 20_000;
-  // Held contracts and open orders see this minute's prices first.
-  const held = (await broker.positions()).map((p) => p.symbol);
-  for (const s of held) await quoteNow(s);
-  await bot.tick();
-  await settle();
+const tickS = Number(process.env.BOT_REPLAY_TICK_S ?? 60);
+const secs: number[] = [];
+if (tickS >= 60) secs.push(20);
+else for (let s = 0; s < 60; s += tickS) secs.push(s);
+const until = Number(process.env.BOT_REPLAY_UNTIL ?? close + 15); // a wall minute, to stop early
+for (let wall = 565; wall <= Math.min(close + 15, until); wall++) {
+  for (const sec of secs) {
+    now = newYorkToUtc(date, wall) + sec * 1000;
+    // Held contracts and open orders see this minute's prices first.
+    const held = (await broker.positions()).map((p) => p.symbol);
+    for (const s of held) await quoteNow(s);
+    await bot.tick();
+    await settle();
+  }
   if (wall % 30 === 0) process.stderr.write(`${clock()} `);
 }
+process.stderr.write(
+  `latest trades: ${tenHits} from 10-second bars, ${tenMisses} from the last closed minute\n`,
+);
 process.stderr.write("\n");
 
 // ---- the report ----

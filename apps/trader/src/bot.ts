@@ -462,13 +462,19 @@ export class IndiBot {
     if (last > this.done && last >= 0) {
       await this.refresh(date, Math.max(0, this.done - 2), last);
       for (let m = Math.max(this.done + 1, last - 2); m <= last; m++)
-        if (this.enabled) await this.entries(date, m, closeMinute);
+        if (this.enabled) {
+          await this.entries(date, m, closeMinute);
+          await this.pyramids(date, m, closeMinute);
+        }
       this.done = last;
     }
-    // The exits run every tick (10 s), in the minute now, on the stocks'
-    // last trades and fresh option quotes (user 2026-10-23: "check every 10
-    // seconds and not every 1 minute"); the entries stay on closed bars.
+    // The exits run every tick, in the minute now, on the stocks' last trades
+    // and fresh option quotes (user 2026-10-23: "check every 10 seconds and
+    // not every 1 minute"). With early entry (2.7) the entries are checked on
+    // every tick too, on the minute so far; otherwise on closed bars only.
     const current = Math.min(wall - 570, closeMinute - 1);
+    if (current >= 0 && this.enabled && current === this.done + 1)
+      await this.earlyEntries(date, current, closeMinute);
     if (current >= 0) await this.exits(date, current, closeMinute);
     if (wall >= close + 5 && this.summarized !== date) {
       this.summarized = date;
@@ -712,18 +718,266 @@ export class IndiBot {
           `${symbol} ${sig.right === "C" ? "call" : "put"} signal at ${clock(sig.minute)}: strength t ${sig.t.toFixed(1)}${held}, volume ${sig.rvol.toFixed(1)}× normal`,
         );
       if (added)
-        await this.enter(
-          date,
-          symbol,
-          sig.right,
-          sig.minute,
-          sig.t,
-          sig.rvol,
-        ).catch((error) => {
+        await this.enter(date, symbol, sig.right, sig.minute, sig.t, sig.rvol, {
+          bonus: sig.bonus,
+        }).catch((error) => {
           const why = error instanceof Error ? error.message : String(error);
           this.outcome(date, symbol, "error", why);
         });
     }
+  }
+
+  // ---- early entry (version 2.7) ----
+
+  /**
+   * The signal on the minute so far: each stock's and SPY's latest trade as
+   * the forming minute's close (its volume not yet counted), bought at the
+   * first tick the rule holds (research: sec_timing.py "early"). The closed
+   * minute then finds the signal taken and passes.
+   */
+  private async earlyEntries(date: string, m: number, closeMinute: number) {
+    const s = this.settings();
+    if (!s.earlyEntry || !this.o.market.lastPrices) return;
+    const params = signalParams(s);
+    if (m < params.firstMinute || m > Math.min(374, closeMinute - 16)) return;
+    const open = this.symbols.filter(
+      (x) => this.prior.has(x) && !this.o.store.signal(date, x),
+    );
+    if (!open.length) return;
+    let live: Map<string, number>;
+    try {
+      live = await this.o.market.lastPrices([...open, "SPY"]);
+    } catch (error) {
+      this.o.log(
+        `early entry: last prices failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return;
+    }
+    const forming = (symbol: string): MinuteBar[] | null => {
+      const price = live.get(symbol);
+      // The closed minutes only: the bars request can already hold the forming
+      // minute (live, its part so far; in a replay, the whole of it).
+      const bars = this.barsOf(symbol).filter((b) => b.m < m);
+      const prev = bars.at(-1);
+      if (price === undefined || !prev || prev.m !== m - 1) return null;
+      // An odd print (out of sequence, off the market) is not the minute so far.
+      if (Math.abs(price / prev.c - 1) > 0.03) return null;
+      const now: MinuteBar = {
+        m,
+        o: prev.c,
+        h: Math.max(prev.c, price),
+        l: Math.min(prev.c, price),
+        c: price,
+        v: 0,
+      };
+      return [...bars, now];
+    };
+    const spy = forming("SPY");
+    if (!spy) return;
+    for (const symbol of open) {
+      const bars = forming(symbol);
+      if (!bars) continue;
+      const sig = cSignal(bars, spy, this.prior.get(symbol)!, m, params);
+      if (!sig || sig.minute !== m) continue;
+      const added = this.o.store.addSignal({
+        day: date,
+        symbol,
+        right: sig.right,
+        minute: m,
+        t: sig.t,
+        rvol: sig.rvol,
+        outcome: "new",
+        detail: "",
+        at: this.o.now(),
+        version: versionLabel(s),
+      });
+      if (!added) continue;
+      let held = "";
+      if (sig.bonus && sig.d2 !== null)
+        held = `, held up on SPY's down minutes (D2 ${sig.d2.toFixed(1)})`;
+      const sec = Math.floor((this.o.now() % 60_000) / 1000);
+      this.event(
+        "signal",
+        `${symbol} ${sig.right === "C" ? "call" : "put"} signal at ${clock(m)}:${String(sec).padStart(2, "0")}, inside the minute: strength t ${sig.t.toFixed(1)}${held}, volume ${sig.rvol.toFixed(1)}× normal`,
+      );
+      await this.enter(date, symbol, sig.right, m, sig.t, sig.rvol, {
+        bonus: sig.bonus,
+        spotNow: live.get(symbol)!,
+      }).catch((error) => {
+        const why = error instanceof Error ? error.message : String(error);
+        this.outcome(date, symbol, "error", why);
+      });
+    }
+  }
+
+  // ---- the pyramid (version 2.7) ----
+
+  /**
+   * After a D2 bonus entry, the first minute that day the stock reaches the
+   * full signal (t >= minT, the bonus off): on the same side, with the first
+   * position held and its option above what it cost, one more position of
+   * pyramidSharePct of the size in a fresh pick (research: export_champ.py).
+   * Decided once a position: an opposite side, a position not up, or a missed
+   * minute ends it.
+   */
+  private async pyramids(date: string, m: number, closeMinute: number) {
+    const s = this.settings();
+    if (!s.pyramid) return;
+    if (m > Math.min(374, closeMinute - 16)) return;
+    const full = { ...signalParams(s), bonusT: null };
+    const spy = this.barsOf("SPY");
+    const firsts = this.o.store
+      .openPositions()
+      .filter(
+        (p) =>
+          p.day === date &&
+          p.bonus &&
+          !p.addOf &&
+          !p.pyramidChecked &&
+          p.dry === (s.mode === "dry"),
+      );
+    for (const p of firsts) {
+      const prior = this.prior.get(p.symbol);
+      if (!prior) continue;
+      const sig = cSignal(this.barsOf(p.symbol), spy, prior, m, full);
+      if (!sig) continue;
+      const done = (why: string) => {
+        this.o.store.savePosition({ ...p, pyramidChecked: true });
+        this.event("info", `${p.symbol} pyramid: ${why}`);
+      };
+      // The day's first full signal came with the entry itself: no add.
+      if (sig.minute <= p.entryMinute) {
+        done(`the full signal came at the entry (${clock(sig.minute)})`);
+        continue;
+      }
+      if (sig.minute < m - 2) {
+        done(`the full signal at ${clock(sig.minute)} was missed`);
+        continue;
+      }
+      if (sig.right !== p.right) {
+        done(`the full signal at ${clock(sig.minute)} is the other side`);
+        continue;
+      }
+      if (p.status !== "open" || p.qty <= 0) {
+        done(`the first position is not held at ${clock(sig.minute)}`);
+        continue;
+      }
+      const quote = await this.trading(this.brokerOf(p))
+        .quote(p.contract)
+        .catch(() => null);
+      const mid =
+        quote && quote.bid > 0 && quote.ask > 0
+          ? (quote.bid + quote.ask) / 2
+          : null;
+      if (mid === null || mid <= p.cost) {
+        done(
+          `the first position is not up at ${clock(sig.minute)} (${mid === null ? "no quote" : `${mid.toFixed(2)} vs ${p.cost.toFixed(2)} paid`})`,
+        );
+        continue;
+      }
+      this.o.store.savePosition({ ...p, pyramidChecked: true });
+      await this.addTo(p, date, sig.minute, sig.t, s).catch((error) =>
+        this.event(
+          "error",
+          `${p.symbol} pyramid failed: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
+    }
+  }
+
+  /** The half-size add: a fresh pick on the first position's side, at its broker. */
+  private async addTo(
+    first: BotPosition,
+    date: string,
+    minute: number,
+    t: number,
+    s: BotSettings,
+  ) {
+    const broker = this.brokerOf(first);
+    const limited = await this.limit(date, s, broker);
+    if (limited)
+      return this.event(
+        "skip",
+        `${first.symbol} pyramid: ${outcomeText(limited.outcome, s)} (${limited.detail})`,
+      );
+    const pick = pickRules(s, first.symbol);
+    const spot = this.lastClose(first.symbol, minute);
+    if (spot === null)
+      return this.event("skip", `${first.symbol} pyramid: no stock price`);
+    const side = first.right === "C" ? "call" : "put";
+    const [from, to] = expiryWindow(date, pick);
+    const picked = pickContract(
+      await this.trading(broker).chain(first.symbol, side, from, to),
+      spot,
+      side,
+      date,
+      pick,
+    );
+    if (!picked.ok)
+      return this.event(
+        "skip",
+        `${first.symbol} pyramid: ${outcomeText(picked.reason, s)}`,
+      );
+    const contract = picked.quote.symbol;
+    const volume = await this.o.market.optionVolume30(contract, date, minute);
+    if (volume < pick.minVolume30)
+      return this.event(
+        "skip",
+        `${first.symbol} pyramid: ${this.words(contract)} ${volume} contracts in 30 minutes`,
+      );
+    const version = versionLabel(s);
+    const why = `Pyramid ${side} at ${clock(minute)}: the full signal (t ${t.toFixed(1)}) after the D2 entry at ${clock(first.entryMinute)}, which is up · ${s.pyramidSharePct}% of the size · bot ${version}`;
+    const base: Omit<BotPosition, "id" | "broker"> = {
+      day: date,
+      symbol: first.symbol,
+      contract,
+      right: first.right,
+      qty: 0,
+      bought: 0,
+      cost: picked.mid,
+      entryMinute: minute,
+      entryStock: spot,
+      nights: 0,
+      checksDone: [],
+      morningDone: false,
+      breakWatch: watchFor(
+        this.levels.get(first.symbol),
+        this.barsOf(first.symbol),
+        minute,
+        spot,
+        first.right,
+      ),
+      decidedOn: null,
+      version,
+      status: "buying",
+      jobId: null,
+      dry: s.mode === "dry",
+      sales: [],
+      openedAt: this.o.now(),
+      closedAt: null,
+      addOf: first.id,
+    };
+    const book = bookOf(picked.quote, this.o.now(), broker);
+    const result = await this.enterAt(
+      broker,
+      base,
+      picked.mid,
+      s,
+      why,
+      false,
+      book,
+      {
+        sharePct: s.pyramidSharePct,
+      },
+    );
+    const kind: BotEventKind =
+      result.outcome === "bought" || result.outcome === "would-buy"
+        ? "order"
+        : "skip";
+    this.event(
+      kind,
+      `${first.symbol} pyramid: ${outcomeText(result.outcome, s)}${result.detail ? ` (${result.detail})` : ""}`,
+    );
   }
 
   private async enter(
@@ -733,6 +987,9 @@ export class IndiBot {
     minute: number,
     t: number,
     rvol: number,
+    // bonus: entered on the D2 bonus (the pyramid adds to these); spotNow: the
+    // stock's latest trade, for an early entry inside the minute (2.7).
+    opts: { bonus?: boolean; spotNow?: number } = {},
   ) {
     // The news filter: no new entry on an earnings reaction day or a busy pre-market.
     const blocked = this.newsBlock(date, symbol);
@@ -757,8 +1014,8 @@ export class IndiBot {
     }
     if (legs.length === 0 && limited)
       return this.outcome(date, symbol, limited.outcome, limited.detail);
-    const pick = pickRules(s);
-    const spot = this.lastClose(symbol, minute);
+    const pick = pickRules(s, symbol);
+    const spot = opts.spotNow ?? this.lastClose(symbol, minute);
     if (spot === null)
       return this.outcome(date, symbol, "no_prices", "no stock price");
     const side = right === "C" ? "call" : "put";
@@ -780,7 +1037,15 @@ export class IndiBot {
         ...pickedBook,
         contract: chosen.symbol,
       });
-    if (!picked.ok) return this.outcome(date, symbol, picked.reason, "");
+    if (!picked.ok)
+      return this.outcome(
+        date,
+        symbol,
+        picked.reason,
+        picked.reason === "too_cheap" && pick.minPrice !== s.minPrice
+          ? `${symbol}'s floor is $${pick.minPrice.toFixed(2)}`
+          : "",
+      );
     const contract = picked.quote.symbol;
     const volume = await this.o.market.optionVolume30(contract, date, minute);
     // Kept with the signal: the floor is judged against real fills later.
@@ -829,6 +1094,7 @@ export class IndiBot {
       sales: [],
       openedAt: this.o.now(),
       closedAt: null,
+      ...(opts.bonus ? { bonus: true } : {}),
     };
     const results: { broker: BotBroker; outcome: string; detail: string }[] =
       [];
@@ -889,15 +1155,26 @@ export class IndiBot {
     why: string,
     named: boolean,
     book?: OptionBook,
+    // A pyramid add (2.7): this share of the size; it may buy more of a
+    // contract the bot itself holds (never one the user holds).
+    add?: { sharePct: number },
   ): Promise<{ outcome: string; detail: string }> {
     const { symbol, contract } = base;
     const at = named ? ` · ${brokerNames[broker]}` : "";
-    // A contract the account already holds is the user's; the bot leaves it alone.
-    if (await this.trading(broker).held(contract))
-      return {
-        outcome: "held",
-        detail: `${this.words(contract)} is already in the account${at}`,
-      };
+    // A contract the account already holds is the user's; the bot leaves it
+    // alone. An add may join the bot's own position in it: what the account
+    // holds must then be exactly what the bot's positions hold.
+    const inAccount = await this.trading(broker).held(contract);
+    if (inAccount) {
+      const own = this.ownQty(broker, contract, s.mode === "dry");
+      const onlyOurs = add && own > 0 && inAccount.qty === own;
+      if (!onlyOurs)
+        return {
+          outcome: "held",
+          detail: `${this.words(contract)} is already in the account${at}`,
+        };
+    }
+    const sizePct = add ? (s.sizePct * add.sharePct) / 100 : s.sizePct;
     const position: BotPosition = {
       ...base,
       id: randomUUID(),
@@ -906,7 +1183,7 @@ export class IndiBot {
     };
     if (s.mode === "dry") {
       const equity = await this.equity(broker);
-      const qty = Math.floor((equity * s.sizePct) / 100 / (mid * 100));
+      const qty = Math.floor((equity * sizePct) / 100 / (mid * 100));
       if (qty < 1)
         return {
           outcome: "too_small",
@@ -930,7 +1207,7 @@ export class IndiBot {
     }
     const answer = await this.trading(broker).buy({
       contract,
-      sizePct: s.sizePct,
+      sizePct,
       stopPct: s.safetyStopPct,
       // Keep raising the price until it fills (user 2026-10-23).
       chase: true,
@@ -1028,6 +1305,39 @@ export class IndiBot {
 
   // ---- buys and sales that are still working ----
 
+  /**
+   * What the bot's open positions in one contract at one account hold, less
+   * `except` (a pyramid add can share its first position's contract).
+   */
+  private ownQty(
+    broker: BotBroker,
+    contract: string,
+    dry: boolean,
+    except?: string,
+  ): number {
+    return this.o.store
+      .openPositions()
+      .filter(
+        (p) =>
+          p.id !== except &&
+          p.dry === dry &&
+          p.contract === contract &&
+          this.brokerOf(p) === broker &&
+          p.status === "open",
+      )
+      .reduce((sum, p) => sum + p.qty, 0);
+  }
+
+  /** What the account holds of a position's contract that is this position's: the rest is its other bot positions'. */
+  private heldFor(
+    p: BotPosition,
+    held: { qty: number; avgEntryPrice: number } | null,
+  ): number {
+    if (!held || held.qty <= 0) return 0;
+    const others = this.ownQty(this.brokerOf(p), p.contract, p.dry, p.id);
+    return Math.max(0, held.qty - others);
+  }
+
   private async settle() {
     for (const p of this.o.store.openPositions()) {
       if (p.dry) continue;
@@ -1035,7 +1345,8 @@ export class IndiBot {
         const job = this.trading(this.brokerOf(p)).job(p.jobId);
         if (job.state === "running") continue;
         const held = await this.trading(this.brokerOf(p)).held(p.contract);
-        if (!held || held.qty <= 0) {
+        const mine = this.heldFor(p, held);
+        if (mine <= 0) {
           this.o.store.savePosition({
             ...p,
             status: "closed",
@@ -1047,17 +1358,23 @@ export class IndiBot {
           );
           continue;
         }
+        // An add in a contract the bot already held: the account's average
+        // mixes both buys, so the add's own fill price is its cost.
+        const shared = mine < held!.qty;
+        const cost = shared
+          ? (buyPriceOf(job.result) ?? held!.avgEntryPrice)
+          : held!.avgEntryPrice;
         this.o.store.savePosition({
           ...p,
           status: "open",
-          qty: held.qty,
-          bought: held.qty,
-          cost: held.avgEntryPrice,
+          qty: mine,
+          bought: mine,
+          cost,
           jobId: null,
         });
         this.event(
           "order",
-          `Bought ${held.qty} ${p.symbol} ${this.words(p.contract)} at ${held.avgEntryPrice.toFixed(2)}`,
+          `Bought ${mine} ${p.symbol} ${this.words(p.contract)} at ${cost.toFixed(2)}`,
         );
         continue;
       }
@@ -1068,7 +1385,7 @@ export class IndiBot {
         const sold = soldOf(job.result);
         const price = priceOf(job.result);
         const held = await this.trading(this.brokerOf(p)).held(p.contract);
-        const qty = Math.max(0, Math.min(p.qty - sold, held?.qty ?? 0));
+        const qty = Math.max(0, Math.min(p.qty - sold, this.heldFor(p, held)));
         const sales = p.sales.map((s) =>
           s === pending
             ? { ...s, qty: sold, settled: true, ...(price ? { price } : {}) }
@@ -1091,7 +1408,7 @@ export class IndiBot {
       // A stop or the user may have sold some: the bot never counts more than the account holds.
       if (p.status === "open") {
         const held = await this.trading(this.brokerOf(p)).held(p.contract);
-        const qty = Math.min(p.qty, held?.qty ?? 0);
+        const qty = Math.min(p.qty, this.heldFor(p, held));
         if (qty < p.qty)
           this.event(
             "info",
@@ -1529,6 +1846,13 @@ function standing(p: BotPosition, date: string): string {
 function priceOf(result: unknown): number | null {
   const r = result as { result?: { price?: unknown } } | null;
   return typeof r?.result?.price === "number" ? r.result.price : null;
+}
+
+/** A buy job's average fill price (engine.ts: result.avgPrice), when it has one. */
+function buyPriceOf(result: unknown): number | null {
+  const r = result as { result?: { avgPrice?: unknown } } | null;
+  const v = r?.result?.avgPrice;
+  return typeof v === "number" && v > 0 ? v : null;
 }
 
 function soldOf(result: unknown): number {

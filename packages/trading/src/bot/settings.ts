@@ -103,6 +103,20 @@ export interface BotSettings {
   firstEntryMin: number;
   skipEarnings: boolean;
   skipPremarket: boolean;
+  // Stocks whose option may cost as little as lowFloorPrice (version 2.7: IBIT
+  // at $0.10); every other stock keeps minPrice.
+  lowFloorSymbols: string[];
+  lowFloorPrice: number;
+  // The pyramid (version 2.7): after a D2 bonus entry, one more position of
+  // pyramidSharePct of the size, in a fresh pick, when the stock first reaches
+  // the full signal that day on the same side while the first position is
+  // still held and above its cost.
+  pyramid: boolean;
+  pyramidSharePct: number;
+  // Early entry (version 2.7): the signal is checked on every tick inside the
+  // minute, on the stocks' and SPY's latest trades, and bought at the first
+  // check it holds, not when the minute closes.
+  earlyEntry: boolean;
 }
 
 export type NumberKey = {
@@ -140,7 +154,7 @@ export const defaultSettings: BotSettings = {
   maxDte: 7,
   minPrice: 0.2,
   minVolume: 200,
-  cheapFallback: true,
+  cheapFallback: false,
   minT: 1.8,
   d2Entry: true,
   d2T: 1.2,
@@ -149,6 +163,11 @@ export const defaultSettings: BotSettings = {
   firstEntryMin: 10,
   skipEarnings: true,
   skipPremarket: true,
+  lowFloorSymbols: ["IBIT"],
+  lowFloorPrice: 0.1,
+  pyramid: true,
+  pyramidSharePct: 50,
+  earlyEntry: true,
 };
 
 // Values the backtest never ran.
@@ -190,6 +209,8 @@ export const limits: Record<
   minD2: [0.5, 3, 0.1],
   minRvol: [1, 3, 0.1],
   firstEntryMin: [5, 60, 5],
+  lowFloorPrice: [0.05, 1, 0.05],
+  pyramidSharePct: [25, 100, 25],
 };
 
 const booleans: BooleanKey[] = [
@@ -202,6 +223,8 @@ const booleans: BooleanKey[] = [
   "d2Entry",
   "skipEarnings",
   "skipPremarket",
+  "pyramid",
+  "earlyEntry",
 ];
 const ticker = /^[A-Z][A-Z.]{0,5}$/;
 const maxTickers = 200;
@@ -225,9 +248,14 @@ export function withDefaults(
   if (known)
     for (const key of ruleKeys)
       if (!(key in record)) merged[key] = known.rules[key];
-  if (!("version" in record))
+  if (!("version" in record)) {
+    // A record from before versions: its missing rules are 2.6's (the rules
+    // added since, like the pyramid and early entry, did not exist for it).
+    const legacy = versionById("2.6")!.rules;
+    for (const key of ruleKeys) if (!(key in record)) merged[key] = legacy[key];
     merged.version =
       matchingVersion(merged as unknown as BotSettings)?.id ?? currentVersion;
+  }
   const checked = parseSettings(merged);
   return checked.ok ? checked.value : base;
 }
@@ -271,7 +299,7 @@ export function parseSettings(
     // On the step, without floating-point dust.
     out[key] = Number((Math.round(v / step) * step).toFixed(4));
   }
-  for (const key of ["added", "off"] as const) {
+  for (const key of ["added", "off", "lowFloorSymbols"] as const) {
     const v = body[key];
     if (!Array.isArray(v) || v.length > maxTickers)
       return { ok: false, error: `${key} must be a list of tickers` };
@@ -313,11 +341,16 @@ export const signalParams = (s: BotSettings): SignalParams => ({
   bonusD2: s.minD2,
 });
 
-export const pickRules = (s: BotSettings): PickRules => ({
+/** The lowest option price a stock may be bought at: its own when listed (2.7: IBIT $0.10). */
+export const minPriceFor = (s: BotSettings, symbol: string): number =>
+  s.lowFloorSymbols.includes(symbol) ? s.lowFloorPrice : s.minPrice;
+
+/** The contract rules for one stock (the floor is the stock's own). */
+export const pickRules = (s: BotSettings, symbol?: string): PickRules => ({
   ...defaultPickRules,
   delta: s.delta,
   dteMax: s.maxDte,
-  minPrice: s.minPrice,
+  minPrice: symbol === undefined ? s.minPrice : minPriceFor(s, symbol),
   minVolume30: s.minVolume,
   cheapFallback: s.cheapFallback,
 });

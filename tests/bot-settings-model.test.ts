@@ -119,21 +119,23 @@ test("warnings: a safety stop above the stop, and a big trade size", () => {
 
 test("the version card: the chosen version, its changes and the entry label", () => {
   const clean = versionState(defaultSettings);
-  assert.equal(clean.known?.id, "2.6");
+  assert.equal(clean.known?.id, "2.7");
   assert.deepEqual(clean.changes, []);
-  assert.equal(clean.label, "2.6");
+  assert.equal(clean.label, "2.7");
   assert.equal(clean.latest, true);
   const edited = versionState({ ...defaultSettings, stopPct: 40 });
   assert.deepEqual(edited.changes, ["stopPct 30 → 40"]);
-  assert.equal(edited.label, "2.6*");
+  assert.equal(edited.label, "2.7*");
   const old = versionState({ ...defaultSettings, version: "2.0" });
   assert.equal(old.latest, false);
   assert.deepEqual(old.changes, [
     "restStopPct 0 → 20",
     "sellOnWeakness false → true",
     "holdFromPct 100 → 50",
-    "cheapFallback false → true",
     "d2Entry false → true",
+    "lowFloorSymbols none → IBIT",
+    "pyramid false → true",
+    "earlyEntry false → true",
   ]);
   const own = versionState({ ...defaultSettings, version: "mine" });
   assert.equal(own.known, undefined);
@@ -146,6 +148,7 @@ test("each version opens to its full algorithm in words", () => {
     "Signal",
     "News filter",
     "Contract",
+    "Pyramid",
     "Early checks",
     "Failed break",
     "Strength gone",
@@ -174,6 +177,14 @@ test("each version opens to its full algorithm in words", () => {
     /2 nights at most, never into expiry\)\./,
   );
   assert.match(text(v21.rules, "Day exit"), /at most 10% of the account/);
+  // 2.7: early entry, IBIT's floor and the pyramid in words.
+  const v27 = botVersions.find((v) => v.id === "2.7")!;
+  assert.match(text(v27.rules, "Signal"), /checked every 5 seconds/);
+  assert.match(text(v1.rules, "Signal"), /checked once a minute/);
+  assert.match(text(v27.rules, "Contract"), /IBIT down to \$0\.10/);
+  assert.match(text(v27.rules, "Contract"), /skipped under \$0\.20/);
+  assert.match(text(v27.rules, "Pyramid"), /50% of the size/);
+  assert.match(text(v1.rules, "Pyramid"), /^Off/);
   // The rules as set, not only a version's: a changed stop and no volume floor.
   const own = text({ ...defaultSettings, stopPct: 40, minVolume: 0 }, "Stop");
   assert.match(own, /down 40%/);
