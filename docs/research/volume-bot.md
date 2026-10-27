@@ -9,6 +9,31 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### The early-sign alerts as the Volume bot's alert (2026-10-27)
+
+Sources from `early_alerts.csv` (docs/research/early-alerts.md on research/early-rules): `A` (today's rule, 120-minute
+cooldown), `3 steady + 6 range` and `6 range + 4 no block` (30-minute cooldown); `F60x2` not run. `early_prep.py`: the
+top 50 the file covers (43 names; no QQQ, GOOG, NFLX, RGTI, SPCE, USO, SMR), 09:40-13:00, the slot's 10-second close
+as the alert price, the alert second = the slot's end; then `leg_seconds.py` with `SEC_ALERT=fast SEC_ALERT_FILE=...`
+(real per-second option quotes, so the buy is 2 s after the cross, always after the alert). 2025-11-21 .. 2026-10-22,
+168 days. Every other rule live. Grid: side line 0.25 / 0.5, side wait 10 / 30 min, entry cross / hold 10 s / hold 30 s.
+
+| Source (wait 10, cross) | Trades | /day | Win | Avg per trade | P&L | Without the best 5 | Tune (to May) | Check (Jun on) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| built-in A (no cooldown) | 563 | 3.4 | 21.8% | -9.8% | -$41,561 | -$64,231 | -11.5% | -7.5% |
+| A, line 0.25 | 442 | 2.6 | 23.8% | -10.0% | -$35,649 | -$53,016 | -11.0% | -9.0% |
+| A, line 0.5 | 363 | 2.2 | 23.7% | -6.8% | -$23,302 | -$48,716 | -1.4% | -12.4% |
+| 3 steady + 6 range, 0.25 | 718 | 4.3 | 20.9% | -9.9% | -$49,138 | -$65,384 | -15.5% | -2.6% |
+| 3 steady + 6 range, 0.5 | 618 | 3.7 | 19.7% | -8.9% | -$41,119 | -$64,971 | -9.9% | -7.8% |
+| 6 range + 4 no block, 0.25 | 556 | 3.3 | 21.0% | -9.5% | -$38,942 | -$56,028 | -13.1% | -5.3% |
+| 6 range + 4 no block, 0.5 | 473 | 2.8 | 20.3% | -7.9% | -$30,841 | -$57,473 | -6.1% | -10.2% |
+
+A 30-minute side wait was no better anywhere; holding 10 or 30 s past the line was worse on every source (it buys
+after the move has gone further). The new sources give 1.3-1.6x the trades at the same loss a trade, so they lose
+more money; per trade they are within noise of A (the tune and check halves swap order). Earlier alerts do not buy
+cheaper options in a way that pays: the win rate is 20-21% against A's 24%. The direction is still the problem
+(volume-direction-plan.md).
+
 ### The mid for 1 second (2026-10-27)
 
 `STR_BUY=mid STR_BUY_WAIT=1`: a limit at the mid for 1 s, then the usual price: fills 3% of buys (top 15 13%) at 5.2%
