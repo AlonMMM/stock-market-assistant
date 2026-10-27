@@ -188,6 +188,34 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 | 2026-10-25 | + D2 bonus entry (t ≥ 1.2 and D2 ≥ 1.5 enters too)                     | $1,005,221 / 11%            | $127,303 / 11% | +$194K, same drop; unseen +$2.8K, +1 pt                  | 🏆 champion (backtest only)                     |
 | 2026-10-25 | D2 champion + the failed-break sale (the live bot's exits, `BT_TAG=b`)  | $669,237 / 14%              | $137,446 / 9%  | −$336K, +3 pts drop vs the D2 champion; unseen +$10K, −2 pts | not better: the sale cuts the early D2 entries (2024 +1,513 a trade vs +2,839); on the Bot vs Indi dashboard as `d2-bot` |
 
+### Entry audit: the real quotes were read one minute early (2026-10-27, CORRECTION)
+
+The user: "go and review yourself and try to find issues with the entries - we had huge issue in the volume bot".
+`entry_audit.py`, `quote_label_test.py`. Found: `real_bench.quote()` read the cache row labelled `minute` as the book at
+the END of that minute; the row is the book as that minute BEGAN (cbbo-1m ts_recv = the interval end). Proof: an option
+trade bar's last print sits inside the row labelled j + 1 86% of the time, j 65%, j - 1 52% (254,770 bars). So every
+real-quote fill was priced on the book from before the bar that triggered it: a breakout buy cheaper, a stop sale
+higher. Fixed in `real_bench.quote()` (every script uses it); `indi_real.py` (other session) has its own copy of the
+bug. All real-quote runs below were re-run with the fix on 2026-10-27; the numbers in their entries are the old ones,
+the corrected ones are here. Every conclusion holds; the amounts drop.
+
+| Run (fair list unless said, 1%) | Before the fix | Fixed |
+| --- | --- | --- |
+| 2.6, Feb 2024 - Oct 16 2026 | $910,069 / 14% | $646,213 / 16% (2% $1,893,155 / 29%) |
+| 2.5 / 2.4, whole period | $839,088 / $574,459 | $629,620 / 16% ; $432,210 / 13% |
+| 2.6, 2024-25 / 2026 | $390,392 / 12% ; $233,116 / 14% | $305,729 / 16% ; $211,368 / 15% |
+| 2.6, pre-market skip off, 2024-25 / 2026 | $324,342 ; $199,465 | $254,353 / 18% ; $180,967 / 19% (keep 4x) |
+| Pyramid, 2024-25 / 2026 | $483,650 ; $243,614 | $367,102 / 14% ; $221,359 / 17% |
+| Pyramid + cheap at half, 2024-25 / 2026 | $521,715 ; $218,888 | $403,317 / 13% ; $200,669 / 16% |
+| Best spread rule (now look10 cap30), 2024-25 | $287,792 | $270,718 / 16% (still worse) |
+| Mid-limit sale, 2024-25 / 2026 (fill unproven) | $419,727 ; $250,212 | $366,658 / 14% ; $223,853 / 16% |
+| Favorites 12 months: 2.6 / pyramid / pyramid + cheap at half | $186,294 ; $191,345 ; $175,383 | $165,718 / 18% ; $169,792 / 19% ; $157,269 / 18% |
+
+Checked and clean: the signals (t, volume, D2) and the contract pick use bars up to the signal minute; no signal is
+lost for want of an option print (0 of 981); the stock-days dropped for 300 bars or fewer are half sessions and IPO
+days (known in advance). Not modelled (the owner's paper settings, not rules): the live caps (buys a day, open, day
+loss, the 15% pause).
+
 ### The pre-market volume skip, on and off, on real quotes (2026-10-27)
 
 The user: "can you ran a test for this toggle of an on after all of our changes on indi fair list 2024-2025?" The live
