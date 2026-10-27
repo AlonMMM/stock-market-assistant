@@ -26,7 +26,7 @@ export function algorithmSteps(r: Rules): AlgorithmStep[] {
   steps.push({
     name: "Signal",
     text:
-      `From ${r.firstEntryMin} minutes after the open to 16 minutes before the close, checked once a minute: ` +
+      `From ${r.firstEntryMin} minutes after the open to 16 minutes before the close, ${r.earlyEntry ? "checked every 5 seconds on the minute so far (the stocks' and SPY's latest trades), bought at the first check it holds" : "checked once a minute"}: ` +
       `the stock's move against SPY is t ${r.minT}+ (its strength, normalised by its own volatility) and its volume is ${r.minRvol}× normal or more. ` +
       `${bonusWords(r)}A call on strength, a put on weakness. One entry per stock a day, on the side that comes first.`,
   });
@@ -45,10 +45,16 @@ export function algorithmSteps(r: Rules): AlgorithmStep[] {
     floors = `under $${r.minPrice.toFixed(2)}, the nearest strike toward the money at $${r.minPrice.toFixed(2)} or more`;
   if (r.minVolume > 0)
     floors += ` or under ${r.minVolume} contracts traded in 30 minutes`;
+  if (r.lowFloorSymbols.length)
+    floors += `; ${r.lowFloorSymbols.join(", ")} down to $${r.lowFloorPrice.toFixed(2)}`;
   steps.push({
     name: "Contract",
     text: `The nearest expiry 1–${r.maxDte} days out, the strike with delta closest to ${r.delta}; ${floors}. Bought at the ask, chasing it until filled.`,
   });
+  let pyramid = "Off: one position per stock a day.";
+  if (r.pyramid)
+    pyramid = `After a D2 entry, when the stock first reaches the full signal (t ${r.minT}+) that day on the same side and the first position is up, one more position of ${r.pyramidSharePct}% of the size in a fresh pick; each position then exits on its own.`;
+  steps.push({ name: "Pyramid", text: pyramid });
   let checks =
     "No 10- and 20-minute checks: the position is held until a stop, a failed break or the day exit.";
   if (r.checks)
@@ -70,7 +76,7 @@ export function algorithmSteps(r: Rules): AlgorithmStep[] {
     rest = ` Once the 10-minute check sold half, the rest is sold at ${r.restStopPct}% down on the entry day.`;
   steps.push({
     name: "Stop",
-    text: `All out when the option is down ${r.stopPct}% with the stock against the entry.${rest} Exits are checked every 10 seconds.`,
+    text: `All out when the option is down ${r.stopPct}% with the stock against the entry.${rest} Exits are checked every 5 seconds.`,
   });
   let carry = `At 15:50 everything is sold, except winners up ${r.holdFromPct}%+ which stay overnight (${plural(r.maxNights, "night")} at most, never into expiry)`;
   if (r.maxNights > 0 && r.nightCapPct > 0)

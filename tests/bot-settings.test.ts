@@ -30,9 +30,9 @@ import {
 test("versions: distinct ids oldest first; the defaults are the current version's rules", () => {
   const ids = botVersions.map((v) => v.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(currentVersion, "2.6");
+  assert.equal(currentVersion, "2.7");
   assert.equal(defaultSettings.version, currentVersion);
-  assert.equal(matchingVersion(defaultSettings)?.id, "2.6");
+  assert.equal(matchingVersion(defaultSettings)?.id, "2.7");
   assert.deepEqual(rulesOf(defaultSettings), botVersions.at(-1)!.rules);
   // Each version differs from the one before, and 2.1 is 2.0 plus the failed-break sale.
   for (let i = 1; i < botVersions.length; i++)
@@ -61,15 +61,27 @@ test("versions: distinct ids oldest first; the defaults are the current version'
   assert.deepEqual(ruleChanges(botVersions[7]!.rules, botVersions[6]!), [
     "cheapFallback false → true",
   ]);
+  // 2.7 is 2.5 with IBIT down to $0.10, the pyramid and early entry (from 2.6: no cheap fallback).
+  assert.deepEqual(ruleChanges(botVersions[8]!.rules, botVersions[7]!), [
+    "cheapFallback true → false",
+    "lowFloorSymbols none → IBIT",
+    "pyramid false → true",
+    "earlyEntry false → true",
+  ]);
 });
 
 test("versions: the label is the version, starred when its rules were changed; an own label stays", () => {
-  assert.equal(versionLabel(defaultSettings), "2.6");
-  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.6*");
+  assert.equal(versionLabel(defaultSettings), "2.7");
+  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.7*");
+  // The IBIT list is a rule: changing it stars the label.
+  assert.equal(
+    versionLabel({ ...defaultSettings, lowFloorSymbols: ["IBIT", "MSTR"] }),
+    "2.7*",
+  );
   // The owner's limits and lists are not rules: no star.
   assert.equal(
     versionLabel({ ...defaultSettings, sizePct: 1, off: ["TSLA"] }),
-    "2.6",
+    "2.7",
   );
   const own = { ...defaultSettings, version: "2.2-test", stopPct: 40 };
   assert.equal(versionLabel(own), "2.2-test");
@@ -85,7 +97,7 @@ test("versions: applying one sets its rules and keeps the owner's limits", () =>
   assert.equal(s.sellFailedBreak, false);
   assert.equal(s.sizePct, 1);
   assert.equal(versionLabel(s), "1.0");
-  const back = applyVersion(s, "2.6");
+  const back = applyVersion(s, "2.7");
   assert.deepEqual(rulesOf(back), rulesOf(defaultSettings));
   assert.equal(applyVersion(s, "mine").version, "mine");
 });
@@ -99,7 +111,7 @@ test("versions: parse checks the label; a record saved before versions gets the 
   assert.equal(parseSettings({ ...defaultSettings, version: "<x>" }).ok, false);
   const own = parseSettings({ ...defaultSettings, version: " 2.2 test " });
   assert.equal(own.ok && own.value.version, "2.2 test");
-  // Saved with the defaults' rules: 2.6. Without the cheap fallback: 2.5. With the failed break and no D2 bonus either: 2.4; also no rest stop and holding from +100%: 2.2; without the t-stat exit too: 2.1; also without the failed-break sale: 2.0. Odd rules: the current version.
+  // A record from before versions takes its missing rules from 2.6. Saved with those rules: 2.6. Without the cheap fallback: 2.5. With the failed break and no D2 bonus either: 2.4; also no rest stop and holding from +100%: 2.2; without the t-stat exit too: 2.1; also without the failed-break sale: 2.0. Odd rules: the current version.
   assert.equal(withDefaults({ stopPct: 30 }).version, "2.6");
   assert.equal(withDefaults({ cheapFallback: false }).version, "2.5");
   const before25 = {
@@ -132,7 +144,9 @@ test("versions: parse checks the label; a record saved before versions gets the 
     "2.0",
   );
   assert.equal(withDefaults({ stopPct: 40 }).version, currentVersion);
-  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.6*");
+  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.7*");
+  // ...and none of the 2.7 rules came with it.
+  assert.equal(withDefaults({ stopPct: 30 }).pyramid, false);
   // A saved version is kept as saved.
   assert.equal(withDefaults({ version: "1.0", minT: 2 }).version, "1.0");
   // A rule saved before it existed takes the saved version's value: a running
@@ -151,6 +165,19 @@ test("versions: parse checks the label; a record saved before versions gets the 
   assert.equal(live25.cheapFallback, false);
   assert.equal(versionLabel(live25), "2.5");
   assert.equal(withDefaults({ version: "2.6" }).cheapFallback, true);
+  // A running 2.6 gets no IBIT floor, pyramid or early entry until 2.7 is chosen.
+  const live26 = withDefaults({ version: "2.6", minPrice: 0.15 });
+  assert.deepEqual(live26.lowFloorSymbols, []);
+  assert.equal(live26.pyramid, false);
+  assert.equal(live26.earlyEntry, false);
+  assert.equal(versionLabel(live26), "2.6*");
+  const live27 = withDefaults({ version: "2.7" });
+  assert.deepEqual(live27.lowFloorSymbols, ["IBIT"]);
+  assert.equal(live27.lowFloorPrice, 0.1);
+  assert.equal(live27.pyramid, true);
+  assert.equal(live27.pyramidSharePct, 50);
+  assert.equal(live27.earlyEntry, true);
+  assert.equal(live27.cheapFallback, false);
 });
 
 test("parse: the defaults pass; values are checked, snapped to the step and tickers cleaned", () => {

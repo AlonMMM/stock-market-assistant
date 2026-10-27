@@ -61,6 +61,11 @@ import {
 } from "../apps/trader/src/bot.js";
 import { BotStore } from "../apps/trader/src/bot-store.js";
 import { applyVersion } from "../packages/trading/src/bot/versions.js";
+import {
+  defaultSettings,
+  pickRules,
+} from "../packages/trading/src/bot/settings.js";
+import type { BotPosition } from "../apps/trader/src/bot-store.js";
 
 // ---- synthetic bars ----
 
@@ -668,7 +673,11 @@ function harness(
       calls.push({ kind: "buy", body, broker });
       // IBKR fills one contract fewer: the accounts should differ a little.
       const qty = broker === "ibkr" ? 32 : 33;
-      heldBy[broker].set(String(body.contract), qty);
+      // A buy adds to what the account holds (a pyramid add can buy more of a held contract).
+      heldBy[broker].set(
+        String(body.contract),
+        (heldBy[broker].get(String(body.contract)) ?? 0) + qty,
+      );
       const id = `b${calls.length}`;
       jobs.set(id, { state: "done", result: {} });
       return { status: "started", jobId: id, qty };
@@ -1200,30 +1209,30 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
 
 test("versions: every entry is stamped with the version in force; changed rules star it; the owner can pick an older one", async () => {
   const h = harness("live");
-  assert.equal(h.bot.status().version, "2.6");
+  assert.equal(h.bot.status().version, "2.7");
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy");
-  assert.match(String(buy?.body.note), /· bot 2\.6$/);
+  assert.match(String(buy?.body.note), /· bot 2\.7$/);
   const [p] = h.store.openPositions();
-  assert.equal(p!.version, "2.6");
-  assert.equal(h.store.signals(DAY)[0]!.version, "2.6");
-  assert.equal(h.bot.status().positions[0]!.version, "2.6");
+  assert.equal(p!.version, "2.7");
+  assert.equal(h.store.signals(DAY)[0]!.version, "2.7");
+  assert.equal(h.bot.status().positions[0]!.version, "2.7");
   const texts = () =>
     h.bot
       .status()
       .activity.map((e) => e.text)
       .join("\n");
-  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.6$/m);
+  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.7$/m);
 
-  // The stop changed from 2.6's: the next entry is stamped "2.6*".
+  // The stop changed from 2.7's: the next entry is stamped "2.7*".
   const edited = harness("live");
   edited.bot.setSettings({ ...edited.bot.settings(), stopPct: 40 });
-  assert.equal(edited.bot.status().version, "2.6*");
+  assert.equal(edited.bot.status().version, "2.7*");
   await edited.run(DAY, 565, 600);
-  assert.equal(edited.store.openPositions()[0]!.version, "2.6*");
+  assert.equal(edited.store.openPositions()[0]!.version, "2.7*");
   assert.match(
     String(edited.calls.find((c) => c.kind === "buy")?.body.note),
-    /· bot 2\.6\*$/,
+    /· bot 2\.7\*$/,
   );
 
   // Version 1.0 picked: its rules (t 2, no night cap, no news filter) run, and the feed says so.
@@ -1241,6 +1250,9 @@ test("versions: every entry is stamped with the version in force; changed rules 
     restStopPct: 0,
     d2Entry: false,
     cheapFallback: false,
+    lowFloorSymbols: [],
+    pyramid: false,
+    earlyEntry: false,
   });
   assert.equal(picked.version, "1.0");
   assert.equal(old.bot.status().version, "1.0");
@@ -1249,7 +1261,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
       .status()
       .activity.map((e) => e.text)
       .join("\n"),
-    /Settings changed: version "2\.6" → "1\.0"; restStopPct 20 → 0; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; cheapFallback true → false; minT 1\.8 → 2; d2Entry true → false/,
+    /Settings changed: version "2\.7" → "1\.0"; restStopPct 20 → 0; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false; skipEarnings true → false; skipPremarket true → false; lowFloorSymbols \["IBIT"\] → \[\]; pyramid true → false; earlyEntry true → false/,
   );
 });
 
@@ -1636,4 +1648,249 @@ test("broker setting 'both': an account that throws does not undo the other's en
     signal.detail ?? "",
     /Alpaca: 33 .*; Interactive Brokers: market data requires additional subscription/,
   );
+});
+
+// ---- version 2.7: IBIT's floor, the pyramid, early entry (docs/tasks/backend-bot-champion.md) ----
+
+test("picker 2.7: IBIT is bought down to $0.10, every other stock keeps the floor; no cheap fallback", () => {
+  const s = applyVersion(defaultSettings, "2.7");
+  assert.equal(pickRules(s, "IBIT").minPrice, 0.1);
+  assert.equal(pickRules(s, "NVDA").minPrice, 0.2);
+  assert.equal(pickRules(s, "NVDA").cheapFallback, false);
+  // the 0.15-delta strike costs 0.13 (mid): IBIT takes it, another stock skips it (no fallback to 112)
+  const chain = [q(115, 0.15, 0.12), q(112, 0.2, 0.2)];
+  const ibit = pickContract(
+    chain,
+    102,
+    "call",
+    "2026-10-21",
+    pickRules(s, "IBIT"),
+  );
+  assert.ok(ibit.ok);
+  assert.equal(ibit.quote.strike, 115);
+  const other = pickContract(
+    chain,
+    102,
+    "call",
+    "2026-10-21",
+    pickRules(s, "NVDA"),
+  );
+  assert.equal(!other.ok && other.reason, "too_cheap");
+  // under IBIT's own floor it is too cheap too
+  const under = pickContract(
+    [q(115, 0.15, 0.08)],
+    102,
+    "call",
+    "2026-10-21",
+    pickRules(s, "IBIT"),
+  );
+  assert.equal(!under.ok && under.reason, "too_cheap");
+  // the owner's minimum still sets the floor of the other stocks
+  assert.equal(pickRules({ ...s, minPrice: 0.15 }, "NVDA").minPrice, 0.15);
+  assert.equal(pickRules({ ...s, minPrice: 0.15 }, "IBIT").minPrice, 0.1);
+});
+
+/** The minute of the harness day's NVDA signal (the full signal: t >= 1.8). */
+async function signalMinute(): Promise<number> {
+  const h = harness("live");
+  await h.run(DAY, 565, 640);
+  const sig = h.store.signals(DAY)[0];
+  assert.ok(sig, "the harness day has a signal");
+  return sig.minute;
+}
+
+/**
+ * A harness whose NVDA D2 entry is already open: a signal row (so the day's
+ * own entry passes) and a bonus position `before` minutes ahead of the full
+ * signal, in the 110 call the add would pick too.
+ */
+async function withFirst(over: Partial<BotPosition> = {}, before = 3) {
+  const M = await signalMinute();
+  const h = harness("live");
+  const contract = q(110, 0.15, 0.59).symbol;
+  h.store.addSignal({
+    day: DAY,
+    symbol: "NVDA",
+    right: "C",
+    minute: M - before,
+    t: 1.3,
+    rvol: 2,
+    outcome: "bought",
+    detail: "",
+    at: 0,
+    version: "2.7",
+  });
+  const first: BotPosition = {
+    id: "first",
+    day: DAY,
+    symbol: "NVDA",
+    contract,
+    right: "C",
+    qty: 10,
+    bought: 10,
+    cost: 0.3,
+    entryMinute: M - before,
+    entryStock: 100,
+    nights: 0,
+    checksDone: [],
+    morningDone: false,
+    breakWatch: null,
+    decidedOn: null,
+    version: "2.7",
+    broker: "alpaca",
+    status: "open",
+    jobId: null,
+    dry: false,
+    sales: [],
+    openedAt: 0,
+    closedAt: null,
+    bonus: true,
+    ...over,
+  };
+  h.store.savePosition(first);
+  if (first.status === "open") h.held.set(contract, first.qty);
+  return { h, M, contract };
+}
+
+test("pyramid: the full signal after a D2 entry that is up buys half a size more, once, in the same contract", async () => {
+  const { h, M, contract } = await withFirst();
+  await h.run(DAY, 565, 570 + M + 3);
+  const buys = h.calls.filter((c) => c.kind === "buy");
+  assert.equal(buys.length, 1, "one add");
+  assert.equal(buys[0]!.body.sizePct, 1); // half of 2%
+  assert.equal(buys[0]!.body.contract, contract);
+  assert.match(
+    String(buys[0]!.body.note),
+    /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.7$/,
+  );
+  const open = h.store.openPositions();
+  const add = open.find((p) => p.addOf === "first");
+  assert.ok(add, "the add is its own position");
+  // the account holds 10 + 33: each position counts its own
+  assert.equal(h.held.get(contract), 43);
+  assert.equal(add!.qty, 33);
+  assert.equal(open.find((p) => p.id === "first")!.qty, 10);
+  assert.equal(open.find((p) => p.id === "first")!.pyramidChecked, true);
+  // later minutes add nothing more
+  await h.run(DAY, 570 + M + 4, 570 + M + 30);
+  assert.equal(h.calls.filter((c) => c.kind === "buy").length, 1);
+});
+
+test("pyramid: no add when the first position is not up, is the other side, is not a D2 entry, or the version has no pyramid", async () => {
+  const down = await withFirst({ cost: 1.0 }); // the quote's mid is 0.6
+  await down.h.run(DAY, 565, 570 + down.M + 3);
+  assert.equal(down.h.calls.filter((c) => c.kind === "buy").length, 0);
+  assert.equal(down.h.store.openPositions()[0]!.pyramidChecked, true);
+  assert.match(
+    down.h.bot
+      .status()
+      .activity.map((e) => e.text)
+      .join("\n"),
+    /NVDA pyramid: the first position is not up/,
+  );
+  const put = await withFirst({ right: "P" });
+  // kept open past the full signal: no strength exit, no timed checks (the stock rises against a put)
+  put.h.bot.setSettings({
+    ...put.h.bot.settings(),
+    sellOnWeakness: false,
+    checks: false,
+  });
+  await put.h.run(DAY, 565, 570 + put.M + 3);
+  assert.equal(put.h.calls.filter((c) => c.kind === "buy").length, 0);
+  assert.match(
+    put.h.bot
+      .status()
+      .activity.map((e) => e.text)
+      .join("\n"),
+    /NVDA pyramid: the full signal at .* is the other side/,
+  );
+  const plain = await withFirst({ bonus: false });
+  await plain.h.run(DAY, 565, 570 + plain.M + 3);
+  assert.equal(plain.h.calls.filter((c) => c.kind === "buy").length, 0);
+  const off = await withFirst();
+  off.h.bot.setSettings({ ...off.h.bot.settings(), pyramid: false });
+  await off.h.run(DAY, 565, 570 + off.M + 3);
+  assert.equal(off.h.calls.filter((c) => c.kind === "buy").length, 0);
+});
+
+test("pyramid: never buys more of a contract the user holds; the shared contract never counts more than the account holds", async () => {
+  // the account holds 15 of the contract, the bot's first position 10: 5 are the user's
+  const { h, M, contract } = await withFirst();
+  h.held.set(contract, 15);
+  await h.run(DAY, 565, 570 + M + 3);
+  assert.equal(h.calls.filter((c) => c.kind === "buy").length, 0);
+  assert.match(
+    h.bot
+      .status()
+      .activity.map((e) => e.text)
+      .join("\n"),
+    /NVDA pyramid: skipped, you hold this contract/,
+  );
+  // two bot positions in one contract, then the account loses some (a stop or a sale by hand)
+  const shared = await withFirst();
+  await shared.h.run(DAY, 565, 570 + shared.M + 3);
+  assert.equal(shared.h.held.get(shared.contract), 43);
+  shared.h.held.set(shared.contract, 30);
+  await shared.h.run(DAY, 570 + shared.M + 4, 570 + shared.M + 4);
+  const counted = shared.h.store
+    .openPositions()
+    .filter((p) => p.contract === shared.contract)
+    .reduce((n, p) => n + p.qty, 0);
+  assert.ok(counted <= 30, `the bot counts ${counted}, the account holds 30`);
+});
+
+test("early entry: the signal inside the minute buys before the minute closes; off, it waits for the close", async () => {
+  const M = await signalMinute();
+  // the stock's latest trade inside a minute is that minute's close (synthetic)
+  const withPrices = (h: ReturnType<typeof harness>) => {
+    const market = (h.bot as any).o.market;
+    market.lastPrices = async (symbols: string[]) => {
+      const now = (h.bot as any).o.now();
+      const minute = Math.floor((now - at(DAY, 570, 0)) / 60_000);
+      const out = new Map<string, number>();
+      for (const s of symbols) {
+        const day = await market.bars([s], DAY, minute, minute);
+        const bar = day.get(s)?.[0];
+        if (bar) out.set(s, bar.c);
+      }
+      return out;
+    };
+  };
+  const early = harness("live");
+  withPrices(early);
+  await early.run(DAY, 565, 570 + M - 1);
+  await early.tickAt(DAY, 570 + M, 25); // inside minute M, before it closes
+  const sig = early.store.signals(DAY)[0];
+  assert.ok(sig, "a signal inside the minute");
+  assert.equal(sig!.minute, M);
+  assert.equal(early.calls.filter((c) => c.kind === "buy").length, 1);
+  assert.match(
+    early.bot
+      .status()
+      .activity.map((e) => e.text)
+      .join("\n"),
+    /NVDA call signal at .*:25, inside the minute/,
+  );
+  // the closed minute finds the signal taken and buys nothing more
+  await early.run(DAY, 570 + M + 1, 570 + M + 3);
+  assert.equal(early.calls.filter((c) => c.kind === "buy").length, 1);
+  // the live bars request already holds the forming minute (its part so far): still the closed minutes plus the latest trade
+  const forming = harness("live");
+  withPrices(forming);
+  const market = (forming.bot as any).o.market;
+  const bars = market.bars.bind(market);
+  market.bars = (s: string[], d: string, from: number, to: number) =>
+    bars(s, d, from, to + 1);
+  await forming.run(DAY, 565, 570 + M - 1);
+  await forming.tickAt(DAY, 570 + M, 25);
+  assert.equal(forming.store.signals(DAY)[0]?.minute, M);
+  assert.equal(forming.calls.filter((c) => c.kind === "buy").length, 1);
+  const late = harness("live");
+  withPrices(late);
+  late.bot.setSettings({ ...late.bot.settings(), earlyEntry: false });
+  await late.run(DAY, 565, 570 + M - 1);
+  await late.tickAt(DAY, 570 + M, 25);
+  assert.equal(late.calls.filter((c) => c.kind === "buy").length, 0);
+  await late.tickAt(DAY, 570 + M + 1, 20);
+  assert.equal(late.calls.filter((c) => c.kind === "buy").length, 1);
 });

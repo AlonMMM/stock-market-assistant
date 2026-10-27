@@ -366,7 +366,9 @@ const bot = (() => {
 })();
 // Every 10 s: the exit checks run each tick, the entries once per closed
 // minute (user 2026-10-23).
-const botTimer = bot ? setInterval(() => void bot.tick(), 10_000) : null;
+// Every 5 seconds: early entry (version 2.7) checks the forming minute on each
+// tick, and every 10 seconds keeps only about half of its gain (sec_timing.py).
+const botTimer = bot ? setInterval(() => void bot.tick(), 5_000) : null;
 api.get("/v1/bot", async () => {
   if (!bot) throw new RequestError(botOff, 409);
   return bot.status();
