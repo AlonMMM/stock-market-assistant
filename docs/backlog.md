@@ -316,6 +316,17 @@ watchlist opens faster on a phone.
 
 ## Done
 
+### The bots' maps on a log scale; skipped stocks off the list
+
+- id: done-map-scale-find
+- area: App
+- tags: Main bot, Volume bot, Charts
+- source: Session of Oct 27
+- done: 2026-10-27, PR #186
+
+Both maps' axes are logarithmic, so the stocks near 1× spread out. Stocks already out for today stay on the map but
+leave the list; a "Find a stock" box finds any watched stock.
+
 ### A shorter open position, with the entry against its bid and ask
 
 - id: done-position-brief

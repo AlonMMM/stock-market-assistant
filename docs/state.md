@@ -23,7 +23,11 @@ stock and the option only; why it entered folded. The bid and ask come from the 
 buy: the Main bot's `entryBook`, the volume bot's buy order's `book`, the owner's order (`pricing`). A closed
 trade's window shows the same bar under its entry. The bots' map sections were cut down the same day ("too much
 text"): one line above the map, the stock card shows its two meters (the share and price-move checks only while
-they fall short), and a row says something only where its bars cannot (blocked, waiting for its side, signaled).
+they fall short), and a row says something only where its bars cannot (blocked, waiting for its side, signaled). Later that day:
+both maps' axes became logarithmic (log(1 + v), signed for the vertical one), so the crowd near 1× spreads out
+and the far stocks still fit; and the stocks already out for today (the Main bot's blocked or already signaled, the
+volume bot's "out for today") left the list, staying on the map as before, with a "Find a stock" box that finds
+any watched stock, those too.
 
 **The maps** (the Main bot's signal map, the volume bot's alert map; `BotMap.tsx`): zoom with a pinch, the wheel,
 a double tap or + / − (Fit returns), and drag when zoomed; ticks follow the zoom with the bot's threshold always

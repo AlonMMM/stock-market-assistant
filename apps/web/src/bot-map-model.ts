@@ -9,6 +9,16 @@ export interface Domain {
   y1: number;
 }
 
+/**
+ * The map's scales (user 2026-10-27: "the scales of the map should not be
+ * linear"): volume against usual on log(1 + v), so 0 to 2× gets room and 10×
+ * still fits; the signed axis the same way on each side of 0.
+ */
+export const scaleX = (v: number) => Math.log1p(Math.max(0, v));
+export const unscaleX = (u: number) => Math.expm1(u);
+export const scaleY = (v: number) => Math.sign(v) * Math.log1p(Math.abs(v));
+export const unscaleY = (u: number) => Math.sign(u) * Math.expm1(Math.abs(u));
+
 // Zoomed in at most this many times.
 const maxZoom = 20;
 

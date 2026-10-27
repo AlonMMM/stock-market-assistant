@@ -8305,3 +8305,16 @@ i.added {
   cursor: pointer;
   color: var(--gray-49);
 }
+
+/* Find a stock in a bot's list, the ones out for today too (2026-10-27). */
+.bot-find input {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--gray-87);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--gray-27);
+  font: inherit;
+  font-size: 14px;
+}

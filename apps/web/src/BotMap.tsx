@@ -3,6 +3,10 @@ import { useBoxWidth } from "./use-width.js";
 import {
   mapTicks,
   panDomain,
+  scaleX,
+  scaleY,
+  unscaleX,
+  unscaleY,
   zoomDomain,
   type Domain,
 } from "./bot-map-model.js";
@@ -57,11 +61,13 @@ export function BotMap({
   const mapH = mapW < 520 ? 320 : 340;
   const right = mapW - pad.r;
   const bottom = mapH - pad.b;
+  // Not linear (user 2026-10-27): most stocks sit near 1× and a few far
+  // out, so both axes are logarithmic; the zoom works on the scaled values.
   const full: Domain = {
     x0: 0,
-    x1: axes.xMax,
-    y0: -axes.yMax,
-    y1: axes.yMax,
+    x1: scaleX(axes.xMax),
+    y0: -scaleY(axes.yMax),
+    y1: scaleY(axes.yMax),
   };
   const [zoom, setZoom] = useState<Domain | null>(null);
   // A new scale (another stock far out) keeps the zoom inside it.
@@ -74,12 +80,18 @@ export function BotMap({
   const plotW = right - pad.l;
   const plotH = bottom - pad.t;
   const x = (v: number) =>
-    pad.l + ((Math.min(v, full.x1) - d.x0) / (d.x1 - d.x0)) * plotW;
+    pad.l + ((scaleX(Math.min(v, axes.xMax)) - d.x0) / (d.x1 - d.x0)) * plotW;
   const y = (v: number) =>
     pad.t +
-    ((d.y1 - Math.max(full.y0, Math.min(full.y1, v))) / (d.y1 - d.y0)) * plotH;
-  const xTicks = zoomed ? mapTicks(d.x0, d.x1, axes.needX) : axes.xTicks;
-  const yTicks = zoomed ? mapTicks(d.y0, d.y1, axes.needY, true) : axes.yTicks;
+    ((d.y1 - scaleY(Math.max(-axes.yMax, Math.min(axes.yMax, v)))) /
+      (d.y1 - d.y0)) *
+      plotH;
+  const xTicks = zoomed
+    ? mapTicks(unscaleX(d.x0), unscaleX(d.x1), axes.needX)
+    : axes.xTicks;
+  const yTicks = zoomed
+    ? mapTicks(unscaleY(d.y0), unscaleY(d.y1), axes.needY, true)
+    : axes.yTicks;
   // Names on the closest stocks only, so the labels stay readable; zoomed
   // in, on every stock in view.
   const named = new Set(points.slice(0, 8).map((p) => p.symbol));
@@ -202,16 +214,16 @@ export function BotMap({
           <rect
             className="bot-map-zone up"
             x={x(axes.needX)}
-            y={y(full.y1)}
-            width={Math.max(0, x(full.x1) - x(axes.needX))}
-            height={Math.max(0, y(axes.needY) - y(full.y1))}
+            y={y(axes.yMax)}
+            width={Math.max(0, x(axes.xMax) - x(axes.needX))}
+            height={Math.max(0, y(axes.needY) - y(axes.yMax))}
           />
           <rect
             className="bot-map-zone down"
             x={x(axes.needX)}
             y={y(-axes.needY)}
-            width={Math.max(0, x(full.x1) - x(axes.needX))}
-            height={Math.max(0, y(full.y0) - y(-axes.needY))}
+            width={Math.max(0, x(axes.xMax) - x(axes.needX))}
+            height={Math.max(0, y(-axes.yMax) - y(-axes.needY))}
           />
           {yTicks.map((t) => (
             <line
