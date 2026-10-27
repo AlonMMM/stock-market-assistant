@@ -9,6 +9,30 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### The Main bot's fair-price limit buy on the Volume bot (2026-10-27)
+
+The rule (the Main bot's, from another session): limit at the microprice (bid and ask weighted by their sizes) + 3
+ticks, never above the usual price (mid + half to the ask); unfilled after the wait, pay the usual price then, with the
+run-away cost. `step5` (the user's idea): one tick higher every 5 s up to the usual start. `leg_seconds.py option2`
+re-downloads each cross buy's book with sizes, 2 s before to 82 s after (6,592 windows, `sec_cache/opt2/`);
+`STR_BUY=micro60|step5`, `STR_BUY_WAIT`. A limit fills only when the ask comes down to it (quotes, no trades: a seller
+hitting our bid is not seen), so fills are a lower bound. Top 50, 3 years, cross:
+
+| Buy | Trades | Avg per trade | $100K becomes | Top 15 | Names 16-50 |
+| --- | --- | --- | --- | --- | --- |
+| usual (baseline) | 1,591 | -9.1% | $25,196 | +0.2% | -10.9% |
+| micro + 3 ticks, wait 60 s | 1,570 | -11.0% | $19,539 | +1.3% | -13.6% |
+| step5, wait 60 s | 1,569 | -11.1% | $19,553 | +1.2% | -13.7% |
+| step5, wait 20 s | 1,582 | -9.8% | $22,351 | +1.6% | -12.2% |
+| step5, wait 10 s | 1,581 | -9.8% | $22,352 | +1.6% | -12.2% |
+| step5, wait 5 s | 1,585 | -9.5% | $23,522 | +1.9% | -11.8% |
+
+60-second waits: the limit fills on 56-60% of buys (top 15: 83%, after 9 s; names 16-50: about half, after 20 s) and
+saves 3-4% of the price. The unfilled ones are the runners: 60 s later they cost 9-12% more than the usual price, and
+they are the better trades (late trades at the usual price +3.8% on the top 15, they turn to -6.3%). Adverse selection:
+the limit fills when the option comes down, so it buys the losers cheaper and the winners dearer. A short wait cuts the
+damage; only the top 15 gain (+1.9% vs +0.2% a trade at 5 s). Names 16-50 lose more with any wait.
+
 ### A wider early give-back and a bigger side line (2026-10-27)
 
 Why the 1-minute stops: the give-back (0.75 x S30 from the best) sits about 0.5 x S30 under the alert price, and a burst

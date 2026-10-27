@@ -171,6 +171,55 @@ def fetch_opt(args):
     os.replace(p + ".tmp", p)
 
 
+def opt2_path(e, contract, sec): return os.path.join(OUT, "opt2", f"{e['date']}_{contract}_{sec}.csv.gz")
+
+
+def fetch_opt2(args):
+    """The book with sizes from 2 s before the trigger to 80 s after it: second, bid, ask, bid size, ask size."""
+    e, contract, sec = args
+    p = opt2_path(e, contract, sec)
+    if os.path.exists(p): return
+    m = re.match(r"^([A-Z.]+)(\d{6}[CP]\d{8})$", contract)
+    schema, back, shift = ("cbbo-1s", 2, 1) if e["date"] >= SEC1 else ("cmbp-1", 30, 0)
+    text = get("OPRA.PILLAR", schema, m.group(1).ljust(6) + m.group(2), e["date"], sec - back, sec + LAG + 80)
+    rows = [(sec_of(r["ts_recv"]) - shift, r["bid_px_00"], r["ask_px_00"], r["bid_sz_00"], r["ask_sz_00"])
+            for r in csv.DictReader(io.StringIO(text)) if r["bid_px_00"] and r["ask_px_00"]]
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with gzip.open(p + ".tmp", "wt") as f: csv.writer(f).writerows(rows)
+    os.replace(p + ".tmp", p)
+
+
+def usual_buy(rows, t):
+    """The bot's usual price at second t: mid + half to the ask, and the ask (capped at +10%) if the bid runs past it."""
+    q = book_at(rows, t)
+    if not q: return None
+    buy = (q[0] + q[1]) / 2 + (q[1] - q[0]) / 4
+    later = book_at(rows, t + 10)
+    if later and later[0] > buy: buy = min(later[1], buy * 1.1)
+    return buy
+
+
+def limit_buy(rows, t0, mode):
+    """A fair-price limit (STR_BUY): microprice + 3 ticks, never above the usual price. micro60: wait 60 s, then the usual
+    price. step5: one tick higher every 5 s up to the usual start, 60 s at most, then the usual price. A limit fills when
+    the ask comes down to it (quotes only: no trades, so fills by a seller hitting our bid are not counted).
+    -> (price, 'limit' or 'late', seconds waited) or None"""
+    k = [r for r in rows if r[0] <= t0]
+    if not k: return None
+    bid, ask, bsz, asz = (float(x) for x in k[-1][1:5])
+    start = (bid + ask) / 2 + (ask - bid) / 4
+    micro = (bid * asz + ask * bsz) / (bsz + asz) if bsz + asz > 0 else (bid + ask) / 2
+    tick = 0.01 if ask < 3 else 0.05
+    lim = min(micro + 3 * tick, start)
+    wait = int(os.environ.get("STR_BUY_WAIT", "60"))   # seconds before paying the usual price
+    for s in range(t0 + 1, t0 + wait + 1):
+        if mode == "step5" and (s - t0) % 5 == 0: lim = min(lim + tick, start)
+        b = book_at(rows, s)
+        if b and b[1] <= lim + 1e-9: return min(lim, b[1]), "limit", s - t0
+    late = usual_buy(rows, t0 + wait)
+    return (late, "late", wait) if late else None
+
+
 def book_at(rows, s):
     k = [r for r in rows if r[0] <= s]
     return (float(k[-1][1]), float(k[-1][2])) if k else None
@@ -195,6 +244,13 @@ def trade(job):
         later = book_at(rows, sec + LAG + 10)
         if later and later[0] > buy: buy = min(later[1], buy * 1.1)
         ct = sec // 60
+        if entry == "cross" and os.environ.get("STR_BUY"):   # STR_BUY=micro60|step5: the fair-price limit buy
+            p2 = opt2_path(e, contract, sec)
+            if not os.path.exists(p2): return None
+            rows2 = [(int(r[0]), *r[1:]) for r in csv.reader(gzip.open(p2, "rt")) if float(r[1]) > 0 and float(r[2]) > 0]
+            lb = limit_buy(rows2, sec + LAG, os.environ["STR_BUY"])
+            if not lb: return None
+            buy, fill, waited = lb
     mid_in = (q[0] + q[1]) / 2
     stock_in = spot   # the minute close (close entry) or the trigger second's price
     if entry != "close":
@@ -225,7 +281,8 @@ def trade(job):
     bars = day(e["sym"], e["date"]); pb = day(e["sym"], CAL[CAL.index(e["date"]) - 1])
     mv_open = sign * (spot / bars[0][1] - 1) / e["u"] if bars and bars[0][0] <= 5 else None
     mv_close = sign * (spot / pb[-1][4] - 1) / e["u"] if pb else None
-    return dict(entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
+    if not (entry == "cross" and os.environ.get("STR_BUY")): fill, waited = "usual", 0
+    return dict(fill=fill, waited=waited, entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
                 t=t_side, d2=d2_side, mv_open=mv_open, mv_close=mv_close, side=side, mid_in=mid_in, mid_out=(qs[0] + qs[1]) / 2,
                 stock_in=stock_in, stock_out=stock_out)
 
@@ -257,6 +314,12 @@ def main():
         json.dump([dict(t=t, p={f"{k[0]}|{k[1]}": x for k, x in p.items()}) for t, p in zip(trig, picks)], open(pk_file, "w"))
         print(sum(len(p) for p in picks), "picks"); return
     pk = json.load(open(pk_file))
+    if step == "option2":   # the limit-buy test's books (cross, live 0.20 rule)
+        jobs = sorted({(i, pk[i]["p"]["cross|plain20"][0], pk[i]["t"]["cross"][0]) for i in range(len(ev)) if "cross|plain20" in pk[i]["p"]})
+        with ThreadPoolExecutor(40) as ex:
+            for n, _ in enumerate(ex.map(lambda j: fetch_opt2((ev[j[0]], j[1], j[2])), jobs)):
+                if n % 200 == 0: print(n, "/", len(jobs), flush=True)
+        return
     if step == "option":
         jobs = sorted({(i, x[0], pk[i]["t"][k.split("|")[0]][0]) for i in range(len(ev)) for k, x in pk[i]["p"].items() if not k.startswith("close") and k in os.environ.get("SEC_OPT_ONLY", k)})   # SEC_OPT_ONLY="cross|plain20": only those
         with ThreadPoolExecutor(40) as ex:
