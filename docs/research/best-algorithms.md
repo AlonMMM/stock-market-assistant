@@ -363,6 +363,11 @@ $257,782 / $290,900; trade the confirmed pre-market skips $259,838 / $288,196; a
 the champion on both tune lists; check (skip against) $368,105 / $140,443 vs $368,105 / $139,363. The bot's signals
 rarely fall on an analyst day (an upgrade mostly moves the stock before the open, a day the news filter and the
 pre-market skip already treat as news).
+Then (the user: "try only for those trades turn off these filters"): on an upgrade / downgrade day only, the pre-market
+skip and the earnings-day filter off. lift-conf (the action in the trade's direction) tune $258,153 / $291,758 vs
+$257,982 / $289,355, check $364,957 / $135,829 vs $368,105 / $139,363; lift-any tune $257,766 / $288,529. The added
+trades (lift-conf): 15 on the fair list, 3 winners (UPST 2024-11-08 +15,834, PLTR 2026-08-04 +17,867, BA +603), net
+-6,857 at $10K; 10 on the Favorites, 1 winner, net -17,445. The filters hold on analyst days too.
 
 ### Fridays (2026-10-27, not better: keep trading them)
 

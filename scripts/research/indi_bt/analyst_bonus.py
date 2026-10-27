@@ -9,6 +9,11 @@ downgrade (or a cut target) a put; the other way it is against. Set before runni
   skip-ud     no trade against an upgrade / downgrade
   pre-ud      also trade a signal the pre-market volume skip (4x) dropped, when an upgrade / downgrade confirms it
   combo       size-ud + skip-ud + pre-ud
+Then (the user, 2026-10-27: "try only for those trades turn off these filters": the pre-market skip and the earnings
+reaction day), on an upgrade / downgrade day only, both filters off:
+  lift-conf   when the action is in the trade's direction
+  lift-any    in either direction
+  (ANALYST_RUN=lift prints these two against the base, with every trade they add)
 Tune / check by entry week (split.py), the fair list and the Favorites 24 months.
 
   node --env-file=.env <dir>/run.mjs analyst_bonus.py      (from the app repo root)
@@ -31,6 +36,7 @@ from store import calendar
 B = "data/local/x/bt"
 CAL = calendar()
 VARIANTS = ("base", "size-ud", "size-all", "skip-ud", "pre-ud", "combo")
+if os.environ.get("ANALYST_RUN") == "lift": VARIANTS = ("base", "lift-conf", "lift-any")
 
 
 def actions():
@@ -58,8 +64,11 @@ def fair_rows(prefix, pre):
     """The fair list's signals; pre = only the ones the pre-market skip dropped."""
     T = [t for f in glob.glob(f"{B}/{prefix}_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] in ("ok", "too_cheap", "illiquid")]
     nf.features(T)
-    keep = lambda t: (t["pre_rvol"] is not None and t["pre_rvol"] >= 4) if pre else (t["pre_rvol"] is None or t["pre_rvol"] < 4)
-    return [t for t in T if t["e_next"] != 0 and keep(t) and t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]] and t["date"] <= RB.LAST]
+    passes = lambda t: t["e_next"] != 0 and (t["pre_rvol"] is None or t["pre_rvol"] < 4)
+    lifted = lambda t: t["e_next"] == 0 or (t["pre_rvol"] is not None and t["pre_rvol"] >= 4)
+    keep = lifted if pre else passes
+    if pre and os.environ.get("ANALYST_RUN") != "lift": keep = lambda t: t["e_next"] != 0 and t["pre_rvol"] is not None and t["pre_rvol"] >= 4
+    return [t for t in T if keep(t) and t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]] and t["date"] <= RB.LAST]
 
 
 def fav_pre(entry):
@@ -67,7 +76,9 @@ def fav_pre(entry):
     out = []
     for name, a, z in FR.LISTS[entry]:
         for r in json.load(open(f"{B}/list_{name}_{a}_{z}.json")):
-            if str(r["status"]).startswith("skipped: pre-market volume") and r["date"] >= FR.A24: out.append(dict(r, minute=str(r["minute"])))
+            st = str(r["status"])
+            lifted = st.startswith("skipped: pre-market volume") or (os.environ.get("ANALYST_RUN") == "lift" and st == "skipped: earnings reaction day")
+            if lifted and r["date"] >= FR.A24: out.append(dict(r, minute=str(r["minute"])))
     return out
 
 
@@ -80,6 +91,9 @@ def one(job):
     return r, t
 
 
+ADDED = []
+
+
 def leg_ret(r, units):
     return sim.result(r["paid"], r["steps"], 0.01 * units)
 
@@ -87,7 +101,8 @@ def leg_ret(r, units):
 def entries(R, src, part, v, A):
     sized = v in ("size-ud", "size-all", "combo")
     skip = v in ("skip-ud", "combo")
-    with_pre = v in ("pre-ud", "combo")
+    with_pre = v in ("pre-ud", "combo", "lift-conf")
+    any_dir = v == "lift-any"
     main = [(r, t) for r, t in R if r["src"] == src and r["kind"] == "main" and half(r["date"]) == part]
     adds = collections.defaultdict(list)
     for r, t in R:
@@ -96,11 +111,12 @@ def entries(R, src, part, v, A):
     for r, t in main:
         conf, against = tag(t, A)
         ud = bool(conf & {"upgrade", "downgrade"})
-        if r["pre"] and not (with_pre and ud): continue
+        ud_any = ud or bool(against & {"upgrade", "downgrade"})
+        if r["pre"] and not ((with_pre and ud) or (any_dir and ud_any)): continue
         if skip and against & {"upgrade", "downgrade"}: touched += 1; continue
         mult = 1.0
         if sized and (ud or (v == "size-all" and conf)): mult = 1.5; touched += 1
-        if r["pre"]: touched += 1
+        if r["pre"]: touched += 1; ADDED.append((v, r["src"], r["date"], r["sym"], r["right"], "confirms" if ud else "against", round(1e4 * max(-1, leg_ret(r, 1.0)))))
         E.append((r["date"], r["minute"], mult, leg_ret(r, mult), r["sym"]))
         if not r["d2"]: continue
         for a in sorted(adds.get((r["date"], r["sym"], r["right"]), []), key=lambda x: x["minute"]):
@@ -149,6 +165,11 @@ def main():
         out[f"check|{v}"] = dict(fair=f, fav=g)
         print(f"| {v} | ${f['acct']:,} / {f['dd']:.0%} | ${g['acct']:,} / {g['dd']:.0%} | ${f['no5']:,} / ${g['no5']:,} |", flush=True)
     out["best"] = best
+    seen = set()
+    print("\n### The trades the lifted filters add (all weeks), P&L at $10K\n")
+    for v in VARIANTS[1:]:
+        for x in sorted({a for a in ADDED if a[0] == v}):
+            if x not in seen: seen.add(x); print("|", " | ".join(map(str, x)), "|")
     json.dump(out, open(f"{B}/analyst_bonus_summary.json", "w"), indent=1)
 
 
