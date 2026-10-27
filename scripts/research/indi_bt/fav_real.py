@@ -8,6 +8,8 @@ the ask, a sale at the bid). Versions:
   pyramid            2.6, a D2 entry (t < 1.8) at full size plus half a size of 2.4's entry later that day, same side, while
                      the D2 position is still held and above its cost on the real mid (cand_real.py)
   pyramid+fb-half    the same, a cheap-fallback trade at half size
+  pyramid-nocheap    the pyramid on 2.5: no cheap fallback on either leg (the user, 2026-10-27: "Do the pyramid without the
+                     chip test on favorites", after cheap_opt.py found the fallback losing on 2024-25)
 Last 24, 12 and 6 months, 1% and 2% from $100,000, the 10% overnight cap at each size, $0.62 a contract each way.
 
   node --env-file=.env <dir>/run.mjs fav_real.py      (from the app repo root)
@@ -47,7 +49,7 @@ def signals(entry):
 
 
 def one(job):
-    kind, t = job   # kind: v24 / v25 / v26 (the trade of that version) / add (2.4's entry, for the pyramid)
+    kind, t = job   # kind: v24 / v25 / v26 (the trade of that version) / add (2.4's entry, for the pyramid) / add25 (the same, no cheap fallback)
     fb = "cheap" if kind in ("v26", "add") else None
     if kind != "v26" and kind != "add" and t["status"] != "ok": return None
     p = eb.contract(t, fb)
@@ -62,7 +64,7 @@ def one(job):
                old1=sim.result(cost, steps, 0.01), old2=sim.result(cost, steps, 0.02), old05=sim.result(cost, steps, 0.005), old1_=sim.result(cost, steps, 0.01),
                real1=sim.result(rcost, real, 0.01), real2=sim.result(rcost, real, 0.02), real05=sim.result(rcost, real, 0.005),
                fills=sum(s[2] in ("buy", "sell") for s in steps), no_quote=miss)
-    if kind == "v26":
+    if kind in ("v25", "v26"):
         held = {}
         sells = [s for s in real if s[2] == "sell" and s[0] == t["date"]]
         for m in range(int(t["minute"]), 390):
@@ -88,20 +90,22 @@ def stats(E, a, size):
 
 def main():
     S24, S25 = signals("24"), signals("25")
-    jobs = [("v24", t) for t in S24] + [("v25", t) for t in S25] + [("v26", t) for t in S25] + [("add", t) for t in S24]
+    jobs = [("v24", t) for t in S24] + [("v25", t) for t in S25] + [("v26", t) for t in S25] + [("add", t) for t in S24] + [("add25", t) for t in S24]
     with mp.Pool(8) as pool: res = [r for r in pool.map(one, jobs, chunksize=8) if r]
     with open(f"{B}/fav_real_trades.csv", "w") as f:
         keys = [k for k in res[0] if k != "held"]
         w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore"); w.writeheader(); w.writerows(res)
-    adds = {}
+    adds = {"add": {}, "add25": {}}
     for r in res:
-        if r["kind"] == "add": adds.setdefault((r["date"], r["sym"], r["right"]), []).append(r)
+        if r["kind"] in adds: adds[r["kind"]].setdefault((r["date"], r["sym"], r["right"]), []).append(r)
     versions = {}
     for kind, name in (("v24", "2.4"), ("v25", "2.5"), ("v26", "2.6 (live)")):
         versions[name] = [r for r in res if r["kind"] == kind]
     out = {}
-    for name in ("2.4", "2.5", "2.6 (live)", "pyramid", "pyramid+fb-half"):
+    for name in ("2.4", "2.5", "2.6 (live)", "pyramid", "pyramid+fb-half", "pyramid-nocheap"):
         base = versions.get(name) or versions["2.6 (live)"]
+        add_of = adds["add"]
+        if name == "pyramid-nocheap": base, add_of = versions["2.5"], adds["add25"]
         for price in ("old", "real"):
             E = []
             for r in base:
@@ -109,7 +113,7 @@ def main():
                 if units == 1: E.append((r["date"], r["minute"], 1.0, r[f"{price}1"], r[f"{price}2"], r["sym"]))
                 else: E.append((r["date"], r["minute"], 0.5, r[f"{price}05"], r[f"{price}1"], r["sym"]))
                 if name.startswith("pyramid") and r["d2"]:
-                    for a in sorted(adds.get((r["date"], r["sym"], r["right"]), []), key=lambda x: x["minute"]):
+                    for a in sorted(add_of.get((r["date"], r["sym"], r["right"]), []), key=lambda x: x["minute"]):
                         if a["minute"] <= r["minute"]: continue
                         share, up = r["held"].get(a["minute"], (0, None))
                         if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a[f"{price}05"], a[f"{price}1"], a["sym"]))

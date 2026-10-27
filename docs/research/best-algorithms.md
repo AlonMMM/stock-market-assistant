@@ -322,6 +322,14 @@ $298,548 / 18%; pyramid $330,993 / 19%; pyramid + cheap at half $329,054 / 18%. 
 +$9K over 2.5 (+$26K in the last 12 months, so it lost in the first); the pyramid holds (+$32K over 2.6). Today's
 Favorites, so the first year knows which stocks were kept. Dashboard tab "Favorites", "Last 24 months".
 
+**The pyramid without the cheap fallback (the user, 2026-10-27: "Do the pyramid without the chip test on favorites";
+`fav_real.py` pyramid-nocheap: the pyramid on 2.5, no fallback on either leg), real quotes, 1%:** 24 months $308,149 /
+17% (2%: $554,378 / 32%; without the best 5 $123,957), 12 months $138,559 / 17%, 6 months $106,392 / 17%. Against 2.5:
++$19K over 24 months, even over 12 and 6. Against the pyramid with the fallback ($330,993 / 19%; 12m $169,792): -$23K
+and -$31K, one to two points less drop; the gap is the fallback's IBIT trades (2026-08-19 +$187K, 2026-09-18 +$98K at
+$10K). On the Favorites the cheap fallback still earns, all of it in 2026; on Indi's stocks in 2024-25 it loses
+(cheap_opt.py). The add itself is worth about +$20K over 24 months with or without the fallback.
+
 ### Candidates on real quotes: delta, what the exits read, sizing (2026-10-26)
 
 The user: "lets try to find more candidates - after that we will take the candidate and test them on my favorite".
