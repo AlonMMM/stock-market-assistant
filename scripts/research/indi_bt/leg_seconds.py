@@ -231,7 +231,7 @@ def main():
             with mp.Pool(8) as pool: res = pool.map(events_of, TW.days(), chunksize=8)
             ev = [e for r in res for e in r]
         if os.environ.get("STR_TOP"):
-            top = set(json.load(open(os.path.join(HERE, "strangle_top40.json")))[:int(os.environ["STR_TOP"])])
+            top = set(json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ["STR_TOP"])])
             if os.environ.get("STR_FAV"): top |= set(P["universe_fav"])   # and every favorite
             ev = [e for e in ev if e["sym"] in top]
         json.dump(ev, open(ev_file, "w")); print(len(ev), "alerts"); return
@@ -256,7 +256,7 @@ def main():
         return
     if step == "run":
         import news_filter as nf
-        top = set(json.load(open(os.path.join(HERE, "strangle_top40.json")))[:int(os.environ.get("STR_TOP", "999"))]) if os.environ.get("STR_TOP") else None
+        top = set(json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "999"))]) if os.environ.get("STR_TOP") else None
         jobs = [(ev[i], k.split("|")[0], k.split("|")[1], x[0], x[1], pk[i]["t"][k.split("|")[0]]) for i in range(len(ev)) for k, x in pk[i]["p"].items() if (top is None or ev[i]["sym"] in top) and ev[i]["sym"] not in os.environ.get("STR_EXCL", "").split(",")]
         with mp.Pool(8) as pool: T = [t for t in pool.map(trade, jobs, chunksize=8) if t]
         rows = [dict(date=d, sym=s, minute=0, right="C") for d, s in {(t["date"], t["sym"]) for t in T}]
@@ -290,7 +290,7 @@ def main():
         else: VERS, ENTS = VERSIONS, ENTRIES
         GROUPS = {"": lambda t: True}
         if os.environ.get("STR_GROUPS"):
-            t15 = set(json.load(open(os.path.join(HERE, "strangle_top40.json")))[:15])
+            t15 = set(json.load(open(os.path.join(HERE, "strangle_rank.json")))[:15])
             GROUPS = {"all: ": lambda t: True, "top 15: ": lambda t: t["sym"] in t15, "the rest: ": lambda t: t["sym"] not in t15}
         DIAG = []
         for lab, lo, hi in spans:

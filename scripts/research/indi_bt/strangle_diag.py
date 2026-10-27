@@ -21,7 +21,7 @@ KEYS = [(0.35, 0.25, 60, 1, "opt30"), (0.35, 0.25, 60, 0, "opt30"), (0.5, 0.25, 
 if __name__ == "__main__":
     ev = json.load(open(S.EV))
     if os.environ.get("STR_TOP"):
-        top = set(json.load(open(os.path.join(os.path.dirname(S.__file__), "strangle_top40.json")))[:int(os.environ["STR_TOP"])])
+        top = set(json.load(open(os.path.join(os.path.dirname(S.__file__), "strangle_rank.json")))[:int(os.environ["STR_TOP"])])
         ev = [e for e in ev if e["sym"] in top]
     with mp.Pool(8) as pool: res = pool.map(S.sims, sorted(ev, key=lambda e: e["date"]), chunksize=16)
     by = {}

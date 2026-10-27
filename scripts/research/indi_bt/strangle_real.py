@@ -196,7 +196,7 @@ def main():
     if step == "run":
         import news_filter as nf
         if os.environ.get("STR_TOP"):
-            top = set(json.load(open(os.path.join(HERE, "strangle_top40.json")))[:int(os.environ["STR_TOP"])])
+            top = set(json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ["STR_TOP"])])
             ev = [e for e in ev if e["sym"] in top]
         if os.environ.get("STR_EARLY") == "1":   # the best case for a faster entry: the book as the alert minute began
             ev = [dict(e, m=e["m"] - 1, stock0=b[e["m"] - 1][4]) for e in ev for b in [{x[0]: x for x in day(e["sym"], e["date"])}] if e["m"] - 1 in b]

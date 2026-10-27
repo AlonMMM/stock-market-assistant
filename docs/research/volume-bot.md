@@ -9,6 +9,25 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### The top-50 baseline: every test from here on (2026-10-27)
+
+From now on every Volume test runs on the top 50 of `strangle_rank.json` (`STR_TOP=50`): the watchlist names with 5+
+alerts, ranked by the median real spread of the 0.35-delta call + put at the alerts (QQQ 1.3% ... CRWD 17.7%).
+`leg_seconds.py` with `SEC_FROM=2024-02-01 SEC_TAG=3y50`: 12,155 alerts, 28,865 option windows, 441 missing
+contract-days filled by `extra_quotes.py`. Live 0.20 rule, per-second entry (cross), sale at the bid.
+
+| 3 years, cross | Trades | Avg per trade | $100K becomes | Worst drop | Stock alone | Option at mid | Paid over mid | Sold under mid | Commission |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| top 50, all | 1,591 | -9.1% | $25,196 | 79.7% | +0.009% (t 0.3) | +7.6% | -5.3% | -9.1% | -2.4% |
+| top 50, t >= 0 | 1,056 | -6.9% | $48,204 | 60.6% | +0.014% | +9.7% | -5.1% | -9.2% | -2.4% |
+| top 15 | 367 | +0.2% | - | - | +0.028% | +8.8% | -3.4% | -3.1% | -2.0% |
+| names 16-50 | 1,285 | -10.9% | - | - | +0.009% | +8.2% | -5.8% | -10.7% | -2.5% |
+
+By year (top 50, all, cross): 2024 -6.4%, 2025 -10.8%, 2026 -9.1%. No t / D2 filter turns it positive over 3 years
+(best D2 >= 1.5: -9.2%, 250 trades). The top 15 matches the earlier corrected run exactly (+0.2%), a check that the
+pipeline is the same. Names 16-50 have the same signal at the mid (+8.2%) but lose it to the spread, mostly on the
+sale (-10.7% under the mid vs -3.1% on the top 15). The baseline every next test is compared against: -9.1% a trade.
+
 ### A 30-minute give-up for the side (2026-10-27)
 
 `SEC_WAIT=30` (live 10), 14 top names, 12 months, quotes filled, cross: the fast alert 419 trades, -7.2% a trade,
