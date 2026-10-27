@@ -328,7 +328,7 @@ Favorites, so the first year knows which stocks were kept. Dashboard tab "Favori
 +$19K over 24 months, even over 12 and 6. Against the pyramid with the fallback ($330,993 / 19%; 12m $169,792): -$23K
 and -$31K, one to two points less drop; the gap is the fallback's IBIT trades (2026-08-19 +$187K, 2026-09-18 +$98K at
 $10K). On the Favorites the cheap fallback still earns, all of it in 2026; on Indi's stocks in 2024-25 it loses
-(cheap_opt.py). The add itself is worth about +$20K over 24 months with or without the fallback.
+(cheap_opt.py). The add itself is worth +$19K over 24 months without the fallback and +$32K with it.
 
 ### Candidates on real quotes: delta, what the exits read, sizing (2026-10-26)
 
