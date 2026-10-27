@@ -297,7 +297,11 @@ def trade(job):
     if not (entry == "cross" and os.environ.get("STR_BUY")): fill, waited = "usual", 0
     bx = {x[0]: x for x in bars}
     am = sign * (bx[e["m"]][4] / bx[e["m"] - 3][4] - 1) / e["u"] if e["m"] in bx and e["m"] - 3 in bx else None
-    return dict(am=am, to_cross=sec - (e["m"] + 1) * 60, fill=fill, waited=waited, entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
+    a_sec = (e["m"] + 1) * 60
+    if "sec0" in e:   # an alert inside a minute (fast / early): its own second and price, the close that ended 3 minutes before
+        a_sec, k = e["sec0"], (e["sec0"] - 180) // 60 - 1
+        am = sign * (e["stock0"] / bx[k][4] - 1) / e["u"] if k in bx else None
+    return dict(am=am, to_cross=sec - a_sec, alert_sec=a_sec, fill=fill, waited=waited, entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
                 t=t_side, d2=d2_side, mv_open=mv_open, mv_close=mv_close, side=side, mid_in=mid_in, mid_out=(qs[0] + qs[1]) / 2,
                 stock_in=stock_in, stock_out=stock_out)
 
@@ -345,6 +349,10 @@ def main():
         import news_filter as nf
         top = set(json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "999"))]) if os.environ.get("STR_TOP") else None
         jobs = [(ev[i], k.split("|")[0], k.split("|")[1], x[0], x[1], pk[i]["t"][k.split("|")[0]]) for i in range(len(ev)) for k, x in pk[i]["p"].items() if (top is None or ev[i]["sym"] in top) and ev[i]["sym"] not in os.environ.get("STR_EXCL", "").split(",")]
+        if os.environ.get("STR_ALERT_SECS"):   # STR_ALERT_SECS=600,12600: only alerts in that part of the day (seconds after 9:30)
+            lo_s, hi_s = map(int, os.environ["STR_ALERT_SECS"].split(","))
+            jobs = [j for j in jobs if lo_s <= j[0].get("sec0", (j[0]["m"] + 1) * 60) <= hi_s]
+        if os.environ.get("STR_TO"): jobs = [j for j in jobs if j[0]["date"] <= os.environ["STR_TO"]]
         with mp.Pool(8) as pool: T = [t for t in pool.map(trade, jobs, chunksize=8) if t]
         if os.environ.get("STR_AM_MIN"):   # the burst's own 3-minute move (to the alert minute), the side's way, x S30
             T = [t for t in T if t["am"] is not None and t["am"] >= float(os.environ["STR_AM_MIN"])]
@@ -358,7 +366,8 @@ def main():
                       open(os.environ["STR_DUMP_ALL"], "w"), default=str)
         spans = (("12 months", "2025-10-23", "9999"), ("6 months", "2026-04-23", "9999"))
         if TAG: spans = ((f"3 years ({FROM} on)", FROM, "9999"), ("2024", "2024", "2025"), ("2025", "2025", "2026"), ("2026", "2026", "9999")) + spans
-        if TAG: spans += (("tune (to 2025-06)", FROM, "2025-07"), ("check (2025-07 on)", "2025-07", "9999"))
+        split = os.environ.get("STR_SPLIT", "2025-07")   # the first month of the check half
+        if TAG: spans += ((f"tune (to {split})", FROM, split), (f"check ({split} on)", split, "9999"))
         FILTERS = {"all": lambda t: True}
         if os.environ.get("STR_FILTERS"):
             ok = lambda t, k: t[k] is not None

@@ -26,6 +26,29 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### The early-sign alerts with the winning strategy (2026-10-27, night)
+
+The early alerts were only tested with today's plain rules. Now with the whole winning strategy (cross <= 15 s,
+burst >= 1.1, no give-back for 30 minutes, live limits, 2%). Their window only: 2025-11-21 .. 2026-10-22, 09:40-13:00,
+the 43 names `early_alerts.csv` covers; the old alert on the same days, names and hours (`STR_TO`, `STR_ALERT_SECS`,
+`STR_EXCL`). Tune to May 2026, check June on (`STR_SPLIT=2026-06`).
+
+Fixed first (`leg_seconds.trade`): for an alert inside a minute (`sec0`: fast / early) the seconds to the cross were
+counted from the end of the minute and the burst read the close of the minute still running (up to 60 s of the
+future). Both now start at the alert's own second (its price against the close that ended 3 minutes before). The old
+alert fires on a minute close and is unchanged; no earlier result used these two numbers for the early alerts.
+
+| Alert | Trades | Win | Avg per trade | $100K becomes (2%) | Drop | Without best 5 | Tune / check |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Old alert (rvol, minute close) | 46 | 15 | +19.1% | $114,409 | 12.3% | -$27,384 | +41.9 (27) / -13.3 (19) |
+| A (early, 120-min cooldown) | 34 | 10 | -15.1% | $90,038 | 17.0% | -$20,121 | -34.6 (19) / +9.6 (15) |
+| 3 steady + 6 range | 33 | 12 | -6.4% | $95,570 | 10.5% | -$14,479 | +1.1 (19) / -16.5 (14) |
+| 6 range + 4 no block | 39 | 12 | -18.2% | $86,607 | 16.7% | -$22,470 | -17.8 (23) / -18.9 (16) |
+
+No early source helps: all three lose with the filter, and none catches the big winners of the old alert (META
+2026-04-08 +$22.6K at 2%, QCOM 2026-05-07). Too few trades for a fine call (33-46 each), and in this window the old
+alert itself rests on META (without the best 5: -$27K; check half -13.3%). Not adopted.
+
 ### Size a trade: 1-5% of the account, and no limits (2026-10-27, night)
 
 `STR_ACCOUNTS=live1,...,live5,free1,free2,free3` runs several accounts in one process (one simulation, so no memory
