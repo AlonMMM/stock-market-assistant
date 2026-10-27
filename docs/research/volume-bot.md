@@ -9,6 +9,27 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### A 40% option stop-loss (2026-10-27)
+
+The NVDA call of 2024-06-28 rode from $0.27 to $0.02: the stock crept up and drifted sideways for 3 hours, never giving
+back 0.75 x S30 (its biggest pullback was 0.52% against a 0.69% line), and the out-of-the-money 0DTE call bled out. The
+exit watches only the stock. But it is rare: 8 trades rode to 15:30 (+69% on average) and only 16 of 1,591 lost 80%+
+($8.5K). The leak is the 932 trades stopped by the give-back within 15 minutes: 11% win, -27% a trade, -$136K.
+
+`STR_STOP=0.4` (sell at the bid at the end of the first minute the option is 40% under the buy; `STR_STOP_ON=bid|mid`
+says which price trips it). Top 50, 3 years, cross:
+
+| Stop | Trades | Win rate | Avg per trade | $100K becomes | Worst drop | Stop fired | Those trades: with / without |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| none (baseline) | 1,591 | 23.4% | -9.1% | $25,196 | 79.7% | - | - |
+| 40% on the bid | 1,565 | 21.4% | -11.6% | $17,220 | 85.8% | 297 | -50.3% / -35.0% |
+| 40% on the mid | 1,590 | 23.0% | -9.7% | $23,071 | 81.1% | 127 | -55.8% / -43.0% |
+
+Worse both ways. The stop sells near the low (about -50% after the minute's slide and the bid) of trades that mostly
+recover part of the way, and cuts some of the big winners: the META call (+1,172%) and the MSTR call (+517%) both
+dipped 45% first. On the bid it fires on the wide names' spread alone (210 of 297 within 5 minutes). Top 15 alone:
+-0.6% (bid) and -0.5% (mid) against +0.2% with no stop. Not adopted.
+
 ### The top-50 baseline: every test from here on (2026-10-27)
 
 From now on every Volume test runs on the top 50 of `strangle_rank.json` (`STR_TOP=50`): the watchlist names with 5+

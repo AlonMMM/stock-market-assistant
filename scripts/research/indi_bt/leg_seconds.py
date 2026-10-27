@@ -203,6 +203,13 @@ def trade(job):
             if k: stock_in = k[-1]
     w = LF.walk(e["sym"], e["date"], ct, side, contract, spot, e["u"])
     if not w: return None
+    stop = float(os.environ.get("STR_STOP", "0"))   # STR_STOP=0.4: sell once the option is 40% under the buy (STR_STOP_ON=bid|mid)
+    if stop:
+        for k in range(ct, w[3]):
+            q2 = RS.quote(contract, e["date"], k)
+            if not q2: continue
+            px = q2[0] if os.environ.get("STR_STOP_ON", "bid") == "bid" else (q2[0] + q2[1]) / 2
+            if px <= buy * (1 - stop): w = (w[0], w[1], w[2], k); break
     qs = RS.quote(contract, e["date"], w[3])
     if not qs: return None
     sbx = {b[0]: b for b in day(e["sym"], e["date"])}
@@ -315,6 +322,8 @@ def main():
                         for r in R: by_s[r["sym"]].append(r["pnl"])
                         for sy, ps in sorted(by_s.items(), key=lambda x: -len(x[1])): print(f"  {sy}: {len(ps)} trades, {sum(p > 0 for p in ps)} won, ${sum(ps):,.0f}")
                         print("  months:", dict(sorted(collections.Counter(r["date"][:7] for r in R).items())))
+                    if os.environ.get("STR_DUMP") and v == "plain20" and entry == "cross" and lab.startswith("3 years") and fname in ("all", "all: all"):
+                        json.dump(R, open(os.environ["STR_DUMP"], "w"), default=str)   # the kept trades, for a chart
                     if os.environ.get("STR_DIAG") and v == "plain20" and entry == "cross" and R:
                         import statistics as stt
                         sg = lambda r: 1 if r["side"] == "C" else -1
