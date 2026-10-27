@@ -322,7 +322,7 @@ watchlist opens faster on a phone.
 - area: App
 - tags: Main bot, Volume bot, Charts
 - source: Session of Oct 27
-- done: 2026-10-27, PR #PR
+- done: 2026-10-27, PR #186
 
 Both maps' axes are logarithmic, so the stocks near 1× spread out. Stocks already out for today stay on the map but
 leave the list; a "Find a stock" box finds any watched stock.
