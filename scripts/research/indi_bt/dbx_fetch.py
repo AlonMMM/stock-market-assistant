@@ -1,0 +1,92 @@
+"""Download real quotes (Databento OPRA cbbo-1m: the best bid/ask each minute) and open interest (statistics, stat_type
+9) for a contract list, one request a day.
+  dbx_fetch.py              dbx_list.csv (the Volume bot)      -> dbx_cache/<date>.csv.gz, to 15:31 NY
+  dbx_fetch.py indi         indi_dbx_list.csv (the Main bot)   -> dbx_cache/indi/<date>.csv.gz, to the close
+Quote rows: contract, minute (from 09:30 NY: the book as that minute began), bid, ask, bid_sz, ask_sz.
+Open interest -> dbx_cache/[indi/]oi/<date>.csv.gz: contract, oi (published before the open).
+Needs DATABENTO_API_KEY. Skips days done.
+"""
+import base64, collections, csv, gzip, io, os, re, sys, time, urllib.error, urllib.parse, urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from zoneinfo import ZoneInfo
+HERE = os.path.dirname(os.path.abspath(__file__))
+INDI = "indi" in sys.argv[1:]
+OUT = os.path.join(HERE, "dbx_cache", "indi") if INDI else os.path.join(HERE, "dbx_cache")
+LIST = "indi_dbx_list.csv" if INDI else "dbx_list.csv"
+END = 391 if INDI else 362
+NY = ZoneInfo("America/New_York")
+AUTH = "Basic " + base64.b64encode((os.environ["DATABENTO_API_KEY"] + ":").encode()).decode()
+HEAD = ["contract", "minute", "bid", "ask", "bid_sz", "ask_sz"]
+
+
+def pad(s):
+    m = re.match(r"^([A-Z.]+)(\d{6}[CP]\d{8})$", s)
+    return m.group(1).ljust(6) + m.group(2)
+
+
+def utc(date, minute):
+    h, m = divmod(570 + minute, 60)
+    return datetime.fromisoformat(f"{date}T{h:02d}:{m:02d}").replace(tzinfo=NY).astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M")
+
+
+def get(syms, schema, start, end):
+    for i in range(0, len(syms), 2000):
+        data = urllib.parse.urlencode(dict(dataset="OPRA.PILLAR", schema=schema, stype_in="raw_symbol", encoding="csv",
+            pretty_px="true", pretty_ts="true", map_symbols="true", symbols=",".join(pad(s) for s in syms[i:i + 2000]),
+            start=start, end=end)).encode()
+        req = urllib.request.Request("https://hist.databento.com/v0/timeseries.get_range", data=data, headers={"Authorization": AUTH})
+        for tries in range(6):   # a busy server (504 and the like): wait and ask again
+            try:
+                text = urllib.request.urlopen(req, timeout=900).read().decode()
+                break
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+                if tries == 5: raise
+                print("retry", e, flush=True); time.sleep(20 * (tries + 1))
+        yield from csv.DictReader(io.StringIO(text))
+
+
+def save(path, head, rows):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with gzip.open(path + ".tmp", "wt") as f:
+        w = csv.writer(f); w.writerow(head); w.writerows(rows)
+    os.replace(path + ".tmp", path)
+
+
+def fresh(path, head):
+    """Done already in this format (a file from before the sizes is fetched again)."""
+    if not os.path.exists(path): return False
+    with gzip.open(path, "rt") as f: return f.readline().strip() == ",".join(head)
+
+
+def fetch(date, syms, start):
+    syms, n = sorted(syms), 0
+    path = os.path.join(OUT, f"{date}.csv.gz")
+    if not fresh(path, HEAD):
+        rows = []
+        for r in get(syms, "cbbo-1m", utc(date, start - 1), utc(date, END)):
+            t = datetime.fromisoformat(r["ts_recv"].replace("Z", "+00:00")).astimezone(NY)
+            rows.append((r["symbol"].replace(" ", ""), t.hour * 60 + t.minute - 570, r["bid_px_00"], r["ask_px_00"], r["bid_sz_00"], r["ask_sz_00"]))
+        save(path, HEAD, rows); n = len(rows)
+    path = os.path.join(OUT, "oi", f"{date}.csv.gz")
+    if not os.path.exists(path):
+        oi = {}
+        for r in get(syms, "statistics", f"{date}T00:00", utc(date, 0)):
+            if r["stat_type"] == "9": oi[r["symbol"].replace(" ", "")] = r["quantity"]
+        save(path, ["contract", "oi"], sorted(oi.items()))
+    return n
+
+
+def main():
+    by, first = collections.defaultdict(set), {}
+    for r in csv.DictReader(open(os.path.join(HERE, LIST))):
+        by[r["date"]].add(r["contract"]); first[r["date"]] = min(first.get(r["date"], 999), int(r["minute"]))
+    days = sorted(by, reverse=True)   # the newest first: the 12 months are ready soonest
+    done = 0
+    with ThreadPoolExecutor(10) as ex:
+        for d, n in zip(days, ex.map(lambda d: fetch(d, by[d], first[d]), days)):
+            done += 1
+            print(f"{done}/{len(days)} {d} {n} rows", flush=True)
+
+
+if __name__ == "__main__": main()

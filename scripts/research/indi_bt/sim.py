@@ -330,6 +330,20 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 continue
             if t >= X["eod_minute"]: continue
             if g <= X["floor"]: pending = ("all", "L3_floor"); continue
+            SG = X.get("stock_trail")  # {k, early_min, early_k}: the Volume bot's exit as a stop, the entry day (user, 2026-10-26):
+            # out once the stock gives back k x S30 from its best since the entry; the first early_min minutes use early_k
+            # instead (None: no such stop then)
+            if SG and k == 0 and sd.ok:
+                if "sg" not in st:
+                    from levels import ctx
+                    cx = ctx(und, d)
+                    st["sg"] = [cx["sd"] if cx else None, sd.c[minute]]
+                unit, best = st["sg"]; px = sd.c[min(t, 389)]
+                if unit and px and best:
+                    best = max(best, px) if bet > 0 else min(best, px); st["sg"][1] = best
+                    kk = SG.get("early_k") if t - minute < SG.get("early_min", 0) else SG["k"]
+                    losing = g < 0 or not SG.get("only_losing")  # only_losing: a stop for losers, winners keep the bot's own exits
+                    if kk is not None and losing and bet * (px / best - 1) <= -kk * unit: pending = ("all", "S_trail"); continue
             Z = X.get("stall_rs")  # {hours, gain, rs}: the option never up `gain` since the entry, `hours` on (user, 2026-10-24)
             if Z and k == 0 and sd.ok and t - minute >= Z["hours"] * 60 and peak / cost - 1 < Z["gain"]:
                 bad = True  # with rs: the stock's move vs SPY x beta since the entry ("entry") or over the last hour ("hour") is against us
