@@ -9,6 +9,31 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### No give-back stop for the first N minutes (2026-10-27)
+
+`STR_NOSTOP_MIN=N` (leg_fallback.walk): the give-back can't sell in the first N minutes after the buy; the best is still
+tracked; 15:30 still sells. Top 50, 3 years, cross, minute-close exit:
+
+| No stop for | Trades | Avg per trade | $100K becomes | Worst drop | Win | Lost 80%+ | 100%+ | 2024 / 2025 / 2026 | P&L without the best 5 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 (live) | 1,610 | -8.9% | $25,255 | 79.6% | 23.4% | 16 | 76 | -6.2 / -10.6 / -8.8 | - |
+| 3 min | 1,601 | -9.1% | $25,416 | 79.7% | 23.9% | 20 | 77 | -6.6 / -11.3 / -8.2 | - |
+| 5 min | 1,588 | -8.7% | $27,240 | 78.2% | 24.4% | 22 | 79 | -5.2 / -10.5 / -8.7 | - |
+| 10 min | 1,559 | -7.4% | $33,341 | 73.7% | 25.3% | 28 | 85 | -3.9 / -8.1 / -8.9 | - |
+| 15 min | 1,530 | -7.0% | $34,460 | 72.2% | 25.8% | 46 | 81 | -6.0 / -7.7 / -6.9 | - |
+| 20 min | 1,503 | -6.8% | $36,959 | 69.5% | 27.3% | 52 | 89 | -6.7 / -5.9 / -7.8 | - |
+| 30 min | 1,464 | -5.6% | $43,439 | 63.0% | 27.1% | 84 | 109 | -5.9 / -2.7 / -8.5 | -$93,713 |
+| 45 min | 1,375 | -5.2% | $48,039 | 59.3% | 28.9% | 120 | 111 | -4.9 / -1.1 / -9.5 | -$95,589 |
+| 60 min | 1,316 | -5.9% | $44,348 | 62.7% | 29.0% | 165 | 112 | -4.8 / -1.5 / -10.9 | -$99,754 |
+| never (15:30 only) | 964 | +3.3% | $107,637 | 54.4% | 26.9% | 341 | 126 | +9.2 / +20.1 / -17.4 | -$104,715 |
+
+The early give-back costs more than it saves: it sells trades that come back, some of them into big winners. The gain
+is in names 16-50 (fewer sales into the wide bid); the top 15 stay near 0. "Never" is positive only through a handful
+of trades (without the best 5: -$104,715), loses 17% a trade in 2026, holds positions all day (964 trades: the 5-open
+limit blocks the rest), and loses 80%+ on 341 trades. Holding to 15:30, the stock alone goes the side's way (+0.44% a
+trade, t 3.9, win 55%) where the 30-minute direction is a coin flip: a lead for the direction plan, not yet a rule.
+Best usable: 30-45 minutes of grace, about 3.5 points a trade better than live; still losing.
+
 ### The exit's clock: minute closes vs the live bot's 10-second check (2026-10-27)
 
 The user saw the TSLA example (2025-09-12): the stock crossed the give-back line at about 9:58:22 (call bid ~$1.15), the
