@@ -456,6 +456,7 @@ function StoryChart({
   style,
   onEdge,
   onHover,
+  compact = false,
 }: {
   chart: TradeChartData;
   story: Story;
@@ -464,6 +465,9 @@ function StoryChart({
   style: ChartStyle;
   onEdge: (side: "before" | "after") => void;
   onHover: (h: Hover | null) => void;
+  // Under an open position (user 2026-10-27, "too much"): the stock and the
+  // option only; the volume and strength panes are folded away.
+  compact?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const parts = useRef<Parts | null>(null);
@@ -611,8 +615,18 @@ function StoryChart({
       p.optionVolume = null;
     }
     const panes = api.panes();
-    const stretch = hasOption ? [5, 1.1, 1.7, 3.4, 1] : [6, 1.2, 1.8];
+    const folded = 0.001;
+    const stretch = compact
+      ? hasOption
+        ? [5, folded, folded, 4, folded]
+        : [6, folded, folded]
+      : hasOption
+        ? [5, 1.1, 1.7, 3.4, 1]
+        : [6, 1.2, 1.8];
     panes.forEach((pane, i) => pane.setStretchFactor(stretch[i] ?? 1));
+    if (compact)
+      for (const series of [p.volume, p.strength, p.optionVolume])
+        series?.applyOptions({ visible: false });
     api
       .priceScale("right")
       .applyOptions({ scaleMargins: { top: 0.1, bottom: 0.08 } });
@@ -941,5 +955,7 @@ function StoryChart({
       p.chart.timeScale().unsubscribeVisibleLogicalRangeChange(onRange);
   }, [story, ready]);
 
-  return <div className="ts-chart" ref={host} />;
+  return (
+    <div className={compact ? "ts-chart compact" : "ts-chart"} ref={host} />
+  );
 }

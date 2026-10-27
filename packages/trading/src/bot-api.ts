@@ -94,6 +94,8 @@ export interface BotView {
       touch: number | null;
       at: number | null;
     } | null;
+    // The option's bid / ask when the buy was sent (absent before 2026-10-25).
+    entryBook?: { bid: number; ask: number; at: number };
     openedAt: number;
     closedAt: number | null;
   }[];

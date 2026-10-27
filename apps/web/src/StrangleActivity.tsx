@@ -423,10 +423,14 @@ function StockFocus({
   onOpen?: (symbol: string) => void;
 }) {
   const up = r.side === "up";
-  let today = "Not traded today.";
-  if (traded > 0) today = `Already traded ${traded} today.`;
+  // Less text (user 2026-10-27): the meters say what is missing; words only
+  // for what they cannot show.
+  let today = "";
+  if (traded > 0) today = `Traded ${traded} today.`;
   if (traded >= maxPerStock)
-    today = `Traded ${traded} today: no more today (most ${maxPerStock} a stock).`;
+    today = `Traded ${traded} today: no more today (most ${maxPerStock}).`;
+  const fewShares = r.shares < alertRule.minVolume;
+  const smallMove = r.movePct < alertRule.minMovePercent;
   return (
     <div className="bot-focus" aria-live="polite">
       <div className="bot-focus-head">
@@ -461,30 +465,32 @@ function StockFocus({
             label={`${r.moveRatio.toFixed(1)}×`}
           />
         </span>
-        <span>
-          <span className="muted small">
-            Shares in 3 minutes (need{" "}
-            {alertRule.minVolume.toLocaleString("en-US")})
+        {fewShares && (
+          <span>
+            <span className="muted small">
+              Shares (need {alertRule.minVolume.toLocaleString("en-US")})
+            </span>
+            <Meter
+              value={r.shares}
+              of={alertRule.minVolume}
+              label={r.shares.toLocaleString("en-US")}
+            />
           </span>
-          <Meter
-            value={r.shares}
-            of={alertRule.minVolume}
-            label={r.shares.toLocaleString("en-US")}
-          />
-        </span>
-        <span>
-          <span className="muted small">
-            Price move (need {alertRule.minMovePercent}%)
+        )}
+        {smallMove && (
+          <span>
+            <span className="muted small">
+              Price move (need {alertRule.minMovePercent}%)
+            </span>
+            <Meter
+              value={r.movePct}
+              of={alertRule.minMovePercent}
+              label={pctText(r.movePct, 2)}
+            />
           </span>
-          <Meter
-            value={r.movePct}
-            of={alertRule.minMovePercent}
-            label={pctText(r.movePct, 2)}
-          />
-        </span>
+        )}
       </div>
-      <p className="small">{lacking(r)}.</p>
-      <p className="small muted">{today}</p>
+      {today && <p className="small muted">{today}</p>}
     </div>
   );
 }
@@ -560,7 +566,8 @@ function StockList({
       <ul>
         {rows.map((r) => {
           const up = r.side === "up";
-          let state = notes.get(r.symbol) ?? lacking(r);
+          // Words only for what the bars cannot show (user 2026-10-27).
+          let state = notes.get(r.symbol) ?? "";
           if (waiting.has(r.symbol)) state = "Alerted · waiting for the side";
           return (
             <li key={r.symbol}>
@@ -588,7 +595,7 @@ function StockList({
                   of={needMove}
                   label={`${r.moveRatio.toFixed(1)}×`}
                 />
-                <span className="bot-stock-state">{state}</span>
+                {state && <span className="bot-stock-state">{state}</span>}
               </button>
             </li>
           );
@@ -642,16 +649,8 @@ function WhatItSees({
         )}
       </div>
       <p className="muted small bot-explain">
-        Each stock's last 3 minutes, every minute. <b>Volume</b>: its shares
-        against its usual for this time of day ({needVolume}× or more, and{" "}
-        {alertRule.minVolume.toLocaleString("en-US")} shares). <b>Move</b>: its
-        price move against its usual 3-minute move ({needMove}× or more, and{" "}
-        {alertRule.minMovePercent}%). A stock in a shaded corner alerts; the bot
-        then waits for its side. A ring marks the stocks waiting now, a ◆ the
-        stocks it holds a leg on. Pinch, scroll or + to zoom; tap a stock for
-        its page. Stocks the bot cannot trade any more today (no option expiring
-        today or the next session, the news filter, their trades used) are left
-        out.
+        Last 3 minutes against usual. A shaded corner alerts · ○ waiting for its
+        side · ◆ held · tap a stock for its page.
       </p>
       {out.size > 0 && (
         <button

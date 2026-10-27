@@ -14,6 +14,17 @@ account's history, which now also returns the trades still open (`open` in `/api
 chart. The volume bot's trades, open or closed, are told from its own records (`volumeStory`: the alert, the side
 it waited for, the leg, the sale); they used to show the Main bot's "no longer available".
 
+**Less under a position, and the entry against its bid and ask** (user 2026-10-27: "too much"; "see the enter
+in term of bid ask price mid"). An open position shows three numbers (of account, delta exposure, the session's
+change), the rest under "More numbers"; the stop and the controls; then the trade in brief: the entry with a bar
+of the option's bid, mid and ask at the buy and a dot at the fill ("0.01 under the mid", the spread and its share
+of the mid), and where it stands now (time held, P&L, the stock, SPY, best and worst); a smaller chart with the
+stock and the option only; why it entered folded. The bid and ask come from the records each source keeps at the
+buy: the Main bot's `entryBook`, the volume bot's buy order's `book`, the owner's order (`pricing`). A closed
+trade's window shows the same bar under its entry. The bots' map sections were cut down the same day ("too much
+text"): one line above the map, the stock card shows its two meters (the share and price-move checks only while
+they fall short), and a row says something only where its bars cannot (blocked, waiting for its side, signaled).
+
 **The maps** (the Main bot's signal map, the volume bot's alert map; `BotMap.tsx`): zoom with a pinch, the wheel,
 a double tap or + / − (Fit returns), and drag when zoomed; ticks follow the zoom with the bot's threshold always
 among them (`bot-map-model.ts`). A ◆ marks the stocks the bot holds a trade on. A tap on a stock opens its page in
@@ -41,7 +52,7 @@ From 20:00 to 04:00 New York `GET /api/prices` reads Alpaca's overnight feed (BO
 to SIP if refused. The Watchlist and the stock page show those prices with a moon, measured from the day's regular
 close; "C" marks a close (overnight without a print, a closed market, before a stock's first pre-market trade).
 The table follows the user's IBKR screenshot: Instrument, Last price, Chng, Chg %, Volume on phones, Roboto
-numbers with tabular figures, plain green/red; Volume turns orange at 2× usual. Wider screens keep Today, vs
+numbers with tabular figures, plain green/red; Volume turns orange at 2× usual. It opens sorted by Volume, most first (since 2026-10-27; it was Chg %). Wider screens keep Today, vs
 SPY/sector, Score, Rel vol, Day range and Alerts. A dark mode (IBKR's colours) follows the phone's setting, with a
 sun/moon button to override it; since 2026-10-27 it covers the whole app (below). Charts still stop at 20:00. See the
 [task](tasks/watchlist-night-prices.md).

@@ -252,7 +252,10 @@ export function WatchTable({
   onCompare: (c: Compare) => void;
 }) {
   const [find, setFind] = useState("");
-  const [sort, setSort] = useState<WatchSort>("change");
+  // It opens sorted by today's volume, most first (user 2026-10-27: "on
+  // watchlist when open be always sort by total volume"); a pick lasts until
+  // the page is left.
+  const [sort, setSort] = useState<WatchSort>("volume");
   const [descending, setDescending] = useState(true);
   const [open, setOpen] = useState<string | null>(null);
 

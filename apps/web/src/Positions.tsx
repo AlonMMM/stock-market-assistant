@@ -252,15 +252,9 @@ function Detail({
       : null;
   return (
     <div className="pos-detail">
+      {/* The few numbers that matter at a glance (user 2026-10-27: "we can
+          reduce the information"); the rest folded below. */}
       <dl className="pos-facts">
-        <div>
-          <dt>Entry</dt>
-          <dd className="num">{p.entry.toFixed(2)}</dd>
-        </div>
-        <div>
-          <dt>Cost</dt>
-          <dd className="num">{usd(p.cost)}</dd>
-        </div>
         <div>
           <dt>Of account</dt>
           <dd className="num">
@@ -270,33 +264,12 @@ function Detail({
           </dd>
         </div>
         {p.option && (
-          <>
-            <div>
-              <dt>Underlying</dt>
-              <dd className="num">
-                {numbers.underlyingPrice === null
-                  ? "—"
-                  : `$${numbers.underlyingPrice.toFixed(2)}`}
-              </dd>
-            </div>
-            <div>
-              <dt>Delta exposure</dt>
-              <dd className="num">
-                {deltaExposure === null ? "—" : signedUsd(deltaExposure)}
-              </dd>
-            </div>
-            <div>
-              <dt>Last Greeks</dt>
-              <dd className="num">
-                {p.delta === null || p.gamma === null || p.theta === null
-                  ? "—"
-                  : `Δ ${p.delta.toFixed(3)} · Γ ${p.gamma.toFixed(4)} · Θ ${p.theta.toFixed(3)}`}
-                {p.vega !== null && ` · V ${p.vega.toFixed(3)}`}
-                {p.impliedVolatility !== null &&
-                  ` · IV ${(p.impliedVolatility * 100).toFixed(1)}%`}
-              </dd>
-            </div>
-          </>
+          <div>
+            <dt>Delta exposure</dt>
+            <dd className="num">
+              {deltaExposure === null ? "—" : signedUsd(deltaExposure)}
+            </dd>
+          </div>
         )}
         <div>
           <dt>{view === "overnight" ? "Vs close" : "US session"}</dt>
@@ -313,6 +286,42 @@ function Detail({
           </dd>
         </div>
       </dl>
+      <details className="pos-more">
+        <summary>More numbers</summary>
+        <dl className="pos-facts">
+          <div>
+            <dt>Entry</dt>
+            <dd className="num">{p.entry.toFixed(2)}</dd>
+          </div>
+          <div>
+            <dt>Cost</dt>
+            <dd className="num">{usd(p.cost)}</dd>
+          </div>
+          {p.option && (
+            <>
+              <div>
+                <dt>Underlying</dt>
+                <dd className="num">
+                  {numbers.underlyingPrice === null
+                    ? "—"
+                    : `$${numbers.underlyingPrice.toFixed(2)}`}
+                </dd>
+              </div>
+              <div>
+                <dt>Last Greeks</dt>
+                <dd className="num">
+                  {p.delta === null || p.gamma === null || p.theta === null
+                    ? "—"
+                    : `Δ ${p.delta.toFixed(3)} · Γ ${p.gamma.toFixed(4)} · Θ ${p.theta.toFixed(3)}`}
+                  {p.vega !== null && ` · V ${p.vega.toFixed(3)}`}
+                  {p.impliedVolatility !== null &&
+                    ` · IV ${(p.impliedVolatility * 100).toFixed(1)}%`}
+                </dd>
+              </div>
+            </>
+          )}
+        </dl>
+      </details>
       {view === "overnight" && p.option && p.estimateBreakdown && (
         <p className="muted">
           ${p.estimateBreakdown.optionMark.toFixed(2)} at{" "}
