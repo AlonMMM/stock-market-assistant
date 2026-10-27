@@ -397,6 +397,19 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### A volume burst that makes the stock independent of SPY (2026-10-27, not better)
+
+The user, on CBRS 2026-10-27 (12:00 New York: 1.1M shares in a minute, 35x, +5.6%, then above the jump while SPY fell):
+"When burst of valume comes in and make the ticker independed its a good news and should be treaded as bonus".
+`burst_bonus.py`, 2% a trade: a minute with volume >= 8x / 15x the stock's usual for that minute and a move >= 0.5 / 1.0
+S30; confirmed when 15 / 30 minutes later the stock beats SPY x beta by 0.25 S30 its way (54,675 stock-days: 11,398
+confirmed bursts). Tune (fair / Favorites 24m): the champion $402,140 / 31% and $511,670 / 21%. (A) a new entry at the
+confirmation (stock-days the champion did not trade; +-2% fills, a screen): 8x/0.5 15 min $389,998 / 38% and $312,661 /
+27% (210 / 201 trades, +33K / -241K at $10K), 30 min $253,739 / $299,150; 15x/1.0 15 min $344,384 / $510,333, 30 min
+$362,383 / $487,205. (B) 1.5x on the champion's signals after a confirmed burst on their side: 4-20 trades, within 2%
+of the champion (8x/0.5 15 min $411,618 / 28% and $510,760 / 21%; check $875,778 / $159,984 vs $869,036 / $160,100).
+A burst plus independence is late: entered after the jump, the option is priced for the move. Rare as a bonus.
+
 ### Overnight only from +100 / +150 / +200% (2026-10-27, not better)
 
 The user: "What if we go overnight only if bigger than 100% 200% 150%?". `exit_tests.py` EXIT_RUN=hold on the champion,
