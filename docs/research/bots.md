@@ -6,6 +6,12 @@ overnight cap at each size; Favorites = the app's Favorites watchlist (86 symbol
 
 ## Production
 
+**Since 2026-10-27 (live from 15:05 Israel, before the open): 2.7**, the champion (PR #183, merged as ed42c3f and
+deployed): 2.5 without the cheap fallback, IBIT down to $0.10, the pyramid, early entry (checked every 5 seconds). The
+owner's limits kept: size 3%, 8 buys a day, 5 open, 5% day loss, both brokers; minimum price $0.20 (was $0.15 on 2.6*).
+Research slug `champ-early`.
+
+
 What the live bot runs when its settings are reset to defaults: the default version in
 `packages/trading/src/bot/versions.ts` on `origin/main`. It changes only when a version is merged and deployed.
 
