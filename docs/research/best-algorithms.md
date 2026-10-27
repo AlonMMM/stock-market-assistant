@@ -376,6 +376,17 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### D2 over 2 hours, D2 at t >= 0.8 / 0.6 (2026-10-27, not better)
+
+The user: "can we go with D2 for the last 2 hours? except the 15 minutes of the openning.. also try it with t>=0.8/0.6".
+`defence_signals.py` (BT_D2_WINDOW / BT_D2_SKIP), `d2_window.py` on the champion, real quotes, D2 >= 1.5 everywhere.
+Tune (fair / Favorites): the champion (30 min, t >= 1.2) $260,535 / $289,355, D2 entries +2,837 / +2,262 a trade at
+$10K; t >= 0.8 $190,032 / $210,389 (+340 / -3); t >= 0.6 $189,166 / $213,920; 120 min without 09:30-09:45 $196,307 /
+$227,573 (+987 / +1,210); 120 min at t 0.8 $183,989 / $210,381; at t 0.6 $174,152 / $203,828. Check (the picked 120 min):
+$230,481 / 17% and $121,350 / 25% vs $372,332 / 12% and $139,363 / 15%. One signal a stock a day: a looser D2 fires
+earlier on a weaker move and takes the place of the day's later, stronger entry. 84-94% of the new trades fully on the
+book (new minutes); the losses are far beyond that. Keep 30 minutes and t >= 1.2.
+
 ### An analyst-action bonus (2026-10-27, not better: too rare to matter)
 
 The user: "what do you think about testing a bonus for stock that had upgrade/downgrade from an know analyst
