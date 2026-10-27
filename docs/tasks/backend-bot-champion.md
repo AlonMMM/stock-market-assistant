@@ -1,6 +1,6 @@
 # Task: the Main bot's version 2.7 (the 2026-10-27 champion)
 
-Status: in review
+Status: in review (merging and deploying 2026-10-27 at the user's go)
 Owner: backend
 Branch: feat/bot-champion-2-7
 
@@ -60,7 +60,20 @@ well"; "when you done with the new version merge and deploy - make it live today
   D2 entry, or the pyramid off; never into a contract the user holds; the shared contract never counted above the
   account; early entry buys inside the minute and the closed minute buys nothing more; off, it waits for the close;
   2.6 stays 2.6; the version card and the rules in words.
-- Replays (live code, SimBroker): see below.
+- Replays (`scripts/bot-replay.ts`, the live IndiBot + TraderService + TradeEngine on SimBroker, 2.7, ticks every 5 s,
+  prices from the 10-second bars, no trade caps), against the research champion on the same days:
+  - 2026-10-09: TSLA call D2 09:44 and its add (Call 400, half size) at 09:50, UBER 09:52, SPCX 10:22: as the
+    backtest; SNOW at 10:08:50 inside the minute (the backtest's minute-level champion: 10:22).
+  - 2026-10-16: PLTR put D2 09:40 and its add (Put 180) at 09:42, UBER 09:50:30 (backtest 09:51), MRNA 10:04: as the
+    backtest; WMT at 09:40:10 inside the minute.
+  - 2026-09-30: RKLB 09:59, GOOGL D2 10:05: as the backtest; the GOOGL add skipped ("not up at 10:08, 0.84 vs 0.86
+    paid": the replay's quotes are the bar close +-2%, not the real book).
+  - Every sale at most the position's own quantity; both legs of a pyramid exit on their own rules.
+- A first replay found two faults, both fixed: the replay fed today's live prices to a past day; and early entry
+  skipped every stock because the bars request already holds the forming minute (a regression test fails on the old
+  code and passes now).
+- The 1-second research (sec_timing.py early5nv): checking every 5 seconds without the forming minute's volume keeps
+  the gain (tune $328,276 vs $328,276 with it; check $477,660 vs $477,551).
 
 ## Handoff
 
