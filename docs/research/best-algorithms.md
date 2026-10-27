@@ -275,6 +275,33 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### Optimizing the cheap fallback (2026-10-27, not better: no fallback beats none on 2024-25)
+
+The user: "Can we optimized the cheaper fallback?" `cheap_opt.py`, on 2.5's entries and exits, every signal re-picked,
+only the contract changes; set before running: 2.6 (the live rule: under $0.20, the cheapest strike at $0.20+ toward the
+money), 2.6* ($0.15 floor and fallback, as live), the fallback's floor at $0.30 / $0.50, the fallback at delta 0.25 /
+0.30, and band10 (the fallback only when the 0.15-delta option is still $0.10+). Fair list at +-2% and on the real
+book (98-100% of trades fully on it), and the 151 unseen (+-2%). 1% a trade:
+
+| Version | Fair 2024-25 +-2% | Fair 2024-25 real | Fair 2026 real (held out) | Unseen +-2% |
+| --- | --- | --- | --- | --- |
+| 2.5, no fallback | $544,522 / 11% | $366,671 / 16% | $168,101 / 13% | $126,582 / 11% |
+| 2.6 (live rule) | $491,519 / 11% | $302,905 / 16% | $207,079 / 15% | $78,181 / 39% |
+| 2.6* ($0.15, live) | $455,583 / 12% | $278,979 / 17% | $216,370 / 14% | $69,024 / 46% |
+| floor $0.30 | $468,740 / 12% | $299,725 / 18% | $187,282 / 14% | $82,579 / 33% |
+| floor $0.50 | $516,443 / 10% | $336,106 / 16% | $173,403 / 13% | $116,636 / 13% |
+| delta 0.25 | $480,583 / 11% | $297,732 / 16% | $208,445 / 15% | $72,571 / 43% |
+| delta 0.30 | $489,959 / 11% | $302,792 / 16% | $202,790 / 15% | $71,143 / 44% |
+| band10 | $483,796 / 13% | $307,274 / 18% | $207,058 / 14% | $105,939 / 22% |
+
+On the tuning years every fallback loses to none (real: -$30K to -$88K), and on the unseen every one loses (2.6 and
+the delta rules lose a third and add 30 points of drop). The fallback's money is 2026 (+$39-48K real over 2.5), the
+year it was chosen on (2026-10-25 used the whole period), so 2026 is not a clean check for it. The least bad is the
+$0.50 floor (fewer, pricier fallback trades): -$30K real on 2024-25, about even on the unseen. Verdict: the cheap
+fallback does not survive optimization; the evidence says 2.5's plain pick (no fallback). The Favorites (where the
+fallback's IBIT trades won) are the next check before any change to the live bot.
+
+
 ### The candidates on today's Favorites, real quotes (2026-10-27)
 
 `fav_real.py`: today's 69 Favorites (fav68 + TSEM, which had no tradeable signal), 2025-10-23 to 2026-10-23, real
