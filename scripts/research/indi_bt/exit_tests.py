@@ -54,6 +54,14 @@ V = {
     "hold40": {"carry_min_gain": 0.4},
     "hold60": {"carry_min_gain": 0.6},
     "hold75": {"carry_min_gain": 0.75},
+    # protect the huge winners (the user, 2026-10-27: "when we hit 1000% gain we start a stop of 30% of the trade ... another
+    # test for moving the stock - only those that have more than 1000% gain. do the same for 1500% and 2000%"); EXIT_RUN=big
+    "opt1000": {"guard": {"arm": 10.0, "trail": 0.3}},
+    "opt1500": {"guard": {"arm": 15.0, "trail": 0.3}},
+    "opt2000": {"guard": {"arm": 20.0, "trail": 0.3}},
+    "stk1000": {"big_trail": {"arm": 10.0, "k": 1.0}},
+    "stk1500": {"big_trail": {"arm": 15.0, "k": 1.0}},
+    "stk2000": {"big_trail": {"arm": 20.0, "k": 1.0}},
     "be30": {"guard": {"arm": 0.3, "floor": 0.0, "day0": True}},
     "be30p10": {"guard": {"arm": 0.3, "floor": 0.1, "day0": True}},
     "be50": {"guard": {"arm": 0.5, "floor": 0.0, "day0": True}},
@@ -69,7 +77,8 @@ RUN = os.environ.get("EXIT_RUN")
 if RUN == "stock": V = {k: v for k, v in V.items() if k in STOCK}
 elif RUN == "hold": V = {k: v for k, v in V.items() if k in HOLD}
 elif RUN == "hold2": V = {k: v for k, v in V.items() if k in ("base", "hold25", "hold40", "hold60", "hold75")}
-else: V = {k: v for k, v in V.items() if (k not in STOCK and k not in HOLD and k not in ("hold40", "hold60", "hold75")) or k == "base"}
+elif RUN == "big": V = {k: v for k, v in V.items() if k == "base" or k.startswith(("opt", "stk"))}
+else: V = {k: v for k, v in V.items() if (k not in STOCK and k not in HOLD and k not in ("hold40", "hold60", "hold75") and not k.startswith(("opt", "stk"))) or k == "base"}
 
 
 def one(job):
@@ -143,7 +152,10 @@ def main():
     print(f"\n### Tune weeks, real quotes, {SIZE:.0%} from $100,000\n\n| Variant | Fair list | Favorites 24m | Without the best 5 (fair / fav) | Winners (fair) | Same-day P&L at $10K (fair) | Overnight trades (fair) |\n|---|---|---|---|---|---|---|")
     for v in V:
         f, g = stats(entries(R, adds, "fair", v, "tune")), stats(entries(R, adds, "fav", v, "tune", FR.A24))
-        out[f"tune|{v}"] = dict(fair=f, fav=g)
+        changed = {src: sum(1 for r in R if r["src"] == src and r["kind"] == "main" and half(r["date"]) == "tune" and v in r["v"] and "base" in r["v"]
+                            and abs(r["v"][v][FULL] - r["v"]["base"][FULL]) > 1e-6) for src in ("fair", "fav")}
+        if v != "base": print(f"  ({v}: {changed['fair']} fair / {changed['fav']} Favorites trades changed)", flush=True)
+        out[f"tune|{v}"] = dict(fair=f, fav=g, changed=changed)
         print(f"| {v} | ${f['acct']:,} / {f['dd']:.0%} | ${g['acct']:,} / {g['dd']:.0%} | ${f['no5']:,} / ${g['no5']:,} | {f['win']:.0%} | {f['sameday']:+,} | {f['overnight']} |", flush=True)
     base = out["tune|base"]
     score = lambda v: min(out[f"tune|{v}"]["fair"]["acct"] / base["fair"]["acct"], out[f"tune|{v}"]["fav"]["acct"] / base["fav"]["acct"])

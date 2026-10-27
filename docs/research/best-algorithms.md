@@ -397,6 +397,47 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### A stop for the huge winners, from +1000 / +1500 / +2000% (2026-10-27, not better: fails the check)
+
+The user: "when we hit 1000% gain we start a stop of 30% of the trade. lets make another test for moving the stock - only
+those that have more than 1000% gain. do the same for 1500% and 2000% ... in max 2 days trades there is a percentile of
+how big the winner can be for our delta ... remember to run it on the tune list." On the champion (2.5 + IBIT $0.10 + the
+pyramid, minute model, real quotes), exit_tests.py EXIT_RUN=big; set before running: once the option was up the level
+(any day held), all out when the option falls 30% from its best (`guard {arm, trail 0.3}`, opt*) or when the stock gives
+back 1.0 x S30 from its best since then (sim.py `big_trail`, stk*).
+
+Tune weeks, from $100,000 (fair list / Favorites 24m), trades changed (fair / fav):
+
+| Version | Changed | 2% | 3% |
+|---|---|---|---|
+| champion | — | $418,875 / 30% · $511,670 / 21% | $460,190 / 41% · $629,548 / 30% |
+| opt1000 | 11 / 14 | $544,268 · $586,263 | $687,636 · $803,058 |
+| opt1500 | 6 / 7 | $466,136 · $569,753 | $552,612 · $756,712 |
+| opt2000 | 2 / 2 | $380,519 · $464,690 | $419,891 · $574,203 |
+| stk1000 | 16 / 19 | $531,669 · $582,085 | $683,981 · $814,598 |
+| stk1500 | 11 / 12 | $476,542 · $596,022 | $582,311 · $815,062 |
+| stk2000 | 5 / 5 | $377,593 · $461,191 | $418,280 · $572,104 |
+
+The worst drop is the same in every row. Picked on tune: opt1000 at 2%, stk1000 at 3%. **Check weeks (2 of the idea's 3
+looks used):** 2% champion $928,510 / $160,100 against opt1000 $545,259 / $150,104; 3% champion $1,538,450 / $155,881
+against stk1000 $684,097 / $155,999. The check giants the stop sold early (return on cost at 2%, champion -> option /
+stock stop): BA put 2024-08-01 +2,001% -> +665%, QCOM call 2026-05-05 +1,824% -> +648%, TSLA call 2024-07-01 +1,460% ->
++475% / +568%, FSLR call 2024-05-22 +2,621% -> +2,066% / +824%, AMD call 2024-02-29 +1,310% -> +913% / +958%; it wins
+smaller ones (TSLA 2024-11-08 +518% -> +781%, QCOM 2026-05-07 +447% -> +755%). In the tune half the giants mostly faded
+(QCOM 2025-10-27 +51% -> +720%). 11-19 trades over 2.5 years reach +1000%: the result is which giants fall in which half.
+Verdict: not better; the champion keeps riding its huge winners. On the Bot vs Indi page as big-opt / big-stk (export_big.py,
+fair list and fav24:), with a Weeks filter and "Only the trades the stop changed".
+
+### A volume-weighted strength and D2 (2026-10-27, not better)
+
+The user: "more weight to a big size burst and also more weight on the against spy by volume". defence_signals.py
+BT_VWEIGHT (rel = the minute's volume over its usual, cap 10, floor 0.1; sqrt) and BT_VW_PARTS (both / t / d2): the
+weighted t = mu_w / sd_w x sqrt(sw^2 / sw2). d2_window.py DW_SET=vw, tune weeks at 2% (fair / Favorites 24m): c12_15
+(the champion, reproduced exactly) $418,875 / 30% · $511,670 / 21%; vw $152,973 / 48% · $168,898 / 40%; vw-sqrt $169,596 ·
+$224,298; vw-t $195,178 / 45% · $261,758 / 34%; vw-d2 $167,055 / 38% · $205,203 / 31%. More D2 entries, each worth much
+less (vw: 286 at +69 a trade against 167 at +2,519). Check (vw-t, run by the script though nothing passed tune): $166,662 /
+$53,828 against $928,510 / $160,100. Weighting by volume lets the bursts swamp the steady grind the t-stat is built to find.
+
 ### A volume burst that makes the stock independent of SPY (2026-10-27, not better)
 
 The user, on CBRS 2026-10-27 (12:00 New York: 1.1M shares in a minute, 35x, +5.6%, then above the jump while SPY fell):

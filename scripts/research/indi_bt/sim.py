@@ -47,6 +47,8 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
   Q still (still {window, k, under}): entry day, from `window` minutes after the entry, the stock's high-low range over the
                last `window` minutes under k x its usual move for that span (S30 x sqrt(window/30), levels.py); with `under`
                only while the option is under that gain                 -> sell all
+  B big trail (big_trail {arm, k}): once the option was up `arm` (any day held), the stock gives back k x S30 from its
+               best since then                             -> sell all
   S level stop (level_stop {buffer, nth}): on the entry day, the stock closes `buffer` x S30 beyond the nth nearest level
                behind the entry price (levels.py: yesterday's / the 5-day high and low, the first 15 minutes', the day's so far)
                                                            -> sell all
@@ -420,6 +422,17 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
             if G and (not G.get("day0") or k == 0) and peak / cost - 1 >= G["arm"]:
                 if "floor" in G and g <= G["floor"]: pending = ("all", "G_floor"); continue
                 if "trail" in G and c <= peak * (1 - G["trail"]): pending = ("all", "G_trail"); continue
+            BT_ = X.get("big_trail")  # {arm, k}: once the option was up `arm` (any day held), out when the stock gives back k x S30
+            # from its best since then (the user, 2026-10-27: "from some gain we should start to take profits")
+            if BT_ and sd.ok and peak / cost - 1 >= BT_["arm"]:
+                if "bt" not in st:
+                    from levels import ctx
+                    cx = ctx(und, dates[0]); st["bt"] = [cx["sd"] if cx else None, None]
+                px = sd.c[min(t, 389)]
+                if st["bt"][0] and px:
+                    best = st["bt"][1] or px
+                    st["bt"][1] = max(best, px) if bet > 0 else min(best, px)
+                    if bet * (px / st["bt"][1] - 1) <= -BT_["k"] * st["bt"][0]: pending = ("all", "S_bigtrail"); continue
             R_ = X.get("roll")
             if R_ and not st.get("rolled") and k == 0 and t - minute <= R_["within"] and roll_hit(R_, g, sd, t, minute, sym, bet):
                 st["rolled"] = True; pending = (rem * R_["share"], "R_roll"); continue

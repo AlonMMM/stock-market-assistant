@@ -32,6 +32,13 @@ FIRST, LAST, MIN_STEPS, WINDOW = 10, 374, 10, 30
 WINDOW = int(os.environ.get("BT_D2_WINDOW", WINDOW))
 SKIP = int(os.environ.get("BT_D2_SKIP", 0))
 SUFFIX = os.environ.get("BT_SIG_SUFFIX", "")
+# Volume weights (the user, 2026-10-27: "gives more weight to a big size burst and also more weight on the against spy
+# by volume"): BT_VWEIGHT "rel" weighs each minute by its volume / its usual volume for that minute (the median of the
+# 20 sessions before), "sqrt" by the square root of that, capped at VW_CAP; BT_VW_PARTS "both" / "t" / "d2": where.
+# The weighted t keeps the scale: weighted mean / weighted spread x sqrt(the weights' effective n).
+VWEIGHT = os.environ.get("BT_VWEIGHT", "")
+VW_PARTS = os.environ.get("BT_VW_PARTS", "both")
+VW_CAP = 10.0
 T_MIN, RV_MIN = 1.8, 1.5
 
 # name -> (t floor or None, D floor or None, which D ("d" | "e"), bonus t floor or None)
@@ -84,11 +91,17 @@ def stock(sym):
             if cum[-1] > 0: hist.append(cum)
         if len(hist) < 10: continue
         c = series(bars)[0]; spy = series(day("SPY", date))[0]
+        umin = [0.0] * 390   # the usual volume of each minute (the median over the 20 sessions before)
+        if VWEIGHT:
+            for mm in range(390):
+                per = sorted(h[mm] - (h[mm - 1] if mm else 0) for h in hist)
+                umin[mm] = per[len(per) // 2]
         vol = [0] * 390
         for x in bars: vol[x[0]] = x[5]
         cum, acc = [], 0
         for x in vol: acc += x; cum.append(acc)
         n = s1 = s2 = 0.0
+        sw = sw2 = 0.0
         # The last WINDOW minutes' defence, both sides, as rolling sums.
         win = collections.deque()  # (d_call, d_put, e_call, e_put)
         dsum = [0.0, 0.0, 0.0, 0.0]
@@ -98,13 +111,19 @@ def stock(sym):
             if c[m] and c[m - 1] and spy[m] and spy[m - 1]:
                 rs = c[m] / c[m - 1] - 1; rp = spy[m] / spy[m - 1] - 1
                 x = rs - b_ * rp
-                n += 1; s1 += x; s2 += x * x
+                w = 1.0
+                if VWEIGHT and umin[m] > 0:
+                    w = min(VW_CAP, max(0.1, vol[m] / umin[m]))
+                    if VWEIGHT == "sqrt": w = math.sqrt(w)
+                wt = w if VW_PARTS in ("both", "t") else 1.0
+                wd = w if VW_PARTS in ("both", "d2") else 1.0
+                n += 1; sw += wt; sw2 += wt * wt; s1 += wt * x; s2 += wt * x * x
                 if rp < 0:
-                    ec = x / unit
-                    if rs >= 0: dc = -b_ * rp / unit
+                    ec = wd * x / unit
+                    if rs >= 0: dc = -wd * b_ * rp / unit
                 if rp > 0:
-                    ep = -x / unit
-                    if rs <= 0: dp = b_ * rp / unit
+                    ep = -wd * x / unit
+                    if rs <= 0: dp = wd * b_ * rp / unit
             if m < SKIP: dc = dp = ec = ep = 0.0   # the opening minutes left out of the window (the t-stat keeps them)
             win.append((dc, dp, ec, ep))
             for j, v in enumerate((dc, dp, ec, ep)): dsum[j] += v
@@ -112,8 +131,8 @@ def stock(sym):
                 old = win.popleft()
                 for j, v in enumerate(old): dsum[j] -= v
             if m < FIRST or n < MIN_STEPS or c[m] is None: continue
-            mu = s1 / n; var = max(s2 / n - mu * mu, 0.0)
-            t = mu / math.sqrt(var) * math.sqrt(n) if var > 0 else 0.0
+            mu = s1 / sw; var = max(s2 / sw - mu * mu, 0.0)
+            t = mu / math.sqrt(var) * math.sqrt(sw * sw / sw2) if var > 0 else 0.0   # unweighted: sw = n, sw*sw/sw2 = n
             med = sorted(h[m] for h in hist); k = len(med) // 2
             usual = med[k] if len(med) % 2 else (med[k - 1] + med[k]) / 2
             rv = cum[m] / usual if usual else 0.0
