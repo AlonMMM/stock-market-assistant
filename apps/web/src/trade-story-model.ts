@@ -160,6 +160,32 @@ export interface EntryQuote {
   bid: number;
   ask: number;
   at: number;
+  // The bid / ask at the buy's last raise before the fill: a chased buy's
+  // ask may have moved up since the decision (absent before 2026-10-27).
+  fill?: { bid: number; ask: number; at: number };
+}
+
+type Book = { bid: number; ask: number; at: number };
+
+/** The volume bot's entry quote: its first buy's book, and the book at its fill. */
+export function legEntryQuote(
+  orders: readonly { side: string; book?: Book; fillBook?: Book }[],
+): EntryQuote | null {
+  const buy = orders.find((o) => o.side === "buy" && o.book);
+  if (!buy?.book) return null;
+  const { bid, ask, at } = buy.book;
+  if (!buy.fillBook) return { bid, ask, at };
+  const f = buy.fillBook;
+  return { bid, ask, at, fill: { bid: f.bid, ask: f.ask, at: f.at } };
+}
+
+/**
+ * How the ask moved while a buy was raised, in words: "the ask moved 0.58 →
+ * 0.60 while buying"; null when it did not move or is not known.
+ */
+export function askMoved(q: EntryQuote): string | null {
+  if (!q.fill || Math.abs(q.fill.ask - q.ask) < 0.005) return null;
+  return `the ask moved ${q.ask.toFixed(2)} → ${q.fill.ask.toFixed(2)} while buying`;
 }
 
 /**
@@ -439,7 +465,20 @@ export function botStory(
     markers,
     decision: null,
     entryQuote: p.entryBook
-      ? { bid: p.entryBook.bid, ask: p.entryBook.ask, at: p.entryBook.at }
+      ? {
+          bid: p.entryBook.bid,
+          ask: p.entryBook.ask,
+          at: p.entryBook.at,
+          ...(p.entryFillBook
+            ? {
+                fill: {
+                  bid: p.entryFillBook.bid,
+                  ask: p.entryFillBook.ask,
+                  at: p.entryFillBook.at,
+                },
+              }
+            : {}),
+        }
       : null,
   };
 }
@@ -808,8 +847,7 @@ export function volumeStory(
     rule: null,
     markers,
     decision: null,
-    entryQuote:
-      v.leg?.orders.find((o) => o.side === "buy" && o.book)?.book ?? null,
+    entryQuote: legEntryQuote(v.leg?.orders ?? []),
   };
 }
 

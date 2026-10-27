@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { bookOf, type OptionBook } from "./option-book.js";
+import { bookOf, lastBookOf, type OptionBook } from "./option-book.js";
 import {
   coreClose,
   newYork,
@@ -1364,6 +1364,7 @@ export class IndiBot {
         const cost = shared
           ? (buyPriceOf(job.result) ?? held!.avgEntryPrice)
           : held!.avgEntryPrice;
+        const fillBook = lastBookOf(job.result, this.o.now(), this.brokerOf(p));
         this.o.store.savePosition({
           ...p,
           status: "open",
@@ -1371,6 +1372,7 @@ export class IndiBot {
           bought: mine,
           cost,
           jobId: null,
+          ...(fillBook ? { entryFillBook: fillBook } : {}),
         });
         this.event(
           "order",

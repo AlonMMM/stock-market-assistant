@@ -12,6 +12,8 @@ export interface StrangleOrderView {
   price?: number;
   // The leg's bid / ask when the order was decided (absent before 2026-10-25).
   book?: { bid: number; ask: number; at: number };
+  // A buy's bid / ask at its last raise before the fill (absent before 2026-10-27).
+  fillBook?: { bid: number; ask: number; at: number };
 }
 
 export interface StrangleLegView {

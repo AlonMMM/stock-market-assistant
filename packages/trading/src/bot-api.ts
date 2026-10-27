@@ -96,6 +96,8 @@ export interface BotView {
     } | null;
     // The option's bid / ask when the buy was sent (absent before 2026-10-25).
     entryBook?: { bid: number; ask: number; at: number };
+    // ...and at the buy's last raise before the fill (absent before 2026-10-27).
+    entryFillBook?: { bid: number; ask: number; at: number };
     openedAt: number;
     closedAt: number | null;
   }[];

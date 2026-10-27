@@ -37,6 +37,8 @@ export interface StrangleOrder {
   settled: boolean;
   price?: number; // the fill (the mid in a dry run)
   book?: OptionBook; // bid / ask when the order was decided (missing before 2026-10-25)
+  // A buy's bid / ask at its last raise before the fill (missing before 2026-10-27).
+  fillBook?: OptionBook;
 }
 
 export interface StrangleLeg {

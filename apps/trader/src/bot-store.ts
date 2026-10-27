@@ -80,6 +80,8 @@ export interface BotPosition {
   broker?: BotBroker;
   // Bid / ask at this account when the buy was sent; missing before 2026-10-25.
   entryBook?: OptionBook;
+  // Bid / ask at the buy's last raise before the fill; missing before 2026-10-27.
+  entryFillBook?: OptionBook;
   // The pyramid (version 2.7): `bonus` marks an entry on the D2 bonus (t under
   // the full strength); `addOf` is the first position's id on the half-size
   // add bought for it; `pyramidChecked` is set once the add was decided (bought
