@@ -9,6 +9,13 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### A 30-minute give-up for the side (2026-10-27)
+
+`SEC_WAIT=30` (live 10), 14 top names, 12 months, quotes filled, cross: the fast alert 419 trades, -7.2% a trade,
+$73,015 / 35% (10 minutes: 414, -6.8%, $75,030); the old alert unchanged (158, +2.9%, $103,865): nearly every alert
+crosses the line within 10 minutes (old 561 of 561, fast 625 of 634), so the longer wait adds a few late, losing
+trades. Not better.
+
 ### Where the money goes: the stock alone and each trade's costs (2026-10-27)
 
 `leg_seconds.py run` with `STR_DIAG=1` (top 15, per-second entry, live 0.20 rule, the account's kept trades, quotes
