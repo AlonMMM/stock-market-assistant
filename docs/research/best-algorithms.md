@@ -1,6 +1,8 @@
 # Best algorithms log
 
-> 🏆 **New champion 2026-10-27: 2.5 + IBIT down to $0.10 + the pyramid (no cheap fallback).** Real quotes: fair list 2024-25 $415,971 / 14% vs the live 2.6 $302,905 / 16%; Favorites 24 months $403,255 / 17% vs $299,707 / 18%. Not live yet.
+> 🏆 **New champion 2026-10-27 (later the same day): the champion below + early entry** (buy at the first second inside the signal minute the rule holds): 1-second real fills, tune $330,459 vs $306,551, check $484,041 vs $428,884 (fair list), Favorites 12m $238,078 vs $212,222 (export_early.py, Bot vs Indi `champ-early` / `champ-1s`). Not live yet.
+>
+> 🏆 **Champion 2026-10-27 (morning): 2.5 + IBIT down to $0.10 + the pyramid (no cheap fallback).** Real quotes: fair list 2024-25 $415,971 / 14% vs the live 2.6 $302,905 / 16%; Favorites 24 months $403,255 / 17% vs $299,707 / 18%. Not live yet.
 
 Every time a backtested version beats the current champion, it is added here, and the user gets a big signal
 (see the rule in [AGENTS.md](../../AGENTS.md)). Losers and ties are not logged here; they go in the research log

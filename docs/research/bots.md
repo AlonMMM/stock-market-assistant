@@ -20,6 +20,11 @@ What the live bot runs when its settings are reset to defaults: the default vers
 
 ## Candidate
 
+**Since 2026-10-27 (afternoon) the champion and candidate is the champion below + early entry**: buy at the first second
+inside the signal minute the rule already holds (sec_timing.py "early"; benchmark slug `champ-early`, yardstick
+`champ-1s`; real 1-second fills only). Fair list tune / check $330,459 / $484,041 vs $306,551 / $428,884; Favorites 12m
+$238,078 vs $212,222. To build live: the IBIT floor and no cheap fallback, the pyramid add, the intra-minute signal.
+
 **The champion, the next bot to go live (the user, 2026-10-27: "lets make this our champion"):** 2.5 + IBIT bought
 down to $0.10 + the pyramid, no cheap fallback (`floor_exception.py`; benchmark slug `champ`, `export_champ.py`). Real
 quotes, 1%: fair list 2024-25 $415,971 / 14%, 2026 $228,296 / 14%; Favorites 24 months $403,255 / 17%, 12 months
