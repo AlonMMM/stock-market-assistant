@@ -9,6 +9,38 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### The exit's clock: minute closes vs the live bot's 10-second check (2026-10-27)
+
+The user saw the TSLA example (2025-09-12): the stock crossed the give-back line at about 9:58:22 (call bid ~$1.15), the
+backtest sold at the 9:59:00 minute close at $0.69. The backtest's walk (leg_fallback.walk) tracks the best and checks
+the line on minute closes; the live bot (strangle.ts, tick every 10 s) does both on the last trade every 10 s.
+`exit10.py` rebuilds the exit on EQUS.MINI 1-second stock prices with the sale at the cbbo-1s bid 2 s after the
+crossing tick (`STR_EXIT=sec10`, `EXIT10_MODE`). Top 50, 3 years, cross, same day's data:
+
+| Exit | Trades | Avg per trade | $100K becomes | Top 15 | Names 16-50 |
+| --- | --- | --- | --- | --- | --- |
+| minute closes (the backtest so far) | 1,610 | -8.9% | $25,255 | +0.2% | -10.5% |
+| best on minute closes, check every 10 s | 1,617 | -9.9% | $21,470 | -0.9% | -11.8% |
+| live check for the first 5 minutes, then minute closes | 1,615 | -10.5% | $19,501 | -2.6% | -12.5% |
+| the live bot: best and check every 10 s | 1,608 | -11.9% | $16,054 | -3.9% | -13.7% |
+
+The same trades, by how they ended with the minute-close exit:
+
+| Group | Minute closes | 10 s, best on closes | First 5 min live | Live 10 s |
+| --- | --- | --- | --- | --- |
+| quick losers (out within 10 min) | -36% | -33% | -33% | -31% |
+| later losers | -33% | -29% | -32% | -27% |
+| winners | +75% | +59% | +59% | +44% |
+| 100%+ winners | +253% | +195% | +202% | +133% |
+
+A faster check saves 3-5 points on the losers and costs 16-31 points on the winners: inside a minute the stock wiggles
+past the line and the stop shakes out the runners. The minute close is the better clock, and the live bot's 10-second
+check is likely about 3 points a trade worse than every backtest so far. Why the losers lose 30-36%: the side line
+(0.25 x S30) plus the give-back (0.75 x S30) let the stock go about 1 x S30 against the buy, and a 0.20-delta 0DTE
+option loses 25-30% on that; then the spread on the sale (-9% on the top 50, -3% on the top 15) and commission. Around
+the cross the option's mid rises about 5% on every kind of trade (not a loser's mark); 60 s after the buy the quick
+losers are already -7% and the winners +4.5%: the direction again.
+
 ### The early-sign alerts as the Volume bot's alert (2026-10-27)
 
 Sources from `early_alerts.csv` (docs/research/early-alerts.md on research/early-rules): `A` (today's rule, 120-minute

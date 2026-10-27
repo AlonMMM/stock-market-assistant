@@ -229,6 +229,12 @@ def book_at(rows, s):
     return (float(k[-1][1]), float(k[-1][2])) if k else None
 
 
+EXIT10 = {}
+if os.environ.get("STR_EXIT") == "sec10":   # EXIT10_MODE picks the file (exit10.py)
+    _m = os.environ.get("EXIT10_MODE", "live")
+    EXIT10 = json.load(open(os.path.join(OUT, f"exit10_{TAG}{'' if _m == 'live' else '_' + _m}.json")))
+
+
 def trade(job):
     """One version's trade for one entry of one alert, or None."""
     e, entry, v, contract, delta, tg = job
@@ -274,6 +280,9 @@ def trade(job):
             if px <= buy * (1 - stop): w = (w[0], w[1], w[2], k); break
     qs = RS.quote(contract, e["date"], w[3])
     if not qs: return None
+    if os.environ.get("STR_EXIT") == "sec10" and entry == "cross" and v == "plain20":   # the live bot's 10-second exit (exit10.py)
+        x10 = EXIT10.get(f"{e['date']}|{e['sym']}|{e['m']}")
+        if x10 and x10[0] // 60 <= w[3]: w = (w[0], w[1], w[2], x10[0] // 60); qs = (x10[1], x10[2])
     sbx = {b[0]: b for b in day(e["sym"], e["date"])}
     stock_out = next((sbx[k][4] for k in range(w[3], w[3] - 5, -1) if k in sbx), None)
     import strength_at
