@@ -3,7 +3,7 @@ import type {
   StrangleTradeView,
   StrangleView,
 } from "../../../packages/trading/src/strangle/view.js";
-import { useBoxWidth } from "./BotPanel.js";
+import { useBoxWidth } from "./use-width.js";
 import { usePolling } from "./Live.js";
 import { legWords, result, signedUsd, tone } from "./StranglePanel.js";
 

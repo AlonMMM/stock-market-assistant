@@ -8,6 +8,7 @@ import {
 } from "../apps/web/src/positions-model.js";
 import {
   closedTrades,
+  tradeLots,
   handlePortfolio,
   handlePortfolioHistory,
   PortfolioCache,
@@ -674,6 +675,27 @@ test("history: fills pair into closed trades, expiry closes at zero", () => {
     [
       ["buy", 4, 0.5, "2026-10-08T14:00:00Z"],
       ["expired", 4, 0, "2026-10-09T20:00:00Z"],
+    ],
+  );
+});
+
+test("history: a trade still open keeps its fills for its window", () => {
+  // User 2026-10-27: an ongoing trade opens the trade's window.
+  const { open } = tradeLots([
+    ...activities,
+    fill("TSLA", "buy", 1, 410, "2026-10-09T16:00:00Z"),
+    fill("TSLA", "sell", 2, 420, "2026-10-09T17:00:00Z"),
+  ]);
+  assert.deepEqual(
+    open.map((t) => [t.symbol, t.qty, t.held, t.entry, t.sold, t.openedAt]),
+    [["TSLA", 4, 2, 402.5, 840, "2026-10-09T15:00:00Z"]],
+  );
+  assert.deepEqual(
+    open[0]!.fills.map((f) => [f.side, f.qty, f.price]),
+    [
+      ["buy", 3, 400],
+      ["buy", 1, 410],
+      ["sell", 2, 420],
     ],
   );
 });

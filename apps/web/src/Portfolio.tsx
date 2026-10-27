@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import type React from "react";
 import type {
   ClosedTrade,
@@ -119,7 +119,16 @@ function Order({
   );
 }
 
-function Trade({ t, bot }: { t: ClosedTrade; bot: boolean }) {
+function Trade({
+  t,
+  bot,
+  volume = false,
+}: {
+  t: ClosedTrade;
+  bot: boolean;
+  // A volume bot trade: its story comes from the volume bot's records.
+  volume?: boolean;
+}) {
   const opened = israelDateTime(Date.parse(t.openedAt));
   // An expiry has a date but no time of day.
   const closed = t.expired ? "expiry" : israelDateTime(Date.parse(t.closedAt));
@@ -163,12 +172,19 @@ function Trade({ t, bot }: { t: ClosedTrade; bot: boolean }) {
       </button>
       {open && (
         <Suspense fallback={null}>
-          <TradeStory t={t} bot={bot} onClose={() => setOpen(false)} />
+          <TradeStory
+            t={t}
+            bot={bot}
+            source={volume ? "volume" : bot ? "main" : "owner"}
+            onClose={() => setOpen(false)}
+          />
         </Suspense>
       )}
     </li>
   );
 }
+
+const strangleBase = "/api/portfolio/strangle";
 
 function History({
   onError,
@@ -263,6 +279,7 @@ function History({
                   key={t.symbol + t.closedAt}
                   t={t}
                   bot={!chips || bot.has(t.symbol)}
+                  volume={base === strangleBase}
                 />
               ))}
             </ul>
@@ -341,24 +358,51 @@ function arrowTo<K extends string>(
   document.getElementById(idOf(next))?.focus();
 }
 
+const tabsKey = "sma.portfolio.tabs.v1";
+function keptTabs(): { group: Group; pages: Record<Group, Page> } | null {
+  try {
+    const raw = sessionStorage.getItem(tabsKey);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as { group: Group; pages: Record<Group, Page> };
+    return groups.some(([key]) => key === v.group) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The Portfolio area: open trades, and the account's history. */
 export function Portfolio({
   modes,
   tradeSymbol = null,
   tradeMode = "options",
+  onOpenTicker,
 }: {
   modes: ReactNode;
+  // A stock's own page, from a bot's map (user 2026-10-27).
+  onOpenTicker?: (symbol: string) => void;
   // A stock picked elsewhere (the watchlist): the trade ticket opens on it,
   // on its options or its shares.
   tradeSymbol?: string | null;
   tradeMode?: "options" | "stock";
 }) {
-  const [group, setGroup] = useState<Group>("trade");
-  const [pages, setPages] = useState<Record<Group, Page>>({
-    trade: tradeSymbol ? "new" : "live",
-    bot: "activity",
-    strangle: "s-activity",
-  });
+  // The tab is kept for the visit, so Back from a stock's page opened on a
+  // bot's map returns to that bot.
+  const kept = tradeSymbol ? null : keptTabs();
+  const [group, setGroup] = useState<Group>(kept?.group ?? "trade");
+  const [pages, setPages] = useState<Record<Group, Page>>(
+    kept?.pages ?? {
+      trade: tradeSymbol ? "new" : "live",
+      bot: "activity",
+      strangle: "s-activity",
+    },
+  );
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(tabsKey, JSON.stringify({ group, pages }));
+    } catch {
+      // Not kept: the tab opens on Trade next time.
+    }
+  }, [group, pages]);
   // The trade ticket and the bot's settings are for the account owner only.
   const { canTrade } = useControlAccess();
   // The open order the Trade page was opened on, if any.
@@ -406,18 +450,24 @@ export function Portfolio({
       return <RiskSettingsPage canSave={canTrade} only={["strangle"]} />;
     if (page === "activity")
       return canTrade ? (
-        <BotPanel onSettings={() => open("bot", "settings")} />
+        <BotPanel
+          onSettings={() => open("bot", "settings")}
+          onOpenTicker={onOpenTicker}
+        />
       ) : (
-        <BotPanel />
+        <BotPanel onOpenTicker={onOpenTicker} />
       );
     if (page === "trades") return <BotTrades onError={ignore} />;
     if (page === "settings" && canTrade)
       return <BotSettingsPage onBack={() => open("bot", "activity")} />;
     if (page === "s-activity")
       return canTrade ? (
-        <StrangleActivity onSettings={() => open("strangle", "s-settings")} />
+        <StrangleActivity
+          onSettings={() => open("strangle", "s-settings")}
+          onOpenTicker={onOpenTicker}
+        />
       ) : (
-        <StrangleActivity />
+        <StrangleActivity onOpenTicker={onOpenTicker} />
       );
     if (page === "s-trades")
       return (
@@ -435,8 +485,9 @@ export function Portfolio({
       return (
         <StrangleSettingsPage onBack={() => open("strangle", "s-activity")} />
       );
-    if (group === "strangle") return <StrangleActivity />;
-    return <BotPanel />;
+    if (group === "strangle")
+      return <StrangleActivity onOpenTicker={onOpenTicker} />;
+    return <BotPanel onOpenTicker={onOpenTicker} />;
   };
   return (
     <div className="live-page">
@@ -840,6 +891,8 @@ function BotAccount({
           view="close"
           equity={account.equity}
           controls={false}
+          history={`${base}/history?period=1W${query ? `&${query}` : ""}`}
+          source={base === strangleBase ? "volume" : "main"}
         />
       ) : (
         <p className="notice">The bot holds nothing right now.</p>

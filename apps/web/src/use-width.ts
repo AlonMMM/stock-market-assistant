@@ -14,3 +14,19 @@ export function useWidth<T extends HTMLElement>() {
   }, []);
   return [ref, width] as const;
 }
+
+/** The map's drawing width: its box's width, so text keeps its size on phones. */
+export function useBoxWidth(fallback: number) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(fallback);
+  useEffect(() => {
+    const box = ref.current;
+    if (!box) return;
+    const watch = new ResizeObserver(([entry]) => {
+      if (entry) setWidth(Math.round(entry.contentRect.width));
+    });
+    watch.observe(box);
+    return () => watch.disconnect();
+  }, []);
+  return { ref, width };
+}

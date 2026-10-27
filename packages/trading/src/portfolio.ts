@@ -1006,6 +1006,20 @@ export interface ClosedTrade extends Contract {
   fills?: TradeFill[];
 }
 
+/**
+ * A trade still open, from the same fills (user 2026-10-27: an ongoing trade
+ * opens the trade's window, like a closed one): what was bought, what was
+ * sold of it so far, and each fill.
+ */
+export interface OpenTrade extends Contract {
+  openedAt: string; // first buy
+  qty: number; // contracts or shares bought
+  held: number; // still held
+  entry: number; // average buy price
+  sold: number; // proceeds of the sales so far, per contract or share
+  fills: TradeFill[];
+}
+
 export interface TradeFill {
   side: "buy" | "sell" | "expired";
   at: string;
@@ -1027,6 +1041,8 @@ export interface PortfolioHistory {
   // Closed in the period, newest first. Built from the account's most recent
   // `activityLimit` fills, so older trades may be missing.
   trades: ClosedTrade[];
+  // Trades still open, from the same fills (absent from an older API).
+  open?: OpenTrade[];
   realized: number; // sum of the trades' pnl
   wins: number;
   activityLimit: number;
@@ -1075,6 +1091,14 @@ const periodDays: Record<HistoryPeriod, number> = {
  * older than the activity that was read).
  */
 export function closedTrades(activities: RawActivity[]): ClosedTrade[] {
+  return tradeLots(activities).closed;
+}
+
+/** The closed trades (newest first) and the ones still open. */
+export function tradeLots(activities: RawActivity[]): {
+  closed: ClosedTrade[];
+  open: OpenTrade[];
+} {
   const time = (a: RawActivity) =>
     a.transaction_time ?? (a.date ? `${a.date}T20:00:00Z` : "");
   const open = new Map<
@@ -1146,7 +1170,16 @@ export function closedTrades(activities: RawActivity[]): ClosedTrade[] {
       fills: p.fills,
     });
   }
-  return trades.reverse();
+  const still = [...open].map(([symbol, p]): OpenTrade => ({
+    ...contract(symbol),
+    openedAt: p.openedAt,
+    qty: p.bought,
+    held: p.held,
+    entry: round(p.cost / p.bought, 4),
+    sold: round(p.sold, 4),
+    fills: p.fills,
+  }));
+  return { closed: trades.reverse(), open: still };
 }
 
 /** `GET /api/portfolio/history?period=1M`: shared by the API and the Worker. */
@@ -1227,7 +1260,8 @@ export async function handlePortfolioHistory(
     const from = new Date(
       now - periodDays[chosen as HistoryPeriod] * 86400000,
     ).toISOString();
-    const trades = closedTrades(activity.all).filter((t) => t.closedAt >= from);
+    const lots = tradeLots(activity.all);
+    const trades = lots.closed.filter((t) => t.closedAt >= from);
     const pnl = points.at(-1)?.pnl ?? 0;
     return {
       status: 200,
@@ -1244,6 +1278,7 @@ export async function handlePortfolioHistory(
             ? round((pnl / history.base_value) * 100)
             : null,
         trades,
+        open: lots.open,
         realized: round(trades.reduce((sum, t) => sum + t.pnl, 0)),
         wins: trades.filter((t) => t.pnl > 0).length,
         activityLimit: activityPage * activityPages,

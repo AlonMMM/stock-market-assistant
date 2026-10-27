@@ -13,7 +13,9 @@ import {
   positionNumbers,
   type PositionView,
 } from "./positions-model.js";
+import { LiveTrade } from "./LiveTrade.js";
 import { StockChart } from "./StockChart.js";
+import type { TradeSource } from "./TradeStory.js";
 import {
   spreadPairs,
   type SpreadPair,
@@ -226,8 +228,12 @@ function Detail({
   view,
   equity,
   inSpread,
+  history,
+  source,
 }: {
   inSpread: boolean;
+  history: string;
+  source: TradeSource;
   p: PortfolioPosition;
   why?: Decision | undefined;
   access: ControlAccess;
@@ -357,7 +363,12 @@ function Detail({
       ) : (
         access.reason && <p className="muted">{access.reason}.</p>
       )}
-      <StockChart ticker={p.underlying} date={chartSession()} />
+      <LiveTrade
+        p={p}
+        history={history}
+        source={source}
+        fallback={<StockChart ticker={p.underlying} date={chartSession()} />}
+      />
       {why && (
         <p className="pos-why">
           <WhyButton decision={why} />
@@ -378,10 +389,14 @@ function Row({
   equity,
   inSpread,
   bot,
+  history,
+  source,
 }: {
   p: PortfolioPosition;
   why?: Decision | undefined;
   access: ControlAccess;
+  history: string;
+  source: TradeSource;
   open: boolean;
   onToggle: () => void;
   view: PositionView;
@@ -475,6 +490,8 @@ function Row({
             view={view}
             equity={equity}
             inSpread={inSpread}
+            history={history}
+            source={source}
           />
         </div>
       )}
@@ -626,8 +643,15 @@ export function PositionList({
   equity,
   bot,
   controls = true,
+  history = "/api/portfolio/history?period=1W",
+  source,
 }: {
   positions: PortfolioPosition[];
+  // The account's history, whose open trades give each position's window.
+  history?: string;
+  // Whose positions: a bot's own account; else the owner's, the Bot chip
+  // marking the Main bot's.
+  source?: TradeSource;
   why: Map<string, Decision>;
   view: PositionView;
   equity: number;
@@ -678,6 +702,8 @@ export function PositionList({
             view={view}
             equity={equity}
             bot={bot?.has(p.symbol) ?? false}
+            history={history}
+            source={source ?? (bot?.has(p.symbol) ? "main" : "owner")}
             inSpread={pairs.some(
               (s) => s.long === p.symbol || s.short === p.symbol,
             )}

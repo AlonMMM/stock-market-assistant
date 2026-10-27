@@ -1,4 +1,4 @@
-import { StrictMode, useState } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { parseAlertLink } from "../../../packages/contracts/src/alert-link.js";
 import { Backtest } from "./Backtest.js";
@@ -61,6 +61,23 @@ function App() {
       // Remembered for this visit only.
     }
   };
+  // A stock's own page in the Watchlist section, from a bot's map (user
+  // 2026-10-27); the phone's Back returns to where it was opened.
+  const openTicker = (ticker: string) => {
+    setAlertSymbol(null);
+    setTradeSymbol(null);
+    history.pushState(null, "", `#watchlist/${ticker}`);
+    setModeState("watchlist");
+    window.scrollTo(0, 0);
+  };
+  useEffect(() => {
+    const back = () => {
+      const named = hashModes[location.hash.slice(1).split("/")[0]!];
+      if (named) setModeState(named);
+    };
+    addEventListener("popstate", back);
+    return () => removeEventListener("popstate", back);
+  }, []);
   const go = (m: Mode) => {
     setAlertSymbol(null);
     setTradeSymbol(null);
@@ -113,6 +130,7 @@ function App() {
           modes={modes}
           tradeSymbol={tradeSymbol}
           tradeMode={tradeMode}
+          onOpenTicker={openTicker}
         />
       ) : (
         <Backtest modes={modes} />

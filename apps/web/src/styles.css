@@ -8062,3 +8062,169 @@ i.added {
     color: #e6e8eb;
   }
 }
+
+/* An open position's trade window, under its row in Live trades (2026-10-27). */
+.live-trade {
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.live-trade section {
+  margin-top: 16px;
+}
+.live-trade h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gray-49);
+}
+.live-trade h3 .muted {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+.live-trade p {
+  margin: 0 0 6px;
+}
+
+/* The bots' maps: zoom, the trades held (2026-10-27). */
+.bot-map {
+  touch-action: pan-y;
+}
+.bot-map.zoomed {
+  touch-action: none;
+  cursor: grab;
+}
+.bot-map-zoom {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.bot-map-zoom button {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--gray-87);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--gray-27);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.bot-map-zoom button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.bot-dot .bot-dot-trade {
+  fill: var(--amber-92);
+  stroke: var(--orange-62);
+  stroke-width: 2.5;
+}
+.bot-dot.in-trade text {
+  fill: var(--orange-48);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bot-dot .bot-dot-trade {
+    animation: trade-pulse 1.6s ease-in-out infinite;
+  }
+}
+@keyframes trade-pulse {
+  50% {
+    stroke-opacity: 0.35;
+  }
+}
+.bot-open {
+  margin-left: auto;
+  padding: 2px 10px;
+  border: 1px solid var(--gray-87);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--gray-27);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* A bot's new trade: a banner while the page is open, a sign while held. */
+.entry-banners {
+  position: sticky;
+  top: 8px;
+  z-index: 15;
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+}
+.entry-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--on-ink);
+  box-shadow: 0 6px 18px rgba(var(--shade), 0.2);
+}
+.entry-banner.call {
+  background: var(--green-51);
+}
+.entry-banner.put {
+  background: var(--red-54);
+}
+.entry-banner > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.entry-banner-icon {
+  font-size: 18px;
+}
+.entry-banner-what {
+  display: block;
+  font-size: 13px;
+  opacity: 0.9;
+}
+.entry-banner button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.in-trade-sign {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--amber-83);
+  border-radius: 999px;
+  background: var(--amber-96);
+  color: var(--orange-44);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.in-trade-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--orange-62);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .in-trade-dot {
+    animation: trade-pulse-dot 1.6s ease-in-out infinite;
+  }
+}
+@keyframes trade-pulse-dot {
+  50% {
+    opacity: 0.3;
+  }
+}
+.in-trade-tag.up {
+  color: var(--green-51);
+}
+.in-trade-tag.down {
+  color: var(--red-54);
+}
