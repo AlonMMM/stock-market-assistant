@@ -19,12 +19,44 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
   no give-back for the first 30 minutes: 301 trades, +15.9% a trade, $100K -> $151,387, worst drop 11.2%, positive in
   every year and both halves, but -$2,275 without the best 5 trades. The 30-minute grace looks like a peak (20 and 45
   minutes are weaker), so part of it may be luck. Not live.
-- Not finished (stopped for low memory): the filters with no account limits at 1%, 2% and 3% a trade
-  (`STR_NO_LIMITS=1 STR_SIZE=`); the rest of the sweep (burst 0.8 / 1.5, never stop). Rerun one batch at a time.
+- Done: the benchmark and both filters at 1-5% a trade, and with no limits at 1-3% ("Size a trade", below). Still
+  to run: the rest of the sweep (burst 0.8 / 1.5, never stop), one batch at a time.
 - Without 2025-10-10 the burst >= 0 filter's check half is flat ("One day carries the check half"); burst >= 1.1
   holds up better: +13.4% a trade without that day, positive every year.
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
+
+### Size a trade: 1-5% of the account, and no limits (2026-10-27, night)
+
+`STR_ACCOUNTS=live1,...,live5,free1,free2,free3` runs several accounts in one process (one simulation, so no memory
+trouble); `STR_WITHOUT_DAYS=2025-10-10` adds each row again without that day; the tune (to 2025-06) and check (2025-07
+on) halves now print in the run; `STR_DUMP_DIR` dumps every account's kept trades. Top 50, 3 years. Live limits = 7.5%
+day loss, 15 trades, 5 open. The 1% rows reproduce the log (301 / +15.9% / $151,387 and 193 / +24.6% / $151,693); the
+benchmark now gives 1,579 trades, -8.9%, $26,091 (was 1,610 / $25,255: quotes added since).
+
+| Strategy | Size | Trades | Avg | $100K becomes | Drop | Without best 5 (P&L) | Tune / check avg | Check without 2025-10-10 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Every alert (today's rules) | 1% | 1,579 | -8.9% | $26,091 | 79.0% | -$102,249 | -8.1 / -9.8 | -11.0 |
+| Every alert | 2% | 1,534 | -8.7% | $7,415 | 95.1% | -$144,888 | -7.9 / -9.5 | -10.8 |
+| Every alert | 3% | 1,407 | -8.4% | $2,772 | 98.5% | - | -7.5 / -9.3 | -10.5 |
+| Every alert | 4% / 5% | 1,262 / 1,121 | -8.3 / -7.6% | $1,273 / $908 | 99%+ | - | - | - |
+| Cross 15 s, burst >= 0 | 2% | 302 | +16.5% | $220,785 | 21.4% | -$18,476 | +19.8 / +13.6 | -2.0 |
+| Cross 15 s, burst >= 0 | 3% | 302 | +16.5% | $297,228 | 30.3% | -$59,388 | | |
+| Cross 15 s, burst >= 0 | 4% / 5% | 302 | +16.5% | $374,942 / $447,790 | 38.1 / 45.1% | -$133K / -$240K | | |
+| Cross 15 s, burst >= 0, no limits | 1 / 2 / 3% | 364-366 | +27% | $208K / $342K / $496K | 15 / 27 / 37% | +$46K / +$72K / +$64K | +15.0 / +37.5 (3%) | -1.4 |
+| Cross 15 s, burst >= 1.1 | 2% | 194 | +25.4% | $226,355 | 18.1% | +$1,699 | +28.9 / +22.5 | +1.2 |
+| Cross 15 s, burst >= 1.1 | 3% | 194 | +25.4% | $320,189 | 26.1% | -$18,012 | | |
+| Cross 15 s, burst >= 1.1 | 4% / 5% | 194 | +25.4% | $427,357 / $552,654 | 33.3 / 39.8% | -$63K / -$140K | | |
+| Cross 15 s, burst >= 1.1, no limits | 1 / 2 / 3% | 229-230 | +41% | $208K / $365K / $556K | 11 / 20 / 29% | +$47K / +$85K / +$90K | +23.6 / +54.9 (3%) | +3.0 |
+
+Today's rules lose at every size; bigger sizes only lose faster (the day-loss limit refuses more trades, the account is
+gone at 4-5%). The filters scale with size, but so does the drop (about 9% more per 1%), and above 2% the result
+without the best 5 trades turns clearly negative: the money is a handful of +400% to +1,250% trades (2026-04-08 META,
+2025-10-10 BABA / AMD / AAPL, 2025-05-29 BA). No limits adds 60 / 36 trades and is better "without the best 5", but
+its check half again rests on 2025-10-10 (+37.5 -> -1.4 for burst >= 0, +54.9 -> +3.0 for burst >= 1.1). The check
+half without that day is flat at every size. Sturdiest: burst >= 1.1 at 1-2% with live limits. Not live.
+Dashboard: "Size a trade" section on https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (every trade at each size).
+The page's header said 2% a trade; its trades were at 1% (fixed).
 
 ### One day carries the check half: 2025-10-10 (2026-10-27, late)
 

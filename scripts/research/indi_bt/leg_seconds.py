@@ -358,6 +358,7 @@ def main():
                       open(os.environ["STR_DUMP_ALL"], "w"), default=str)
         spans = (("12 months", "2025-10-23", "9999"), ("6 months", "2026-04-23", "9999"))
         if TAG: spans = ((f"3 years ({FROM} on)", FROM, "9999"), ("2024", "2024", "2025"), ("2025", "2025", "2026"), ("2026", "2026", "9999")) + spans
+        if TAG: spans += (("tune (to 2025-06)", FROM, "2025-07"), ("check (2025-07 on)", "2025-07", "9999"))
         FILTERS = {"all": lambda t: True}
         if os.environ.get("STR_FILTERS"):
             ok = lambda t, k: t[k] is not None
@@ -386,6 +387,15 @@ def main():
         if os.environ.get("STR_GROUPS"):
             t15 = set(json.load(open(os.path.join(HERE, "strangle_rank.json")))[:15])
             GROUPS = {"all: ": lambda t: True, "top 15: ": lambda t: t["sym"] in t15, "the rest: ": lambda t: t["sym"] not in t15}
+        if os.environ.get("STR_WITHOUT_DAYS"):   # STR_WITHOUT_DAYS=2025-10-10: each filter again without those days
+            out_days = set(os.environ["STR_WITHOUT_DAYS"].split(","))
+            GROUPS = {**{g: f for g, f in GROUPS.items()}, **{f"{g}without {'/'.join(sorted(out_days))}: ": (lambda f: lambda t: f(t) and t["date"] not in out_days)(f) for g, f in GROUPS.items()}}
+        # STR_ACCOUNTS="live,free1,free2,free3": several accounts in one run (live limits, or no limits at x% a trade)
+        ACCTS = [("", bool(os.environ.get("STR_NO_LIMITS")), float(os.environ.get("STR_SIZE", "1")))]
+        if os.environ.get("STR_ACCOUNTS"):
+            # "live" = live limits at STR_SIZE; "liveN" / "freeN" = live limits / no limits at N% a trade
+            acct_size = lambda a: float(a.lstrip("livefr") or os.environ.get("STR_SIZE", "1"))
+            ACCTS = [(f"[{a}] ", a.startswith("free"), acct_size(a)) for a in os.environ["STR_ACCOUNTS"].split(",")]
         DIAG = []
         for lab, lo, hi in spans:
             print(f"\n### {lab}\n\n| Filter | Version | Entry | Trades | Avg per trade | End ($100K), worst drop |\n|---|---|---|---|---|---|")
@@ -398,35 +408,41 @@ def main():
                     S = [t for t in T if t["v"] == v and t["entry"] == entry and lo <= t["date"] < hi and (t["date"], t["sym"]) not in skip and keep_if(t)]
                     by = {}
                     for t in S: by.setdefault((t["date"], t["sym"]), []).append(dict(minute=t["minute"], trade=t))
-                    keep = []
-                    for k, evs in by.items():
-                        for x in TW.pick(dict(events=sorted(evs, key=lambda z: z["minute"])), "open" if os.environ.get("STR_NO_LIMITS") else "flat")[:int(os.environ.get("STR_PER_STOCK", "2"))]: keep.append(x["trade"])
-                    if os.environ.get("STR_NO_LIMITS"): eL, dL, R, _, _ = D.account(keep, float(os.environ.get("STR_SIZE", "1")), 2)   # no day loss, trade, open or per-stock limit
-                    else: eL, dL, R, _, _ = D.account(keep, float(os.environ.get("STR_SIZE", "1")), 2, loss=7.5, max_trades=int(os.environ.get("STR_MAX_TRADES", "15")), max_open=int(os.environ.get("STR_MAX_OPEN", "5")))
-                    avg = sum((r["sell"] * 100 - 0.62) / (r["buy"] * 100 + 0.62) - 1 for r in R) / max(1, len(R))
-                    if os.environ.get("STR_DETAIL") and v == "plain20" and entry == "cross" and lab == "12 months":
-                        import collections
-                        by_s = collections.defaultdict(list)
-                        for r in R: by_s[r["sym"]].append(r["pnl"])
-                        for sy, ps in sorted(by_s.items(), key=lambda x: -len(x[1])): print(f"  {sy}: {len(ps)} trades, {sum(p > 0 for p in ps)} won, ${sum(ps):,.0f}")
-                        print("  months:", dict(sorted(collections.Counter(r["date"][:7] for r in R).items())))
-                    if os.environ.get("STR_DUMP") and v == "plain20" and entry != "close" and lab.startswith("3 years") and fname in ("all", "all: all"):
-                        dp = os.environ["STR_DUMP"]   # the kept trades, for a chart; cross at STR_DUMP, a hold at <name>_<entry>.json
-                        if entry != "cross": dp = dp.replace(".json", f"_{entry}.json")
-                        json.dump(R, open(dp, "w"), default=str)
-                    if os.environ.get("STR_DIAG") and v == "plain20" and entry == "cross" and R:
-                        import statistics as stt
-                        sg = lambda r: 1 if r["side"] == "C" else -1
-                        stk = [sg(r) * (r["stock_out"] / r["stock_in"] - 1) for r in R if r["stock_out"] and r["stock_in"]]
-                        mv = [(r["mid_out"] - r["mid_in"]) / r["buy"] for r in R]
-                        cin = [(r["mid_in"] - r["buy"]) / r["buy"] for r in R]
-                        cout = [(r["sell"] - r["mid_out"]) / r["buy"] for r in R]
-                        com = [-2 * 0.62 / (r["buy"] * 100) for r in R]
-                        tst = stt.mean(stk) / (stt.pstdev(stk) / len(stk) ** 0.5) if len(stk) > 1 and stt.pstdev(stk) else 0
-                        DIAG.append(f"| {lab} | {fname} | {len(R)} | {100 * stt.mean(stk):+.3f}% (t {tst:.1f}, win {100 * sum(x > 0 for x in stk) / len(stk):.0f}%) | "
-                                    f"{100 * stt.mean(mv):+.1f}% | {100 * stt.mean(cin):+.1f}% | {100 * stt.mean(cout):+.1f}% | {100 * stt.mean(com):+.1f}% | "
-                                    f"{100 * stt.mean(r['sell'] / r['buy'] - 1 + c for r, c in zip(R, com)):+.1f}% | ${stt.median(r['buy'] for r in R):.2f} |")
-                    print(f"| {fname} | {v} | {entry} | {len(R)} | {100 * avg:+.1f}% | ${eL:,.0f}, {100 * dL:.1f}% |", flush=True)
+                    fname1 = gname + fname0
+                    for alab, no_limits, size in ACCTS:
+                      fname = alab + fname1
+                      keep = []
+                      for k, evs in by.items():
+                          for x in TW.pick(dict(events=sorted(evs, key=lambda z: z["minute"])), "open" if no_limits else "flat")[:int(os.environ.get("STR_PER_STOCK", "2"))]: keep.append(x["trade"])
+                      if no_limits: eL, dL, R, _, _ = D.account(keep, size, 2)   # no day loss, trade, open or per-stock limit
+                      else: eL, dL, R, _, _ = D.account(keep, size, 2, loss=7.5, max_trades=int(os.environ.get("STR_MAX_TRADES", "15")), max_open=int(os.environ.get("STR_MAX_OPEN", "5")))
+                      avg = sum((r["sell"] * 100 - 0.62) / (r["buy"] * 100 + 0.62) - 1 for r in R) / max(1, len(R))
+                      if os.environ.get("STR_DETAIL") and v == "plain20" and entry == "cross" and lab == "12 months":
+                          import collections
+                          by_s = collections.defaultdict(list)
+                          for r in R: by_s[r["sym"]].append(r["pnl"])
+                          for sy, ps in sorted(by_s.items(), key=lambda x: -len(x[1])): print(f"  {sy}: {len(ps)} trades, {sum(p > 0 for p in ps)} won, ${sum(ps):,.0f}")
+                          print("  months:", dict(sorted(collections.Counter(r["date"][:7] for r in R).items())))
+                      if os.environ.get("STR_DUMP") and v == "plain20" and entry != "close" and lab.startswith("3 years") and fname in ("all", "all: all"):
+                          dp = os.environ["STR_DUMP"]   # the kept trades, for a chart; cross at STR_DUMP, a hold at <name>_<entry>.json
+                          if entry != "cross": dp = dp.replace(".json", f"_{entry}.json")
+                          json.dump(R, open(dp, "w"), default=str)
+                      if os.environ.get("STR_DUMP_DIR") and v == "plain20" and entry == "cross" and lab.startswith("3 years"):
+                        slug = re.sub(r"[^a-z0-9]+", "_", fname.lower()).strip("_")   # the kept trades of each account and filter
+                        json.dump(R, open(os.path.join(os.environ["STR_DUMP_DIR"], f"{slug}.json"), "w"), default=str)
+                      if os.environ.get("STR_DIAG") and v == "plain20" and entry == "cross" and R:
+                          import statistics as stt
+                          sg = lambda r: 1 if r["side"] == "C" else -1
+                          stk = [sg(r) * (r["stock_out"] / r["stock_in"] - 1) for r in R if r["stock_out"] and r["stock_in"]]
+                          mv = [(r["mid_out"] - r["mid_in"]) / r["buy"] for r in R]
+                          cin = [(r["mid_in"] - r["buy"]) / r["buy"] for r in R]
+                          cout = [(r["sell"] - r["mid_out"]) / r["buy"] for r in R]
+                          com = [-2 * 0.62 / (r["buy"] * 100) for r in R]
+                          tst = stt.mean(stk) / (stt.pstdev(stk) / len(stk) ** 0.5) if len(stk) > 1 and stt.pstdev(stk) else 0
+                          DIAG.append(f"| {lab} | {fname} | {len(R)} | {100 * stt.mean(stk):+.3f}% (t {tst:.1f}, win {100 * sum(x > 0 for x in stk) / len(stk):.0f}%) | "
+                                      f"{100 * stt.mean(mv):+.1f}% | {100 * stt.mean(cin):+.1f}% | {100 * stt.mean(cout):+.1f}% | {100 * stt.mean(com):+.1f}% | "
+                                      f"{100 * stt.mean(r['sell'] / r['buy'] - 1 + c for r, c in zip(R, com)):+.1f}% | ${stt.median(r['buy'] for r in R):.2f} |")
+                      print(f"| {fname} | {v} | {entry} | {len(R)} | {100 * avg:+.1f}% | ${eL:,.0f}, {100 * dL:.1f}% |", flush=True)
         if DIAG:
             print("\n| Span | Filter | Trades | Stock alone, a trade | Option move at mid | Paid over mid | Sold under mid | Commission | Net | Median price |")
             print("|---|---|---|---|---|---|---|---|---|---|")
