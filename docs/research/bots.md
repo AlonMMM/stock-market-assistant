@@ -25,6 +25,9 @@ down to $0.10 + the pyramid, no cheap fallback (`floor_exception.py`; benchmark 
 quotes, 1%: fair list 2024-25 $415,971 / 14%, 2026 $228,296 / 14%; Favorites 24 months $403,255 / 17%, 12 months
 $189,705 / 17%. Production 2.6 stays live until it is built (two parts: the IBIT floor without the fallback, a setting;
 the pyramid add, new code) and is the line it has to beat. New tests build on the champion.
+Tune / check baselines (even / odd entry weeks, `split.py`, real quotes, 1%): fair $257,982 / 16% and $368,105 / 12%;
+Favorites 24 months $289,355 / 11% and $139,363 / 15%. Production 2.6: $229,933 / 15%, $272,798 / 18%, $244,689 / 13%,
+$122,485 / 17%.
 
 ## Features under test
 

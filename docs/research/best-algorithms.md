@@ -8,6 +8,24 @@ Every time a backtested version beats the current champion, it is added here, an
 
 ## What counts as better
 
+**Since 2026-10-27 the tune / check split is by entry week** (the user: "split the test into 2 from now on. one for
+tuning and one for vaulting", "i want 2026 to be in both list"; `split.py`): even ISO weeks tune, odd weeks check, on
+the fair list and today's Favorites (24 months), real quotes. A version is better only when it beats the champion on
+both sets and both lists, also without the best 5; at most 3 check looks an idea. Baselines (`floor_exception.py`,
+real quotes, 1%, end / worst drop):
+
+| Version | Fair tune | Fair check | Favorites tune | Favorites check |
+| --- | --- | --- | --- | --- |
+| 🏆 Champion (2.5 + IBIT $0.10 + pyramid) | $257,982 / 16% | $368,105 / 12% | $289,355 / 11% | $139,363 / 15% |
+| 2.6 (live) | $229,933 / 15% | $272,798 / 18% | $244,689 / 13% | $122,485 / 17% |
+| 2.5 | $187,746 / 16% | $328,303 / 11% | $210,385 / 11% | $138,030 / 13% |
+| Pyramid on 2.5 (no IBIT) | $191,801 / 16% | $379,882 / 11% | $215,090 / 11% | $143,819 / 14% |
+
+The champion leads 2.6 on all four. Its IBIT floor is a tune-week gain (+$66K fair, +$74K Favorites: IBIT's big days,
+2026-08-19 among them, fall in even weeks) and a small check-week loss (-$12K, -$4K): on this split the floor is not
+proven; the pyramid gains on both.
+
+
 A version beats the champion only when **all** hold, on the same period (Feb 2024 – Oct 2026), the same trade model
 (fills at the bar middle ± 2%) and the same sizing (1% of the current account from $100,000):
 

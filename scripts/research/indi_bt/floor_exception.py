@@ -30,6 +30,7 @@ from d2_failed_break import CHAMP
 from low_delta import HIS40, PRIOR
 from score_sum import account
 from store import calendar
+from split import half
 
 B = "data/local/x/bt"
 CAL = calendar()
@@ -111,8 +112,8 @@ def entries(R, src, exc, fb, pyramid):
     return E
 
 
-def stats(E, a, z, size):
-    R = sorted(e for e in E if a <= e[0] <= z)
+def stats(E, a, z, size, part=None):
+    R = sorted(e for e in E if a <= e[0] <= z and (part is None or half(e[0]) == part))
     if not R: return None
     k = 3 if size == 0.01 else 4
     pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[k]))) for e in R]
@@ -148,6 +149,18 @@ def main():
                     out[f"{src}|{bot}|{exc}"] = dict(periods={c[0]: x for c, x in zip(cuts[src], s)}, first_2pct=s2)
                     cells = " | ".join(f"${x['acct']:,} / {x['dd']:.0%} ({x['trades']})" for x in s)
                     print(f"| {bot} | {exc} | {cells} | ${s2['acct']:,} / {s2['dd']:.0%} | ${s[0]['no5']:,} | {s[0]['cov']:.0%} |", flush=True)
+    # the tune / check split (split.py): the same versions on even and odd entry weeks
+    for src, a, z in (("fair", "", "9"), ("fav", FR.A24, "9")):
+        print(f"\n### {src}, tune (even weeks) / check (odd weeks), real quotes, 1%\n")
+        print("| Bot | Exception | Tune | Check | Tune without the best 5 | Check without the best 5 |\n|---|---|---|---|---|---|")
+        for fb in FBS:
+            for pyr in (False, True):
+                bot = {("none", False): "2.5", ("cheap", False): "2.6", ("none", True): "pyramid, no cheap", ("cheap", True): "pyramid"}[(fb, pyr)]
+                for exc in LISTS:
+                    E = entries(R, src, exc, fb, pyr)
+                    t, c = stats(E, a, z, 0.01, "tune"), stats(E, a, z, 0.01, "check")
+                    out[f"split|{src}|{bot}|{exc}"] = dict(tune=t, check=c)
+                    print(f"| {bot} | {exc} | ${t['acct']:,} / {t['dd']:.0%} ({t['trades']}) | ${c['acct']:,} / {c['dd']:.0%} ({c['trades']}) | ${t['no5']:,} | ${c['no5']:,} |", flush=True)
     json.dump(out, open(f"{B}/floor_exception_summary.json", "w"), indent=1)
 
 
