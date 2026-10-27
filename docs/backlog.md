@@ -319,7 +319,7 @@ watchlist opens faster on a phone.
 - area: App
 - tags: Dark mode
 - source: PR #160, not included; the user on Oct 27
-- done: 2026-10-27, PR #PR
+- done: 2026-10-27, PR #181
 
 Every section, a stock's page, the price alerts, the trade window and the charts follow one theme, with the
 sun/moon button in every page's header. Colours are tokens with a light and a dark value; a test keeps new rules
