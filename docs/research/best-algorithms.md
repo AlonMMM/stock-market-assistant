@@ -397,6 +397,15 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### Overnight only from +100 / +150 / +200% (2026-10-27, not better)
+
+The user: "What if we go overnight only if bigger than 100% 200% 150%?". `exit_tests.py` EXIT_RUN=hold on the champion,
+real quotes, tune (fair / Favorites 24m; overnight trades on the fair list): +50% (live) $255,238 / 17% and $289,355 /
+11% (78); +100% $260,584 / 16% and $286,247 / 11% (55); +150% $267,007 / 15% and $278,403 / 11% (39); +200% $263,773 /
+14% and $268,298 / 12% (33). The fair list gains a little with a smaller drop, the Favorites lose; the picked +100%
+on check $286,229 / 12% and $124,889 / 15% vs $360,295 / 12% and $139,363 / 15%. The +50-100% winners held overnight
+are worth more the next morning than at 15:50. Keep +50%.
+
 ### Stock-move exits: support / resistance and a big move against (2026-10-27, not better)
 
 The user: "exit by the moving of the stock too. Lets re testing the support and resistance approch to stop. Also big

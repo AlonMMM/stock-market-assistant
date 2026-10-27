@@ -45,6 +45,11 @@ V = {
     "lvl2nd25": {"level_stop": {"buffer": 0.25, "nth": 2}},
     "trail25": {"stock_trail": {"k": 2.5}},
     "trail30": {"stock_trail": {"k": 3.0}},
+    # overnight only for bigger winners (the user, 2026-10-27: "What if we go overnight only if bigger than 100% 200%
+    # 150%?"); run with EXIT_RUN=hold
+    "hold100": {"carry_min_gain": 1.0},
+    "hold150": {"carry_min_gain": 1.5},
+    "hold200": {"carry_min_gain": 2.0},
     "be30": {"guard": {"arm": 0.3, "floor": 0.0, "day0": True}},
     "be30p10": {"guard": {"arm": 0.3, "floor": 0.1, "day0": True}},
     "be50": {"guard": {"arm": 0.5, "floor": 0.0, "day0": True}},
@@ -55,8 +60,11 @@ V = {
     "hold35": {"carry_min_gain": 0.35},
 }
 STOCK = ("base", "lvl0", "lvl25", "lvl50", "lvl2nd25", "trail25", "trail30")
-if os.environ.get("EXIT_RUN") == "stock": V = {k: v for k, v in V.items() if k in STOCK}
-else: V = {k: v for k, v in V.items() if k not in STOCK or k == "base"}
+HOLD = ("base", "hold100", "hold150", "hold200")
+RUN = os.environ.get("EXIT_RUN")
+if RUN == "stock": V = {k: v for k, v in V.items() if k in STOCK}
+elif RUN == "hold": V = {k: v for k, v in V.items() if k in HOLD}
+else: V = {k: v for k, v in V.items() if (k not in STOCK and k not in HOLD) or k == "base"}
 
 
 def one(job):
