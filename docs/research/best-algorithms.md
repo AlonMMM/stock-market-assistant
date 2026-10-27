@@ -188,6 +188,29 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 | 2026-10-25 | + D2 bonus entry (t ≥ 1.2 and D2 ≥ 1.5 enters too)                     | $1,005,221 / 11%            | $127,303 / 11% | +$194K, same drop; unseen +$2.8K, +1 pt                  | 🏆 champion (backtest only)                     |
 | 2026-10-25 | D2 champion + the failed-break sale (the live bot's exits, `BT_TAG=b`)  | $669,237 / 14%              | $137,446 / 9%  | −$336K, +3 pts drop vs the D2 champion; unseen +$10K, −2 pts | not better: the sale cuts the early D2 entries (2024 +1,513 a trade vs +2,839); on the Bot vs Indi dashboard as `d2-bot` |
 
+### The pre-market volume skip, on and off, on real quotes (2026-10-27)
+
+The user: "can you ran a test for this toggle of an on after all of our changes on indi fair list 2024-2025?" The live
+bot runs 2.6* with the skip off. `premarket_toggle.py`: the fair list on real quotes (as `cand_real.py`), the earnings
+filter kept, the skip off / 3x / 4x (default) / 6x, set before running; 2026 held out. At 1% (2%) from $100,000:
+
+| Bot | Skip | Trades 24-25 | Per trade | 2024-25 1% / drop | 2% / drop | Without best 5 | 2026 1% / drop |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2.6 | off | 998 | +1,388 | $324,342 / 13% | $668,444 / 24% | $120,692 | $199,465 / 19% |
+| 2.6 | 3x | 741 | +2,119 | $393,744 / 12% | $980,378 / 21% | $146,517 | $198,453 / 13% |
+| 2.6 | **4x** | 822 | +1,905 | $390,392 / 12% | $973,157 / 22% | $145,270 | $233,116 / 14% |
+| 2.6 | 6x | 885 | +1,741 | $379,940 / 12% | $921,654 / 23% | $141,380 | $218,621 / 16% |
+| live 2.6* ($0.15) | off | 987 | +1,359 | $310,286 / 14% | $611,305 / 25% | $115,461 | $208,336 / 17% |
+| live 2.6* ($0.15) | 4x | 813 | +1,839 | $363,562 / 12% | $843,455 / 22% | $135,286 | $244,271 / 13% |
+| pyramid | off | 1079 | +1,538 | $401,870 / 14% | $995,100 / 26% | $154,584 | $207,955 / 20% |
+| pyramid | 4x | 903 | +2,038 | $483,650 / 13% | $1,448,202 / 24% | $186,042 | $243,614 / 16% |
+
+Verdict: keep the skip on at 4x. Off costs every bot 17-28% of the 2024-25 end at 1% (31% at 2% on 2.6) with a
+deeper drop, and 2026 agrees. The 176 trades it removes on 2.6 (2024-25) sum -$181K at $10K a trade, 32 winners, and
+lose more the louder the pre-market: 4-6x -$404 a trade, 6-10x -$506, 10-20x -$1,638, 20x+ -$2,733. 3x and 6x are
+within 3% of 4x in 2024-25; 4x is best in 2026. Live 2.6* (min $0.15) is below 2.6 ($0.20) in 2024-25, a little above in
+2026. Dashboard tab "Pre-market skip": https://claude.ai/artifact/8hwVRYjvFphR4Ro6kQC1am
+
 ### Real quotes check (2026-10-26)
 
 The user: "we have now real bid and ask from databento. I would like to run our main bot tests with this real data to
