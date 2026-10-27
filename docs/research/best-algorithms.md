@@ -198,7 +198,32 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
-### Buy near the fair price: a limit at the microprice, 1 minute, then the usual price (2026-10-27, BETTER on both halves)
+### Second-level entries; the fair-price limit re-checked (2026-10-27: enter early BETTER; the fair limit UNPROVEN)
+
+The user: "Timing with 1-second stock moves"; "you can wait 5 seconds ... go up to the next price every 5 seconds".
+`sec_fetch_main.py` (Databento, $6.46: the stock's 1-second bars on the champion's entry days, the option's 1-second
+book from 2 min before to 10 after each entry), `sec_timing.py` on the champion's legs, real quotes, the sales as
+walked, the bot acting 2 s after a decision. The runaway rule's look-ahead matters as much as any rule: "now" (the
+minute model, the next minute's bid) $257,982 / $289,355 on tune (fair / Favorites); the same buy on the 1-second
+book with a 10-s look-ahead $340,035 / $389,708, with a 60-s one $303,315 / $342,239. So every real-quote figure
+here may be 15-30% too harsh; compare inside one model only.
+
+| Tune, 1% (fair / Favorites) | 10-s look-ahead | 60-s look-ahead |
+| --- | --- | --- |
+| the usual price at the decision second | $340,035 / $389,708 | $303,315 / $342,239 |
+| **early: the first second inside the signal minute the rule holds** | **$358,686 / $419,579** | **$327,719 / $377,912** |
+| the fair limit (microprice + 3 ticks, 1 min), the ask as the only fill proof | $292,725 / $339,120 | $276,511 / $321,616 |
+| 5-s ladder from the microprice (+0 / +1 tick), 10-s ladder | $295,421 / $294,654 / $297,850 (fair) | |
+| wait out a 15-s spike (0.15 / 0.25 S30) | $342,701 / $341,328 (fair) | |
+
+Check weeks: early $538,063 / $198,358 vs $490,110 / $174,365 (10 s); $478,197 / $174,439 vs $423,430 / $155,442
+(60 s): +10-14%, smaller drop, better without the best 5. Enter early is BETTER (look 1/3; SPY's move inside the
+minute is spread evenly, no SPY seconds: live, the bot has SPY's ticks). The fair limit loses to paying at once when
+only a falling ask proves a fill (check $387,078 vs $490,110); fair_fill.py's +11-25% counted a print at or under the
+limit in the minute, which a resting bid would catch, but not provably. So the fair limit is UNPROVEN until paper
+fills settle it (3 of 3 check looks used: closed unless the user reopens it).
+
+### Buy near the fair price: a limit at the microprice, 1 minute, then the usual price (2026-10-27, better on the minute model; UNPROVEN on the second data, see above)
 
 The user: "can we calculate the real stock equity before we buy? ... if we add a order with 1.06 which is behind the
 mid we probably get it done no? ... start with couple of click above the value"; "do it all". `fair_fill.py` on the

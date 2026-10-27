@@ -26,6 +26,12 @@ from levels import ctx
 B = "data/local/x/bt"
 SPAN = {"2024": ("2024-02-01", "2024-12-31"), "2025": ("2025-01-02", "2025-12-31"), "2026": ("2026-01-02", "2026-10-12")}
 FIRST, LAST, MIN_STEPS, WINDOW = 10, 374, 10, 30
+# The D2 window (the user, 2026-10-27: "can we go with D2 for the last 2 hours? except the 15 minutes of the openning..
+# also try it with t>=0.8/0.6"): BT_D2_WINDOW minutes back (default 30); BT_D2_SKIP: minutes from the open that never
+# count in it (default 0); BT_SIG_SUFFIX names the signal files of such a run (s_sig_<rule><suffix>_<year>.csv)
+WINDOW = int(os.environ.get("BT_D2_WINDOW", WINDOW))
+SKIP = int(os.environ.get("BT_D2_SKIP", 0))
+SUFFIX = os.environ.get("BT_SIG_SUFFIX", "")
 T_MIN, RV_MIN = 1.8, 1.5
 
 # name -> (t floor or None, D floor or None, which D ("d" | "e"), bonus t floor or None)
@@ -37,7 +43,7 @@ for x in (3, 5, 7, 10):
 for x in (5, 10, 15, 20):
     RULES[f"e{x:02d}"] = (None, x / 10, "e", None)
     RULES[f"te{x:02d}"] = (T_MIN, x / 10, "e", None)
-for lt in (10, 12, 15):
+for lt in (6, 8, 10, 12, 15):
     for x in (3, 5, 7):
         RULES[f"b{lt}_{x:02d}"] = (T_MIN, x / 10, "d", lt / 10)
     for x in (10, 15, 20):
@@ -99,6 +105,7 @@ def stock(sym):
                 if rp > 0:
                     ep = -x / unit
                     if rs <= 0: dp = b_ * rp / unit
+            if m < SKIP: dc = dp = ec = ep = 0.0   # the opening minutes left out of the window (the t-stat keeps them)
             win.append((dc, dp, ec, ep))
             for j, v in enumerate((dc, dp, ec, ep)): dsum[j] += v
             if len(win) > WINDOW:
@@ -128,7 +135,7 @@ def main():
         rows = sorted((r for p in parts for r in p[name]), key=lambda r: (r["date"], r["sym"]))
         for y in SPAN:
             ys = [r for r in rows if r["date"][:4] == y]
-            with open(f"{B}/s_sig_{name}_{y}.csv", "w") as f:
+            with open(f"{B}/s_sig_{name}{SUFFIX}_{y}.csv", "w") as f:
                 w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(ys)
         print(name, len(rows), flush=True)
 
