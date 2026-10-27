@@ -18,9 +18,17 @@ There are three tools. Pick by the question:
 
 ## Ground rules
 
+- **Check the champion and the configuration before every run** (the user's rule, 2026-10-24). See "Before any
+  run" below. A result read against the wrong champion or the wrong simulator settings is worthless.
 - **Never read `.env`.** Scripts get the Alpaca keys with `node --env-file=.env ...`.
 - **No orders, ever.** Backtests and replays never touch a broker account. The E2E replay uses the in-memory `SimBroker`.
 - Never short options: any sell in new code is close-only and never more than held.
+- **Costs on every strategy (the user's rule, 2026-10-25):** every contract pays a commission on the buy and on every sale,
+  and every fill is corrected against us. The simulator does this itself: `params.json` `size.commission` ($0.62 a contract
+  each way, IBKR's rate, above the user's $0.40 floor) in `sim.result`, and `cost.spread_half` (2%: buy at the bar's middle
+  × 1.02, sell at × 0.98). Never report a gross number, never lower these, and say "net of $0.62 a contract and 2% a fill"
+  when a result is compared with a live account. Re-state a stored trade at another rate with
+  `ret + (0.62 − rate) × (1 + shares sold) / (100 × paid price)`.
 - Show every time to the user in **Israel time** (NY + 7h, except the weeks around the DST changes).
 - Label synthetic data as synthetic (the E2E replay's option bid/ask are synthetic, see C).
 - Local data (`data/local/x/...`) and account data stay out of Git.
@@ -36,7 +44,7 @@ There are three tools. Pick by the question:
 - Live bot: `apps/trader/src/bot.ts` (runner), `packages/trading/src/bot/` (signal, picker, exits, news, settings),
   `config/bot-universe.json` (Indi's 35-stock core list).
 
-## The champion (as of 2026-10-22)
+## The champion (as of 2026-10-22; it moves, see "Before any run")
 
 - Signal C: t-stat of 1-minute moves vs SPY × beta ≥ **1.8**, day volume ≥ **1.5×** normal, from 09:40 NY (16:40 Israel).
 - News filter: no entry on the earnings reaction day, or with pre-market volume ≥ 4× normal.
@@ -68,11 +76,33 @@ node --env-file=.env <worktree>/scripts/research/indi_bt/run.mjs week.py <first 
 - A day that hasn't closed yet (or the current day before 16:00 NY) has no data; say so.
 - Entry minute → Israel time: `16:30 + minute` (in the usual DST overlap).
 
+## Before any run (the user's rule, 2026-10-24)
+
+The champion changed three times on one day, and the simulator's defaults are edited by other sessions in the same
+checkout. So, every time, before a single trade is walked:
+
+1. **Read the champion now**, not from memory: the first row of the Champion table in
+   `docs/research/best-algorithms.md` on `research/indi-v2`, with its exits (e.g. the t-stat exit, the overnight hold
+   from +50%) and its numbers (fair list, worst drop, unseen). Name it in the report ("against the champion as of
+   <date>: <version>, $X / Y%").
+2. **Read the configuration the simulator will use**: `params.json` (`contract`: delta, `min_price`, `min_vol30`;
+   `exit` defaults) and anything the champion needs on top (`H`, `NIGHT`, `thesis`, `carry_min_gain`). Compare it with
+   the champion's definition. The liquidity floor `min_vol30` is 200 for the champion; a 10-contract floor doubles the
+   trades (1,484 instead of 813 on the fair list) and nothing is comparable.
+3. **Pin what defines the champion through the environment** (`BT_CONTRACT='{"min_vol30":200}'`, `BT_EXIT_EXTRA`
+   with the champion's exits, `BT_TAG` for the output), never trust the file defaults, and **run from a frozen copy**
+   of `scripts/research/indi_bt` (copy it to the scratchpad and run that `run.mjs`) when another session may be
+   editing the checkout.
+4. **Reproduce the champion in the same pipeline first.** Its fair-list trade count and end money must match the log
+   (813 trades and the logged dollars, as of the date). Only then read any arm. A mismatch means the configuration
+   differs: stop and find out why before going on.
+5. Log the check with the result: which champion, which settings, and that the baseline reproduced.
+
 ## B. Testing a new rule against the champion
 
-1. Start from `docs/research/best-algorithms.md`: read the champion row and the definition of "better":
-   fair list higher (or the same with a smaller drop), **every year positive**, no worse on the **151 unseen
-   stocks**, and not tuned on the judging result.
+1. Do "Before any run" above. Start from `docs/research/best-algorithms.md`: read the champion row and the definition
+   of "better": fair list higher (or the same with a smaller drop), **every year positive**, no worse on the **151
+   unseen stocks**, and not tuned on the judging result.
 2. Write the test as a new script in `scripts/research/indi_bt/` next to the similar ones (e.g. `night_risk.py`,
    `roll2.py`, `iv_cap.py`, `scale_in.py` are good templates). Reuse:
    - `sim.walk(und, date, minute, right, sym, exp, cal)` → (cost, steps, flag); `sim.pick(...)` for the contract;
