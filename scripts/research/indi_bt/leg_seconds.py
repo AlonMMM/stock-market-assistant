@@ -32,6 +32,8 @@ import leg_daycap as D
 C, CAL = sim.C, TW.CAL
 FROM = os.environ.get("SEC_FROM", "2025-10-23")   # SEC_FROM=2024-02-01 SEC_TAG=3y: the 3 years (cmbp-1 before cbbo-1s exists)
 TAG = os.environ.get("SEC_TAG", "")
+if os.environ.get("SEC_WAIT"): TW.WAIT = int(os.environ["SEC_WAIT"])   # the side's give-up, minutes (live 10)
+WTAG = "" if TW.WAIT == 10 else f"_w{TW.WAIT}"
 SEC1 = "2025-02-20"
 OUT = os.path.join(HERE, "sec_cache")
 NY = ZoneInfo("America/New_York")
@@ -76,8 +78,8 @@ def events_of(job):
 
 
 def stock_path(e):
-    if "sec0" in e: return os.path.join(OUT, "stock", f"{e['date']}_{e['sym']}_s{e['sec0']}.csv.gz")
-    return os.path.join(OUT, "stock", f"{e['date']}_{e['sym']}_{e['m']}.csv.gz")
+    if "sec0" in e: return os.path.join(OUT, "stock", f"{e['date']}_{e['sym']}_s{e['sec0']}{WTAG}.csv.gz")
+    return os.path.join(OUT, "stock", f"{e['date']}_{e['sym']}_{e['m']}{WTAG}.csv.gz")
 
 
 def fast_events():
@@ -191,10 +193,20 @@ def trade(job):
         later = book_at(rows, sec + LAG + 10)
         if later and later[0] > buy: buy = min(later[1], buy * 1.1)
         ct = sec // 60
+    mid_in = (q[0] + q[1]) / 2
+    stock_in = spot   # the minute close (close entry) or the trigger second's price
+    if entry != "close":
+        sp = stock_path(e)
+        if os.path.exists(sp):
+            secs = [(int(a), float(b)) for a, b in csv.reader(gzip.open(sp, "rt"))]
+            k = [c for a, c in secs if a <= sec + LAG]
+            if k: stock_in = k[-1]
     w = LF.walk(e["sym"], e["date"], ct, side, contract, spot, e["u"])
     if not w: return None
     qs = RS.quote(contract, e["date"], w[3])
     if not qs: return None
+    sbx = {b[0]: b for b in day(e["sym"], e["date"])}
+    stock_out = next((sbx[k][4] for k in range(w[3], w[3] - 5, -1) if k in sbx), None)
     import strength_at
     st_m = ct if entry == "close" else ct - 1   # the last closed minute before the buy
     x = strength_at.of(e["sym"], e["date"]).get(st_m)
@@ -205,7 +217,8 @@ def trade(job):
     mv_open = sign * (spot / bars[0][1] - 1) / e["u"] if bars and bars[0][0] <= 5 else None
     mv_close = sign * (spot / pb[-1][4] - 1) / e["u"] if pb else None
     return dict(entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
-                t=t_side, d2=d2_side, mv_open=mv_open, mv_close=mv_close)
+                t=t_side, d2=d2_side, mv_open=mv_open, mv_close=mv_close, side=side, mid_in=mid_in, mid_out=(qs[0] + qs[1]) / 2,
+                stock_in=stock_in, stock_out=stock_out)
 
 
 def main():
@@ -228,7 +241,7 @@ def main():
             for i, _ in enumerate(ex.map(fetch_stock, ev)):
                 if i % 200 == 0: print(i, "/", len(ev), flush=True)
         return
-    pk_file = os.path.join(OUT, f"picks{TAG}.json")
+    pk_file = os.path.join(OUT, f"picks{TAG}{WTAG}.json")
     if step == "pick":
         with mp.Pool(8) as pool: trig = pool.map(triggers, ev, chunksize=8)
         with mp.Pool(8) as pool: picks = pool.map(pick_for, list(zip(ev, trig)), chunksize=4)
@@ -279,6 +292,7 @@ def main():
         if os.environ.get("STR_GROUPS"):
             t15 = set(json.load(open(os.path.join(HERE, "strangle_top40.json")))[:15])
             GROUPS = {"all: ": lambda t: True, "top 15: ": lambda t: t["sym"] in t15, "the rest: ": lambda t: t["sym"] not in t15}
+        DIAG = []
         for lab, lo, hi in spans:
             print(f"\n### {lab}\n\n| Filter | Version | Entry | Trades | Avg per trade | End ($100K), worst drop |\n|---|---|---|---|---|---|")
             for gname, in_group in GROUPS.items():
@@ -301,7 +315,23 @@ def main():
                         for r in R: by_s[r["sym"]].append(r["pnl"])
                         for sy, ps in sorted(by_s.items(), key=lambda x: -len(x[1])): print(f"  {sy}: {len(ps)} trades, {sum(p > 0 for p in ps)} won, ${sum(ps):,.0f}")
                         print("  months:", dict(sorted(collections.Counter(r["date"][:7] for r in R).items())))
+                    if os.environ.get("STR_DIAG") and v == "plain20" and entry == "cross" and R:
+                        import statistics as stt
+                        sg = lambda r: 1 if r["side"] == "C" else -1
+                        stk = [sg(r) * (r["stock_out"] / r["stock_in"] - 1) for r in R if r["stock_out"] and r["stock_in"]]
+                        mv = [(r["mid_out"] - r["mid_in"]) / r["buy"] for r in R]
+                        cin = [(r["mid_in"] - r["buy"]) / r["buy"] for r in R]
+                        cout = [(r["sell"] - r["mid_out"]) / r["buy"] for r in R]
+                        com = [-2 * 0.62 / (r["buy"] * 100) for r in R]
+                        tst = stt.mean(stk) / (stt.pstdev(stk) / len(stk) ** 0.5) if len(stk) > 1 and stt.pstdev(stk) else 0
+                        DIAG.append(f"| {lab} | {fname} | {len(R)} | {100 * stt.mean(stk):+.3f}% (t {tst:.1f}, win {100 * sum(x > 0 for x in stk) / len(stk):.0f}%) | "
+                                    f"{100 * stt.mean(mv):+.1f}% | {100 * stt.mean(cin):+.1f}% | {100 * stt.mean(cout):+.1f}% | {100 * stt.mean(com):+.1f}% | "
+                                    f"{100 * stt.mean(r['sell'] / r['buy'] - 1 + c for r, c in zip(R, com)):+.1f}% | ${stt.median(r['buy'] for r in R):.2f} |")
                     print(f"| {fname} | {v} | {entry} | {len(R)} | {100 * avg:+.1f}% | ${eL:,.0f}, {100 * dL:.1f}% |", flush=True)
+        if DIAG:
+            print("\n| Span | Filter | Trades | Stock alone, a trade | Option move at mid | Paid over mid | Sold under mid | Commission | Net | Median price |")
+            print("|---|---|---|---|---|---|---|---|---|---|")
+            for line in DIAG: print(line)
 
 
 if __name__ == "__main__": main()

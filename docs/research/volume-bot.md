@@ -9,6 +9,22 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### Where the money goes: the stock alone and each trade's costs (2026-10-27)
+
+`leg_seconds.py run` with `STR_DIAG=1` (top 15, per-second entry, live 0.20 rule, the account's kept trades, quotes
+filled). The stock alone = the same entry second and exit minute on the shares, the side's way.
+
+| 3 years | Trades | Stock alone | Option move at the mid | Paid over mid | Sold under mid | Commission | Net |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| all | 367 | +0.028% (t 0.7, win 39%) | +8.8% | -3.4% | -3.1% | -2.0% | +0.2% |
+| t >= 0 | 219 | +0.037% (t 0.7) | +13.1% | -3.6% | -3.2% | -2.1% | +4.3% |
+| t < 0 | 225 | +0.003% | +0.3% | -3.3% | -2.9% | -2.0% | -8.0% |
+
+The signal has no direction edge on the shares (t 0.7); the option's +8.8% at the mid is the cheap 0DTE option's
+convexity (small losses, a few big wins) on the moves after the line. Costs are ~8.5 points a trade (median option
+$0.72, so $0.62 a contract each way is 2%). Levers: fills nearer the mid (up to ~6.5 points), pricier contracts (the
+commission), and moves big enough for the convexity.
+
 ### CORRECTION: the per-second results were inflated by missing sale quotes; the fast alert (2026-10-27)
 
 `leg_seconds.py` sold at the real minute bid from `dbx_cache`, which holds only the contracts picked at the old
