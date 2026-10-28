@@ -111,3 +111,40 @@ export function mapTicks(
   }
   return [...out].sort((p, q) => p - q);
 }
+
+/**
+ * How far a stock's dot sits from its corner on the map (user 2026-10-28:
+ * the list "is not sorting from the place that are close to the alerts"):
+ * the gap on each axis in the map's own scales, as a share of that axis, so
+ * the list follows what the map shows. 0 inside the corner.
+ */
+export function cornerGap(
+  x: number,
+  y: number, // the vertical check's size; its side does not matter
+  needX: number,
+  needY: number,
+  xMax: number,
+  yMax: number,
+): number {
+  const gx =
+    Math.max(0, scaleX(needX) - scaleX(Math.min(x, xMax))) / scaleX(xMax);
+  const gy =
+    Math.max(0, scaleY(needY) - scaleY(Math.min(Math.abs(y), yMax))) /
+    (2 * scaleY(yMax));
+  return Math.hypot(gx, gy);
+}
+
+/**
+ * Nearest its corner first; of the stocks inside one, the deepest first (the
+ * larger of the weaker check against its need).
+ */
+export function byCorner<T>(
+  rows: readonly T[],
+  gap: (r: T) => number,
+  depth: (r: T) => number,
+): T[] {
+  return [...rows]
+    .map((r) => ({ r, g: gap(r), d: depth(r) }))
+    .sort((a, b) => a.g - b.g || b.d - a.d)
+    .map((e) => e.r);
+}

@@ -98,15 +98,13 @@ export function BotMap({
   axes,
   selected,
   onSelect,
-  onOpen,
 }: {
   points: MapPoint[];
   axes: MapAxes;
   selected: string | null;
-  // A tap on a dot picks the stock.
+  // A tap on a stock, its dot or its name, picks it in the list (user
+  // 2026-10-28: "not to the stock page"); its page opens from the card.
   onSelect?: (symbol: string) => void;
-  // The stock's own page, from a tap on its name.
-  onOpen?: (symbol: string) => void;
 }) {
   const box = useBoxWidth(640);
   const mapW = Math.max(300, Math.min(760, box.width));
@@ -418,17 +416,7 @@ export function BotMap({
                 )}
                 <circle cx={cx} cy={cy} r={isSelected ? 7 : 5} />
                 {name && (
-                  <text
-                    className={onOpen ? "bot-dot-name" : undefined}
-                    x={cx + 12}
-                    y={cy + 4}
-                    role={onOpen ? "link" : undefined}
-                    onClick={(e) => {
-                      if (!onOpen || moved.current) return;
-                      e.stopPropagation();
-                      onOpen(p.symbol);
-                    }}
-                  >
+                  <text x={cx + 12} y={cy + 4}>
                     {p.trade ? `◆ ${p.symbol}` : p.symbol}
                   </text>
                 )}

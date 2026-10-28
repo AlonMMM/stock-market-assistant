@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  byCorner,
+  cornerGap,
   mapTicks,
   panDomain,
   scaleX,
@@ -59,4 +61,23 @@ test("map scales: logarithmic, 0 to 2× wider than 4× to 6×, signed both ways"
     assert.ok(Math.abs(unscaleX(scaleX(v)) - v) < 1e-9);
   for (const v of [-6, -1, 0, 2.5])
     assert.ok(Math.abs(unscaleY(scaleY(v)) - v) < 1e-9);
+});
+
+test("the list follows the map: nearest the corner first, deepest inside first", () => {
+  // User 2026-10-28: META at the put corner was below stocks far from it.
+  const need = { x: 1.5, y: 1.8 };
+  const rows = [
+    { s: "TSLA", x: 1.1, y: 1.4 },
+    { s: "META", x: 2.2, y: 1.7 },
+    { s: "WIDE", x: 2.5, y: 0.5 }, // volume enough, strength far off
+    { s: "IN", x: 2.0, y: 2.4 },
+    { s: "DEEP", x: 3.5, y: 3.5 },
+  ];
+  const order = byCorner(
+    rows,
+    (r) => cornerGap(r.x, r.y, need.x, need.y, 6, 4),
+    (r) => Math.min(r.x / need.x, r.y / need.y),
+  ).map((r) => r.s);
+  assert.deepEqual(order, ["DEEP", "IN", "META", "TSLA", "WIDE"]);
+  assert.equal(cornerGap(2, 2, 1.5, 1.8, 6, 4), 0);
 });

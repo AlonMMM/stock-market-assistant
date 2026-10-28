@@ -17,10 +17,10 @@ import type {
 import type { Portfolio as PortfolioData } from "../../../packages/trading/src/portfolio.js";
 import { EntryBanners, InTradeSign, type HeldTrade } from "./BotEntries.js";
 import { BotMap, useMapPick, type MapPoint } from "./BotMap.js";
+import { byCorner, cornerGap } from "./bot-map-model.js";
 import {
   FindStock,
   Meter,
-  StockLink,
   ago,
   rowKeys,
   useNow,
@@ -364,29 +364,39 @@ function lacking(r: StrangleScanRow): string {
   return `Needs ${needs.join(", ")}`;
 }
 
+/** The stocks in the order of the map: the nearest its corner first (user 2026-10-28). */
+function nearestFirst(scan: StrangleScanRow[]): StrangleScanRow[] {
+  const { maxVol, maxMove } = alertRange(scan);
+  return byCorner(
+    scan,
+    (r) =>
+      cornerGap(r.volRatio, r.moveRatio, needVolume, needMove, maxVol, maxMove),
+    (r) => Math.min(r.volRatio / needVolume, r.moveRatio / needMove),
+  );
+}
+
+/** The map's axes' ends, from the stocks on it. */
+function alertRange(scan: StrangleScanRow[]) {
+  return {
+    maxVol: Math.min(10, Math.max(6, ...scan.map((r) => r.volRatio * 1.1))),
+    maxMove: Math.min(8, Math.max(4.5, ...scan.map((r) => r.moveRatio * 1.1))),
+  };
+}
+
 function AlertMap({
   scan,
   waiting,
   selected,
   trades,
   onSelect,
-  onOpen,
 }: {
   scan: StrangleScanRow[];
   waiting: ReadonlySet<string>;
   selected: string | null;
   trades: ReadonlyMap<string, "C" | "P">;
   onSelect: (symbol: string) => void;
-  onOpen?: (symbol: string) => void;
 }) {
-  const maxVol = Math.min(
-    10,
-    Math.max(6, ...scan.map((r) => r.volRatio * 1.1)),
-  );
-  const maxMove = Math.min(
-    8,
-    Math.max(4.5, ...scan.map((r) => r.moveRatio * 1.1)),
-  );
+  const { maxVol, maxMove } = alertRange(scan);
   const points: MapPoint[] = scan.map((r) => ({
     symbol: r.symbol,
     x: r.volRatio,
@@ -401,7 +411,6 @@ function AlertMap({
       points={points}
       selected={selected}
       onSelect={onSelect}
-      onOpen={onOpen}
       axes={{
         xMax: maxVol,
         yMax: maxMove,
@@ -558,7 +567,6 @@ function StockList({
   notes,
   selected,
   onSelect,
-  onOpen,
   listRef,
 }: {
   scan: StrangleScanRow[];
@@ -570,15 +578,15 @@ function StockList({
   notes: ReadonlyMap<string, string>;
   selected: string | null;
   onSelect: (symbol: string) => void;
-  onOpen?: (symbol: string) => void;
   listRef: RefObject<HTMLDivElement | null>;
 }) {
   const [all, setAll] = useState(false);
   const [find, setFind] = useState("");
   const query = find.trim().toUpperCase();
+  const ordered = nearestFirst(scan);
   const live = query
-    ? scan.filter((r) => r.symbol.startsWith(query))
-    : scan.filter((r) => !out.has(r.symbol));
+    ? ordered.filter((r) => r.symbol.startsWith(query))
+    : ordered.filter((r) => !out.has(r.symbol));
   const rows = withPicked(
     all || query ? live : live.slice(0, 12),
     scan,
@@ -616,7 +624,7 @@ function StockList({
                   >
                     {up ? "▲" : "▼"}
                   </span>
-                  <StockLink symbol={r.symbol} onOpen={onOpen} />
+                  <strong>{r.symbol}</strong>
                 </span>
                 <Meter
                   value={r.volRatio}
@@ -663,7 +671,9 @@ function WhatItSees({
   const notes = new Map([...noSides(v, day), ...out]);
   const scan = showOut ? v.scan : v.scan.filter((r) => !out.has(r.symbol));
   const selected =
-    picked ?? v.scan.find((r) => !out.has(r.symbol))?.symbol ?? null;
+    picked ??
+    nearestFirst(v.scan).find((r) => !out.has(r.symbol))?.symbol ??
+    null;
   const row = v.scan.find((r) => r.symbol === selected);
   const waiting = new Set(
     v.open.filter((t) => t.phase === "watching").map((t) => t.symbol),
@@ -687,8 +697,7 @@ function WhatItSees({
       </div>
       <p className="muted small bot-explain">
         Last 3 minutes against usual. A shaded corner alerts · ○ waiting for its
-        side · ◆ held · tap a dot to find it in the list · tap a name for its
-        page.
+        side · ◆ held · tap a stock to pick it on the map and in the list.
       </p>
       {out.size > 0 && (
         <button
@@ -714,7 +723,6 @@ function WhatItSees({
               selected={selected}
               trades={trades}
               onSelect={fromMap}
-              onOpen={onOpen}
             />
             {row && (
               <StockFocus
@@ -732,7 +740,6 @@ function WhatItSees({
             notes={notes}
             selected={selected}
             onSelect={fromList}
-            onOpen={onOpen}
             listRef={listRef}
           />
         </div>
@@ -1092,10 +1099,11 @@ export function StrangleActivity({
   // A stock's own page (the Watchlist's), from the map.
   onOpenTicker?: (symbol: string) => void;
 }) {
-  // Every 2 seconds (user 2026-10-27), while the page is in view.
+  // Every second (user 2026-10-28), while the page is in view; its scan
+  // moves once a minute, when each minute's bar closes.
   const { value: v, error } = usePolling<StrangleView>(
     "/api/strangle",
-    2000,
+    1000,
     ignore,
   );
   // The account's day change, for the day-loss meter (the Trades page's source).

@@ -28,6 +28,7 @@ import {
   parseOccSymbol,
 } from "../../../packages/trading/src/options.js";
 import { BotMap, useMapPick, type MapPoint } from "./BotMap.js";
+import { byCorner, cornerGap } from "./bot-map-model.js";
 import { EntryBanners, InTradeSign, type HeldTrade } from "./BotEntries.js";
 import { usePolling } from "./Live.js";
 import { israelClock, israelLabel, israelShortDate } from "./time.js";
@@ -37,8 +38,10 @@ import { israelClock, israelLabel, israelShortDate } from "./time.js";
 // the same paper account, so its positions also appear under Live trades and
 // History, marked with the Bot chip.
 
-// Every 2 seconds (user 2026-10-27), while the page is in view.
-const refreshMs = 2000;
+// Every second (user 2026-10-28: "1 second, 2 second refreshing"), while
+// the page is in view. The bot's scan itself moves once a minute, when each
+// minute's bar closes.
+const refreshMs = 1000;
 const ignore = () => {};
 
 // The bot's settings as it reports them (the defaults from a trading service
@@ -385,25 +388,51 @@ function Funnel({ v }: { v: BotView }) {
 // ---------------------------------------------------------------------------
 // The signal map: every stock placed by the two things the bot checks
 
+/**
+ * The stocks in the order of the map: the nearest its corner first (user
+ * 2026-10-28), the strength needed being the D2 bonus's when D2 covers it.
+ */
+function nearestFirst(scan: ScanRow[], rules: BotSettings): ScanRow[] {
+  const { maxVol, maxT } = signalRange(scan);
+  return byCorner(
+    scan,
+    (r) =>
+      cornerGap(
+        r.rvol,
+        r.t,
+        rules.minRvol,
+        d2Covers(r, rules) ? rules.d2T : rules.minT,
+        maxVol,
+        maxT,
+      ),
+    (r) => Math.min(r.t / rules.minT, r.rvol / rules.minRvol),
+  );
+}
+
+/** The map's axes' ends, from the stocks on it. */
+function signalRange(scan: ScanRow[]) {
+  return {
+    maxVol: Math.min(6, Math.max(3, ...scan.map((r) => r.rvol * 1.1))),
+    maxT: Math.min(6, Math.max(3, ...scan.map((r) => r.t * 1.1))),
+  };
+}
+
 function SignalMap({
   scan,
   signals,
   selected,
   trades,
   onSelect,
-  onOpen,
 }: {
   scan: ScanRow[];
   signals: Signal[];
   selected: string | null;
   trades: ReadonlyMap<string, "C" | "P">;
   onSelect: (symbol: string) => void;
-  onOpen?: (symbol: string) => void;
 }) {
   const rules = useRules();
   const { minT: needT, minRvol: needVolume } = rules;
-  const maxVol = Math.min(6, Math.max(3, ...scan.map((r) => r.rvol * 1.1)));
-  const maxT = Math.min(6, Math.max(3, ...scan.map((r) => r.t * 1.1)));
+  const { maxVol, maxT } = signalRange(scan);
   const fired = new Set(signals.map((s) => s.symbol));
   const points: MapPoint[] = scan.map((r) => ({
     symbol: r.symbol,
@@ -420,7 +449,6 @@ function SignalMap({
       points={points}
       selected={selected}
       onSelect={onSelect}
-      onOpen={onOpen}
       axes={{
         xMax: maxVol,
         yMax: maxT,
@@ -553,31 +581,6 @@ export function FindStock({
   );
 }
 
-/** A stock's name in a bot's list: the link to its page (user 2026-10-27). */
-export function StockLink({
-  symbol,
-  onOpen,
-}: {
-  symbol: string;
-  onOpen?: (symbol: string) => void;
-}) {
-  if (!onOpen) return <strong>{symbol}</strong>;
-  return (
-    <button
-      type="button"
-      className="bot-stock-link"
-      aria-label={`${symbol}'s page`}
-      onClick={(e) => {
-        e.stopPropagation();
-        onOpen(symbol);
-      }}
-      onKeyDown={(e) => e.stopPropagation()}
-    >
-      {symbol}
-    </button>
-  );
-}
-
 /** Enter or Space on a list row picks it, as a click does. */
 export function rowKeys(pick: () => void) {
   return (e: KeyboardEvent) => {
@@ -604,14 +607,12 @@ function StockList({
   signals,
   selected,
   onSelect,
-  onOpen,
   listRef,
 }: {
   scan: ScanRow[];
   signals: Signal[];
   selected: string | null;
   onSelect: (symbol: string) => void;
-  onOpen?: (symbol: string) => void;
   listRef: RefObject<HTMLDivElement | null>;
 }) {
   const rules = useRules();
@@ -619,13 +620,15 @@ function StockList({
   const [all, setAll] = useState(false);
   const [find, setFind] = useState("");
   const fired = new Map(signals.map((s) => [s.symbol, s]));
-  // The stocks already out for today (blocked, or signaled: one a day) stay
-  // on the map but not at the top of the list; a search finds them (user
-  // 2026-10-27).
+  // The stocks the news filter blocks for today stay on the map but leave
+  // the list; a search finds them (user 2026-10-27). A stock that signaled
+  // today stays, with its outcome (user 2026-10-28: META, at the corner, was
+  // missing).
   const query = find.trim().toUpperCase();
+  const ordered = nearestFirst(scan, rules);
   const live = query
-    ? scan.filter((r) => r.symbol.startsWith(query))
-    : scan.filter((r) => !r.blocked && !fired.has(r.symbol));
+    ? ordered.filter((r) => r.symbol.startsWith(query))
+    : ordered.filter((r) => !r.blocked);
   // A stock picked on the map shows here even when it is out for today.
   const rows = withPicked(
     all || query ? live : live.slice(0, 12),
@@ -667,7 +670,7 @@ function StockList({
                   >
                     {r.side === "C" ? "▲" : "▼"}
                   </span>
-                  <StockLink symbol={r.symbol} onOpen={onOpen} />
+                  <strong>{r.symbol}</strong>
                 </span>
                 <Meter value={r.t} of={needT} label={`t ${r.t.toFixed(1)}`} />
                 <Meter
@@ -738,12 +741,8 @@ function WhatItSees({
 }) {
   const rules = useRules();
   const { picked, fromMap, fromList, mapRef, listRef } = useMapPick();
-  const fired = new Set(v.signals.map((s) => s.symbol));
-  const selected =
-    picked ??
-    (v.scan.find((r) => !r.blocked && !fired.has(r.symbol)) ?? v.scan[0])
-      ?.symbol ??
-    null;
+  const first = nearestFirst(v.scan, rules).find((r) => !r.blocked);
+  const selected = picked ?? (first ?? v.scan[0])?.symbol ?? null;
   const row = v.scan.find((r) => r.symbol === selected);
   const signal = v.signals.find((s) => s.symbol === selected);
   return (
@@ -758,8 +757,8 @@ function WhatItSees({
       </div>
       <p className="muted small bot-explain">
         Strength vs SPY and volume vs usual. A shaded corner signals: up a call,
-        down a put · ○ today&apos;s signals · ◆ held · tap a dot to find it in
-        the list · tap a name for its page.
+        down a put · ○ today&apos;s signals · ◆ held · tap a stock to pick it on
+        the map and in the list.
       </p>
       {newsNote(v.news)}
       {v.scan.length === 0 ? (
@@ -776,7 +775,6 @@ function WhatItSees({
               selected={selected}
               trades={trades}
               onSelect={fromMap}
-              onOpen={onOpen}
             />
             {row && (
               <StockFocus r={row} signal={signal} day={v.day} onOpen={onOpen} />
@@ -787,7 +785,6 @@ function WhatItSees({
             signals={v.signals}
             selected={selected}
             onSelect={fromList}
-            onOpen={onOpen}
             listRef={listRef}
           />
         </div>
