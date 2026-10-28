@@ -38,6 +38,7 @@ import {
 } from "../packages/trading/src/strangle/decide.js";
 import {
   defaultStrangleSettings,
+  mergeStrangleSettings,
   parseStrangleSettings,
   strangleStocks,
   strangleSteps,
@@ -882,4 +883,29 @@ test("runner (winner): no sale in the 30-minute grace, then the give-back on min
   );
   await base.run(565, 640);
   assert.equal(base.calls.filter((c) => c.kind === "sell").length, 1);
+});
+
+test("settings merge (connector): known keys over the current ones, checked as a whole; the changed keys", () => {
+  const d = defaultStrangleSettings;
+  const ok = mergeStrangleSettings(d, {
+    sizePct: 2,
+    followFavorites: false,
+    delta: 0.2,
+  });
+  assert.ok(ok.ok);
+  if (ok.ok) {
+    assert.equal(ok.value.sizePct, 2);
+    assert.equal(ok.value.giveBackUnits, d.giveBackUnits);
+    assert.deepEqual(ok.changed.sort(), [
+      "delta",
+      "followFavorites",
+      "sizePct",
+    ]);
+  }
+  const same = mergeStrangleSettings(d, { sizePct: d.sizePct });
+  assert.ok(same.ok && same.changed.length === 0);
+  assert.equal(mergeStrangleSettings(d, { sizePct: 9 }).ok, false); // over the page's 6% top
+  assert.equal(mergeStrangleSettings(d, { sizePtc: 2 }).ok, false); // a typo is refused, not ignored
+  assert.equal(mergeStrangleSettings(d, {}).ok, false);
+  assert.equal(mergeStrangleSettings(d, "x").ok, false);
 });

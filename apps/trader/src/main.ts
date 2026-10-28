@@ -30,7 +30,10 @@ import {
 } from "./seed-bot.js";
 import { StrangleBot, strangleTag } from "./strangle.js";
 import { StrangleStore } from "./strangle-store.js";
-import { parseStrangleSettings } from "../../../packages/trading/src/strangle/settings.js";
+import {
+  mergeStrangleSettings,
+  parseStrangleSettings,
+} from "../../../packages/trading/src/strangle/settings.js";
 import { EquityLog } from "./equity-log.js";
 import { botHistory, botPortfolio } from "./bot-portfolio.js";
 import { ShortWatch } from "./short-watch.js";
@@ -518,6 +521,17 @@ api.put("/v1/strangle/settings", async (request) => {
   const parsed = parseStrangleSettings(request.body);
   if (!parsed.ok) throw new RequestError(parsed.error);
   return strangle.setSettings(parsed.value);
+});
+// Some settings at once, over the current ones (the connector's
+// volume_bot_update_settings): the same checks as a whole save.
+api.post("/v1/strangle/settings/merge", async (request) => {
+  if (!strangle) throw new RequestError(strangleOff, 409);
+  const merged = mergeStrangleSettings(strangle.settings(), request.body);
+  if (!merged.ok) throw new RequestError(merged.error);
+  return {
+    settings: strangle.setSettings(merged.value),
+    changed: merged.changed,
+  };
 });
 
 // Every second of regular hours: what each bot holds, and the stocks the
