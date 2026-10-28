@@ -26,6 +26,27 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### Mid-price limits rechecked, and the sale at the mid (2026-10-28, later)
+
+The 1-second mid buy above was not a real cost: its fallback price came from the second book (opt2, cmbp-1 in 2024) and
+both books carry flickering quotes in fast moves (SMCI 2024-09-26 P420: bid $3.00, ask $13.20 for two seconds, then
+$3.10), so a 1-second shift could land on one (SMCI bought at $10.65, not $4.13). `mid_buy.py` uses the baseline's own
+book and drops any book wider than 50% of its mid (`MB_CLEAN=0.5`, for the baseline buy too: the winner becomes
+$226,876). `sell_limit.py` fetched each exit's per-second book and trade prints (245 trades, `sec_cache/sell`) and offers
+the option at the mid for W s, then sells at the bid; "prints" also counts a trade printed at our price or above. 2%:
+
+| Rule | Mid fills | $100K becomes | Avg | Tune / check | Check without 2025-10-10 |
+| --- | --- | --- | --- | --- | --- |
+| buy as today (clean book) | - | $226,876 | +25.5% | +28.9 / +22.7 | +1.4 |
+| buy: mid 1 / 2 / 5 / 10 s | 14 / 27 / 53 / 71 | $226,764 / $228,603 / $224,978 / $203,439 | +25.4 / +25.5 / +25.5 / +22.2% | | |
+| sell as today (minute-close bid) | - | $226,355 | +25.4% | +28.9 / +22.5 | +1.2 |
+| sell: mid 1 / 2 / 5 / 10 / 30 s, quotes | 8 / 23 / 45 / 57 / 88 | $227,015 / $223,404 / $220,300 / $207,668 / $213,951 | +25.5 / +25.4 / +24.8 / +23.1 / +23.7% | | |
+| sell: mid 1 / 2 / 5 / 10 / 30 s, prints | 20 / 42 / 68 / 90 / 124 | $228,004 / $225,287 / $228,786 / $216,935 / $222,364 | +25.6 / +25.7 / +25.3 / +23.8 / +24.7% | | |
+
+A mid limit for 1-5 s on either side is neutral (within $3K of today); 10 s or more costs, because the option keeps
+moving the wrong way for us (up after the breakout on the buy, down after the give-back on the sale). Keep in mind for
+every per-second test: drop flickering books. Not adopted.
+
 ### A mid-price limit buy on the winner (2026-10-28)
 
 The user: buy at the mid, and when it does not fill at once pay the usual price. `STR_BUY=mid STR_BUY_WAIT=1|2|5` on the
