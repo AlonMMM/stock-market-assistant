@@ -17,6 +17,7 @@ import type {
 import type { Portfolio as PortfolioData } from "../../../packages/trading/src/portfolio.js";
 import { EntryBanners, InTradeSign, type HeldTrade } from "./BotEntries.js";
 import { BotMap, useMapPick, type MapPoint } from "./BotMap.js";
+import { byCorner, cornerGap } from "./bot-map-model.js";
 import {
   FindStock,
   Meter,
@@ -363,6 +364,25 @@ function lacking(r: StrangleScanRow): string {
   return `Needs ${needs.join(", ")}`;
 }
 
+/** The stocks in the order of the map: the nearest its corner first (user 2026-10-28). */
+function nearestFirst(scan: StrangleScanRow[]): StrangleScanRow[] {
+  const { maxVol, maxMove } = alertRange(scan);
+  return byCorner(
+    scan,
+    (r) =>
+      cornerGap(r.volRatio, r.moveRatio, needVolume, needMove, maxVol, maxMove),
+    (r) => Math.min(r.volRatio / needVolume, r.moveRatio / needMove),
+  );
+}
+
+/** The map's axes' ends, from the stocks on it. */
+function alertRange(scan: StrangleScanRow[]) {
+  return {
+    maxVol: Math.min(10, Math.max(6, ...scan.map((r) => r.volRatio * 1.1))),
+    maxMove: Math.min(8, Math.max(4.5, ...scan.map((r) => r.moveRatio * 1.1))),
+  };
+}
+
 function AlertMap({
   scan,
   waiting,
@@ -376,14 +396,7 @@ function AlertMap({
   trades: ReadonlyMap<string, "C" | "P">;
   onSelect: (symbol: string) => void;
 }) {
-  const maxVol = Math.min(
-    10,
-    Math.max(6, ...scan.map((r) => r.volRatio * 1.1)),
-  );
-  const maxMove = Math.min(
-    8,
-    Math.max(4.5, ...scan.map((r) => r.moveRatio * 1.1)),
-  );
+  const { maxVol, maxMove } = alertRange(scan);
   const points: MapPoint[] = scan.map((r) => ({
     symbol: r.symbol,
     x: r.volRatio,
@@ -570,9 +583,10 @@ function StockList({
   const [all, setAll] = useState(false);
   const [find, setFind] = useState("");
   const query = find.trim().toUpperCase();
+  const ordered = nearestFirst(scan);
   const live = query
-    ? scan.filter((r) => r.symbol.startsWith(query))
-    : scan.filter((r) => !out.has(r.symbol));
+    ? ordered.filter((r) => r.symbol.startsWith(query))
+    : ordered.filter((r) => !out.has(r.symbol));
   const rows = withPicked(
     all || query ? live : live.slice(0, 12),
     scan,
@@ -657,7 +671,9 @@ function WhatItSees({
   const notes = new Map([...noSides(v, day), ...out]);
   const scan = showOut ? v.scan : v.scan.filter((r) => !out.has(r.symbol));
   const selected =
-    picked ?? v.scan.find((r) => !out.has(r.symbol))?.symbol ?? null;
+    picked ??
+    nearestFirst(v.scan).find((r) => !out.has(r.symbol))?.symbol ??
+    null;
   const row = v.scan.find((r) => r.symbol === selected);
   const waiting = new Set(
     v.open.filter((t) => t.phase === "watching").map((t) => t.symbol),

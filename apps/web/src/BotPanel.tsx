@@ -28,6 +28,7 @@ import {
   parseOccSymbol,
 } from "../../../packages/trading/src/options.js";
 import { BotMap, useMapPick, type MapPoint } from "./BotMap.js";
+import { byCorner, cornerGap } from "./bot-map-model.js";
 import { EntryBanners, InTradeSign, type HeldTrade } from "./BotEntries.js";
 import { usePolling } from "./Live.js";
 import { israelClock, israelLabel, israelShortDate } from "./time.js";
@@ -387,6 +388,35 @@ function Funnel({ v }: { v: BotView }) {
 // ---------------------------------------------------------------------------
 // The signal map: every stock placed by the two things the bot checks
 
+/**
+ * The stocks in the order of the map: the nearest its corner first (user
+ * 2026-10-28), the strength needed being the D2 bonus's when D2 covers it.
+ */
+function nearestFirst(scan: ScanRow[], rules: BotSettings): ScanRow[] {
+  const { maxVol, maxT } = signalRange(scan);
+  return byCorner(
+    scan,
+    (r) =>
+      cornerGap(
+        r.rvol,
+        r.t,
+        rules.minRvol,
+        d2Covers(r, rules) ? rules.d2T : rules.minT,
+        maxVol,
+        maxT,
+      ),
+    (r) => Math.min(r.t / rules.minT, r.rvol / rules.minRvol),
+  );
+}
+
+/** The map's axes' ends, from the stocks on it. */
+function signalRange(scan: ScanRow[]) {
+  return {
+    maxVol: Math.min(6, Math.max(3, ...scan.map((r) => r.rvol * 1.1))),
+    maxT: Math.min(6, Math.max(3, ...scan.map((r) => r.t * 1.1))),
+  };
+}
+
 function SignalMap({
   scan,
   signals,
@@ -402,8 +432,7 @@ function SignalMap({
 }) {
   const rules = useRules();
   const { minT: needT, minRvol: needVolume } = rules;
-  const maxVol = Math.min(6, Math.max(3, ...scan.map((r) => r.rvol * 1.1)));
-  const maxT = Math.min(6, Math.max(3, ...scan.map((r) => r.t * 1.1)));
+  const { maxVol, maxT } = signalRange(scan);
   const fired = new Set(signals.map((s) => s.symbol));
   const points: MapPoint[] = scan.map((r) => ({
     symbol: r.symbol,
@@ -596,9 +625,10 @@ function StockList({
   // today stays, with its outcome (user 2026-10-28: META, at the corner, was
   // missing).
   const query = find.trim().toUpperCase();
+  const ordered = nearestFirst(scan, rules);
   const live = query
-    ? scan.filter((r) => r.symbol.startsWith(query))
-    : scan.filter((r) => !r.blocked);
+    ? ordered.filter((r) => r.symbol.startsWith(query))
+    : ordered.filter((r) => !r.blocked);
   // A stock picked on the map shows here even when it is out for today.
   const rows = withPicked(
     all || query ? live : live.slice(0, 12),
@@ -711,8 +741,8 @@ function WhatItSees({
 }) {
   const rules = useRules();
   const { picked, fromMap, fromList, mapRef, listRef } = useMapPick();
-  const selected =
-    picked ?? (v.scan.find((r) => !r.blocked) ?? v.scan[0])?.symbol ?? null;
+  const first = nearestFirst(v.scan, rules).find((r) => !r.blocked);
+  const selected = picked ?? (first ?? v.scan[0])?.symbol ?? null;
   const row = v.scan.find((r) => r.symbol === selected);
   const signal = v.signals.find((s) => s.symbol === selected);
   return (

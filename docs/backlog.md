@@ -338,7 +338,7 @@ watchlist opens faster on a phone.
 - done: 2026-10-28, PR #196
 
 A tap on a stock's dot or row picks it on the map and in the list; its page opens only from the card's button.
-Stocks that signaled today stay in the Main bot's list (META at the corner was missing). Both pages read every
+Stocks that signaled today stay in the Main bot's list (META at the corner was missing). Both lists are sorted by how near each dot is to its corner on the map. Both pages read every
 second; the bots' numbers still move once a minute, when each minute's bar closes.
 
 ### The bots' maps on a log scale; skipped stocks off the list
