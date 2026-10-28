@@ -20,7 +20,6 @@ import { BotMap, useMapPick, type MapPoint } from "./BotMap.js";
 import {
   FindStock,
   Meter,
-  StockLink,
   ago,
   rowKeys,
   useNow,
@@ -370,14 +369,12 @@ function AlertMap({
   selected,
   trades,
   onSelect,
-  onOpen,
 }: {
   scan: StrangleScanRow[];
   waiting: ReadonlySet<string>;
   selected: string | null;
   trades: ReadonlyMap<string, "C" | "P">;
   onSelect: (symbol: string) => void;
-  onOpen?: (symbol: string) => void;
 }) {
   const maxVol = Math.min(
     10,
@@ -401,7 +398,6 @@ function AlertMap({
       points={points}
       selected={selected}
       onSelect={onSelect}
-      onOpen={onOpen}
       axes={{
         xMax: maxVol,
         yMax: maxMove,
@@ -558,7 +554,6 @@ function StockList({
   notes,
   selected,
   onSelect,
-  onOpen,
   listRef,
 }: {
   scan: StrangleScanRow[];
@@ -570,7 +565,6 @@ function StockList({
   notes: ReadonlyMap<string, string>;
   selected: string | null;
   onSelect: (symbol: string) => void;
-  onOpen?: (symbol: string) => void;
   listRef: RefObject<HTMLDivElement | null>;
 }) {
   const [all, setAll] = useState(false);
@@ -616,7 +610,7 @@ function StockList({
                   >
                     {up ? "▲" : "▼"}
                   </span>
-                  <StockLink symbol={r.symbol} onOpen={onOpen} />
+                  <strong>{r.symbol}</strong>
                 </span>
                 <Meter
                   value={r.volRatio}
@@ -687,8 +681,7 @@ function WhatItSees({
       </div>
       <p className="muted small bot-explain">
         Last 3 minutes against usual. A shaded corner alerts · ○ waiting for its
-        side · ◆ held · tap a dot to find it in the list · tap a name for its
-        page.
+        side · ◆ held · tap a stock to pick it on the map and in the list.
       </p>
       {out.size > 0 && (
         <button
@@ -714,7 +707,6 @@ function WhatItSees({
               selected={selected}
               trades={trades}
               onSelect={fromMap}
-              onOpen={onOpen}
             />
             {row && (
               <StockFocus
@@ -732,7 +724,6 @@ function WhatItSees({
             notes={notes}
             selected={selected}
             onSelect={fromList}
-            onOpen={onOpen}
             listRef={listRef}
           />
         </div>
@@ -1092,10 +1083,11 @@ export function StrangleActivity({
   // A stock's own page (the Watchlist's), from the map.
   onOpenTicker?: (symbol: string) => void;
 }) {
-  // Every 2 seconds (user 2026-10-27), while the page is in view.
+  // Every second (user 2026-10-28), while the page is in view; its scan
+  // moves once a minute, when each minute's bar closes.
   const { value: v, error } = usePolling<StrangleView>(
     "/api/strangle",
-    2000,
+    1000,
     ignore,
   );
   // The account's day change, for the day-loss meter (the Trades page's source).

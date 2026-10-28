@@ -6882,26 +6882,6 @@ dialog.trade-story .why-head h2 {
 }
 /* The name opens the stock's page; the rest of the row picks it on the map
    (user 2026-10-27). */
-.bot-stock-link {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-  text-underline-offset: 3px;
-}
-.bot-stock-link:hover,
-.bot-stock-link:focus-visible {
-  text-decoration: underline;
-}
-.bot-dot .bot-dot-name {
-  cursor: pointer;
-}
-.bot-dot .bot-dot-name:hover {
-  text-decoration: underline;
-}
 .bot-dot circle.bot-dot-halo {
   fill: none;
   stroke: var(--gray-27);
