@@ -105,6 +105,24 @@ its decisions with the backtest (parity was 497 of 499), then switch to paper.
 
 ## Next
 
+### Build the bots' Review page
+
+- id: review-page
+- area: App
+- tags: Main bot, Volume bot, Backtest, Charts, Performance
+- waiting: Your comments on the design (reminder Fri Oct 30)
+- source: The user, Oct 28 ("important"); design https://claude.ai/artifact/LSMxNqsoDhSHcYQgraAqo3
+
+Important (the user's). A Review page under each bot (Trades · Activity · Review · Settings · Risk) to
+analyse a day, a week or any period. The user's four: a time period (day, week, month, since a
+version, custom), the gain / loss graph on top (live, real prices, backtest, Indi), switching the
+strategy for the period and for one trade, and running a backtest to see if it acts differently.
+Added: the "why live ≠ backtest" steps (missed signals, other contract or entry, exit timing, fills),
+the day and week analyst verdicts, the period's numbers (win rate, worst drop, time under water,
+without the best 5) and the trade list matched to the backtest. Replays use the recorded prices
+(PR #191: every order step, every second held, the Volume bot's watches); known versions are run
+nightly, custom runs on the Mac. Next: the user's comments on the design, then the spec.
+
 ### Support Interactive Brokers on the Watchlist and in Trading
 
 - id: ibkr-watchlist-trading
