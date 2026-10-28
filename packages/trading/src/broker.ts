@@ -16,6 +16,8 @@ export interface Order {
   limitPrice: number | null;
   // The order that took this one's place when its price or size was changed.
   replacedBy?: string | null;
+  // When the broker says it filled completely (ms); absent where it does not say.
+  filledAt?: number;
 }
 
 /** One leg of a multi-leg order. */

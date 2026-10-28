@@ -55,6 +55,8 @@ export interface TradersOptions {
   bots?: { notifier: Notifier; tags: readonly string[] } | null;
   // The connection to an IB Gateway (main.ts: @stoqey/ib).
   makeTws?: (host: string, port: number) => TwsClient;
+  // Around each account's broker (main.ts: the order steps' recorder).
+  wrapBroker?: (broker: Broker, account: BrokerAccount) => Broker;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -230,7 +232,9 @@ export class Traders {
     if (cached) return cached;
     const scope = account.isDefault ? user.id : `${user.id}/${account.id}`;
     const clock = { ...(now ? { now } : {}), ...(sleep ? { sleep } : {}) };
-    const built = this.broker(account);
+    const raw = this.broker(account);
+    const wrap = this.options.wrapBroker;
+    const built = wrap ? wrap(raw, account) : raw;
     const owned = this.channels(user.id);
     const bots = this.options.bots;
     const notifier = bots

@@ -129,6 +129,14 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
 
 See the [task](tasks/backend-indi-bot.md).
 
+## Price recorder (2026-10-28, `feat/price-recorder`)
+
+The trading service writes down what the bots act on, for the Review page's replays: every order
+step of every account (send, each raise, each fill at its own price with the bid / ask, the end, with
+Alpaca's fill time), every second each bot holds a position (stock, bid / ask), and the Volume bot's
+watch from the alert to the side (stock every second, both legs every 5 seconds). Regular hours only,
+kept 400 days. See [the task](tasks/backend-price-recorder.md).
+
 ## In progress: the alert leg, a second bot (2026-10-25)
 
 A separate bot on its own Alpaca paper account (`STRANGLE_ALPACA_API_KEY`), with its own Portfolio tab
