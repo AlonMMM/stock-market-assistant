@@ -347,7 +347,12 @@ def main():
     pk = json.load(open(pk_file))
     if step == "run" and os.environ.get("SEC_ADD_TAG"):   # SEC_ADD_TAG=3y50w: the same-week alerts too, in one account
         add = os.environ["SEC_ADD_TAG"]
-        ev += json.load(open(os.path.join(OUT, f"events{add}.json"))); pk += json.load(open(os.path.join(OUT, f"picks{add}{WTAG}{KTAG}.json")))
+        ev2 = json.load(open(os.path.join(OUT, f"events{add}.json"))); pk2 = json.load(open(os.path.join(OUT, f"picks{add}{WTAG}{KTAG}.json")))
+        if os.environ.get("SEC_ADD_NEW_ONLY"):   # only the added list's names the base list does not have (no alert twice)
+            have = {e["sym"] for e in ev}
+            keep = [i for i, e in enumerate(ev2) if e["sym"] not in have]
+            ev2, pk2 = [ev2[i] for i in keep], [pk2[i] for i in keep]
+        ev += ev2; pk += pk2
     if step == "option2":   # the limit-buy test's books (cross, live 0.20 rule)
         jobs = sorted({(i, pk[i]["p"]["cross|plain20"][0], pk[i]["t"]["cross"][0]) for i in range(len(ev)) if "cross|plain20" in pk[i]["p"]})
         with ThreadPoolExecutor(40) as ex:

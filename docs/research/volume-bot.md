@@ -26,6 +26,22 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### The winner on top 50 + Favorites (2026-10-28)
+
+The user: test adding the Favorites. The winner (live limits, 2%) on the top 50 plus the 21 Favorites outside it (AAOI,
+ADBE, CVX, GLD, IBKR, IBM, LLY, MRNA, NET, NOW, NU, NVO, PANW, SHOP, SIRI, SKHY, SNDK, SOXX, UAL, WIX, XYZ; events3yfav,
+`SEC_ADD_TAG=3yfav SEC_ADD_NEW_ONLY=1`): 216 trades, +19.5% a trade, $193,103, drop 20.7% (top 50 alone $226,355 / 18.1%);
+check half without 2025-10-10 -4.7 (top 50 +1.2). The top-50 trades are the same 194; the 22 extra-name trades won 5, -32.8%
+a trade, -$25,505 (GLD 9, MRNA 5, LLY 3, NVO 2). 368 of their 453 fast-cross alerts have the option book (81%). Not
+adopted: production stays on the top 50.
+
+### Production (2026-10-28)
+
+PR #193 (18fba4e): the live Volume bot runs the winner: cross <= 15 s, burst >= 1.1 the side's way, no give-back for 30
+minutes, the give-back on minute closes; new settings on by default. `scripts/volume-winner-parity.ts`: the TypeScript burst
+and exit match the backtest on all 554 trades (19 sales 1-3 minutes earlier live, where the backtest's walk started at
+the option's first bar after the buy). Settings to save on the page: the top 50, Favorites off, 2%, delta 0.20, 5 open.
+
 ### Mid-price limits rechecked, and the sale at the mid (2026-10-28, later)
 
 The 1-second mid buy above was not a real cost: its fallback price came from the second book (opt2, cmbp-1 in 2024) and
