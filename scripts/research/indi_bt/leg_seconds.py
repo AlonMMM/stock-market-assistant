@@ -380,6 +380,11 @@ def main():
             for n, _ in enumerate(ex.map(lambda j: fetch_opt((ev[j[0]], j[1], j[2])), jobs)):
                 if n % 200 == 0: print(n, "/", len(jobs), flush=True)
         return
+    if step == "run" and os.environ.get("SEC_DTE_DAYS"):   # SEC_DTE_DAYS=2: of the same-week alerts only those this many days to expiry
+        want = {int(x) for x in os.environ["SEC_DTE_DAYS"].split(",")}
+        dte = lambda e: (datetime.fromisoformat(e["nxt"]) - datetime.fromisoformat(e["date"])).days
+        keep = [i for i, e in enumerate(ev) if e.get("kind") != "w" or dte(e) in want]
+        ev, pk = [ev[i] for i in keep], [pk[i] for i in keep]
     if step == "run":
         import news_filter as nf
         top = set(json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "999"))]) if os.environ.get("STR_TOP") else None

@@ -26,6 +26,20 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### 2 DTE only (2026-10-28)
+
+The user: test 2 DTE trades. The same-week alerts with exactly 2 days to expiry (`SEC_DTE_DAYS=2`, 1,320 of the 3,495),
+the winner's rules and exit (give-back, 30-minute grace), live limits, 2%:
+
+| Set | Trades | Won | Avg | $100K becomes | Drop | Without best 5 | Tune / check | Check without 2025-10-10 | 2024 / 2025 / 2026 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0-1 DTE (the winner) | 194 | 74 | +25.4% | $226,355 | 18.1% | +$1,699 | +28.9 / +22.5 | +1.2 | +16.8 / +39.1 / +15.0 |
+| 2 DTE only | 77 | 27 | +4.0% | $104,482 | 11.5% | -$22,641 | +9.8 / -1.9 | -1.9 | -20.6 / +9.6 / +10.6 |
+| Both, one account | 269 | 100 | +19.1% | $231,699 | 20.1% | +$4,437 | +23.0 / +15.6 | -0.3 | +7.8 / +29.3 / +13.2 |
+
+2 DTE alone is about flat (+$4.5K in 3 years, the check half negative). Added to the winner it gives +$5K at 2% for a 2-point
+deeper drop and a lower average and check half. Not adopted.
+
 ### The winner on top 50 + the app's Favorites, and a spread cap at the buy (2026-10-28)
 
 The user: the Favorites of the app (data/local/early_alerts_favorites.txt, 66 names, 23 outside the top 50; the 7 not in
