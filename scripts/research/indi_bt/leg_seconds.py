@@ -379,6 +379,10 @@ def main():
             def am_ok(i):
                 e, side = ev[i], pk[i]["t"]["cross"][1]
                 sb = {b[0]: b[4] for b in day(e["sym"], e["date"])}
+                if "sec0" in e:   # an alert inside a minute: its own price against the close that ended 3 minutes before (as trade())
+                    k = (e["sec0"] - 180) // 60 - 1
+                    if k not in sb: return False
+                    return (1 if side == "C" else -1) * (e["stock0"] / sb[k] - 1) / e["u"] >= float(os.environ["SEC_OPT_AM_MIN"])
                 if e["m"] not in sb or e["m"] - 3 not in sb: return False
                 return (1 if side == "C" else -1) * (sb[e["m"]] / sb[e["m"] - 3] - 1) / e["u"] >= float(os.environ["SEC_OPT_AM_MIN"])
             jobs = [j for j in jobs if am_ok(j[0])]

@@ -26,6 +26,23 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### F60x2 (rolling 60 s, volume >= 2x) with the winner (2026-10-28)
+
+20,310 alerts (2025-11-21 .. 2026-10-22, the 43 names, 09:40-13:00); `f60_prefilter.py` (10-second bars, a touch of a side
+line within 20 s and a burst >= 1.1, no download) kept 234 (it kept all 34 of A's exact trades). Tag e_f60: stock seconds,
+picks, 82 per-second books (the option step's burst now from the alert's own second), 136 minute-quote contract-days.
+Winner rules, live limits, 2%, the early alerts' window:
+
+| Alert | Trades | Won | Avg | $100K becomes | Drop | Without best 5 | Tune / check |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| old alert (live) | 46 | 15 | +19.1% | $114,409 | 12.3% | -$27,384 | +41.9 / -13.3 |
+| F60x2 | 60 | 22 | +2.0% | $101,836 | 9.3% | -$19,739 | +0.7 / +3.7 |
+| both, one account | 101 | 34 | +9.9% | $117,064 | 16.1% | -$32,084 | +20.9 / -5.0 |
+
+F60x2 is the best of the early alerts (A / 3 steady / 6 range lost 6-18% a trade) but about flat; 54 of its 60 trades are
+on stock-days the old alert did not trade. Added to the old alert: +$2.7K for a 4-point deeper drop, a negative check half.
+Not adopted.
+
 ### Late alerts on 2 DTE, held overnight (2026-10-28)
 
 The user: alerts with under 3 hours to the close buy 2 DTE (even when 0 / 1 DTE exist), take the last half hour too,
