@@ -26,6 +26,23 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### A mid-price limit buy on the winner (2026-10-28)
+
+The user: buy at the mid, and when it does not fill at once pay the usual price. `STR_BUY=mid STR_BUY_WAIT=1|2|5` on the
+winner (cross <= 15 s, burst >= 1.1, no give-back 30 min), live limits, 2%. A limit fills only when the ask comes down to
+it (quotes only: a seller hitting our bid is not seen, so fills are undercounted).
+
+| Wait | Limit fills | $100K becomes | Avg | Drop | Tune / check | Check without 2025-10-10 |
+| --- | --- | --- | --- | --- | --- | --- |
+| none (the winner) | - | $226,355 | +25.4% | 18.1% | +28.9 / +22.5 | +1.2 |
+| 1 s | 13 of 245 | $204,515 | +22.8% | 18.1% | +25.4 / +20.6 | -0.5 |
+| 2 s | 25 | $200,462 | +21.9% | 17.9% | +25.6 / +18.9 | -1.4 |
+| 5 s | 52 | $200,066 | +22.1% | 18.2% | +25.2 / +19.5 | -1.2 |
+
+Worse at every wait: a filled limit saves about 2% of the mid, but the fills come when the option falls (the losers),
+and the unfilled ones pay the usual price later, after the breakout has run. The sale side (a limit at the mid before
+the bid) is not tested: it needs the per-second book and the trade prints around each exit. Not adopted.
+
 ### Same-week trades held the main bot's way overnight (2026-10-28)
 
 The user: for the 2-4 DTE trades, skip the give-back and use the main bot's night rule (`week_carry.py`): hold to 15:50,
