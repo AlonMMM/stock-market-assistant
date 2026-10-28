@@ -37,6 +37,10 @@ import { ShortWatch } from "./short-watch.js";
 import { RequestError, type TraderService } from "./service.js";
 import { TradeStore } from "./store.js";
 import { Traders } from "./traders.js";
+import { RecorderStore } from "./recorder-store.js";
+import { recordingBroker } from "./order-recorder.js";
+import { PriceRecorder, type RecordTarget } from "./price-recorder.js";
+import type { OptionQuote } from "../../../packages/trading/src/options.js";
 import botUniverse from "../../../config/bot-universe.json" with { type: "json" };
 import { IndiBot } from "./bot.js";
 import { nasdaqEarnings } from "./bot-news.js";
@@ -86,8 +90,13 @@ if (!legToken !== !legChat)
 const legNotifier = legToken
   ? new TelegramNotifier(new TelegramSender(legToken, legChat))
   : null;
+// Every order step of every account, and the bots' prices every second
+// (docs/tasks/backend-price-recorder.md).
+const recorderStore = new RecorderStore(dbPath);
 const traders = new Traders({
   store,
+  wrapBroker: (broker, account) =>
+    recordingBroker(broker, { account: account.id, store: recorderStore, log }),
   bots: legNotifier ? { notifier: legNotifier, tags: [strangleTag] } : null,
   secrets: {
     env: process.env,
@@ -511,6 +520,104 @@ api.put("/v1/strangle/settings", async (request) => {
   return strangle.setSettings(parsed.value);
 });
 
+// Every second of regular hours: what each bot holds, and the stocks the
+// volume bot watches for their side (docs/tasks/backend-price-recorder.md).
+const recordMarket = (() => {
+  const key = env("ALPACA_API_KEY", "APCA_API_KEY_ID");
+  const secret = env("ALPACA_API_SECRET", "APCA_API_SECRET_KEY");
+  return key && secret ? new AlpacaBotMarket(key, secret, "sip") : null;
+})();
+const recordTargets = (): RecordTarget[] => {
+  const out: RecordTarget[] = [];
+  if (bot)
+    for (const p of botStore.openPositions()) {
+      if (p.status !== "open" || p.qty <= 0) continue;
+      // Quotes from Alpaca, the app's market data, also for a position held
+      // at IBKR: once a second would load the Gateway. Else the position's own.
+      let quote: (c: string) => Promise<OptionQuote>;
+      try {
+        const t = botTraderFor("alpaca");
+        quote = (c) => t.broker.quote(c);
+      } catch {
+        try {
+          const t = botTraderFor(p.broker ?? "alpaca");
+          quote = (c) => t.broker.quote(c);
+        } catch {
+          continue;
+        }
+      }
+      out.push({
+        kind: "held",
+        bot: "main",
+        ref: p.id,
+        symbol: p.symbol,
+        contract: p.contract,
+        quote,
+      });
+    }
+  if (strangle) {
+    const account = strangleAccount(store);
+    const t = account ? traders.forAccount(account.id) : null;
+    if (t)
+      for (const x of strangleStore.openTrades()) {
+        const quote = (c: string) => t.broker.quote(c);
+        const held = x.phase === "open" || x.phase === "closing";
+        if (held && x.leg && x.leg.qty > 0)
+          out.push({
+            kind: "held",
+            bot: "volume",
+            ref: x.id,
+            symbol: x.symbol,
+            contract: x.leg.contract,
+            quote,
+          });
+        if (x.phase === "watching")
+          out.push({
+            kind: "watch",
+            bot: "volume",
+            ref: x.id,
+            symbol: x.symbol,
+            legs: () => strangle.watchLegs(x.id),
+            quote,
+          });
+      }
+  }
+  return out;
+};
+const priceRecorder = recordMarket
+  ? new PriceRecorder({
+      store: recorderStore,
+      targets: recordTargets,
+      lastPrices: (symbols) => recordMarket.lastPrices(symbols),
+      log,
+    })
+  : null;
+const recordTimer = priceRecorder
+  ? setInterval(() => void priceRecorder.tick(), 1_000)
+  : null;
+// Readable with the read-only token, for the Review page and the day review.
+const msOf = (value: unknown, name: string) => {
+  const n = Date.parse(String(value ?? ""));
+  if (!Number.isFinite(n))
+    throw new RequestError(`${name} must be a date or time`);
+  return n;
+};
+api.get("/v1/records/orders", async (request) => {
+  const q = body(request.query);
+  const from = msOf(q.from, "from");
+  const to = q.to === undefined ? from + 86_400_000 : msOf(q.to, "to");
+  const contract = typeof q.contract === "string" ? q.contract : undefined;
+  return { steps: recorderStore.steps(from, to, contract) };
+});
+api.get("/v1/records/ticks", async (request) => {
+  const q = body(request.query);
+  if (typeof q.ref === "string" && q.ref)
+    return { ticks: recorderStore.ticks({ ref: q.ref }) };
+  const from = msOf(q.from, "from");
+  const to = q.to === undefined ? from + 86_400_000 : msOf(q.to, "to");
+  return { ticks: recorderStore.ticks({ from, to }) };
+});
+
 // A stop that sells is reported within this long.
 const stopWatchMs = 15_000;
 const watchAll = () =>
@@ -543,11 +650,24 @@ const recordEquity = () =>
       .filter((t) => EquityLog.keeps(t))
       .map((t) => equityLog.record(t).catch(failed("equity record", t.scope))),
   );
+let prunedAt = 0;
 const shortWatch = setInterval(() => {
   for (const t of traders.all())
     if (!t.broker.capabilities.closeOnlyOrders)
       shorts.check(t).catch(failed("short check", t.scope));
   void recordEquity();
+  // The records keep a year and a month.
+  const kept = Date.now() - 400 * 86_400_000;
+  if (Date.now() - prunedAt > 86_400_000) {
+    prunedAt = Date.now();
+    try {
+      const gone = recorderStore.prune(kept);
+      if (gone)
+        log(`removed ${gone} recorded price row(s) older than 400 days`);
+    } catch (error) {
+      failed("record prune", "the recorder")(error);
+    }
+  }
 }, 60_000);
 
 async function stop() {
@@ -556,8 +676,10 @@ async function stop() {
   if (botTimer) clearInterval(botTimer);
   if (strangleTimer) clearInterval(strangleTimer);
   if (sideTimer) clearInterval(sideTimer);
+  if (recordTimer) clearInterval(recordTimer);
   botStore.close();
   strangleStore.close();
+  recorderStore.close();
   await api.close();
   // A job cut off here is settled by `reconcile` on the next start.
   store.close();

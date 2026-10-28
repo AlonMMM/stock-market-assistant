@@ -810,6 +810,48 @@ export class StrangleBot {
     }
   }
 
+  /**
+   * The call and the put a watching trade would pick if the side came now:
+   * the delta closest to the setting's, of the trade's expiry, without the
+   * price and volume checks (the price recorder quotes both while it watches).
+   */
+  async watchLegs(
+    id: string,
+  ): Promise<{ call: string | null; put: string | null }> {
+    const t = this.o.store.openTrades().find((x) => x.id === id);
+    if (!t) return { call: null, put: null };
+    const stock = await this.stockNow(t.symbol, null);
+    if (stock === null) throw new Error(`no price for ${t.symbol}`);
+    const s = this.settings();
+    const expiry = t.expiry ?? t.day;
+    const dte = Math.round(
+      (Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${t.day}T00:00:00Z`)) /
+        86_400_000,
+    );
+    const pick = {
+      delta: s.delta,
+      dteMin: dte,
+      dteMax: dte,
+      otmScanMax: 0.2,
+      maxStrikes: 16,
+      minPrice: 0,
+      minVolume30: 0,
+      cheapFallback: false,
+    };
+    const one = async (right: "call" | "put") => {
+      const quotes = await this.o.trading.chain(
+        t.symbol,
+        right,
+        expiry,
+        expiry,
+      );
+      const got = pickContract(quotes, stock, right, t.day, pick);
+      return (got as { quote?: OptionQuote }).quote?.symbol ?? null;
+    };
+    const [call, put] = await Promise.all([one("call"), one("put")]);
+    return { call, put };
+  }
+
   // ---- the trades: the side, the buy, the give-back ----
 
   private async stockNow(
