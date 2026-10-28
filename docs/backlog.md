@@ -1,6 +1,6 @@
 # Backlog
 
-Updated: 2026-10-27
+Updated: 2026-10-28
 
 What is next for the Stock Market Assistant. This file is the source of truth; the board at
 https://claude.ai/artifact/VzgHGHzP5SYWhVefpvTmRH shows the same items with lanes, filters and search. How every
@@ -104,6 +104,19 @@ The bot is merged and starts off and in dry run. Add the paper account's keys, r
 its decisions with the backtest (parity was 497 of 499), then switch to paper.
 
 ## Next
+
+### Support Interactive Brokers on the Watchlist and in Trading
+
+- id: ibkr-watchlist-trading
+- area: App
+- tags: IBKR, Watchlist, Orders, Portfolio
+- source: The user, Oct 28 ("important")
+
+Important (the user's). Today IBKR is only a bot broker (the Main bot's Broker switch, behind the Gateway) and market
+data is Alpaca's. Wanted: IBKR as a full broker in the app. On the Watchlist, IBKR quotes and the IBKR account's
+positions next to Alpaca's. In Trading, the owner's IBKR account (live trades, orders, history, risk) and the
+trade ticket able to buy and sell there, with the same risk rules (paper first, never short, stops). Decide per
+page which broker is shown and how to switch.
 
 ### Fill the Volume bot's benchmark band
 
