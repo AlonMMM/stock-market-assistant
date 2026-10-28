@@ -572,3 +572,74 @@ test("a chased buy: judged against the book at its fill", () => {
   assert.equal(askMoved(old), null);
   assert.equal(legEntryQuote([{ side: "sell" }]), null);
 });
+
+test("each sale keeps the option's bid and ask when it was decided", () => {
+  const book = { bid: 0.27, ask: 0.29, at: Date.parse("2026-10-02T17:20:00Z") };
+  const withBook = {
+    ...view,
+    positions: view.positions.map((p) => ({
+      ...p,
+      sales: [p.sales[0]!, { ...p.sales[1]!, book }],
+    })),
+  } as BotView;
+  const s = botStory(trade, withBook, defaultSettings)!;
+  assert.deepEqual(
+    s.exits.map((x) => x.book ?? null),
+    [null, book],
+  );
+  // The volume bot: its filled sale orders in order, an unfilled one skipped.
+  const t: ClosedTrade = {
+    symbol: "NVDA261027C00182500",
+    underlying: "NVDA",
+    option: { right: "call", strike: 182.5, expiry: "2026-10-27" },
+    openedAt: "2026-10-27T16:28:00Z",
+    closedAt: "2026-10-27T17:10:00Z",
+    qty: 5,
+    entry: 1.2,
+    exit: 1.5,
+    pnl: 150,
+    pnlPct: 25,
+    expired: false,
+    fills: [
+      { side: "buy", at: "2026-10-27T16:28:00Z", qty: 5, price: 1.2 },
+      { side: "sell", at: "2026-10-27T17:10:00Z", qty: 5, price: 1.5 },
+    ],
+  };
+  const sell = { bid: 1.48, ask: 1.54, at: Date.parse(t.closedAt) };
+  const order = (qty: number, b: typeof sell) => ({
+    at: b.at,
+    side: "sell",
+    qty,
+    reason: "give-back",
+    jobId: "j",
+    settled: true,
+    book: b,
+  });
+  const leg = {
+    contract: t.symbol,
+    strike: 182.5,
+    qty: 0,
+    bought: 5,
+    cost: 1.2,
+    orders: [order(0, { ...sell, bid: 1.6 }), order(5, sell)],
+  };
+  const v = {
+    settings: { giveBackUnits: 0.75 },
+    open: [],
+    trades: [
+      {
+        day: "2026-10-27",
+        symbol: "NVDA",
+        alertMinute: 175,
+        alertSide: "up",
+        stockRef: 182,
+        side: "C",
+        sideMinute: 177,
+        leg,
+        dry: false,
+      },
+    ],
+  } as unknown as StrangleView;
+  assert.deepEqual(volumeStory(t, v)!.exits[0]!.book, sell);
+  assert.equal(quotePlace(1.5, sell), "0.01 under the mid");
+});

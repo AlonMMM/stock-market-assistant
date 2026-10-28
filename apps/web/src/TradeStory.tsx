@@ -196,6 +196,28 @@ function QuoteBar({ q, price }: { q: EntryQuote; price: number }) {
 }
 
 /**
+ * A sale against the option's bid and ask when it was decided (user
+ * 2026-10-28: "on exit you dont see bid ask and exit $").
+ */
+function SaleQuote({
+  book,
+  price,
+}: {
+  book: { bid: number; ask: number; at: number } | undefined;
+  price: number;
+}) {
+  if (!book)
+    return <p className="muted">The bid and ask at the sale were not kept.</p>;
+  const mid = (book.bid + book.ask) / 2;
+  return (
+    <p className="muted num">
+      bid {book.bid.toFixed(2)} · mid {Number(mid.toFixed(3))} · ask{" "}
+      {book.ask.toFixed(2)} · sold <b>{quotePlace(price, book)}</b>
+    </p>
+  );
+}
+
+/**
  * An open trade in brief, under its position (user 2026-10-27: "we can
  * reduce the information. Its too much"): the entry against its bid and ask,
  * and where it stands now.
@@ -282,6 +304,8 @@ function Summary({
   quote: EntryQuote | null;
 }) {
   const plural = (n: number) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  // An option contract is 100 shares.
+  const multiplier = t.option ? 100 : 1;
   return (
     <div className="ts-summary">
       <div className="ts-cell buy">
@@ -305,19 +329,35 @@ function Summary({
           <p className="muted">{live ? "Nothing yet." : "No sale recorded."}</p>
         )}
         {stats.exits.map((x, i) => (
-          <p key={`${x.ms}-${i}`} className="num">
-            <b>{israelClock(x.ms)}</b> · {plural(x.qty)}
-            {x.price !== null && (
-              <>
-                {" "}
-                at <b>{x.price.toFixed(2)}</b>{" "}
-                <span className={pctTone(x.price - stats.entry.price)}>
-                  {pctText((x.price / stats.entry.price - 1) * 100)}
-                </span>
-              </>
-            )}{" "}
-            · {x.title}
-          </p>
+          <div key={`${x.ms}-${i}`} className="ts-exit-row">
+            <p className="num">
+              <b>{israelClock(x.ms)}</b> · {plural(x.qty)}
+              {x.price !== null && (
+                <>
+                  {" "}
+                  at <b>{x.price.toFixed(2)}</b>
+                </>
+              )}
+            </p>
+            <p className="num">
+              {x.price !== null && (
+                <>
+                  <span className={pctTone(x.price - stats.entry.price)}>
+                    {pctText((x.price / stats.entry.price - 1) * 100)}
+                  </span>{" "}
+                  ·{" "}
+                  <b className={tone(x.price - stats.entry.price).trim()}>
+                    {signedUsd(
+                      (x.price - stats.entry.price) * x.qty * multiplier,
+                    )}
+                  </b>{" "}
+                  ·{" "}
+                </>
+              )}
+              {x.title}
+            </p>
+            {x.price !== null && <SaleQuote book={x.book} price={x.price} />}
+          </div>
         ))}
       </div>
       <div className="ts-cell">

@@ -6262,6 +6262,10 @@ dialog.trade-story .why-head h2 {
   font-size: 13px;
   overflow-wrap: anywhere;
 }
+/* One sale on the Exit card; a gap between several. */
+.ts-exit-row + .ts-exit-row {
+  margin-top: 8px;
+}
 .ts-points {
   display: grid;
   gap: 2px;

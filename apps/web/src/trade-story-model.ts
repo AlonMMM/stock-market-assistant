@@ -125,12 +125,17 @@ export interface Marker {
   label: string;
 }
 
+type Book = { bid: number; ask: number; at: number };
+
 export interface ExitRow {
   ms: number;
   qty: number;
   price: number | null; // null on an expiry
   title: string; // "Failed break", "Your sale", …
   text: string; // the rule or what is known
+  // The option's bid / ask when the sale was decided (user 2026-10-28: "on
+  // exit you dont see bid ask"); absent when it was not kept.
+  book?: Book;
 }
 
 export interface Story {
@@ -164,8 +169,6 @@ export interface EntryQuote {
   // ask may have moved up since the decision (absent before 2026-10-27).
   fill?: { bid: number; ask: number; at: number };
 }
-
-type Book = { bid: number; ask: number; at: number };
 
 /** The volume bot's entry quote: its first buy's book, and the book at its fill. */
 export function legEntryQuote(
@@ -420,7 +423,8 @@ export function botStory(
   if (p.dry) entry.push("A dry run: the bot noted the entry without an order.");
   const exits: ExitRow[] = p.sales.map((s) => {
     const w = botExitWords(s.reason, r, wall);
-    return { ms: s.at, qty: s.qty, price: s.price ?? null, ...w };
+    const book = s.book ? { book: s.book } : {};
+    return { ms: s.at, qty: s.qty, price: s.price ?? null, ...w, ...book };
   });
   if (t.expired)
     exits.push({
@@ -636,7 +640,13 @@ export interface PricePoint {
  */
 export interface TradeStats {
   entry: { ms: number; price: number; qty: number; stock: number | null };
-  exits: { ms: number; price: number | null; qty: number; title: string }[];
+  exits: {
+    ms: number;
+    price: number | null;
+    qty: number;
+    title: string;
+    book?: Book;
+  }[];
   heldMs: number;
   best: PricePoint | null; // the option's highest while held
   worst: PricePoint | null; // the option's lowest while held
@@ -696,6 +706,7 @@ export function tradeStats(
           price: x.price,
           qty: x.qty,
           title: x.title,
+          ...(x.book ? { book: x.book } : {}),
         }))
       : (t.fills ?? [])
           .filter((f) => f.side !== "buy")
@@ -810,7 +821,12 @@ export function volumeStory(
   if (v.dry) entry.push("A dry run: the bot noted the entry without an order.");
   const rule = `Sold when the stock gave back ${view.settings.giveBackUnits}× its typical 30-minute move from its best.`;
   const sales = (t.fills ?? []).filter((f) => f.side !== "buy");
+  // The leg's filled sale orders in order, each with its book when kept.
+  const sellBooks = (v.leg?.orders ?? [])
+    .filter((o) => o.side === "sell" && o.settled && o.qty > 0)
+    .map((o) => o.book);
   const exits: ExitRow[] = sales.map((f, i) => ({
+    ...(f.side !== "expired" && sellBooks[i] ? { book: sellBooks[i] } : {}),
     ms: Date.parse(f.at),
     qty: f.qty,
     price: f.side === "expired" ? null : f.price,

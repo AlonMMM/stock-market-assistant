@@ -82,8 +82,15 @@ export interface BotView {
     dry: boolean;
     version?: string; // the bot version that entered it; absent before versions
     // `price`: the sale's average fill (the mid in a dry run); absent on
-    // sales from before it was kept.
-    sales: { at: number; qty: number; reason: string; price?: number }[];
+    // sales from before it was kept. `book`: the bid / ask when the sale was
+    // decided (absent before 2026-10-25).
+    sales: {
+      at: number;
+      qty: number;
+      reason: string;
+      price?: number;
+      book?: { bid: number; ask: number; at: number };
+    }[];
     // The level watched on the entry day for the failed-break sale (absent
     // before it, or with no level ahead).
     breakWatch?: {

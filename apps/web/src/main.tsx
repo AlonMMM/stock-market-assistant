@@ -12,7 +12,7 @@ import "./styles.css";
 const modeNames = [
   ["live", "Alerts"],
   ["watchlist", "Watchlist"],
-  ["portfolio", "Portfolio"],
+  ["portfolio", "Trading"], // the stored value and #portfolio keep the old name
   ["backtest", "Backtest"],
 ] as const;
 const icons: Record<Mode, string> = {

@@ -87,6 +87,11 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
 - **Portfolio navigation (2026-10-25, `feat/portfolio-two-tabs`):** two tabs, Trade (Live trades · New trade ·
   Orders · History) and 🤖 Bot (Activity · Trades · Settings), each with a pill row of pages that remembers where
   it was; the owner-only pages (New trade, Settings) are hidden from visitors. Was six flat tabs.
+- **Trading section (2026-10-28, the user's):** the Portfolio section is named **Trading** (`#portfolio` and the
+  stored value keep the old key). It opens on 🤖 Main bot → Trades (a stock picked to trade still opens the ticket);
+  each bot's pages are Trades · Activity · …, so Activity is second. The Exit card shows each sale's dollar result
+  and the option's bid · mid · ask when the sale was decided, with where it filled ("at the bid", "0.01 under the
+  mid"); sales before 2026-10-25 say the bid and ask were not kept.
 - **Names (2026-10-26, the user's):** the Indi bot is the **Main bot** (🤖 Main bot) and the Alert leg bot is the
   **Volume bot** (🎯 Volume bot), in the Portfolio tabs, pages, Risk cards and Telegram posts. The code keeps its
   module names (`bot.ts`, `strangle.ts`).

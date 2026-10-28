@@ -300,7 +300,8 @@ function History({
 
 // Two tabs, Trade and Bot, each with its own row of pages (user 2026-10-25:
 // "this is too messy. lets go with 2 tabs, Trade and Bot under each all the
-// related stuff"). Each tab remembers the page it was on.
+// related stuff"). Each tab remembers the page it was on. The Main bot's
+// Trades page opens first, Activity next to it (user 2026-10-28).
 const groups = [
   [
     "trade",
@@ -317,8 +318,8 @@ const groups = [
     "bot",
     "🤖 Main bot",
     [
-      ["activity", "Activity"],
       ["trades", "Trades"],
+      ["activity", "Activity"],
       ["settings", "Settings"],
       ["b-risk", "Risk"],
     ],
@@ -329,8 +330,8 @@ const groups = [
     "strangle",
     "🎯 Volume bot",
     [
-      ["s-activity", "Activity"],
       ["s-trades", "Trades"],
+      ["s-activity", "Activity"],
       ["s-bench", "Benchmark"],
       ["s-settings", "Settings"],
       ["s-risk", "Risk"],
@@ -370,7 +371,7 @@ function keptTabs(): { group: Group; pages: Record<Group, Page> } | null {
   }
 }
 
-/** The Portfolio area: open trades, and the account's history. */
+/** The Trading area: open trades, the account's history and the bots. */
 export function Portfolio({
   modes,
   tradeSymbol = null,
@@ -388,19 +389,21 @@ export function Portfolio({
   // The tab is kept for the visit, so Back from a stock's page opened on a
   // bot's map returns to that bot.
   const kept = tradeSymbol ? null : keptTabs();
-  const [group, setGroup] = useState<Group>(kept?.group ?? "trade");
+  // A stock picked to trade opens the ticket; otherwise the Main bot.
+  const firstGroup: Group = tradeSymbol ? "trade" : "bot";
+  const [group, setGroup] = useState<Group>(kept?.group ?? firstGroup);
   const [pages, setPages] = useState<Record<Group, Page>>(
     kept?.pages ?? {
       trade: tradeSymbol ? "new" : "live",
-      bot: "activity",
-      strangle: "s-activity",
+      bot: "trades",
+      strangle: "s-trades",
     },
   );
   useEffect(() => {
     try {
       sessionStorage.setItem(tabsKey, JSON.stringify({ group, pages }));
     } catch {
-      // Not kept: the tab opens on Trade next time.
+      // Not kept: the tab opens on the Main bot next time.
     }
   }, [group, pages]);
   // The trade ticket and the bot's settings are for the account owner only.
@@ -501,7 +504,7 @@ export function Portfolio({
       </header>
       <div
         role="tablist"
-        aria-label="Portfolio sections"
+        aria-label="Trading sections"
         className="tabs"
         onKeyDown={(e) =>
           arrowTo(
