@@ -26,6 +26,28 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### Same-week trades held the main bot's way overnight (2026-10-28)
+
+The user: for the 2-4 DTE trades, skip the give-back and use the main bot's night rule (`week_carry.py`): hold to 15:50,
+carry if the option is up >= 50%, the stock in the top 10% of the day's range the bet's way, >= 2 days to expiry, not
+Friday, the 10% night cap; 09:40 next day sell half on a 0.5% gap the bet's way, else all; expiry day out at 15:30. The
+0/1 DTE trades keep the winner's exit. Its account reproduces the winner exactly (194 / $226,355 at 2%). Quotes: 259
+contract-days 15:29-15:52 and 26 carried contract-days (Databento cbbo-1m, `dbx_cache/extra_late`). 2%:
+
+| Set | Trades | Won | Avg | $100K becomes | Drop | Without best 5 | Tune / check | Check without 2025-10-10 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0-1 DTE (the winner) | 194 | 74 | +25.4% | $226,355 | 18.1% | +$1,699 | +28.9 / +22.5 | +1.2 |
+| 2-4 DTE, give-back (above) | 220 | 68 | +4.2% | $114,115 | 25.2% | -$33,251 | -5.9 / +13.7 | +13.7 |
+| 2-4 DTE, held + night rule | 207 | 62 | +9.4% | $131,464 | 29.3% | -$41,713 | +5.4 / +13.1 | +13.1 |
+| Both, give-back (above) | 412 | 141 | +14.0% | $252,742 | 24.3% | -$10,321 | +9.9 / +17.7 | +7.6 |
+| Both, 2-4 DTE held | 399 | 134 | +15.2% | $257,945 | 24.4% | -$20,257 | +16.5 / +14.2 | +3.7 |
+
+Holding helps the same-week trades a little (+9.4% against +4.2% a trade, tune half now positive) but deepens the drop.
+Inside it: the 22 carried trades made +$138K (19 won; IONQ 2026-04-14 +882%, USO 2025-06-23 +875%, ASTS 2025-10-01
++520%), while the trades held to 15:50 and sold there lost about -$110K: without the give-back the ordinary trades bleed
+all afternoon. Not adopted. Next idea from it: keep the give-back, but stop it while the option is up >= 50% and carry
+those at 15:50 the main bot's way (only the runners skip the give-back).
+
 ### Same-week expiries (2-4 DTE) for the winner (2026-10-28)
 
 The user: trade the alerts on days with no 0/1 DTE too, on the nearest expiry later that week (never past its last
