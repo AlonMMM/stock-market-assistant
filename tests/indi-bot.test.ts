@@ -1209,30 +1209,30 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
 
 test("versions: every entry is stamped with the version in force; changed rules star it; the owner can pick an older one", async () => {
   const h = harness("live");
-  assert.equal(h.bot.status().version, "2.7");
+  assert.equal(h.bot.status().version, "2.7.0");
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy");
-  assert.match(String(buy?.body.note), /· bot 2\.7$/);
+  assert.match(String(buy?.body.note), /· bot 2\.7\.0$/);
   const [p] = h.store.openPositions();
-  assert.equal(p!.version, "2.7");
-  assert.equal(h.store.signals(DAY)[0]!.version, "2.7");
-  assert.equal(h.bot.status().positions[0]!.version, "2.7");
+  assert.equal(p!.version, "2.7.0");
+  assert.equal(h.store.signals(DAY)[0]!.version, "2.7.0");
+  assert.equal(h.bot.status().positions[0]!.version, "2.7.0");
   const texts = () =>
     h.bot
       .status()
       .activity.map((e) => e.text)
       .join("\n");
-  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.7$/m);
+  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.7\.0$/m);
 
-  // The stop changed from 2.7's: the next entry is stamped "2.7*".
+  // The stop changed from 2.7's: the next entry is stamped "2.7.0*".
   const edited = harness("live");
   edited.bot.setSettings({ ...edited.bot.settings(), stopPct: 40 });
-  assert.equal(edited.bot.status().version, "2.7*");
+  assert.equal(edited.bot.status().version, "2.7.0*");
   await edited.run(DAY, 565, 600);
-  assert.equal(edited.store.openPositions()[0]!.version, "2.7*");
+  assert.equal(edited.store.openPositions()[0]!.version, "2.7.0*");
   assert.match(
     String(edited.calls.find((c) => c.kind === "buy")?.body.note),
-    /· bot 2\.7\*$/,
+    /· bot 2\.7\.0\*$/,
   );
 
   // Version 1.0 picked: its rules (t 2, no night cap, no news filter) run, and the feed says so.
@@ -1254,14 +1254,14 @@ test("versions: every entry is stamped with the version in force; changed rules 
     pyramid: false,
     earlyEntry: false,
   });
-  assert.equal(picked.version, "1.0");
-  assert.equal(old.bot.status().version, "1.0");
+  assert.equal(picked.version, "1.0.0");
+  assert.equal(old.bot.status().version, "1.0.0");
   assert.match(
     old.bot
       .status()
       .activity.map((e) => e.text)
       .join("\n"),
-    /Settings changed: version "2\.7" → "1\.0"; restStopPct 20 → 0; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false; skipEarnings true → false; skipPremarket true → false; lowFloorSymbols \["IBIT"\] → \[\]; pyramid true → false; earlyEntry true → false/,
+    /Settings changed: version "2\.7\.0" → "1\.0"; restStopPct 20 → 0; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false; skipEarnings true → false; skipPremarket true → false; lowFloorSymbols \["IBIT"\] → \[\]; pyramid true → false; earlyEntry true → false/,
   );
 });
 
@@ -1564,7 +1564,7 @@ const failedBreakDay = (beta: number): MinuteBar[] => {
 test("runner (live): a failed break at the day's high sells all, with the level in the note", async () => {
   const h = harness("live", {}, failedBreakDay);
   // Version 2.5 has the sale off; 2.4 has it.
-  h.bot.setSettings(applyVersion(h.bot.settings(), "2.4"));
+  h.bot.setSettings(applyVersion(h.bot.settings(), "2.4.0"));
   await h.run(DAY, 565, 640);
   const [p] = h.store.recentPositions(DAY);
   assert.equal(p!.breakWatch?.name, "the day's high");
@@ -1653,7 +1653,7 @@ test("broker setting 'both': an account that throws does not undo the other's en
 // ---- version 2.7: IBIT's floor, the pyramid, early entry (docs/tasks/backend-bot-champion.md) ----
 
 test("picker 2.7: IBIT is bought down to $0.10, every other stock keeps the floor; no cheap fallback", () => {
-  const s = applyVersion(defaultSettings, "2.7");
+  const s = applyVersion(defaultSettings, "2.7.0");
   assert.equal(pickRules(s, "IBIT").minPrice, 0.1);
   assert.equal(pickRules(s, "NVDA").minPrice, 0.2);
   assert.equal(pickRules(s, "NVDA").cheapFallback, false);
@@ -1761,7 +1761,7 @@ test("pyramid: the full signal after a D2 entry that is up buys half a size more
   assert.equal(buys[0]!.body.contract, contract);
   assert.match(
     String(buys[0]!.body.note),
-    /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.7$/,
+    /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.7\.0$/,
   );
   const open = h.store.openPositions();
   const add = open.find((p) => p.addOf === "first");

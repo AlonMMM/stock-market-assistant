@@ -119,13 +119,21 @@ test("warnings: a safety stop above the stop, and a big trade size", () => {
 
 test("the version card: the chosen version, its changes and the entry label", () => {
   const clean = versionState(defaultSettings);
-  assert.equal(clean.known?.id, "2.7");
+  assert.equal(clean.known?.id, "2.7.0");
   assert.deepEqual(clean.changes, []);
-  assert.equal(clean.label, "2.7");
+  assert.equal(clean.label, "2.7.0");
   assert.equal(clean.latest, true);
+  assert.equal(clean.bump, null);
+  assert.equal(clean.next, null);
+  const patch = versionState({ ...defaultSettings, weaknessT: 0.25 });
+  assert.equal(patch.bump, "patch");
+  assert.equal(patch.next, "2.7.1");
+  assert.equal(patch.label, "2.7.0*");
   const edited = versionState({ ...defaultSettings, stopPct: 40 });
+  assert.equal(edited.bump, "minor");
+  assert.equal(edited.next, "2.8.0");
   assert.deepEqual(edited.changes, ["stopPct 30 → 40"]);
-  assert.equal(edited.label, "2.7*");
+  assert.equal(edited.label, "2.7.0*");
   const old = versionState({ ...defaultSettings, version: "2.0" });
   assert.equal(old.latest, false);
   assert.deepEqual(old.changes, [
@@ -178,7 +186,7 @@ test("each version opens to its full algorithm in words", () => {
   );
   assert.match(text(v21.rules, "Day exit"), /at most 10% of the account/);
   // 2.7: early entry, IBIT's floor and the pyramid in words.
-  const v27 = botVersions.find((v) => v.id === "2.7")!;
+  const v27 = botVersions.find((v) => v.id === "2.7.0")!;
   assert.match(text(v27.rules, "Signal"), /checked every 5 seconds/);
   assert.match(text(v1.rules, "Signal"), /checked once a minute/);
   assert.match(text(v27.rules, "Contract"), /IBIT down to \$0\.10/);

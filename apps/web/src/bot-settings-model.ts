@@ -13,10 +13,13 @@ import {
 
 import {
   botVersions,
+  nextVersionId,
   ruleChanges,
+  versionBump,
   versionById,
   versionLabel,
   type BotVersion,
+  type VersionBump,
 } from "../../../packages/trading/src/bot/versions.js";
 
 export {
@@ -29,6 +32,7 @@ export {
 export {
   applyVersion,
   botVersions,
+  canonicalVersion,
   versionLabel,
   versionLabelPattern,
   type BotVersion,
@@ -49,20 +53,27 @@ export type SwitchKey =
 
 /**
  * The version card's state: the known version chosen (none for an own label),
- * where the rules below differ from it, and what entries are stamped with.
+ * where the rules below differ from it, what entries are stamped with, and,
+ * when the rules differ, how big the change is and the number it would make
+ * (MAJOR.MINOR.PATCH, packages/trading/src/bot/versions.ts).
  */
 export function versionState(s: BotSettings): {
   known: BotVersion | undefined;
   changes: string[];
   label: string;
   latest: boolean;
+  bump: VersionBump | null;
+  next: string | null;
 } {
   const known = versionById(s.version);
+  const bump = known ? versionBump(known.rules, s) : null;
   return {
     known,
     changes: known ? ruleChanges(s, known) : [],
     label: versionLabel(s),
-    latest: s.version === botVersions.at(-1)!.id,
+    latest: known?.id === botVersions.at(-1)!.id,
+    bump,
+    next: known && bump ? nextVersionId(known.id, bump) : null,
   };
 }
 

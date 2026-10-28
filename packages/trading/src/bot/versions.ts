@@ -8,6 +8,18 @@ import type { BotSettings } from "./settings.js";
 // The owner's own limits (size, buys a day, open positions, the daily loss,
 // the drawdown pause, the broker safety stop) and the stock lists are not part
 // of a version.
+//
+// Numbering, MAJOR.MINOR.PATCH (the owner, 2026-10-28):
+//   MAJOR  the core strategy is redefined (the entry signal family, the
+//          instrument, the exit framework, how a trade is sized) and
+//          re-backtested from scratch; a code change, never a settings edit
+//   MINOR  a core setting's value changes, or a rule is added, removed or
+//          switched on / off (`minorKeys`, and restStopPct / nightCapPct
+//          crossing 0)
+//   PATCH  a rule's own numbers change (every other rule key)
+// The owner's limits never change the number; a version run with changed rules
+// is stamped with a star ("2.7.0*"). Ids before the scheme ("2.6") read as
+// "2.6.0".
 
 export type RuleKey =
   | "stopPct"
@@ -71,7 +83,7 @@ export const ruleKeys: readonly RuleKey[] = [
 ];
 
 export interface BotVersion {
-  id: string; // what entries are stamped with, e.g. "2.1"
+  id: string; // what entries are stamped with, e.g. "2.1.0"
   name: string;
   since: string; // the day it went live
   notes: string; // what changed from the version before
@@ -160,7 +172,7 @@ const v27: Rules = {
 /** Every version, oldest first. */
 export const botVersions: readonly BotVersion[] = [
   {
-    id: "1.0",
+    id: "1.0.0",
     name: "Indi V1",
     since: "2026-10-21",
     notes:
@@ -168,7 +180,7 @@ export const botVersions: readonly BotVersion[] = [
     rules: v1,
   },
   {
-    id: "2.0",
+    id: "2.0.0",
     name: "V2 champion",
     since: "2026-10-22",
     notes:
@@ -176,7 +188,7 @@ export const botVersions: readonly BotVersion[] = [
     rules: v2,
   },
   {
-    id: "2.1",
+    id: "2.1.0",
     name: "V2 + failed-break sale",
     since: "2026-10-23",
     notes:
@@ -184,7 +196,7 @@ export const botVersions: readonly BotVersion[] = [
     rules: v21,
   },
   {
-    id: "2.2",
+    id: "2.2.0",
     name: "V2.1 + t-stat exit",
     since: "2026-10-24",
     notes:
@@ -192,14 +204,14 @@ export const botVersions: readonly BotVersion[] = [
     rules: v22,
   },
   {
-    id: "2.3",
+    id: "2.3.0",
     name: "V2.2, overnight from +50%",
     since: "2026-10-24",
     notes: "At 15:50, winners up 50% or more stay overnight (was 100%).",
     rules: v23,
   },
   {
-    id: "2.4",
+    id: "2.4.0",
     name: "V2.3, the rest at −20% after the half",
     since: "2026-10-25",
     notes:
@@ -207,7 +219,7 @@ export const botVersions: readonly BotVersion[] = [
     rules: v24,
   },
   {
-    id: "2.5",
+    id: "2.5.0",
     name: "V2.4 + the D2 bonus entry",
     since: "2026-10-25",
     notes:
@@ -215,7 +227,7 @@ export const botVersions: readonly BotVersion[] = [
     rules: v25,
   },
   {
-    id: "2.6",
+    id: "2.6.0",
     name: "V2.5 + the cheap fallback",
     since: "2026-10-26",
     notes:
@@ -223,7 +235,7 @@ export const botVersions: readonly BotVersion[] = [
     rules: v26,
   },
   {
-    id: "2.7",
+    id: "2.7.0",
     name: "Champion: IBIT $0.10, the pyramid, early entry",
     since: "2026-10-27",
     notes:
@@ -239,8 +251,78 @@ export const currentVersion = botVersions.at(-1)!.id;
 // plus, spaces and underscores; up to 24 characters.
 export const versionLabelPattern = /^[A-Za-z0-9][A-Za-z0-9 ._+-]{0,23}$/;
 
-export const versionById = (id: string): BotVersion | undefined =>
-  botVersions.find((v) => v.id === id);
+/**
+ * A version id in the MAJOR.MINOR.PATCH form: ids from before the scheme gain
+ * ".0" ("2.6" -> "2.6.0", "2.6*" -> "2.6.0*"); anything else stays as given.
+ */
+export function canonicalVersion(id: string): string {
+  const m = /^(\d+\.\d+)(\*?)$/.exec(id);
+  if (!m) return id;
+  return `${m[1]}.0${m[2]}`;
+}
+
+export const versionById = (id: string): BotVersion | undefined => {
+  const want = canonicalVersion(id);
+  return botVersions.find((v) => v.id === want);
+};
+
+export type VersionBump = "minor" | "patch";
+
+// The core settings and the rule switches: changing one is a MINOR change.
+export const minorKeys: ReadonlySet<RuleKey> = new Set<RuleKey>([
+  "minT",
+  "minRvol",
+  "delta",
+  "stopPct",
+  "holdFromPct",
+  "maxNights",
+  "checks",
+  "d2Entry",
+  "sellOnWeakness",
+  "sellFailedBreak",
+  "cheapFallback",
+  "pyramid",
+  "earlyEntry",
+  "skipEarnings",
+  "skipPremarket",
+]);
+// Rules that are off at 0: switching one on or off is MINOR, a new value PATCH.
+const offAtZero: ReadonlySet<RuleKey> = new Set<RuleKey>([
+  "restStopPct",
+  "nightCapPct",
+]);
+
+/** How big a change of one rule from `from` to `to` is, or null when it is the same. */
+export function ruleBump(
+  key: RuleKey,
+  from: unknown,
+  to: unknown,
+): VersionBump | null {
+  if (sameValue(from, to)) return null;
+  if (minorKeys.has(key)) return "minor";
+  if (offAtZero.has(key) && (from === 0 || to === 0)) return "minor";
+  return "patch";
+}
+
+/** The biggest change between two rule sets: "minor", "patch" or null (the same). */
+export function versionBump(from: Rules, to: Rules): VersionBump | null {
+  let out: VersionBump | null = null;
+  for (const key of ruleKeys) {
+    const b = ruleBump(key, from[key], to[key]);
+    if (b === "minor") return "minor";
+    if (b) out = b;
+  }
+  return out;
+}
+
+/** The id a change of that size makes from a version: 2.7.0 -> 2.8.0 / 2.7.1. */
+export function nextVersionId(id: string, bump: VersionBump): string {
+  const [major = 0, minor = 0, patch = 0] = canonicalVersion(id)
+    .split(".")
+    .map(Number);
+  if (bump === "minor") return `${major}.${minor + 1}.0`;
+  return `${major}.${minor}.${patch + 1}`;
+}
 
 /** Just the rules of a settings object. */
 export function rulesOf(s: Rules): Rules {
@@ -280,13 +362,13 @@ export function ruleChanges(s: Rules, v: BotVersion): string[] {
 export function versionLabel(s: BotSettings): string {
   const known = versionById(s.version);
   if (!known) return s.version;
-  if (sameRules(s, known.rules)) return s.version;
-  return `${s.version}*`;
+  if (sameRules(s, known.rules)) return known.id;
+  return `${known.id}*`;
 }
 
 /** The settings with a version's rules, and that version chosen. */
 export function applyVersion(s: BotSettings, id: string): BotSettings {
   const v = versionById(id);
   if (!v) return { ...s, version: id };
-  return { ...s, ...v.rules, version: id };
+  return { ...s, ...v.rules, version: v.id };
 }

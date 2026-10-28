@@ -24,7 +24,7 @@ next minute; the stock list is fixed at warm-up (09:25 New York) and changes fro
 | `enabled`                                  | env                | the existing on/off switch (`bot_settings.enabled`)           |
 | `mode`                                     | env                | `live` paper orders or `dry` "would buy"; new entries only    |
 | `broker`                                   | env (`BOT_BROKER`) | `alpaca`, `ibkr` or `both`: where new entries are bought      |
-| `version`                                  | 2.1                | the rule set's name, stamped on every entry (see "Versions")  |
+| `version`                                  | 2.1.0              | the rule set's name, stamped on every entry (see "Versions")  |
 | `followFavorites`, `added`, `off`          | on, —, QQQ SQQQ    | today's stocks: core ∪ added ∪ favorites − off − SPY/CL/GC/SI |
 | `sizePct`                                  | 2                  | the buy's `sizePct` (dry run: the same share of equity)       |
 | `maxBuysPerDay`                            | 5 (new)            | entries today (bought or would buy); then `max_buys`          |
@@ -98,6 +98,26 @@ a version.
   shows it for each version (and for the rules as set, when edited); the Bot tab's "How the bot decides" shows it
   for the rules in force. The owner's limits are worded by the pages, not here.
 - A new version is a new entry in `botVersions` (and a new default): the research log decides what gets one.
+
+### Numbering: MAJOR.MINOR.PATCH (2026-10-28, user: "bot version is smt like 2.6.0 ... map each change to future number")
+
+| Digit | Moves when                                                                                  | Settings                                                                                                                                                                                                                                           |
+| ----- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MAJOR | the core strategy is redefined and re-backtested from scratch (code, never a settings edit) | the entry signal family (t vs SPY × beta + day volume), the instrument (one short-dated option), the exit framework (stop + 10/20-minute checks + overnight hold), how a trade is sized                                                            |
+| MINOR | a core setting's value changes, or a rule is added, removed or switched on / off            | `minT`, `minRvol`, `delta`, `stopPct`, `holdFromPct`, `maxNights`, `checks`; `d2Entry`, `sellOnWeakness`, `sellFailedBreak`, `cheapFallback`, `pyramid`, `earlyEntry`, `skipEarnings`, `skipPremarket`; `restStopPct` / `nightCapPct` to or from 0 |
+| PATCH | a rule's own numbers change                                                                 | `d2T`, `minD2`, `weaknessT`, the `restStopPct` / `nightCapPct` value, `pyramidSharePct`, `lowFloorSymbols`, `lowFloorPrice`, `minPrice`, `minVolume`, `maxDte`, `firstEntryMin`                                                                    |
+| none  | the owner's limits                                                                          | `enabled`, `mode`, `broker`, `sizePct`, `maxBuysPerDay`, `maxOpen`, `safetyStopPct`, `dayLossPct`, `drawdownPausePct`, the stock lists                                                                                                             |
+| `*`   | the owner runs a version with changed rules                                                 | e.g. live `2.6.0*` (minPrice $0.15, the pre-market skip off)                                                                                                                                                                                       |
+
+- The history renumbered: 1.0 → 1.0.0, 2.0 → 2.0.0 (kept MAJOR by the user's call: a new research generation), 2.1 –
+  2.7 → 2.1.0 – 2.7.0 (each a rule added / removed or a core setting; the IBIT $0.10 floor alone would have been 2.6.1).
+- `versions.ts`: `minorKeys`, `ruleBump(key, from, to)`, `versionBump(fromRules, toRules)` (the biggest change,
+  `null` when the same), `nextVersionId(id, bump)` (2.7.0 → 2.8.0 / 2.7.1), `canonicalVersion` ("2.6" → "2.6.0",
+  "2.6\*" → "2.6.0\*"). `versionById` reads the old two-part ids, so saved settings ("2.7"), the parser and the
+  stamps on old signals and positions ("2.6\*") all resolve; `withDefaults` and `parseSettings` store the new id.
+  Stamps already written stay as written; the Bot tab's tag shows them as `v2.6.0*`.
+- The settings page's version card says which digit an edit moves and what the number would be ("A configuration
+  change (a rule's own numbers): as a new version it would be 2.7.1").
   Execution changes (chasing the ask, 10-second exit checks) are code, dated in docs/tasks/backend-indi-bot.md, not
   versions.
 
