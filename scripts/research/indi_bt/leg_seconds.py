@@ -258,6 +258,8 @@ def trade(job):
         q = book_at(rows, sec + LAG)
         if not q: return None
         mid = (q[0] + q[1]) / 2; buy = mid + (q[1] - mid) / 2
+        if os.environ.get("STR_MAX_SPREAD") and (q[1] - q[0]) > float(os.environ["STR_MAX_SPREAD"]) * mid:
+            return None   # STR_MAX_SPREAD=0.1: no buy when the spread at the buy is over 10% of the mid (the user, 2026-10-28)
         later = book_at(rows, sec + LAG + 10)
         if later and later[0] > buy: buy = min(later[1], buy * 1.1)
         ct = sec // 60
@@ -320,6 +322,8 @@ def main():
     if step == "list":
         if os.environ.get("SEC_ALERT") == "fast": ev = fast_events()
         else:
+            if os.environ.get("SEC_SYMS"):   # SEC_SYMS=A,B,C: the alerts of these names only (P["universe"] for this list)
+                P["universe"] = os.environ["SEC_SYMS"].split(",")
             jobs = TW.days()
             if os.environ.get("SEC_WEEK"):   # only the days with no 0/1 DTE but an expiry later that week
                 top = json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "50"))]
@@ -345,8 +349,8 @@ def main():
         json.dump([dict(t=t, p={f"{k[0]}|{k[1]}": x for k, x in p.items()}) for t, p in zip(trig, picks)], open(pk_file, "w"))
         print(sum(len(p) for p in picks), "picks"); return
     pk = json.load(open(pk_file))
-    if step == "run" and os.environ.get("SEC_ADD_TAG"):   # SEC_ADD_TAG=3y50w: the same-week alerts too, in one account
-        add = os.environ["SEC_ADD_TAG"]
+    for add in (os.environ.get("SEC_ADD_TAG", "").split(",") if step == "run" else []):   # SEC_ADD_TAG=3y50w[,tag...]: more alerts, one account
+        if not add: continue
         ev2 = json.load(open(os.path.join(OUT, f"events{add}.json"))); pk2 = json.load(open(os.path.join(OUT, f"picks{add}{WTAG}{KTAG}.json")))
         if os.environ.get("SEC_ADD_NEW_ONLY"):   # only the added list's names the base list does not have (no alert twice)
             have = {e["sym"] for e in ev}

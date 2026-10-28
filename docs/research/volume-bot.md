@@ -26,6 +26,27 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### The winner on top 50 + the app's Favorites, and a spread cap at the buy (2026-10-28)
+
+The user: the Favorites of the app (data/local/early_alerts_favorites.txt, 66 names, 23 outside the top 50; the 7 not in
+any earlier data, ARM CBRS CRDO IGV LITE LMND TSEM, fetched as tag 3yappx with `SEC_SYMS`, burst-prefiltered; the 3yfav
+gap filled), and no buy when the spread at the buy is over 10% of the mid (`STR_MAX_SPREAD=0.1`; 0.2 = the ask at most
+10% over the mid). Winner rules, live limits:
+
+| Stocks | Spread cap | Trades | Won | Avg | 2%: $100K becomes, drop | 3% | Without best 5 (2%) | Tune / check | Check without 2025-10-10 | App-Favorite trades |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| top 50 | none | 194 | 74 | +25.4% | $226,355, 18.1% | $320,189, 26.1% | +$1,699 | +28.9 / +22.5 | +1.2 | - |
+| + app Favorites | none | 212 | 78 | +20.9% | $203,337, 19.3% | $278,363, 27.8% | -$10,762 | +22.9 / +19.2 | -0.9 | 18, -27.5%, -$12,621 |
+| top 50 | 10% | 92 | 37 | +21.4% | $141,210, 9.4% | $164,038, 13.8% | -$20,542 | +15.4 / +26.0 | +13.3 | - |
+| + app Favorites | 10% | 96 | 37 | +18.9% | $136,163, 9.3% | $154,816, 13.8% | -$22,839 | +12.4 / +24.1 | +11.6 | 4, -39.7%, -$3,225 |
+| top 50 | 20% | 141 | 52 | +23.3% | $175,223, 13.8% | $219,401, 20.0% | -$18,665 | +22.1 / +24.2 | +3.9 | - |
+| + app Favorites | 20% | 149 | 53 | +20.3% | $164,513, 15.0% | $202,373, 21.6% | -$24,266 | +18.0 / +22.0 | +2.2 | 9, -32.2%, -$6,701 |
+
+The app's Favorites lose in every version (the extra names' trades -27% to -40% a trade). The 10% spread cap halves the
+trades (wide-spread names drop out), halves the drop (9%) and is the only version whose check half holds without
+2025-10-10 (+13.3); but it ends lower ($141K) and without the best 5 trades it is -$20.5K. Not adopted yet; a candidate
+for a sturdier, smaller version.
+
 ### The winner on top 50 + Favorites (2026-10-28)
 
 The user: test adding the Favorites. The winner (live limits, 2%) on the top 50 plus the 21 Favorites outside it (AAOI,
