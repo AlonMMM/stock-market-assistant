@@ -335,7 +335,7 @@ watchlist opens faster on a phone.
 - area: App
 - tags: Main bot, Volume bot, Charts
 - source: Session of Oct 28
-- done: 2026-10-28, PR #PR
+- done: 2026-10-28, PR #196
 
 A tap on a stock's dot or row picks it on the map and in the list; its page opens only from the card's button.
 Stocks that signaled today stay in the Main bot's list (META at the corner was missing). Both pages read every
