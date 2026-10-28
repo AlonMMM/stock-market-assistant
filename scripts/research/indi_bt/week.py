@@ -1,5 +1,7 @@
-"""What the champion bot would have bought on recent days: t >= 1.8, day volume >= 1.5x, the news filter, delta 0.15,
-your stop + the overnight hold. On the bot's core list (config/bot-universe.json) and the user's favorites.
+"""What the V2 rules would have bought on recent days: t >= 1.8, day volume >= 1.5x, the news filter, delta 0.15,
+your stop + the overnight hold. NOT the live 2.7 (2026-10-28): its exits are the older ones (10-minute half, 20-minute
+rest, -30% stop, overnight from +100%), with no bonus entry, early entry, rest stop, strength-gone sale or pyramid; the
+review judges live trades against replay_days.sh (the live code) and uses this for its skips and as the research line. On the bot's core list (config/bot-universe.json) and the user's favorites.
 Fetches the days first (stocks, pre-market; option bars as the picker needs them).
 
   node --env-file=.env scripts/research/indi_bt/run.mjs week.py <first day> <last day>   (from the repo root)

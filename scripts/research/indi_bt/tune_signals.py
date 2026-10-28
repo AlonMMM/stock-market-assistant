@@ -40,13 +40,21 @@ def passes(rule, t, rv, sec):
     return t >= tt and rv >= rr
 
 
+def _trading_now(date):
+    """True on the New York session that is still trading: it has fewer than 300 bars so far and is kept (the review of
+    2026-10-28 left a whole open session out). The 300-bar guard stays for past half sessions and IPO days."""
+    import datetime as _dt, zoneinfo as _zi
+    now = _dt.datetime.now(_zi.ZoneInfo("America/New_York"))
+    return date == now.date().isoformat() and now.hour < 16
+
+
 def stock(sym):
     cal = calendar(); out = {k: [] for k in RULES}
     etf = ETF_OF.get(sym)
     for i, date in enumerate(cal):
         if not any(a <= date <= b for a, b in SPAN.values()) or i < 21: continue
         bars = day(sym, date)
-        if len(bars) <= 300: continue
+        if len(bars) <= 300 and not _trading_now(date): continue
         b_ = beta(sym, date, i, cal)
         if b_ is None: continue
         hist = []
