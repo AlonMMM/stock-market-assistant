@@ -407,6 +407,9 @@ def main():
         with mp.Pool(8) as pool: T = [t for t in pool.map(trade, jobs, chunksize=8) if t]
         if os.environ.get("STR_AM_MIN"):   # the burst's own 3-minute move (to the alert minute), the side's way, x S30
             T = [t for t in T if t["am"] is not None and t["am"] >= float(os.environ["STR_AM_MIN"])]
+        if os.environ.get("STR_AM_MIN_W"):   # a stronger burst for the same-week (2-4 DTE) alerts only
+            wk = {(e["date"], e["sym"], e["m"]) for e in ev if e.get("kind") == "w"}
+            T = [t for t in T if (t["date"], t["sym"], t["minute"]) not in wk or (t["am"] is not None and t["am"] >= float(os.environ["STR_AM_MIN_W"]))]
         if os.environ.get("STR_CROSS_MAX"):   # seconds from the alert to the cross
             T = [t for t in T if t["to_cross"] <= int(os.environ["STR_CROSS_MAX"])]
         rows = [dict(date=d, sym=s, minute=0, right="C") for d, s in {(t["date"], t["sym"]) for t in T}]

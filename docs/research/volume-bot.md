@@ -26,6 +26,29 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### 2-4 DTE with a stronger burst: a new candidate (2026-10-28, night)
+
+The user: more trades; adjust 2-4 DTE. Exit grid on the same-week trades alone (3y50w; grace 30 / 60 / 120 / none x give-back
+0.75 / 1.0 / 1.5, `STR_GIVE`): every version -7% .. +4% a trade, 2024 -18% .. -23% under every exit: not the exit. A
+stronger burst is: same-week alone, 2%, burst >= 1.1 / 1.5 / 2.0 / 2.5: 220 / 130 / 55 / 27 trades, +4.2 / +10.4 / +37.2 /
++75.0% a trade, $114K / $124K / $142K / $142K, drop 25 / 14 / 6.7 / 3.5%; at 2.0 tune +19.7 / check +56.8, without the best 5
+-$10,503 (QCOM 2025-10-27 +$26.6K). Then in one account with the winner (`STR_AM_MIN_W`: the burst only for the 2-4 DTE
+alerts; 0/1 DTE keep 1.1). Top 50, 3 years, live limits:
+
+| Version | Trades | Won | Avg | 2%: $100K becomes, drop | 3% | Without best 5 (2%) | Tune / check | Check without 2025-10-10 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| the winner (0/1 DTE) | 194 | 74 | +25.4% | $226,355, 18.1% | $320,189, 26.1% | +$1,699 | +28.9 / +22.5 | +1.2 |
+| + 2-4 DTE, burst >= 2.0 | 248 | 91 | +28.1% | $320,699, 22.8% | $542,388, 32.3% | +$25,579 | +26.6 / +29.5 | +13.0 |
+| + 2-4 DTE, burst >= 2.5 | 221 | 86 | +31.5% | $321,936, 19.8% | $547,684, 28.4% | +$25,783 | +28.7 / +33.9 | +15.5 |
+
+Better than the winner on the end account, the average, without the best 5 and the check half without 2025-10-10 (+13
+to +15 against +1.2); the drop is 2-5 points deeper. The burst level was chosen after seeing it (both halves agree, 55 /
+27 trades). Candidate for production (needs the same-week expiry in the live bot).
+
+The cross window, 3 years (winner otherwise): 15 / 20 / 30 / 45 / 60 s: 194 / 217 / 254 / 296 / 322 trades, +25.4 / +23.4 /
++18.9 / +13.9 / +12.6% a trade, $226K / $233K / $221K / $192K / $190K, without the best 5 +$1.7K / -$0.9K / -$11.2K / -$17.5K
+/ -$24.5K. More trades but no more money past 20 s: keep 15 (20 is neutral).
+
 ### F60x2 (rolling 60 s, volume >= 2x) with the winner (2026-10-28)
 
 20,310 alerts (2025-11-21 .. 2026-10-22, the 43 names, 09:40-13:00); `f60_prefilter.py` (10-second bars, a touch of a side

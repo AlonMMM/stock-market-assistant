@@ -25,6 +25,7 @@ import zero5
 from cheap_up import candidates
 
 DELTA, K, WAIT, GIVE, END, SH, COMM = 0.35, 0.25, 60, 0.75, 360, 0.02, 0.62
+GIVE = float(os.environ.get("STR_GIVE", GIVE))   # the give-back, x S30 (0.75 live)
 EARLY_GIVE = float(os.environ.get("STR_EARLY_GIVE", "0"))   # a wider give-back for the first EARLY_MIN minutes (0: off)
 EARLY_MIN = int(os.environ.get("STR_EARLY_MIN", "5"))
 NOSTOP_MIN = int(os.environ.get("STR_NOSTOP_MIN", "0"))   # no give-back exit for the first N minutes after the buy
