@@ -275,6 +275,13 @@ test("engine buy: a doubled command is refused; a buy that filled nothing is not
     again.refused.join(),
     /not a repeat: NVDA calls were bought 0 s ago/,
   );
+  // An intended add (the bot's pyramid) passes the repeat check, and only it.
+  const add = await engine.planBuy({
+    contract: friday,
+    sizePct: 0.5,
+    repeatOk: true,
+  });
+  assert.ok(!("refused" in add), "the add is not refused as a repeat");
   clock.now += 61_000;
   broker.fillAt.set(friday, 5); // nobody sells: the order is canceled
   const unfilled = await engine.buy({ contract: friday, sizePct: 0.5 });

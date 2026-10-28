@@ -645,6 +645,7 @@ function harness(
   const calls: {
     kind: string;
     body: Record<string, unknown>;
+    options?: { repeatOk?: boolean };
     broker: BotBroker;
   }[] = [];
   const notes: string[] = [];
@@ -665,12 +666,17 @@ function harness(
       if (equityFails) throw new Error("account read failed (synthetic)");
       return equity;
     },
-    async buy(body) {
+    async buy(body, options) {
       if (broker === "ibkr" && ibkrBuyFails)
         throw new Error(
           "market data requires additional subscription (synthetic)",
         );
-      calls.push({ kind: "buy", body, broker });
+      calls.push({
+        kind: "buy",
+        body,
+        broker,
+        ...(options ? { options } : {}),
+      });
       // IBKR fills one contract fewer: the accounts should differ a little.
       const qty = broker === "ibkr" ? 32 : 33;
       // A buy adds to what the account holds (a pyramid add can buy more of a held contract).
@@ -1759,6 +1765,8 @@ test("pyramid: the full signal after a D2 entry that is up buys half a size more
   assert.equal(buys.length, 1, "one add");
   assert.equal(buys[0]!.body.sizePct, 1); // half of 2%
   assert.equal(buys[0]!.body.contract, contract);
+  // The add passes the service's 60-second repeat check (user 2026-10-28).
+  assert.deepEqual(buys[0]!.options, { repeatOk: true });
   assert.match(
     String(buys[0]!.body.note),
     /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.7\.0$/,

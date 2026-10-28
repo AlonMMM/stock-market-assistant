@@ -113,7 +113,12 @@ export interface BotTrading {
     contract: string,
   ): Promise<{ qty: number; avgEntryPrice: number } | null>;
   equity(): Promise<number>;
-  buy(body: Record<string, unknown>): Promise<{
+  // `repeatOk`: the pyramid's add to the bot's own position (the trading
+  // service's "not a repeat" check passes for it).
+  buy(
+    body: Record<string, unknown>,
+    options?: { repeatOk?: boolean },
+  ): Promise<{
     status: string;
     jobId?: string;
     qty?: number;
@@ -1205,16 +1210,21 @@ export class IndiBot {
         detail: `${qty} ${this.words(contract)} at ${mid.toFixed(2)}${at}`,
       };
     }
-    const answer = await this.trading(broker).buy({
-      contract,
-      sizePct,
-      stopPct: s.safetyStopPct,
-      // Keep raising the price until it fills (user 2026-10-23).
-      chase: true,
-      chaseMs: chaseBuyMs,
-      tag: botTag,
-      note: why + at,
-    });
+    const answer = await this.trading(broker).buy(
+      {
+        contract,
+        sizePct,
+        stopPct: s.safetyStopPct,
+        // Keep raising the price until it fills (user 2026-10-23).
+        chase: true,
+        chaseMs: chaseBuyMs,
+        tag: botTag,
+        note: why + at,
+      },
+      // The pyramid's add comes about a minute after the entry: an intended
+      // second buy, so the service's 60-second repeat check lets it through.
+      add ? { repeatOk: true } : {},
+    );
     if (answer.status !== "started" || !answer.jobId)
       return {
         outcome: "refused",

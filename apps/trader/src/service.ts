@@ -363,9 +363,16 @@ export class TraderService {
     });
   }
 
-  /** Checks the buy and, when it passes, starts it. Answers at once. */
-  async buy(body: Body) {
-    const request = buyRequest(body);
+  /**
+   * Checks the buy and, when it passes, starts it. Answers at once.
+   * `options.repeatOk` is the bot's in-process add to its own position (the
+   * pyramid): never read from the body, so no request can set it.
+   */
+  async buy(body: Body, options: { repeatOk?: boolean } = {}) {
+    const request = {
+      ...buyRequest(body),
+      ...(options.repeatOk ? { repeatOk: true } : {}),
+    };
     let plan;
     try {
       plan = await this.engine.planBuy(request);
