@@ -229,6 +229,34 @@ export function parseStrangleSettings(
 }
 
 /** Saved values over the defaults; anything not valid falls back to them. */
+/**
+ * A change of some settings (the connector's volume_bot_update_settings, user
+ * 2026-10-28: "an admin endpoint ... so you can edit the settings as we
+ * need"): only known keys, merged over the current settings, then checked as a
+ * whole. -> the new settings and the keys whose value changed, or the error.
+ */
+export function mergeStrangleSettings(
+  current: StrangleSettings,
+  patch: unknown,
+):
+  | { ok: true; value: StrangleSettings; changed: (keyof StrangleSettings)[] }
+  | { ok: false; error: string } {
+  if (!isObject(patch) || !Object.keys(patch).length)
+    return {
+      ok: false,
+      error: "Expected an object with the settings to change",
+    };
+  const unknown = Object.keys(patch).filter((k) => !(k in current));
+  if (unknown.length)
+    return { ok: false, error: `Unknown settings: ${unknown.join(", ")}` };
+  const checked = parseStrangleSettings({ ...current, ...patch });
+  if (!checked.ok) return checked;
+  const changed = (Object.keys(current) as (keyof StrangleSettings)[]).filter(
+    (k) => JSON.stringify(current[k]) !== JSON.stringify(checked.value[k]),
+  );
+  return { ok: true, value: checked.value, changed };
+}
+
 export function strangleWithDefaults(
   saved: unknown,
   base: StrangleSettings = defaultStrangleSettings,
