@@ -35,8 +35,13 @@ import {
 } from "../../../packages/trading/src/strangle/alert.js";
 import {
   bestOf,
+  burstAgrees,
+  burstOf,
+  crossTooLate,
   giveBackExit,
   legQty,
+  minuteCloseExit,
+  secondsSinceAlert,
   sideOf,
   strengthAgrees,
   waitedOut,
@@ -134,6 +139,8 @@ const outcomeWords: Record<string, string> = {
   earnings: "skipped, earnings reaction day",
   premarket: "skipped, pre-market volume 4× normal or more",
   strength: "skipped, the strength disagrees with the side",
+  slow_cross: "no side fast enough after the alert",
+  burst: "skipped, the burst before the alert is not the side's way",
   refused: "refused by the risk rules",
   error: "failed",
 };
@@ -275,6 +282,21 @@ export class StrangleBot {
     }
     // Every tick: the minute's bars arrive a few seconds after it closes.
     if (last >= 0) this.scanned = this.scan(last);
+    // The minute-close exit reads the open trades' last closed minute: fetch
+    // it again until it is in, so a sale is not a minute late.
+    if (s.exitOnMinuteClose && last >= 0) {
+      const missing = [
+        ...new Set(
+          this.o.store
+            .openTrades()
+            .filter((t) => t.phase === "open" && t.day === date)
+            .map((t) => t.symbol)
+            .filter((sym) => !this.today.get(sym)?.has(last)),
+        ),
+      ];
+      if (missing.length)
+        await this.refreshSome(missing, date, Math.max(0, last - 2), last);
+    }
     // The trades every tick (10 s), on the stock's last trade and fresh quotes.
     const current = Math.min(wall - 570, closeMinute - 1);
     const end = Math.min(s.endMinute, closeMinute - 30);
@@ -325,6 +347,10 @@ export class StrangleBot {
     try {
       for (const t of waiting) {
         const stock = prices.get(t.symbol);
+        if (crossTooLate(this.sessionSecond(), t.alertMinute, s)) {
+          this.slowCross(t, s);
+          continue;
+        }
         // Past the wait or the end the tick closes it; only the side here.
         if (!stock || waitedOut(m, t.alertMinute, s) || m >= s.endMinute)
           continue;
@@ -514,6 +540,24 @@ export class StrangleBot {
     }
   }
 
+  private async refreshSome(
+    symbols: string[],
+    date: string,
+    from: number,
+    to: number,
+  ) {
+    try {
+      const got = await this.o.market.bars(symbols, date, from, to);
+      for (const [sym, list] of got) {
+        let byMinute = this.today.get(sym);
+        if (!byMinute) this.today.set(sym, (byMinute = new Map()));
+        for (const b of list) byMinute.set(b.m, b);
+      }
+    } catch {
+      // the next tick asks again
+    }
+  }
+
   private barsOf(symbol: string): MinuteBar[] {
     return [...(this.today.get(symbol)?.values() ?? [])].sort(
       (a, b) => a.m - b.m,
@@ -665,6 +709,7 @@ export class StrangleBot {
     if (!expiry) return { outcome: "no_expiry", detail: "" };
     const ref = await this.stockNow(symbol, m);
     if (ref === null) return { outcome: "no_prices", detail: "no stock price" };
+    const burst = burstOf(this.barsOf(symbol), m, unit);
     const trade: StrangleTrade = {
       id: randomUUID(),
       day: date,
@@ -673,6 +718,7 @@ export class StrangleBot {
       alertSide: side,
       unit,
       stockRef: ref,
+      burst,
       side: null,
       sideMinute: null,
       best: null,
@@ -688,7 +734,7 @@ export class StrangleBot {
     const pct = (s.confirmUnits * unit * 100).toFixed(2);
     return {
       outcome: "watching",
-      detail: `stock ${ref.toFixed(2)}; the side at ${pct}% either way${expiry === date ? "" : "; 1DTE"}`,
+      detail: `stock ${ref.toFixed(2)}; the side at ${pct}% either way${burst === null ? "" : `; burst ${burst.toFixed(2)}×`}${expiry === date ? "" : "; 1DTE"}`,
     };
   }
 
@@ -881,6 +927,22 @@ export class StrangleBot {
     }
   }
 
+  /** Seconds since 09:30 New York now. */
+  private sessionSecond(): number {
+    const now = this.o.now();
+    return (newYork(now).minute - 570) * 60 + (Math.floor(now / 1000) % 60);
+  }
+
+  /** The cross filter: no side within crossMaxSeconds of the alert ends the watch. */
+  private slowCross(t: StrangleTrade, s: StrangleSettings) {
+    this.close(t, "no side fast enough after the alert");
+    this.o.store.updateSignal(t.day, t.symbol, "slow_cross", "");
+    this.event(
+      "skip",
+      `${t.symbol}: no side within ${s.crossMaxSeconds} s of the alert, no trade`,
+    );
+  }
+
   private close(t: StrangleTrade, reason: string) {
     t.phase = "closed";
     t.closeReason = reason;
@@ -903,6 +965,10 @@ export class StrangleBot {
         this.marks.set(t.id, { leg: null, stock, at: this.o.now() });
         if (t.day !== date) {
           this.close(t, "no side in time");
+          continue;
+        }
+        if (crossTooLate(this.sessionSecond(), t.alertMinute, s)) {
+          this.slowCross(t, s);
           continue;
         }
         const side =
@@ -929,13 +995,40 @@ export class StrangleBot {
         await this.sellLeg(t, "left from a past day", lm);
         continue;
       }
-      if (stock !== null) t.best = bestOf(t.best ?? stock, stock, t.side);
-      const exit = giveBackExit(stock ?? 0, t.best ?? 0, t.side, t.unit, m, s);
+      const held = m - (t.sideMinute ?? m);
+      let exit: "giveback" | "end" | null;
+      if (s.exitOnMinuteClose) {
+        // The backtest's walk: the best and the give-back on closed minutes.
+        const got = minuteCloseExit(
+          this.barsOf(t.symbol).filter((b) => b.m < m),
+          t.stockAtBuy ?? t.best ?? stock ?? 0,
+          t.side,
+          t.unit,
+          t.sideMinute ?? m,
+          m,
+          s,
+        );
+        t.best = got.best;
+        exit = got.exit;
+      } else {
+        if (stock !== null) t.best = bestOf(t.best ?? stock, stock, t.side);
+        exit = giveBackExit(
+          stock ?? 0,
+          t.best ?? 0,
+          t.side,
+          t.unit,
+          m,
+          s,
+          held,
+          s.noStopMinutes,
+        );
+      }
       if (exit) {
+        const closeWords = s.exitOnMinuteClose ? " (a minute close)" : "";
         const reason =
           exit === "end"
             ? `the end of the day (${clockOf(s.endMinute)})`
-            : `the stock gave back ${s.giveBackUnits} of its 30-minute move from ${t.best!.toFixed(2)}`;
+            : `the stock gave back ${s.giveBackUnits} of its 30-minute move from ${t.best!.toFixed(2)}${closeWords}`;
         await this.sellLeg(t, reason, lm);
         continue;
       }
@@ -980,6 +1073,14 @@ export class StrangleBot {
     };
     t.side = side;
     t.sideMinute = m;
+    const late = secondsSinceAlert(this.sessionSecond(), t.alertMinute);
+    if (crossTooLate(this.sessionSecond(), t.alertMinute, s))
+      return fail("slow_cross", `the side ${late} s after the alert`);
+    if (!burstAgrees(side, t.burst, s))
+      return fail(
+        "burst",
+        `burst ${t.burst === null || t.burst === undefined ? "—" : t.burst.toFixed(2)}× for a ${legName(side)}`,
+      );
     if (s.strengthFilter) {
       const prior = this.prior.get(t.symbol);
       const st = prior
@@ -1083,6 +1184,7 @@ export class StrangleBot {
       });
       t.phase = "open";
       t.best = stock;
+      t.stockAtBuy = stock;
       this.o.store.saveTrade(t);
       this.outcome(
         t.day,
@@ -1127,6 +1229,7 @@ export class StrangleBot {
     });
     t.phase = "buying";
     t.best = stock;
+    t.stockAtBuy = stock;
     this.o.store.saveTrade(t);
     this.outcome(t.day, t.symbol, "traded", `${qty} × ${this.words(contract)}`);
   }

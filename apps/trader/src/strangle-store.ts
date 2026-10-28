@@ -67,6 +67,8 @@ export interface StrangleTrade {
   side: "C" | "P" | null;
   sideMinute: number | null;
   best: number | null; // the stock's best since the buy, the side's way
+  stockAtBuy?: number; // the stock when the leg was bought (the minute-close walk starts its best here)
+  burst?: number | null; // the 3 minutes to the alert, in typical 30-minute moves, up positive; absent on older trades
   leg: StrangleLeg | null;
   phase: StranglePhase;
   closeReason: string | null;

@@ -255,6 +255,24 @@ const groups: { title: string; specs: Spec[] }[] = [
         help: "New York time.",
         fmt: clock,
       },
+      {
+        key: "crossMaxSeconds",
+        label: "Fast cross within",
+        help: "With the fast-cross switch on: the side has to come this many seconds after the alert, else no trade.",
+        fmt: (v) => `${v} s`,
+      },
+      {
+        key: "burstMin",
+        label: "Burst at least",
+        help: "With the burst switch on: the 3 minutes up to the alert moved this many typical 30-minute moves the side's way.",
+        fmt: (v) => `${v.toFixed(1)}×`,
+      },
+      {
+        key: "noStopMinutes",
+        label: "No give-back sale for",
+        help: "Minutes after the buy; the end of the day still sells.",
+        fmt: (v) => `${v} min`,
+      },
     ],
   },
 ];
@@ -263,6 +281,9 @@ const switches: {
     | "nextDay"
     | "liquidFallback"
     | "strengthFilter"
+    | "crossFilter"
+    | "burstFilter"
+    | "exitOnMinuteClose"
     | "skipEarnings"
     | "skipPremarket"
     | "followFavorites";
@@ -283,6 +304,21 @@ const switches: {
     key: "strengthFilter",
     label: "Strength must agree",
     help: "Buy only when the stock's strength vs SPY since the open points the way of the side; else no trade.",
+  },
+  {
+    key: "crossFilter",
+    label: "Fast cross only",
+    help: "Buy only when the side comes within the seconds set above after the alert (the 2026-10-28 winner).",
+  },
+  {
+    key: "burstFilter",
+    label: "Burst must agree",
+    help: "Buy only when the 3 minutes before the alert already moved the side's way by the burst set above.",
+  },
+  {
+    key: "exitOnMinuteClose",
+    label: "Give-back on minute closes",
+    help: "Read the give-back on each minute's close, as the backtest does, not on every 10-second tick.",
   },
   {
     key: "skipEarnings",

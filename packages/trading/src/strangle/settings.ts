@@ -56,6 +56,19 @@ export interface StrangleSettings {
   // Optional: buy only when the stock's strength vs SPY x beta since the open
   // points the way of the side (else no trade).
   strengthFilter: boolean;
+  // The winner of 2026-10-27 (docs/research/volume-bot.md, research/indi-v2;
+  // the user 2026-10-28, "the last version of this bot in production today"):
+  // buy only when the stock crosses the side line within crossMaxSeconds of
+  // the alert, and its burst (the alert minute's close against the close 3
+  // minutes before, in typical 30-minute moves) points the side's way by at
+  // least burstMin; no give-back sale for noStopMinutes after the buy; the
+  // give-back read on minute closes, as the backtest does, not on every tick.
+  crossFilter: boolean;
+  crossMaxSeconds: number;
+  burstFilter: boolean;
+  burstMin: number;
+  noStopMinutes: number;
+  exitOnMinuteClose: boolean;
   // The news filter, as the Indi bot's.
   skipEarnings: boolean;
   skipPremarket: boolean;
@@ -100,6 +113,14 @@ export const defaultStrangleSettings: StrangleSettings = {
   giveBackUnits: 0.75,
   endMinute: 360,
   strengthFilter: false,
+  // The winner: 194 trades in 3 years on the top 50, +25% a trade after costs
+  // at 2% (today's rules on every alert: -9% a trade).
+  crossFilter: true,
+  crossMaxSeconds: 15,
+  burstFilter: true,
+  burstMin: 1.1,
+  noStopMinutes: 30,
+  exitOnMinuteClose: true,
   skipEarnings: true,
   skipPremarket: true,
 };
@@ -126,6 +147,9 @@ export const strangleLimits: Record<
   waitMinutes: [10, 120, 5],
   giveBackUnits: [0.25, 1.5, 0.05],
   endMinute: [300, 375, 5],
+  crossMaxSeconds: [5, 120, 1],
+  burstMin: [0, 3, 0.1],
+  noStopMinutes: [0, 60, 5],
 };
 
 // Values the backtest never ran.
@@ -142,6 +166,9 @@ const booleans: BooleanKey[] = [
   "nextDay",
   "liquidFallback",
   "strengthFilter",
+  "crossFilter",
+  "burstFilter",
+  "exitOnMinuteClose",
   "skipEarnings",
   "skipPremarket",
 ];
@@ -258,7 +285,7 @@ export function strangleSteps(
     },
     {
       name: "The side",
-      text: `Wait until the stock has moved ${s.confirmUnits} of its typical 30-minute move from where it was at the alert, up or down${s.strengthFilter ? ", with the stock's strength vs SPY × β since the open pointing the same way" : ""}. No side within ${s.waitMinutes} minutes: no trade.`,
+      text: `Wait until the stock has moved ${s.confirmUnits} of its typical 30-minute move from where it was at the alert, up or down${s.strengthFilter ? ", with the stock's strength vs SPY × β since the open pointing the same way" : ""}. No side within ${s.crossFilter ? `${s.crossMaxSeconds} seconds` : `${s.waitMinutes} minutes`}: no trade.${s.burstFilter ? ` Only when the 3 minutes up to the alert already moved at least ${s.burstMin} of the typical 30-minute move the side's way.` : ""}`,
     },
     {
       name: "Buy",
@@ -266,7 +293,7 @@ export function strangleSteps(
     },
     {
       name: "Sell",
-      text: `When the stock gives back ${s.giveBackUnits} of its typical 30-minute move from its best since the buy (its high for a call, its low for a put); everything out by ${clockOf(s.endMinute)}.`,
+      text: `When the stock gives back ${s.giveBackUnits} of its typical 30-minute move from its best since the buy (its high for a call, its low for a put)${s.exitOnMinuteClose ? ", on minute closes" : ""}${s.noStopMinutes > 0 ? `, not in the first ${s.noStopMinutes} minutes after the buy` : ""}; everything out by ${clockOf(s.endMinute)}.`,
     },
     {
       name: "Limits",

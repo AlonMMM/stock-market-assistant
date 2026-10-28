@@ -47,12 +47,86 @@ export function giveBackExit(
   unit: number,
   minute: number,
   s: Pick<StrangleSettings, "giveBackUnits" | "endMinute">,
+  held = Infinity, // minutes since the buy; under the grace only the end sells
+  grace = 0,
 ): "giveback" | "end" | null {
   if (minute >= s.endMinute) return "end";
+  if (held <= grace) return null;
   if (!(stock > 0) || !(best > 0)) return null;
   const back = side === "C" ? 1 - stock / best : stock / best - 1;
   return back >= s.giveBackUnits * unit ? "giveback" : null;
 }
+
+/**
+ * The give-back on minute closes, as the backtest walks it
+ * (leg_fallback.walk): the best starts at the stock at the buy and takes each
+ * closed minute after the buy minute; a minute within `noStopMinutes` of the
+ * buy only moves the best; the first later close `giveBackUnits` back from the
+ * best sells. Recomputed from the bars on every tick, so a late bar or a
+ * missed tick changes nothing.
+ */
+export function minuteCloseExit(
+  closes: readonly { m: number; c: number }[],
+  stockAtBuy: number,
+  side: Leg,
+  unit: number,
+  buyMinute: number,
+  minute: number,
+  s: Pick<StrangleSettings, "giveBackUnits" | "endMinute" | "noStopMinutes">,
+): { exit: "giveback" | "end" | null; best: number } {
+  let best = stockAtBuy;
+  for (const b of [...closes].sort((x, y) => x.m - y.m)) {
+    if (b.m <= buyMinute || !(b.c > 0)) continue;
+    best = bestOf(best, b.c, side);
+    if (b.m - buyMinute <= s.noStopMinutes) continue;
+    const back = side === "C" ? 1 - b.c / best : b.c / best - 1;
+    if (back >= s.giveBackUnits * unit) return { exit: "giveback", best };
+  }
+  return { exit: minute >= s.endMinute ? "end" : null, best };
+}
+
+/**
+ * The burst (leg_seconds.py `am`): the alert minute's close against the close
+ * three minutes before, in typical 30-minute moves, up positive; null without
+ * both bars.
+ */
+export function burstOf(
+  bars: readonly { m: number; c: number }[],
+  alertMinute: number,
+  unit: number,
+): number | null {
+  const at = bars.find((b) => b.m === alertMinute)?.c;
+  const before = bars.find((b) => b.m === alertMinute - 3)?.c;
+  if (!(at && before && unit > 0)) return null;
+  return (at / before - 1) / unit;
+}
+
+/** With the burst filter, the side stands only when the burst points its way by burstMin. */
+export function burstAgrees(
+  side: Leg,
+  burst: number | null | undefined,
+  s: Pick<StrangleSettings, "burstFilter" | "burstMin">,
+): boolean {
+  if (!s.burstFilter) return true;
+  if (burst === null || burst === undefined) return false;
+  return (side === "C" ? burst : -burst) >= s.burstMin;
+}
+
+/**
+ * Seconds from the alert to now: the alert is read on its minute's close, the
+ * end of session minute `alertMinute` (09:30 New York = minute 0).
+ */
+export const secondsSinceAlert = (sessionSecond: number, alertMinute: number) =>
+  sessionSecond - (alertMinute + 1) * 60;
+
+/** With the cross filter, the side has to come within crossMaxSeconds of the alert. */
+export const crossTooLate = (
+  sessionSecond: number,
+  alertMinute: number,
+  s: Pick<StrangleSettings, "crossFilter" | "crossMaxSeconds">,
+) =>
+  s.crossFilter &&
+  secondsSinceAlert(sessionSecond, alertMinute) > s.crossMaxSeconds;
 
 /** The stock's best since the buy, in the side's direction. */
 export const bestOf = (best: number, stock: number, side: Leg) =>

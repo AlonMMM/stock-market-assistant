@@ -30,6 +30,11 @@ import {
   sideOf,
   strengthAgrees,
   waitedOut,
+  burstAgrees,
+  burstOf,
+  crossTooLate,
+  minuteCloseExit,
+  secondsSinceAlert,
 } from "../packages/trading/src/strangle/decide.js";
 import {
   defaultStrangleSettings,
@@ -204,6 +209,22 @@ test("settings: the backtested defaults; bad values refused; the stocks; the rul
 
 // ---- the runner ----
 
+// The rule before the 2026-10-28 winner: no cross or burst filter, the give-back on every tick from the buy.
+const BASE_RULE: Partial<StrangleSettings> = {
+  crossFilter: false,
+  burstFilter: false,
+  noStopMinutes: 0,
+  exitOnMinuteClose: false,
+};
+const WINNER: Partial<StrangleSettings> = {
+  crossFilter: true,
+  crossMaxSeconds: 15,
+  burstFilter: true,
+  burstMin: 1.1,
+  noStopMinutes: 30,
+  exitOnMinuteClose: true,
+};
+
 const DAY = "2026-10-23"; // a Friday session, with a same-day expiry
 const at = (date: string, wall: number, sec = 20) =>
   newYorkToUtc(date, wall) + sec * 1000;
@@ -247,6 +268,8 @@ function harness(
       enabled: true,
       added: ["NVDA"],
       followFavorites: false,
+      // These runner tests describe the base rule; the winner's are tested below.
+      ...BASE_RULE,
       ...settings,
     }),
   );
@@ -376,10 +399,15 @@ function harness(
   };
   // The one-second side watch at second sec of New York minute w.
   const watch = async (w: number, sec: number) => {
-    now = at(DAY, w) + sec * 1000;
+    now = at(DAY, w, sec);
     await bot.watchSides();
   };
-  return { bot, store, run, watch, calls, notes, held, mids };
+  // One 10-second tick at second sec of New York minute w.
+  const tickAt = async (w: number, sec: number) => {
+    now = at(DAY, w, sec);
+    await bot.tick();
+  };
+  return { bot, store, run, watch, tickAt, calls, notes, held, mids };
 }
 
 // The burst at 10:08-10:09, a climb to 10:29, then a fall.
@@ -712,4 +740,146 @@ test("status: stocks with no expiry today or the next session are listed for the
   await today.run(565, 566);
   await new Promise((done) => setTimeout(done, 20));
   assert.deepEqual(today.bot.status().noExpiry, []);
+});
+
+// ---- the winner (2026-10-28): the fast cross, the burst, the grace, minute closes ----
+
+test("decide (winner): the burst, the cross clock, the minute-close walk with its grace", () => {
+  const bars = [
+    { m: 36, c: 100 },
+    { m: 37, c: 100.2 },
+    { m: 38, c: 100.4 },
+    { m: 39, c: 100.6 },
+  ];
+  // +0.6% in 3 minutes on a 0.4% unit: 1.5 units up.
+  assert.equal(Number(burstOf(bars, 39, 0.004)!.toFixed(4)), 1.5);
+  assert.equal(burstOf(bars, 38, 0.004), null); // no bar 3 minutes before
+  const w = { ...defaultStrangleSettings, ...WINNER };
+  assert.equal(burstAgrees("C", 1.5, w), true);
+  assert.equal(burstAgrees("P", 1.5, w), false);
+  assert.equal(burstAgrees("C", 1.0, w), false);
+  assert.equal(burstAgrees("C", null, w), false);
+  assert.equal(burstAgrees("C", null, { ...w, burstFilter: false }), true);
+  // The alert of minute 39 closes at second 2400 after 09:30: 15 s is in time, 16 s is not.
+  assert.equal(secondsSinceAlert(2415, 39), 15);
+  assert.equal(crossTooLate(2415, 39, w), false);
+  assert.equal(crossTooLate(2416, 39, w), true);
+  assert.equal(crossTooLate(2500, 39, { ...w, crossFilter: false }), false);
+  // Bought at minute 40 with the stock at 100; a climb to 102 by minute 50, then 101.6 at minute 55.
+  const walk = [
+    { m: 40, c: 100.1 },
+    { m: 50, c: 102 },
+    { m: 55, c: 101.6 }, // 0.39% back on a 0.4% unit x 0.75 = 0.3%: a give-back, but in the grace
+    { m: 71, c: 101.65 }, // after the grace: still 0.34% under the 102 best
+  ];
+  const r = minuteCloseExit(walk, 100, "C", 0.004, 40, 72, w);
+  assert.equal(r.exit, "giveback");
+  assert.equal(r.best, 102);
+  assert.equal(
+    minuteCloseExit(walk.slice(0, 3), 100, "C", 0.004, 40, 60, w).exit,
+    null,
+  );
+  assert.equal(
+    minuteCloseExit(walk.slice(0, 3), 100, "C", 0.004, 40, 60, {
+      ...w,
+      noStopMinutes: 0,
+    }).exit,
+    "giveback",
+  );
+  assert.equal(minuteCloseExit([], 100, "C", 0.004, 40, 360, w).exit, "end");
+  // The tick rule with a grace: inside it only the end sells.
+  assert.equal(giveBackExit(101.6, 102, "C", 0.004, 55, w, 15, 30), null);
+  assert.equal(giveBackExit(101.6, 102, "C", 0.004, 75, w, 35, 30), "giveback");
+});
+
+test("runner (winner): the side within 15 s of the alert buys; none by then ends the watch", async () => {
+  let last = 0;
+  // In time: the alert of 10:09 is read at 10:10:02, the stock crosses at 10:10:09.
+  const a = harness(
+    { mode: "live", ...WINNER, burstMin: 0 },
+    { day: climbThenFall(), last: () => last },
+  );
+  await a.run(565, 609);
+  last = 0;
+  await a.tickAt(610, 2);
+  const [w] = a.store.openTrades();
+  assert.equal(w!.phase, "watching");
+  assert.ok(w!.burst! > 0, "the climb's burst is up");
+  last = w!.stockRef * 1.01;
+  await a.watch(610, 9);
+  assert.equal(a.calls.filter((c) => c.kind === "buy").length, 1);
+  assert.equal(a.store.openTrades()[0]!.side, "C");
+  // Too late: no cross by 10:10:15, the watch ends at 10:10:16, a cross after it buys nothing.
+  const b = harness(
+    { mode: "live", ...WINNER, burstMin: 0 },
+    { day: climbThenFall(), last: () => last },
+  );
+  await b.run(565, 609);
+  last = 0;
+  await b.tickAt(610, 2);
+  last = b.store.openTrades()[0]!.stockRef;
+  await b.watch(610, 15);
+  assert.equal(b.store.openTrades()[0]!.phase, "watching");
+  await b.watch(610, 16);
+  assert.equal(b.store.openTrades().length, 0);
+  assert.equal(b.store.signal(DAY, "NVDA")!.outcome, "slow_cross");
+  last = b.store.recentTrades(DAY)[0]!.stockRef * 1.01;
+  await b.watch(610, 20);
+  await b.tickAt(610, 30);
+  assert.equal(b.calls.filter((c) => c.kind === "buy").length, 0);
+});
+
+test("runner (winner): a burst under burstMin the side's way is no trade", async () => {
+  let last = 0;
+  const h = harness(
+    { mode: "live", ...WINNER, burstMin: 3 },
+    { day: climbThenFall(), last: () => last },
+  );
+  await h.run(565, 609);
+  await h.tickAt(610, 2);
+  const [w] = h.store.openTrades();
+  assert.ok(w!.burst! < 3);
+  last = w!.stockRef * 1.01;
+  await h.watch(610, 9);
+  assert.equal(h.calls.filter((c) => c.kind === "buy").length, 0);
+  assert.equal(h.store.openTrades().length, 0);
+  assert.equal(h.store.signal(DAY, "NVDA")!.outcome, "burst");
+});
+
+test("runner (winner): no sale in the 30-minute grace, then the give-back on minute closes; a tick's dip does not sell", async () => {
+  let last = 0;
+  const h = harness(
+    { mode: "live", ...WINNER, burstMin: 0 },
+    { day: climbThenFall(), last: () => last },
+  );
+  await h.run(565, 609);
+  await h.tickAt(610, 2);
+  last = h.store.openTrades()[0]!.stockRef * 1.01;
+  await h.watch(610, 9);
+  await h.tickAt(610, 30); // the buy settles on the next tick
+  const [t] = h.store.openTrades();
+  assert.equal(t!.phase, "open");
+  assert.equal(t!.sideMinute, 40);
+  // A last trade far under the line at 10:20 (inside the climb): the minute closes say hold.
+  last = t!.stockRef * 0.9;
+  await h.run(611, 621);
+  assert.equal(h.calls.filter((c) => c.kind === "sell").length, 0);
+  // The fall starts at 10:30 (minute 60), inside the grace (to minute 70): still held.
+  last = 0;
+  await h.run(622, 640);
+  assert.equal(h.calls.filter((c) => c.kind === "sell").length, 0);
+  // After the grace the closes are well under the best: sold at the first tick after minute 71 closes.
+  await h.run(641, 642);
+  const sells = h.calls.filter((c) => c.kind === "sell");
+  assert.equal(sells.length, 1);
+  const [done] = h.store.recentTrades(DAY);
+  assert.match(done!.closeReason ?? "", /a minute close/);
+  // The same day on the base rule (every tick, no grace) sells inside the first half hour.
+  last = 0;
+  const base = harness(
+    { mode: "live" },
+    { day: climbThenFall(), last: () => last },
+  );
+  await base.run(565, 640);
+  assert.equal(base.calls.filter((c) => c.kind === "sell").length, 1);
 });
