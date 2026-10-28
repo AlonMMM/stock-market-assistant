@@ -707,7 +707,13 @@ export class StrangleBot {
     // when there is none today; none of them ends it now.
     const expiry = await this.expiryFor(symbol, date, s);
     if (!expiry) return { outcome: "no_expiry", detail: "" };
-    const ref = await this.stockNow(symbol, m);
+    // The side lines start at the alert minute's close, as the backtest's
+    // (leg_seconds.py stock0), not at a trade read seconds later: a print a few
+    // cents off moves both lines and can pick the other side (the replay of
+    // 2026-10-08, CRM). The latest trade only when that bar is missing.
+    const ref =
+      this.barsOf(symbol).find((b) => b.m === m)?.c ??
+      (await this.stockNow(symbol, m));
     if (ref === null) return { outcome: "no_prices", detail: "no stock price" };
     const burst = burstOf(this.barsOf(symbol), m, unit);
     const trade: StrangleTrade = {
