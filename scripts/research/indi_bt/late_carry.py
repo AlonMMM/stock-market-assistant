@@ -52,7 +52,8 @@ def late_trades():
     nf.features(rows)
     skip = {(r["date"], r["sym"]) for r in rows if r["e_next"] == 0 or (r["pre_rvol"] is not None and r["pre_rvol"] >= 4)}
     for t in out: t["news_skip"] = int((t["date"], t["sym"]) in skip)
-    return [t for t in out if not t["news_skip"]]
+    last = int(os.environ.get("LC_BUY_MAX", "389"))   # LC_BUY_MAX=329: no buy after 14:59 (no late buy in the last hour)
+    return [t for t in out if not t["news_skip"] and t["bm"] <= last]
 
 
 def night_ok(t, d, minute, mid, bet, variant):

@@ -47,6 +47,10 @@ By entry (avg a trade, A / B): 13:00-14:30 -4.1 / -3.3% (125 trades), 14:30-15:3
 hour -14.4 / -11.9% (53; A carried all 53). The late alerts lose in every slice and both night rules; the last half
 hour worst. Not adopted.
 
+Without the last hour (`LC_BUY_MAX=329`, late buys 13:00-14:59 only, 172 pass the entry): late only 128 trades, -1.0% a
+trade, $95,268 (A); with the winner $217,069 / 24.2% (A) and $220,417 / 24.2% (B) against the winner's $226,355 / 18.1%:
+about flat, a deeper drop. Not adopted.
+
 ### 2 DTE only (2026-10-28)
 
 The user: test 2 DTE trades. The same-week alerts with exactly 2 days to expiry (`SEC_DTE_DAYS=2`, 1,320 of the 3,495),
