@@ -361,7 +361,7 @@ const bot = (() => {
           return p && p.qty > 0 ? p : null;
         },
         equity: () => t.broker.equity(),
-        buy: (b) => t.service.buy(b),
+        buy: (b, o) => t.service.buy(b, o),
         sell: (b) => t.service.sell(b),
         job: (id) => t.service.job(id),
       };

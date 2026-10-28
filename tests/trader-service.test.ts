@@ -357,3 +357,18 @@ test("service: the ticket's order is checked before anything is sent", async () 
   assert.equal(check.orderType, "market");
   assert.equal(check.autoStop, false);
 });
+
+test("service buy: only the bot's in-process add passes the repeat check, never a request body", async () => {
+  const { service } = setup();
+  const first = await service.buy(buyNvda);
+  assert.equal(first.status, "started");
+  await service.idle();
+  // A request cannot set it: the field in the body is ignored.
+  const fromBody = await service.buy({ ...buyNvda, repeatOk: true });
+  assert.equal(fromBody.status, "refused");
+  assert.ok("refused" in fromBody);
+  assert.match(fromBody.refused.join(), /not a repeat/);
+  // The bot's pyramid add, in process, passes it.
+  const add = await service.buy(buyNvda, { repeatOk: true });
+  assert.equal(add.status, "started");
+});

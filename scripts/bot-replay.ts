@@ -277,7 +277,7 @@ const trading: BotTrading = {
     return p && p.qty > 0 ? p : null;
   },
   equity: () => broker.equity(),
-  buy: (b) => service.buy(b),
+  buy: (b, o) => service.buy(b, o),
   sell: (b) => service.sell(b),
   job: (id) => service.job(id),
 };
