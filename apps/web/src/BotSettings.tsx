@@ -647,7 +647,7 @@ function VersionCard({
   s: BotSettings;
   onChange: (s: BotSettings) => void;
 }) {
-  const { known, changes, label, latest } = versionState(s);
+  const { known, changes, label, latest, bump, next } = versionState(s);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const edited = changes.length > 0;
@@ -666,6 +666,12 @@ function VersionCard({
     standing = `Your own rule set, “${label}”: the rules below as you set them. Entries are stamped “${label}”.`;
   else if (edited)
     standing = `The rules below differ from ${known.id}; entries are stamped “${label}”.`;
+  // Which number the change moves: a core setting or a rule on / off is MINOR, a rule's own number PATCH.
+  let size = "";
+  if (known && bump === "minor")
+    size = ` A core change (a core setting, or a rule switched on or off): as a new version it would be ${next}.`;
+  else if (known && bump === "patch")
+    size = ` A configuration change (a rule's own numbers): as a new version it would be ${next}.`;
   return (
     <section className="bot-card bs-card" aria-labelledby="bs-version">
       <div className="bs-card-head">
@@ -705,6 +711,7 @@ function VersionCard({
       )}
       <p className={edited || !known ? "small bs-changed" : "muted small"}>
         {standing}
+        {size}
       </p>
       <div className="bs-rules-list">
         <p className="muted small">Full rules of each version: tap to open.</p>
@@ -752,7 +759,7 @@ function VersionCard({
           <input
             id="bs-version-label"
             type="text"
-            placeholder="Name this rule set, e.g. 2.2-test"
+            placeholder={`Name this rule set, e.g. ${next ?? "2.7.1"}`}
             autoComplete="off"
             maxLength={24}
             value={text}

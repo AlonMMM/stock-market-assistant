@@ -18,7 +18,10 @@ import {
   type BotSettings,
 } from "../../../packages/trading/src/bot/settings.js";
 import { algorithmSteps } from "../../../packages/trading/src/bot/algorithm.js";
-import { botVersions } from "../../../packages/trading/src/bot/versions.js";
+import {
+  canonicalVersion,
+  versionById,
+} from "../../../packages/trading/src/bot/versions.js";
 import {
   contractWords,
   contractsInWords,
@@ -1080,19 +1083,20 @@ function Closed({ closed }: { closed: Position[] }) {
 
 /** "v2.1": the version of the rules that entered a position. */
 function VersionTag({ version }: { version: string }) {
-  let title = `Entered by bot version ${version}`;
-  if (version.endsWith("*"))
-    title = `Entered by bot version ${version.slice(0, -1)} with changed rules`;
+  const id = canonicalVersion(version); // "2.6*" stamped before MAJOR.MINOR.PATCH reads "2.6.0*"
+  let title = `Entered by bot version ${id}`;
+  if (id.endsWith("*"))
+    title = `Entered by bot version ${id.slice(0, -1)} with changed rules`;
   return (
     <span className="bot-version" title={title}>
-      v{version}
+      v{id}
     </span>
   );
 }
 
 /** The version in words for the rules list: name, date and what it changed. */
 function versionWords(id: string): string {
-  const known = botVersions.find((v) => v.id === id.replace(/\*$/, ""));
+  const known = versionById(id.replace(/\*$/, ""));
   if (!known) return `Your own rule set “${id}”.`;
   let edited = "";
   if (id.endsWith("*")) edited = ", with rules changed below";

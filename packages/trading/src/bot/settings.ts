@@ -245,13 +245,15 @@ export function withDefaults(
     typeof record.version === "string"
       ? versionById(record.version)
       : undefined;
-  if (known)
+  if (known) {
     for (const key of ruleKeys)
       if (!(key in record)) merged[key] = known.rules[key];
+    merged.version = known.id; // "2.7" saved before MAJOR.MINOR.PATCH -> "2.7.0"
+  }
   if (!("version" in record)) {
     // A record from before versions: its missing rules are 2.6's (the rules
     // added since, like the pyramid and early entry, did not exist for it).
-    const legacy = versionById("2.6")!.rules;
+    const legacy = versionById("2.6.0")!.rules;
     for (const key of ruleKeys) if (!(key in record)) merged[key] = legacy[key];
     merged.version =
       matchingVersion(merged as unknown as BotSettings)?.id ?? currentVersion;
@@ -285,7 +287,7 @@ export function parseSettings(
       error:
         "version must be a known version or a label of up to 24 letters, digits, dots and dashes",
     };
-  out.version = version;
+  out.version = versionById(version)?.id ?? version; // a known id before MAJOR.MINOR.PATCH ("2.6") -> "2.6.0"
   for (const [key, [min, max, step]] of Object.entries(limits) as [
     NumberKey,
     [number, number, number],
