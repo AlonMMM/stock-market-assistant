@@ -77,7 +77,9 @@ def events_of(job):
     sb = {b[0]: b for b in day(sym, date)}
     nxt = CAL[CAL.index(date) + 1] if kind == "1" else date
     if kind == "w": nxt = WC.week_expiry(sym, date)   # the nearest expiry later this week (2-4 DTE)
-    out = [dict(date=date, sym=sym, kind=kind, nxt=nxt, m=q, u=x["sd"], stock0=sb[q][4]) for q in range(FIRST, LAST + 1)
+    if kind == "l": nxt = WC.late_expiry(sym, date)   # a late alert: the nearest expiry 2-7 days out
+    first, last = int(os.environ.get("SEC_FIRST", FIRST)), int(os.environ.get("SEC_LAST", LAST))   # SEC_FIRST=210 SEC_LAST=388: the late window
+    out = [dict(date=date, sym=sym, kind=kind, nxt=nxt, m=q, u=x["sd"], stock0=sb[q][4]) for q in range(first, last + 1)
            if al[q] and not al[q - 1] and q in sb]
     if os.environ.get("SEC_AM_PRE"):   # keep only a burst this strong either way (before any download)
         k = float(os.environ["SEC_AM_PRE"])
@@ -144,7 +146,7 @@ def pick_for(job):
     """The contract each version buys for each entry: picked on the last whole minute before the entry."""
     e, trig = job
     C.update(dte_min=0, dte_max=0, delta=0.35) if e["kind"] == "0" else C.update(dte_min=1, dte_max=5, delta=0.35)
-    if e["kind"] == "w": C.update(dte_min=0, dte_max=(datetime.fromisoformat(e["nxt"]) - datetime.fromisoformat(e["date"])).days)
+    if e["kind"] in ("w", "l"): C.update(dte_min=0 if e["kind"] == "w" else 2, dte_max=(datetime.fromisoformat(e["nxt"]) - datetime.fromisoformat(e["date"])).days)
     out = {}
     for entry, tg in trig.items():
         if not tg: continue
@@ -325,6 +327,11 @@ def main():
             if os.environ.get("SEC_SYMS"):   # SEC_SYMS=A,B,C: the alerts of these names only (P["universe"] for this list)
                 P["universe"] = os.environ["SEC_SYMS"].split(",")
             jobs = TW.days()
+            if os.environ.get("SEC_LATE"):   # every day with an expiry 2-7 days out, kind "l" (with SEC_FIRST / SEC_LAST)
+                top = json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "50"))]
+                pairs = [(s, d) for s in top for i, d in enumerate(CAL) if d >= FROM and i >= 21]
+                with mp.Pool(8) as pool: exps = pool.starmap(WC.late_expiry, pairs, chunksize=16)
+                jobs = [(d, s, "l") for (s, d), x in zip(pairs, exps) if x]
             if os.environ.get("SEC_WEEK"):   # only the days with no 0/1 DTE but an expiry later that week
                 top = json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "50"))]
                 with mp.Pool(8) as pool: kinds = pool.map(WC.kind, [(s, d) for s in top for i, d in enumerate(CAL) if d >= FROM and i >= 21], chunksize=16)

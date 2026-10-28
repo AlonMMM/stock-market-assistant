@@ -26,7 +26,8 @@ def fetch(item):
     want = {c: m for c, m in cs.items() if c not in old}
     if not want: return
     rows = [[r[k] for k in F.HEAD] for v in old.values() for r in v]
-    for r in F.get(sorted(want), "cbbo-1m", F.utc(date, min(want.values())), F.utc(date, F.END)):
+    end = max(F.END, min(392, max(want.values()) + 12))   # a late alert (after 15:31) reaches past the usual end
+    for r in F.get(sorted(want), "cbbo-1m", F.utc(date, min(want.values())), F.utc(date, end)):
         if not r["bid_px_00"] or not r["ask_px_00"]: continue
         t = F.datetime.fromisoformat(r["ts_recv"].replace("Z", "+00:00")).astimezone(F.NY)
         rows.append([r["symbol"].replace(" ", ""), t.hour * 60 + t.minute - 570, r["bid_px_00"], r["ask_px_00"], r["bid_sz_00"], r["ask_sz_00"]])

@@ -26,6 +26,27 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### Late alerts on 2 DTE, held overnight (2026-10-28)
+
+The user: alerts with under 3 hours to the close buy 2 DTE (even when 0 / 1 DTE exist), take the last half hour too,
+and hold overnight. `leg_seconds.py list` with `SEC_LATE=1 SEC_FIRST=210 SEC_LAST=388` (tag 3y50late: the nearest
+expiry 2-7 days out, 2,000 alerts with a burst >= 1.1), the winner's entry, 306 per-second books, 313 minute-quote
+contract-days, then `late_carry.py`: the give-back on minute closes after the 30-minute grace, at 15:50 the night
+(A: carry whatever is open; B: the main bot's rule, +50% and the top 10% of the range), the 10% night cap, 09:40 the gap
+rule, the rest under the give-back, expiry day out at 15:30. One account with the winner's 0 / 1 DTE trades.
+
+| Set | Night | Trades | Won | Avg | $100K becomes (2%) | Drop | Without best 5 | Tune / check | Check without 2025-10-10 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0-1 DTE (the winner) | - | 194 | 74 | +25.4% | $226,355 | 18.1% | +$1,699 | +28.9 / +22.5 | +1.2 |
+| late 2 DTE only | A | 200 | 51 | -7.0% | $73,133 | 38.8% | -$52,741 | -14.8 / -1.4 | -1.3 |
+| late 2 DTE only | B | 204 | 52 | -5.5% | $78,891 | 24.9% | -$43,575 | -5.5 / -5.6 | -5.4 |
+| both | A | 391 | 125 | +9.4% | $167,900 | 31.1% | -$30,707 | +7.7 / +10.6 | +0.4 |
+| both | B | 395 | 126 | +9.8% | $181,605 | 26.5% | -$26,748 | +12.0 / +8.1 | -2.2 |
+
+By entry (avg a trade, A / B): 13:00-14:30 -4.1 / -3.3% (125 trades), 14:30-15:30 -1.8 / -3.0% (89), the last half
+hour -14.4 / -11.9% (53; A carried all 53). The late alerts lose in every slice and both night rules; the last half
+hour worst. Not adopted.
+
 ### 2 DTE only (2026-10-28)
 
 The user: test 2 DTE trades. The same-week alerts with exactly 2 days to expiry (`SEC_DTE_DAYS=2`, 1,320 of the 3,495),

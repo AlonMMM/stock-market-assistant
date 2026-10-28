@@ -32,6 +32,12 @@ def week_expiry(sym, date):
     return e if e and e <= week_end(date) else None
 
 
+def late_expiry(sym, date):
+    """The nearest expiry 2 to 7 days out (the user, 2026-10-28: a late alert buys 2 DTE even when 0 / 1 DTE exist)."""
+    sim.C.update(dte_min=2, dte_max=7)
+    return sim.expiry_for(sym, date)
+
+
 def kind(job):
     sym, date = job
     k = L1.kind_of(sym, date)
