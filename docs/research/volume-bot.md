@@ -885,3 +885,25 @@ The user: "I would like to wait - a lot of stocks will continue the moves after 
 
 The spread does narrow with time (11% -> 7-9%), but about half the shocks turn back within a minute, and the ones that
 keep going are not cheaper to enter: the option has priced the move. Buying at once is the most consistent.
+
+### Benchmark on real prices with a 30% spread limit (2026-10-29)
+
+The user: "remove all trades with a spread of more than 30%", then "show me all on benchmark". Real prices, 2%, one trade
+at a time a stock (flat2), 2024-02 to 2026-10. Shock-only limits applied to the realrun dumps; the limit on every trade
+via `STR_MAX_SPREAD=0.30` (vol/cap30). Page: https://claude.ai/artifact/2BqemC1fHxoaYzeCbxtqWv (Shock Trades).
+
+| Version | Trades (shock) | Account (drop) | Without 10-10 | Tune | Check | Check without 10-10 | Live limits |
+|---|---|---|---|---|---|---|---|
+| Plan alone | 270 (0) | $657,424 (22%) | $231,721 | $170,179 | $384,275 | $136,702 | $373,799 |
+| Plan, every trade <= 30% | 218 (0) | $494,804 (18%) | $293,313 | $196,556 | $250,554 | $148,439 | $454,794 |
+| Plan + shock | 798 (536) | $479,544 (35%) | $179,155 | $154,945 | $308,888 | $115,657 | $231,238 |
+| Plan + shock <= 30% | 716 (453) | $721,780 (33%) | $268,235 | $191,845 | $376,244 | $141,325 | $337,802 |
+| Plan + shock <= 30%, burst >= 0 | 492 (226) | $829,141 (27%) | $290,384 | $208,351 | $395,291 | $137,278 | $434,443 |
+| Plan + shock <= 30%, burst >= 0, top 15 | 361 (92) | $743,888 (25%) | $263,229 | $183,431 | $404,387 | $143,735 | $425,559 |
+| Plan + shock, every trade <= 30% | 669 (457) | $512,851 (30%) | $326,641 | $213,908 | $235,240 | $153,218 | $424,679 |
+| Plan + shock, every trade <= 30%, burst >= 0 | 443 (229) | $612,148 (24%) | $353,921 | $234,172 | $258,318 | $149,782 | $512,759 |
+
+- The 30% limit helps the plan's own minute alerts too: without 10-10 $232K -> $293K, drop 22% -> 18%, live limits
+  $374K -> $455K; it gives up most of 10-10 (its crash-minute spreads were wide), hence the lower 3-year total.
+- Best without 10-10 and in the tune half: every trade <= 30% with the shock at burst >= 0 ($354K, $234K, live $513K).
+- The 30% line and the burst filter were set after seeing the data: paper first.
