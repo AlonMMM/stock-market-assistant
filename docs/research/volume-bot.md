@@ -1000,3 +1000,24 @@ by a few runners in the check half. The volume gate helps (10x > 5x > none in ev
 - Best 3-year total so far: <= BS + 3%, skip ($993K, drop 23.5%, live limits $567K, without 10-10 $346K), but its check
   half is below the plan alone ($355K vs $384K). No version beats the plan in the check half without 10-10 ($132-136K vs
   $137K). Not for live.
+
+## The shock's delta: 0.10 to 0.30 (2026-10-30)
+
+The user: "can you test it on delta 0.1, 0.15, 0.25, 0.3?" (plan + shock <= 30%, burst >= 0). Only the shock's buys change
+contract (`STR_SRC_V=e_shock15=plainNN`, leg_realspread plainNN); the minute alerts stay at 0.20. New picks for e_shock15
+(SEC_VERSIONS=plain20,up05,up10,up25,plain10,plain15,plain25,plain30; the old file kept as pickse_shock15.bak.json), books
+at the buy and minute quotes for the sale from Databento. Real prices, flat2 2%, 2024-02 to 2026-10. Plan alone: $657,424
+(21.5%), without 10-10 $231,721, tune $170,179, check $384,275, check without 10-10 $136,702, live limits $373,799.
+
+| Shock delta | Trades | Account (drop) | Without 10-10 | Tune | Check | Check without 10-10 | Live limits |
+|---|---|---|---|---|---|---|---|
+| 0.10 | 455 | $787,448 (28.9%) | $275,399 | $206,543 | $376,140 | $132,729 | $441,494 |
+| 0.15 | 472 | $791,327 (28.7%) | $277,598 | $216,496 | $364,255 | $128,216 | $417,353 |
+| 0.20 | 492 | $829,141 (26.6%) | $290,384 | $208,351 | $395,291 | $137,278 | $434,443 |
+| 0.25 | 505 | $812,654 (22.0%) | $283,169 | $200,721 | $404,035 | $141,249 | $432,349 |
+| 0.30 | 513 | $745,046 (21.6%) | $260,024 | $208,284 | $355,808 | $125,225 | $380,250 |
+
+- 0.20 and 0.25 lead; 0.10/0.15 lose the check half and have the biggest drops; 0.30 gives back the move.
+- 0.25 is the best balanced: the best check half (with and without 10-10), the drop 22% (vs 26.6%), within 2% of 0.20 on
+  the totals. Both beat the plan in all six views. The same order holds with no spread limit or no burst filter
+  (0.25 has the smallest drops there too).

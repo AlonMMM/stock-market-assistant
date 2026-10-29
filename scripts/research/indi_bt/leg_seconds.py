@@ -330,7 +330,7 @@ def trade(job):
     # (STR_FILTERS=shockbs, the user 2026-10-29: no buy over 5% above the fair price)
     fair = bs_price(e, contract, side, (sec // 60) - 1, ct, stock_in) if os.environ.get("STR_FILTERS") == "shockbs" else None
     alts, ok = [], None
-    if os.environ.get("STR_FILTERS") == "shockbs" and e.get("src") == "e_shock15" and not force and not BARS and entry == "hold5" and v == "plain20":
+    if os.environ.get("STR_SHOCK_RETRY") and e.get("src") == "e_shock15" and not force and not BARS and entry == "hold5" and v == "plain20":
         alts, ok = shock_retry(e, contract, side, sec, buy, fair, job)
     w = LF.walk(e["sym"], e["date"], ct, side, contract, spot, e["u"])
     if not w: return None
@@ -529,6 +529,10 @@ def main():
         if os.environ.get("STR_TO"): jobs = [j for j in jobs if j[0]["date"] <= os.environ["STR_TO"]]
         with mp.Pool(8) as pool: T = [t for t in pool.map(trade, jobs, chunksize=8) if t]
         T = [x for t in T for x in (t if isinstance(t, list) else [t])]   # a shock buy with its retried buys
+        for spec in os.environ.get("STR_SRC_V", "").split(","):   # "e_shock15=plain10": that tag's alerts buy that contract
+            if not spec: continue
+            tag, ver = spec.split("=")
+            T = [t for t in T if not (t["src"] == tag and t["v"] == "plain20")] + [dict(t, v="plain20") for t in T if t["src"] == tag and t["v"] == ver]
         OWN = {}
         if os.environ.get("STR_SRC_ENTRY"):   # "e_shock15=hold5:300" (the user 2026-10-29, "all together"): that tag's alerts
             # enter at hold5 within 300 s with no burst, shown as "cross"; every other alert keeps the cross and its burst
@@ -590,8 +594,11 @@ def main():
                 FILTERS = {"no shock": lambda t: t["src"] != "e_shock15"}
                 for burst in (False, True):
                     for rule in [None] + [retry_name(c, g) for c in RETRY_CAPS for g in RETRY_GATES]:
+                        if rule and not os.environ.get("STR_SHOCK_RETRY"): continue
                         name = f"shock{', ' + rule if rule else ''}{', burst >= 0' if burst else ''}"
                         FILTERS[name] = (lambda r, b: lambda t: shock_ok(t, r, b))(rule, burst)
+                    FILTERS[f"shock <= 30%{', burst >= 0' if burst else ''}"] = (lambda b: lambda t: shock_ok(t, None, b) and (
+                        t["src"] != "e_shock15" or (t["spread"] is not None and t["spread"] <= 0.3)))(burst)
             if os.environ.get("STR_FILTERS") == "move":
                 FILTERS = {"all": lambda t: True, "t >= 0": lambda t: ok(t, "t") and t["t"] >= 0}
                 for k in (2, 3, 4, 6):
