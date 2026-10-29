@@ -864,3 +864,24 @@ Only "burst >= 0, top 15" beats the plan in all four views, by 5-12%, with 4 poi
 Fills: the spread at a shock buy is 12% of the mid (median; 75th pct 23%). The backtest already pays mid + a quarter of the
 spread (+3.8%), and a buy limit at the mid fills within 10 s only 26% of the time, so no cheaper buy is available. The
 sale is at the bid; a sell-side limit needs 1-second books at the exits (not downloaded).
+
+### Waiting for the spread to come down (2026-10-29)
+
+The user: "I would like to wait - a lot of stocks will continue the moves after the shock and the spread will come down."
+615 shock buys with 1-second books (to 12 s after the buy) and minute quotes to 15:31.
+- First 12 s: the spread's median is unchanged at every second; 47% narrower at 12 s, 23% narrower by a quarter or more,
+  7% by half. The ask's median is unchanged too (36% cheaper at 12 s, 10% of buys >= 7% cheaper, 10% >= 10% dearer).
+  A buy limit at the mid fills by 12 s 23% of the time.
+- Waiting W minutes (buy at that minute's real book, mid + a quarter of the spread, only if the stock is still on the
+  side's way; exit rules from the later buy; sale at the real bid):
+
+| Wait | All shock: bought / turned back | avg trade (tune / check) | Burst >= 0, top 15: bought | avg trade (tune / check) | Spread at the buy (all / filtered) |
+|---|---|---|---|---|---|
+| 0 | 614 / 0 | +0.3% (+1.0% / -0.4%) | 112 | +14.6% (+13.7% / +15.7%) | 11.0% / 6.7% |
+| 1 min | 309 / 306 | +0.0% (+3.0% / -3.1%) | 60 | +16.2% (+23.9% / +6.7%) | 9.6% / 5.1% |
+| 2 min | 311 / 304 | -3.5% (+4.7% / -12.5%) | 56 | +7.7% (+26.2% / -15.2%) | 9.3% / 5.9% |
+| 5 min | 317 / 298 | -3.5% (-1.0% / -6.2%) | 59 | +9.8% (+9.5% / +10.4%) | 8.2% / 4.4% |
+| 10 min | 297 / 318 | -1.2% (+1.6% / -4.1%) | 51 | -3.4% (+1.7% / -12.6%) | 6.9% / 4.2% |
+
+The spread does narrow with time (11% -> 7-9%), but about half the shocks turn back within a minute, and the ones that
+keep going are not cheaper to enter: the option has priced the move. Buying at once is the most consistent.

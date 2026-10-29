@@ -450,6 +450,11 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
             if G and (not G.get("day0") or k == 0) and peak / cost - 1 >= G["arm"]:
                 if "floor" in G and g <= G["floor"]: pending = ("all", "G_floor"); continue
                 if "trail" in G and c <= peak * (1 - G["trail"]): pending = ("all", "G_trail"); continue
+            NC = X.get("nocarry_trail")  # {arm, trail}, expiry_rules.py (the user, 2026-10-29: "if this is the last trading
+            # day (can't overnight) try to cut winnings during the day"): on a day the position cannot be held tonight
+            # (under carry_min_dte days to expiry), once up `arm` over the cost, all out `trail` under the option's high
+            if NC and peak / cost - 1 >= NC["arm"] and (dt.date.fromisoformat(exp) - dt.date.fromisoformat(d)).days < X["carry_min_dte"]:
+                if c <= peak * (1 - NC["trail"]): pending = ("all", "NC_trail"); continue
             BT_ = X.get("big_trail")  # {arm, k}: once the option was up `arm` (any day held), out when the stock gives back k x S30
             # from its best since then (the user, 2026-10-27: "from some gain we should start to take profits")
             if BT_ and sd.ok and peak / cost - 1 >= BT_["arm"]:
