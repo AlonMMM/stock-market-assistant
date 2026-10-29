@@ -465,6 +465,20 @@ def main():
             T = [t for t in T if (t["date"], t["sym"], t["minute"]) not in wk or (t["am"] is not None and t["am"] >= float(os.environ["STR_AM_MIN_W"]))]
         if os.environ.get("STR_CROSS_MAX"):   # seconds from the alert to the cross
             T = [t for t in T if t["to_cross"] <= int(os.environ["STR_CROSS_MAX"])]
+        MIXES = []
+        if os.environ.get("STR_MIX"):   # the user 2026-10-29: far delta when the volume is huge and the cross fast, else near
+            # STR_MIX="name=far:near:vmin:cmax;...", STR_VOL_FILE: {"sym|date|alert second": volume multiple}
+            vol = json.load(open(os.environ["STR_VOL_FILE"]))
+            by_key = {}
+            for t in T: by_key.setdefault((t["date"], t["sym"], t["minute"], t["entry"]), {})[t["v"]] = t
+            for spec in os.environ["STR_MIX"].split(";"):
+                name, rule = spec.split("="); far, near, vmin, cmax = rule.split(":")
+                MIXES.append(name)
+                for (d, sy, mi, en), vs in by_key.items():
+                    any_t = next(iter(vs.values()))
+                    huge = vol.get(f"{sy}|{d}|{any_t['alert_sec']}", 0) >= float(vmin) and any_t["to_cross"] <= float(cmax)
+                    pick = vs.get(far if huge else near)
+                    if pick: T.append(dict(pick, v=name, far=int(huge)))
         rows = [dict(date=d, sym=s, minute=0, right="C") for d, s in {(t["date"], t["sym"]) for t in T}]
         nf.features(rows)
         skip = {(r["date"], r["sym"]) for r in rows if r["e_next"] == 0 or (r["pre_rvol"] is not None and r["pre_rvol"] >= 4)}
@@ -498,7 +512,7 @@ def main():
                     FILTERS[f"t >= 0, skip day move >= {k}"] = (lambda k: lambda t: ok(t, "t") and t["t"] >= 0 and ok(t, "mv_close") and t["mv_close"] < k)(k)
             VERS, ENTS = ("plain20",), ("cross",)
             if os.environ.get("STR_FILTERS") != "move": VERS, ENTS = ("plain20",), ("close", "cross")
-        else: VERS, ENTS = VERSIONS, ENTRIES
+        else: VERS, ENTS = VERSIONS + tuple(MIXES), ENTRIES
         GROUPS = {"": lambda t: True}
         if os.environ.get("STR_GROUPS"):
             t15 = set(json.load(open(os.path.join(HERE, "strangle_rank.json")))[:15])

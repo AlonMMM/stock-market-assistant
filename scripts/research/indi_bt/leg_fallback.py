@@ -52,13 +52,16 @@ def choose(cands, mode):
     return best
 
 
+TICK = float(os.environ.get("STR_TICK", "0"))   # STR_TICK=0.01: the model pays at least a cent over the middle, gets a cent under
+
+
 def walk(sym, date, ct, side, contract, spot_side, u):
     """Buy at the side, sell on the stock's give-back. -> (buy, sell, buy_minute, exit_minute) or None."""
     kb = {b[0]: b for b in day(contract, date)}
     sb = {b[0]: b for b in day(sym, date)}
     b0 = next((kb[q] for q in range(ct, ct + 4) if q in kb), None)
     if not b0: return None
-    buy = sim.mid(b0) * (1 + SH); last = b0; best = spot_side
+    buy = max(sim.mid(b0) * (1 + SH), sim.mid(b0) + TICK); last = b0; best = spot_side
     for t in range(b0[0] + 1, END + 1):
         if t in kb: last = kb[t]
         spot = sb[t][4] if t in sb else None
@@ -67,8 +70,8 @@ def walk(sym, date, ct, side, contract, spot_side, u):
         if EARLY_GIVE and t - b0[0] <= EARLY_MIN: give = EARLY_GIVE
         if NOSTOP_MIN and t - b0[0] <= NOSTOP_MIN and t < END: continue
         if t >= END or (spot and abs(spot / best - 1) >= give * u):
-            return buy, max(sim.mid(last) * (1 - SH), 0.01), b0[0], t
-    return buy, max(sim.mid(last) * (1 - SH), 0.01), b0[0], END
+            return buy, max(min(sim.mid(last) * (1 - SH), sim.mid(last) - TICK), 0.01), b0[0], t
+    return buy, max(min(sim.mid(last) * (1 - SH), sim.mid(last) - TICK), 0.01), b0[0], END
 
 
 def one(sig):

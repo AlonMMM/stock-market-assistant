@@ -120,6 +120,15 @@ def pick(cands, how, date, ct):
     if how == "now35cap":   # the bot now, skipping a contract whose spread is over 40%
         c = LF.choose(cands, "liquid")
         return c if c and real(c[0], date, ct, c[4], level(c[0], date)) <= CAP else None
+    if how.startswith("up"):   # upNN (the user 2026-10-29): the strike nearest NN delta from $0.05; no interest (under 200
+        # contracts in 30 min): one strike toward the money, else none
+        target = int(how[2:]) / 100
+        ok = sorted([c for c in cands if c[4] >= 0.05], key=lambda c: abs(c[3]))
+        if not ok: return None
+        best = min(ok, key=lambda c: abs(abs(c[3]) - target))
+        if best[5] >= 200: return best
+        i = ok.index(best)
+        return ok[i + 1] if i + 1 < len(ok) and ok[i + 1][5] >= 200 else None
     if how.startswith("plain"):   # plain20, plain10 (the user 2026-10-29, "test the shock with 0.1 delta"): that delta, the liquid fallback
         old = LF.DELTA, LF.LOW
         LF.DELTA = int(how[5:]) / 100

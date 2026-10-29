@@ -772,3 +772,27 @@ Script and data: scratchpad volmove/study.py, alerts.json.
   3.7% at 15-20x (check half 5.5-5.9% at 15-50x, the same without 2025-10-10).
 - 50x and up is worse again (thin windows: a near-zero median, opening/halt prints): a cap at ~50x is worth testing.
 - So the shock rule's edge is the tail, which suits options: most alerts go nowhere, and the large ones lean its way.
+
+## The user's delta thesis on the shock alert (2026-10-29)
+
+The user: "when the volume is big and the order fills faster - buy far delta (0.05-0.1), and go back to 0.25 delta when
+the signal is less huge; if there is no interest in the contract, try one above". Shock 15x alone, top 50, 2024-02 on,
+free2 at 2%, +-3% model plus a cent each way (`STR_TICK=0.01`). New: `upNN` (leg_realspread.pick: the strike nearest NN
+delta from $0.05; under 200 contracts in 30 min, one strike toward the money, else none), `STR_MIX` + `STR_VOL_FILE`
+(far version when the alert's volume >= V and the cross <= C s, else the near one). 12 mixes (far 0.05/0.10, V 20/30/50,
+C 10 s/any) x windows 15 s / 5 min x entries; chosen on the tune half. Files: scratchpad vol/thesis.
+
+| Version (5-min window, hold 5 s) | Trades | 3 years (drop) | Tune (drop) | Check (drop) | Check without 2025-10-10 |
+|---|---|---|---|---|---|
+| plain20 (today's picker: 0.20, from $0.20) | 598 | $323,094 (24%) | $173,343 (21%) | $185,242 (17%) | $158,414 |
+| up25 | 666 | $343,072 (36%) | $165,824 (23%) | $204,881 (26%) | $179,612 |
+| up10 | 581 | $298,798 (46%) | $201,944 (34%) | $147,724 (43%) | $149,591 |
+| up05 | 502 | $153,660 (52%) | $128,692 (51%) | $118,784 (46%) | $119,828 |
+| best mix on the tune half: 0.10 if >= 20x and cross <= 10 s, else 0.25 | 665 | $303,191 (39%) | $163,232 (24%) | $181,449 (30%) | $158,547 |
+| mix: 0.10 if >= 50x and cross <= 10 s, else 0.25 | 667 | $325,655 (37%) | $162,389 (23%) | $200,000 (27%) | $175,288 |
+
+- Not better. No mix beats plain 0.25 on the tune half, and every far-delta version deepens the drop (to 34-52%).
+  A fixed 0.05 is the worst version at every window and entry ($46K-$154K, drops to 75%).
+- The cheap contracts are the drop: the same 0.20-0.25 delta with a $0.20 floor (plain20) has drops of 17-24%; from
+  $0.05 (up25) 23-36%. Keep the $0.20 floor and 0.20 delta.
+- With hold entries the mix is mostly the near version (a hold rarely confirms within 10 s).
