@@ -76,6 +76,13 @@ export interface StrangleSettings {
   burstMinWeek: number;
   noStopMinutes: number;
   exitOnMinuteClose: boolean;
+  // The second alert, F60x2 (the user, 2026-10-29: "I want the f60 to be live
+  // today"): a rolling 60-second window on 10-second bars, 09:40-13:00, volume
+  // 2x the same window's 20-session median or today's pace (strangle/fast.ts);
+  // then the same side, burst and exit, on a 0/1 DTE expiry only. Backtest
+  // (volume-bot.md, the +-3% model, not real quotes): with the production plan,
+  // 498 trades, $100K -> $1.02M at 2% in 3 years (vs $626K without).
+  fastAlert: boolean;
   // The news filter, as the Indi bot's.
   skipEarnings: boolean;
   skipPremarket: boolean;
@@ -130,6 +137,7 @@ export const defaultStrangleSettings: StrangleSettings = {
   burstMinWeek: 2.5,
   noStopMinutes: 30,
   exitOnMinuteClose: true,
+  fastAlert: true,
   skipEarnings: true,
   skipPremarket: true,
 };
@@ -181,6 +189,7 @@ const booleans: BooleanKey[] = [
   "burstFilter",
   "weekExpiry",
   "exitOnMinuteClose",
+  "fastAlert",
   "skipEarnings",
   "skipPremarket",
 ];
@@ -317,7 +326,7 @@ export function strangleSteps(
   return [
     {
       name: "The alert",
-      text: `On a day with a same-day expiry${nextDayWords}${s.weekExpiry ? `, or else the nearest expiry later that week when the burst is at least ${s.burstMinWeek}` : ""}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.`,
+      text: `On a day with a same-day expiry${nextDayWords}${s.weekExpiry ? `, or else the nearest expiry later that week when the burst is at least ${s.burstMinWeek}` : ""}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.${s.fastAlert ? " Also the 60-second alert (60 seconds of volume at 2× normal or today's pace, a move of 3× normal), 09:40 to 13:00, on a same-day or next-session expiry only." : ""}`,
     },
     {
       name: "News filter",

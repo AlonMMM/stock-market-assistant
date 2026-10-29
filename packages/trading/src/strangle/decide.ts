@@ -101,6 +101,25 @@ export function burstOf(
   return (at / before - 1) / unit;
 }
 
+/**
+ * The burst of an alert read at `second` after 09:30 at `price` (the
+ * 60-second alert; f60_prefilter.py): against the close of the minute that
+ * ended 3 minutes before, in typical 30-minute moves. For a minute alert
+ * (second = the end of its minute) this is burstOf.
+ */
+export function burstAtSecond(
+  bars: readonly { m: number; c: number }[],
+  second: number,
+  price: number,
+  unit: number,
+): number | null {
+  const before = bars.find(
+    (b) => b.m === Math.floor((second - 180) / 60) - 1,
+  )?.c;
+  if (!(before && price > 0 && unit > 0)) return null;
+  return (price / before - 1) / unit;
+}
+
 /** With the burst filter, the side stands only when the burst points its way by burstMin. */
 export function burstAgrees(
   side: Leg,
