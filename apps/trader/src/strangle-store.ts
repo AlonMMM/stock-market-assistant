@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import type { FastWindows } from "../../../packages/trading/src/strangle/fast.js";
 import type { OptionBook } from "./option-book.js";
 
 // The alert leg bot's records (docs/tasks/backend-strangle-bot.md), in the
@@ -69,6 +70,8 @@ export interface StrangleTrade {
   best: number | null; // the stock's best since the buy, the side's way
   stockAtBuy?: number; // the stock when the leg was bought (the minute-close walk starts its best here)
   burst?: number | null; // the 3 minutes to the alert, in typical 30-minute moves, up positive; absent on older trades
+  alertSecond?: number; // the 60-second alert: seconds after 09:30 when it was read (a minute alert: the end of alertMinute)
+  fast?: boolean; // from the 60-second alert (F60x2)
   leg: StrangleLeg | null;
   phase: StranglePhase;
   closeReason: string | null;
@@ -99,6 +102,9 @@ export class StrangleStore {
       CREATE TABLE IF NOT EXISTS strangle_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL,
         kind TEXT NOT NULL, text TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS strangle_fast_days (
+        symbol TEXT NOT NULL, day TEXT NOT NULL, data TEXT NOT NULL,
+        PRIMARY KEY (symbol, day));
     `);
     // Since re-entry (2026-10-26) a stock can have several alerts a day:
     // strangle_alerts replaces strangle_signals (one a day), copied once.
@@ -223,6 +229,30 @@ export class StrangleStore {
         )
         .all(since) as { data: string }[]
     ).map((r) => JSON.parse(r.data) as StrangleTrade);
+  }
+
+  /** A session's 60-second windows of a stock (strangle/fast.ts), for the 60-second alert's medians. */
+  fastDay(symbol: string, day: string): FastWindows | undefined {
+    const row = this.db
+      .prepare(
+        "SELECT data FROM strangle_fast_days WHERE symbol = ? AND day = ?",
+      )
+      .get(symbol, day) as { data: string } | undefined;
+    return row ? (JSON.parse(row.data) as FastWindows) : undefined;
+  }
+
+  /** Saves a session's windows; keeps 30 sessions a stock. */
+  saveFastDay(symbol: string, day: string, w: FastWindows) {
+    this.db
+      .prepare(
+        "INSERT OR REPLACE INTO strangle_fast_days (symbol, day, data) VALUES (?, ?, ?)",
+      )
+      .run(symbol, day, JSON.stringify(w));
+    this.db
+      .prepare(
+        "DELETE FROM strangle_fast_days WHERE symbol = ? AND day NOT IN (SELECT day FROM strangle_fast_days WHERE symbol = ? ORDER BY day DESC LIMIT 30)",
+      )
+      .run(symbol, symbol);
   }
 
   setting(name: string): string | undefined {

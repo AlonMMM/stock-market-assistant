@@ -291,6 +291,7 @@ const switches: {
     | "burstFilter"
     | "weekExpiry"
     | "exitOnMinuteClose"
+    | "fastAlert"
     | "skipEarnings"
     | "skipPremarket"
     | "followFavorites";
@@ -331,6 +332,11 @@ const switches: {
     key: "exitOnMinuteClose",
     label: "Give-back on minute closes",
     help: "Read the give-back on each minute's close, as the backtest does, not on every 10-second tick.",
+  },
+  {
+    key: "fastAlert",
+    label: "60-second alert",
+    help: "A second alert on 10-second bars: 60 seconds of volume at 2× normal or today's pace with a move of 3× normal, 09:40 to 13:00, same-day or next-session expiry only (F60x2).",
   },
   {
     key: "skipEarnings",

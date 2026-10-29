@@ -3,6 +3,7 @@ import { bookOf, lastBookOf } from "./option-book.js";
 import {
   coreClose,
   newYork,
+  newYorkToUtc,
   previousSessions,
 } from "../../../packages/market-data/src/calendar.js";
 import { priorLevels } from "../../../packages/trading/src/bot/levels.js";
@@ -36,12 +37,11 @@ import {
 import {
   bestOf,
   burstAgrees,
+  burstAtSecond,
   burstOf,
-  crossTooLate,
   giveBackExit,
   legQty,
   minuteCloseExit,
-  secondsSinceAlert,
   sideOf,
   strengthAgrees,
   waitedOut,
@@ -61,7 +61,19 @@ import type {
   StrangleScanRow,
   StrangleView,
 } from "../../../packages/trading/src/strangle/view.js";
+import {
+  carried,
+  fastBaseline,
+  FastFire,
+  fastRule,
+  fastState,
+  fastWindows,
+  paceSums,
+  type FastBaseline,
+  type FastWindows,
+} from "../../../packages/trading/src/strangle/fast.js";
 import type { BotMarket, BotTrading } from "./bot.js";
+import { FastTape, fetchFastDay } from "./strangle-fast.js";
 import {
   tradeCash,
   type StrangleEventKind,
@@ -187,6 +199,13 @@ export class StrangleBot {
   // Every watched stock's alert checks at the last closed minute (the app's map).
   private scanned: StrangleScanRow[] = [];
   // Each open trade's live marks, for the status (not stored).
+  // The 60-second alert (strangle/fast.ts): today's 10-second tape, each
+  // stock's 20-session medians once its history is in, its crossing state.
+  private tape: FastTape | null = null;
+  private fastBase = new Map<string, FastBaseline>();
+  private fastFire = new Map<string, FastFire>();
+  private fastDone = new Map<string, number>();
+  private fastBusy = false;
   private marks = new Map<
     string,
     { leg: number | null; stock: number | null; at: number }
@@ -360,7 +379,7 @@ export class StrangleBot {
     try {
       for (const t of waiting) {
         const stock = prices.get(t.symbol);
-        if (crossTooLate(this.sessionSecond(), t.alertMinute, s)) {
+        if (this.tooLate(t, s)) {
           this.slowCross(t, s);
           continue;
         }
@@ -376,6 +395,159 @@ export class StrangleBot {
         `Side watch failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  /**
+   * Called every 2 seconds: the 60-second alert (F60x2). Reads the stocks'
+   * new trades into today's 10-second bars, checks each finished slot in
+   * order, and on a fresh alert from 09:40 to 13:00 watches the stock for its
+   * side, as a minute alert does.
+   */
+  async watchFast(): Promise<void> {
+    const tape = this.tape;
+    const date = this.day;
+    if (this.fastBusy || !tape || date === null) return;
+    const s = this.settings();
+    if (!s.fastAlert) return;
+    const now = this.o.now();
+    if (newYork(now).date !== date || now < tape.openMs) return;
+    this.fastBusy = true;
+    try {
+      await tape.poll(this.o.market, now);
+      // A slot is checked 3 seconds after it ends, once its trades are in.
+      const ready = Math.min(
+        Math.floor((tape.cursor - 3_000 - tape.openMs) / 10_000) - 1,
+        fastRule.slots - 1,
+      );
+      for (const symbol of this.symbols) {
+        const base = this.fastBase.get(symbol);
+        const done = this.fastDone.get(symbol) ?? -1;
+        if (!base || ready <= done) continue;
+        const day = tape.day(symbol);
+        const cf = carried(day.c);
+        const cum = paceSums(day.v);
+        let fire = this.fastFire.get(symbol);
+        if (!fire) this.fastFire.set(symbol, (fire = new FastFire()));
+        for (let t = done + 1; t <= ready; t++) {
+          const st = fastState(day, cf, base, t, cum);
+          if (!fire.step(t, st.on)) continue;
+          if (t < fastRule.firstSlot || t > fastRule.lastSlot) continue;
+          const second = (t + 1) * 10;
+          // A slot passed while catching up (a start mid-session): no trade.
+          if (this.sessionSecond() - second > 30) continue;
+          await this.fastEntry(date, symbol, second, cf[t]!, st.up, s);
+        }
+        this.fastDone.set(symbol, ready);
+      }
+    } catch (error) {
+      this.event(
+        "error",
+        `60-second alert failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      this.fastBusy = false;
+    }
+  }
+
+  private async fastEntry(
+    date: string,
+    symbol: string,
+    second: number,
+    price: number,
+    up: boolean,
+    s: StrangleSettings,
+  ) {
+    if (!s.enabled) return;
+    if (this.o.store.openTrades().some((t) => t.symbol === symbol)) return;
+    let traded = 0;
+    for (const t of this.o.store.recentTrades(date))
+      if (t.day === date && t.symbol === symbol && t.leg && t.leg.bought > 0)
+        traded++;
+    if (traded >= s.maxPerStock) return;
+    const minute = Math.floor(second / 60);
+    const side = up ? "up" : "down";
+    // One alert a stock a minute: a minute alert of the same minute keeps it.
+    const added = this.o.store.addSignal({
+      day: date,
+      symbol,
+      minute,
+      side,
+      outcome: "",
+      detail: "",
+      at: this.o.now(),
+    });
+    if (!added) return;
+    const clock = `${clockOf(Math.floor(second / 60))}:${String(second % 60).padStart(2, "0")}`;
+    this.event(
+      "signal",
+      `${symbol}: 60-second volume alert ${side} at ${clock}`,
+    );
+    try {
+      const r = await this.watch(date, symbol, minute, side, s, {
+        second,
+        price,
+      });
+      this.outcome(date, symbol, r.outcome, r.detail);
+    } catch (error) {
+      this.outcome(
+        date,
+        symbol,
+        "error",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  /**
+   * The 60-second alert's history: each stock's 20 prior sessions in
+   * 10-second bars, from the store or fetched once from its trades; a stock's
+   * alert starts once all 20 are in.
+   */
+  private async fillFast(date: string) {
+    if (!this.o.market.trades || !this.settings().fastAlert) return;
+    const days = previousSessions(date, fastRule.days);
+    const queue = [...this.symbols];
+    let ready = 0;
+    let failed = 0;
+    const one = async (symbol: string) => {
+      const prior: FastWindows[] = [];
+      for (const d of days) {
+        if (this.day !== date) return;
+        let w = this.o.store.fastDay(symbol, d);
+        const close = coreClose(d);
+        if (!w && close !== null) {
+          const got = await fetchFastDay(
+            this.o.market,
+            symbol,
+            newYorkToUtc(d, 570),
+            newYorkToUtc(d, close),
+            fastWindows,
+          );
+          if (got) {
+            this.o.store.saveFastDay(symbol, d, got);
+            w = got;
+          }
+        }
+        if (w) prior.push(w);
+      }
+      const base = fastBaseline(prior);
+      if (base && this.day === date) {
+        this.fastBase.set(symbol, base);
+        ready++;
+      }
+    };
+    const worker = async () => {
+      for (let symbol = queue.shift(); symbol; symbol = queue.shift())
+        await one(symbol).catch(() => {
+          failed++;
+        });
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    if (this.day === date)
+      this.event(
+        "info",
+        `60-second alert: 20 sessions of 10-second bars in for ${ready} of ${this.symbols.length} stocks${failed ? ` (${failed} failed, again at the next start)` : ""}`,
+      );
   }
 
   /** Buys the side's leg once, whichever loop saw the side first. */
@@ -451,6 +623,19 @@ export class StrangleBot {
     // In the background: one chain read a stock, so the warm-up does not wait.
     this.noExpiry = new Set();
     void this.findNoExpiry(date, s);
+    this.tape = null;
+    this.fastBase.clear();
+    this.fastFire.clear();
+    this.fastDone.clear();
+    const closeAt = coreClose(date);
+    if (this.o.market.trades && closeAt !== null) {
+      this.tape = new FastTape(
+        [...this.symbols],
+        newYorkToUtc(date, 570),
+        newYorkToUtc(date, closeAt),
+      );
+      void this.fillFast(date);
+    }
   }
 
   private async loadEarnings(date: string) {
@@ -707,6 +892,7 @@ export class StrangleBot {
     m: number,
     side: "up" | "down",
     s: StrangleSettings,
+    fast?: { second: number; price: number },
   ): Promise<{ outcome: string; detail: string }> {
     const blocked = this.newsBlock(date, symbol, s);
     if (blocked) return blocked;
@@ -720,15 +906,26 @@ export class StrangleBot {
     // when there is none today; none of them ends it now.
     const expiry = await this.expiryFor(symbol, date, s);
     if (!expiry) return { outcome: "no_expiry", detail: "" };
+    // The 60-second alert was tested on 0/1 DTE only.
+    if (fast && expiry > nextSession(date))
+      return {
+        outcome: "no_expiry",
+        detail:
+          "the 60-second alert trades a same-day or next-session expiry only",
+      };
     // The side lines start at the alert minute's close, as the backtest's
     // (leg_seconds.py stock0), not at a trade read seconds later: a print a few
     // cents off moves both lines and can pick the other side (the replay of
     // 2026-10-08, CRM). The latest trade only when that bar is missing.
+    // The 60-second alert's lines start at its 10-second bar's close.
     const ref =
+      fast?.price ??
       this.barsOf(symbol).find((b) => b.m === m)?.c ??
       (await this.stockNow(symbol, m));
     if (ref === null) return { outcome: "no_prices", detail: "no stock price" };
-    const burst = burstOf(this.barsOf(symbol), m, unit);
+    const burst = fast
+      ? burstAtSecond(this.barsOf(symbol), fast.second, fast.price, unit)
+      : burstOf(this.barsOf(symbol), m, unit);
     const trade: StrangleTrade = {
       id: randomUUID(),
       day: date,
@@ -738,6 +935,7 @@ export class StrangleBot {
       unit,
       stockRef: ref,
       burst,
+      ...(fast ? { alertSecond: fast.second, fast: true } : {}),
       side: null,
       sideMinute: null,
       best: null,
@@ -753,7 +951,7 @@ export class StrangleBot {
     const pct = (s.confirmUnits * unit * 100).toFixed(2);
     return {
       outcome: "watching",
-      detail: `stock ${ref.toFixed(2)}; the side at ${pct}% either way${burst === null ? "" : `; burst ${burst.toFixed(2)}×`}${expiry === date ? "" : expiry === nextSession(date) ? "; 1DTE" : `; expiry ${expiry}`}`,
+      detail: `${fast ? "60-second alert; " : ""}stock ${ref.toFixed(2)}; the side at ${pct}% either way${burst === null ? "" : `; burst ${burst.toFixed(2)}×`}${expiry === date ? "" : expiry === nextSession(date) ? "; 1DTE" : `; expiry ${expiry}`}`,
     };
   }
 
@@ -960,6 +1158,16 @@ export class StrangleBot {
     return (newYork(now).minute - 570) * 60 + (Math.floor(now / 1000) % 60);
   }
 
+  /** Seconds from the alert to now: a minute alert is read at its minute's close, the 60-second one at its own second. */
+  private lateBy(t: StrangleTrade): number {
+    return this.sessionSecond() - (t.alertSecond ?? (t.alertMinute + 1) * 60);
+  }
+
+  /** With the cross filter, the side has to come within crossMaxSeconds of the alert. */
+  private tooLate(t: StrangleTrade, s: StrangleSettings): boolean {
+    return s.crossFilter && this.lateBy(t) > s.crossMaxSeconds;
+  }
+
   /** The cross filter: no side within crossMaxSeconds of the alert ends the watch. */
   private slowCross(t: StrangleTrade, s: StrangleSettings) {
     this.close(t, "no side fast enough after the alert");
@@ -994,7 +1202,7 @@ export class StrangleBot {
           this.close(t, "no side in time");
           continue;
         }
-        if (crossTooLate(this.sessionSecond(), t.alertMinute, s)) {
+        if (this.tooLate(t, s)) {
           this.slowCross(t, s);
           continue;
         }
@@ -1100,8 +1308,8 @@ export class StrangleBot {
     };
     t.side = side;
     t.sideMinute = m;
-    const late = secondsSinceAlert(this.sessionSecond(), t.alertMinute);
-    if (crossTooLate(this.sessionSecond(), t.alertMinute, s))
+    const late = this.lateBy(t);
+    if (this.tooLate(t, s))
       return fail("slow_cross", `the side ${late} s after the alert`);
     // A same-week expiry (later than the next session) asks for the stronger burst.
     const weekly = (t.expiry ?? t.day) > nextSession(t.day);

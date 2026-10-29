@@ -537,6 +537,10 @@ const strangleTimer = strangle
 const sideTimer = strangle
   ? setInterval(() => void strangle.watchSides(), 1_000)
   : null;
+// The 60-second alert's 10-second bars, every 2 seconds (strangle/fast.ts).
+const fastTimer = strangle
+  ? setInterval(() => void strangle.watchFast(), 2_000)
+  : null;
 api.get("/v1/strangle", async () => {
   if (!strangle) throw new RequestError(strangleOff, 409);
   return strangle.status();
@@ -719,6 +723,7 @@ async function stop() {
   if (botTimer) clearInterval(botTimer);
   if (strangleTimer) clearInterval(strangleTimer);
   if (sideTimer) clearInterval(sideTimer);
+  if (fastTimer) clearInterval(fastTimer);
   if (recordTimer) clearInterval(recordTimer);
   botStore.close();
   strangleStore.close();

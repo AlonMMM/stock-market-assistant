@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { AlpacaTrade } from "../../../packages/market-data/src/alpaca.js";
 import { bookOf, lastBookOf, type OptionBook } from "./option-book.js";
 import {
   coreClose,
@@ -92,6 +93,17 @@ export interface BotMarket {
    * minute bars. Optional: without it the checks use the last closed minute.
    */
   lastPrices?(symbols: string[]): Promise<Map<string, number>>;
+  /**
+   * Every SIP trade of the symbols from `startMs` to `endMs`, handed over a
+   * page at a time in time order (the 60-second alert's 10-second bars).
+   * Optional: without it there is no 60-second alert.
+   */
+  trades?(
+    symbols: string[],
+    startMs: number,
+    endMs: number,
+    onPage: (symbol: string, trades: AlpacaTrade[]) => void,
+  ): Promise<void>;
   /** Contracts traded in the 30 minutes up to `minute`. */
   optionVolume30(
     contract: string,
