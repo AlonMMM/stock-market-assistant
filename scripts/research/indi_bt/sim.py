@@ -357,6 +357,16 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                     if N2 is not None and k >= 1 and N2 < 1:
                         q = rem * (1 - N2); rem -= q
                         steps.append((d, t, "sell", round(q, 4), round(max(mid(b) * (1 - SH), 0.01), 4), "N2_trim"))
+                    CY = X.get("carry_spy")  # {window, against, keep}, spy_rules.py (the user, 2026-10-29: "take edge only there"): when
+                    # SPY moved `against` or more against the bet over the last `window` minutes, hold only `keep` of the position tonight
+                    if CY:
+                        spy_ = series(day("SPY", d))[0]; a_, b_ = spy_[max(0, min(t, 389) - CY["window"])], spy_[min(t, 389)]
+                        if a_ and b_ and bet * (b_ / a_ - 1) <= -CY["against"]:
+                            q = rem * (1 - CY["keep"])
+                            if q > 1e-9:
+                                rem -= q
+                                steps.append((d, t, "sell", round(q, 4), round(max(mid(b) * (1 - SH), 0.01), 4), "Y_spy_close"))
+                            if rem <= 1e-9: return cost, steps, ""
                     steps.append((d, t, "carry", round(rem, 4), round(c, 4), "eod_carry" + tag))
                 else:
                     pending = ("all", "eod_close" + tag)
@@ -450,6 +460,16 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
             if G and (not G.get("day0") or k == 0) and peak / cost - 1 >= G["arm"]:
                 if "floor" in G and g <= G["floor"]: pending = ("all", "G_floor"); continue
                 if "trail" in G and c <= peak * (1 - G["trail"]): pending = ("all", "G_trail"); continue
+            SC = X.get("spy_cut")  # {arm, drop, share}, spy_rules.py (the user, 2026-10-29: "cutting some from the big winners when
+            # we see the spy goes down more than -.5%"): once the option was up `arm`, when SPY falls `drop` against the bet from its
+            # best since then (any day held, gaps included), sell `share` of what is left, once
+            if SC and not st.get("sc_done") and peak / cost - 1 >= SC["arm"]:
+                spy_ = st.setdefault(("spy", d), series(day("SPY", d))[0])[min(t, 389)]
+                if spy_:
+                    ref = st.get("sc_ref")
+                    if ref is None or bet * (spy_ - ref) > 0: st["sc_ref"] = ref = spy_
+                    if bet * (spy_ / ref - 1) <= -SC["drop"]:
+                        st["sc_done"] = True; pending = (rem * SC["share"], "S_spy_cut"); continue
             NC = X.get("nocarry_trail")  # {arm, trail}, expiry_rules.py (the user, 2026-10-29: "if this is the last trading
             # day (can't overnight) try to cut winnings during the day"): on a day the position cannot be held tonight
             # (under carry_min_dte days to expiry), once up `arm` over the cost, all out `trail` under the option's high

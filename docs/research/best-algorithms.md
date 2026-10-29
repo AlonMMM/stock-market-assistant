@@ -226,11 +226,14 @@ the user chose the 10 removals knowing their results, so judge Favorites tests b
 | 09:35 on the pre-market (bell_entry.py): pre-market only / + first 5 min | bell18 | $459,094 / $552,773 | $974,758 / $170,305 (bell18-fb $938,768 / $163,059; look 2) | passes on paper, ~25 changed trades losing at flat $10K: not robust |
 | Pre-market move sizing (pre_agree.py diagnostic, pre_size.py) | skip-flat | $783,912 / $944,413 | $166,788 / $89,081 | no: the tune bucket was its giants (10 of 19), check reversed |
 | Expiry rules (expiry_rules.py, sim nocarry_trail; Favorites = 60) | **the user's Thursday rule = thu-next-fb** (next week only when tomorrow's finds no contract: adds trades only) / fri-0dte-15 / nc-50-30 | $404,764 / $567,781; $382,396 / $374,477; $460,694 / $647,337 | $883,546 / $199,567; $764,800 / $105,925; $799,670 / $183,826 | no: the added Thursday trades lose (10 / 11 a half, -$17K / -$25K at $10K, no giants); thu-next (every Thursday to next week, replacing trades) wins tune and loses check; 0DTE Fridays drop 35-45% |
+| SPY against us (spy_rules.py, sim carry_spy / spy_cut; spy_drag.py analysis). A: skip / halve the night after SPY weakens >= 0.3-0.5% into 15:50. B: sell 1/2 or 1/3 of a winner up +50/100/200% when SPY falls 0.3-0.5% from its best | A ny-60-30h / B cut-100-50t | $420,343 / $591,261; $393,450 / $540,890 | $829,038 / $192,379; $872,111 / $203,033 | no. A: SPY's close does not predict the gap (after a weak close the gap median is +0.4% our way; every bucket gaps against 30-50%), 1-4 trades a half. B: the median changed big winner +$600-1,600 on both halves and better without the best 5 on check, but 3 of 9 tune giants cut early: slightly less money |
 | Universe: Nasdaq-100 2026, hot 20s (ndx_test.py, ndx_hot.py) | — | Fav + 77 new: $210,604 | $200,273 (one NFLX giant) | no: 30 trades in 10 months; NFLX +$269K on 11 |
 | Universe: 10 liquid movers (opt_liq.py screen, liq_test.py) | — | 2026: 7 trades | — | no: 65% of signals "too cheap" ($10-40 stocks) |
 | Universe: 12 leveraged ETFs SOXL TQQQ ... (liq_test.py LQ_NAME=lev12) | — | 43 trades in 22 months, 0 giants | 2026 Fav + ETFs $141,233 vs $143,000 | no |
 
-Analyses (no check look): the worst drops are runs of same-day stop-outs, nights net positive (risk_tests.py); peak paths
+Analyses (no check look): SPY while a trade is open (spy_drag.py): of the trades that reached +100%, 79% ended under
++50% when SPY moved against them vs 15% when SPY moved >1% our way; overnight, the 18 nights with SPY gapping >0.5%
+against (of 169) all lost (median -52%, -$259K at $10K) and the 24 gapping >0.5% our way made +$706K. The worst drops are runs of same-day stop-outs, nights net positive (risk_tests.py); peak paths
 (peak_paths.py): of 54 trades that reached +500% one ended a loss, the give-backs are in the +100-300% band; night moves
 (15:50 -> 09:40): 41-47% of nights win, a dozen +100% gaps pay for all; the second night wins ~1 in 3. **Lesson
 (memory giants-decide-buckets):** the median trade is about -$2.5K in every bucket on both halves; ~20 giants per half
