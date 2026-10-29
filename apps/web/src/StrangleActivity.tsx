@@ -37,6 +37,7 @@ import {
   usd,
 } from "./StranglePanel.js";
 import { israelClock, israelLabel, israelShortDate } from "./time.js";
+import { EarningsBadge } from "./EarningsBadge.js";
 
 // The volume bot's activity page (the approved design, modeled on the Main
 // bot's BotPanel.tsx and reusing its bot-* classes): today's session, the
@@ -455,6 +456,7 @@ function StockFocus({
     <div className="bot-focus" aria-live="polite">
       <div className="bot-focus-head">
         <strong>{r.symbol}</strong>
+        <EarningsBadge symbol={r.symbol} />
         <span className={`bot-lean ${up ? "up" : "down"}`}>
           {up ? "▲ moving up" : "▼ moving down"}
         </span>
@@ -625,6 +627,7 @@ function StockList({
                     {up ? "▲" : "▼"}
                   </span>
                   <strong>{r.symbol}</strong>
+                  <EarningsBadge symbol={r.symbol} compact />
                 </span>
                 <Meter
                   value={r.volRatio}
@@ -785,6 +788,7 @@ function SideGauge({
     <li className="vb-wait">
       <div className="bot-hold-head">
         <strong>{t.symbol}</strong>
+        <EarningsBadge symbol={t.symbol} compact />
         <span className="muted small">
           alert {t.alertSide} at {israelAt(t.day, t.alertMinute)}
         </span>
@@ -944,6 +948,7 @@ function Holding({ v }: { v: StrangleView }) {
                     {isCall ? "Call" : "Put"}
                   </span>
                   <strong>{t.symbol}</strong>
+                  <EarningsBadge symbol={t.symbol} compact />
                   <span className="muted small">{contract}</span>
                   {t.dry && <span className="pill amber">dry run</span>}
                   {state && <span className="muted small">{state}</span>}

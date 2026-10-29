@@ -24,6 +24,7 @@ import {
   scoreWeak,
   type StrengthNow,
 } from "./vs-spy-model.js";
+import { EarningsBadge } from "./EarningsBadge.js";
 
 const ChartPanel = lazy(() =>
   import("./ChartPanel.js").then((m) => ({ default: m.ChartPanel })),
@@ -248,6 +249,7 @@ export function LiveAlerts({
                                 </span>
                                 <span className="alert-symbol">
                                   <strong>{a.ticker}</strong>
+                                  <EarningsBadge symbol={a.ticker} compact />
                                   {isNew && (
                                     <span className="tag new">New</span>
                                   )}

@@ -21,6 +21,7 @@ import {
   type SpreadPair,
 } from "../../../packages/trading/src/safety.js";
 import { parseOccSymbol } from "../../../packages/trading/src/options.js";
+import { EarningsBadge } from "./EarningsBadge.js";
 
 // Open positions as a dense list, in the manner of a broker's phone app: one
 // row per position, and a tap opens the stock's day chart, the position's
@@ -439,6 +440,7 @@ function Row({
         <span className="pos-name">
           <strong>
             {p.underlying}
+            <EarningsBadge symbol={p.underlying} compact />
             {p.option && (
               <span className={`pos-side ${p.option.right}`}>
                 {p.option.strike} {p.option.right === "call" ? "C" : "P"}
