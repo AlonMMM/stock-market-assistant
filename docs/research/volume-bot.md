@@ -26,6 +26,29 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### More tickers: 25 candidates, then 4 ETFs on real quotes (2026-10-29)
+
+25 names outside the top 50 (no large caps): the ranking's 51-60 (SQQQ SNDK RDDT PATH IBM ADBE ARM NOW SHOP VRT), ETFs
+(TQQQ SOXL SMH TLT SLV) and momentum names (APP CVNA AFRM UPST MARA RIOT RIVN SNAP PYPL DKNG). Free screen (minute bars,
+3 years): 2,138 alerts with a burst >= 1.1 on 0/1 DTE days, 96 same-week at 2.5 (TQQQ SLV MARA RIOT SNAP had no bars in
+the store: fetched). Stock seconds (Databento) and picks for those; options priced first from Alpaca minute bars
+(`STR_FILL=bars STR_SH=0.03`: the bar's middle +- 3%). Calibration on the winner (top 50, 194 trades): +-3% $235,591 vs real
+$226,355 (within 4%); `STR_FILL=bs` (the stock's second, Black-Scholes at the bar's implied volatility) is closer trade by
+trade (buy 5.7%, sale 4.4% typical error vs 6.5% / 7.1%) but overprices the big winners' sales ($328,438): +-3% bars stay
+the screen. All 25 with the top 50 (no limits, 2 a stock, same-week 2.5): +-3% $628,844 / 17.3% vs $533,002 / 19.6%; the
+gain is 4 ETFs (SLV +$39K, TQQQ +$27K, SOXL +$18K, SMH +$14K at +-3%); single stocks mostly lose (PYPL -$20K, RDDT, CVNA,
+SQQQ, APP, DKNG, ARM) or rarely trade. The 4 ETFs on the real book (47 option windows, 59 minute-quote contract-days):
+
+| Stocks | Pricing | Trades | Avg | 2%: $100K becomes, drop | 3% | Without best 5 | Tune / check | Check without 2025-10-10 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| top 50 | real | 258 | +44.7% | $513,337, 21.9% | $932,345 | +$119,559 | +23.5 / +62.0 | +15.8 |
+| top 50 + SLV TQQQ SOXL SMH | real | 305 | +46.4% | $625,755, 23.6% | $1,182,664 | +$167,758 | +19.2 / +69.8 | +14.7 |
+| same | +-3% | 307 | +45.9% | $699,366, 20.8% | $1,396,200 | +$233,833 | +22.5 / +66.3 | +15.2 |
+| same | +-5% | 307 | +40.1% | $522,397, 21.9% | $919,426 | +$145,489 | +17.7 / +59.7 | +10.7 |
+
+On real quotes every ETF wins: SLV 11 trades +$30.9K, TQQQ 15 +$19.1K, SOXL 10 +$20.7K, SMH 13 +$7.7K (49 trades, +53% a
+trade, +$78K at 2%). Adopted for the bot's list (chosen after seeing them: 10-15 trades a name).
+
 ### Production (2026-10-29): same-week expiries, no-limit caps
 
 PR #199 (38a3479), deployed 2026-10-29 06:04 UTC (before the open): `weekExpiry` (on) with `burstMinWeek` 2.5; the caps

@@ -244,6 +244,29 @@ if os.environ.get("STR_EXIT") == "sec10":   # EXIT10_MODE picks the file (exit10
     EXIT10 = json.load(open(os.path.join(OUT, f"exit10_{TAG}{'' if _m == 'live' else '_' + _m}.json")))
 
 
+BS = os.environ.get("STR_FILL") == "bs"   # the option from the stock's price at the second, Black-Scholes at the bar's implied volatility
+BARS = os.environ.get("STR_FILL") == "bars" or BS
+
+
+def bs_price(e, contract, side, minute_iv, minute_t, spot):
+    """The option's model price with the stock at `spot` at session minute `minute_t`: the implied volatility of the
+    option's last 1-minute bar at or before `minute_iv` (at most 10 minutes old, with the stock's close of that minute),
+    Black-Scholes. None without a usable bar."""
+    import re as _re
+    from store import bs as _bs, iv_delta as _ivd, years_to_expiry as _yte
+    m = _re.match(r"^[A-Z.]+(\d{2})(\d{2})(\d{2})([CP])(\d{8})$", contract)
+    if not m: return None
+    exp = f"20{m.group(1)}-{m.group(2)}-{m.group(3)}"; k = int(m.group(5)) / 1000; call = m.group(4) == "C"
+    ob = [b for b in day(contract, e["date"]) if minute_iv - 10 <= b[0] <= minute_iv]
+    sb = {b[0]: b[4] for b in day(e["sym"], e["date"])}
+    for b in reversed(ob):
+        if b[0] in sb:
+            x = _ivd(b[4], sb[b[0]], k, _yte(e["date"], b[0], exp), 0.04, call)
+            if x: return _bs(spot, k, _yte(e["date"], minute_t, exp), x[0], 0.04, call)[0]
+    return None
+if BARS and os.environ.get("STR_SH"): LF.SH = float(os.environ["STR_SH"])   # e.g. 0.03: buy at the middle + 3%, sell at - 3%
+
+
 def trade(job):
     """One version's trade for one entry of one alert, or None."""
     e, entry, v, contract, delta, tg = job
@@ -252,6 +275,8 @@ def trade(job):
         q = RS.quote(contract, e["date"], sec // 60 - 1)
         if not q: return None
         buy = RS.fill(contract, e["date"], sec // 60 - 1, q); ct = sec // 60 - 1
+    elif BARS:   # STR_FILL=bars: the option from its 1-minute bars, the bar's middle +- STR_SH (no quotes needed)
+        ct = sec // 60; buy = None
     else:
         p = opt_path(e, contract, sec)
         if not os.path.exists(p): return None
@@ -272,6 +297,19 @@ def trade(job):
             lb = limit_buy(rows2, sec + LAG, os.environ["STR_BUY"])
             if not lb: return None
             buy, fill, waited = lb
+    if BARS:
+        w0 = LF.walk(e["sym"], e["date"], ct, side, contract, spot, e["u"])
+        if not w0: return None
+        buy = w0[0]; q = (buy / (1 + LF.SH), buy / (1 + LF.SH))
+        if BS:   # the buy at the cross second + LAG: the stock's 1-second price, the bar before the buy for the volatility
+            s_buy = spot
+            sp = stock_path(e)
+            if os.path.exists(sp):
+                k2 = [float(c) for a, c in csv.reader(gzip.open(sp, "rt")) if int(a) <= sec + LAG]
+                if k2: s_buy = k2[-1]
+            px = bs_price(e, contract, side, ct - 1, ct, s_buy)
+            if not px: return None
+            buy = px * (1 + LF.SH); q = (px, px)
     mid_in = (q[0] + q[1]) / 2
     stock_in = spot   # the minute close (close entry) or the trigger second's price
     if entry != "close":
@@ -289,7 +327,13 @@ def trade(job):
             if not q2: continue
             px = q2[0] if os.environ.get("STR_STOP_ON", "bid") == "bid" else (q2[0] + q2[1]) / 2
             if px <= buy * (1 - stop): w = (w[0], w[1], w[2], k); break
-    qs = RS.quote(contract, e["date"], w[3])
+    qs = (w[1], w[1]) if BARS else RS.quote(contract, e["date"], w[3])
+    if BS:   # the sale at the exit minute's close: the stock's close, the option's bar up to it for the volatility
+        sbx0 = {b[0]: b[4] for b in day(e["sym"], e["date"])}
+        s_out = next((sbx0[k] for k in range(w[3], w[3] - 5, -1) if k in sbx0), None)
+        px = bs_price(e, contract, side, w[3], w[3] + 1, s_out) if s_out else None
+        if px is None: return None
+        qs = (max(px * (1 - LF.SH), 0.01), max(px * (1 - LF.SH), 0.01))
     if not qs: return None
     if os.environ.get("STR_EXIT") == "sec10" and entry == "cross" and v == "plain20":   # the live bot's 10-second exit (exit10.py)
         x10 = EXIT10.get(f"{e['date']}|{e['sym']}|{e['m']}")
@@ -328,12 +372,12 @@ def main():
                 P["universe"] = os.environ["SEC_SYMS"].split(",")
             jobs = TW.days()
             if os.environ.get("SEC_LATE"):   # every day with an expiry 2-7 days out, kind "l" (with SEC_FIRST / SEC_LAST)
-                top = json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "50"))]
+                top = P["universe"] if os.environ.get("SEC_SYMS") else json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "50"))]
                 pairs = [(s, d) for s in top for i, d in enumerate(CAL) if d >= FROM and i >= 21]
                 with mp.Pool(8) as pool: exps = pool.starmap(WC.late_expiry, pairs, chunksize=16)
                 jobs = [(d, s, "l") for (s, d), x in zip(pairs, exps) if x]
             if os.environ.get("SEC_WEEK"):   # only the days with no 0/1 DTE but an expiry later that week
-                top = json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "50"))]
+                top = P["universe"] if os.environ.get("SEC_SYMS") else json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "50"))]
                 with mp.Pool(8) as pool: kinds = pool.map(WC.kind, [(s, d) for s in top for i, d in enumerate(CAL) if d >= FROM and i >= 21], chunksize=16)
                 jobs = [(d, s, "w") for (s, d), k in zip([(s, d) for s in top for i, d in enumerate(CAL) if d >= FROM and i >= 21], kinds) if k == "w"]
             with mp.Pool(8) as pool: res = pool.map(events_of, jobs, chunksize=8)
@@ -372,6 +416,9 @@ def main():
         return
     if step == "option":
         jobs = sorted({(i, x[0], pk[i]["t"][k.split("|")[0]][0]) for i in range(len(ev)) for k, x in pk[i]["p"].items() if not k.startswith("close") and k in os.environ.get("SEC_OPT_ONLY", k)})   # SEC_OPT_ONLY="cross|plain20": only those
+        if os.environ.get("SEC_OPT_SYMS"):   # only these names' option windows
+            keep_syms = set(os.environ["SEC_OPT_SYMS"].split(","))
+            jobs = [j for j in jobs if ev[j[0]]["sym"] in keep_syms]
         if os.environ.get("SEC_OPT_CROSS_MAX"):   # only alerts whose stock crosses within this many seconds (less to download)
             a_sec = lambda e: e.get("sec0", (e["m"] + 1) * 60)
             jobs = [j for j in jobs if j[2] - a_sec(ev[j[0]]) <= int(os.environ["SEC_OPT_CROSS_MAX"])]
