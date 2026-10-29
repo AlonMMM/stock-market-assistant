@@ -38,7 +38,7 @@ SEC = os.path.join(HERE, "sec_cache", "main")
 CAL = calendar()
 LAG = 2
 VARIANTS = ("now", "now-1s", "min-strict", "ladder5_0", "ladder5_1", "ladder10_0", "early", "spike15", "spike25",
-            "now-1s-r60", "early-r60", "min-strict-r60", "early5-r60", "early10-r60")
+            "now-1s-r60", "early-r60", "min-strict-r60", "early5-r60", "early10-r60", "early5nv-r60")
 # the runaway rule's look-ahead: 10 seconds (above) or 60, as the minute model has it (the bid a minute on above our price:
 # not filled, the ask then); the r60 variants tie the second data to the minute model
 
@@ -106,7 +106,7 @@ def spike(book, stock, D, unit, side, x):
     return plain(book, D + 60)
 
 
-def early_second(t, stock, every=1):
+def early_second(t, stock, every=1, novol=False):
     """The first second inside the signal minute where the rule holds with the minute so far, or None."""
     sym, date, m0 = t["sym"], t["date"], int(t["minute"])
     i = CAL.index(date)
@@ -148,7 +148,7 @@ def early_second(t, stock, every=1):
         nn, ss1, ss2 = n + 1, s1 + x, s2 + x * x
         mu = ss1 / nn; var = max(ss2 / nn - mu * mu, 0.0)
         tt = side * (mu / math.sqrt(var) * math.sqrt(nn) if var > 0 else 0.0)
-        vsec = sum(v for sec, _, v in stock if 60 * m0 <= sec <= s)
+        vsec = 0 if novol else sum(v for sec, _, v in stock if 60 * m0 <= sec <= s)   # novol: the live bot sees no volume of the forming minute
         rv = (cum_before + vsec) / usual_v if usual_v else 0
         dd = d2 + (side * x / unit if side * rp < 0 else 0)
         if rv >= 1.5 and (tt >= 1.8 or (tt >= 1.2 and dd >= 1.5)): return s
@@ -189,6 +189,9 @@ def one(job):
                     try: ev = early_second(t, stock, every)
                     except Exception: ev = None
                     res[f"early{every}-r60"] = plain(book, ev + LAG, 60) if ev is not None else res["now-1s-r60"]
+                try: ev = early_second(t, stock, 5, novol=True)
+                except Exception: ev = None
+                res["early5nv-r60"] = plain(book, ev + LAG, 60) if ev is not None else res["now-1s-r60"]
     r.pop("path", None)
     r["buys"] = {k: v for k, v in res.items() if v}
     r["has_book"] = int(bool(book))
@@ -253,7 +256,7 @@ def main():
     best = max(pick, key=score)
     print(f"\nPicked on tune: {best}; better than now on both tune lists: {score(best) > 1}\n")
     print("### Check weeks, one run\n\n| Variant | Fair list | Favorites 24m | Without the best 5 (fair / fav) |\n|---|---|---|---|")
-    for v in ("now-1s-r60", "early-r60", "early5-r60", "early10-r60"):
+    for v in ("now-1s-r60", "early-r60", "early5-r60", "early10-r60", "early5nv-r60"):
         f, g = stats(entries(R, adds, v, "fair", "check")), stats(entries(R, adds, v, "fav", "check", FR.A24))
         out[f"check|{v}"] = dict(fair=f, fav=g)
         print(f"| {v} | ${f['acct']:,} / {f['dd']:.0%} | ${g['acct']:,} / {g['dd']:.0%} | ${f['no5']:,} / ${g['no5']:,} |", flush=True)

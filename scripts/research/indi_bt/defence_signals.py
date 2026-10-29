@@ -26,6 +26,9 @@ from levels import ctx
 B = "data/local/x/bt"
 SPAN = {"2024": ("2024-02-01", "2024-12-31"), "2025": ("2025-01-02", "2025-12-31"), "2026": ("2026-01-02", "2026-10-12")}
 FIRST, LAST, MIN_STEPS, WINDOW = 10, 374, 10, 30
+# BT_FIRST (entry_start.py; the user, 2026-10-28: "What if we start at 5 minutes after the bell? 15 minutes?"): the first
+# minute a signal may fire; the t needs min(10, first) steps
+FIRST = int(os.environ.get("BT_FIRST", FIRST)); MIN_STEPS = min(MIN_STEPS, FIRST)
 # The D2 window (the user, 2026-10-27: "can we go with D2 for the last 2 hours? except the 15 minutes of the openning..
 # also try it with t>=0.8/0.6"): BT_D2_WINDOW minutes back (default 30); BT_D2_SKIP: minutes from the open that never
 # count in it (default 0); BT_SIG_SUFFIX names the signal files of such a run (s_sig_<rule><suffix>_<year>.csv)
@@ -64,10 +67,15 @@ for lt in (6, 8, 10, 12, 15):
 # Controls for the bonus arm: the lower t alone, without any defence.
 RULES["t12"] = (1.2, None, "d", None)
 RULES["t15"] = (1.5, None, "d", None)
+# The sum (sum_entry.py; the user, 2026-10-28: "Buy if the sum of t d2 and volume is more than 4.5 AND t>=0.8"): t + D2 +
+# the day volume ratio > S, and t >= 0.8; no separate volume floor (the volume is in the sum)
+for x in (40, 45, 50):
+    RULES[f"s{x}_08"] = ("sum", x / 10, 0.8)
 if os.environ.get("BT_RULES"): RULES = {k: RULES[k] for k in os.environ["BT_RULES"].split(",")}
 
 
 def passes(rule, t, rv, d, e):
+    if rule[0] == "sum": return t >= rule[2] and t + e + rv > rule[1]
     tt, dx, which, bonus = rule
     if rv < RV_MIN: return False
     dv = d if which == "d" else e

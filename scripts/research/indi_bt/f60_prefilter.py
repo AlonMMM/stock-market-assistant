@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 os.environ.setdefault("BT_VARIANT", "v2")
 import leg_1dte as L1
 import leg_twice as TW
+import week_count as WC
 from levels import ctx
 from store import day
 
@@ -36,7 +37,8 @@ def main():
     keep, minutes = [], {}
     for a in alerts:
         if a["sym"] not in top or a["date"] not in TW.CAL: continue
-        if not L1.kind_of(a["sym"], a["date"]): n["no_expiry"] += 1; continue
+        if not L1.kind_of(a["sym"], a["date"]) and not (os.environ.get("PF_WEEK") and WC.week_expiry(a["sym"], a["date"])):
+            n["no_expiry"] += 1; continue   # PF_WEEK=1: a same-week expiry counts too
         x = ctx(a["sym"], a["date"])
         if not x or not x.get("sd"): n["no_s30"] += 1; continue
         u, p0, sec = x["sd"], a["price"], a["sec"]

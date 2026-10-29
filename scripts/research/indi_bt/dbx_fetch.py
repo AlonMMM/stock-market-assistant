@@ -15,6 +15,14 @@ INDI = "indi" in sys.argv[1:]
 OUT = os.path.join(HERE, "dbx_cache", "indi") if INDI else os.path.join(HERE, "dbx_cache")
 LIST = "indi_dbx_list.csv" if INDI else "dbx_list.csv"
 END = 391 if INDI else 362
+# open2 (pullback2.py, 2026-10-28): the contracts the opening-pullback versions buy, to the close -> dbx_cache/open2
+if "open2" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open2"), "open2_dbx_list.csv", 391
+if "open3" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open3"), "open3_dbx_list.csv", 391   # entry_start.py
+if "open4" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open4"), "open4_dbx_list.csv", 391   # bell_entry.py
+if "open5" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open5"), "open5_dbx_list.csv", 391   # ndx_test.py
+if "uso" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "uso"), "uso_dbx_list.csv", 391   # favorites.txt's USO, merged into dbx_cache/fav
+if "open7" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open7"), "open7_dbx_list.csv", 391   # liq_test.py
+if "open8" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open8"), "open8_dbx_list.csv", 391   # liq_test.py LQ_NAME=lev12
 NY = ZoneInfo("America/New_York")
 AUTH = "Basic " + base64.b64encode((os.environ["DATABENTO_API_KEY"] + ":").encode()).decode()
 HEAD = ["contract", "minute", "bid", "ask", "bid_sz", "ask_sz"]

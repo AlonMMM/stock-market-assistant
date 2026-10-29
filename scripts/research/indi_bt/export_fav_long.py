@@ -36,12 +36,7 @@ for slug in V: ec.V.setdefault(slug, (slug,))
 
 
 def signals(entry):
-    out = FR.signals(entry)
-    name, a, z = Y3[entry]
-    for r in json.load(open(f"{eb.B}/list_{name}_{a}_{z}.json")):
-        st = STATUS.get(r["status"])
-        if st: out.append(dict(r, status=st, minute=str(r["minute"])))
-    return out
+    return FR.signals(entry, since=A36)   # the research Favorites (favorites.txt) over the three years
 
 
 def walk(t, c, exits):

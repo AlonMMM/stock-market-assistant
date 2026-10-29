@@ -17,6 +17,7 @@ import sim
 import cheap_up as cu
 import hot_fit_test as hf
 import export_bench as eb
+import fav_real as FR
 import d2_liquid as dl
 import news_filter as nf
 from low_delta import HIS40, PRIOR
@@ -49,11 +50,8 @@ def signals():
         T = [t for f in glob.glob(f"{B}/{prefix}_20*.[0-9]_trades.csv") for t in csv.DictReader(open(f)) if t["status"] in ("ok", "too_cheap", "illiquid")]
         nf.features(T)
         out[("fair", prefix)] = [t for t in T if t["e_next"] != 0 and (t["pre_rvol"] is None or t["pre_rvol"] < 4) and t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]]]
-        F = []
-        for r in json.load(open(f"{B}/list_{lname}_{A12}_{Z}.json")):
-            st = {"bought": "ok", "no contract: illiquid": "illiquid", "no contract: too_cheap": "too_cheap"}.get(r["status"])
-            if st: F.append(dict(r, status=st, minute=str(r["minute"])))
-        out[("fav", prefix)] = F
+        # the research Favorites (favorites.txt, 2026-10-29: 60 stocks; was the 86 of fav86_*), the last 12 months
+        out[("fav", prefix)] = [t for t in FR.signals(lname.rsplit("_", 1)[1]) if t["date"] >= A12]
     return out
 
 

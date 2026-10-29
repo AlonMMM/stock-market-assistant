@@ -11,7 +11,7 @@
      good. when the stock in a place that the bot would enter (t > 1.8 bla bla) we are rolling and buy with half of the
      gain the next 0.15 delta. we sell all the old position and keep going with the half": once the stock has come to the
      strike (any day held), at the first minute after that the entry rule holds on the same side, sell all of the old
-     position at the bid and put half of the gain into a fresh 0.25-delta pick (the user: "0.25 not 0.15") (the champion's pick, IBIT down to $0.10),
+     position at the bid and put half of the gain into a fresh 0.20-delta pick (the user: "0.25 not 0.15", then "all delta is 0.2") (the champion's pick, IBIT down to $0.10),
      walked with the champion's exits from that minute; the other half of the gain and the cost are kept. The trade's
      return = old + old / 2 x new. One roll a trade. Set before running:
        roll         at the money, the champion's rule
@@ -52,9 +52,13 @@ ROLL = {"roll": ("c12_15", "near", 0.0), "roll-t18": ("base", "near", 0.0), "rol
         # 1-minute close, store.iv_delta) at 0.65 / 0.80
         "roll-d65": ("c12_15", "delta", 0.65), "roll-d80": ("c12_15", "delta", 0.80),
         # "Also test rolling on lower delta before the night": on a day the champion holds overnight, at the first minute from
-        # 15:30 (15:00) to 15:44 the rule holds, roll into the 0.25-delta pick and hold it that night
+        # 15:30 (15:00) to 15:44 the rule holds, roll into the ROLL_DELTA pick and hold it that night
         "roll-night": ("c12_15", "night", 360), "roll-night60": ("c12_15", "night", 330)}
 ONLY = os.environ.get("RR_ONLY", "")   # "roll": skip the retries
+# how much goes into the new leg, as a share of the first stake (ro = the old leg's return). The user, 2026-10-27:
+# "what if we roll all the position and not half?": "-gain" all of the gain, "-all" everything the sale brought in
+FUNDS = {"": lambda ro: max(ro, 0) / 2, "-gain": lambda ro: max(ro, 0), "-all": lambda ro: max(1 + ro, 0)}
+ROLLV = [v + f for v in ROLL for f in FUNDS]
 
 
 def load_all():
@@ -87,8 +91,9 @@ def pick(sym, date, m, right, price, target=0.15):
     return best[0], best[1]
 
 
-# the roll's new leg (the user, 2026-10-27: "we want to put in higher delta - 0.25 not 0.15 (rolling)")
-ROLL_DELTA = 0.25
+# the roll's new leg (the user, 2026-10-27: "we want to put in higher delta - 0.25 not 0.15 (rolling)";
+# later that day: "all delta is 0.2", the roll leg only, the champion's entries stay at 0.15). RR_DELTA=0.25 reruns the old one.
+ROLL_DELTA = float(os.environ.get("RR_DELTA", "0.20"))
 
 
 def leg(sym, date, m, right, c, exits=CHAMP):
@@ -185,14 +190,15 @@ def one(job):
         exits = {**CHAMP, "carry_force_first": True} if mode == "night" else CHAMP
         g2 = leg(sym, d, mm, right, c2, exits) if c2 else None
         if not g2: continue
-        r = {}
-        for s in SIZES:
-            ro = sim.result(rcost, old, s)
-            # half of the gain into the new leg: a position of s x ro / 2 of the account (the overnight cap at that size)
-            rn = sim.result(g2[0], g2[1], s * max(ro, 0) / 2)
-            r[s] = ro + max(ro, 0) / 2 * max(-1, rn)
-        out["roll"][v] = dict(day=d, minute=mm, contract=c2[0], book=g2[2], old=round(sim.result(rcost, old, 0.02), 3),
-                              new=round(sim.result(g2[0], g2[1], 0.02), 3), r=r)
+        for f, fund in FUNDS.items():
+            r = {}
+            for s in SIZES:
+                ro = sim.result(rcost, old, s)
+                # fund(ro) of the first stake into the new leg: a position of s x fund(ro) of the account (the overnight cap at that size)
+                rn = sim.result(g2[0], g2[1], s * fund(ro))
+                r[s] = ro + fund(ro) * max(-1, rn)
+            out["roll"][v + f] = dict(day=d, minute=mm, contract=c2[0], book=g2[2], old=round(sim.result(rcost, old, 0.02), 3),
+                                      new=round(sim.result(g2[0], g2[1], 0.02), 3), r=r)
     return out
 
 
@@ -201,7 +207,7 @@ def entries(R, adds, src, v, part, size, a=""):
     for r in R:
         if r["src"] != src or r["kind"] != "main" or half(r["date"]) != part or r["date"] < a: continue
         ret = r["base"][size]
-        if v in ROLL and v in r["roll"]: ret = r["roll"][v]["r"][size]
+        if v in ROLLV and v in r["roll"]: ret = r["roll"][v]["r"][size]
         E.append((r["date"], r["minute"], 1.0, ret, r["over"]))
         if v in RETRY and v in r["retry"]:
             x = r["retry"][v]; E.append((r["date"], x["minute"], 1.0, x["r"][size], 0))
@@ -231,7 +237,7 @@ def main():
     adds = collections.defaultdict(list)
     for r in R:
         if r["kind"] == "add": adds[(r["src"], r["date"], r["sym"], r["right"])].append(r)
-    V = ["base", *ROLL] if ONLY == "roll" else ["base", *RETRY, *ROLL]
+    V = ["base", *ROLLV] if ONLY == "roll" else ["base", *RETRY, *ROLLV]
     out = {}
     for size in SIZES:
         print(f"\n### Tune weeks, real quotes, {size:.0%} from $100,000\n\n| Version | Fair list | Favorites 24m | Without the best 5 (fair / fav) | "
@@ -246,7 +252,7 @@ def main():
                     hit = [r["retry"][v] for r in rows if v in r["retry"]]
                     n[src], tot[src] = len(hit), round(sum(1e4 * max(-1, x["r"][size]) for x in hit))
                     bk += [x["book"] for x in hit]
-                elif v in ROLL:
+                elif v in ROLLV:
                     hit = [r for r in rows if v in r["roll"]]
                     n[src], tot[src] = len(hit), round(sum(1e4 * (r["roll"][v]["r"][size] - r["base"][size]) for r in hit))
                     bk += [r["roll"][v]["book"] for r in hit]
@@ -256,7 +262,7 @@ def main():
             print(f"| {v} | ${f['acct']:,} / {f['dd']:.0%} | ${g['acct']:,} / {g['dd']:.0%} | ${f['no5']:,} / ${g['no5']:,} | {f['trades']} / {g['trades']} | "
                   f"{n['fair']} / {n['fav']} | {tot['fair']:+,} / {tot['fav']:+,} | {book} |", flush=True)
     # the pick of each idea on tune, then one run on the check weeks
-    for name, group in (("retry", RETRY), ("roll", tuple(ROLL))):
+    for name, group in (("retry", RETRY), ("roll", tuple(ROLLV))):
         if name == "retry" and ONLY == "roll": continue
         score = lambda v: min(out[f"0.02|{v}"]["fair"]["acct"] / out["0.02|base"]["fair"]["acct"], out[f"0.02|{v}"]["fav"]["acct"] / out["0.02|base"]["fav"]["acct"])
         best = max(group, key=score)

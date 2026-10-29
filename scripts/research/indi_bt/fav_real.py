@@ -33,18 +33,27 @@ CAL = RB.CAL
 A24, A12, A6, Z = "2024-10-23", "2025-10-23", "2026-04-23", "2026-10-23"
 STATUS = {"bought": "ok", "no contract: illiquid": "illiquid", "no contract: too_cheap": "too_cheap"}
 # (list, first day, last day); the year before (the user, 2026-10-27: "6 12 24 months"): the same 69, TSEM included
-LISTS = {"24": (("fav68_24", A12, Z), ("tsem_24", A12, Z), ("fav69_24", A24, "2025-10-22")),
-         "25": (("fav68_25", A12, Z), ("tsem_25", A12, Z), ("fav69_25", A24, "2025-10-22"))}
+LISTS = {"24": (("fav68_24", A12, Z), ("tsem_24", A12, Z), ("fav69_24", A24, "2025-10-22"), ("uso_24", "2023-10-23", Z)),
+         "25": (("fav68_25", A12, Z), ("tsem_25", A12, Z), ("fav69_25", A24, "2025-10-22"), ("uso_25", "2023-10-23", Z))}
+# The third year back (export_fav_long.py's fav36:): today's lists over Oct 2023 - Oct 2024
+Y3 = {"24": ("fav69_24", "2023-10-23", "2024-10-22"), "25": ("fav69_25", "2023-10-23", "2024-10-22")}
+# The research Favorites (favorites.txt, the user 2026-10-29: 60 stocks, USO in): every list is cut to them;
+# FAV_ALL=1 keeps the lists as they were run (the 69 of 2026-10-26)
+FAV = {s for line in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "favorites.txt")) if not line.startswith("#") for s in line.split()}
 
 
-def signals(entry):
+def signals(entry, since=A24):
+    """The Favorites' signals of an entry ("24" / "25") from `since` (A24 = 24 months; "2023-10-23" adds the third year)."""
     out = []
-    for name, a, z in LISTS[entry]:
+    lists = LISTS[entry] + ((Y3[entry],) if since < A24 else ())
+    for name, a, z in lists:
         path = f"{B}/list_{name}_{a}_{z}.json"
         if not os.path.exists(path): print("missing", path); continue
         for r in json.load(open(path)):
             st = STATUS.get(r["status"])
-            if st: out.append(dict(r, status=st, minute=str(r["minute"]), c_t=str(r["c_t"])))
+            if not st or r["date"] < since: continue
+            if os.environ.get("FAV_ALL") != "1" and r["sym"] not in FAV: continue
+            out.append(dict(r, status=st, minute=str(r["minute"]), c_t=str(r["c_t"])))
     return out
 
 

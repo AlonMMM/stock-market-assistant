@@ -13,7 +13,7 @@ import fast_volume as fv  # noqa: E402
 import early_rules as er  # noqa: E402
 
 NY = ZoneInfo("America/New_York")
-FIRST, LAST = 59, 1259   # 10-s slots ending 09:40:00 .. 13:00:00
+FIRST, LAST = int(os.environ.get("F60_FIRST", 59)), int(os.environ.get("F60_LAST", 1259))   # 10-s slots ending 09:40:00 .. 13:00:00 (F60_LAST=2159: 15:30)
 DB = "data/local/bars-10s.sqlite"
 
 
@@ -29,7 +29,8 @@ def one(args):
     opens = np.array([int(dt.datetime.fromisoformat(d + "T09:30").replace(tzinfo=NY).timestamp()) for d in days], dtype=np.int64)
     m = er.load(db, sym, opens)
     m["Craw"] = m["C"]; m["C"] = fv.ffill(m["C"])
-    sig, _, _, _ = fv.rule_signals(m["V"], m["Craw"], m["O"], m["C"], fv.RULES["R60"], 2)
+    # F60_K=10: the shock rule (the user, 2026-10-29, after ORCL 2026-10-28): the same 60-second rule at 10x volume
+    sig, _, _, _ = fv.rule_signals(m["V"], m["Craw"], m["O"], m["C"], fv.RULES["R60"], float(os.environ.get("F60_K", 2)))
     out = []
     for d, t in er.fire(sig, er.COOLDOWN):
         if days[d] < lo or not FIRST <= t <= LAST or d < fv.DAYS: continue

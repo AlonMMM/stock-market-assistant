@@ -48,26 +48,32 @@ def priced(T, fill):
     return [dict(t, buy=t["mid_in"] * (1 + x), sell=max(t["mid_out"] * (1 - x), 0.01)) for t in T]
 
 
-def kept(T, size):
-    """leg_seconds.py's account: per stock and day the alerts in order, one at a time, 2 at most; then the live limits."""
+def kept(T, size, free=False):
+    """leg_seconds.py's account: per stock and day the alerts in order, one at a time, 2 at most; then the live limits
+    (free: no day-loss, trade or open limit)."""
     by = {}
     for t in T: by.setdefault((t["date"], t["sym"]), []).append(dict(minute=t["minute"], trade=t))
-    keep = [x["trade"] for evs in by.values() for x in TW.pick(dict(events=sorted(evs, key=lambda z: z["minute"])), "flat")[:2]]
+    # no limits as leg_seconds.py runs it: the stock's alerts in order, 2 at most, the second may overlap the first
+    keep = [x["trade"] for evs in by.values() for x in TW.pick(dict(events=sorted(evs, key=lambda z: z["minute"])), "open" if free else "flat")[:2]]
+    if free: return D.account(keep, size, 2)
     return D.account(keep, size, 2, loss=7.5, max_trades=15, max_open=5)
 
 
 def main():
     out_dir = sys.argv[1]
     os.makedirs(out_dir, exist_ok=True)
-    C = contracts(LS.TAG)
+    C = {}
+    for tag in os.environ.get("VD_TAGS", LS.TAG).split(","): C.update(contracts(tag))   # every alert list the versions use
     trades, info = [], {}
-    for slug, path in (v.split("=") for v in os.environ["VD_VERSIONS"].split(",")):
+    for slug, spec in (v.split("=") for v in os.environ["VD_VERSIONS"].split(",")):
+        path, *flags = spec.split(":")   # "<dump>[:free]": no limits
+        free = "free" in flags
         T = [t for t in json.load(open(path)) if not t["news_skip"]]
         for t in T: info.setdefault(tkey(t), t)
         for fill in FILLS:
             P = priced(T, fill)
             for size in (1, 2, 3, 4, 5):
-                end, dd, R, _, _ = kept(P, size)
+                end, dd, R, _, _ = kept(P, size, free)
                 acct, day_start = 100000.0, {}
                 for n, r in enumerate(sorted(R, key=lambda r: (r["date"], int(r["xm"]), r["sym"])), 1):
                     buy, sell, pnl = float(r["buy"]), float(r["sell"]), float(r["pnl"])
