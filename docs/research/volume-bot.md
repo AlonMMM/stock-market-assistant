@@ -756,3 +756,19 @@ line) or holdN (N seconds in a row past it). Files: scratchpad vol/shockconf.
   halves +80-90%, check without 2025-10-10 +64%, drop 23%); its neighbours (hold5 at 60 s-10 min) all hold up.
   0.10 hold30 is bigger but rests on the check half (tune +16%).
 - 48 versions looked at: selection bias. Next: real quotes (2025-02 on) for 0.20 hold5 <= 5 min, and with the winner.
+
+## Volume size at the 60-second alert vs the move after (2026-10-29)
+
+The user: "find connection between the size of the volume at the alert to the move itself". Every F60 alert at 2x and up
+(fresh crossing, 30-min cooldown), 09:40-15:30, top 50, 2024-02 to 2026-10: 108,243 alerts, from the local 10-second bars.
+Volume = the 60-second window vs its 20-session median or today's pace (the larger); moves in S30, signed the alert's way.
+Script and data: scratchpad volmove/study.py, alerts.json.
+
+- The typical alert: no link. Medians after 5/15/30 min are ~0 at every volume size; "kept going" 46-49% (42-44% at 20x+).
+  Spearman log(volume) vs the 30-min move: -0.01. The alert's own move predicts the size of what follows (+0.25), not volume.
+- The tail: a strong link, in both halves. Share of alerts the stock runs >= 4 S30 the alert's way within 30 min:
+  0.6% at 2-5x, 0.9% at 5-10x, 1.5% at 10-15x, 2.6% at 15-20x, 1.9% at 20-50x, 0.5% at 50x+. Against the alert (>= 4 S30)
+  stays 0.4-0.8%: the big runs at 15-50x go the alert's way 3-5 to 1. Clean run (>= 3 for, < 1 against): 1.6% at 2-5x,
+  3.7% at 15-20x (check half 5.5-5.9% at 15-50x, the same without 2025-10-10).
+- 50x and up is worse again (thin windows: a near-zero median, opening/halt prints): a cap at ~50x is worth testing.
+- So the shock rule's edge is the tail, which suits options: most alerts go nowhere, and the large ones lean its way.
