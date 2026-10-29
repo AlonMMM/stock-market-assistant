@@ -71,11 +71,18 @@ RULES["t15"] = (1.5, None, "d", None)
 # the day volume ratio > S, and t >= 0.8; no separate volume floor (the volume is in the sum)
 for x in (40, 45, 50):
     RULES[f"s{x}_08"] = ("sum", x / 10, 0.8)
+# The market day (mkt_rules.py; the user, 2026-10-29: "when it big red or big green - lower the treshold needed to enter"):
+# the champion's rule (c12_15), or, when SPY has moved >= L from the day before's close to this minute on the bet's side,
+# t >= T with the day volume >= 1.5x. mL_T: L in tenths of a percent, T in tenths
+for lv, tl in ((5, 12), (3, 12), (10, 12), (5, 10)):
+    RULES[f"m{lv}_{tl}"] = ("mkt", lv / 1000, tl / 10, "c12_15")
 if os.environ.get("BT_RULES"): RULES = {k: RULES[k] for k in os.environ["BT_RULES"].split(",")}
 
 
-def passes(rule, t, rv, d, e):
+def passes(rule, t, rv, d, e, sm=0.0):
+    """sm: SPY's move from the day before's close to this minute, on the bet's side (the "mkt" rules)."""
     if rule[0] == "sum": return t >= rule[2] and t + e + rv > rule[1]
+    if rule[0] == "mkt": return passes(RULES[rule[3]], t, rv, d, e) or (sm >= rule[1] and t >= rule[2] and rv >= RV_MIN)
     tt, dx, which, bonus = rule
     if rv < RV_MIN: return False
     dv = d if which == "d" else e
@@ -106,6 +113,7 @@ def stock(sym):
             if cum[-1] > 0: hist.append(cum)
         if len(hist) < 10: continue
         c = series(bars)[0]; spy = series(day("SPY", date))[0]
+        spy_prev = (day("SPY", cal[i - 1]) or [[0, 0, 0, 0, None]])[-1][4]
         umin = [0.0] * 390   # the usual volume of each minute (the median over the 20 sessions before)
         if VWEIGHT:
             for mm in range(390):
@@ -151,14 +159,15 @@ def stock(sym):
             med = sorted(h[m] for h in hist); k = len(med) // 2
             usual = med[k] if len(med) % 2 else (med[k - 1] + med[k]) / 2
             rv = cum[m] / usual if usual else 0.0
+            sm = (spy[m] / spy_prev - 1) if spy_prev and spy[m] else 0.0   # SPY since the day before's close (the "mkt" rules)
             if ALL:
                 for name in RULES:
-                    if passes(RULES[name], t, rv, dsum[0], dsum[2]): every[name][(date, "C")].append((m, round(t, 2)))
-                    if passes(RULES[name], -t, rv, dsum[1], dsum[3]): every[name][(date, "P")].append((m, round(-t, 2)))
+                    if passes(RULES[name], t, rv, dsum[0], dsum[2], sm): every[name][(date, "C")].append((m, round(t, 2)))
+                    if passes(RULES[name], -t, rv, dsum[1], dsum[3], -sm): every[name][(date, "P")].append((m, round(-t, 2)))
                 continue
             for name in list(left):
-                if passes(RULES[name], t, rv, dsum[0], dsum[2]): side, d_, e_, t_ = "C", dsum[0], dsum[2], t
-                elif passes(RULES[name], -t, rv, dsum[1], dsum[3]): side, d_, e_, t_ = "P", dsum[1], dsum[3], -t
+                if passes(RULES[name], t, rv, dsum[0], dsum[2], sm): side, d_, e_, t_ = "C", dsum[0], dsum[2], t
+                elif passes(RULES[name], -t, rv, dsum[1], dsum[3], -sm): side, d_, e_, t_ = "P", dsum[1], dsum[3], -t
                 else: continue
                 left.discard(name)
                 out[name].append(dict(date=date, sym=sym, right=side, minute=m, time=f"{(570 + m) // 60:02d}:{(570 + m) % 60:02d}",
