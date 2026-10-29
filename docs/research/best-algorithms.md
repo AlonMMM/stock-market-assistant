@@ -397,6 +397,22 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### No entry right after a big run; where the giants come from (2026-10-29, not better by far; the diagnostic is the finding)
+
+The user: "both - alwaays permotation on the tune than if candidate found on the check". From the live reviews of 23-28
+Oct (CRWV, SPCX, AVGO, MU and TSLA bought at the top of a steep opening run; four lost). `runup.py` on the champion
+(entries, picks, exits, the pyramid, real quotes), tune / check in one run: the run = the stock's move over the 10
+minutes before the signal, the bet's way, in typical 30-minute moves (levels.ctx sd); skip15 / skip20 / skip25 = no trade
+at a run >= 1.5 / 2.0 / 2.5; pb15 / pb20 = at a run >= 1.5 / 2.0 wait up to 15 minutes for a 0.25 pullback from the
+run's extreme and buy then (picked at that minute). Tune at 1% (fair / Favorites): base $260,535 / 16% and $312,304 / 11%; skip15 $90,625 / 19% and $109,823 / 12%; skip20 $89,889 / 30% and $107,079 / 16%; skip25 $170,489 / 22% and $238,228 / 15%; pb15 $162,353 / 19% and $195,944 / 12%; pb20 $178,385 / 19% and $217,426 / 12%. 🎯 pb20 (0.685 of the
+champion), check: base $372,332 / 12% and $158,412 / 13%; pb20 $322,663 / 11% and $163,819 / 14%; skip25 $352,518 / 12% and $165,164 / 11%. Not better: a big run is how the signal works (283 of 543 tune fair trades come after a run
+>= 1.5, holding 15 of 21 giants, +$1.2M); the run's size does not sort the trades (medians -$2,150 to -$3,200 in every
+bucket, both halves). Diagnostic (the champion, main legs at $10K), tune fair: full at 20: 238 trades, 18 giants, median -1,972, sum +1,830,784, without the giants -120,071; half at 10, held at 20: 63 trades, 1 giants, median -1,057, sum -43,225, without the giants -74,103; out by 20: 203 trades, 0 giants, median -3,216, sum -660,994, without the giants -660,994. Check fair:
+full at 20: 240 trades, 20 giants, median -2,303, sum +2,041,540, without the giants -146,680; half at 10, held at 20: 58 trades, 0 giants, median -1,819, sum -88,706, without the giants -88,706; out by 20: 204 trades, 0 giants, median -3,150, sum -631,640, without the giants -631,640. All the giants are trades the 10 / 20-minute checks never touched; the trades sold by 20 minutes
+(37%) are never a giant and lose $630-660K a half; the half kept after the 10-minute check is almost never a giant (0-1 a
+half), which is why the refill test lost. Next: what at the entry tells the fast losers from the trades that hold. Look 1.
+On the Bot vs Indi page, Research tab.
+
 ### More checks, and back to full size when the stock is stronger (2026-10-29, not better: the pick fails the check)
 
 The user: "test on the main bot - way of exists - add more checks - if we passed the 20minutes check but only with half
