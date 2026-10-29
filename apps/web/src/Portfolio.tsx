@@ -33,7 +33,7 @@ import {
   tone,
   usd,
 } from "./format.js";
-import { positionNumbers } from "./positions-model.js";
+import { positionNumbers, type PositionView } from "./positions-model.js";
 import { Trade as TradeTicket } from "./Trade.js";
 import { israelClock, israelDateTime, israelLabel } from "./time.js";
 
@@ -576,6 +576,135 @@ export function Portfolio({
   );
 }
 
+/**
+ * Close or approximate-now values. "Approx. now" is offered while the US market
+ * is closed and the account has an overnight estimate (Alpaca accounts; the
+ * IBKR bot account has none).
+ */
+function shownValues(value: PortfolioData, wanted: PositionView) {
+  const useOvernight =
+    value.marketClosed &&
+    value.overnightEstimate !== null &&
+    wanted === "overnight";
+  const equity = useOvernight
+    ? (value.overnightEstimate?.equity ?? value.account.equity)
+    : value.account.equity;
+  const view: PositionView = useOvernight ? "overnight" : "close";
+  return { useOvernight, view, equity };
+}
+
+/** An account's totals, with the Close / Approx. now toggle off-hours. */
+function AccountCard({
+  value,
+  view,
+  onView,
+}: {
+  value: PortfolioData;
+  view: PositionView;
+  onView: (view: PositionView) => void;
+}) {
+  const { account, positions } = value;
+  const canEstimate = value.marketClosed && value.overnightEstimate !== null;
+  const {
+    useOvernight,
+    view: selectedView,
+    equity: displayEquity,
+  } = shownValues(value, view);
+  const openPnl = positions
+    .map((p) => positionNumbers(p, selectedView, displayEquity).pnl)
+    .reduce<number>((sum, pnl) => sum + (pnl ?? 0), 0);
+  return (
+    <div className="account">
+      {canEstimate && (
+        <div className="account-view-row">
+          <span className="account-view-label">Show values</span>
+          <div
+            className="segmented small account-view-toggle"
+            role="group"
+            aria-label="Portfolio value view"
+          >
+            <button
+              type="button"
+              aria-pressed={!useOvernight}
+              onClick={() => onView("close")}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              aria-pressed={useOvernight}
+              onClick={() => onView("overnight")}
+            >
+              Approx. now
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="account-main">
+        <span className="account-label">
+          {useOvernight
+            ? "Approx. account value"
+            : value.marketClosed
+              ? "Account value at close"
+              : "Net liquidation"}
+        </span>
+        <strong className="num">
+          {useOvernight
+            ? value.overnightEstimate?.equity === null ||
+              value.overnightEstimate?.equity === undefined
+              ? "—"
+              : `~${usd(value.overnightEstimate.equity)}`
+            : usd(account.equity)}
+        </strong>
+        {useOvernight ? (
+          value.overnightEstimate?.change !== null &&
+          value.overnightEstimate?.change !== undefined && (
+            <span
+              className={`num account-day${tone(value.overnightEstimate.change)}`}
+            >
+              {signedUsd(value.overnightEstimate.change)} vs close
+            </span>
+          )
+        ) : (
+          <span className={`num account-day${tone(account.dayChange)}`}>
+            {signedUsd(account.dayChange)}
+            {account.dayChangePct !== null &&
+              ` (${signedPct(account.dayChangePct)})`}{" "}
+            US session
+          </span>
+        )}
+      </div>
+      <dl className="account-stats">
+        <div>
+          <dt>{useOvernight ? "Approx. open P&L" : "Open P&L"}</dt>
+          <dd className={`num${tone(openPnl)}`}>{signedUsd(openPnl)}</dd>
+          {useOvernight &&
+            value.overnightEstimate &&
+            value.overnightEstimate.pricedPositions <
+              value.overnightEstimate.totalPositions && (
+              <small className="account-view-note">
+                {value.overnightEstimate.pricedPositions}/
+                {value.overnightEstimate.totalPositions} priced
+              </small>
+            )}
+        </div>
+        <div>
+          <dt>Cash</dt>
+          <dd className="num">{usd(account.cash)}</dd>
+        </div>
+        <div>
+          <dt>At risk to stops</dt>
+          <dd className="num">
+            {usd(value.riskAtStops)}
+            {displayEquity > 0 &&
+              ` (${((value.riskAtStops / displayEquity) * 100).toFixed(1)}%)`}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
 /** The Alpaca account now: totals, open positions and working orders. */
 function LiveTrades({
   onError,
@@ -588,9 +717,7 @@ function LiveTrades({
   const why = useDecisions(() => {});
   const bot = useBotContracts();
   const { canTrade } = useControlAccess();
-  const [accountView, setAccountView] = useState<"close" | "overnight">(
-    "close",
-  );
+  const [accountView, setAccountView] = useState<PositionView>("close");
   const { value, at, error } = usePolling<PortfolioData>(
     "/api/portfolio",
     refreshMs,
@@ -602,19 +729,10 @@ function LiveTrades({
         {error ? `Portfolio unavailable: ${error}` : "Loading portfolio…"}
       </p>
     );
-  const { account, positions, orders } = value;
-  const useOvernight = value.marketClosed && accountView === "overnight";
-  const selectedView = useOvernight ? "overnight" : "close";
-  const displayEquity =
-    useOvernight && value.overnightEstimate?.equity !== null
-      ? (value.overnightEstimate?.equity ?? account.equity)
-      : account.equity;
-  const openPnlValues = positions.map(
-    (p) => positionNumbers(p, selectedView, displayEquity).pnl,
-  );
-  const openPnl = openPnlValues.reduce<number>(
-    (sum, pnl) => sum + (pnl ?? 0),
-    0,
+  const { positions, orders } = value;
+  const { view: selectedView, equity: displayEquity } = shownValues(
+    value,
+    accountView,
   );
   return (
     <div className="portfolio">
@@ -628,94 +746,7 @@ function LiveTrades({
             : `Updated ${israelClock(at ?? Date.parse(value.at))} ${israelLabel}`}
         </span>
       </p>
-      <div className="account">
-        {value.marketClosed && (
-          <div className="account-view-row">
-            <span className="account-view-label">Show values</span>
-            <div
-              className="segmented small account-view-toggle"
-              role="group"
-              aria-label="Portfolio value view"
-            >
-              <button
-                type="button"
-                aria-pressed={!useOvernight}
-                onClick={() => setAccountView("close")}
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                aria-pressed={useOvernight}
-                onClick={() => setAccountView("overnight")}
-              >
-                Approx. now
-              </button>
-            </div>
-          </div>
-        )}
-        <div className="account-main">
-          <span className="account-label">
-            {useOvernight
-              ? "Approx. account value"
-              : value.marketClosed
-                ? "Account value at close"
-                : "Net liquidation"}
-          </span>
-          <strong className="num">
-            {useOvernight
-              ? value.overnightEstimate?.equity === null ||
-                value.overnightEstimate?.equity === undefined
-                ? "—"
-                : `~${usd(value.overnightEstimate.equity)}`
-              : usd(account.equity)}
-          </strong>
-          {useOvernight ? (
-            value.overnightEstimate?.change !== null &&
-            value.overnightEstimate?.change !== undefined && (
-              <span
-                className={`num account-day${tone(value.overnightEstimate.change)}`}
-              >
-                {signedUsd(value.overnightEstimate.change)} vs close
-              </span>
-            )
-          ) : (
-            <span className={`num account-day${tone(account.dayChange)}`}>
-              {signedUsd(account.dayChange)}
-              {account.dayChangePct !== null &&
-                ` (${signedPct(account.dayChangePct)})`}{" "}
-              US session
-            </span>
-          )}
-        </div>
-        <dl className="account-stats">
-          <div>
-            <dt>{useOvernight ? "Approx. open P&L" : "Open P&L"}</dt>
-            <dd className={`num${tone(openPnl)}`}>{signedUsd(openPnl)}</dd>
-            {useOvernight &&
-              value.overnightEstimate &&
-              value.overnightEstimate.pricedPositions <
-                value.overnightEstimate.totalPositions && (
-                <small className="account-view-note">
-                  {value.overnightEstimate.pricedPositions}/
-                  {value.overnightEstimate.totalPositions} priced
-                </small>
-              )}
-          </div>
-          <div>
-            <dt>Cash</dt>
-            <dd className="num">{usd(account.cash)}</dd>
-          </div>
-          <div>
-            <dt>At risk to stops</dt>
-            <dd className="num">
-              {usd(value.riskAtStops)}
-              {displayEquity > 0 &&
-                ` (${((value.riskAtStops / displayEquity) * 100).toFixed(1)}%)`}
-            </dd>
-          </div>
-        </dl>
-      </div>
+      <AccountCard value={value} view={accountView} onView={setAccountView} />
       {value.shortRisks.length > 0 && (
         <div className="notice error short-alert" role="alert">
           <strong>Short option risk. This must never happen.</strong>
@@ -815,6 +846,7 @@ function BotAccount({
   label?: string;
 }) {
   const query = broker === "alpaca" ? "" : `broker=${broker}`;
+  const [accountView, setAccountView] = useState<PositionView>("close");
   const { value, at, error } = usePolling<PortfolioData>(
     `${base}${query ? `?${query}` : ""}`,
     botRefreshMs,
@@ -828,10 +860,8 @@ function BotAccount({
           : "Loading the bot's account…"}
       </p>
     );
-  const { account, positions, orders } = value;
-  const openPnl = positions
-    .map((p) => positionNumbers(p, "close", account.equity).pnl)
-    .reduce<number>((sum, pnl) => sum + (pnl ?? 0), 0);
+  const { positions, orders } = value;
+  const { view, equity } = shownValues(value, accountView);
   return (
     <div className="portfolio">
       <p className="portfolio-meta">
@@ -844,38 +874,7 @@ function BotAccount({
             : `Updated ${israelClock(at ?? Date.parse(value.at))} ${israelLabel}`}
         </span>
       </p>
-      <div className="account">
-        <div className="account-main">
-          <span className="account-label">
-            {value.marketClosed ? "Account value at close" : "Net liquidation"}
-          </span>
-          <strong className="num">{usd(account.equity)}</strong>
-          <span className={`num account-day${tone(account.dayChange)}`}>
-            {signedUsd(account.dayChange)}
-            {account.dayChangePct !== null &&
-              ` (${signedPct(account.dayChangePct)})`}{" "}
-            US session
-          </span>
-        </div>
-        <dl className="account-stats">
-          <div>
-            <dt>Open P&L</dt>
-            <dd className={`num${tone(openPnl)}`}>{signedUsd(openPnl)}</dd>
-          </div>
-          <div>
-            <dt>Cash</dt>
-            <dd className="num">{usd(account.cash)}</dd>
-          </div>
-          <div>
-            <dt>At risk to stops</dt>
-            <dd className="num">
-              {usd(value.riskAtStops)}
-              {account.equity > 0 &&
-                ` (${((value.riskAtStops / account.equity) * 100).toFixed(1)}%)`}
-            </dd>
-          </div>
-        </dl>
-      </div>
+      <AccountCard value={value} view={accountView} onView={setAccountView} />
       {value.shortRisks.length > 0 && (
         <div className="notice error short-alert" role="alert">
           <strong>Short option risk. This must never happen.</strong>
@@ -891,8 +890,8 @@ function BotAccount({
         <PositionList
           positions={positions}
           why={new Map()}
-          view="close"
-          equity={account.equity}
+          view={view}
+          equity={equity}
           controls={false}
           history={`${base}/history?period=1W${query ? `&${query}` : ""}`}
           source={base === strangleBase ? "volume" : "main"}
