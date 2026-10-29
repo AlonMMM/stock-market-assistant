@@ -26,6 +26,27 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### F60x2 over 3 years (2026-10-29)
+
+The 10-second bars for the top 50 back to 2024-01-02 (scripts/build-10s-bars.ts, 22,694 stock-days, 5.4 billion trades,
+15 hours). `f60_alerts.py` (the study's R60 / K=2 rule, a 30-minute cooldown, 09:40-13:00; 597 of the study's 603 alerts
+on NVDA / TSLA / AAPL reproduced): 67,434 alerts; `f60_prefilter.py` kept 649 (38,638 no 0/1 DTE, 22,695 no line within
+20 s, 4,905 burst < 1.1). Stock seconds, picks; options at the minute bar's middle +- 3% (`STR_FILL=bars`, calibrated to
+within 4% of real). Winner rules, 2%:
+
+| Alert | Limits | Trades | Avg | $100K becomes, drop | Without best 5 | Tune / check |
+| --- | --- | --- | --- | --- | --- | --- |
+| live alert | live | 196 | +25.6% | $235,591, 16.0% | +$19,115 | +31.2 / +20.8 |
+| live alert | none | 232 | +41.0% | $379,238, 18.0% | +$110,695 | +25.6 / +52.6 |
+| F60x2 | live | 184 | +29.7% | $221,653, 15.8% | +$26,944 | +1.1 / +52.1 |
+| F60x2 | none | 199 | +27.8% | $212,117, 16.3% | +$18,600 | +0.5 / +46.9 |
+| live + F60x2 | live | 348 | +21.5% | $314,314, 18.6% | +$59,790 | +12.6 / +29.1 |
+| live + F60x2 | none | 421 | +36.3% | $583,878, 22.9% | +$239,570 | +15.2 / +51.4 |
+
+F60x2 alone matches the live alert on money but makes it all in the check half (tune +1%). Added to the live alert
+(one account, 2 a stock): +$205K at no limits, nearly twice the trades, a 5-point deeper drop, a weaker tune half.
+A candidate; next: real quotes for its trades, then with the same-week and ETF additions.
+
 ### More tickers: 25 candidates, then 4 ETFs on real quotes (2026-10-29)
 
 25 names outside the top 50 (no large caps): the ranking's 51-60 (SQQQ SNDK RDDT PATH IBM ADBE ARM NOW SHOP VRT), ETFs
