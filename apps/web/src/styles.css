@@ -8339,3 +8339,66 @@ i.added {
   font: inherit;
   font-size: 14px;
 }
+
+/* Earnings badge next to a ticker (EarningsBadge.tsx). */
+:root {
+  --eb-today-bg: #fde7d6;
+  --eb-today-fg: #8a3a06;
+  --eb-after-bg: #ece4fb;
+  --eb-after-fg: #4b2a8a;
+  --eb-week-bg: #e4ecf5;
+  --eb-week-fg: #23446b;
+}
+:root.dark {
+  --eb-today-bg: #4a2410;
+  --eb-today-fg: #ffb987;
+  --eb-after-bg: #33245a;
+  --eb-after-fg: #d3c2ff;
+  --eb-week-bg: #1e2d42;
+  --eb-week-fg: #a9c7ec;
+}
+.eb-wrap {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-inline-start: 6px;
+}
+.eb {
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.eb-today {
+  background: var(--eb-today-bg);
+  color: var(--eb-today-fg);
+}
+.eb-after {
+  background: var(--eb-after-bg);
+  color: var(--eb-after-fg);
+}
+.eb-week {
+  background: var(--eb-week-bg);
+  color: var(--eb-week-fg);
+}
+.eb-detail {
+  position: fixed;
+  z-index: 1000;
+  left: 50%;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--eb-week-bg);
+  color: var(--eb-week-fg);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: 0 4px 14px rgba(var(--shade), 0.18);
+}

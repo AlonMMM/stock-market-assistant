@@ -3,6 +3,20 @@
 Updated: 2026-10-27
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
 
+## Earnings badges on tickers (2026-10-29)
+
+A small badge next to a ticker on the Watchlist, the stock page, Live alerts, Live trades, the
+Main and Volume bots' lists, price alerts and the stock ticket: "Earnings today", "After
+earnings" (only the first trading day after the report) and "Earnings <day>" (within the next 5
+trading days); compact "ER today" / "After ER" / "ER Thu" in tight rows. A tap shows the date
+and before open / after close at the bottom of the screen. The dates are the public Nasdaq
+earnings calendar the bot already reads: the trading service serves the dates around today at
+`GET /v1/earnings` (each day cached 6 hours), the site forwards it at `/api/earnings` with the
+read-only token, and the page reads it once an hour (`packages/market-data/src/earnings.ts`). Not
+on the bots' maps (SVG text). Needs both the trading service and the site deployed. Validation:
+unit tests for the dates, the badge rules and the cache, and the site route; headless Chromium on
+the Watchlist with a mocked, synthetic calendar (light and dark).
+
 ## Charts: pre-market, after-hours and the overnight session (2026-10-29)
 
 The chart (in the page and full screen, `/api/bars?extended=1`) shows pre-market, regular hours,

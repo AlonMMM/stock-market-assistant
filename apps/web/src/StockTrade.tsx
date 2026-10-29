@@ -17,6 +17,7 @@ import {
   type OpenStockOrder,
   type TicketForm,
 } from "./stock-ticket-model.js";
+import { EarningsBadge } from "./EarningsBadge.js";
 
 // Stocks in the trade ticket: whole shares, long only (user 2026-10-16), with
 // every order type and time in force a broker offers (user 2026-10-17). No
@@ -716,8 +717,9 @@ export function StockTrade({ symbol }: { symbol: string }) {
   return (
     <>
       <p className="ticket-summary num">
-        <strong>{q.symbol}</strong> bid {money(q.bid)} · ask {money(q.ask)} ·
-        last {money(q.last)}
+        <strong>{q.symbol}</strong>
+        <EarningsBadge symbol={q.symbol} /> bid {money(q.bid)} · ask{" "}
+        {money(q.ask)} · last {money(q.last)}
         {q.marketOpen === false && " · market closed"}
       </p>
       <OrderTicket key={q.symbol} q={q} />
