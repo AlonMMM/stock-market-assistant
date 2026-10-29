@@ -67,6 +67,13 @@ export interface StrangleSettings {
   crossMaxSeconds: number;
   burstFilter: boolean;
   burstMin: number;
+  // Days with no expiry today or the next session: the nearest expiry later
+  // that week (2-4 DTE), only when the burst is at least burstMinWeek the
+  // side's way (user 2026-10-29, "implement and deploy"; volume-bot.md "2-4
+  // DTE with a stronger burst": 0/1 DTE + 2-4 DTE at 2.5, no limits, 2 a
+  // stock: 258 trades, $100K -> $513K at 2% in 3 years). Still sold the same day.
+  weekExpiry: boolean;
+  burstMinWeek: number;
   noStopMinutes: number;
   exitOnMinuteClose: boolean;
   // The news filter, as the Indi bot's.
@@ -119,6 +126,8 @@ export const defaultStrangleSettings: StrangleSettings = {
   crossMaxSeconds: 15,
   burstFilter: true,
   burstMin: 1.1,
+  weekExpiry: true,
+  burstMinWeek: 2.5,
   noStopMinutes: 30,
   exitOnMinuteClose: true,
   skipEarnings: true,
@@ -133,10 +142,11 @@ export const strangleLimits: Record<
 > = {
   sizePct: [0.5, 6, 0.5],
   // One buy a trade; the account's buys-per-day rule must allow as many.
-  maxTradesPerDay: [1, 20, 1],
+  // Up to 100 a day, 50 open and a 100% day loss: "no limits" (user 2026-10-29).
+  maxTradesPerDay: [1, 100, 1],
   maxPerStock: [1, 5, 1],
-  maxOpen: [1, 10, 1],
-  dayLossPct: [1, 15, 0.5],
+  maxOpen: [1, 50, 1],
+  dayLossPct: [1, 100, 0.5],
   safetyStopPct: [30, 70, 5],
   firstMinute: [5, 120, 5],
   lastMinute: [30, 300, 1],
@@ -149,6 +159,7 @@ export const strangleLimits: Record<
   endMinute: [300, 375, 5],
   crossMaxSeconds: [5, 120, 1],
   burstMin: [0, 3, 0.1],
+  burstMinWeek: [0, 4, 0.1],
   noStopMinutes: [0, 60, 5],
 };
 
@@ -168,6 +179,7 @@ const booleans: BooleanKey[] = [
   "strengthFilter",
   "crossFilter",
   "burstFilter",
+  "weekExpiry",
   "exitOnMinuteClose",
   "skipEarnings",
   "skipPremarket",
@@ -305,7 +317,7 @@ export function strangleSteps(
   return [
     {
       name: "The alert",
-      text: `On a day with a same-day expiry${nextDayWords}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.`,
+      text: `On a day with a same-day expiry${nextDayWords}${s.weekExpiry ? `, or else the nearest expiry later that week when the burst is at least ${s.burstMinWeek}` : ""}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.`,
     },
     {
       name: "News filter",
