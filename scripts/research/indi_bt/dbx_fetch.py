@@ -25,6 +25,7 @@ if "open7" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "op
 if "open8" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open8"), "open8_dbx_list.csv", 391   # liq_test.py LQ_NAME=lev12
 if "open9" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open9"), "open9_dbx_list.csv", 391   # expiry_rules.py
 if "open10" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open10"), "open10_dbx_list.csv", 391   # mkt_rules.py
+if "open11" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open11"), "open11_dbx_list.csv", 391   # indi_close.py
 NY = ZoneInfo("America/New_York")
 AUTH = "Basic " + base64.b64encode((os.environ["DATABENTO_API_KEY"] + ":").encode()).decode()
 HEAD = ["contract", "minute", "bid", "ask", "bid_sz", "ask_sz"]
