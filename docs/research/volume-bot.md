@@ -933,3 +933,39 @@ after it (at a flat $2,000 a trade):
 - 15 events, 3 that matter: too few to fit a rule. Next: more events (a lower bar: 10x, or a breadth count of the
   minute alert; and 10-second bars further back than 2024 from Alpaca trades), and an index trade (QQQ/SPY 0DTE, one
   tight-spread contract) in the cluster's way, skipping scheduled 14:00 releases.
+
+## Shock buys capped at the Black-Scholes price + 5% (2026-10-29)
+
+The user: shock with a wide spread limit, "but apply only when you are trying to buy if the price is 5% more than the
+Black-Scholes should be". Fair = Black-Scholes at the stock's price at the buy second, the volatility of the option's
+last 1-minute bar before the alert minute (`fair` in the trade; `STR_FILTERS=shockbs`). Skip the shock buy when the price
+paid (after the chase) is over fair x 1.05. Real prices, flat2 2%, plan + shock (hold5:300), 2024-02 to 2026-10.
+All 615 shock buys had a fair price. Paid over fair: median +6.3% (10th pct -4.8%, 90th +28%).
+
+| Shock version | Trades | Account (drop) | Without 10-10 | Tune | Check | Check without 10-10 | Live limits |
+|---|---|---|---|---|---|---|---|
+| No shock (plan) | 270 | $657,424 (21.5%) | $231,721 | $170,179 | $384,275 | $136,702 | $373,799 |
+| Shock | 798 | $479,544 (35.1%) | $179,155 | $154,945 | $308,888 | $115,657 | $231,238 |
+| Shock, <= BS + 5% | 521 | $911,528 (24.9%) | $317,158 | $258,864 | $348,331 | $120,474 | $520,969 |
+| Shock <= 50% | 762 | $605,012 (33.7%) | $226,048 | $174,567 | $345,445 | $128,861 | $288,527 |
+| Shock <= 50%, <= BS + 5% | 511 | $929,489 (24.9%) | $323,273 | $265,760 | $346,888 | $121,142 | $521,850 |
+| Shock <= 30% | 716 | $721,780 (33.5%) | $268,235 | $191,845 | $376,244 | $141,325 | $337,802 |
+| Shock <= 30%, <= BS + 5% | 496 | $1,005,065 (24.9%) | $349,492 | $282,033 | $353,890 | $125,210 | $566,538 |
+| Shock, burst >= 0 | 534 | $658,576 (24.6%) | $229,947 | $185,839 | $355,307 | $123,776 | $355,483 |
+| Shock, <= BS + 5%, burst >= 0 | 383 | $869,056 (22.6%) | $303,692 | $233,270 | $369,542 | $130,684 | $494,061 |
+| Shock <= 30%, burst >= 0 | 492 | $829,141 (26.6%) | $290,384 | $208,351 | $395,291 | $137,278 | $434,443 |
+| Shock <= 30%, <= BS + 5%, burst >= 0 | 368 | $913,083 (22.0%) | $319,295 | $238,426 | $379,394 | $132,831 | $511,297 |
+
+Shock trades kept and removed by the rule (all shock buys, per trade, net):
+
+| | Tune: n, mean, median | Check: n, mean, median |
+|---|---|---|
+| Kept (<= fair + 5%) | 142, +22.1%, -10.8% | 138, -3.4%, -15.6% |
+| Removed (> fair + 5%) | 167, -17.0%, -28.4% | 168, +3.1%, -26.0% |
+
+- The rule gives the best 3-year totals and cuts the drop from 33-35% to 22-25%, but the gain is all in the tune half.
+  In the check half the means flip (the removed buys did better) and every BS version ends below the plan alone
+  ($346-379K vs $384K; without 10-10 $120-133K vs $137K).
+- On medians it is consistent: the kept buys lose 11-16% at the median, the removed 26-28%, in both halves. It cuts the
+  typical loser; the check half's few big winners were among the dear buys (volatility rising into the move).
+- Not better than the plan on the check half: not for live. A lead: the price over fair as a size or exit input.

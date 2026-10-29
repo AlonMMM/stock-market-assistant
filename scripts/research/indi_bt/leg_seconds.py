@@ -288,6 +288,7 @@ def trade(job):
         q = book_at(rows, sec + LAG)
         if not q: return None
         mid = (q[0] + q[1]) / 2; buy = mid + (q[1] - mid) / 2
+        spread = (q[1] - q[0]) / mid
         if os.environ.get("STR_MAX_SPREAD") and (q[1] - q[0]) > float(os.environ["STR_MAX_SPREAD"]) * mid:
             return None   # STR_MAX_SPREAD=0.1: no buy when the spread at the buy is over 10% of the mid (the user, 2026-10-28)
         later = book_at(rows, sec + LAG + 10)
@@ -313,6 +314,7 @@ def trade(job):
             px = bs_price(e, contract, side, ct - 1, ct, s_buy)
             if not px: return None
             buy = px * (1 + LF.SH); q = (px, px)
+    if BARS or entry == "close": spread = None
     mid_in = (q[0] + q[1]) / 2
     stock_in = spot   # the minute close (close entry) or the trigger second's price
     if entry != "close":
@@ -321,6 +323,9 @@ def trade(job):
             secs = [(int(a), float(b)) for a, b in csv.reader(gzip.open(sp, "rt"))]
             k = [c for a, c in secs if a <= sec + LAG]
             if k: stock_in = k[-1]
+    # Black-Scholes at the stock's price at the buy, the volatility of the option's last minute bar before the buy minute
+    # (STR_FILTERS=shockbs, the user 2026-10-29: no buy over 5% above the fair price)
+    fair = bs_price(e, contract, side, ct - 1, ct, stock_in) if os.environ.get("STR_FILTERS") == "shockbs" else None
     w = LF.walk(e["sym"], e["date"], ct, side, contract, spot, e["u"])
     if not w: return None
     stop = float(os.environ.get("STR_STOP", "0"))   # STR_STOP=0.4: sell once the option is 40% under the buy (STR_STOP_ON=bid|mid)
@@ -362,7 +367,7 @@ def trade(job):
     return dict(am=am, to_cross=sec - a_sec, alert_sec=a_sec, src=e.get("src", ""), fill=fill, waited=waited, entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
                 t=t_side, d2=d2_side, mv_open=mv_open, mv_close=mv_close, side=side, mid_in=mid_in,
                 mid_out=(qs[0] / (1 - LF.SH) if BARS and qs[0] > 0.0101 else (qs[0] + qs[1]) / 2),   # the model's mid at the sale
-                stock_in=stock_in, stock_out=stock_out)
+                stock_in=stock_in, stock_out=stock_out, spread=spread, fair=fair)
 
 
 def main():
@@ -509,6 +514,18 @@ def main():
                 "t >= 1.8, or t >= 1.2 and D2 >= 1.5 (Main bot 2.6)": lambda t: ok(t, "t") and (t["t"] >= 1.8 or (t["t"] >= 1.2 and ok(t, "d2") and t["d2"] >= 1.5)),
                 "t < 0 (disagrees)": lambda t: ok(t, "t") and t["t"] < 0,
             })
+            if os.environ.get("STR_FILTERS") == "shockbs":   # the shock's own buys: spread limit, price over Black-Scholes, burst
+                def shock_ok(t, cap, over, burst):
+                    if t["src"] != "e_shock15": return True
+                    if cap and (t["spread"] is None or t["spread"] > cap): return False
+                    if over is not None and (not t["fair"] or t["buy"] > t["fair"] * (1 + over)): return False
+                    return not burst or (t["am"] is not None and t["am"] >= 0)
+                FILTERS = {"no shock": lambda t: t["src"] != "e_shock15"}
+                for burst in (False, True):
+                    for cap in (None, 0.5, 0.3):
+                        for over in (None, 0.05):
+                            name = f"shock{' <= ' + str(int(cap * 100)) + '%' if cap else ''}{', <= BS + 5%' if over is not None else ''}{', burst >= 0' if burst else ''}"
+                            FILTERS[name] = (lambda c, o, b: lambda t: shock_ok(t, c, o, b))(cap, over, burst)
             if os.environ.get("STR_FILTERS") == "move":
                 FILTERS = {"all": lambda t: True, "t >= 0": lambda t: ok(t, "t") and t["t"] >= 0}
                 for k in (2, 3, 4, 6):
@@ -518,7 +535,7 @@ def main():
                     FILTERS[f"t >= 0, skip open move >= {k}"] = (lambda k: lambda t: ok(t, "t") and t["t"] >= 0 and ok(t, "mv_open") and t["mv_open"] < k)(k)
                     FILTERS[f"t >= 0, skip day move >= {k}"] = (lambda k: lambda t: ok(t, "t") and t["t"] >= 0 and ok(t, "mv_close") and t["mv_close"] < k)(k)
             VERS, ENTS = ("plain20",), ("cross",)
-            if os.environ.get("STR_FILTERS") != "move": VERS, ENTS = ("plain20",), ("close", "cross")
+            if os.environ.get("STR_FILTERS") not in ("move", "shockbs"): VERS, ENTS = ("plain20",), ("close", "cross")
         else: VERS, ENTS = VERSIONS + tuple(MIXES), ENTRIES
         GROUPS = {"": lambda t: True}
         if os.environ.get("STR_GROUPS"):
