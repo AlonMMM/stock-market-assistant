@@ -26,6 +26,16 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### Production (2026-10-29): same-week expiries, no-limit caps
+
+PR #199 (38a3479), deployed 2026-10-29 06:04 UTC (before the open): `weekExpiry` (on) with `burstMinWeek` 2.5; the caps
+can go to 100 trades a day, 50 open, a 100% day loss; connector tools `volume_bot_account_risk` /
+`volume_bot_update_account_risk` for the trading service's risk rules on the bot's account (buys a day 10, open risk
+10%, the 12.5% drawdown brake by default: tighter than the backtest). 715 tests; `volume-replay.ts` 2025-10-27: QCOM's 4 DTE
+call bought 10:01:01, sold 10:33, as the backtest. To match the backtest live, save: the top 50, Favorites off, 2%,
+delta 0.20, 100 trades a day, 50 open, a 100% day loss, 2 a stock; and on the account: buys a day 100, open risk 0 (no
+limit), max open positions 0, day loss 25%, drawdown brake 50%.
+
 ### No limits on the candidates (2026-10-29)
 
 The user: run the candidates without limits (no day-loss stop, no trade or open cap, any number of trades a stock,
