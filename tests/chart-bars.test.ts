@@ -246,3 +246,126 @@ test("bars: fewer than 15 sessions give no average or percentile", () => {
     { average: 9.5, percentile: 50 },
   );
 });
+
+// Extended hours (user 2026-10-20): synthetic pre-market, regular, after-hours
+// bars from SIP, and overnight bars from the overnight feed.
+function extendedFetcher(seen: string[], nightFails = false) {
+  return (async (input: URL) => {
+    const symbol = decodeURIComponent(input.pathname.split("/")[3]!);
+    const feed = input.searchParams.get("feed")!;
+    seen.push(`${symbol} ${feed}`);
+    const start = Date.parse(input.searchParams.get("start")!);
+    const end = Date.parse(input.searchParams.get("end")!);
+    if (feed === "boats" && nightFails)
+      return new Response("not in plan", { status: 403 });
+    const out = [];
+    for (const date of days(start, end)) {
+      const row = (minute: number, c: number, on = date) => ({
+        t: new Date(newYorkToUtc(on, minute)).toISOString(),
+        o: c,
+        h: c,
+        l: c,
+        c,
+        v: 100,
+        vw: c,
+      });
+      const next = new Date(`${date}T12:00:00Z`);
+      next.setUTCDate(next.getUTCDate() + 1);
+      if (feed === "boats")
+        // 21:00 that evening and 01:00 the next morning.
+        out.push(row(1260, 9), row(60, 8, next.toISOString().slice(0, 10)));
+      else out.push(row(480, 1), row(570, 2), row(900, 3), row(990, 4));
+    }
+    return Response.json({
+      bars: out.filter((b) => {
+        const t = Date.parse(b.t);
+        return t >= start && t < end;
+      }),
+      next_page_token: null,
+    });
+  }) as unknown as typeof fetch;
+}
+
+test("extended hours: pre-market, after-hours and the overnight after the session", async () => {
+  const seen: string[] = [];
+  const out = await handleChartBars(
+    {
+      ticker: "NVDA",
+      against: "NVDA",
+      bar: "5m",
+      sessions: "1",
+      end: "2026-10-15",
+      extended: "1",
+    },
+    credentials,
+    extendedFetcher(seen),
+    afterClose,
+  );
+  assert.equal(out.status, 200);
+  const rows = (
+    out.body as {
+      rows: {
+        session?: string;
+        start: number;
+        stock: { close: number };
+        vwap: number | null;
+        previousClose: number | null;
+      }[];
+    }
+  ).rows;
+  assert.deepEqual(
+    rows.map((r) => [r.session, r.stock.close]),
+    [
+      ["pre", 1],
+      ["regular", 2],
+      ["regular", 3],
+      ["post", 4],
+      ["overnight", 9],
+      ["overnight", 8],
+    ],
+  );
+  assert.ok(rows.every((r, i) => i === 0 || r.start > rows[i - 1]!.start));
+  // VWAP is a regular-hours number; the previous close is the regular close.
+  assert.deepEqual(
+    rows.map((r) => r.vwap === null),
+    [true, false, false, true, true, true],
+  );
+  assert.equal(rows[0]!.previousClose, 3);
+  // The overnight ran 21:00 Thursday and 01:00 Friday.
+  assert.equal(rows[5]!.start, newYorkToUtc("2026-10-16", 60) / 1000);
+  assert.ok(seen.includes("NVDA boats"));
+});
+
+test("extended hours when the plan refuses the overnight feed", async () => {
+  const query = {
+    ticker: "NVDA",
+    against: "NVDA",
+    bar: "5m",
+    sessions: "1",
+    end: "2026-10-15",
+    extended: "1",
+  };
+  const sessions = (b: unknown) =>
+    (b as { rows: { session?: string }[] }).rows.map((r) => r.session);
+  const refused = await handleChartBars(
+    query,
+    credentials,
+    extendedFetcher([], true),
+    afterClose,
+  );
+  assert.equal(refused.status, 200);
+  assert.deepEqual(sessions(refused.body), [
+    "pre",
+    "regular",
+    "regular",
+    "post",
+  ]);
+  // Without `extended`: regular hours only, as before.
+  const regular = await handleChartBars(
+    { ...query, extended: "" },
+    credentials,
+    extendedFetcher([]),
+    afterClose,
+  );
+  assert.deepEqual(sessions(regular.body), [undefined, undefined]);
+});

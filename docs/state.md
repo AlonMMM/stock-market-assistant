@@ -3,6 +3,19 @@
 Updated: 2026-10-27
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
 
+## Charts: pre-market, after-hours and the overnight session (2026-10-29)
+
+The chart (in the page and full screen, `/api/bars?extended=1`) shows pre-market, regular hours,
+after-hours and the overnight session (Alpaca BOATS), shaded outside regular hours; 1D stays
+regular-hours bars. The candle chart adds the overnight after the day's after-hours. On the
+charts a trading date owns the overnight that follows it, to 04:00 of the next trading day
+(`sessions.ts`, built on `overnight.ts`), so at night the day's chart keeps going; the
+Watchlist's night change is unchanged. VWAP and "vs prev. close" use regular hours only. Live
+trades move the forming bar in every part of the day. When BOATS is refused the charts load
+without the overnight. Validation: unit tests for the session parts and bar slots, extended and
+overnight bars, overnight candles; headless Chromium during an overnight session with mocked,
+synthetic bars.
+
 ## Ongoing trades and the bots' maps (2026-10-27)
 
 **An ongoing trade opens its window.** Under Live trades (the owner's account, the Main bot's and the volume

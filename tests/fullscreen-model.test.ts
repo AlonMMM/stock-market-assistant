@@ -38,11 +38,16 @@ test("full screen: what each bar size shows when it opens", () => {
 test("full screen: the bars request names the benchmark and, for a past day, its end", () => {
   assert.equal(
     barsUrl("NVDA", "SMH", "15m"),
-    "/api/bars?ticker=NVDA&against=SMH&bar=15m",
+    "/api/bars?ticker=NVDA&against=SMH&bar=15m&extended=1",
   );
   assert.equal(
     barsUrl("NVDA", "SPY", "1m", "2026-10-14"),
-    "/api/bars?ticker=NVDA&against=SPY&bar=1m&end=2026-10-14",
+    "/api/bars?ticker=NVDA&against=SPY&bar=1m&extended=1&end=2026-10-14",
+  );
+  // Daily bars are regular-hours bars.
+  assert.equal(
+    barsUrl("NVDA", "SPY", "1D"),
+    "/api/bars?ticker=NVDA&against=SPY&bar=1D",
   );
 });
 

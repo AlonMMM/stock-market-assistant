@@ -4,7 +4,6 @@ import {
   advance,
   barSlot,
   chartTrading,
-  liveMinute,
   minuteSlot,
   sessionOf,
   withLiveCandles,
@@ -20,11 +19,15 @@ const ny = (hhmm: string, seconds = 0) =>
 const s = (ms: number) => ms / 1000;
 
 test("sessions: pre-market, regular hours, after-hours, closed", () => {
-  assert.equal(sessionOf(ny("03:59"))?.part, undefined);
+  // Monday 03:59 is still the overnight that began Sunday 20:00 (Friday's).
+  assert.equal(sessionOf(ny("03:59"))?.part, "overnight");
+  assert.equal(sessionOf(ny("03:59"))?.date, "2026-10-16");
   assert.equal(sessionOf(ny("04:00"))?.part, "pre");
   assert.equal(sessionOf(ny("09:30"))?.part, "regular");
   assert.equal(sessionOf(ny("16:00"))?.part, "post");
-  assert.equal(sessionOf(ny("20:00")), null);
+  // Monday 20:00 starts Monday's overnight session.
+  assert.equal(sessionOf(ny("20:00"))?.part, "overnight");
+  assert.equal(sessionOf(ny("20:00"))?.date, "2026-10-19");
   assert.equal(sessionOf(Date.parse("2026-10-18T12:00:00-04:00")), null); // Sunday
   assert.equal(chartTrading("2026-10-19", ny("10:00")), true);
   assert.equal(chartTrading("2026-10-16", ny("10:00")), false);
@@ -187,9 +190,13 @@ test("full screen 5m: running bars widen the forming bar, or open the next", () 
   assert.equal(next[2]!.previousClose, 100);
 });
 
-test("full screen: regular hours only; 1D moves today's bar; 1h from 09:30", () => {
-  assert.equal(barSlot("1m", ny("16:30")), null);
-  assert.equal(barSlot("1m", ny("08:00")), null);
+test("full screen: extended hours, 1D moves today's bar, 1h from 09:30", () => {
+  // Extended hours by default; regular hours only when asked.
+  assert.equal(barSlot("1m", ny("16:30")), s(ny("16:30")));
+  assert.equal(barSlot("1m", ny("08:00")), s(ny("08:00")));
+  assert.equal(barSlot("1m", ny("16:30"), false), null);
+  assert.equal(barSlot("1m", ny("08:00"), false), null);
+  assert.equal(barSlot("1D", ny("16:30")), null);
   const daily = [
     {
       ...row(ny("09:30"), 101, 501),
@@ -212,35 +219,4 @@ test("full screen: regular hours only; 1D moves today's bar; 1h from 09:30", () 
   });
   assert.equal(barSlot("1h", ny("10:45")), s(ny("10:30")));
   assert.equal(barSlot("15m", ny("09:44")), s(ny("09:30")));
-});
-
-test("day chart: the newest minute of a trade, never an older one", () => {
-  const series = {
-    ticker: "NVDA",
-    previousClose: 100,
-    bars: [
-      {
-        start: s(ny("10:00")),
-        session: "regular" as const,
-        open: 1,
-        close: 1,
-        volume: 1,
-      },
-    ],
-  };
-  assert.deepEqual(
-    liveMinute(series, "2026-10-19", { price: 7, at: ny("10:02", 9) }),
-    {
-      start: s(ny("10:02")),
-      close: 7,
-    },
-  );
-  assert.equal(
-    liveMinute(series, "2026-10-19", { price: 7, at: ny("09:59") }),
-    null,
-  );
-  assert.equal(
-    liveMinute(series, "2026-10-16", { price: 7, at: ny("10:02") }),
-    null,
-  );
 });

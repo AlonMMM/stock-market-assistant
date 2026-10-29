@@ -104,3 +104,43 @@ test("candles: without the snapshot the bars still come; bad input is refused", 
     503,
   );
 });
+
+test("candles: the overnight after the session, from its own feed", async () => {
+  const seen: string[] = [];
+  const feeds: string[] = [];
+  const night = [
+    // Monday 21:00 and Tuesday 01:30 New York (UTC−4).
+    bar("2026-10-13T01:00:00Z", 101, 101.2, 100.9, 101.1),
+    bar("2026-10-13T05:30:00Z", 101.1, 101.4, 101, 101.3),
+  ];
+  const f = (async (input: URL) => {
+    seen.push(input.pathname);
+    if (input.pathname.endsWith("/snapshot")) return Response.json({});
+    feeds.push(input.searchParams.get("feed")!);
+    return Response.json({
+      bars: input.searchParams.get("feed") === "boats" ? night : bars,
+      next_page_token: null,
+    });
+  }) as unknown as typeof fetch;
+  const at = Date.parse("2026-10-13T06:00:00Z"); // Tuesday 02:00
+  const out = await handleCandles(query, credentials, f, at);
+  assert.ok("candles" in out.body);
+  assert.deepEqual(feeds.sort(), ["boats", "sip"]);
+  assert.deepEqual(
+    out.body.candles.map((c) => [c.session, c.close]),
+    [
+      ["regular", 100.5],
+      ["regular", 100.6],
+      ["overnight", 101.1],
+      ["overnight", 101.3],
+    ],
+  );
+  // When the plan refuses the overnight feed, the day still loads.
+  const failing = (async (input: URL) =>
+    input.searchParams.get("feed") === "boats"
+      ? new Response("no", { status: 403 })
+      : f(input)) as unknown as typeof fetch;
+  const refused = await handleCandles(query, credentials, failing, at);
+  assert.ok("candles" in refused.body);
+  assert.equal(refused.body.candles.length, 2);
+});
