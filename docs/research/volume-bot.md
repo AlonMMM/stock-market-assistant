@@ -841,3 +841,26 @@ in the tune half, without 2025-10-10, and on the drop. F60x2 went live on 2026-1
 setting). Also found: with no limits, a stock's second trade may overlap its first, so two alerts can buy the same move
 (COIN on 2025-10-10, twice); "one at a time a stock" (flat2) is the honest no-limits account. On 2025-10-10 the plan put
 53% of the account (66% all together) in open trades at once.
+
+## The shock on real prices: fewer trades, cheaper fills (2026-10-29)
+
+The user: "I still believe in the shock model. Maybe we have too many trades in there, and maybe we can optimize the buy
+and sell spread." The 571 kept shock trades of plan + shock on real prices (vol/realrun/prodshock.json), by feature:
+- burst against the side (< 0): 283 trades, -7.1% a trade (tune -7.5%, check -6.7%); burst >= 2.5: 26 trades, +83%.
+- top 15 names +10.4% (both halves positive); rank 30+ -7.2%. Option $1-2: +13.6% (both halves); under $1 loses.
+- 9:40-10:30 and 14:00-15:30 lose in both halves.
+Filters with the plan, one trade at a time a stock, 2%, real prices (about 10 versions looked at, chosen after seeing the
+groups):
+
+| Version | 3 years (drop) | Tune | Check | 3 years without 10-10 | Check without 10-10 |
+|---|---|---|---|---|---|
+| Plan alone | $657,424 (22%) | $170,179 | $384,275 | $231,721 | $136,702 |
+| + shock, no filter | $479,544 (35%) | $154,945 | $308,888 | $179,155 | $115,657 |
+| + shock, burst >= 0, top 15 (99 shock trades, +7.1%) | $729,638 (26%) | $182,134 | $397,798 | $260,998 | $140,979 |
+| + shock, burst >= 0, option >= $1 | $857,450 (26%) | $232,136 | $366,630 | $300,881 | $129,858 |
+| + shock, burst >= 2.5 | $676,537 (22%) | $161,861 | $412,830 | $236,523 | $148,719 |
+
+Only "burst >= 0, top 15" beats the plan in all four views, by 5-12%, with 4 points more drop: a lead for paper, not proof.
+Fills: the spread at a shock buy is 12% of the mid (median; 75th pct 23%). The backtest already pays mid + a quarter of the
+spread (+3.8%), and a buy limit at the mid fills within 10 s only 26% of the time, so no cheaper buy is available. The
+sale is at the bid; a sell-side limit needs 1-second books at the exits (not downloaded).
