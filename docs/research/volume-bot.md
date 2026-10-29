@@ -969,3 +969,34 @@ Shock trades kept and removed by the rule (all shock buys, per trade, net):
 - On medians it is consistent: the kept buys lose 11-16% at the median, the removed 26-28%, in both halves. It cuts the
   typical loser; the check half's few big winners were among the dear buys (volatility rising into the move).
 - Not better than the plan on the check half: not for live. A lead: the price over fair as a size or exit input.
+
+### Retry for 60 s instead of skipping; 3% as well as 5% (2026-10-29)
+
+The user: "keep trying if we did not get a fair price, up to 1 minute, if the stock keeps big volume; test it with 3% as
+well". A shock buy over Black-Scholes + cap tries again each second for up to 60 s (`shock_retry` in leg_seconds.py): the
+first second the price (mid + a quarter of the spread) is at or under fair + cap buys, fair again at that second's stock
+price with the pre-shock volatility; a second whose bid runs past the price within 10 s is no fill (keep trying). The volume
+gate stops the tries once the stock's 60-second volume multiple (shock_volmult.py: 60-s window / its 20-session median or
+today's pace; ~18x at the shock, ~11x a minute later, medians) drops under 10x or 5x. Books: cbbo-1s / cmbp-1 to 80 s
+after the buy (opt2). Real prices, flat2 2%, plan + shock.
+
+| Shock version | Trades | Account (drop) | Without 10-10 | Tune | Check | Check without 10-10 | Live limits |
+|---|---|---|---|---|---|---|---|
+| No shock (plan) | 270 | $657,424 (21.5%) | $231,721 | $170,179 | $384,275 | $136,702 | $373,799 |
+| Shock | 798 | $479,544 (35.1%) | $179,155 | $154,945 | $308,888 | $115,657 | $231,238 |
+| <= BS + 3%, skip | 479 | $993,336 (23.5%) | $346,075 | $278,536 | $354,907 | $125,040 | $566,729 |
+| <= BS + 3%, retry 60 s | 607 | $752,805 (27.3%) | $262,729 | $197,870 | $380,219 | $133,439 | $448,454 |
+| <= BS + 3%, retry while volume >= 5x | 591 | $816,044 (27.6%) | $283,274 | $207,094 | $386,882 | $135,664 | $478,772 |
+| <= BS + 3%, retry while volume >= 10x | 564 | $873,124 (28.4%) | $303,154 | $226,792 | $381,743 | $132,092 | $510,532 |
+| <= BS + 5%, skip | 521 | $911,528 (24.9%) | $317,158 | $258,864 | $348,331 | $120,474 | $520,969 |
+| <= BS + 5%, retry 60 s | 640 | $718,199 (29.4%) | $252,247 | $193,138 | $369,735 | $127,663 | $423,720 |
+| <= BS + 5%, retry while volume >= 5x | 629 | $787,227 (28.7%) | $275,585 | $203,345 | $383,106 | $133,867 | $451,768 |
+| <= BS + 5%, retry while volume >= 10x | 605 | $878,228 (28.5%) | $306,781 | $227,797 | $385,337 | $133,741 | $518,900 |
+
+The retried buys (shock buys only, per trade, net): about 30-45% of the over-fair buys reach fair within 60 s, after 6-12 s
+(median). Tune: -19% to -29% a trade (median -27% to -32%); check: +11% to +16% (median -19% to -22%). The same flip as
+the skip rule: once paid at fair, the over-fair buys are still the weak ones at the median, and their average is decided
+by a few runners in the check half. The volume gate helps (10x > 5x > none in every view).
+- Best 3-year total so far: <= BS + 3%, skip ($993K, drop 23.5%, live limits $567K, without 10-10 $346K), but its check
+  half is below the plan alone ($355K vs $384K). No version beats the plan in the check half without 10-10 ($132-136K vs
+  $137K). Not for live.

@@ -272,7 +272,8 @@ if BARS and os.environ.get("STR_SH"): LF.SH = float(os.environ["STR_SH"])   # e.
 
 def trade(job):
     """One version's trade for one entry of one alert, or None."""
-    e, entry, v, contract, delta, tg = job
+    e, entry, v, contract, delta, tg = job[:6]
+    force = job[6] if len(job) > 6 else None   # (second, price): a retried buy (shock_retry) at that second and price
     sec, side, spot = tg
     if entry == "close":
         q = RS.quote(contract, e["date"], sec // 60 - 1)
@@ -286,6 +287,7 @@ def trade(job):
         rows = [r for r in csv.reader(gzip.open(p, "rt"))]
         rows = [(int(a), b, c) for a, b, c in rows if float(b) > 0 and float(c) > 0]
         q = book_at(rows, sec + LAG)
+        if force: q = force[2]
         if not q: return None
         mid = (q[0] + q[1]) / 2; buy = mid + (q[1] - mid) / 2
         spread = (q[1] - q[0]) / mid
@@ -294,6 +296,7 @@ def trade(job):
         later = book_at(rows, sec + LAG + 10)
         if later and later[0] > buy: buy = min(later[1], buy * 1.1)
         ct = sec // 60
+        if force: buy, ct = force[1], force[0] // 60
         if entry == "cross" and os.environ.get("STR_BUY"):   # STR_BUY=micro60|step5: the fair-price limit buy
             p2 = opt2_path(e, contract, sec)
             if not os.path.exists(p2): return None
@@ -321,11 +324,14 @@ def trade(job):
         sp = stock_path(e)
         if os.path.exists(sp):
             secs = [(int(a), float(b)) for a, b in csv.reader(gzip.open(sp, "rt"))]
-            k = [c for a, c in secs if a <= sec + LAG]
+            k = [c for a, c in secs if a <= (force[0] if force else sec + LAG)]
             if k: stock_in = k[-1]
     # Black-Scholes at the stock's price at the buy, the volatility of the option's last minute bar before the buy minute
     # (STR_FILTERS=shockbs, the user 2026-10-29: no buy over 5% above the fair price)
-    fair = bs_price(e, contract, side, ct - 1, ct, stock_in) if os.environ.get("STR_FILTERS") == "shockbs" else None
+    fair = bs_price(e, contract, side, (sec // 60) - 1, ct, stock_in) if os.environ.get("STR_FILTERS") == "shockbs" else None
+    alts, ok = [], None
+    if os.environ.get("STR_FILTERS") == "shockbs" and e.get("src") == "e_shock15" and not force and not BARS and entry == "hold5" and v == "plain20":
+        alts, ok = shock_retry(e, contract, side, sec, buy, fair, job)
     w = LF.walk(e["sym"], e["date"], ct, side, contract, spot, e["u"])
     if not w: return None
     stop = float(os.environ.get("STR_STOP", "0"))   # STR_STOP=0.4: sell once the option is 40% under the buy (STR_STOP_ON=bid|mid)
@@ -364,10 +370,70 @@ def trade(job):
     if "sec0" in e:   # an alert inside a minute (fast / early): its own second and price, the close that ended 3 minutes before
         a_sec, k = e["sec0"], (e["sec0"] - 180) // 60 - 1
         am = sign * (e["stock0"] / bx[k][4] - 1) / e["u"] if k in bx else None
-    return dict(am=am, to_cross=sec - a_sec, alert_sec=a_sec, src=e.get("src", ""), fill=fill, waited=waited, entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
+    out = dict(am=am, to_cross=sec - a_sec, alert_sec=a_sec, src=e.get("src", ""), fill=fill, waited=waited, entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
                 t=t_side, d2=d2_side, mv_open=mv_open, mv_close=mv_close, side=side, mid_in=mid_in,
                 mid_out=(qs[0] / (1 - LF.SH) if BARS and qs[0] > 0.0101 else (qs[0] + qs[1]) / 2),   # the model's mid at the sale
-                stock_in=stock_in, stock_out=stock_out, spread=spread, fair=fair)
+                stock_in=stock_in, stock_out=stock_out, spread=spread, fair=fair, ok=ok, alt_for=None)
+    return [out] + alts if alts else out
+
+
+RETRY_CAPS = (0.03, 0.05)
+RETRY_GATES = (None, 0, 5, 10)   # None: skip the buy; else try each second for 60 s while the volume multiple >= the gate
+VOLMULT = {}
+
+
+def retry_name(cap, gate):
+    if gate is None: return f"<= BS + {int(cap * 100)}%, skip"
+    if gate == 0: return f"<= BS + {int(cap * 100)}%, retry 60 s"
+    return f"<= BS + {int(cap * 100)}%, retry 60 s while volume >= {gate}x"
+
+
+def shock_retry(e, contract, side, sec, buy, fair, job):
+    """The user, 2026-10-29: a shock buy over Black-Scholes + cap is not skipped but tried again each second for up to 60 s
+    while the stock's 60-second volume stays big; the first second the price (mid + a quarter of the spread) is at or under
+    the fair price then (the stock's price at that second, the volatility from before the shock) buys.
+    Returns (the retried trades, each with alt_for = its versions; the versions the first buy already meets)."""
+    import re as _re
+    from store import bs as _bs, iv_delta as _ivd, years_to_expiry as _yte
+    ok = [retry_name(c, g) for c in RETRY_CAPS for g in RETRY_GATES if fair and buy <= fair * (1 + c)]
+    todo = [(c, g) for c in RETRY_CAPS for g in RETRY_GATES if g is not None and retry_name(c, g) not in ok]
+    if not todo: return [], ok
+    m = _re.match(r"^[A-Z.]+(\d{2})(\d{2})(\d{2})([CP])(\d{8})$", contract)
+    if not m: return [], ok
+    exp = f"20{m.group(1)}-{m.group(2)}-{m.group(3)}"; k = int(m.group(5)) / 1000; call = m.group(4) == "C"
+    m_iv = sec // 60 - 1; iv = None
+    sb = {b[0]: b[4] for b in day(e["sym"], e["date"])}
+    for b in reversed([b for b in day(contract, e["date"]) if m_iv - 10 <= b[0] <= m_iv]):
+        if b[0] in sb:
+            x = _ivd(b[4], sb[b[0]], k, _yte(e["date"], b[0], exp), 0.04, call)
+            if x: iv = x[0]; break
+    if not iv: return [], ok
+    p2 = opt2_path(e, contract, sec)
+    if not os.path.exists(p2): fetch_opt2((e, contract, sec))
+    rows2 = [(int(r[0]), *r[1:]) for r in csv.reader(gzip.open(p2, "rt")) if float(r[1]) > 0 and float(r[2]) > 0]
+    sp = stock_path(e)
+    secs = [(int(a), float(c)) for a, c in csv.reader(gzip.open(sp, "rt"))] if os.path.exists(sp) else []
+    if not VOLMULT: VOLMULT.update(json.load(open(os.path.join(OUT, "shock_volmult.json"))))
+    vm = VOLMULT.get(f"{e['sym']}|{e['date']}|{e['sec0']}", [])
+    found = {}
+    for cap, gate in todo:
+        for s in range(sec + LAG + 1, sec + LAG + 61):
+            i = (s // 10 * 10 - e["sec0"]) // 10
+            mult = vm[min(i, len(vm) - 1)] if vm and i >= 0 else 0
+            if mult < gate: break   # the volume faded: stop trying
+            q = book_at(rows2, s); st = [c for a, c in secs if a <= s]
+            if not q or not st: continue
+            f = _bs(st[-1], k, _yte(e["date"], s // 60, exp), iv, 0.04, call)[0]
+            px = (q[0] + q[1]) / 2 + (q[1] - q[0]) / 4
+            later = book_at(rows2, s + 10)
+            if later and later[0] > px: continue   # the bid ran past the price within 10 s: no fill at it, keep trying
+            if f and px <= f * (1 + cap):
+                found.setdefault((s, px, q), []).append(retry_name(cap, gate)); break
+    alts = []
+    for (s, px, q), names in found.items():
+        t2 = trade(tuple(job[:6]) + ((s, px, q),))
+        if t2: alts.append(dict(t2, alt_for=names, waited=s - sec - LAG))
+    return alts, ok
 
 
 def main():
@@ -462,6 +528,7 @@ def main():
             jobs = [j for j in jobs if lo_s <= j[0].get("sec0", (j[0]["m"] + 1) * 60) <= hi_s]
         if os.environ.get("STR_TO"): jobs = [j for j in jobs if j[0]["date"] <= os.environ["STR_TO"]]
         with mp.Pool(8) as pool: T = [t for t in pool.map(trade, jobs, chunksize=8) if t]
+        T = [x for t in T for x in (t if isinstance(t, list) else [t])]   # a shock buy with its retried buys
         OWN = {}
         if os.environ.get("STR_SRC_ENTRY"):   # "e_shock15=hold5:300" (the user 2026-10-29, "all together"): that tag's alerts
             # enter at hold5 within 300 s with no burst, shown as "cross"; every other alert keeps the cross and its burst
@@ -515,17 +582,16 @@ def main():
                 "t < 0 (disagrees)": lambda t: ok(t, "t") and t["t"] < 0,
             })
             if os.environ.get("STR_FILTERS") == "shockbs":   # the shock's own buys: spread limit, price over Black-Scholes, burst
-                def shock_ok(t, cap, over, burst):
+                def shock_ok(t, rule, burst):
                     if t["src"] != "e_shock15": return True
-                    if cap and (t["spread"] is None or t["spread"] > cap): return False
-                    if over is not None and (not t["fair"] or t["buy"] > t["fair"] * (1 + over)): return False
-                    return not burst or (t["am"] is not None and t["am"] >= 0)
+                    if burst and (t["am"] is None or t["am"] < 0): return False
+                    if rule is None: return t["alt_for"] is None
+                    return rule in (t["alt_for"] or t["ok"] or [])
                 FILTERS = {"no shock": lambda t: t["src"] != "e_shock15"}
                 for burst in (False, True):
-                    for cap in (None, 0.5, 0.3):
-                        for over in (None, 0.05):
-                            name = f"shock{' <= ' + str(int(cap * 100)) + '%' if cap else ''}{', <= BS + 5%' if over is not None else ''}{', burst >= 0' if burst else ''}"
-                            FILTERS[name] = (lambda c, o, b: lambda t: shock_ok(t, c, o, b))(cap, over, burst)
+                    for rule in [None] + [retry_name(c, g) for c in RETRY_CAPS for g in RETRY_GATES]:
+                        name = f"shock{', ' + rule if rule else ''}{', burst >= 0' if burst else ''}"
+                        FILTERS[name] = (lambda r, b: lambda t: shock_ok(t, r, b))(rule, burst)
             if os.environ.get("STR_FILTERS") == "move":
                 FILTERS = {"all": lambda t: True, "t >= 0": lambda t: ok(t, "t") and t["t"] >= 0}
                 for k in (2, 3, 4, 6):
