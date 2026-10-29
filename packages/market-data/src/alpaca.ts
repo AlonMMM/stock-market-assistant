@@ -1,6 +1,7 @@
 import type { RawBar } from "./bars.js";
 
-export type AlpacaFeedName = "iex" | "sip" | "delayed_sip";
+// `boats`: the overnight session (Blue Ocean ATS), 20:00–04:00 New York.
+export type AlpacaFeedName = "iex" | "sip" | "delayed_sip" | "boats";
 
 interface AlpacaBar {
   t: string;

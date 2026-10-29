@@ -63,6 +63,8 @@ const colors = {
   up: "#22c55e",
   down: "#ef4444",
   band: "rgba(255, 255, 255, 0.08)",
+  // Pre-market, after-hours and overnight bars, behind the price.
+  extended: "rgba(120, 140, 255, 0.07)",
   crosshair: "#5f6a68",
   average: "rgba(227, 232, 230, 0.8)",
 };
@@ -188,12 +190,19 @@ export function FullscreenChart({
   });
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const live = date === usSessionDate(Date.now());
+  // Today's chart, or the session whose after-hours or overnight is still
+  // trading (at 02:00 the night belongs to the day before).
+  const live = date === usSessionDate(Date.now()) || chartTrading(date);
   const daily = bar === "1D";
   // The latest trades, every second, as the forming bar (chart-live.ts).
   const benchSymbol = hasSector ? against : "SPY";
-  const latest = useLatestPrices(live ? [ticker, benchSymbol] : [], () =>
-    chartTrading(date),
+  // Trading: the chart's day, or the session of its newest bar (a chart of
+  // today before any bar shows yesterday and its overnight).
+  const lastDate = useRef(date);
+  lastDate.current = view.rows.at(-1)?.date ?? date;
+  const latest = useLatestPrices(
+    live ? [ticker, benchSymbol] : [],
+    () => chartTrading(date) || chartTrading(lastDate.current),
   );
   const slot = (at: number) => barSlot(view.bar, at);
   const stockRun = useRunningBar(
@@ -539,7 +548,11 @@ export function FullscreenChart({
     });
     p.band.setData(
       rows.map((r, i) =>
-        band.has(i) ? { time: time(r), value: 1 } : { time: time(r) },
+        band.has(i)
+          ? { time: time(r), value: 1 }
+          : r.session && r.session !== "regular"
+            ? { time: time(r), value: 1, color: colors.extended }
+            : { time: time(r) },
       ),
     );
     p.candles.applyOptions({ visible: !spy });
@@ -663,6 +676,7 @@ export function FullscreenChart({
             {rangeText(bar)}
             {alertEnd && ` · alert at ${israelClock(Date.parse(alertEnd))}`}
             {data && ` · ${sipDelayText(data.delayMinutes)}`}
+            {!daily && " · shaded: pre-market, after-hours, overnight"}
           </span>
         </div>
         {chip && (

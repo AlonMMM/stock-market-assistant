@@ -1,8 +1,9 @@
 import { AlpacaFeed } from "./alpaca.js";
 import { tickerPattern, type Credentials } from "./backtest.js";
 import { normalize } from "./bars.js";
-import { coreClose } from "./calendar.js";
+import { coreClose, newYorkToUtc } from "./calendar.js";
 import { defaultSipDelayMinutes, sipDelayMs } from "./sip-delay.js";
+import { overnightEnd, sessionAt } from "./sessions.js";
 
 // One stock's minute candles for one US session, for a plain price chart that
 // is refreshed every few seconds. One request for the bars and one for the
@@ -12,7 +13,8 @@ import { defaultSipDelayMinutes, sipDelayMs } from "./sip-delay.js";
 
 export interface Candle {
   start: number; // bar start, Unix seconds (UTC)
-  session: "pre" | "regular" | "post";
+  // "overnight": 20:00 to 04:00 of the next trading day (sessions.ts).
+  session: "pre" | "regular" | "post" | "overnight";
   open: number;
   high: number;
   low: number;
@@ -81,8 +83,28 @@ export async function handleCandles(
     () => {},
     fetcher,
   );
+  // The overnight after this session (sessions.ts): from 20:00 to 04:00 of
+  // the next trading day, from BOATS. Without it the day still loads.
+  const nightFrom = newYorkToUtc(date, 1200);
+  const nightTo = Math.min(overnightEnd(date), now - delay);
+  const night =
+    nightTo > nightFrom
+      ? new AlpacaFeed(
+          credentials.key,
+          credentials.secret,
+          "boats",
+          () => {},
+          fetcher,
+        )
+          .history(
+            ticker,
+            new Date(nightFrom).toISOString(),
+            new Date(nightTo).toISOString(),
+          )
+          .catch(() => [])
+      : Promise.resolve([]);
   try {
-    const [rows, snapshot] = await Promise.all([
+    const [rows, snapshot, nightRows] = await Promise.all([
       feed.history(
         ticker,
         new Date(start).toISOString(),
@@ -106,6 +128,7 @@ export async function handleCandles(
         )
         .then((r) => (r.ok ? (r.json() as Promise<Snapshot>) : null))
         .catch(() => null),
+      night,
     ]);
     const candles: Candle[] = [];
     for (const row of rows) {
@@ -119,6 +142,19 @@ export async function handleCandles(
         low: bar.low,
         close: bar.close,
         volume: bar.volume,
+      });
+    }
+    for (const row of nightRows) {
+      const at = sessionAt(row.start * 1000);
+      if (at?.part !== "overnight" || at.date !== date) continue;
+      candles.push({
+        start: row.start,
+        session: "overnight",
+        open: row.open,
+        high: row.high,
+        low: row.low,
+        close: row.close,
+        volume: row.volume,
       });
     }
     const price = snapshot?.latestTrade?.p;

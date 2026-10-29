@@ -73,9 +73,10 @@ function Chart({ ticker, date }: { ticker: string; date: string }) {
   } | null>(null);
   const [loaded, setData] = useState<Candles | null>(null);
   const [error, setError] = useState("");
-  const latest = useLatestPrices(
-    date === usSessionDate(Date.now()) ? [ticker] : [],
-    () => chartTrading(date),
+  // Today's chart, or the session whose overnight is still trading.
+  const current = date === usSessionDate(Date.now()) || chartTrading(date);
+  const latest = useLatestPrices(current ? [ticker] : [], () =>
+    chartTrading(date),
   );
   const run = useRunningBar(
     latest.prices[ticker],
@@ -107,9 +108,9 @@ function Chart({ ticker, date }: { ticker: string; date: string }) {
       }
     };
     void read();
-    // A finished session does not change.
+    // A finished session does not change (its overnight still does).
     const timer =
-      date === usSessionDate(Date.now())
+      date === usSessionDate(Date.now()) || chartTrading(date)
         ? setInterval(read, refreshMs)
         : undefined;
     document.addEventListener("visibilitychange", read);

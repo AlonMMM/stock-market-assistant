@@ -30,6 +30,8 @@ export function barsUrl(
   end?: string,
 ): string {
   const query = new URLSearchParams({ ticker, against, bar });
+  // Pre-market, after-hours and the overnight session (user 2026-10-20).
+  if (bar !== "1D") query.set("extended", "1");
   if (end) query.set("end", end);
   return `/api/bars?${query}`;
 }

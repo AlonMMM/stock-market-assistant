@@ -11,38 +11,23 @@ import type {
   Candle,
   Candles,
 } from "../../../packages/market-data/src/candles.js";
-import type { ChartSeries } from "../../../packages/market-data/src/day-chart.js";
+import { newYorkToUtc } from "../../../packages/market-data/src/calendar.js";
 import {
-  coreClose,
-  newYork,
-  newYorkToUtc,
-} from "../../../packages/market-data/src/calendar.js";
+  barAt,
+  sessionAt,
+} from "../../../packages/market-data/src/sessions.js";
 
 export interface Trade {
   price: number;
   at: number; // Unix ms
 }
 
-const preOpen = 240; // 04:00 New York
-const regularOpen = 570; // 09:30
-const afterClose = 1200; // 20:00
-
-/** The New York session part a trade printed in; null outside 04:00–20:00. */
-export function sessionOf(at: number) {
-  const { date, minute } = newYork(at);
-  const close = coreClose(date);
-  if (close === null || minute < preOpen || minute >= afterClose) return null;
-  return {
-    date,
-    minute,
-    part:
-      minute < regularOpen
-        ? ("pre" as const)
-        : minute < close
-          ? ("regular" as const)
-          : ("post" as const),
-  };
-}
+/**
+ * The trading date and part of the day a moment belongs to: pre-market,
+ * regular, after-hours, or the overnight after it (sessions.ts); null when
+ * nothing trades.
+ */
+export const sessionOf = sessionAt;
 
 /** Whether a chart of `date` can still change now (its session is trading). */
 export const chartTrading = (date: string, now = Date.now()) =>
@@ -87,19 +72,26 @@ export function advance(
   };
 }
 
-/** The one-minute slot of a trade between 04:00 and 20:00 New York. */
+/** The one-minute slot of a trade in any part of a trading day. */
 export const minuteSlot = (at: number) =>
   sessionOf(at) ? Math.floor(at / 60000) * 60 : null;
 
-/** The full-screen bar slot of a regular-hours trade (1D: its session). */
-export function barSlot(bar: BarSize, at: number): number | null {
+/**
+ * The full-screen bar a trade falls in (sessions.ts `barAt`); with
+ * `extended` off, regular hours only. 1D: today's bar, regular hours only.
+ */
+export function barSlot(
+  bar: BarSize,
+  at: number,
+  extended = true,
+): number | null {
   const s = sessionOf(at);
-  if (!s || s.part !== "regular") return null;
-  if (bar === "1D") return newYorkToUtc(s.date, 0) / 1000;
-  const length = barSizes[bar].minutes;
-  const slot =
-    Math.floor((s.minute - regularOpen) / length) * length + regularOpen;
-  return newYorkToUtc(s.date, slot) / 1000;
+  if (!s) return null;
+  if (bar === "1D")
+    // Daily bars start at New York midnight, like the server's rows.
+    return s.part === "regular" ? newYorkToUtc(s.date, 0) / 1000 : null;
+  const b = barAt(at, barSizes[bar].minutes);
+  return b && (extended || b.part === "regular") ? b.start : null;
 }
 
 // The server's bar for a slot, with what the running bar adds to it.
@@ -141,9 +133,9 @@ export function withLiveCandles(data: Candles, run: Running | null): Candles {
 }
 
 /**
- * Full-screen rows (regular hours only) with the stock's and the benchmark's
- * running bars applied, slots from `barSlot`. A new intraday bar is added
- * after the last row of the same session; 1D only moves today's row.
+ * Full-screen rows with the stock's and the benchmark's running bars applied,
+ * slots from `barSlot`. A new intraday bar is added after the last row of
+ * the same session; 1D only moves today's row.
  */
 export function withLiveRows(
   rows: ChartBarsRow[],
@@ -175,6 +167,7 @@ export function withLiveRows(
     {
       start: stock.start,
       date: s.date,
+      session: s.part,
       stock: fresh(stock),
       against: bench ? fresh(bench) : null,
       previousClose: tail.previousClose,
@@ -184,21 +177,4 @@ export function withLiveRows(
       volumePercentile: null,
     },
   ];
-}
-
-/**
- * The day chart's newest minute for a trade: its start (Unix s) and close;
- * null when the trade is older than the series' last bar or from another day.
- */
-export function liveMinute(
-  series: ChartSeries,
-  date: string,
-  trade?: Trade,
-): { start: number; close: number } | null {
-  const s = trade && sessionOf(trade.at);
-  if (!trade || !s || s.date !== date) return null;
-  const start = Math.floor(trade.at / 60000) * 60;
-  const tail = series.bars.at(-1);
-  if (tail && start < tail.start) return null;
-  return { start, close: trade.price };
 }

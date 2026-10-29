@@ -8,6 +8,7 @@ import {
   previousSessions,
 } from "./calendar.js";
 import { defaultSipDelayMinutes, sipDelayMs } from "./sip-delay.js";
+import { barAt, overnightEnd, type SessionPart } from "./sessions.js";
 
 // Bars of one stock and its benchmark for the full-screen chart
 // (docs/features/fullscreen-chart.md): one bar size, a run of sessions,
@@ -50,6 +51,9 @@ export interface Ohlcv {
 export interface ChartBarsRow {
   start: number; // bar start, Unix seconds (UTC); 1D: the session's New York midnight
   date: string; // New York session date
+  // Part of the trading day; regular unless the chart asked for extended
+  // hours (pre-market, after-hours, overnight). 1D: regular.
+  session?: SessionPart;
   stock: Ohlcv;
   against: Ohlcv | null; // the benchmark's bar at the same time, if it traded
   // Last close of the previous session (1D: the previous day); null when unknown.
@@ -88,39 +92,38 @@ export interface ChartBars {
 
 interface Slot extends Ohlcv {
   start: number;
+  part: SessionPart;
   priceVolume: number; // Σ bar VWAP × volume, for the session VWAP
 }
 
-// Regular-session bars of one symbol by New York date, then by bar slot
-// (minutes since 09:30 ÷ bar length; 0 for a daily bar).
+// Bars of one symbol by trading date, then by bar key (sessions.ts `barAt`;
+// 0 for a daily bar). Regular hours only unless `extended`.
 function group(
   rows: RawBar[],
   minutes: number,
   daily: boolean,
+  extended = false,
 ): Map<string, Map<number, Slot>> {
   const days = new Map<string, Map<number, Slot>>();
   for (const r of rows) {
-    const at = newYork(r.start * 1000);
-    let slot = 0;
-    if (!daily) {
-      let close: number | null = null;
-      try {
-        close = coreClose(at.date);
-      } catch {
-        // Outside the calendar's years.
-      }
-      if (close === null || at.minute < open || at.minute >= close) continue;
-      slot = Math.floor((at.minute - open) / minutes);
+    let date: string;
+    let key = 0;
+    let start = r.start;
+    let part: SessionPart = "regular";
+    if (daily) date = newYork(r.start * 1000).date;
+    else {
+      const b = barAt(r.start * 1000, minutes);
+      if (!b || (!extended && b.part !== "regular")) continue;
+      ({ date, key, start, part } = b);
     }
-    let day = days.get(at.date);
-    if (!day) days.set(at.date, (day = new Map()));
+    let day = days.get(date);
+    if (!day) days.set(date, (day = new Map()));
     const price = r.vwap ?? (r.high + r.low + r.close) / 3;
-    const s = day.get(slot);
+    const s = day.get(key);
     if (!s)
-      day.set(slot, {
-        start: daily
-          ? r.start
-          : newYorkToUtc(at.date, open + slot * minutes) / 1000,
+      day.set(key, {
+        start,
+        part,
         open: r.open,
         high: r.high,
         low: r.low,
@@ -147,9 +150,12 @@ const ohlcv = (s: Slot): Ohlcv => ({
   volume: s.volume,
 });
 
+// The session's regular close: after-hours and overnight do not count.
 const lastClose = (day: Map<number, Slot> | undefined): number | null => {
-  if (!day || day.size === 0) return null;
-  return day.get(Math.max(...day.keys()))!.close;
+  const keys = [...(day ?? new Map<number, Slot>()).entries()]
+    .filter(([, s]) => s.part === "regular")
+    .map(([k]) => k);
+  return keys.length ? day!.get(Math.max(...keys))!.close : null;
 };
 
 /** Mean and percentile (share of `past` below `value`, 0–100). */
@@ -172,7 +178,11 @@ const nextDay = (date: string) => {
   return d.toISOString().slice(0, 10);
 };
 
-/** `GET /api/bars?ticker=NVDA&against=SPY&bar=5m&sessions=5&end=2026-10-16`. */
+/**
+ * `GET /api/bars?ticker=NVDA&against=SPY&bar=5m&sessions=5&end=2026-10-16`.
+ * `extended=1` adds pre-market and after-hours bars, and the overnight
+ * session from BOATS when the plan has it (intraday bars only).
+ */
 export async function handleChartBars(
   query: {
     ticker?: unknown;
@@ -180,6 +190,7 @@ export async function handleChartBars(
     bar?: unknown;
     sessions?: unknown;
     end?: unknown;
+    extended?: unknown;
   },
   credentials: Credentials,
   fetcher: typeof fetch = fetch,
@@ -213,6 +224,9 @@ export async function handleChartBars(
       body: { error: `Ask for 1–${size.maxSessions} sessions of ${bar} bars` },
     };
   const daily = bar === "1D";
+  const extended = !daily && text(query.extended) === "1";
+  // Overnight bars come from Alpaca's BOATS feed (Algo Trader Plus).
+  const overnight = extended;
   const delayMinutes = credentials.sipDelayMinutes ?? defaultSipDelayMinutes;
   const until = now - sipDelayMs(delayMinutes);
   const endDate = text(query.end);
@@ -240,7 +254,11 @@ export async function handleChartBars(
       body: { error: "Choose a 2024–2028 US trading day" },
     };
   }
-  const end = Math.min(Date.parse(`${nextDay(last)}T06:00:00Z`), until);
+  // The overnight after the last session runs to 04:00 of the next one.
+  const end = Math.min(
+    overnight ? overnightEnd(last) : Date.parse(`${nextDay(last)}T06:00:00Z`),
+    until,
+  );
   const iso = (date: string) => `${date}T00:00:00Z`;
   if (Date.parse(iso(dates[0]!)) >= end)
     return { status: 400, body: { error: "That day has no data yet" } };
@@ -260,17 +278,50 @@ export async function handleChartBars(
   const ownSteps = bar === "1m" || bar === "5m";
   const stepFrom = dates[Math.max(0, dates.length - volumeSessions - 2)]!;
   try {
-    const [stockRows, benchRows, stepRows] = await Promise.all([
-      feed.history(ticker, iso(dates[0]!), endIso, size.timeframe, "split"),
-      hasBench
-        ? feed.history(against, iso(benchFrom), endIso, size.timeframe, "split")
-        : Promise.resolve([]),
-      ownSteps
-        ? Promise.resolve(null)
-        : feed.history(ticker, iso(stepFrom), endIso, "5Min", "split"),
-    ]);
-    const stock = group(stockRows, size.minutes, daily);
-    const bench = hasBench ? group(benchRows, size.minutes, daily) : null;
+    // Overnight bars for the shown sessions: a chart without them still
+    // loads when the account or the feed cannot give them.
+    const night = overnight
+      ? new AlpacaFeed(
+          credentials.key,
+          credentials.secret,
+          "boats",
+          () => {},
+          fetcher,
+        )
+      : null;
+    const nightRows = (symbol: string) =>
+      night
+        ? night
+            .history(symbol, iso(benchFrom), endIso, size.timeframe, "split")
+            .catch(() => [])
+        : Promise.resolve([]);
+    const [stockRows, benchRows, stepRows, stockNight, benchNight] =
+      await Promise.all([
+        feed.history(ticker, iso(dates[0]!), endIso, size.timeframe, "split"),
+        hasBench
+          ? feed.history(
+              against,
+              iso(benchFrom),
+              endIso,
+              size.timeframe,
+              "split",
+            )
+          : Promise.resolve([]),
+        ownSteps
+          ? Promise.resolve(null)
+          : feed.history(ticker, iso(stepFrom), endIso, "5Min", "split"),
+        nightRows(ticker),
+        hasBench ? nightRows(against) : Promise.resolve([]),
+      ]);
+    const stock = group(
+      [...stockRows, ...stockNight],
+      size.minutes,
+      daily,
+      extended,
+    );
+    const bench = hasBench
+      ? group([...benchRows, ...benchNight], size.minutes, daily, extended)
+      : null;
     // Sessions without a stock bar drop out (today before the open).
     const traded = dates.filter((d) => stock.has(d));
     const shown = traded.slice(-sessions);
@@ -287,23 +338,30 @@ export async function handleChartBars(
       let volume = 0;
       for (const k of [...day.keys()].sort((a, b) => a - b)) {
         const s = day.get(k)!;
-        priceVolume += s.priceVolume;
-        volume += s.volume;
+        const regular = s.part === "regular";
+        // The session VWAP counts regular-hours trades only.
+        if (regular) {
+          priceVolume += s.priceVolume;
+          volume += s.volume;
+        }
         // A session that closed before this bar time (an early close) is
         // not compared; one that was open but had no trade counts as 0.
         const past = history
-          .filter((h) => daily || open + k * size.minutes < coreClose(h)!)
+          .filter(
+            (h) => daily || !regular || open + k * size.minutes < coreClose(h)!,
+          )
           .map((h) => stock.get(h)?.get(k)?.volume ?? 0);
         const rank = volumeRank(s.volume, past);
         const b = bench?.get(date)?.get(k);
         rows.push({
           start: s.start,
           date,
+          ...(extended ? { session: s.part } : {}),
           stock: ohlcv(s),
           against: b ? ohlcv(b) : null,
           previousClose,
           againstPreviousClose,
-          vwap: daily || volume === 0 ? null : priceVolume / volume,
+          vwap: daily || !regular || volume === 0 ? null : priceVolume / volume,
           averageVolume: rank.average,
           volumePercentile: rank.percentile,
         });
