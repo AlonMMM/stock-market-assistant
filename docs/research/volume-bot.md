@@ -815,3 +815,29 @@ Files: scratchpad vol/together (dumps prod/prodf60/prodshock/all.json).
 - The shock is the big add: in both halves, every year, and without 2025-10-10 ($687K vs $251K).
 - F60x2 on top of the shock adds return but its drop (tune 12% -> 21%, 2024 12% -> 21%) for little: best risk/return is
   production + shock. Model prices, not real quotes; the shock's hold entry is the least reliable part of the model.
+
+## Real quotes for F60x2 and the shock: both fail (2026-10-29)
+
+The user: "these look very optimistic. Recheck the backtest to confirm it, and download the right price for the option."
+Databento 1-second books at every buy (1,115 shock + 236 F60x2 windows) and minute quotes for every sale, then the four
+versions again on real prices (no model), with four accounts: no limits (free2), one trade at a time a stock (flat2), the
+live limits (live2: 15 a day, 5 open, 7.5% day loss), and 3%. Files: scratchpad vol/realq, vol/realrun.
+
+| Version, real prices, 2% | 3 years (drop) | Without 2025-10-10 | Tune | Check without 10-10 | Live limits | 2024 / 2025 / 2026 |
+|---|---|---|---|---|---|---|
+| Production plan | $648,265 (23.6%) | $222,030 | $161,683 | $136,019 | $373,799 | +15% / +318% / +35% |
+| + F60x2 | $603,239 (31.6%) | $142,829 | $138,064 | $102,351 | $283,663 | -7% / +451% / +18% |
+| + shock (hold 5 s) | $573,802 (38.0%) | $187,867 | $161,610 | $118,888 | $231,238 | +2% / +253% / +60% |
+| + F60x2 + shock | $533,178 (43.8%) | $124,393 | $140,450 | $90,535 | $223,184 | -18% / +358% / +42% |
+
+The model was far off where it matters, trade by trade (real vs the +-3% bar model):
+- minute alert, 0/1 DTE (554 trades): buy +0.5%, sale -6.3%; average return +13.9% -> +8.8%.
+- F60x2 (232): buy +8.3% (median), sale -4.8%; +22.7% -> +14.5%.
+- shock (1,083): buy +2.9% (mean +5.7%), sale -2.8%; +5.2% -> **-5.2%** a trade.
+The faster the entry, the more the minute bar's middle under-states the real ask: the option is jumping in that minute.
+
+Verdict: neither F60x2 nor the shock adds on real prices; every combination is worse than the production plan alone,
+in the tune half, without 2025-10-10, and on the drop. F60x2 went live on 2026-10-29: recommended off (the `fastAlert`
+setting). Also found: with no limits, a stock's second trade may overlap its first, so two alerts can buy the same move
+(COIN on 2025-10-10, twice); "one at a time a stock" (flat2) is the honest no-limits account. On 2025-10-10 the plan put
+53% of the account (66% all together) in open trades at once.

@@ -32,8 +32,9 @@ def contracts(tag):
     ev = json.load(open(os.path.join(LS.OUT, f"events{tag}.json")))
     pk = json.load(open(os.path.join(LS.OUT, f"picks{tag}.json")))
     out = {}
+    entry = dict(x.split("=") for x in os.environ.get("VD_ENTRY_BY_TAG", "").split(",") if x).get(tag, "cross")   # e_shock15=hold5
     for e, p in zip(ev, pk):
-        c = p["p"].get("cross|plain20")
+        c = p["p"].get(f"{entry}|plain20")
         if c: out[(e["date"], e["sym"], e["m"])] = (c[0], e["kind"], e.get("sec0", (e["m"] + 1) * 60), e["u"], e["stock0"], e["nxt"])
     return out
 
@@ -112,7 +113,8 @@ def main():
                          line_up=None if not stock0 else round(stock0 * (1 + 0.25 * u), 4), line_dn=None if not stock0 else round(stock0 * (1 - 0.25 * u), 4),
                          cross_sec=a_sec + int(src["to_cross"]), stock_in=src.get("stock_in"), stock_out=src.get("stock_out")))
         if not ct: continue
-        q = [RS.quote(ct, date, t) for t in range(m, min(389, xm + 5) + 1)]
+        ob = {b[0]: (b[2] + b[3]) / 2 for b in day(ct, date)}   # no book in the cache: the minute bar's middle
+        q = [RS.quote(ct, date, t) or ((ob[t], ob[t]) if t in ob else None) for t in range(m, min(389, xm + 5) + 1)]
         paths.append(dict(tkey=r["tkey"], contract=ct, start=m, bid=" ".join("" if not x else f"{x[0]:.2f}" for x in q),
                           ask=" ".join("" if not x else f"{x[1]:.2f}" for x in q)))
     for name, data in (("bars.csv", bars), ("paths.csv", paths)):

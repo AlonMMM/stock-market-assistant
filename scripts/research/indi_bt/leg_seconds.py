@@ -532,7 +532,8 @@ def main():
         if os.environ.get("STR_ACCOUNTS"):
             # "live" = live limits at STR_SIZE; "liveN" / "freeN" = live limits / no limits at N% a trade
             acct_size = lambda a: float(a.lstrip("livefr") or os.environ.get("STR_SIZE", "1"))
-            ACCTS = [(f"[{a}] ", a.startswith("free"), acct_size(a)) for a in os.environ["STR_ACCOUNTS"].split(",")]
+            # "flatN" = no limits, but one trade at a time a stock (no second buy of a stock while its first is open)
+            ACCTS = [(f"[{a}] ", a.startswith("free") or a.startswith("flat"), float(a.lstrip("livefratl") or os.environ.get("STR_SIZE", "1"))) for a in os.environ["STR_ACCOUNTS"].split(",")]
         DIAG = []
         for lab, lo, hi in spans:
             print(f"\n### {lab}\n\n| Filter | Version | Entry | Trades | Avg per trade | End ($100K), worst drop |\n|---|---|---|---|---|---|")
@@ -550,7 +551,7 @@ def main():
                       fname = alab + fname1
                       keep = []
                       for k, evs in by.items():
-                          for x in TW.pick(dict(events=sorted(evs, key=lambda z: z["minute"])), "open" if no_limits else "flat")[:int(os.environ.get("STR_PER_STOCK", "2"))]: keep.append(x["trade"])
+                          for x in TW.pick(dict(events=sorted(evs, key=lambda z: z["minute"])), "open" if no_limits and "flat" not in alab else "flat")[:int(os.environ.get("STR_PER_STOCK", "2"))]: keep.append(x["trade"])
                       if no_limits: eL, dL, R, _, _ = D.account(keep, size, 2)   # no day loss, trade, open or per-stock limit
                       else: eL, dL, R, _, _ = D.account(keep, size, 2, loss=7.5, max_trades=int(os.environ.get("STR_MAX_TRADES", "15")), max_open=int(os.environ.get("STR_MAX_OPEN", "5")))
                       avg = sum((r["sell"] * 100 - 0.62) / (r["buy"] * 100 + 0.62) - 1 for r in R) / max(1, len(R))
