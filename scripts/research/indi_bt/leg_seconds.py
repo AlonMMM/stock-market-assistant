@@ -359,7 +359,7 @@ def trade(job):
     if "sec0" in e:   # an alert inside a minute (fast / early): its own second and price, the close that ended 3 minutes before
         a_sec, k = e["sec0"], (e["sec0"] - 180) // 60 - 1
         am = sign * (e["stock0"] / bx[k][4] - 1) / e["u"] if k in bx else None
-    return dict(am=am, to_cross=sec - a_sec, alert_sec=a_sec, fill=fill, waited=waited, entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
+    return dict(am=am, to_cross=sec - a_sec, alert_sec=a_sec, src=e.get("src", ""), fill=fill, waited=waited, entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
                 t=t_side, d2=d2_side, mv_open=mv_open, mv_close=mv_close, side=side, mid_in=mid_in,
                 mid_out=(qs[0] / (1 - LF.SH) if BARS and qs[0] > 0.0101 else (qs[0] + qs[1]) / 2),   # the model's mid at the sale
                 stock_in=stock_in, stock_out=stock_out)
@@ -407,6 +407,7 @@ def main():
     for add in (os.environ.get("SEC_ADD_TAG", "").split(",") if step == "run" else []):   # SEC_ADD_TAG=3y50w[,tag...]: more alerts, one account
         if not add: continue
         ev2 = json.load(open(os.path.join(OUT, f"events{add}.json"))); pk2 = json.load(open(os.path.join(OUT, f"picks{add}{WTAG}{KTAG}.json")))
+        for e2 in ev2: e2["src"] = add
         if os.environ.get("SEC_ADD_NEW_ONLY"):   # only the added list's names the base list does not have (no alert twice)
             have = {e["sym"] for e in ev}
             keep = [i for i, e in enumerate(ev2) if e["sym"] not in have]
@@ -456,15 +457,21 @@ def main():
             jobs = [j for j in jobs if lo_s <= j[0].get("sec0", (j[0]["m"] + 1) * 60) <= hi_s]
         if os.environ.get("STR_TO"): jobs = [j for j in jobs if j[0]["date"] <= os.environ["STR_TO"]]
         with mp.Pool(8) as pool: T = [t for t in pool.map(trade, jobs, chunksize=8) if t]
+        OWN = {}
+        if os.environ.get("STR_SRC_ENTRY"):   # "e_shock15=hold5:300" (the user 2026-10-29, "all together"): that tag's alerts
+            # enter at hold5 within 300 s with no burst, shown as "cross"; every other alert keeps the cross and its burst
+            for spec in os.environ["STR_SRC_ENTRY"].split(","):
+                tag, rule = spec.split("="); ent, mx = rule.split(":"); OWN[tag] = (ent, int(mx))
+            T = [t for t in T if t["src"] not in OWN] + [dict(t, entry="cross") for t in T if t["src"] in OWN and t["entry"] == OWN[t["src"]][0] and t["to_cross"] <= OWN[t["src"]][1]]
         if os.environ.get("STR_AM_MIN"):   # the burst's own 3-minute move (to the alert minute), the side's way, x S30
             # STR_AM_SKIP_FAST=1: alerts inside a minute (the shock rule) need no burst; the minute alerts keep it
             fast = {(e["date"], e["sym"], e["m"]) for e in ev if "sec0" in e} if os.environ.get("STR_AM_SKIP_FAST") else set()
-            T = [t for t in T if (t["date"], t["sym"], t["minute"]) in fast or (t["am"] is not None and t["am"] >= float(os.environ["STR_AM_MIN"]))]
+            T = [t for t in T if t["src"] in OWN or (t["date"], t["sym"], t["minute"]) in fast or (t["am"] is not None and t["am"] >= float(os.environ["STR_AM_MIN"]))]
         if os.environ.get("STR_AM_MIN_W"):   # a stronger burst for the same-week (2-4 DTE) alerts only
             wk = {(e["date"], e["sym"], e["m"]) for e in ev if e.get("kind") == "w"}
-            T = [t for t in T if (t["date"], t["sym"], t["minute"]) not in wk or (t["am"] is not None and t["am"] >= float(os.environ["STR_AM_MIN_W"]))]
+            T = [t for t in T if t["src"] in OWN or (t["date"], t["sym"], t["minute"]) not in wk or (t["am"] is not None and t["am"] >= float(os.environ["STR_AM_MIN_W"]))]
         if os.environ.get("STR_CROSS_MAX"):   # seconds from the alert to the cross
-            T = [t for t in T if t["to_cross"] <= int(os.environ["STR_CROSS_MAX"])]
+            T = [t for t in T if t["src"] in OWN or t["to_cross"] <= int(os.environ["STR_CROSS_MAX"])]
         MIXES = []
         if os.environ.get("STR_MIX"):   # the user 2026-10-29: far delta when the volume is huge and the cross fast, else near
             # STR_MIX="name=far:near:vmin:cmax;...", STR_VOL_FILE: {"sym|date|alert second": volume multiple}

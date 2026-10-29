@@ -796,3 +796,22 @@ C 10 s/any) x windows 15 s / 5 min x entries; chosen on the tune half. Files: sc
 - The cheap contracts are the drop: the same 0.20-0.25 delta with a $0.20 floor (plain20) has drops of 17-24%; from
   $0.05 (up25) 23-36%. Keep the $0.20 floor and 0.20 delta.
 - With hold entries the mix is mostly the near version (a hold rarely confirms within 10 s).
+
+## All together: production plan + F60x2 + shock (2026-10-29)
+
+The user: "lets run all together - the shock, with live bot strategy, with no limits - show me benchmark". All on the
++-3% minute-bar model (one pricing for all four), top 50 + 4 ETFs (production plan), 2024-02 to 2026-10, no limits, 2 a
+stock, one at a time a stock. Each alert keeps its own entry: the minute alert and F60x2 the cross <= 15 s and the burst
+(1.1, same-week 2.5); the shock (15x) the hold5 within 5 minutes, no burst (`STR_SRC_ENTRY=e_shock15=hold5:300`).
+Files: scratchpad vol/together (dumps prod/prodf60/prodshock/all.json).
+
+| Version | Trades | 2%: 3 years (drop) | 3% | Tune 2% (drop) | Check 2% (drop) | 3 years without 2025-10-10 | 2024 / 2025 / 2026 (2%) |
+|---|---|---|---|---|---|---|---|
+| Production plan | 301 | $698,050 (20.8%) | $1,405,096 (29.7%) | $178,399 (8.8%) | $387,859 (16.8%) | $250,510 | +20% / +255% / +33% |
+| + F60x2 (live today) | 492 | $1,018,542 (25.5%) | $2,095,913 (35.9%) | $180,281 (11.5%) | $563,056 (20.7%) | $263,291 | +11% / +434% / +54% |
+| + shock | 862 | $2,029,255 (25.8%) | $5,948,082 (36.3%) | $321,139 (12.1%) | $623,916 (15.9%) | $686,573 | +53% / +289% / +116% |
+| + F60x2 + shock | 1,047 | $2,981,158 (29.3%) | $9,205,377 (40.9%) | $334,401 (21.2%) | $883,209 (18.1%) | $761,156 | +43% / +471% / +153% |
+
+- The shock is the big add: in both halves, every year, and without 2025-10-10 ($687K vs $251K).
+- F60x2 on top of the shock adds return but its drop (tune 12% -> 21%, 2024 12% -> 21%) for little: best risk/return is
+  production + shock. Model prices, not real quotes; the shock's hold entry is the least reliable part of the model.
