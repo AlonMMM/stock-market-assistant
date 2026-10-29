@@ -31,9 +31,13 @@ any watched stock, those too.
 
 **The maps** (the Main bot's signal map, the volume bot's alert map; `BotMap.tsx`): zoom with a pinch, the wheel,
 a double tap or + / − (Fit returns), and drag when zoomed; ticks follow the zoom with the bot's threshold always
-among them (`bot-map-model.ts`). A ◆ marks the stocks the bot holds a trade on. A tap on a stock opens its page in
-the Watchlist section, and Back returns to the bot's tab (the Portfolio tab is kept for the visit). Both pages read
-the bot's state every 2 seconds while in view (it was 15 and 10). When the bot enters a trade while the page is
+among them (`bot-map-model.ts`). A ◆ marks the stocks the bot holds a trade on. A tap on a stock, its dot or its row,
+picks it on the map and in the list (since 2026-10-28; its name opened its page); the card's "page ›" button opens
+its page in the Watchlist section, and Back returns to the bot's tab (the Portfolio tab is kept for the visit). A
+stock that signaled today stays in the list with its outcome; only those the news filter blocks leave it. The list follows the map: the nearest its corner first, measured on the map's
+own log scales (`cornerGap`), the deepest inside first; it was the bot's order, the weaker check alone. Both
+pages read the bot's state every second while in view (it was 15 and 10, then 2); the scan itself moves once a
+minute, when each minute's bar closes. When the bot enters a trade while the page is
 open (or in the 3 minutes before it was opened), a banner shows it, green for a call and red for a put, for a
 minute, and the phone vibrates where it can; an "In trade" sign by the bot's name lists what it holds and scrolls
 to it. Checked on synthetic data in screenshots only.

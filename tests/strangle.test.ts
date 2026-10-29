@@ -46,7 +46,15 @@ import {
   type StrangleSettings,
 } from "../packages/trading/src/strangle/settings.js";
 import type { BotMarket, BotTrading } from "../apps/trader/src/bot.js";
-import { StrangleBot, strangleTag } from "../apps/trader/src/strangle.js";
+import {
+  defaultAccountRisk,
+  mergeAccountRisk,
+} from "../packages/trading/src/account-risk.js";
+import {
+  weekEnd,
+  StrangleBot,
+  strangleTag,
+} from "../apps/trader/src/strangle.js";
 import {
   StrangleStore,
   tradeCash,
@@ -174,7 +182,7 @@ test("settings: the backtested defaults; bad values refused; the stocks; the rul
   assert.deepEqual(parseStrangleSettings(d), { ok: true, value: d });
   assert.equal(parseStrangleSettings({ ...d, sizePct: 7 }).ok, false);
   assert.equal(parseStrangleSettings({ ...d, safetyStopPct: 80 }).ok, false);
-  assert.equal(parseStrangleSettings({ ...d, maxTradesPerDay: 21 }).ok, false);
+  assert.equal(parseStrangleSettings({ ...d, maxTradesPerDay: 101 }).ok, false);
   assert.equal(parseStrangleSettings({ ...d, giveBackUnits: 2 }).ok, false);
   assert.equal(parseStrangleSettings({ ...d, lastMinute: 5 }).ok, false);
   assert.equal(parseStrangleSettings({ ...d, mode: "maybe" }).ok, false);
@@ -908,4 +916,56 @@ test("settings merge (connector): known keys over the current ones, checked as a
   assert.equal(mergeStrangleSettings(d, { sizePtc: 2 }).ok, false); // a typo is refused, not ignored
   assert.equal(mergeStrangleSettings(d, {}).ok, false);
   assert.equal(mergeStrangleSettings(d, "x").ok, false);
+});
+
+test("week expiry (2026-10-29): the week's last session, a holiday Friday too; the stronger burst for a same-week leg", () => {
+  assert.equal(weekEnd("2026-10-26"), "2026-10-30"); // Monday -> Friday
+  assert.equal(weekEnd("2026-10-28"), "2026-10-30");
+  assert.equal(weekEnd("2026-10-30"), "2026-10-30"); // Friday itself
+  assert.equal(weekEnd("2026-03-30"), "2026-04-02"); // Good Friday: Thursday
+  const d = defaultStrangleSettings;
+  assert.equal(d.weekExpiry, true);
+  assert.equal(d.burstMinWeek, 2.5);
+  // The same-week leg asks for 2.5: a 2.0 burst is enough for 0/1 DTE, not for it.
+  assert.equal(burstAgrees("C", 2.0, d), true);
+  assert.equal(
+    burstAgrees("C", 2.0, { ...d, burstMin: d.burstMinWeek }),
+    false,
+  );
+  // "No limits": the caps go to 100 trades, 50 open, a 100% day loss.
+  assert.equal(
+    parseStrangleSettings({
+      ...d,
+      maxTradesPerDay: 100,
+      maxOpen: 50,
+      dayLossPct: 100,
+    }).ok,
+    true,
+  );
+});
+
+test("account risk merge (connector): some numbers over the current ones, checked as a whole", () => {
+  const ok = mergeAccountRisk(defaultAccountRisk, {
+    buysPerDay: 100,
+    openRiskPct: 0,
+    drawdownPct: 50,
+  });
+  assert.ok(typeof ok !== "string");
+  if (typeof ok !== "string") {
+    assert.equal(ok.value.buysPerDay, 100);
+    assert.equal(ok.value.dayLossPct, defaultAccountRisk.dayLossPct);
+    assert.deepEqual(ok.changed.sort(), [
+      "buysPerDay",
+      "drawdownPct",
+      "openRiskPct",
+    ]);
+  }
+  assert.equal(
+    typeof mergeAccountRisk(defaultAccountRisk, { buysPerDay: 1000 }),
+    "string",
+  );
+  assert.equal(
+    typeof mergeAccountRisk(defaultAccountRisk, { buysPerDai: 5 }),
+    "string",
+  );
 });

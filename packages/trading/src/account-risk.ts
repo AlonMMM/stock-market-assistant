@@ -90,6 +90,40 @@ export function applyAccountRisk(
   };
 }
 
+/**
+ * Some of an account's risk numbers over its current ones (the connector's
+ * volume_bot_update_account_risk, user 2026-10-29: the Volume bot without
+ * limits): only known keys, checked as a whole. -> the new numbers and the
+ * keys that changed, or the words of what is wrong.
+ */
+export function mergeAccountRisk(
+  current: AccountRisk,
+  patch: unknown,
+): { value: AccountRisk; changed: string[] } | string {
+  if (
+    !patch ||
+    typeof patch !== "object" ||
+    Array.isArray(patch) ||
+    !Object.keys(patch).length
+  )
+    return "Expected an object with the risk numbers to change";
+  const unknown = Object.keys(patch).filter((k) => !(k in current));
+  if (unknown.length) return `Unknown risk settings: ${unknown.join(", ")}`;
+  const p = patch as Partial<AccountRisk>;
+  const merged = {
+    ...current,
+    ...p,
+    brake: { ...current.brake, ...(p.brake ?? {}) },
+    recovery: { ...current.recovery, ...(p.recovery ?? {}) },
+  };
+  const checked = parseAccountRisk(merged);
+  if (typeof checked === "string") return checked;
+  const changed = (Object.keys(current) as (keyof AccountRisk)[]).filter(
+    (k) => JSON.stringify(current[k]) !== JSON.stringify(checked[k]),
+  );
+  return { value: checked, changed };
+}
+
 /** A whole settings record from the page, or the words of what is wrong. */
 export function parseAccountRisk(value: unknown): AccountRisk | string {
   if (!value || typeof value !== "object") return "Expected the risk settings";

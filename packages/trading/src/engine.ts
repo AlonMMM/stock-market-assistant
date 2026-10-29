@@ -206,6 +206,10 @@ export interface BuyRequest {
   stopPct?: number;
   // Buy whatever the spread is (user 2026-10-12). Every other check applies.
   force?: boolean;
+  // An intended second buy of the same stock and side (the bot's pyramid
+  // add): the "not a repeat" check passes; every other check applies. Set
+  // only in process (TraderService.buy's options), never from a request body.
+  repeatOk?: boolean;
   // The user's own limit price (user 2026-10-17): one day order at this
   // price instead of the raises from the mid; a stop is kept on every fill
   // until it fills or ends at the close.
@@ -567,6 +571,7 @@ export class TradeEngine {
     deltaRange?: readonly [number, number],
     force = false,
     ticket?: OptionTicket,
+    repeatOk = false,
   ) {
     // The most one contract can cost: the order's own price (option-tickets
     // .ts), else the ceiling of the raises.
@@ -627,6 +632,7 @@ export class TradeEngine {
         stopPct,
         ...(ticket?.noStop ? { noStop: true } : {}),
         ...(force ? { force } : {}),
+        ...(repeatOk ? { repeatOk } : {}),
         ...(deltaRange ? { deltaRange } : {}),
       },
       risk,
@@ -962,6 +968,7 @@ export class TradeEngine {
       deltaRange,
       request.force,
       ticket,
+      request.repeatOk === true,
     );
     const { qty, budget, verdict } = sized;
     const decision: Decision = {

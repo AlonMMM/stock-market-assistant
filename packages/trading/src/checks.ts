@@ -100,6 +100,9 @@ export interface BuyContext {
     noStop?: boolean;
     // A forced buy: the spread is not checked (user 2026-10-12).
     force?: boolean;
+    // An intended add to a position (the bot's pyramid, user 2026-10-28):
+    // the repeat check passes.
+    repeatOk?: boolean;
     // Set when the strike was picked from a range and not from a target.
     deltaRange?: readonly [number, number];
   };
@@ -393,13 +396,15 @@ export function checkBuy(
       c.now - b.at < limits.repeatMs
     );
   });
-  add(
-    "not a repeat",
-    same.length === 0,
-    same.length === 0
-      ? "no recent buy of the same kind"
-      : `${contract.underlying} ${contract.right}s were bought ${Math.round((c.now - same[0]!.at) / 1000)} s ago`,
-  );
+  // The bot's pyramid adds to its own position a minute after the entry
+  // (version 2.7): an intended second buy, not a double order (user 2026-10-28).
+  const intended = c.order.repeatOk === true;
+  let repeatDetail = "no recent buy of the same kind";
+  if (same.length > 0) {
+    const ago = `${contract.underlying} ${contract.right}s were bought ${Math.round((c.now - same[0]!.at) / 1000)} s ago`;
+    repeatDetail = intended ? `${ago}; an intended add` : ago;
+  }
+  add("not a repeat", same.length === 0 || intended, repeatDetail);
   // Options stop trading at 16:00 New York on their last day.
   const lastTrade = newYorkToUtc(contract.expiry, 16 * 60);
   const minutesLeft = (lastTrade - c.now) / 60000;

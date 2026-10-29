@@ -7,6 +7,7 @@ import { TelegramNotifier } from "../../../packages/trading/src/notifier.js";
 import {
   accountRiskBounds,
   defaultAccountRisk,
+  mergeAccountRisk,
   parseAccountRisk,
   withDefaults,
 } from "../../../packages/trading/src/account-risk.js";
@@ -287,6 +288,34 @@ api.put("/v1/risk", async (request) => {
   log(`risk settings of ${account.id}: ${JSON.stringify(risk)}`);
   return { id: account.id, settings: risk };
 });
+// The Volume bot's account risk numbers: read, and some changed over the
+// current ones (the connector's volume_bot_account_risk tools).
+const strangleRiskAccount = () => {
+  const a = strangleAccount(store);
+  if (!a || !a.enabled)
+    throw new RequestError("The Volume bot has no account", 409);
+  return a;
+};
+api.get("/v1/risk/volume-bot", async () => {
+  const a = strangleRiskAccount();
+  return {
+    id: a.id,
+    settings: withDefaults(store.accountRisk(a.id)),
+    bounds: accountRiskBounds,
+  };
+});
+api.post("/v1/risk/volume-bot/merge", async (request) => {
+  const a = strangleRiskAccount();
+  const merged = mergeAccountRisk(
+    withDefaults(store.accountRisk(a.id)),
+    request.body,
+  );
+  if (typeof merged === "string") throw new RequestError(merged);
+  store.setAccountRisk(a.id, merged.value, Date.now());
+  traders.reloadRisk(a.id);
+  log(`risk settings of ${a.id}: ${JSON.stringify(merged.value)}`);
+  return { id: a.id, settings: merged.value, changed: merged.changed };
+});
 api.get("/v1/positions", async (request) => service(request).status());
 api.get<{ Querystring: { limit?: string } }>("/v1/decisions", async (request) =>
   service(request).decisions(Number(request.query.limit)),
@@ -361,7 +390,7 @@ const bot = (() => {
           return p && p.qty > 0 ? p : null;
         },
         equity: () => t.broker.equity(),
-        buy: (b) => t.service.buy(b),
+        buy: (b, o) => t.service.buy(b, o),
         sell: (b) => t.service.sell(b),
         job: (id) => t.service.job(id),
       };

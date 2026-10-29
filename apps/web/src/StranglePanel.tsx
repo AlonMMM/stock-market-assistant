@@ -268,6 +268,12 @@ const groups: { title: string; specs: Spec[] }[] = [
         fmt: (v) => `${v.toFixed(1)}×`,
       },
       {
+        key: "burstMinWeek",
+        label: "Same-week burst at least",
+        help: "With same-week expiries on: the burst a 2-4 DTE trade needs (stronger than the 0/1 DTE one).",
+        fmt: (v) => `${v.toFixed(1)}×`,
+      },
+      {
         key: "noStopMinutes",
         label: "No give-back sale for",
         help: "Minutes after the buy; the end of the day still sells.",
@@ -283,6 +289,7 @@ const switches: {
     | "strengthFilter"
     | "crossFilter"
     | "burstFilter"
+    | "weekExpiry"
     | "exitOnMinuteClose"
     | "skipEarnings"
     | "skipPremarket"
@@ -314,6 +321,11 @@ const switches: {
     key: "burstFilter",
     label: "Burst must agree",
     help: "Buy only when the 3 minutes before the alert already moved the side's way by the burst set above.",
+  },
+  {
+    key: "weekExpiry",
+    label: "Same-week expiries",
+    help: "Days with no expiry today or the next session: the nearest expiry later that week (2-4 DTE), only with the stronger burst; still sold the same day.",
   },
   {
     key: "exitOnMinuteClose",

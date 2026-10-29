@@ -105,6 +105,24 @@ its decisions with the backtest (parity was 497 of 499), then switch to paper.
 
 ## Next
 
+### Build the bots' Review page
+
+- id: review-page
+- area: App
+- tags: Main bot, Volume bot, Backtest, Charts, Performance
+- waiting: Your comments on the design (reminder Fri Oct 30)
+- source: The user, Oct 28 ("important"); design https://claude.ai/artifact/LSMxNqsoDhSHcYQgraAqo3
+
+Important (the user's). A Review page under each bot (Trades · Activity · Review · Settings · Risk) to
+analyse a day, a week or any period. The user's four: a time period (day, week, month, since a
+version, custom), the gain / loss graph on top (live, real prices, backtest, Indi), switching the
+strategy for the period and for one trade, and running a backtest to see if it acts differently.
+Added: the "why live ≠ backtest" steps (missed signals, other contract or entry, exit timing, fills),
+the day and week analyst verdicts, the period's numbers (win rate, worst drop, time under water,
+without the best 5) and the trade list matched to the backtest. Replays use the recorded prices
+(PR #191: every order step, every second held, the Volume bot's watches); known versions are run
+nightly, custom runs on the Mac. Next: the user's comments on the design, then the spec.
+
 ### Support Interactive Brokers on the Watchlist and in Trading
 
 - id: ibkr-watchlist-trading
@@ -329,6 +347,18 @@ watchlist opens faster on a phone.
 
 ## Done
 
+### A tap on the bots' maps picks the stock; signaled stocks back in the list
+
+- id: done-map-pick
+- area: App
+- tags: Main bot, Volume bot, Charts
+- source: Session of Oct 28
+- done: 2026-10-28, PR #196
+
+A tap on a stock's dot or row picks it on the map and in the list; its page opens only from the card's button.
+Stocks that signaled today stay in the Main bot's list (META at the corner was missing). Both lists are sorted by how near each dot is to its corner on the map. Both pages read every
+second; the bots' numbers still move once a minute, when each minute's bar closes.
+
 ### The bots' maps on a log scale; skipped stocks off the list
 
 - id: done-map-scale-find
@@ -431,13 +461,3 @@ switch; followed by aligned phone columns and IBKR's number size.
 
 Each account has its own loss limits and brake on a Risk page in each bot's tab; a trade's risk is counted at
 its stop.
-
-### Read-only for everyone but the owner
-
-- id: done-readonly
-- area: App
-- tags: Site
-- source: docs/state.md
-- done: 2026-10-26, PR #164
-
-Visitors can look but not trade or change settings anywhere in the app.

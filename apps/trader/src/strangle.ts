@@ -98,6 +98,19 @@ const sellWaitMs = 3 * 60_000;
 
 type NewsState = "off" | "pending" | "ok" | "failed";
 
+/** The last session of the date's week (Friday, or earlier on a holiday). */
+export function weekEnd(date: string): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  let end = new Date(d.getTime() + (5 - d.getUTCDay()) * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  while (end > date && coreClose(end) === null)
+    end = new Date(Date.parse(`${end}T12:00:00Z`) - 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+  return end;
+}
+
 function nextSession(date: string): string {
   let d = date;
   do
@@ -127,7 +140,7 @@ const outcomeWords: Record<string, string> = {
   traded: "bought the leg",
   "would-trade": "would buy the leg (dry run)",
   no_side: "no side in time",
-  no_expiry: "no expiry today or next session",
+  no_expiry: "no expiry today, the next session or later this week",
   no_strikes: "no strikes near the stock",
   no_prices: "no prices",
   too_cheap: "the leg is too cheap",
@@ -707,7 +720,13 @@ export class StrangleBot {
     // when there is none today; none of them ends it now.
     const expiry = await this.expiryFor(symbol, date, s);
     if (!expiry) return { outcome: "no_expiry", detail: "" };
-    const ref = await this.stockNow(symbol, m);
+    // The side lines start at the alert minute's close, as the backtest's
+    // (leg_seconds.py stock0), not at a trade read seconds later: a print a few
+    // cents off moves both lines and can pick the other side (the replay of
+    // 2026-10-08, CRM). The latest trade only when that bar is missing.
+    const ref =
+      this.barsOf(symbol).find((b) => b.m === m)?.c ??
+      (await this.stockNow(symbol, m));
     if (ref === null) return { outcome: "no_prices", detail: "no stock price" };
     const burst = burstOf(this.barsOf(symbol), m, unit);
     const trade: StrangleTrade = {
@@ -734,7 +753,7 @@ export class StrangleBot {
     const pct = (s.confirmUnits * unit * 100).toFixed(2);
     return {
       outcome: "watching",
-      detail: `stock ${ref.toFixed(2)}; the side at ${pct}% either way${burst === null ? "" : `; burst ${burst.toFixed(2)}×`}${expiry === date ? "" : "; 1DTE"}`,
+      detail: `stock ${ref.toFixed(2)}; the side at ${pct}% either way${burst === null ? "" : `; burst ${burst.toFixed(2)}×`}${expiry === date ? "" : expiry === nextSession(date) ? "; 1DTE" : `; expiry ${expiry}`}`,
     };
   }
 
@@ -764,7 +783,15 @@ export class StrangleBot {
     );
     if (chain.some((q) => q.expiry === date)) return date;
     if (s.nextDay && chain.some((q) => q.expiry === next)) return next;
-    return null;
+    if (!s.weekExpiry) return null;
+    // The nearest expiry later this week (2-4 DTE), never past its last session.
+    const end = weekEnd(date);
+    if (end <= next) return null;
+    const week = await this.o.trading.chain(symbol, "call", next, end);
+    const later = [...new Set(week.map((q) => q.expiry))]
+      .filter((e) => e > next && e <= end)
+      .sort();
+    return later[0] ?? null;
   }
 
   // ---- orders: the fills, as the account reports them ----
@@ -1076,10 +1103,13 @@ export class StrangleBot {
     const late = secondsSinceAlert(this.sessionSecond(), t.alertMinute);
     if (crossTooLate(this.sessionSecond(), t.alertMinute, s))
       return fail("slow_cross", `the side ${late} s after the alert`);
-    if (!burstAgrees(side, t.burst, s))
+    // A same-week expiry (later than the next session) asks for the stronger burst.
+    const weekly = (t.expiry ?? t.day) > nextSession(t.day);
+    const burstRule = weekly ? { ...s, burstMin: s.burstMinWeek } : s;
+    if (!burstAgrees(side, t.burst, burstRule))
       return fail(
         "burst",
-        `burst ${t.burst === null || t.burst === undefined ? "—" : t.burst.toFixed(2)}× for a ${legName(side)}`,
+        `burst ${t.burst === null || t.burst === undefined ? "—" : t.burst.toFixed(2)}× for a ${legName(side)}${weekly ? ` (a same-week expiry needs ${s.burstMinWeek})` : ""}`,
       );
     if (s.strengthFilter) {
       const prior = this.prior.get(t.symbol);
