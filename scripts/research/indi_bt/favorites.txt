@@ -1,0 +1,6 @@
+# The research Favorites (the default list of every test and the Bot vs Indi page's Favorites views), the user,
+# 2026-10-29: today's app Favorites (69) minus AMBA, SIRI, SOFI, XYZ, ONDS, LLY, CVX, MRVL, ARM, GLD, plus USO ("add uso
+# instead" of CVX). 60 stocks. The app's own watchlist (what the live bot trades) stays at 69 ("Research only").
+AAOI AAPL ADBE AMD AMZN ASTS AVGO BA BABA CBRS COIN CRDO CRM CRWD CRWV CSCO DELL F GOOGL HIMS HOOD IBIT IBKR IBM IGV INTC
+IONQ IREN IWM LITE LMND META MRNA MSFT MSTR MU NBIS NOW NU NVDA OKLO ORCL PANW PLTR QBTS QCOM RKLB SHOP SKHY SMCI SNDK SNOW
+SOXX SPCX TSEM TSLA UAL UBER USO WMT

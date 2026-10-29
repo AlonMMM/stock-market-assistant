@@ -4,6 +4,11 @@ The registry every new test starts from (the `new-test` skill). Update it the mo
 commit as the log entry in `best-algorithms.md`. Numbers: the fair list, Feb 2024 - Oct 2026, from $100,000, the 10%
 overnight cap at each size; Favorites = the app's Favorites watchlist (86 symbols), 2025-10-23 to 2026-10-23.
 
+**Favorites since 2026-10-29: `scripts/research/indi_bt/favorites.txt`, 60 stocks** (the app's 69 minus AMBA, SIRI, SOFI,
+XYZ, ONDS, LLY, CVX, MRVL, ARM, GLD; plus USO; the app's own watchlist stays 69). fav_real.signals() cuts every list to
+them (FAV_ALL=1 for the old 69). The champion (retry_roll.py base) on the 60, Favorites 24 months, 2%: tune $596,437 / 20%,
+check $206,879 / 25% (fav_baseline.py); the fair list is unchanged ($418,875 / $928,510).
+
 ## Production
 
 **Since 2026-10-27 (live from 15:05 Israel, before the open): 2.7**, the champion (PR #183, merged as ed42c3f and

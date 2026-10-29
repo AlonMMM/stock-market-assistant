@@ -200,6 +200,43 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### The tests of 2026-10-28 / 29 (all not better; the champion stays)
+
+The champion of retry_roll.py (2.5 + IBIT down to $0.10 + the pyramid, real quotes) unless said; tune AND check
+(split.py) in one run, 2% from $100,000, fair list / Favorites. Each line: the pick on tune -> its check (look 1 unless
+said). **The research Favorites are now favorites.txt (the user, 2026-10-29): today's app Favorites (69) minus AMBA,
+SIRI, SOFI, XYZ, ONDS, LLY, CVX, MRVL, ARM, GLD, plus USO = 60; the app keeps 69 ("Research only").** New champion
+baseline on the 60 (fav_baseline.py): tune $596,437 / 20%, check $206,879 / 25% (the 69 + USO: $491,304 / $159,808;
+the user chose the 10 removals knowing their results, so judge Favorites tests by the gap to the champion).
+
+| Test (script) | Pick on tune | Tune fair / fav | Check fair / fav (champion $928,510 / $160,100; on the 60 $206,879) | Verdict |
+|---|---|---|---|---|
+| Rolling a big winner, new leg 0.20 / 0.25, funding half / all gain / everything (retry_roll.py) | roll-night-all | $821,058 / $995,807 | $591,506 / $109,686 (look 4) | no: rolling never wins both halves |
+| Cap on trades that move together, group / side (risk_tests.py) | grp2 | $434,351 / $489,851 | $921,339 / $161,399 | no (ties) |
+| Overnight on house money (risk_tests.py) | hm-back05 | $391,608 / $464,728 | $779,929 / $147,900 | no |
+| SPY hedge overnight 5-20% (risk_tests.py, hedge_fetch.py) | hedge05 | $378,841 / $461,708 | $894,314 / $153,313 | no: costs, same drop |
+| Strength exit off / t 0.25 / 0.0 (strength_exit.py) | t0.25 | $404,837 / $501,601 | $943,107 / $162,901 | no: loses tune; keep t 0.5 |
+| Hold by strength at 15:50, 6 combos (night_strength.py, sim carry_strength) | w100-s20 | $400,946 / $486,400 | $760,652 / $152,630 | no |
+| Hold by the sign of t (NS_SET=sign) | sign-100 | $418,121 / $510,521 | $928,510 / $157,064 | no (ties) |
+| No / half / quarter second night (NS_SET=night2, sim night2_keep) | half-2nd | $402,716 / $483,519 | $772,307 / $140,737 | no |
+| Wait for a % pullback after a big 10-minute move, open / rest of day (pullback.py) | open-k2-p15 / rest-k3 | $356,600 / $386,697; $321,744 / $392,033 | $1,034,514 / $155,522; $655,854 / $114,402 | no: tune and check disagree |
+| Opening, industry style: VWAP / range retest / half / open type (pullback2.py, real quotes 100%) | half | $388,215 / $453,841 | $996,741 / $166,924 (look 2) | no: wins check, loses tune |
+| Sum entry t + D2 + volume > 4 / 4.5 / 5, t >= 0.8 (sum_entry.py) | added-40 | $1,315,071 / $658,180 | $305,234 / $124,681 | no: drops 36-56% |
+| First entry 09:35 / 09:45 (entry_start.py; 09:40 rebuilt matches) | f10 = champion | — | 09:35 $455,853 / $73,514; 09:45 $412,125 / $152,044 | no: 09:40 stays |
+| 09:35 on the pre-market (bell_entry.py): pre-market only / + first 5 min | bell18 | $459,094 / $552,773 | $974,758 / $170,305 (bell18-fb $938,768 / $163,059; look 2) | passes on paper, ~25 changed trades losing at flat $10K: not robust |
+| Pre-market move sizing (pre_agree.py diagnostic, pre_size.py) | skip-flat | $783,912 / $944,413 | $166,788 / $89,081 | no: the tune bucket was its giants (10 of 19), check reversed |
+| Expiry rules (expiry_rules.py, sim nocarry_trail; Favorites = 60) | thu-next / fri-0dte-15 / nc-50-30 | $461,097 / $633,711; $382,396 / $374,477; $460,694 / $647,337 | $752,452 / $193,157; $764,800 / $105,925; $799,670 / $183,826 | no; 0DTE Fridays drop 35-45% |
+| Universe: Nasdaq-100 2026, hot 20s (ndx_test.py, ndx_hot.py) | — | Fav + 77 new: $210,604 | $200,273 (one NFLX giant) | no: 30 trades in 10 months; NFLX +$269K on 11 |
+| Universe: 10 liquid movers (opt_liq.py screen, liq_test.py) | — | 2026: 7 trades | — | no: 65% of signals "too cheap" ($10-40 stocks) |
+| Universe: 12 leveraged ETFs SOXL TQQQ ... (liq_test.py LQ_NAME=lev12) | — | 43 trades in 22 months, 0 giants | 2026 Fav + ETFs $141,233 vs $143,000 | no |
+
+Analyses (no check look): the worst drops are runs of same-day stop-outs, nights net positive (risk_tests.py); peak paths
+(peak_paths.py): of 54 trades that reached +500% one ended a loss, the give-backs are in the +100-300% band; night moves
+(15:50 -> 09:40): 41-47% of nights win, a dozen +100% gaps pay for all; the second night wins ~1 in 3. **Lesson
+(memory giants-decide-buckets):** the median trade is about -$2.5K in every bucket on both halves; ~20 giants per half
+decide every split. Judge splits by the median and the non-giant sum, not by sums.
+
+
 ### The Favorites over 2 and 3 years (2026-10-27)
 
 The user: "also add favorite 3 years and 2 yers". `export_fav_long.py`: today's 69 Favorites, signals Oct 2023 - Oct 2026
