@@ -907,3 +907,29 @@ via `STR_MAX_SPREAD=0.30` (vol/cap30). Page: https://claude.ai/artifact/2BqemC1f
   $374K -> $455K; it gives up most of 10-10 (its crash-minute spreads were wide), hence the lower 3-year total.
 - Best without 10-10 and in the tune half: every trade <= 30% with the shock at burst >= 0 ($354K, $234K, live $513K).
 - The 30% line and the burst filter were set after seeing the data: paper first.
+
+## Market-wide shocks: what 10-10 teaches (2026-10-29)
+
+The user: "what can we learn from 10-10? we want to find such trades." A cluster = 5+ of the top 50 firing the shock
+alert (15x) the same way within 3 minutes, known when the 5th joins; one per 30 minutes. 15 in 2024-02 to 2026-10
+(scratchpad clusters/clusters.json). QQQ the cluster's way after 30 min, and the bot's real-price trades in the 5 minutes
+after it (at a flat $2,000 a trade):
+
+| Date | Known | Way | Stocks | QQQ 30 min | Bot trades (avg) | $ at $2,000 |
+|---|---|---|---|---|---|---|
+| 2025-10-10 | 10:59 | down | 5 | +1.47% | 21 (+471%) | +$197,973 |
+| 2025-04-09 | 13:19 | up | 29 | +3.94% | 8 (+190%) | +$27,739 |
+| 2026-01-21 | 14:28 | up | 9 | +0.88% | 3 (+212%) | +$12,779 |
+| 2025-01-31 | 13:21 | down | 5 | +0.41% | 0 | 0 |
+| 2024-09-18 | 14:00 | up | 26 | -0.15% | 11 (-45%) | -$9,779 |
+| 2025-09-17 | 14:04 | up | 6 | -0.59% | 2 (+11%) | +$422 |
+| 2024-12-18 | 14:09 | down | 6 | +0.16% | 0 | 0 |
+| 2025-04-07 | 11:15 | down | 13 | -1.19% | 3 (-22%) | -$1,185 |
+| others (7) | | | 5-7 | -0.23% to +1.32% | 0-4 each | -$2,528 to +$745 |
+
+- The big wins are unscheduled headline shocks (tariff news on 2025-04-09 and 2025-10-10): the whole market moves
+  together and keeps going for 30-60 minutes. The 14:00 clusters on Fed decision days (2024-09-18, 2025-09-17,
+  2024-12-18) mostly reverse or stall: the largest cluster of all (26 stocks, 2024-09-18) lost.
+- 15 events, 3 that matter: too few to fit a rule. Next: more events (a lower bar: 10x, or a breadth count of the
+  minute alert; and 10-second bars further back than 2024 from Alpaca trades), and an index trade (QQQ/SPY 0DTE, one
+  tight-spread contract) in the cluster's way, skipping scheduled 14:00 releases.
