@@ -60,6 +60,8 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                `until`): mode "at20" when the stock is not against at the 20-minute check, mode "back" at the first close
                `off` (price units) past the entry price our way; next bar at the middle + SH. The stops and the hold
                then measure the gain from the average cost; result() pays for the rebuy (user, 2026-10-24)
+               min_t / t_over (refill.py, 2026-10-29): only when the stock's t vs SPY x beta is at least min_t, and / or
+               t_over above its t at the entry (needs "thesis", which computes the t series)
   user_stop.rest_after_half: once a check sold part, the later checks sell regardless of the stock (the rest out at +20)
   after_half {out, need_against, stock}: on the entry day once the +10 check sold half, the rest out at `out` (a gain,
                or "half_px": under the half's sale price), with the stock against unless need_against False; stock True:
@@ -504,6 +506,14 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 RB = X.get("rebuy")
                 if RB and st.get("half_q") and not st.get("rebought") and not st.get("rb_pending") and t <= RB.get("until", 330) and sd.c[tt] is not None:
                     back = (t - minute >= 20 and not against) if RB["mode"] == "at20" else bet * (sd.c[tt] - st["sp0"]) >= RB.get("off", 0) and sd.c[tt] != st["sp0"]
+                    # only when the stock is stronger (refill.py, the user 2026-10-29: "double it if we have stronger
+                    # parameters"): its t vs SPY x beta now at least `min_t`, and / or `t_over` above its t at the entry
+                    if back and (RB.get("min_t") is not None or RB.get("t_over") is not None):
+                        ts_ = st["th"][2] if st.get("th") else None
+                        tn = bet * ts_[tt] if ts_ and ts_[tt] is not None else None
+                        t0 = bet * ts_[minute] if ts_ and ts_[minute] is not None else None
+                        back = tn is not None and (RB.get("min_t") is None or tn >= RB["min_t"])
+                        back = back and (RB.get("t_over") is None or (t0 is not None and tn >= t0 + RB["t_over"]))
                     if back: st["rb_pending"] = True; continue
                 AH = X.get("after_half")  # the rest after the +10 half: a tighter stop (user, 2026-10-24)
                 if AH and st.get("half_q") and not early:

@@ -397,6 +397,27 @@ the big winners on average, so a max-spread filter would cut winners.
 
 ## Tested, not better (V2, 2026-10-21)
 
+### More checks, and back to full size when the stock is stronger (2026-10-29, not better: the pick fails the check)
+
+The user: "test on the main bot - way of exists - add more checks - if we passed the 20minutes check but only with half
+size - double it if we have stronger parameters. any way add 30minutes and 60 minutes checks. do a tests with all
+togeterh and seperates." `refill.py` on the champion (entries, picks and exits of d2_failed_break.CHAMP, real quotes,
+the pyramid), tune / check in one run, fair list + Favorites 24 months, set before running: rb20 = after the 10-minute
+half, the 20-minute check passes -> buy the half back once (sim.py rebuy "at20", the 2026-10-24 rebuy.py "A" on today's
+bot); rb20_t / rb20_t03 / rb20_t22 = only when the stock's t vs SPY x beta now is >= its t at the entry / + 0.3 / >= 2.2
+(new: rebuy `t_over`, `min_t`); c30 / c60 / c3060 = a 30 / 60-minute check (the stock against sells what is left); all
+= rb20_t + c3060. Tune at 1% (fair / Favorites): base $260,535 / 16% and $312,304 / 11%; rb20 $264,049 / 18% and $320,138 / 11%; rb20_t $262,492 / 17% and $315,312 / 11%; rb20_t03 $251,078 / 16% and $295,469 / 11%; rb20_t22 $246,216 / 17% and $297,480 / 11%; c30 $252,130 / 16% and $302,135 / 11%; c60 $253,908 / 16% and $290,289 / 11%; c3060 $245,387 / 16% and $280,461 / 11%; all $246,973 / 17% and $282,952 / 11%. Baselines: fair tune $260,535 vs $257,982 logged (+2 days of
+data); Favorites higher than logged ($312,304 vs $289,355) because today's 69 Favorites are not the 86 of the baseline.
+🎯 Picked on tune: rb20 (+1.3% on both lists, drop 18% vs 16% on fair). Check at 1%: base $372,332 / 12% and $158,412 / 13%; rb20 $371,515 / 12% and $157,686 / 14%; rb20_t $370,318 / 12% and $156,763 / 14%; c30 $379,110 / 12% and $160,131 / 13%; c3060 $379,184 / 12% and $160,162 / 13%; all $375,616 / 12% and $158,153 / 14%. The pick is below the
+champion on the check (−0.2% fair, −0.5% Favorites, drop 14% vs 13%). Every refill version's changed trades lose without
+their best 5 on both halves (rb20 tune fair 32 trades +3,735, without the best 5
+-46,847; check 26 trades +2,283 / -38,201): as on 2026-10-24, a second buy of the
+same trade pays only on a few giants; the strength condition cuts the refills (32 -> 21 / 15 / 17 on the tune fair
+list) without making the rest pay. The 30 / 60-minute checks lose on tune (c3060 fair -49,532 on
+26 trades, Favorites -98,992) and win a little on the check (fair +22,299, without the best 5
++9,418): the halves disagree, no edge. Look 1 (the buy-back idea's second look). On the Bot vs Indi page,
+Research tab, "Test 2026-10-29".
+
 ### A stop for the huge winners, from +1000 / +1500 / +2000% (2026-10-27, not better: fails the check; CLOSED, 3 of 3 looks)
 
 The user: "when we hit 1000% gain we start a stop of 30% of the trade. lets make another test for moving the stock - only
