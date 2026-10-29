@@ -26,6 +26,25 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 - Dashboard: https://claude.ai/artifact/99VCgkWj9ZegAW3pMBitdg (both strategies, every trade, "how a trade works").
 - Direction plan: `volume-direction-plan.md` (order flow from Databento tbbo is the next big test).
 
+### No limits on the candidates (2026-10-29)
+
+The user: run the candidates without limits (no day-loss stop, no trade or open cap, any number of trades a stock,
+overlapping too: `STR_ACCOUNTS=free2,free3 STR_PER_STOCK=99`). Top 50, Feb 2024 - Oct 2026:
+
+| Version | Trades | Avg | 2%: $100K becomes, drop | 3% | Without best 5 (2%) | Tune / check | Check without 2025-10-10 | 2% without 2025-10-10 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| winner, live limits | 194 | +25.4% | $226,355, 18.1% | $320,189 | +$1,699 | +28.9 / +22.5 | +1.2 | $155,460 |
+| winner, no limits (2 a stock, yesterday) | 230 | +41.6% | $365,206, 20.3% | $555,819 | +$85,125 | +23.6 / +54.9 | +3.0 | $152,148 |
+| winner, no limits (any per stock) | 245 | +38.1% | $349,925, 21.6% | $531,571 | +$81,232 | +20.1 / +52.1 | +4.1 | $148,027 |
+| + 2-4 DTE burst >= 2.0, no limits | 311 | +37.2% | $510,683, 26.1% | $920,647 | +$126,178 | +20.7 / +51.2 | +13.2 | $217,238 |
+| + 2-4 DTE burst >= 2.5, no limits | 275 | +41.4% | $502,621, 23.3% | $907,189 | +$121,818 | +21.4 / +58.4 | +16.0 | $213,002 |
+| + 2-4 DTE burst >= 2.5, no limits, 2 a stock | 258 | +44.7% | $513,337, 21.9% | $932,345 | +$119,559 | - / +62.0 | +15.8 | $213,099 |
+
+Best: the 2-4 DTE add-on (burst >= 2.5) with no limits and 2 trades a stock (overlapping trades on one stock add
+nothing). Live it needs: the same-week expiry with its own burst (code), the bot's caps at their tops, and the account's
+risk rules loosened (buys a day 10, open risk 10%, the 12.5% drawdown brake are in the trading service). Much of the
+no-limits gain is 2025-10-10; without it the 2% account is about $213K either way.
+
 ### 2-4 DTE with a stronger burst: a new candidate (2026-10-28, night)
 
 The user: more trades; adjust 2-4 DTE. Exit grid on the same-week trades alone (3y50w; grace 30 / 60 / 120 / none x give-back
