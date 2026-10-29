@@ -120,9 +120,10 @@ def pick(cands, how, date, ct):
     if how == "now35cap":   # the bot now, skipping a contract whose spread is over 40%
         c = LF.choose(cands, "liquid")
         return c if c and real(c[0], date, ct, c[4], level(c[0], date)) <= CAP else None
-    if how == "plain20":
+    if how.startswith("plain"):   # plain20, plain10 (the user 2026-10-29, "test the shock with 0.1 delta"): that delta, the liquid fallback
         old = LF.DELTA, LF.LOW
-        LF.DELTA, LF.LOW = 0.20, 0.10
+        LF.DELTA = int(how[5:]) / 100
+        LF.LOW = 0.10 if LF.DELTA >= 0.20 else 0.05
         c = LF.choose(cands, "liquid")
         LF.DELTA, LF.LOW = old
         return c

@@ -730,3 +730,29 @@ up to 2 trades a stock a day. Buy = mid + half to the ask (the chase when the ne
   filter (setting `strengthFilter`, the t >= 0 rule) and limiting the bot to the top 15.
 - Running: favorites (59 + QQQ, GOOG, NFLX) 3 years, cross, with a skip when the stock already moved 2/3/4/6 S30
   the side's way since the open or yesterday's close.
+
+## Shock rule: 0.10 delta, and wider confirmation (2026-10-29)
+
+The user: "test the shock with 0.1 delta" and "we must still have confirmation - can we test the shock with wider time to
+approve?". Shock = the F60 rule at 15x volume (f60_alerts.py F60_K=15), 09:40-15:30, no burst, same-week expiry allowed;
+top 50, 2024-02 to 2026-10, alone (no minute alerts), no limits (free2), 2 a stock, 2% a trade, the +-3% minute-bar
+model (not real quotes). New: `SEC_VERSIONS=plain20,plain10` (leg_realspread.pick: plainNN = that delta, the liquid
+fallback). Confirmation = `STR_CROSS_MAX` (the side within N s of the alert) x the entry: cross (first second past the
+line) or holdN (N seconds in a row past it). Files: scratchpad vol/shockconf.
+
+| Window | Delta | Entry | Trades | 3 years | Tune | Check | Check without 2025-10-10 |
+|---|---|---|---|---|---|---|---|
+| 15 s | 0.20 | cross (today's rule) | 447 | $197,185 | $169,296 | $116,072 | $99,061 |
+| 15 s | 0.10 | cross | 381 | $197,540 | $177,011 | $111,997 | $93,672 |
+| 60 s | 0.20 | hold5 | 481 | $299,888 | $172,564 | $172,879 | $148,294 |
+| 60 s | 0.20 | hold10 | 371 | $339,844 | $152,254 | $223,521 | $168,704 |
+| 5 min | 0.20 | hold5 | 598 | $344,150 | $181,099 | $190,327 | $163,516 |
+| 5 min | 0.10 | hold30 | 458 | $385,639 | $115,833 | $334,633 | $246,838 |
+| 5 min | 0.20 | cross | 600 | $232,393 | $151,554 | $151,854 | $130,919 |
+
+- 0.10 delta: no better. Even at the cross; worse than 0.20 on most hold entries; the +-3% model flatters cheap options.
+- Confirmation: a hold (the stock stays past the line) beats the plain cross at every window from 30 s on; 5 min and
+  10 min are the same (nearly every cross comes within 5 minutes). Best balanced: 0.20, hold5 within 5 minutes (both
+  halves +80-90%, check without 2025-10-10 +64%, drop 23%); its neighbours (hold5 at 60 s-10 min) all hold up.
+  0.10 hold30 is bigger but rests on the check half (tune +16%).
+- 48 versions looked at: selection bias. Next: real quotes (2025-02 on) for 0.20 hold5 <= 5 min, and with the winner.

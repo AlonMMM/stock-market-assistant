@@ -42,7 +42,7 @@ OUT = os.path.join(HERE, "sec_cache")
 NY = ZoneInfo("America/New_York")
 LAG = 2
 ENTRIES = ("close", "cross", "hold5", "hold10", "hold30")
-VERSIONS = ("plain20", "step8c25")
+VERSIONS = tuple(os.environ.get("SEC_VERSIONS", "plain20,step8c25").split(","))   # SEC_VERSIONS=plain20,plain10: the contracts to pick and run
 
 
 def utc(date, sec):
@@ -100,8 +100,11 @@ def fast_events():
         if a["date"] < FROM or a["date"] not in CAL: continue
         k = L1.kind_of(a["sym"], a["date"])
         x = ctx(a["sym"], a["date"])
+        nxt = None
+        if not k and os.environ.get("SEC_FAST_WEEK"):   # no 0/1 DTE: the nearest expiry later that week (kind "w")
+            nxt = WC.week_expiry(a["sym"], a["date"]); k = "w" if nxt else None
         if not k or not x or not x.get("sd"): continue
-        nxt = CAL[CAL.index(a["date"]) + 1] if k == "1" else a["date"]
+        if not nxt: nxt = CAL[CAL.index(a["date"]) + 1] if k == "1" else a["date"]
         out.append(dict(date=a["date"], sym=a["sym"], kind=k, nxt=nxt, m=a["sec"] // 60, sec0=a["sec"], u=x["sd"], stock0=a["price"]))
     return out
 
@@ -357,7 +360,8 @@ def trade(job):
         a_sec, k = e["sec0"], (e["sec0"] - 180) // 60 - 1
         am = sign * (e["stock0"] / bx[k][4] - 1) / e["u"] if k in bx else None
     return dict(am=am, to_cross=sec - a_sec, alert_sec=a_sec, fill=fill, waited=waited, entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
-                t=t_side, d2=d2_side, mv_open=mv_open, mv_close=mv_close, side=side, mid_in=mid_in, mid_out=(qs[0] + qs[1]) / 2,
+                t=t_side, d2=d2_side, mv_open=mv_open, mv_close=mv_close, side=side, mid_in=mid_in,
+                mid_out=(qs[0] / (1 - LF.SH) if BARS and qs[0] > 0.0101 else (qs[0] + qs[1]) / 2),   # the model's mid at the sale
                 stock_in=stock_in, stock_out=stock_out)
 
 
@@ -453,7 +457,9 @@ def main():
         if os.environ.get("STR_TO"): jobs = [j for j in jobs if j[0]["date"] <= os.environ["STR_TO"]]
         with mp.Pool(8) as pool: T = [t for t in pool.map(trade, jobs, chunksize=8) if t]
         if os.environ.get("STR_AM_MIN"):   # the burst's own 3-minute move (to the alert minute), the side's way, x S30
-            T = [t for t in T if t["am"] is not None and t["am"] >= float(os.environ["STR_AM_MIN"])]
+            # STR_AM_SKIP_FAST=1: alerts inside a minute (the shock rule) need no burst; the minute alerts keep it
+            fast = {(e["date"], e["sym"], e["m"]) for e in ev if "sec0" in e} if os.environ.get("STR_AM_SKIP_FAST") else set()
+            T = [t for t in T if (t["date"], t["sym"], t["minute"]) in fast or (t["am"] is not None and t["am"] >= float(os.environ["STR_AM_MIN"]))]
         if os.environ.get("STR_AM_MIN_W"):   # a stronger burst for the same-week (2-4 DTE) alerts only
             wk = {(e["date"], e["sym"], e["m"]) for e in ev if e.get("kind") == "w"}
             T = [t for t in T if (t["date"], t["sym"], t["minute"]) not in wk or (t["am"] is not None and t["am"] >= float(os.environ["STR_AM_MIN_W"]))]
