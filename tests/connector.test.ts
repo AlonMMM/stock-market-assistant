@@ -118,6 +118,8 @@ test("connector: initialize, notifications and the tool list", async () => {
       "volume_bot_settings",
       "volume_bot_status",
       "volume_bot_update_settings",
+      "volume_bot_account_risk",
+      "volume_bot_update_account_risk",
     ],
   );
   assert.equal(list.body.result.tools[0].call, undefined);
@@ -144,6 +146,10 @@ test("connector: each tool reaches its route on the trading service", async () =
   await call("volume_bot_settings", {});
   await call("volume_bot_status", {});
   await call("volume_bot_update_settings", { changes: { sizePct: 2 } });
+  await call("volume_bot_account_risk", {});
+  await call("volume_bot_update_account_risk", {
+    changes: { buysPerDay: 100 },
+  });
   assert.deepEqual(
     seen.map((s) => [
       s.method,
@@ -161,10 +167,12 @@ test("connector: each tool reaches its route on the trading service", async () =
       ["GET", "/v1/strangle/settings", undefined],
       ["GET", "/v1/strangle", undefined],
       ["POST", "/v1/strangle/settings/merge", { sizePct: 2 }],
+      ["GET", "/v1/risk/volume-bot", undefined],
+      ["POST", "/v1/risk/volume-bot/merge", { buysPerDay: 100 }],
     ],
   );
   assert.ok(seen.every((s) => s.auth === "Bearer service-token"));
-  assert.equal(tools.length, 10);
+  assert.equal(tools.length, 12);
 });
 
 test("connector: errors of the trading service are shown as errors", async () => {

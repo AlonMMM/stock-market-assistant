@@ -397,7 +397,10 @@ bot.setSettings({
   added: stocks,
   sizePct: 2,
   delta: 0.2,
-  maxOpen: 5,
+  // The 2026-10-29 plan: no limits (2 trades a stock stays), the same-week expiry on.
+  maxOpen: 50,
+  maxTradesPerDay: 100,
+  dayLossPct: 100,
 });
 
 // ---- the clock: the side watch every second, the tick every 10 ----
@@ -457,7 +460,7 @@ const matched = backtest.filter((b) =>
 const lines = [
   `# Volume bot replay, ${date}`,
   "",
-  "The live Volume bot (the winner's rules, production's settings: the top 50, 2%, delta 0.20, 5 open) and the trading",
+  "The live Volume bot (the winner's rules, production's settings: the top 50, 2%, delta 0.20, no limits, same-week expiries) and the trading",
   "service on an in-memory broker, second by second. Stock bars, pre-market and earnings are the recorded data; the",
   "stocks' latest trades are the backtest's 1-second prints where it has them; option bid / ask are the recorded",
   "1-minute option bar close -/+ 2% (not the real spread). Times are New York.",
