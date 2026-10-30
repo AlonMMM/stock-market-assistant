@@ -108,6 +108,10 @@ def main():
     print(f"\nThe champion's entries: rank 1 on {sum(x == 1 for x in ranks)} of {len(ranks)}, top 2 on {sum(x <= 2 for x in ranks)}; D2 best >= 2 on "
           f"{sum(f[1] >= 2 for f in F.values())}, >= 1.5 on {sum(f[1] >= 1.5 for f in F.values())}")
     json.dump({f"{k[0]}|{k[1]}|{k[2]}": v for k, v in out.items()}, open(f"{B}/peer_rank_summary.json", "w"), indent=1)
+    # every main trade with the versions that keep it (giants_match.py: Indi's big winners caught and added)
+    json.dump([dict(src=r["src"], date=r["date"], sym=r["sym"], right=r["right"], minute=r["minute"], half=half(r["date"]),
+                    r2=r["v"]["champion"]["r"][0.02], keep=[v for v in RULES if keep(r, F, v)]) for r in M if "champion" in r["v"]],
+              open(f"{B}/peer_rank_trades.json", "w"))
 
 
 if __name__ == "__main__":
