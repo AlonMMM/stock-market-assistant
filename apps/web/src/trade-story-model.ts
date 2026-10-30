@@ -288,7 +288,7 @@ export function rulesFor(
   return settings;
 }
 
-const fillMarkers = (t: ClosedTrade): Marker[] =>
+export const fillMarkers = (t: ClosedTrade): Marker[] =>
   (t.fills ?? []).map((f: TradeFill) => {
     const ms = Date.parse(f.at);
     if (f.side === "buy")

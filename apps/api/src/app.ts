@@ -24,6 +24,7 @@ import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
 import { handleCandles } from "../../../packages/market-data/src/candles.js";
 import { handleChartBars } from "../../../packages/market-data/src/chart-bars.js";
 import { handleTradeChart } from "../../../packages/market-data/src/trade-chart.js";
+import { handleBotBacktest } from "../../../packages/market-data/src/bot-backtest.js";
 import type { BarCache } from "../../../packages/market-data/src/bar-cache.js";
 import {
   handleBoard,
@@ -482,6 +483,18 @@ export function buildApp(
       .code(result.status)
       .header("Cache-Control", "no-store")
       .send(result.body);
+  });
+  // The Main bot's backtest of one stock over a range (the Backtest page).
+  app.post("/api/bot-backtest", async (request, reply) => {
+    const result = await handleBotBacktest(
+      request.body,
+      alpaca,
+      process.env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
+      alpaca.fetcher,
+      Date.now(),
+      alpaca.cache,
+    );
+    return reply.code(result.status).send(result.body);
   });
   app.post("/api/day-chart", async (request, reply) => {
     const result = await handleDayChart(

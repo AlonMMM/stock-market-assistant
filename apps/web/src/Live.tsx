@@ -86,19 +86,23 @@ export async function prefetch(path: string, every: number) {
   }
 }
 
+/** Reads `path` every `every` ms while the page is visible; a null path reads nothing. */
 export function usePolling<T>(
-  path: string,
+  path: string | null,
   every: number,
   onError: (m: string) => void,
 ) {
-  const [value, setValue] = useState<T | null>(
-    () => (kept(path)?.value as T | undefined) ?? null,
+  const [value, setValue] = useState<T | null>(() =>
+    path === null ? null : ((kept(path)?.value as T | undefined) ?? null),
   );
-  const [at, setAt] = useState<number | null>(() => kept(path)?.at ?? null);
+  const [at, setAt] = useState<number | null>(() =>
+    path === null ? null : (kept(path)?.at ?? null),
+  );
   const [error, setError] = useState<string | null>(null);
   // Set by `reload`: load this address now, past its kept answer.
   const [reloaded, setReloaded] = useState<{ path: string } | null>(null);
   useEffect(() => {
+    if (path === null) return;
     let active = true;
     const force = reloaded?.path === path;
     const last = force ? undefined : kept(path);
@@ -143,7 +147,14 @@ export function usePolling<T>(
     };
     // onError only records warnings; it need not restart polling.
   }, [path, every, reloaded]);
-  return { value, at, error, reload: () => setReloaded({ path }) };
+  return {
+    value,
+    at,
+    error,
+    reload: () => {
+      if (path !== null) setReloaded({ path });
+    },
+  };
 }
 
 // Alerts newer than the viewer's previous visit are marked "New". Stored
