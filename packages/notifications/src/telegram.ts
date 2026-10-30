@@ -325,7 +325,9 @@ export class TelegramSender implements PhotoSender {
   ): Promise<Call> {
     let response: Response;
     try {
-      response = await this.fetcher(
+      // Workers reject fetch invoked with a foreign `this` ("Illegal invocation").
+      response = await this.fetcher.call(
+        globalThis,
         `https://api.telegram.org/bot${this.token}/${method}`,
         {
           method: "POST",
