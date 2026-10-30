@@ -1095,6 +1095,8 @@ export class StrangleBot {
           o.qty = sold;
           const price = priceOf(job.result);
           if (price !== null) o.price = price;
+          const fillBook = lastBookOf(job.result, this.o.now(), "alpaca");
+          if (fillBook) o.fillBook = fillBook;
           leg.qty = Math.max(0, Math.min(leg.qty - sold, now));
           this.event(
             "order",

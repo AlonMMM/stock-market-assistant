@@ -69,6 +69,13 @@ export interface ChainContract {
   strike: number;
 }
 
+/** One contract's book as a session minute closed (real quotes, option-quotes.ts). */
+export interface QuoteMinute {
+  m: number;
+  bid: number;
+  ask: number;
+}
+
 /** What the backtest reads. Every call is for one stock's run. */
 export interface BacktestData {
   /** The stock's (or SPY's) regular-session minutes of a day; empty when none. */
@@ -93,6 +100,16 @@ export interface BacktestData {
     from: string,
     to: string,
   ): Promise<Map<string, MinuteBar[]>>;
+  /**
+   * One contract's real quotes on each session from `from` to `to`, by date,
+   * oldest minute first: Databento's and the bots' saved books, uploaded from
+   * the Mac. Absent, or a day without them: the trade bars price the trade.
+   */
+  optionQuotes?(
+    contract: string,
+    from: string,
+    to: string,
+  ): Promise<Map<string, QuoteMinute[]>>;
   /** The earnings calendar's reports listed on a date; null when it could not be read. */
   earnings(date: string): Promise<EarningsReport[] | null>;
   /** The last session with final data: a carried trade's walk stops there. */
@@ -132,6 +149,9 @@ export interface SimTrade {
   volume30: number;
   fallback: boolean; // the cheap fallback chose it
   steps: SimStep[];
+  // "quotes": bought and sold at real bids / asks on the stock's minute clock;
+  // "trades": the contract had no quote at the signal, so the trade bars priced it.
+  priced: "quotes" | "trades";
   // The walk reached the last session with data before the last sale: what
   // is left is valued at the last option close (the last step, "data-end").
   open: boolean;
@@ -387,12 +407,27 @@ interface Walked {
   steps: SimStep[];
   open: boolean;
   noFill: boolean;
+  priced: "quotes" | "trades";
 }
 
 // What one position is worth to `nextAction`: shares of 1000 contracts, so its
 // halves round as the live bot's do for a large position.
 const nominal = 1000;
 
+/** The sessions a position may be held: the entry day, then up to maxNights more, never past the expiry. */
+function heldDays(
+  data: BacktestData,
+  cal: BacktestCalendar,
+  w: WalkInput,
+  s: BotSettings,
+) {
+  const later = cal
+    .nextSessions(w.date, Math.max(0, s.maxNights))
+    .filter((d) => d <= w.expiry && d <= data.lastSession);
+  return [w.date, ...later];
+}
+
+/** Real quotes when the contract has a book at the signal, else the trade bars. */
 async function walk(
   data: BacktestData,
   cal: BacktestCalendar,
@@ -400,13 +435,246 @@ async function walk(
   s: BotSettings,
   o: RunOptions,
 ): Promise<Walked> {
+  const days = heldDays(data, cal, w, s);
+  const quotes = data.optionQuotes
+    ? await data
+        .optionQuotes(w.contract, w.date, days.at(-1)!)
+        .catch(() => new Map<string, QuoteMinute[]>())
+    : new Map<string, QuoteMinute[]>();
+  if (bookAt(quotes.get(w.date) ?? [], w.minute))
+    return walkQuotes(data, cal, w, s, days, quotes);
+  return walkTrades(data, cal, w, s, o, days);
+}
+
+// Real quotes as the research simulator reads them (leg_realspread.quote): the
+// newest book at most this many minutes old.
+const quoteAge = 5;
+
+/** The book as `minute` closed: the newest at or before it, at most quoteAge minutes old. */
+export function bookAt(
+  day: readonly QuoteMinute[],
+  minute: number,
+): QuoteMinute | null {
+  let best: QuoteMinute | null = null;
+  for (const q of day) {
+    if (q.m > minute) break;
+    best = q;
+  }
+  return best && minute - best.m < quoteAge ? best : null;
+}
+
+/**
+ * The walk on real quotes, as the live bot trades (the user 2026-10-31: the
+ * backtest sold IBIT at a late trade print for -50% where the paper sale got
+ * the $0.11 bid for -15%). Every session minute is a check, on the stock's
+ * clock, not only minutes the option traded. The buy pays the mid + a quarter
+ * of the spread as the signal minute closed, or the ask a minute later when
+ * the bid ran past that (the live bot chases the ask); a sale gets the bid as
+ * its decision minute closed, or the next minute's book when none is fresh.
+ * No fill correction: the bid and ask are the market's.
+ */
+async function walkQuotes(
+  data: BacktestData,
+  cal: BacktestCalendar,
+  w: WalkInput,
+  s: BotSettings,
+  days: string[],
+  quotes: Map<string, QuoteMinute[]>,
+): Promise<Walked> {
+  const base: ExitRules = exitRules(s);
+  const entryDay = quotes.get(w.date) ?? [];
+  const q0 = bookAt(entryDay, w.minute)!;
+  let cost = (q0.bid + 3 * q0.ask) / 4;
+  const q1 = bookAt(entryDay, w.minute + 1);
+  if (q1 && q1.bid > cost) cost = q1.ask;
+  const steps: SimStep[] = [
+    {
+      date: w.date,
+      minute: w.minute,
+      kind: "buy",
+      share: 1,
+      price: cost,
+      reason: "entry",
+    },
+  ];
+  let rem = 1;
+  let pending: { share: number | "all"; reason: ExitReason } | null = null;
+  let state: BotPositionState = {
+    right: w.right,
+    qty: nominal,
+    cost,
+    entryMinute: w.minute,
+    entryStock: w.stock,
+    nights: 0,
+    checksDone: [],
+    morningDone: false,
+  };
+  let watch = w.watch;
+  let last: { date: string; book: QuoteMinute } | null = {
+    date: w.date,
+    book: q0,
+  };
+  const sell = (
+    date: string,
+    book: QuoteMinute,
+    share: number,
+    reason: ExitReason,
+  ) => {
+    const q = Math.min(rem, share);
+    rem -= q;
+    steps.push({
+      date,
+      minute: book.m,
+      kind: "sell",
+      share: q,
+      price: book.bid,
+      reason,
+    });
+    state = { ...state, qty: Math.round(rem * nominal) };
+  };
+  const done = (): Walked => ({
+    steps,
+    open: false,
+    noFill: false,
+    priced: "quotes",
+  });
+  for (let k = 0; k < days.length; k++) {
+    const date = days[k]!;
+    const length = cal.sessionLength(date) ?? 390;
+    const rules: ExitRules = {
+      ...base,
+      eodMinute: Math.min(defaultExitRules.eodMinute, length - 10),
+      expiryLastMinute: Math.min(
+        defaultExitRules.expiryLastMinute,
+        length - 30,
+      ),
+    };
+    const day = quotes.get(date) ?? [];
+    const stockBars = data.bars(w.symbol, date);
+    const spyBars = k === 0 ? data.bars("SPY", date) : [];
+    const prevBars =
+      k === 0 ? [] : data.bars(w.symbol, cal.previousSessions(date, 1)[0]!);
+    const first = stockBars[0];
+    const open = first && first.m <= 5 ? first.o : null;
+    const prevClose = prevBars.at(-1)?.c ?? null;
+    const nextDay = cal.nextSessions(date, 1)[0]!;
+    let carried = false;
+    for (let m = k === 0 ? w.minute + 1 : 0; m < length; m++) {
+      const book = bookAt(day, m);
+      if (book) last = { date, book };
+      // The mark is the newest book of any age, as the live bot always has a
+      // price; only a sale needs a fresh one.
+      const mark = last ? (last.book.bid + last.book.ask) / 2 : null;
+      // The failed break (entry day): all out as the minute it failed closed.
+      if (k === 0 && watch && watch.state === "watching" && s.sellFailedBreak) {
+        watch = advanceWatch(watch, stockBars, m, w.right);
+        if (watch.state === "failed" && m < rules.eodMinute)
+          pending = { share: "all", reason: "failed-break" };
+      }
+      if (pending && book) {
+        sell(
+          date,
+          book,
+          pending.share === "all" ? rem : pending.share,
+          pending.reason,
+        );
+        const failed = pending.reason === "failed-break";
+        pending = null;
+        if (rem <= 1e-9 || failed) return done();
+      }
+      if (pending) continue; // no fresh book yet: the sale waits for one
+      const strength =
+        k === 0 && s.sellOnWeakness
+          ? (cState(stockBars, spyBars, w.prior, m)?.t ?? null)
+          : null;
+      const decision = nextAction(
+        state,
+        {
+          minute: m,
+          stock: closeAt(stockBars, m),
+          option: mark,
+          strength,
+          isExpiryDay: date === w.expiry,
+          sessionBeforeExpiry: nextDay <= w.expiry,
+          open,
+          prevClose,
+        },
+        rules,
+      );
+      state = { ...state, ...decision.update };
+      if (decision.reason === "check-10" && decision.sell > 0)
+        state = { ...state, halfSold: true };
+      if (decision.reason === "carry") {
+        steps.push({
+          date,
+          minute: m,
+          kind: "carry",
+          share: rem,
+          price: mark ?? 0,
+          reason: "carry",
+        });
+        carried = true;
+        break;
+      }
+      if (decision.sell > 0 && decision.reason) {
+        const all = decision.sell >= state.qty;
+        pending = {
+          share: all ? "all" : decision.sell / nominal,
+          reason: decision.reason,
+        };
+        if (book) {
+          sell(
+            date,
+            book,
+            pending.share === "all" ? rem : pending.share,
+            pending.reason,
+          );
+          pending = null;
+          if (rem <= 1e-9) return done();
+        }
+      }
+    }
+    if (carried) continue;
+    // The day ended held (no 15:50 decision, or a sale with no fresh book):
+    // at the day's last book, as the bot sells everything not carried.
+    const end = day.at(-1);
+    if (!end) continue; // no quote that day: on to the next
+    const reason: ExitReason =
+      pending?.reason ?? (date === w.expiry ? "expiry-day" : "close-1550");
+    sell(date, end, rem, reason);
+    return done();
+  }
+  // Held past the last session with data: valued at the last book's mid.
+  if (rem > 1e-9 && last) {
+    steps.push({
+      date: last.date,
+      minute: last.book.m,
+      kind: "sell",
+      share: rem,
+      price: (last.book.bid + last.book.ask) / 2,
+      reason: "data-end",
+    });
+    return {
+      steps,
+      open: days.at(-1) === data.lastSession && days.at(-1) !== w.expiry,
+      noFill: false,
+      priced: "quotes",
+    };
+  }
+  return done();
+}
+
+/** The walk on the option's trade bars, when it has no quotes. */
+async function walkTrades(
+  data: BacktestData,
+  cal: BacktestCalendar,
+  w: WalkInput,
+  s: BotSettings,
+  o: RunOptions,
+  days: string[],
+): Promise<Walked> {
   const fill = o.fillPct / 100;
   const base: ExitRules = exitRules(s);
-  // The sessions it may be held: the entry day, then up to maxNights more, never past the expiry.
-  const later = cal
-    .nextSessions(w.date, Math.max(0, s.maxNights))
-    .filter((d) => d <= w.expiry && d <= data.lastSession);
-  const days = [w.date, ...later];
   const option = await data.optionRange(w.contract, w.date, days.at(-1)!);
   const steps: SimStep[] = [];
   let cost: number | null = null;
@@ -443,7 +711,12 @@ async function walk(
     });
     state = { ...state, qty: Math.round(rem * nominal) };
   };
-  const done = (): Walked => ({ steps, open: false, noFill: false });
+  const done = (): Walked => ({
+    steps,
+    open: false,
+    noFill: false,
+    priced: "trades",
+  });
   for (let k = 0; k < days.length; k++) {
     const date = days[k]!;
     const length = cal.sessionLength(date) ?? 390;
@@ -471,7 +744,7 @@ async function walk(
       today = b;
       if (cost === null) {
         if (b.m > w.minute + fillWithin)
-          return { steps: [], open: false, noFill: true };
+          return { steps: [], open: false, noFill: true, priced: "trades" };
         cost = mid(b) * (1 + fill);
         state = { ...state, cost };
         steps.push({
@@ -544,7 +817,8 @@ async function walk(
         };
       }
     }
-    if (cost === null) return { steps: [], open: false, noFill: true };
+    if (cost === null)
+      return { steps: [], open: false, noFill: true, priced: "trades" };
     if (carried || !today) continue; // a day without a trade in the contract: on to the next
     // A sale decided on the day's last bar, or a day that ended held without
     // the 15:50 decision (no bar then): at the last bar's close, as the bot
@@ -554,7 +828,8 @@ async function walk(
     sell(date, today.m, today.c, rem, reason);
     return done();
   }
-  if (cost === null) return { steps: [], open: false, noFill: true };
+  if (cost === null)
+    return { steps: [], open: false, noFill: true, priced: "trades" };
   // Held past the last session with data (or past the last bar seen): valued at the last close.
   if (rem > 1e-9 && last) {
     steps.push({
@@ -570,6 +845,7 @@ async function walk(
       steps,
       open: days.at(-1) === data.lastSession && days.at(-1) !== w.expiry,
       noFill: false,
+      priced: "trades",
     };
   }
   return done();
@@ -702,6 +978,7 @@ export async function runStock(
       fallback: picked.fallback,
       steps: walked.steps,
       open: walked.open,
+      priced: walked.priced,
       watch: watch ? { name: watch.name, level: watch.level } : null,
     };
     out.trades.push(trade);
@@ -820,6 +1097,7 @@ async function pyramid(
     fallback: picked.fallback,
     steps: walked.steps,
     open: walked.open,
+    priced: walked.priced,
     watch: null,
   };
 }

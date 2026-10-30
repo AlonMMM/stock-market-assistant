@@ -1,6 +1,7 @@
 import { AlpacaFeed } from "./alpaca.js";
 import { minuteHistory, tickerPattern, type Credentials } from "./backtest.js";
 import type { BarCache, CacheStats } from "./bar-cache.js";
+import type { OptionQuoteStore } from "./option-quotes.js";
 import type { RawBar } from "./bars.js";
 import {
   coreClose,
@@ -17,6 +18,7 @@ import {
   type BacktestCalendar,
   type BacktestData,
   type ChainContract,
+  type QuoteMinute,
   type StockRun,
 } from "../../trading/src/bot/backtest.js";
 import { nasdaqEarnings } from "../../trading/src/bot/nasdaq.js";
@@ -149,6 +151,7 @@ export class AlpacaBacktestData implements BacktestData {
     private readonly credentials: { key: string; secret: string },
     private readonly tradingUrl: string,
     private readonly fetcher: typeof fetch,
+    private readonly quotes?: OptionQuoteStore,
   ) {}
 
   bars(symbol: string, date: string) {
@@ -293,6 +296,14 @@ export class AlpacaBacktestData implements BacktestData {
     return got;
   }
 
+  async optionQuotes(
+    contract: string,
+    from: string,
+    to: string,
+  ): Promise<Map<string, QuoteMinute[]>> {
+    return this.quotes ? this.quotes.get(contract, from, to) : new Map();
+  }
+
   earnings(date: string) {
     let reports = this.reports.get(date);
     if (!reports)
@@ -311,6 +322,7 @@ export async function handleBotBacktest(
   fetcher: typeof fetch = fetch,
   now = Date.now(),
   cache?: BarCache,
+  quotes?: OptionQuoteStore,
 ): Promise<{ status: number; body: BotBacktestResponse | { error: string } }> {
   if (!credentials.key || !credentials.secret)
     return {
@@ -363,6 +375,7 @@ export async function handleBotBacktest(
       { key: credentials.key, secret: credentials.secret },
       tradingUrl,
       fetcher,
+      quotes,
     );
     const run = await runStock(
       symbol,

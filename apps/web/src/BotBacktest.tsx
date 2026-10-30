@@ -960,10 +960,14 @@ function Empty() {
         a trade to see its chart with the entry and each exit.
       </p>
       <p className="muted small">
-        How it is simulated: the live bot&apos;s own rules on one-minute bars. A
-        buy fills on the contract&apos;s next minute bar at its middle plus the
-        fill cost, a sale at the middle less it. Alpaca has no past option
-        quotes, so this is the closest model. Early entry is read at the
+        How it is simulated: the live bot&apos;s own rules, checked every minute
+        on the stock&apos;s clock. Prices are real bids and asks when the
+        contract has them (Databento, and the bots&apos; own saved books,
+        uploaded from the research Mac): a buy pays the middle plus a quarter of
+        the spread, or the ask when the price ran away; a sale gets the bid. A
+        contract without them is priced from its trades (marked &quot;Trade
+        prices&quot;): a buy on its next minute bar at the middle plus the fill
+        cost, a sale at the middle less it. Early entry is read at the
         minute&apos;s close. The daily loss limit and the drawdown pause are not
         applied.
       </p>
@@ -985,6 +989,9 @@ function Summary({
   busy: boolean;
 }) {
   const refused = account.trades.filter((a) => a.status !== "taken").length;
+  const tradePriced = account.trades.filter(
+    (a) => a.status === "taken" && a.trade.priced !== "quotes",
+  ).length;
   return (
     <section className="card bt-summary" aria-label="Result">
       <div className="bt-total">
@@ -1047,6 +1054,9 @@ function Summary({
         {skipsCount > 0 ? ` · ${skipsCount} skipped by the filters` : ""}
         {account.open > 0
           ? ` · ${account.open} still held, valued at the last price`
+          : ""}
+        {tradePriced > 0
+          ? ` · ${tradePriced} priced from trades (no real quotes), with the fill cost`
           : ""}
         . Simulated, not a promise.
       </p>
@@ -1116,6 +1126,14 @@ function TradeList({
                 {a.trade.bonus && <span className="state-chip">D2</span>}
                 {a.trade.pyramid && <span className="state-chip">Pyramid</span>}
                 {a.open && <span className="state-chip">Open</span>}
+                {a.trade.priced !== "quotes" && (
+                  <span
+                    className="state-chip"
+                    title="No real quotes for this contract: priced from its trades"
+                  >
+                    Trade prices
+                  </span>
+                )}
               </span>
               {a.status === "taken" ? (
                 <>
