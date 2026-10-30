@@ -48,6 +48,14 @@ VW_PARTS = os.environ.get("BT_VW_PARTS", "both")
 ALL = bool(os.environ.get("BT_ALL"))
 if os.environ.get("BT_SPAN_END"): SPAN["2026"] = (SPAN["2026"][0], os.environ["BT_SPAN_END"])
 VW_CAP = 10.0
+# The D2 measure (d2_fix.py; the user, 2026-10-30, after ORCL's shock read D2 5.0 on two minutes: "maybe we can improve
+# how we calculate D2? check in the industry"): BT_D2_MODE "" today's; "clipK" caps each minute's excess at +-K/10 x the
+# stock's typical 1-minute move (S30 / sqrt 30); "floor" counts only SPY minutes moved >= half SPY's typical 1-minute
+# move against the bet; "wspy" weighs each minute by SPY's move / its typical 1-minute move (the downside-capture idea);
+# "+hit" also needs the stock to beat SPY x beta on >= 60% of the window's counted minutes, at least 8 of them.
+D2_MODE = os.environ.get("BT_D2_MODE", "")
+CLIP = int(D2_MODE.split("+")[0][4:]) / 10 if D2_MODE.startswith("clip") else None
+FLOOR, WSPY, HIT = D2_MODE.startswith("floor"), D2_MODE.startswith("wspy"), D2_MODE.endswith("+hit")
 T_MIN, RV_MIN = 1.8, 1.5
 
 # name -> (t floor or None, D floor or None, which D ("d" | "e"), bonus t floor or None)
@@ -62,7 +70,7 @@ for x in (5, 10, 15, 20):
 for lt in (6, 8, 10, 12, 15):
     for x in (3, 5, 7):
         RULES[f"b{lt}_{x:02d}"] = (T_MIN, x / 10, "d", lt / 10)
-    for x in (10, 15, 20):
+    for x in (5, 10, 15, 20):
         RULES[f"c{lt}_{x}"] = (T_MIN, x / 10, "e", lt / 10)
 # Controls for the bonus arm: the lower t alone, without any defence.
 RULES["t12"] = (1.2, None, "d", None)
@@ -104,6 +112,10 @@ def stock(sym):
         cx = ctx(sym, date)
         if not cx or not cx["sd"]: continue
         unit = cx["sd"]  # S30 as a fraction of the price
+        one = unit / math.sqrt(30)   # the stock's typical 1-minute move
+        sx = ctx("SPY", date) if (FLOOR or WSPY) else None
+        spy1 = sx["sd"] / math.sqrt(30) if sx and sx["sd"] else None
+        if (FLOOR or WSPY) and not spy1: continue
         hist = []
         for d in cal[i - 20:i]:
             v = [0] * 390
@@ -126,11 +138,12 @@ def stock(sym):
         n = s1 = s2 = 0.0
         sw = sw2 = 0.0
         # The last WINDOW minutes' defence, both sides, as rolling sums.
-        win = collections.deque()  # (d_call, d_put, e_call, e_put)
-        dsum = [0.0, 0.0, 0.0, 0.0]
+        win = collections.deque()  # (d_call, d_put, e_call, e_put, counted call, beat call, counted put, beat put)
+        dsum = [0.0] * 8
         left = set(RULES)
         for m in range(1, LAST + 1):
             dc = dp = ec = ep = 0.0
+            nc = bc = np_ = bp = 0
             if c[m] and c[m - 1] and spy[m] and spy[m - 1]:
                 rs = c[m] / c[m - 1] - 1; rp = spy[m] / spy[m - 1] - 1
                 x = rs - b_ * rp
@@ -147,13 +160,26 @@ def stock(sym):
                 if rp > 0:
                     ep = -wd * x / unit
                     if rs <= 0: dp = wd * b_ * rp / unit
-            if m < SKIP: dc = dp = ec = ep = 0.0   # the opening minutes left out of the window (the t-stat keeps them)
-            win.append((dc, dp, ec, ep))
-            for j, v in enumerate((dc, dp, ec, ep)): dsum[j] += v
+                if D2_MODE:   # the D2 measures of d2_fix.py (ec / ep only; D keeps its own)
+                    ec = ep = 0.0
+                    for sign, against in ((1, rp < 0), (-1, rp > 0)):
+                        if not against or (FLOOR and abs(rp) < 0.5 * spy1): continue
+                        xe = sign * x
+                        if CLIP is not None: xe = max(-CLIP * one, min(CLIP * one, xe))
+                        if WSPY: xe *= abs(rp) / spy1
+                        if sign == 1: ec, nc, bc = xe / unit, 1, int(x > 0)
+                        else: ep, np_, bp = xe / unit, 1, int(x < 0)
+            if m < SKIP: dc = dp = ec = ep = 0.0; nc = bc = np_ = bp = 0   # the opening minutes left out of the window (the t-stat keeps them)
+            row = (dc, dp, ec, ep, nc, bc, np_, bp)
+            win.append(row)
+            for j, v in enumerate(row): dsum[j] += v
             if len(win) > WINDOW:
                 old = win.popleft()
                 for j, v in enumerate(old): dsum[j] -= v
             if m < FIRST or n < MIN_STEPS or c[m] is None: continue
+            e_c, e_p = dsum[2], dsum[3]
+            if HIT and not (dsum[4] >= 8 and dsum[5] >= 0.6 * dsum[4]): e_c = -99.0
+            if HIT and not (dsum[6] >= 8 and dsum[7] >= 0.6 * dsum[6]): e_p = -99.0
             mu = s1 / sw; var = max(s2 / sw - mu * mu, 0.0)
             t = mu / math.sqrt(var) * math.sqrt(sw * sw / sw2) if var > 0 else 0.0   # unweighted: sw = n, sw*sw/sw2 = n
             med = sorted(h[m] for h in hist); k = len(med) // 2
@@ -162,12 +188,12 @@ def stock(sym):
             sm = (spy[m] / spy_prev - 1) if spy_prev and spy[m] else 0.0   # SPY since the day before's close (the "mkt" rules)
             if ALL:
                 for name in RULES:
-                    if passes(RULES[name], t, rv, dsum[0], dsum[2], sm): every[name][(date, "C")].append((m, round(t, 2)))
-                    if passes(RULES[name], -t, rv, dsum[1], dsum[3], -sm): every[name][(date, "P")].append((m, round(-t, 2)))
+                    if passes(RULES[name], t, rv, dsum[0], e_c, sm): every[name][(date, "C")].append((m, round(t, 2)))
+                    if passes(RULES[name], -t, rv, dsum[1], e_p, -sm): every[name][(date, "P")].append((m, round(-t, 2)))
                 continue
             for name in list(left):
-                if passes(RULES[name], t, rv, dsum[0], dsum[2], sm): side, d_, e_, t_ = "C", dsum[0], dsum[2], t
-                elif passes(RULES[name], -t, rv, dsum[1], dsum[3], -sm): side, d_, e_, t_ = "P", dsum[1], dsum[3], -t
+                if passes(RULES[name], t, rv, dsum[0], e_c, sm): side, d_, e_, t_ = "C", dsum[0], e_c, t
+                elif passes(RULES[name], -t, rv, dsum[1], e_p, -sm): side, d_, e_, t_ = "P", dsum[1], e_p, -t
                 else: continue
                 left.discard(name)
                 out[name].append(dict(date=date, sym=sym, right=side, minute=m, time=f"{(570 + m) // 60:02d}:{(570 + m) % 60:02d}",
