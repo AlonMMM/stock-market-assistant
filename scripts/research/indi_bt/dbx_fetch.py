@@ -28,6 +28,7 @@ if "open10" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "o
 if "open11" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open11"), "open11_dbx_list.csv", 391   # indi_close.py
 if "open12" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open12"), "open12_dbx_list.csv", 391   # indi_close.py IC_SET=rs
 if "open13" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open13"), "open13_dbx_list.csv", 391   # d2_fix.py
+if "shockt" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "shockt"), "shockt_dbx_list.csv", 391   # shock_test.py
 if "open14" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open14"), "open14_dbx_list.csv", 391   # indi_close.py IC_SET=vol
 if "open15" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open15"), "open15_dbx_list.csv", 391   # indi_close.py IC_SET=d2b
 NY = ZoneInfo("America/New_York")
