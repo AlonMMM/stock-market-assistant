@@ -24,8 +24,10 @@ import {
 import { defaultSettings } from "../packages/trading/src/bot/settings.js";
 import type { MinuteBar } from "../packages/trading/src/bot/signal.js";
 import {
+  clockText,
   parseTickers,
   periodParts,
+  runClock,
   periodRange,
   sessionsBetween,
 } from "../apps/web/src/bot-backtest-model.js";
@@ -342,4 +344,56 @@ test("the page splits a period into parts and reads typed tickers", () => {
     from: "2026-09-30",
     to: "2026-10-29",
   });
+});
+
+test("the loader's clock moves through the period and never passes the parts in flight", () => {
+  const days = sessionsBetween("2026-10-01", "2026-10-29");
+  const busy = { done: 0, total: 10, startedAt: 0, lastDoneAt: 0 };
+  // Before any part is back, a guessed pace; never past the 4 in flight.
+  const early = runClock(busy, days, 3000, 4);
+  assert.ok(early.fraction > 0 && early.fraction < 0.4, String(early.fraction));
+  assert.equal(early.leftMs, null);
+  const late = runClock(busy, days, 10 * 60_000, 4);
+  assert.ok(late.fraction <= 0.4 * 0.95 + 1e-9);
+  // 5 of 10 back after 20 s: a little past half way, about 18 s left.
+  const half = runClock(
+    { done: 5, total: 10, startedAt: 0, lastDoneAt: 20_000 },
+    days,
+    20_000,
+    4,
+  );
+  assert.ok(half.fraction > 0.5 && half.fraction < 0.6, String(half.fraction));
+  assert.ok(
+    half.leftMs! > 15_000 && half.leftMs! < 20_000,
+    String(half.leftMs),
+  );
+  // Two quick parts (cached bars) do not send the clock to the period's end.
+  const quick = runClock(
+    { done: 2, total: 6, startedAt: 0, lastDoneAt: 3000 },
+    days,
+    4000,
+    4,
+  );
+  assert.ok(quick.fraction < 0.5, String(quick.fraction));
+  assert.ok(quick.leftMs! > 5000, String(quick.leftMs));
+  // A slower part than guessed does not move the clock back.
+  const ahead = runClock(busy, days, 9000, 4);
+  const slower = runClock(
+    { done: 1, total: 10, startedAt: 0, lastDoneAt: 15_000 },
+    days,
+    15_000,
+    4,
+    ahead.fraction,
+  );
+  assert.ok(slower.fraction >= ahead.fraction);
+  // The clock reads a session's minute: 21 sessions, at 0.5 the 11th at 12:45 New York.
+  assert.equal(days.length, 21);
+  const mid = runClock(
+    { done: 5, total: 10, startedAt: 0, lastDoneAt: 0 },
+    days,
+    0,
+    0,
+  );
+  assert.equal(new Date(mid.at).toISOString(), `${days[10]}T16:45:00.000Z`);
+  assert.equal(clockText(65_000), "1:05");
 });
