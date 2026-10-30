@@ -16,7 +16,7 @@ day, the first minute a rule holds in either direction. Rules:
 
   BT_UNIVERSE=wide python3 defence_signals.py      (from the repo root) -> data/local/x/bt/s_sig_<rule>_<year>.csv
 """
-import collections, csv, math, multiprocessing as mp, os, sys
+import collections, csv, json, math, multiprocessing as mp, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from store import P, day, calendar
@@ -84,11 +84,32 @@ for x in (40, 45, 50):
 # t >= T with the day volume >= 1.5x. mL_T: L in tenths of a percent, T in tenths
 for lv, tl in ((5, 12), (3, 12), (10, 12), (5, 10)):
     RULES[f"m{lv}_{tl}"] = ("mkt", lv / 1000, tl / 10, "c12_15")
+# The shock (shock_test.py; the user, 2026-10-30: "see the shock alert and if we get one - you can reduce the T V D
+# trshvolds by 30%-50%. after you enter you need to confirm that during the next X minutes we do go through that
+# threshold"): BT_SHOCKS = f60_alerts.py's json at 15x. For 30 minutes after a shock, on its side, the champion's rule
+# (c12_15) with t, the bonus t, D2 and the day volume cut by C/100 (shC), or with t / bonus t / D2 cut and no volume
+# floor, the shock being the volume (shvC). A lowered entry records the first later minute the full rule holds (confirm).
+SHOCK_WIN = 30
+for cut in (30, 50):
+    RULES[f"sh{cut}"] = ("shock", cut / 100, False)
+    RULES[f"shv{cut}"] = ("shock", cut / 100, True)
+SHOCKS = collections.defaultdict(list)   # (sym, date) -> [(first minute, side)]
+if os.environ.get("BT_SHOCKS"):
+    for a in json.load(open(os.environ["BT_SHOCKS"])):
+        SHOCKS[(a["sym"], a["date"])].append(((a["sec"] - 1) // 60, "C" if a.get("move", 0) > 0 else "P"))
 if os.environ.get("BT_RULES"): RULES = {k: RULES[k] for k in os.environ["BT_RULES"].split(",")}
+
+
+def shock_low(rule, t, rv, e):
+    """The lowered rule inside a shock's window (the "shock" rules)."""
+    k = 1 - rule[1]
+    if not rule[2] and rv < RV_MIN * k: return False
+    return t >= T_MIN * k or (t >= 1.2 * k and e >= 1.5 * k)
 
 
 def passes(rule, t, rv, d, e, sm=0.0):
     """sm: SPY's move from the day before's close to this minute, on the bet's side (the "mkt" rules)."""
+    if rule[0] == "shock": return passes(RULES.get("c12_15", (T_MIN, 1.5, "e", 1.2)), t, rv, d, e)
     if rule[0] == "sum": return t >= rule[2] and t + e + rv > rule[1]
     if rule[0] == "mkt": return passes(RULES[rule[3]], t, rv, d, e) or (sm >= rule[1] and t >= rule[2] and rv >= RV_MIN)
     tt, dx, which, bonus = rule
@@ -98,6 +119,9 @@ def passes(rule, t, rv, d, e, sm=0.0):
     if tt is not None and t < tt: return False
     if dx is not None and dv < dx: return False
     return True
+
+
+FULL = (T_MIN, 1.5, "e", 1.2)   # the champion's rule c12_15, for the shock rules' confirmation
 
 
 def stock(sym):
@@ -141,6 +165,7 @@ def stock(sym):
         win = collections.deque()  # (d_call, d_put, e_call, e_put, counted call, beat call, counted put, beat put)
         dsum = [0.0] * 8
         left = set(RULES)
+        pending = {}
         for m in range(1, LAST + 1):
             dc = dp = ec = ep = 0.0
             nc = bc = np_ = bp = 0
@@ -191,7 +216,24 @@ def stock(sym):
                     if passes(RULES[name], t, rv, dsum[0], e_c, sm): every[name][(date, "C")].append((m, round(t, 2)))
                     if passes(RULES[name], -t, rv, dsum[1], e_p, -sm): every[name][(date, "P")].append((m, round(-t, 2)))
                 continue
+            full = (passes(FULL, t, rv, dsum[0], e_c), passes(FULL, -t, rv, dsum[1], e_p))   # the champion's rule, call / put
+            for name, (j, sd) in list(pending.items()):   # lowered entries waiting for the full rule
+                if full[0 if sd == "C" else 1]: out[name][j]["confirm"] = m; del pending[name]
+            sh = {s_ for (a_, s_) in SHOCKS.get((sym, date), ()) if a_ <= m <= a_ + SHOCK_WIN}
             for name in list(left):
+                r_ = RULES[name]
+                if r_[0] == "shock":
+                    side = next((s_ for s_, tt, ee, dd in (("C", t, e_c, dsum[0]), ("P", -t, e_p, dsum[1]))
+                                 if full[0 if s_ == "C" else 1] or (s_ in sh and shock_low(r_, tt, rv, ee))), None)
+                    if side is None: continue
+                    t_, d_, e_ = (t, dsum[0], e_c) if side == "C" else (-t, dsum[1], e_p)
+                    low = not full[0 if side == "C" else 1]
+                    left.discard(name)
+                    out[name].append(dict(date=date, sym=sym, right=side, minute=m, time=f"{(570 + m) // 60:02d}:{(570 + m) % 60:02d}",
+                                          price=c[m], b_minute="", a_minute="", c_t=round(t_, 2), c_rvol=round(rv, 2),
+                                          c_d=round(d_, 2), c_e=round(e_, 2), sector="", lowered=int(low), confirm=m if not low else ""))
+                    if low: pending[name] = (len(out[name]) - 1, side)
+                    continue
                 if passes(RULES[name], t, rv, dsum[0], e_c, sm): side, d_, e_, t_ = "C", dsum[0], e_c, t
                 elif passes(RULES[name], -t, rv, dsum[1], e_p, -sm): side, d_, e_, t_ = "P", dsum[1], e_p, -t
                 else: continue
@@ -199,7 +241,7 @@ def stock(sym):
                 out[name].append(dict(date=date, sym=sym, right=side, minute=m, time=f"{(570 + m) // 60:02d}:{(570 + m) % 60:02d}",
                                       price=c[m], b_minute="", a_minute="", c_t=round(t_, 2), c_rvol=round(rv, 2),
                                       c_d=round(d_, 2), c_e=round(e_, 2), sector=""))
-            if not left: break
+            if not left and not pending: break
     if ALL:
         return {k: [dict(date=d, sym=sym, right=r, minutes=" ".join(str(x[0]) for x in v), ts=" ".join(str(x[1]) for x in v))
                     for (d, r), v in sorted(every[k].items())] for k in RULES}

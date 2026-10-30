@@ -36,7 +36,9 @@ def one(args):
         if days[d] < lo or not FIRST <= t <= LAST or d < fv.DAYS: continue
         price = m["C"][d, t]
         if not np.isfinite(price): continue
-        out.append(dict(sym=sym, date=days[d], slot=int(t), sec=int((t + 1) * 10), price=round(float(price), 4)))
+        prior = m["C"][d, t - 6] if t >= 6 else np.nan   # 60 seconds before: the move's side (shock_test.py)
+        move = float(price / prior - 1) if np.isfinite(prior) and prior else 0.0
+        out.append(dict(sym=sym, date=days[d], slot=int(t), sec=int((t + 1) * 10), price=round(float(price), 4), move=round(move, 5)))
     return out
 
 
