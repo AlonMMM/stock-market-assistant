@@ -71,7 +71,8 @@ export interface StrangleTrade {
   stockAtBuy?: number; // the stock when the leg was bought (the minute-close walk starts its best here)
   burst?: number | null; // the 3 minutes to the alert, in typical 30-minute moves, up positive; absent on older trades
   alertSecond?: number; // the 60-second alert: seconds after 09:30 when it was read (a minute alert: the end of alertMinute)
-  fast?: boolean; // from the 60-second alert (F60x2)
+  fast?: boolean; // from the 60-second alert (F60x2) or the shock alert
+  shock?: boolean; // from the shock alert (15x): its own entry, burst and expiry rules
   leg: StrangleLeg | null;
   phase: StranglePhase;
   closeReason: string | null;

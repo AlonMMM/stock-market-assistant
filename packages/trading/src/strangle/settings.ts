@@ -83,6 +83,16 @@ export interface StrangleSettings {
   // (volume-bot.md, the +-3% model, not real quotes): with the production plan,
   // 498 trades, $100K -> $1.02M at 2% in 3 years (vs $626K without).
   fastAlert: boolean;
+  // The shock alert (the user, 2026-10-30, "a new version to deploy"): the
+  // same 60-second rule at 15x volume, 09:40-15:30 (shockRule in fast.ts);
+  // bought once the side holds 5 seconds within 5 minutes of the alert (no
+  // 15-second cross), burst >= 0 the side's way, an expiry 0-2 days out only;
+  // the contract at delta, stepping 0.05 toward the money up to 0.35 while it
+  // is under minPrice or too thin; no buy when its spread is over 30% of the
+  // mid. Backtest (volume-bot.md 2026-10-30, real Databento quotes, one trade
+  // a stock at a time, 2%): with the plan 428 trades, $100K -> $1.07M in 3
+  // years, worst drop 20.5% (the plan alone $657K, 21.5%).
+  shockAlert: boolean;
   // The news filter, as the Indi bot's.
   skipEarnings: boolean;
   skipPremarket: boolean;
@@ -137,7 +147,9 @@ export const defaultStrangleSettings: StrangleSettings = {
   burstMinWeek: 2.5,
   noStopMinutes: 30,
   exitOnMinuteClose: true,
-  fastAlert: true,
+  // Off since the shock (2026-10-30): on real quotes it made the bot worse.
+  fastAlert: false,
+  shockAlert: true,
   skipEarnings: true,
   skipPremarket: true,
 };
@@ -190,6 +202,7 @@ const booleans: BooleanKey[] = [
   "weekExpiry",
   "exitOnMinuteClose",
   "fastAlert",
+  "shockAlert",
   "skipEarnings",
   "skipPremarket",
 ];
@@ -326,7 +339,7 @@ export function strangleSteps(
   return [
     {
       name: "The alert",
-      text: `On a day with a same-day expiry${nextDayWords}${s.weekExpiry ? `, or else the nearest expiry later that week when the burst is at least ${s.burstMinWeek}` : ""}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.${s.fastAlert ? " Also the 60-second alert (60 seconds of volume at 2× normal or today's pace, a move of 3× normal), 09:40 to 13:00, on a same-day or next-session expiry only." : ""}`,
+      text: `On a day with a same-day expiry${nextDayWords}${s.weekExpiry ? `, or else the nearest expiry later that week when the burst is at least ${s.burstMinWeek}` : ""}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.${s.fastAlert ? " Also the 60-second alert (60 seconds of volume at 2× normal or today's pace, a move of 3× normal), 09:40 to 13:00, on a same-day or next-session expiry only." : ""}${s.shockAlert ? " Also the shock alert (60 seconds of volume at 15× normal or today's pace, a move of 3× normal), 09:40 to 15:30: bought when the side holds 5 seconds within 5 minutes, the burst at least 0 the side's way, an expiry at most 2 days out, the leg's spread at most 30% of its mid." : ""}`,
     },
     {
       name: "News filter",
