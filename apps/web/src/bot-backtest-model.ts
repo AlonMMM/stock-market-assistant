@@ -365,3 +365,59 @@ export function backtestStory(
     entryQuote: null,
   };
 }
+
+/** A guess at one part's time before any has come back. */
+const firstPartMs = 12000;
+
+export interface RunClock {
+  fraction: number; // of the run, estimated, 0..1
+  done: number; // of the run, finished parts, 0..1
+  at: number; // ms: the moment in the period the run has about reached
+  leftMs: number | null; // estimated, null before the first part
+}
+
+/**
+ * Where a run has about reached, for the loader: the parts' pace so far,
+ * spread over the period's sessions (parts run in time order), never past
+ * the parts still in flight.
+ */
+export function runClock(
+  busy: { done: number; total: number; startedAt: number; lastDoneAt: number },
+  sessions: readonly string[],
+  now: number,
+  inFlight = parallel,
+  reached = 0, // the fraction already shown: a clock does not go back
+): RunClock {
+  const total = Math.max(1, busy.total);
+  // Parts a millisecond: the pace so far, weighed with a guessed first round,
+  // so a few quick parts (cached bars) do not fling the clock to the end.
+  const rate =
+    (busy.done + inFlight) / (busy.lastDoneAt - busy.startedAt + firstPartMs);
+  const ceiling = Math.min(total * 0.99, busy.done + inFlight * 0.95);
+  const parts = Math.max(
+    busy.done,
+    reached * total,
+    Math.min(ceiling, (now - busy.startedAt) * rate),
+  );
+  const fraction = parts / total;
+  let leftMs: number | null = null;
+  if (busy.done > 0)
+    leftMs = Math.max(0, (total - busy.done) / rate - (now - busy.lastDoneAt));
+  const n = Math.max(1, sessions.length);
+  const position = Math.min(n - 1e-6, fraction * n);
+  const day = Math.floor(position);
+  const date = sessions[day] ?? sessions.at(-1) ?? "";
+  const minute = 570 + Math.floor((position - day) * 390);
+  return {
+    fraction,
+    done: busy.done / total,
+    at: date ? newYorkToUtc(date, minute) : now,
+    leftMs,
+  };
+}
+
+/** "1:05" from milliseconds. */
+export function clockText(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}

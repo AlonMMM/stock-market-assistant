@@ -2193,6 +2193,125 @@ main:has(> .backtest-page) {
   margin: 0;
   font-size: 18px;
 }
+/* The run's loader: a clock replaying the period, pinned to the top. */
+.bt-loader {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "face track"
+    "face meta";
+  align-items: center;
+  gap: 4px 20px;
+  margin: 0 0 16px;
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--gray-92b),
+    0 8px 24px rgba(var(--shade), 0.08);
+}
+.bt-loader-face {
+  grid-area: face;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.bt-loader-label {
+  color: var(--lime-53);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.bt-loader-day {
+  color: var(--gray-41);
+  font-size: 13px;
+}
+.bt-loader-time {
+  color: var(--gray-15);
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.bt-loader-track {
+  grid-area: track;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.bt-loader-rail {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--gray-92b);
+}
+.bt-loader-est,
+.bt-loader-done {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+}
+.bt-loader-est {
+  background: var(--lime-53);
+  opacity: 0.35;
+}
+.bt-loader-done {
+  background: var(--lime-53);
+  transition: width 0.4s;
+}
+.bt-loader-head {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: var(--lime-53);
+  box-shadow: 0 0 0 4px var(--surface);
+}
+.bt-loader-meta {
+  grid-area: meta;
+  margin: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bt-loader-head {
+    animation: bt-loader-pulse 1.4s ease-out infinite;
+  }
+  @keyframes bt-loader-pulse {
+    0% {
+      box-shadow:
+        0 0 0 4px var(--surface),
+        0 0 0 4px var(--lime-53);
+    }
+    100% {
+      box-shadow:
+        0 0 0 4px var(--surface),
+        0 0 0 14px transparent;
+    }
+  }
+}
+@media (max-width: 520px) {
+  .bt-loader {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "face"
+      "track"
+      "meta";
+    padding: 10px 14px;
+  }
+  .bt-loader-face {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .bt-loader-time {
+    font-size: 24px;
+  }
+}
 @media (max-width: 520px) {
   .bt-row {
     grid-template-columns: minmax(0, 1fr) auto;

@@ -12,7 +12,6 @@ import {
   newYork,
   previousSessions,
 } from "../../../packages/market-data/src/calendar.js";
-import type { BotBacktestResponse } from "../../../packages/market-data/src/bot-backtest.js";
 import type { Watchlist } from "../../../packages/market-data/src/watchlists.js";
 import {
   defaultMoney,
@@ -39,16 +38,16 @@ import { readJson } from "./api.js";
 import {
   backtestStory,
   bots,
+  clockText,
   closedTradeOf,
   exitTitle,
   firstDate,
   maxStocks,
-  parallel,
   parseTickers,
-  periodParts,
   periodRange,
   periods,
   ruleGroups,
+  runClock,
   sessionsBetween,
   skipCounts,
   statusWords,
@@ -56,8 +55,20 @@ import {
   type BotId,
   type PeriodId,
 } from "./bot-backtest-model.js";
+import {
+  startRun,
+  stopRun,
+  useBacktestRun,
+  type Busy,
+  type Ran,
+} from "./bot-backtest-run.js";
 import { signedPct, signedUsd, tone, usd } from "./format.js";
-import { israelDateTime, israelLabel } from "./time.js";
+import {
+  israelClock,
+  israelDateTime,
+  israelDayLabel,
+  israelLabel,
+} from "./time.js";
 
 // The Backtest section (the user, 2026-10-30): which bot, which version, the
 // stocks and the period; change the settings and run. The result is the
@@ -83,15 +94,6 @@ interface Setup {
   to: string;
   money: Omit<MoneySettings, "nightCapPct" | "fillPct">;
   fillPct: number;
-}
-
-interface Ran {
-  version: string; // the label: the version, starred when its rules were changed
-  rules: Rules;
-  fillPct: number;
-  tickers: string[];
-  from: string;
-  to: string;
 }
 
 /** The last session whose data is final now (the server's rule). */
@@ -162,17 +164,12 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
   const [typed, setTyped] = useState("");
   const [lists, setLists] = useState<Watchlist[]>([]);
   const [rulesOpen, setRulesOpen] = useState(false);
-  const [busy, setBusy] = useState<{ done: number; total: number } | null>(
-    null,
-  );
-  const [errors, setErrors] = useState<string[]>([]);
-  const [runs, setRuns] = useState<BotBacktestResponse[]>([]);
-  const [ran, setRan] = useState<Ran | null>(null);
+  // The run lives outside the page: it goes on, and stays, across sections.
+  const { busy, errors, runs, ran } = useBacktestRun();
   const [filter, setFilter] = useState<"all" | "won" | "lost" | "refused">(
     "all",
   );
   const [open, setOpen] = useState<AccountTrade | null>(null);
-  const stop = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -197,57 +194,16 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
   const runnable =
     setup.bot === "main" && setup.tickers.length > 0 && sessions > 0 && !busy;
 
-  async function run() {
-    const parts = periodParts(setup.from, setup.to);
-    const jobs = setup.tickers.flatMap((symbol) =>
-      parts.map((p) => ({ symbol, ...p })),
-    );
-    stop.current = false;
-    setBusy({ done: 0, total: jobs.length });
-    setErrors([]);
-    setRuns([]);
+  function run() {
     setOpen(null);
-    const thisRun: Ran = {
+    void startRun({
       version: versionLabel(setup.version, setup.rules),
       rules: setup.rules,
       fillPct: setup.fillPct,
       tickers: setup.tickers,
       from: setup.from,
       to: setup.to,
-    };
-    setRan(thisRun);
-    let next = 0;
-    let done = 0;
-    const got: BotBacktestResponse[] = [];
-    const failed: string[] = [];
-    const worker = async () => {
-      while (next < jobs.length && !stop.current) {
-        const job = jobs[next++]!;
-        try {
-          const response = await fetch("/api/bot-backtest", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ...job,
-              rules: setup.rules,
-              fillPct: setup.fillPct,
-            }),
-            signal: AbortSignal.timeout(180000),
-          });
-          got.push(await readJson<BotBacktestResponse>(response));
-          setRuns([...got]);
-        } catch (e) {
-          failed.push(
-            `${job.symbol} ${job.from} → ${job.to}: ${e instanceof Error ? e.message : String(e)}`,
-          );
-          setErrors([...failed]);
-        }
-        done++;
-        setBusy({ done, total: jobs.length });
-      }
-    };
-    await Promise.all(Array.from({ length: parallel }, worker));
-    setBusy(null);
+    });
   }
 
   const trades = useMemo(() => runs.flatMap((r) => r.trades), [runs]);
@@ -299,6 +255,8 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
         {modes}
       </header>
 
+      {busy && ran && <RunLoader busy={busy} ran={ran} />}
+
       <div className="backtest-layout">
         <form
           className="setup"
@@ -306,7 +264,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
           noValidate
           onSubmit={(e) => {
             e.preventDefault();
-            if (runnable) void run();
+            if (runnable) run();
           }}
         >
           <div className="setup-intro">
@@ -642,37 +600,9 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
           </fieldset>
 
           <div className="run-block">
-            {busy ? (
-              <>
-                <div
-                  className="progress"
-                  role="progressbar"
-                  aria-valuenow={busy.done}
-                  aria-valuemax={busy.total}
-                >
-                  <span
-                    style={{
-                      width: `${(busy.done / Math.max(1, busy.total)) * 100}%`,
-                    }}
-                  />
-                </div>
-                <p className="muted small">
-                  {busy.done} of {busy.total} parts ({setup.tickers.length}{" "}
-                  stocks)…{" "}
-                  <button
-                    type="button"
-                    className="reset"
-                    onClick={() => (stop.current = true)}
-                  >
-                    Stop
-                  </button>
-                </p>
-              </>
-            ) : (
-              <button type="submit" className="run" disabled={!runnable}>
-                Run backtest
-              </button>
-            )}
+            <button type="submit" className="run" disabled={!runnable}>
+              {busy ? "Running…" : "Run backtest"}
+            </button>
             {setup.bot !== "main" && (
               <p className="muted small">
                 The Volume bot&apos;s backtest is coming next.
@@ -759,6 +689,72 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
         </Suspense>
       )}
     </div>
+  );
+}
+
+/** The run's loader, at the top: the moment in the period it has about reached. */
+function RunLoader({ busy, ran }: { busy: Busy; ran: Ran }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(id);
+  }, []);
+  const sessions = useMemo(
+    () => sessionsBetween(ran.from, ran.to),
+    [ran.from, ran.to],
+  );
+  // The furthest point shown in this run, so the clock never goes back.
+  const reached = useRef({ startedAt: busy.startedAt, fraction: 0 });
+  if (reached.current.startedAt !== busy.startedAt)
+    reached.current = { startedAt: busy.startedAt, fraction: 0 };
+  const clock = runClock(
+    busy,
+    sessions,
+    now,
+    undefined,
+    reached.current.fraction,
+  );
+  reached.current.fraction = clock.fraction;
+  const pct = (x: number) => `${(x * 100).toFixed(2)}%`;
+  let left = "estimating…";
+  if (clock.leftMs !== null) left = `about ${clockText(clock.leftMs)} left`;
+  return (
+    <section
+      className="bt-loader"
+      role="progressbar"
+      aria-label="Backtest running"
+      aria-valuenow={busy.done}
+      aria-valuemax={busy.total}
+    >
+      <div className="bt-loader-face">
+        <span className="bt-loader-label">Replaying</span>
+        <span className="bt-loader-day">{israelDayLabel(clock.at)}</span>
+        <span className="bt-loader-time num">{israelClock(clock.at)}</span>
+      </div>
+      <div className="bt-loader-track">
+        <span className="bt-loader-end muted small num">{ran.from}</span>
+        <div className="bt-loader-rail">
+          <span
+            className="bt-loader-est"
+            style={{ width: pct(clock.fraction) }}
+          />
+          <span className="bt-loader-done" style={{ width: pct(clock.done) }} />
+          <span
+            className="bt-loader-head"
+            style={{ left: pct(clock.fraction) }}
+          />
+        </div>
+        <span className="bt-loader-end muted small num">{ran.to}</span>
+      </div>
+      <p className="bt-loader-meta muted small num">
+        {busy.done} of {busy.total} parts · {ran.tickers.length} stocks ·{" "}
+        {clockText(now - busy.startedAt)} · {left}
+        {" · "}
+        <button type="button" className="reset" onClick={stopRun}>
+          Stop
+        </button>
+      </p>
+    </section>
   );
 }
 
