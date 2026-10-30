@@ -56,6 +56,7 @@ import real_bench as RB
 from low_delta import HIS40, PRIOR
 from signals import beta
 from levels import ctx
+import d3 as D3
 from split import half
 from store import day
 
@@ -64,12 +65,13 @@ SIZES = rr.SIZES
 LISTING = os.environ.get("IC_PASS") == "list"
 M_IN = 387
 A0, Z = "2024-02-01", FR.Z
-EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15")]
+EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15", "open16")]
 VOL = os.environ.get("IC_SET") == "vol"
 D2B = os.environ.get("IC_SET") == "d2b"
-RS = os.environ.get("IC_SET") == "rs" or VOL or D2B
-TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs"}.get(os.environ.get("IC_SET"), "")
-LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
+D3S = os.environ.get("IC_SET") == "d3"
+RS = os.environ.get("IC_SET") == "rs" or VOL or D2B or D3S
+TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs", "d3": "_d3"}.get(os.environ.get("IC_SET"), "")
+LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv", "_d3": "open16_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
 BASE = dict(lo=0.02, hi=0.04, d=0.20, exit="his", ath=False, pos=0.85, vwap=True, rs="60", vol="min", fri=False)
 CORE = {"thesis": {}, "m15": dict(lo=0.015), "m3": dict(lo=0.03, hi=9.0), "d30": dict(d=0.30), "d15": dict(d=0.15),
         "at10": dict(exit="at10"), "ath": dict(ath=True)}
@@ -100,6 +102,19 @@ if D2B:
                 D2V[f"alone-t{round(t * 10)}-{w}-x{round(x * 10)}"] = {**BASE, **ANY, "rs": "tor", "t": t, "win2": w, "alone": x, "bonus": False, "win": "next"}
             D2V[f"bonus-t{round(t * 10)}-{w}"] = {**BASE, **ANY, "rs": "tor", "t": t, "win2": w, "alone": None, "bonus": True, "win": "next"}
     VERSIONS = D2V
+if D3S:
+    # the user, 2026-10-30 "Go" (after d3.py / d3_check.py: D3-last >= 0.5 on 74% of his late winners vs 58% of his losers):
+    # D3 (all of today's SPY swings) or D3-last (the latest swing) as a bonus (t >= 1.8, or t >= 0.8 and D3 >= X), alone
+    # (t >= 1.8, or D3 >= X with no t), or in place of D2 (t >= T and D3 >= 0.5); t >= 1.8 alone as the reference.
+    # Volume 1.3x, top 10% of range, no earnings, no Friday, next-day expiry, top 3 by t, as before.
+    D3V = {"tonly-t18": {**BASE, **ANY, "rs": "d3", "t": 1.8, "k3": "d3", "x3": None, "tlow": None, "win": "next"}}
+    for k in ("d3", "d3_last"):
+        for x in (0.5, 1.0):
+            D3V[f"bonus-{k}-x{round(x * 10)}"] = {**BASE, **ANY, "rs": "d3", "t": 1.8, "k3": k, "x3": x, "tlow": 0.8, "win": "next"}
+            D3V[f"alone-{k}-x{round(x * 10)}"] = {**BASE, **ANY, "rs": "d3", "t": 1.8, "k3": k, "x3": x, "tlow": -99, "win": "next"}
+        for t in (1.0, 1.2, 1.5):
+            D3V[f"and-{k}-t{round(t * 10)}"] = {**BASE, **ANY, "rs": "d3and", "t": t, "k3": k, "x3": 0.5, "win": "next"}
+    VERSIONS = D3V
 RX = None
 BASE_EXPIRY = sim.expiry_for   # restored after each pick (set at import, so every worker has it)
 
@@ -151,6 +166,12 @@ def features(job):
     if not cx or not cx["sd"]: return None
     td = tstrength(c, spy, b_, cx["sd"])
     if not td: return None
+    if D3S:   # D3 only where the range and volume rules can pass (it reads 20 sessions)
+        pos_ = (c[M_IN] - lo) / (hi - lo) if hi > lo else 0.5
+        for side, ok in (("C", pos_ >= 0.9), ("P", pos_ <= 0.1)):
+            x = D3.d3(sym, date, M_IN, side) if ok and vol / st.median(past) >= 1.3 else None
+            td[f"{side}_d3"] = x["d3"] if x else None
+            td[f"{side}_d3_last"] = x["d3_last"] if x else None
     return dict(src=src, sym=sym, date=date, px=c[M_IN], move=c[M_IN] / pc - 1, pos=(c[M_IN] - lo) / (hi - lo) if hi > lo else 0.5,
                 vwap=c[M_IN] / (pv / vol) - 1 if vol else 0.0, ex60=ex60, exday=exday, **td, rvol=vol / st.median(past), pc=pc)
 
@@ -206,7 +227,12 @@ def candidates(rows, v):
         for right, bet in (("C", 1), ("P", -1)):
             mv, pos, vw = bet * r["move"], r["pos"] if bet > 0 else 1 - r["pos"], bet * r["vwap"]
             e60, eday = bet * r["ex60"], bet * r["exday"]
-            if v["rs"] == "tor":
+            if v["rs"] in ("d3", "d3and"):
+                tt, x3 = bet * r["t"], r.get(f"{right}_{v['k3']}")
+                if v["rs"] == "d3and": strong = tt >= v["t"] and x3 is not None and x3 >= v["x3"]
+                else: strong = tt >= v["t"] or (v["x3"] is not None and x3 is not None and tt >= v["tlow"] and x3 >= v["x3"])
+                ex = tt
+            elif v["rs"] == "tor":
                 tt, e2 = bet * r["t"], r[f"{'c' if bet > 0 else 'p'}_{v['win2']}"]
                 strong = tt >= v["t"] or (v["alone"] is not None and e2 >= v["alone"]) or (v["bonus"] and tt >= 0.8 and e2 >= 0.5)
                 ex = tt
