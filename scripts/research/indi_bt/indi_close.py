@@ -298,6 +298,11 @@ def main():
         return out
 
     def E(v, src, part, size): return [(w["date"], 389, 1.0, w["r"][size], 1) for w in trades(v, src, part)]
+    # every trade of every version (the user, 2026-10-30: "lets focus from now the last 3 minutes trading ... I want to see
+    # this benchmark") -> indi_close[_rs]_trades.json
+    json.dump({f"{v}|{src}|{part}": [dict(date=w["date"], sym=w["sym"], right=w["right"], contract=w["contract"], r={str(k): x for k, x in w["r"].items()})
+                                     for w in trades(v, src, part)] for v in VERSIONS for src in ("fair", "fav") for part in ("tune", "check")},
+              open(f"{B}/indi_close{'_rs' if RS else ''}_trades.json", "w"))
     L = ("fair", "fav")
     out = {(s, "tune", v): [rr.stats(E(v, src, "tune", s), s) for src in L] for s in SIZES for v in VERSIONS}
     print("\n#### The Indi close alone, the tune weeks, every version (end / worst drop; $10K a trade: trades, winners, median, sum, giants, the rest)\n")
