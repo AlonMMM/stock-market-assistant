@@ -1,6 +1,6 @@
 """The last-3-minutes strategy on its own (the user, 2026-10-30: "lets focus from now the last 3 minutes trading ... I want
 to see this benchmark"): the benchmark table of each indi_close.py IC_SET=rs version (buy at 15:57, out next morning),
-tune and check, fair list and Favorites, from indi_close_rs_trades.json; no champion beside it.
+tune and check, fair list and Favorites, from indi_close_" + os.environ.get("ICB", "rs") + "_trades.json; no champion beside it.
 
   python3 indi_close_bench.py [version ...]     (from the app repo root, after IC_SET=rs indi_close.py)
 """
@@ -11,7 +11,7 @@ os.environ["RR_ONLY"] = "roll"
 import retry_roll as rr
 
 B = "data/local/x/bt"
-J = json.load(open(f"{B}/indi_close_rs_trades.json"))
+J = json.load(open(f"{B}/indi_close_" + os.environ.get("ICB", "rs") + "_trades.json"))
 VERS = sys.argv[1:] or sorted({k.split("|")[0] for k in J}, key=lambda v: list(dict.fromkeys(k.split("|")[0] for k in J)).index(v))
 for part in ("tune", "check"):
     for src, lab in (("fair", "fair list"), ("fav", "Favorites, 24 months")):
