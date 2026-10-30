@@ -108,6 +108,23 @@ def main():
     print(f"\nThe champion's entries: rank 1 on {sum(x == 1 for x in ranks)} of {len(ranks)}, top 2 on {sum(x <= 2 for x in ranks)}; D2 best >= 2 on "
           f"{sum(f[1] >= 2 for f in F.values())}, >= 1.5 on {sum(f[1] >= 1.5 for f in F.values())}")
     json.dump({f"{k[0]}|{k[1]}|{k[2]}": v for k, v in out.items()}, open(f"{B}/peer_rank_summary.json", "w"), indent=1)
+    # the strategy alone (the user, 2026-10-30: "do not compare this to the champion for now ... show me benchmark only for
+    # this strategy"): every entry (main + pyramid add) per version, half and list -> peer_rank_entries.json
+    def ent(v, src, part, a):
+        E = []
+        for r in kept[v]:
+            if r["src"] != src or half(r["date"]) != part or r["date"] < a or "champion" not in r["v"]: continue
+            x = r["v"]["champion"]
+            E.append(dict(date=r["date"], sym=r["sym"], right=r["right"], w=1.0, r={str(s): x["r"][s] for s in SIZES}, over=x["over"]))
+            if not r["d2"]: continue
+            for ad in sorted(adds.get((src, r["date"], r["sym"], r["right"]), []), key=lambda q: q["minute"]):
+                if ad["minute"] <= r["minute"] or "champion" not in ad["v"]: continue
+                share, up = x["held"].get(ad["minute"], (0, None))
+                if share > 0 and up is not None and up > 0:
+                    E.append(dict(date=ad["date"], sym=r["sym"], right=r["right"], w=0.5, r={str(s): ad["v"]["champion"]["h"][s] for s in SIZES}, over=ad["v"]["champion"]["over"]))
+                break
+        return E
+    json.dump({f"{v}|{src}|{p}": ent(v, src, p, a) for v in RULES for src, a in L for p in ("tune", "check")}, open(f"{B}/peer_rank_entries.json", "w"))
     # every main trade with the versions that keep it (giants_match.py: Indi's big winners caught and added)
     json.dump([dict(src=r["src"], date=r["date"], sym=r["sym"], right=r["right"], minute=r["minute"], half=half(r["date"]),
                     r2=r["v"]["champion"]["r"][0.02], keep=[v for v in RULES if keep(r, F, v)]) for r in M if "champion" in r["v"]],

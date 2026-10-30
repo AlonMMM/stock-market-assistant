@@ -1068,3 +1068,9 @@ plan + shock <= 30%, burst >= 0; only the shock's buys change.
 - Step to 0.35 when under $0.20: better than the current pick in every view, by a little (+6%), drop 26.6% -> 22.0%.
 - Lower liquidity floors and the $0.15 floor lift the tune half but lose the check half.
 - Next: 0-2 DTE with the step to 0.35 together.
+
+Together (`STR_SRC_DTE=e_shock15=2 STR_SRC_V=e_shock15=step35`): 428 trades, $1,069,492 (drop 20.5%), without 10-10
+$374,326, tune $245,281, check $432,129, check without 10-10 $151,600, live limits $532,238; by year 2024 $134,397,
+2025 $502,719, 2026 $154,601 (each from $100K). Better than both alone in every view, and the drop is under the plan
+alone's (21.5%). The candidate for live: shock (15x, hold5 within 5 min, 09:40-15:30), 0-2 DTE, burst >= 0, spread <= 30%
+at the buy, 0.20 delta stepping to 0.25/0.30/0.35 when under $0.20.
