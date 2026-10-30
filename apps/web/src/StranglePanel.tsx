@@ -292,6 +292,7 @@ const switches: {
     | "weekExpiry"
     | "exitOnMinuteClose"
     | "fastAlert"
+    | "shockAlert"
     | "skipEarnings"
     | "skipPremarket"
     | "followFavorites";
@@ -337,6 +338,11 @@ const switches: {
     key: "fastAlert",
     label: "60-second alert",
     help: "A second alert on 10-second bars: 60 seconds of volume at 2× normal or today's pace with a move of 3× normal, 09:40 to 13:00, same-day or next-session expiry only (F60x2).",
+  },
+  {
+    key: "shockAlert",
+    label: "Shock alert",
+    help: "The same 60-second rule at 15× volume, 09:40 to 15:30. Bought when the side holds 5 seconds within 5 minutes, the burst at least 0 the side's way, an expiry at most 2 days out; the leg steps toward the money up to 0.35 delta while too cheap, and no buy when its spread is over 30% of the mid.",
   },
   {
     key: "skipEarnings",

@@ -3,6 +3,7 @@
 // bars: every alert of the chosen stocks and dates, matched by stock, day and slot.
 //
 //   node --import tsx scripts/volume-fast-parity.ts <alerts.json> <from> <to> SYM,SYM [db]
+//   RULE=shock: the shock alert (shockRule, 15x to 15:30) against the backtest's e_shock15 alerts
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { newYorkToUtc } from "../packages/market-data/src/calendar.js";
@@ -11,6 +12,7 @@ import {
   fastBaseline,
   fastRule,
   fastWindows,
+  shockRule,
   type FastDay,
 } from "../packages/trading/src/strangle/fast.js";
 
@@ -18,6 +20,7 @@ const [file, from, to, list, dbPath = "data/local/bars-10s.sqlite"] =
   process.argv.slice(2);
 if (!file || !from || !to || !list)
   throw new Error("usage: <alerts.json> <from> <to> SYM,SYM [db]");
+const rule = process.env.RULE === "shock" ? shockRule : fastRule;
 const db = new DatabaseSync(dbPath, { readOnly: true });
 const want = JSON.parse(readFileSync(file, "utf8")) as {
   sym: string;
@@ -77,7 +80,9 @@ for (const symbol of list.split(",")) {
     if (d < from) continue;
     const prior = days.slice(i - fastRule.days, i).map((x) => windows.get(x)!);
     const base = fastBaseline(prior);
-    const got = base ? fastAlerts(days2.get(d)!, base).map((a) => a.slot) : [];
+    const got = base
+      ? fastAlerts(days2.get(d)!, base, rule).map((a) => a.slot)
+      : [];
     const py = want
       .filter((a) => a.sym === symbol && a.date === d)
       .map((a) => a.slot);

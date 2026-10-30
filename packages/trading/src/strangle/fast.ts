@@ -19,6 +19,13 @@ export const fastRule = {
   paceTo: 2160,
 };
 
+export type FastRule = typeof fastRule;
+
+// The shock alert (the user, 2026-10-30, "a new version to deploy"): the same
+// rule at 15× volume, 09:40-15:30 (indi_bt/f60_alerts.py F60_K=15
+// F60_LAST=2159, the backtest's e_shock15 alerts).
+export const shockRule: FastRule = { ...fastRule, volume: 15, lastSlot: 2159 };
+
 /** One session of a stock in 10-second slots: volume (0 without a bar) and close (null without a bar). */
 export interface FastDay {
   v: number[];
@@ -105,8 +112,8 @@ export function fastState(
   base: FastBaseline,
   t: number,
   paceCum: readonly number[], // today's zone volume summed through each slot
+  r: FastRule = fastRule,
 ): { on: boolean; up: boolean } {
-  const r = fastRule;
   const W = r.window;
   const off = { on: false, up: false };
   if (t < W) return off;
@@ -162,11 +169,12 @@ export function paceSums(v: readonly number[]): number[] {
 /**
  * The alerts of a whole session (early_rules.fire): a fresh crossing into the
  * rule outside a 30-minute cooldown, counted from the open; kept from 09:40 to
- * 13:00. For the parity check against the backtest's alert files.
+ * the rule's last slot. For the parity check against the backtest's alert files.
  */
 export function fastAlerts(
   today: FastDay,
   base: FastBaseline,
+  rule: FastRule = fastRule,
 ): { slot: number; second: number; price: number; up: boolean }[] {
   const cf = carried(today.c);
   const cum = paceSums(today.v);
@@ -174,9 +182,9 @@ export function fastAlerts(
     [];
   const fire = new FastFire();
   for (let t = 0; t < fastRule.slots; t++) {
-    const st = fastState(today, cf, base, t, cum);
+    const st = fastState(today, cf, base, t, cum, rule);
     if (!fire.step(t, st.on)) continue;
-    if (t < fastRule.firstSlot || t > fastRule.lastSlot) continue;
+    if (t < rule.firstSlot || t > rule.lastSlot) continue;
     out.push({ slot: t, second: (t + 1) * 10, price: cf[t]!, up: st.up });
   }
   return out;
