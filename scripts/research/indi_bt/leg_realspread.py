@@ -129,6 +129,21 @@ def pick(cands, how, date, ct):
         if best[5] >= 200: return best
         i = ok.index(best)
         return ok[i + 1] if i + 1 < len(ok) and ok[i + 1][5] >= 200 else None
+    if how.startswith("lq") or how.startswith("mp") or how == "step35":
+        # the user 2026-10-30, the shock's contract: lqN = 0.20 delta with N contracts in 30 min as the liquidity floor
+        # (not 200); mpN = 0.20 delta with $0.N as the price floor (not $0.20); step35 = 0.20 delta, and when it is under
+        # the $0.20 floor, 0.25, then 0.30, then 0.35, the first one at $0.20 or more
+        old = LF.DELTA, LF.LOW, dict(LF.C)
+        LF.DELTA, LF.LOW = 0.20, 0.10
+        if how.startswith("lq"): LF.C["min_vol30"] = int(how[2:])
+        if how.startswith("mp"): LF.C["min_price"] = int(how[2:]) / 100
+        c = LF.choose(cands, "liquid")
+        if how == "step35":
+            for d in (0.25, 0.30, 0.35):
+                if c: break
+                LF.DELTA = d; c = LF.choose(cands, "liquid")
+        LF.DELTA, LF.LOW = old[0], old[1]; LF.C.update(old[2])
+        return c
     if how.startswith("plain"):   # plain20, plain10 (the user 2026-10-29, "test the shock with 0.1 delta"): that delta, the liquid fallback
         old = LF.DELTA, LF.LOW
         LF.DELTA = int(how[5:]) / 100

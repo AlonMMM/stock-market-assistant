@@ -1042,3 +1042,29 @@ plain35 newly picked and fetched) the one with the narrowest spread of the mid a
   tune 34, +4.3% (median -18.7%); check 48, -15.9% (median -31.3%). A wide spread at 0.20 marks a bad shock, whatever strike.
 - The narrowest spread is mostly the dearest contract (0.35 or 0.30 in 229 of 594), and the dear contracts give back the
   move (0.35 alone: check $350K). Not better than a fixed 0.20 / 0.25.
+
+## The shock's contract floors and its expiry (2026-10-30)
+
+The user: no liquidity floor (the 30-minute count looks back, the shock is when trading starts; the 30% spread limit
+protects), "try 0, 50, 100"; under $0.20 try $0.15; or step to 0.25, 0.30, 0.35 and check the price again. And, after
+the expiry split (shock 3-4 DTE lost in both halves; overnight holds of the runners only won on 2025-04-09), the shock
+on 0-1 and 0-2 DTE only. leg_realspread.pick `lqN`, `mpN`, `step35`; leg_seconds `STR_SRC_DTE`. Real prices, flat2 2%,
+plan + shock <= 30%, burst >= 0; only the shock's buys change.
+
+| Shock version | Shock buys | Trades | Account (drop) | Without 10-10 | Tune | Check | Check without 10-10 | Live limits |
+|---|---|---|---|---|---|---|---|---|
+| Plan alone | 0 | 270 | $657,424 (21.5%) | $231,721 | $170,179 | $384,275 | $136,702 | $373,799 |
+| 0.20, >= $0.20, >= 200 (now) | 259 | 492 | $829,141 (26.6%) | $290,384 | $208,351 | $395,291 | $137,278 | $434,443 |
+| Liquidity >= 0 | 267 | 498 | $947,979 (29.7%) | $331,073 | $243,808 | $388,354 | $135,955 | $432,499 |
+| Liquidity >= 50 | 289 | 517 | $880,255 (28.9%) | $307,701 | $244,908 | $357,662 | $126,534 | $407,536 |
+| Liquidity >= 100 | 292 | 524 | $820,709 (29.7%) | $284,743 | $227,129 | $360,297 | $125,821 | $382,878 |
+| Price >= $0.15 | 273 | 504 | $844,749 (26.6%) | $293,976 | $224,179 | $369,609 | $130,227 | $428,138 |
+| Step to 0.25/0.30/0.35 when under $0.20 | 279 | 509 | $881,785 (22.0%) | $306,383 | $218,260 | $401,594 | $140,763 | $435,906 |
+| Shock 0-1 DTE only | 100 | 346 | $876,420 (21.9%) | $304,249 | $189,342 | $461,561 | $162,331 | $492,437 |
+| Shock 0-2 DTE only | 173 | 413 | $1,008,467 (25.1%) | $352,893 | $233,173 | $429,819 | $148,165 | $526,212 |
+
+- Shock 0-2 DTE beats the current shock in every view (3 years +22%, check without 10-10 +8%, live +21%) with fewer
+  trades and a smaller drop; 0-1 DTE has the best check and drop but a weaker tune half.
+- Step to 0.35 when under $0.20: better than the current pick in every view, by a little (+6%), drop 26.6% -> 22.0%.
+- Lower liquidity floors and the $0.15 floor lift the tune half but lose the check half.
+- Next: 0-2 DTE with the step to 0.35 together.

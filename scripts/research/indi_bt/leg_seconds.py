@@ -539,6 +539,11 @@ def main():
                 rank = (t["spread"], abs(t["delta"] - 0.2))
                 if key not in best or rank < best[key][0]: best[key] = (rank, t)
             T = [t for t in T if t["src"] != tag] + [dict(x[1], v="plain20", picked=x[1]["v"]) for x in best.values()]
+        if os.environ.get("STR_SRC_DTE"):   # "e_shock15=1": that tag's buys only up to N days to expiry (the user 2026-10-30)
+            tag, mx = os.environ["STR_SRC_DTE"].split("=")
+            nxt = {(e["date"], e["sym"], e.get("sec0", (e["m"] + 1) * 60)): e["nxt"] for e in ev if e.get("src") == tag}
+            dte = lambda t: (datetime.fromisoformat(nxt[(t["date"], t["sym"], t["alert_sec"])]) - datetime.fromisoformat(t["date"])).days
+            T = [t for t in T if t["src"] != tag or dte(t) <= int(mx)]
         for spec in os.environ.get("STR_SRC_V", "").split(","):   # "e_shock15=plain10": that tag's alerts buy that contract
             if not spec: continue
             tag, ver = spec.split("=")
