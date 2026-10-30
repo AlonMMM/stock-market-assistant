@@ -82,6 +82,7 @@ import { handleCandles } from "../../../packages/market-data/src/candles.js";
 import { handleChartBars } from "../../../packages/market-data/src/chart-bars.js";
 import { handleTradeChart } from "../../../packages/market-data/src/trade-chart.js";
 import { handleBotBacktest } from "../../../packages/market-data/src/bot-backtest.js";
+import { D1OptionQuotes } from "../../../packages/market-data/src/option-quotes.js";
 import { handleControl } from "../../../packages/trading/src/control-api.js";
 import { changeRefusal } from "./owner-only.js";
 import { verifyAccess, type AccessIdentity } from "./access.js";
@@ -98,6 +99,7 @@ let cache:
   | {
       db: D1Like;
       cache: D1BarCache;
+      quotes: D1OptionQuotes;
       baselines: D1BaselineStore;
       strengths: D1StrengthStore;
       sigmas: D1MarksSigmaStore;
@@ -112,6 +114,7 @@ function stores(db: D1Like) {
     cache = {
       db,
       cache: new D1BarCache(db),
+      quotes: new D1OptionQuotes(db),
       baselines: new D1BaselineStore(db),
       strengths: new D1StrengthStore(db),
       sigmas: new D1MarksSigmaStore(db),
@@ -540,6 +543,7 @@ export default {
         fetch,
         Date.now(),
         db?.cache,
+        db?.quotes,
       );
       return Response.json(result.body, {
         status: result.status,

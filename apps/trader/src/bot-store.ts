@@ -40,6 +40,7 @@ export interface BotSale {
   settled?: boolean; // the sale's job has ended and `qty` is what sold
   price?: number; // average fill (the mid in a dry run), for the drawdown pause
   book?: OptionBook; // bid / ask when the sale was decided (missing before 2026-10-25)
+  fillBook?: OptionBook; // bid / ask the sale last saw before it ended (missing before 2026-10-31)
 }
 
 export type BotStatus = "buying" | "open" | "closed";

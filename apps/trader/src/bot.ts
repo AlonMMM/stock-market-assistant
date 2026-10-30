@@ -1410,9 +1410,16 @@ export class IndiBot {
         const price = priceOf(job.result);
         const held = await this.trading(this.brokerOf(p)).held(p.contract);
         const qty = Math.max(0, Math.min(p.qty - sold, this.heldFor(p, held)));
+        const fillBook = lastBookOf(job.result, this.o.now(), this.brokerOf(p));
         const sales = p.sales.map((s) =>
           s === pending
-            ? { ...s, qty: sold, settled: true, ...(price ? { price } : {}) }
+            ? {
+                ...s,
+                qty: sold,
+                settled: true,
+                ...(price ? { price } : {}),
+                ...(fillBook ? { fillBook } : {}),
+              }
             : s,
         );
         this.event(

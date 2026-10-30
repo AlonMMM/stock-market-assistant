@@ -4,6 +4,7 @@
 // (week.py, research/indi-v2) with scripts/bot-backtest-run.ts.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mergeSources } from "../packages/market-data/src/option-quotes.js";
 import {
   AlpacaBacktestData,
   backtestCalendar,
@@ -12,6 +13,7 @@ import { previousSessions } from "../packages/market-data/src/calendar.js";
 import {
   impliedDelta,
   runStock,
+  bookAt,
   type BacktestData,
   type ChainContract,
   type SimStep,
@@ -76,6 +78,7 @@ function trade(
     fallback: false,
     steps,
     open: false,
+    priced: "trades",
     watch: null,
     ...extra,
   };
@@ -269,6 +272,133 @@ test("a stock's run buys the signal's contract on the next bar and sells it by t
   assert.ok(Math.abs(sold - 1) < 1e-9);
   // The option never moved and the stock kept climbing: no stop, sold at 15:50.
   assert.equal(t.steps.at(-1)!.reason, "close-1550");
+  assert.equal(t.priced, "trades");
+});
+
+/** The fake data with a real book every minute for every contract: the bar's price -/+ a cent. */
+function withQuotes(
+  data: BacktestData,
+  book = (k: number, m: number) => {
+    const p = 3 * Math.exp(-(k - 100) / 3);
+    return { m, bid: p - 0.01, ask: p + 0.01 };
+  },
+): BacktestData {
+  return {
+    ...data,
+    optionQuotes: async (contract) =>
+      new Map([
+        [
+          date,
+          Array.from({ length: 390 }, (_, m) =>
+            book(Number(contract.slice(-8, -3)), m),
+          ),
+        ],
+      ]),
+  };
+}
+
+test("with real quotes: the buy pays the mid + a quarter of the spread at the signal, the sale gets the bid", async () => {
+  const { data } = fakeData(1000);
+  const run = await runStock(
+    "NVDA",
+    [date],
+    { ...defaultSettings, pyramid: false },
+    withQuotes(data),
+    backtestCalendar,
+    { fillPct: 2 },
+  );
+  const t = run.trades[0]!;
+  assert.equal(t.priced, "quotes");
+  const p = 3 * Math.exp(-(t.strike - 100) / 3);
+  const buy = t.steps[0]!;
+  assert.equal(buy.minute, t.minute);
+  // mid + a quarter of the 2-cent spread; no fill cost on real quotes
+  assert.ok(Math.abs(buy.price - (p + 0.005)) < 1e-9, String(buy.price));
+  const last = t.steps.at(-1)!;
+  assert.equal(last.reason, "close-1550");
+  assert.ok(Math.abs(last.price - (p - 0.01)) < 1e-9, String(last.price));
+});
+
+test("with real quotes: the bid running past the price makes the buy pay the ask a minute later", async () => {
+  const { data } = fakeData(1000);
+  const run = await runStock(
+    "NVDA",
+    [date],
+    { ...defaultSettings, pyramid: false },
+    withQuotes(data, (k, m) => {
+      const p = 3 * Math.exp(-(k - 100) / 3);
+      const jump = m > defaultSettings.firstEntryMin ? 0.2 : 0;
+      return { m, bid: p + jump - 0.01, ask: p + jump + 0.01 };
+    }),
+    backtestCalendar,
+  );
+  const t = run.trades[0]!;
+  const p = 3 * Math.exp(-(t.strike - 100) / 3);
+  assert.ok(Math.abs(t.steps[0]!.price - (p + 0.21)) < 1e-9);
+});
+
+test("with only the bots' saved books (a few minutes): the trade is marked on the last one and sold at a fresh bid", async () => {
+  const { data } = fakeData(1000);
+  const signal = defaultSettings.firstEntryMin;
+  const sparse: BacktestData = {
+    ...data,
+    optionQuotes: async (contract) => {
+      const p = 3 * Math.exp(-(Number(contract.slice(-8, -3)) - 100) / 3);
+      return new Map([
+        [
+          date,
+          [
+            { m: signal, bid: p - 0.01, ask: p + 0.01 },
+            { m: 375, bid: p - 0.05, ask: p + 0.05 },
+          ],
+        ],
+      ]);
+    },
+  };
+  const run = await runStock(
+    "NVDA",
+    [date],
+    { ...defaultSettings, pyramid: false },
+    sparse,
+    backtestCalendar,
+  );
+  const t = run.trades[0]!;
+  assert.equal(t.priced, "quotes");
+  const p = 3 * Math.exp(-(t.strike - 100) / 3);
+  // The 15:50 sale waits for the next fresh book (15:45 is too old by then)
+  // and gets the bid of the day's last one.
+  const last = t.steps.at(-1)!;
+  assert.equal(last.minute, 375);
+  assert.ok(Math.abs(last.price - (p - 0.05)) < 1e-9, String(last.price));
+});
+
+test("the book as a minute closed: the newest at or before it, at most 5 minutes old", () => {
+  const day = [
+    { m: 10, bid: 1, ask: 1.1 },
+    { m: 12, bid: 2, ask: 2.1 },
+  ];
+  assert.equal(bookAt(day, 9), null);
+  assert.equal(bookAt(day, 11)?.bid, 1);
+  assert.equal(bookAt(day, 16)?.bid, 2);
+  assert.equal(bookAt(day, 17), null);
+});
+
+test("quote sources: the bots' saved books win over Databento's on the same minute; bad books are dropped", () => {
+  const day = mergeSources([
+    { source: "live", quotes: [[5, 0.11, 0.12]] },
+    {
+      source: "databento",
+      quotes: [
+        [4, 0.1, 0.13],
+        [5, 0.09, 0.14],
+        [6, 0.2, 0.1],
+      ],
+    },
+  ]);
+  assert.deepEqual(day, [
+    { m: 4, bid: 0.1, ask: 0.13 },
+    { m: 5, bid: 0.11, ask: 0.12 },
+  ]);
 });
 
 test("a busy pre-market skips the signal when the news filter is on", async () => {
