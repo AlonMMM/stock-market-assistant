@@ -4,7 +4,10 @@
 // (week.py, research/indi-v2) with scripts/bot-backtest-run.ts.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { backtestCalendar } from "../packages/market-data/src/bot-backtest.js";
+import {
+  AlpacaBacktestData,
+  backtestCalendar,
+} from "../packages/market-data/src/bot-backtest.js";
 import { previousSessions } from "../packages/market-data/src/calendar.js";
 import {
   impliedDelta,
@@ -284,6 +287,40 @@ test("a busy pre-market skips the signal when the news filter is on", async () =
     backtestCalendar,
   );
   assert.equal(off.trades.length, 1);
+});
+
+test("the option data calls fetch unbound, as Cloudflare Workers require", async () => {
+  // Workers throw "Illegal invocation" when fetch runs with a foreign `this`.
+  const fetcher = function (this: unknown, input: URL) {
+    if (this !== undefined && this !== globalThis)
+      throw new TypeError("Illegal invocation");
+    if (input.pathname === "/v2/options/contracts")
+      return Promise.resolve(
+        Response.json({
+          option_contracts: [
+            {
+              symbol: "NVDA260904C00105000",
+              expiration_date: "2026-09-04",
+              strike_price: "105",
+            },
+          ],
+          next_page_token: null,
+        }),
+      );
+    return Promise.resolve(Response.json({ bars: {}, next_page_token: null }));
+  } as unknown as typeof fetch;
+  const data = new AlpacaBacktestData(
+    new Map(),
+    date,
+    { key: "key", secret: "secret" },
+    "https://paper-api.alpaca.markets",
+    fetcher,
+  );
+  const chain = await data.chain("NVDA", "call", date, "2026-09-04");
+  // Read as active and as inactive: the one contract comes back twice.
+  assert.equal(chain[0]?.strike, 105);
+  const day = await data.optionDay(["NVDA260904C00105000"], date);
+  assert.deepEqual(day.get("NVDA260904C00105000"), []);
 });
 
 test("the page splits a period into parts and reads typed tickers", () => {

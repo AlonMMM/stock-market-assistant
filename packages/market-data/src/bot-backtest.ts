@@ -136,7 +136,7 @@ export function splitDays(rows: readonly RawBar[]): {
 }
 
 /** Alpaca's market and trading data for one run, read once each. */
-class AlpacaBacktestData implements BacktestData {
+export class AlpacaBacktestData implements BacktestData {
   private readonly chains = new Map<string, Promise<ChainContract[]>>();
   private readonly days = new Map<string, MinuteBar[]>(); // contract|date
   private readonly reports = new Map<
@@ -163,7 +163,8 @@ class AlpacaBacktestData implements BacktestData {
   }
 
   private async get(url: URL): Promise<unknown> {
-    const response = await this.fetcher(url, {
+    // Workers reject fetch invoked with a foreign `this` ("Illegal invocation").
+    const response = await this.fetcher.call(globalThis, url, {
       headers: {
         "APCA-API-KEY-ID": this.credentials.key,
         "APCA-API-SECRET-KEY": this.credentials.secret,
