@@ -479,7 +479,8 @@ def main():
         if not add: continue
         ev2 = json.load(open(os.path.join(OUT, f"events{add}.json"))); pk2 = json.load(open(os.path.join(OUT, f"picks{add}{WTAG}{KTAG}.json")))
         for e2 in ev2: e2["src"] = add
-        if os.environ.get("SEC_ADD_NEW_ONLY"):   # only the added list's names the base list does not have (no alert twice)
+        only = os.environ.get("SEC_ADD_NEW_ONLY", "")   # "1": every added list; "3yfav,...": only those tags
+        if only == "1" or add in only.split(","):   # only the added list's names the lists so far do not have (no alert twice)
             have = {e["sym"] for e in ev}
             keep = [i for i, e in enumerate(ev2) if e["sym"] not in have]
             ev2, pk2 = [ev2[i] for i in keep], [pk2[i] for i in keep]
@@ -539,6 +540,25 @@ def main():
                 rank = (t["spread"], abs(t["delta"] - 0.2))
                 if key not in best or rank < best[key][0]: best[key] = (rank, t)
             T = [t for t in T if t["src"] != tag] + [dict(x[1], v="plain20", picked=x[1]["v"]) for x in best.values()]
+        if os.environ.get("STR_PLAN_STEP"):   # the user 2026-10-30: a minute alert's 0.20 buy over a 30% spread tries 0.25,
+            # 0.30, then 0.35 and buys the first at <= 30%; none: "keep" buys the 0.20 anyway, "skip" buys nothing;
+            # "cap" = no step, only the 0.20 buys at <= 30%. The shock's buys are left as they are.
+            mode, cap = os.environ["STR_PLAN_STEP"], 0.3
+            alts = ("plain25", "plain30", "plain35")
+            by = {}
+            for t in T:
+                if t["src"] == "e_shock15": continue
+                by.setdefault((t["src"], t["date"], t["sym"], t["minute"], t["entry"]), {})[t["v"]] = t
+            drop, add = set(), []
+            for vs in by.values():
+                t20 = vs.get("plain20")
+                if not t20 or t20["spread"] is None or t20["spread"] <= cap: continue
+                alt = None
+                if mode != "cap": alt = next((vs[a] for a in alts if a in vs and vs[a]["spread"] is not None and vs[a]["spread"] <= cap), None)
+                if alt: drop.add(id(t20)); add.append(dict(alt, v="plain20", stepped=alt["v"]))
+                elif mode != "keep": drop.add(id(t20))
+            T = [t for t in T if id(t) not in drop] + add
+            print(f"plan step {mode}: {len(add)} stepped, {len(drop) - len(add)} skipped", flush=True)
         if os.environ.get("STR_SRC_DTE"):   # "e_shock15=1": that tag's buys only up to N days to expiry (the user 2026-10-30)
             tag, mx = os.environ["STR_SRC_DTE"].split("=")
             nxt = {(e["date"], e["sym"], e.get("sec0", (e["m"] + 1) * 60)): e["nxt"] for e in ev if e.get("src") == tag}
@@ -562,7 +582,27 @@ def main():
         for spec in os.environ.get("STR_SRC_V", "").split(","):   # "e_shock15=plain10": that tag's alerts buy that contract
             if not spec: continue
             tag, ver = spec.split("=")
-            T = [t for t in T if not (t["src"] == tag and t["v"] == "plain20")] + [dict(t, v="plain20") for t in T if t["src"] == tag and t["v"] == ver]
+            if ">" in ver:   # "lq0>step35": the first of these versions the alert has (the user 2026-10-30: no liquidity floor)
+                chain, first = ver.split(">"), {}
+                for t in T:
+                    if t["src"] != tag or t["v"] not in chain: continue
+                    k = (t["date"], t["sym"], t["minute"], t["entry"])
+                    if k not in first or chain.index(t["v"]) < chain.index(first[k]["v"]): first[k] = t
+                T = [t for t in T if not (t["src"] == tag and t["v"] == "plain20")] + [dict(t, v="plain20", picked=t["v"]) for t in first.values()]
+            else: T = [t for t in T if not (t["src"] == tag and t["v"] == "plain20")] + [dict(t, v="plain20") for t in T if t["src"] == tag and t["v"] == ver]
+        if os.environ.get("STR_SHOCK_STEP"):   # the user 2026-10-30: the shock's buy over a 30% spread tries 0.25, 0.30, then
+            # 0.35 and buys the first at <= 30% (no step: the 30% filter skips it)
+            by = {}
+            for t in T:
+                if t["src"] == "e_shock15": by.setdefault((t["date"], t["sym"], t["minute"], t["entry"]), {})[t["v"]] = t
+            drop, add = set(), []
+            for vs in by.values():
+                t20 = vs.get("plain20")
+                if not t20 or t20["spread"] is None or t20["spread"] <= 0.3: continue
+                alt = next((vs[a] for a in ("plain25", "plain30", "plain35") if a in vs and vs[a]["spread"] is not None and vs[a]["spread"] <= 0.3), None)
+                if alt: drop.add(id(t20)); add.append(dict(alt, v="plain20", stepped=alt["v"]))
+            T = [t for t in T if id(t) not in drop] + add
+            print(f"shock step: {len(add)} stepped", flush=True)
         OWN = {}
         if os.environ.get("STR_SRC_ENTRY"):   # "e_shock15=hold5:300" (the user 2026-10-29, "all together"): that tag's alerts
             # enter at hold5 within 300 s with no burst, shown as "cross"; every other alert keeps the cross and its burst

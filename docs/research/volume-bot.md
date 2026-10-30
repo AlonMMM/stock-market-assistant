@@ -1108,3 +1108,31 @@ Same setup as the scale-out above (live version, flat2, real bids at minute clos
 
 20 shock trades reached +200% (10 better, 10 worse), 5 reached +700%, none +1000%. The later ladder is a tie
 with the live version (−1% overall, check +$1.6K); not adopted: no gain, one more moving part.
+
+## The plan's spread, and the shock's spread step and liquidity floor (2026-10-30)
+
+The user: "if the spread is more than 30%, try to buy another delta like we do on the shock" (the plan), and the two
+shock contract rules never tested on the live version: step to another delta on a spread over 30% (instead of the
+skip), and no liquidity floor. New: the plan alerts picked again at 0.25 / 0.30 / 0.35 (tags `3y50p` ... `3ycand5wp`,
+copies of the plan event lists) and their option windows fetched (about 1,700); leg_seconds `STR_PLAN_STEP`
+(cap / keep / skip), `STR_SHOCK_STEP`, and a version chain in `STR_SRC_V` (`lq0>step35`: the 0.20 contract with no
+liquidity floor, else the step-up as live). Real prices, flat2 2%, live version otherwise (plan + shock 0-2 DTE,
+spread <= 30%, burst >= 0, step35). The reference on the re-picked plan lists gives $1,080,384 (427 trades) against
+the logged $1,069,492 (428): one plan trade differs; the check half is identical.
+
+| Version | Trades | Account (drop) | Without 10-10 | Tune | Check | Check without 10-10 | Live limits |
+|---|---|---|---|---|---|---|---|
+| Live now (reference) | 427 | $1,080,384 (20.5%) | $376,086 | $247,864 | $432,129 | $151,600 | $537,705 |
+| Plan: skip a spread > 30% (no step) | 379 | $778,586 (19.0%) | $448,320 | $275,058 | $279,126 | $163,290 | $617,390 |
+| Plan: step 0.25-0.35, else buy the 0.20 | 427 | $994,933 (20.4%) | $389,704 | $252,560 | $391,198 | $152,509 | $503,634 |
+| Plan: step 0.25-0.35, else skip | 394 | $874,008 (20.1%) | $421,376 | $267,554 | $324,834 | $157,144 | $555,721 |
+| Shock: step on a spread > 30% | 441 | $989,318 (20.6%) | $344,209 | $243,387 | $405,351 | $140,827 | $487,587 |
+| **Shock: no liquidity floor** | 447 | **$1,314,633** (21.5%) | **$457,745** | **$287,356** | **$450,368** | **$158,898** | **$566,943** |
+| Shock: both | 468 | $1,160,157 (21.7%) | $401,792 | $276,826 | $416,202 | $145,791 | $497,517 |
+
+- Shock with no liquidity floor beats live in every view and every year (2024 $141K, 2025 $550K, 2026 $165K); the drop
+  is one point higher. The candidate for live.
+- The shock's spread step loses everywhere: the wide-spread shock buys are better skipped.
+- The plan's spread: skipping or stepping wins without 10-10, in the tune half and with live limits, but loses the
+  check half with 10-10: that day's plan winners had wide spreads. Not a clean win.
+- Next: the shock with no floor together with each plan rule.
