@@ -697,19 +697,30 @@ test("store: the one-a-day signals of before re-entry are copied to the alerts t
 
 test("runner (dry): a thin leg takes the liquid fallback's strike, or no trade with it off", async () => {
   const thin = (c: string) => (c.endsWith("C00101000") ? 90 : 500);
-  const h = harness({ mode: "dry" }, { day: climbThenFall(), volume: thin });
+  const h = harness(
+    { mode: "dry", minVolume: 200 },
+    { day: climbThenFall(), volume: thin },
+  );
   await h.run(565, 612);
   const [t] = h.store.openTrades();
   // The 0.35 call traded 90: the next strike out, 0.28, trades enough.
   assert.equal(t!.leg!.contract, "NVDA261023C00102000");
   assert.ok(h.notes.some((n) => /liquid fallback/.test(n)));
   const off = harness(
-    { mode: "dry", liquidFallback: false },
+    { mode: "dry", minVolume: 200, liquidFallback: false },
     { day: climbThenFall(), volume: thin },
   );
   await off.run(565, 612);
   assert.equal(off.store.openTrades().length, 0);
   assert.equal(off.store.signal(DAY, "NVDA")!.outcome, "thin");
+});
+
+test("runner (dry): no liquidity floor by default: the thin 0.35 call is bought", async () => {
+  const thin = (c: string) => (c.endsWith("C00101000") ? 90 : 500);
+  const h = harness({ mode: "dry" }, { day: climbThenFall(), volume: thin });
+  await h.run(565, 612);
+  const [t] = h.store.openTrades();
+  assert.equal(t!.leg!.contract, "NVDA261023C00101000");
 });
 
 test("liquid order: further out first, nearest the target first, then toward the money", () => {

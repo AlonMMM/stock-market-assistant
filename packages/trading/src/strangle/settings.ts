@@ -128,7 +128,10 @@ export const defaultStrangleSettings: StrangleSettings = {
   lastMinute: 209,
   delta: 0.35,
   minPrice: 0.2,
-  minVolume: 200,
+  // 0, no liquidity floor (the user 2026-10-30, "no need >200"): with real quotes and the audited
+  // simulator (volume-bot.md, 2026-10-30), plan + shock at 2% from $100K: $1,011,767 with no floor
+  // vs $782,861 at 200, ahead in both halves, without 10 Oct 2025 and with the live limits.
+  minVolume: 0,
   liquidFallback: true,
   confirmUnits: 0.25,
   // 10, not the backtest's first 60 (user 2026-10-26, "implement the 10 minutes give up";
