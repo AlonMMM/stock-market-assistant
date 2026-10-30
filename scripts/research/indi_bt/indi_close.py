@@ -28,6 +28,18 @@ champion, in the same run. Also: of Indi's late overnight buys (15:00+, held ove
 date, stock and side). Real quotes: IC_PASS=list -> open11_dbx_list.csv (entry day and next day), dbx_fetch.py open11.
 
   node --env-file=.env <dir>/run.mjs indi_close.py (IC_PASS=list first, then dbx_fetch.py open11)   (from the app repo root)
+
+IC_SET=rs (the user, 2026-10-30, after the run above: "we do not need the stock to be up. only strong against the spy and
+on the top 90% of the day", then "strong with spy mean t>1.2 and D2 during the day bigger than 0.5 (not all day but
+... check some permotaitons on tune)"): no move rule and no VWAP rule; the top 10% of the day's range (pos >= 0.90); the
+volume (1.3x) and earnings rules stay; "strong" = the bot's t at 15:57 (defence_signals.py: the day's t-stat of the
+stock's excess minute moves vs SPY x beta) >= T and its D2 (the excess on SPY-down minutes, in the stock's S30 units)
+>= 0.5 over a window. Set before running, every T in (1.0, 1.2, 1.5) x every D2 window, each on both expiries:
+  c30   D2 of the last 30 minutes at 15:57 (the bot's D2)       max30  the 30-minute D2 reached >= 0.5 at any minute today
+  c120  D2 of the last 120 minutes at 15:57                     day    D2 of the whole day (the contrast to "not all day")
+  plus t12-c30-d1 (D2 >= 1.0) and m3 (the earlier pick: move >= 3%, top 15%, VWAP, last hour > SPY) for reference.
+The night's top 3 by t. Picked on tune by min(fair, Favorites) at 2%; only the pick on check.
+Quotes: IC_PASS=list -> open12_dbx_list.csv, dbx_fetch.py open12.
 """
 import bisect, collections, csv, datetime as dt, glob, gzip, json, math, multiprocessing as mp, os, statistics as st, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -43,6 +55,7 @@ import opt_spread as OS
 import real_bench as RB
 from low_delta import HIS40, PRIOR
 from signals import beta
+from levels import ctx
 from split import half
 from store import day
 
@@ -51,10 +64,17 @@ SIZES = rr.SIZES
 LISTING = os.environ.get("IC_PASS") == "list"
 M_IN = 387
 A0, Z = "2024-02-01", FR.Z
-EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11")]
-BASE = dict(lo=0.02, hi=0.04, d=0.20, exit="his", ath=False)
+EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12")]
+RS = os.environ.get("IC_SET") == "rs"
+LIST_NAME = "open12_dbx_list.csv" if RS else "open11_dbx_list.csv"
+BASE = dict(lo=0.02, hi=0.04, d=0.20, exit="his", ath=False, pos=0.85, vwap=True, rs="60")
 CORE = {"thesis": {}, "m15": dict(lo=0.015), "m3": dict(lo=0.03, hi=9.0), "d30": dict(d=0.30), "d15": dict(d=0.15),
         "at10": dict(exit="at10"), "ath": dict(ath=True)}
+if RS:
+    ANY = dict(lo=-9.0, hi=9.0, pos=0.90, vwap=False, d2=0.5)
+    CORE = {f"t{round(t * 10):02d}-{w}": {**ANY, "rs": "td", "t": t, "win2": w} for t in (1.0, 1.2, 1.5) for w in ("c30", "max30", "c120", "day")}
+    CORE["t12-c30-d1"] = {**ANY, "rs": "td", "t": 1.2, "win2": "c30", "d2": 1.0}
+    CORE["m3"] = dict(lo=0.03, hi=9.0)
 VERSIONS = {f"{k}-{w}": {**BASE, **v, "win": (2, 4) if w == "w" else (1, 1)} for k, v in CORE.items() for w in ("w", "n")}
 RX = None
 BASE_EXPIRY = sim.expiry_for   # restored after each pick (set at import, so every worker has it)
@@ -100,8 +120,41 @@ def features(job):
     b_ = beta(sym, date, i, rr.CAL)
     if b_ is None: return None
     ex60 = (c[M_IN] / c[M_IN - 60] - 1) - b_ * (spy[M_IN] / spy[M_IN - 60] - 1)
+    sp = day("SPY", rr.CAL[i - 1])
+    if not sp: return None
+    exday = (c[M_IN] / prev[-1][4] - 1) - b_ * (spy[M_IN] / sp[-1][4] - 1)
+    cx = ctx(sym, date)
+    if not cx or not cx["sd"]: return None
+    td = tstrength(c, spy, b_, cx["sd"])
+    if not td: return None
     return dict(src=src, sym=sym, date=date, px=c[M_IN], move=c[M_IN] / pc - 1, pos=(c[M_IN] - lo) / (hi - lo) if hi > lo else 0.5,
-                vwap=c[M_IN] / (pv / vol) - 1 if vol else 0.0, ex60=ex60, rvol=vol / st.median(past), pc=pc)
+                vwap=c[M_IN] / (pv / vol) - 1 if vol else 0.0, ex60=ex60, exday=exday, **td, rvol=vol / st.median(past), pc=pc)
+
+
+def tstrength(c, spy, b_, unit):
+    """The bot's t and D2 at 15:57, both sides (defence_signals.py, unweighted): t over the day's minutes; D2 (the excess
+    on SPY-down minutes for a call, minus the excess on SPY-up minutes for a put) over the last 30 / 120 minutes, the
+    highest 30-minute D2 at any minute from 09:40, and the whole day."""
+    n = s1 = s2 = 0.0
+    ec, ep = [0.0] * 390, [0.0] * 390
+    for m in range(1, M_IN + 1):
+        if not (c[m] and c[m - 1] and spy[m] and spy[m - 1]): continue
+        rs, rp = c[m] / c[m - 1] - 1, spy[m] / spy[m - 1] - 1
+        x = rs - b_ * rp
+        n += 1; s1 += x; s2 += x * x
+        if rp < 0: ec[m] = x / unit
+        if rp > 0: ep[m] = -x / unit
+    if n < 30: return None
+    mu = s1 / n; var = max(s2 / n - mu * mu, 0.0)
+    t = mu / math.sqrt(var) * math.sqrt(n) if var > 0 else 0.0
+    out = dict(t=t)
+    for side, e in (("c", ec), ("p", ep)):
+        win = lambda a, z: sum(e[max(1, a):z + 1])
+        out[f"{side}_c30"] = win(M_IN - 29, M_IN)
+        out[f"{side}_c120"] = win(M_IN - 119, M_IN)
+        out[f"{side}_day"] = win(1, M_IN)
+        out[f"{side}_max30"] = max(win(m - 29, m) for m in range(10, M_IN + 1))
+    return out
 
 
 def ath_flags(rows):
@@ -127,8 +180,15 @@ def candidates(rows, v):
         i = rr.CAL.index(r["date"])
         if i + 1 < len(rr.CAL) and (i + 1) in set(RX.get(r["sym"], [])): continue   # tomorrow is its earnings reaction day
         for right, bet in (("C", 1), ("P", -1)):
-            mv, pos, vw, ex = bet * r["move"], r["pos"] if bet > 0 else 1 - r["pos"], bet * r["vwap"], bet * r["ex60"]
-            if not (v["lo"] <= mv <= v["hi"] and pos >= 0.85 and vw > 0 and ex > 0 and r["rvol"] >= 1.3): continue
+            mv, pos, vw = bet * r["move"], r["pos"] if bet > 0 else 1 - r["pos"], bet * r["vwap"]
+            e60, eday = bet * r["ex60"], bet * r["exday"]
+            if v["rs"] == "td":
+                strong = bet * r["t"] >= v["t"] and r[f"{'c' if bet > 0 else 'p'}_{v['win2']}"] >= v["d2"]
+                ex = bet * r["t"]
+            else:
+                strong, ex = e60 > 0, e60
+            if not (v["lo"] <= mv <= v["hi"] and pos >= v["pos"] and strong and r["rvol"] >= 1.3): continue
+            if v["vwap"] and vw <= 0: continue
             if v["ath"] and not (r["ath"] if bet > 0 else r["atl"]): continue
             by[(r["src"], r["date"])].append((ex, r, right))
     return {k: [(r, right) for _, r, right in sorted(x, key=lambda q: -q[0])[:3]] for k, x in by.items()}
@@ -224,9 +284,9 @@ def main():
     with mp.Pool(8) as pool: W = dict(zip(ks, pool.map(walk, [tj[k] for k in ks], chunksize=2)))
     if LISTING:
         rowsq = sorted({x for w in W.values() if w for x in w})
-        with open(os.path.join(HERE, "open11_dbx_list.csv"), "w") as f:
+        with open(os.path.join(HERE, LIST_NAME), "w") as f:
             w = csv.writer(f); w.writerow(["date", "contract", "minute"]); w.writerows(rowsq)
-        print(f"{len(rowsq)} rows on {len({x[0] for x in rowsq})} days -> open11_dbx_list.csv"); return
+        print(f"{len(rowsq)} rows on {len({x[0] for x in rowsq})} days -> {LIST_NAME}"); return
 
     def trades(v, src, part):
         V = VERSIONS[v]; out = []
@@ -279,7 +339,7 @@ def main():
     print(f"\nIndi's late overnight buys: {len(late)} ({len(inlists)} on our lists' stocks); the pick takes {len(took & inlists)} of them; the pick's nights {len(took)}")
     bk = [w["book"] for w in W.values() if w]
     print(f"fills on the real book: {sum(bk) / max(1, len(bk)):.0%} of {len(bk)}")
-    json.dump({f"{k[0]}|{k[1]}|{k[2]}": v for k, v in out.items()}, open(f"{B}/indi_close_summary.json", "w"), indent=1)
+    json.dump({f"{k[0]}|{k[1]}|{k[2]}": v for k, v in out.items()}, open(f"{B}/indi_close{'_rs' if RS else ''}_summary.json", "w"), indent=1)
 
 
 if __name__ == "__main__":
