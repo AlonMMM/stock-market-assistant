@@ -2073,6 +2073,18 @@ main:has(> .backtest-page) {
 .bt-add .reset {
   align-self: center;
 }
+.setup .bt-paper {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--lime-53);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--lime-53);
+  font-weight: 650;
+}
+.setup .bt-paper:disabled {
+  opacity: 0.6;
+}
 .setup .rule-field.switch-row {
   grid-template-columns: minmax(0, 1fr) auto;
 }

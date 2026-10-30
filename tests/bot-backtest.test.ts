@@ -25,6 +25,7 @@ import { defaultSettings } from "../packages/trading/src/bot/settings.js";
 import type { MinuteBar } from "../packages/trading/src/bot/signal.js";
 import {
   clockText,
+  paperSetup,
   parseTickers,
   periodParts,
   runClock,
@@ -396,4 +397,23 @@ test("the loader's clock moves through the period and never passes the parts in 
   );
   assert.equal(new Date(mid.at).toISOString(), `${days[10]}T16:45:00.000Z`);
   assert.equal(clockText(65_000), "1:05");
+});
+
+test("Same as paper takes the live version, rules, size, limits and watched stocks", () => {
+  const live = paperSetup(
+    {
+      ...defaultSettings,
+      version: "2.7.0",
+      sizePct: 3,
+      maxBuysPerDay: 8,
+      maxOpen: 5,
+      stopPct: 25,
+      off: ["QQQ"],
+    },
+    ["NVDA", "qqq", "TSLA", "NVDA"],
+  );
+  assert.equal(live.version, "2.7.0");
+  assert.equal(live.rules.stopPct, 25);
+  assert.deepEqual(live.money, { sizePct: 3, maxBuysPerDay: 8, maxOpen: 5 });
+  assert.deepEqual(live.tickers, ["NVDA", "TSLA"]);
 });
