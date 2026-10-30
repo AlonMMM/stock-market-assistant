@@ -76,6 +76,17 @@ export class SimBroker implements Broker {
     for (const o of this.orders.values()) this.settle(o);
   }
 
+  /** A contract's volume on its latest daily bar and that bar's date. */
+  setVolume(symbol: string, volume: number, date: string) {
+    const q = this.quotes.get(symbol);
+    if (q) this.quotes.set(symbol, { ...q, volume, volumeDate: date });
+  }
+  /** Contracts in the last 30 minutes per option; unset: no minute bars. */
+  optionVolume30?: (
+    symbols: string[],
+    end: number,
+  ) => Promise<Map<string, number>>;
+
   /** Sets or moves a stock's bid and ask. */
   setStockQuote(symbol: string, bid: number | null, ask: number | null) {
     this.stockQuotes.set(symbol, {

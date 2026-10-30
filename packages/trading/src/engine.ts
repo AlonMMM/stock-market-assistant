@@ -1,4 +1,5 @@
-import { newYork } from "../../market-data/src/calendar.js";
+import { newYork, newYorkToUtc } from "../../market-data/src/calendar.js";
+import { defaultPickRules } from "./bot/picker.js";
 import type { Broker, Order, SpreadTicket } from "./broker.js";
 import {
   checkBuy,
@@ -777,6 +778,7 @@ export class TradeEngine {
     const [low, high] = defaultDeltaRange;
     const pick = pickByDelta(quotes, (low + high) / 2);
     const underlyingPrice = await stock;
+    const { volumeToday, volume30 } = await this.chainVolume(quotes, today);
     return {
       paper: this.paper,
       underlying,
@@ -786,6 +788,8 @@ export class TradeEngine {
       ...(expiries ? { expiries } : {}),
       pick: pick?.symbol ?? null,
       maxSpreadPct: this.limits.maxSpreadRatio * 100,
+      // The bot's liquidity rule: contracts in the last 30 minutes.
+      minVolume30: defaultPickRules.minVolume30,
       quotes: quotes
         .sort((a, b) => a.strike - b.strike)
         .map((q) => {
@@ -802,9 +806,38 @@ export class TradeEngine {
             delta: q.delta,
             iv: q.iv ?? null,
             openInterest: q.openInterest ?? null,
+            volume: volumeToday(q),
+            volume30: volume30?.get(q.symbol) ?? (volume30 ? 0 : null),
           };
         }),
     };
+  }
+
+  /**
+   * How much the chain's contracts trade: today's contracts (the daily bar
+   * when it is today's, else 0) and the last 30 minutes of today's session
+   * up to now (the bot's liquidity rule). Both are null before today's
+   * session has any trade (before the open, a weekend, a holiday), and the
+   * 30 minutes when the broker cannot give minute bars.
+   */
+  private async chainVolume(quotes: OptionQuote[], today: string) {
+    const traded = quotes.some((q) => q.volumeDate === today);
+    const volumeToday = (q: OptionQuote) => {
+      if (!traded) return null;
+      if (q.volumeDate === today) return q.volume ?? 0;
+      return 0;
+    };
+    let volume30: Map<string, number> | null = null;
+    if (traded && this.broker.optionVolume30) {
+      const end = Math.min(this.now(), newYorkToUtc(today, 960));
+      volume30 = await this.broker
+        .optionVolume30(
+          quotes.map((q) => q.symbol),
+          end,
+        )
+        .catch(() => null);
+    }
+    return { volumeToday, volume30 };
   }
 
   /**
