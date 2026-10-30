@@ -35,6 +35,11 @@ import {
 } from "../../../packages/trading/src/bot/versions.js";
 import coreList from "../../../config/bot-universe.json";
 import { readJson } from "./api.js";
+import type { BotView } from "../../../packages/trading/src/bot-api.js";
+import {
+  defaultSettings,
+  type BotSettings,
+} from "../../../packages/trading/src/bot/settings.js";
 import {
   backtestStory,
   bots,
@@ -43,6 +48,7 @@ import {
   exitTitle,
   firstDate,
   maxStocks,
+  paperSetup,
   parseTickers,
   periodRange,
   periods,
@@ -164,6 +170,47 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
   const [typed, setTyped] = useState("");
   const [lists, setLists] = useState<Watchlist[]>([]);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [paper, setPaper] = useState<
+    | { state: "idle" }
+    | { state: "loading" }
+    | { state: "loaded"; text: string }
+    | { state: "failed"; text: string }
+  >({ state: "idle" });
+
+  async function loadPaper() {
+    setPaper({ state: "loading" });
+    try {
+      const [settings, view] = await Promise.all([
+        fetch("/api/bot/settings", {
+          signal: AbortSignal.timeout(15000),
+        }).then((r) => readJson<BotSettings>(r)),
+        fetch("/api/bot", { signal: AbortSignal.timeout(15000) }).then((r) =>
+          readJson<BotView>(r),
+        ),
+      ]);
+      const live = paperSetup(
+        { ...defaultSettings, ...settings },
+        view.watching,
+      );
+      setSetup({
+        ...setup,
+        bot: "main",
+        version: live.version,
+        rules: live.rules,
+        tickers: live.tickers,
+        money: { ...setup.money, ...live.money },
+      });
+      setPaper({
+        state: "loaded",
+        text: `Loaded the paper bot as it is now: ${versionLabel(live.version, live.rules)}, ${live.money.sizePct}% a trade, ${live.money.maxBuysPerDay} buys a day, ${live.money.maxOpen} open, ${live.tickers.length} stocks.`,
+      });
+    } catch (e) {
+      setPaper({
+        state: "failed",
+        text: `The paper bot's settings could not be read (${e instanceof Error ? e.message : "failed"}).`,
+      });
+    }
+  }
   // The run lives outside the page: it goes on, and stays, across sections.
   const { busy, errors, runs, ran } = useBacktestRun();
   const [filter, setFilter] = useState<"all" | "won" | "lost" | "refused">(
@@ -311,6 +358,20 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                 </select>
               </label>
               <p className="muted small">{versionById(setup.version)?.notes}</p>
+              <button
+                type="button"
+                className="bt-paper"
+                disabled={paper.state === "loading"}
+                onClick={() => void loadPaper()}
+              >
+                {paper.state === "loading" ? "Reading paper…" : "Same as paper"}
+              </button>
+              {paper.state === "loaded" && (
+                <p className="muted small">{paper.text}</p>
+              )}
+              {paper.state === "failed" && (
+                <p className="run-error small">{paper.text}</p>
+              )}
             </Card>
 
             <Card

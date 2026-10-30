@@ -8,9 +8,13 @@ import type {
   SimSkip,
   SkipReason,
 } from "../../../packages/trading/src/bot/backtest.js";
-import type {
-  RuleKey,
-  Rules,
+import type { BotSettings } from "../../../packages/trading/src/bot/settings.js";
+import {
+  currentVersion,
+  ruleKeys,
+  versionById,
+  type RuleKey,
+  type Rules,
 } from "../../../packages/trading/src/bot/versions.js";
 import type {
   ClosedTrade,
@@ -32,7 +36,8 @@ import {
 export const sessionsPerRequest = 60;
 /** Alpaca's option bars start here. */
 export const firstDate = "2024-02-01";
-export const maxStocks = 40;
+/** Enough for the paper bot's whole list (its stocks and the favorites). */
+export const maxStocks = 100;
 /** Requests in flight at once. */
 export const parallel = 4;
 
@@ -420,4 +425,37 @@ export function runClock(
 export function clockText(ms: number): string {
   const s = Math.round(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/**
+ * The paper bot as it is now (the user, 2026-10-30: "settings exactly like we
+ * have now in paper"): its version and rules, its size and limits, and the
+ * stocks it watches today, without the ones it has off.
+ */
+export function paperSetup(
+  settings: BotSettings,
+  watching: readonly string[],
+): {
+  version: string;
+  rules: Rules;
+  money: Pick<BotSettings, "sizePct" | "maxBuysPerDay" | "maxOpen">;
+  tickers: string[];
+} {
+  const off = new Set(settings.off.map((t) => t.toUpperCase()));
+  const rules = Object.fromEntries(
+    ruleKeys.map((k) => [k, settings[k]]),
+  ) as Rules;
+  return {
+    // An own label (rules changed by hand) starts from the version it names.
+    version: versionById(settings.version)?.id ?? currentVersion,
+    rules,
+    money: {
+      sizePct: settings.sizePct,
+      maxBuysPerDay: settings.maxBuysPerDay,
+      maxOpen: settings.maxOpen,
+    },
+    tickers: [...new Set(watching.map((t) => t.toUpperCase()))]
+      .filter((t) => !off.has(t))
+      .slice(0, maxStocks),
+  };
 }
