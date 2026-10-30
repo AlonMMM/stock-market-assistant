@@ -1092,3 +1092,19 @@ bid at a minute close reaches the level, at that bid (real cbbo-1m); the rest on
 
 39 shock trades reached +100% on the bid; the scale-out made 20 better and 19 worse, but the worse ones are the runners
 (the shock's money is a few big trades). Worse in every view, every year. Not adopted.
+
+### Shock scale-out, Indi style (2026-10-30)
+
+Same setup as the scale-out above (live version, flat2, real bids at minute closes), two more ladders on the shock trades:
+
+| | Live | 25/+100, 25/+300, 10/+400 | 25/+200 only | 25/+200, 25/+700, 10/+1000 |
+|---|---|---|---|---|
+| Account (drop) | $1,069,492 (20.5%) | $941,052 (20.5%) | $1,020,459 (20.7%) | $1,058,642 (20.7%) |
+| Without 10-10 | $374,326 | $327,518 | $355,316 | $368,406 |
+| Tune / check | $245,281 / $432,129 | $233,507 / $399,794 | $241,420 / $420,288 | $241,840 / $433,773 |
+| Check without 10-10 | $151,600 | $140,064 | $147,414 | $151,571 |
+| No limits / live limits | $1,253,857 / $532,238 | $1,051,583 / $466,745 | $1,165,435 / $504,874 | $1,208,513 / $525,473 |
+| Shock P&L | $208,774 | $119,660 | $173,412 | $205,408 |
+
+20 shock trades reached +200% (10 better, 10 worse), 5 reached +700%, none +1000%. The later ladder is a tie
+with the live version (−1% overall, check +$1.6K); not adopted: no gain, one more moving part.
