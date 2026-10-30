@@ -64,10 +64,12 @@ SIZES = rr.SIZES
 LISTING = os.environ.get("IC_PASS") == "list"
 M_IN = 387
 A0, Z = "2024-02-01", FR.Z
-EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12")]
-RS = os.environ.get("IC_SET") == "rs"
-LIST_NAME = "open12_dbx_list.csv" if RS else "open11_dbx_list.csv"
-BASE = dict(lo=0.02, hi=0.04, d=0.20, exit="his", ath=False, pos=0.85, vwap=True, rs="60")
+EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14")]
+VOL = os.environ.get("IC_SET") == "vol"
+RS = os.environ.get("IC_SET") == "rs" or VOL
+TAG = "_vol" if VOL else ("_rs" if RS else "")
+LIST_NAME = {"_vol": "open14_dbx_list.csv", "_rs": "open12_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
+BASE = dict(lo=0.02, hi=0.04, d=0.20, exit="his", ath=False, pos=0.85, vwap=True, rs="60", vol="min", fri=False)
 CORE = {"thesis": {}, "m15": dict(lo=0.015), "m3": dict(lo=0.03, hi=9.0), "d30": dict(d=0.30), "d15": dict(d=0.15),
         "at10": dict(exit="at10"), "ath": dict(ath=True)}
 if RS:
@@ -76,6 +78,12 @@ if RS:
     CORE["t12-c30-d1"] = {**ANY, "rs": "td", "t": 1.2, "win2": "c30", "d2": 1.0}
     CORE["m3"] = dict(lo=0.03, hi=9.0)
 VERSIONS = {f"{k}-{w}": {**BASE, **v, "win": (2, 4) if w == "w" else (1, 1)} for k, v in CORE.items() for w in ("w", "n")}
+if VOL:
+    # the user, 2026-10-30, after his_vol.py (his late giants had normal volume, his losers the most): "yes" to the volume
+    # rule three ways (>= 1.3x as before / none / under 1.3x, strong but quiet) x Fridays out / in, next-day expiry (the
+    # next trading day: Monday for a Friday), t 1.0 / 1.2 / 1.5 x the four D2 windows; range, earnings, top 3 as before
+    VERSIONS = {f"t{round(t * 10):02d}-{w}-{vl}-{'fri' if fr else 'nofri'}": {**BASE, **ANY, "rs": "td", "t": t, "win2": w, "vol": vl, "fri": fr, "win": "next"}
+                for t in (1.0, 1.2, 1.5) for w in ("c30", "c120", "max30", "day") for vl in ("min", "none", "max") for fr in (False, True)}
 RX = None
 BASE_EXPIRY = sim.expiry_for   # restored after each pick (set at import, so every worker has it)
 
@@ -176,7 +184,7 @@ def candidates(rows, v):
     if RX is None: RX = nf.reactions()
     by = collections.defaultdict(list)
     for r in rows:
-        if dt.date.fromisoformat(r["date"]).weekday() == 4: continue
+        if dt.date.fromisoformat(r["date"]).weekday() == 4 and not v["fri"]: continue
         i = rr.CAL.index(r["date"])
         if i + 1 < len(rr.CAL) and (i + 1) in set(RX.get(r["sym"], [])): continue   # tomorrow is its earnings reaction day
         for right, bet in (("C", 1), ("P", -1)):
@@ -187,7 +195,9 @@ def candidates(rows, v):
                 ex = bet * r["t"]
             else:
                 strong, ex = e60 > 0, e60
-            if not (v["lo"] <= mv <= v["hi"] and pos >= v["pos"] and strong and r["rvol"] >= 1.3): continue
+            if not (v["lo"] <= mv <= v["hi"] and pos >= v["pos"] and strong): continue
+            if v["vol"] == "min" and r["rvol"] < 1.3: continue
+            if v["vol"] == "max" and r["rvol"] >= 1.3: continue
             if v["vwap"] and vw <= 0: continue
             if v["ath"] and not (r["ath"] if bet > 0 else r["atl"]): continue
             by[(r["src"], r["date"])].append((ex, r, right))
@@ -203,7 +213,10 @@ def pick(r, right, d, win):
         k = (r["sym"], m0.isoformat()[:7])
         if k not in sim._exp: sim._exp[k] = sim.expiries(r["sym"], m0.isoformat(), (m0 + dt.timedelta(days=40)).isoformat())
         exps |= set(sim._exp[k])
-    a, b = (d0 + dt.timedelta(days=win[0])).isoformat(), (d0 + dt.timedelta(days=win[1])).isoformat()
+    if win == "next":   # the next trading day's expiry (Monday for a Friday)
+        a = b = rr.CAL[rr.CAL.index(r["date"]) + 1]
+    else:
+        a, b = (d0 + dt.timedelta(days=win[0])).isoformat(), (d0 + dt.timedelta(days=win[1])).isoformat()
     exp = next((e for e in sorted(exps) if a <= e <= b), None)
     if not exp: return None
     call = right == "C"
@@ -302,7 +315,7 @@ def main():
     # this benchmark") -> indi_close[_rs]_trades.json
     json.dump({f"{v}|{src}|{part}": [dict(date=w["date"], sym=w["sym"], right=w["right"], contract=w["contract"], r={str(k): x for k, x in w["r"].items()})
                                      for w in trades(v, src, part)] for v in VERSIONS for src in ("fair", "fav") for part in ("tune", "check")},
-              open(f"{B}/indi_close{'_rs' if RS else ''}_trades.json", "w"))
+              open(f"{B}/indi_close{TAG}_trades.json", "w"))
     L = ("fair", "fav")
     out = {(s, "tune", v): [rr.stats(E(v, src, "tune", s), s) for src in L] for s in SIZES for v in VERSIONS}
     print("\n#### The Indi close alone, the tune weeks, every version (end / worst drop; $10K a trade: trades, winners, median, sum, giants, the rest)\n")
@@ -344,7 +357,7 @@ def main():
     print(f"\nIndi's late overnight buys: {len(late)} ({len(inlists)} on our lists' stocks); the pick takes {len(took & inlists)} of them; the pick's nights {len(took)}")
     bk = [w["book"] for w in W.values() if w]
     print(f"fills on the real book: {sum(bk) / max(1, len(bk)):.0%} of {len(bk)}")
-    json.dump({f"{k[0]}|{k[1]}|{k[2]}": v for k, v in out.items()}, open(f"{B}/indi_close{'_rs' if RS else ''}_summary.json", "w"), indent=1)
+    json.dump({f"{k[0]}|{k[1]}|{k[2]}": v for k, v in out.items()}, open(f"{B}/indi_close{TAG}_summary.json", "w"), indent=1)
 
 
 if __name__ == "__main__":
