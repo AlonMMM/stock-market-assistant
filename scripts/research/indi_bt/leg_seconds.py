@@ -373,7 +373,7 @@ def trade(job):
     out = dict(am=am, to_cross=sec - a_sec, alert_sec=a_sec, src=e.get("src", ""), fill=fill, waited=waited, entry=entry, v=v, date=e["date"], sym=e["sym"], minute=e["m"], buy=buy, sell=qs[0], ct=ct, bm=ct, xm=w[3], delta=delta,
                 t=t_side, d2=d2_side, mv_open=mv_open, mv_close=mv_close, side=side, mid_in=mid_in,
                 mid_out=(qs[0] / (1 - LF.SH) if BARS and qs[0] > 0.0101 else (qs[0] + qs[1]) / 2),   # the model's mid at the sale
-                stock_in=stock_in, stock_out=stock_out, spread=spread, fair=fair, ok=ok, alt_for=None)
+                stock_in=stock_in, stock_out=stock_out, spread=spread, fair=fair, ok=ok, alt_for=None, contract=contract)
     return [out] + alts if alts else out
 
 
@@ -544,6 +544,21 @@ def main():
             nxt = {(e["date"], e["sym"], e.get("sec0", (e["m"] + 1) * 60)): e["nxt"] for e in ev if e.get("src") == tag}
             dte = lambda t: (datetime.fromisoformat(nxt[(t["date"], t["sym"], t["alert_sec"])]) - datetime.fromisoformat(t["date"])).days
             T = [t for t in T if t["src"] != tag or dte(t) <= int(mx)]
+        if os.environ.get("STR_SRC_SCALE"):   # "e_shock15=1:0.25,3:0.25,4:0.10" (the user 2026-10-30): that tag's trades
+            # sell 25% once the option's bid at a minute close is +100% over the buy, 25% more at +300%, 10% at +400%;
+            # the rest on the usual exit. The trade's sale becomes the weighted price of its parts.
+            tag, rule = os.environ["STR_SRC_SCALE"].split("=")
+            steps = [(float(a), float(b)) for a, b in (x.split(":") for x in rule.split(","))]
+            for t in sorted((t for t in T if t["src"] == tag and t["entry"] != "close"), key=lambda t: t["date"]):
+                sold, got, parts = 0.0, 0.0, []
+                for m in range(t["bm"], t["xm"]):
+                    q = RS.quote(t["contract"], t["date"], m)
+                    if not q: continue
+                    for lvl, frac in steps:
+                        if lvl not in parts and q[0] >= t["buy"] * (1 + lvl):
+                            parts.append(lvl); sold += frac; got += frac * q[0]
+                t["sell_plain"] = t["sell"]; t["scaled"] = parts
+                t["sell"] = got + (1 - sold) * t["sell"]
         for spec in os.environ.get("STR_SRC_V", "").split(","):   # "e_shock15=plain10": that tag's alerts buy that contract
             if not spec: continue
             tag, ver = spec.split("=")

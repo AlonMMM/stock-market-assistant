@@ -1074,3 +1074,21 @@ $374,326, tune $245,281, check $432,129, check without 10-10 $151,600, live limi
 2025 $502,719, 2026 $154,601 (each from $100K). Better than both alone in every view, and the drop is under the plan
 alone's (21.5%). The candidate for live: shock (15x, hold5 within 5 min, 09:40-15:30), 0-2 DTE, burst >= 0, spread <= 30%
 at the buy, 0.20 delta stepping to 0.25/0.30/0.35 when under $0.20.
+
+### Shock scale-out: 25% at +100%, 25% at +300%, 10% at +400% (2026-10-30)
+
+The user: "take 25% when 100%+, then another 25% when 300%, then 10% at 400%" on the shock trades of the live version
+(0-2 DTE, <= 30%, burst >= 0, step35). `STR_SRC_SCALE=e_shock15=1:0.25,3:0.25,4:0.10`: a part sells when the option's
+bid at a minute close reaches the level, at that bid (real cbbo-1m); the rest on the usual exit.
+
+| | Live version | Scale-out |
+|---|---|---|
+| Account (drop) | $1,069,492 (20.5%) | $941,052 (20.5%) |
+| Without 10-10 | $374,326 | $327,518 |
+| Tune / check | $245,281 / $432,129 | $233,507 / $399,794 |
+| Check without 10-10 | $151,600 | $140,064 |
+| No limits / live limits | $1,253,857 / $532,238 | $1,051,583 / $466,745 |
+| Shock P&L in the account | $208,774 | $119,660 |
+
+39 shock trades reached +100% on the bid; the scale-out made 20 better and 19 worse, but the worse ones are the runners
+(the shock's money is a few big trades). Worse in every view, every year. Not adopted.

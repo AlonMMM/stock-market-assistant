@@ -64,11 +64,12 @@ SIZES = rr.SIZES
 LISTING = os.environ.get("IC_PASS") == "list"
 M_IN = 387
 A0, Z = "2024-02-01", FR.Z
-EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14")]
+EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15")]
 VOL = os.environ.get("IC_SET") == "vol"
-RS = os.environ.get("IC_SET") == "rs" or VOL
-TAG = "_vol" if VOL else ("_rs" if RS else "")
-LIST_NAME = {"_vol": "open14_dbx_list.csv", "_rs": "open12_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
+D2B = os.environ.get("IC_SET") == "d2b"
+RS = os.environ.get("IC_SET") == "rs" or VOL or D2B
+TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs"}.get(os.environ.get("IC_SET"), "")
+LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
 BASE = dict(lo=0.02, hi=0.04, d=0.20, exit="his", ath=False, pos=0.85, vwap=True, rs="60", vol="min", fri=False)
 CORE = {"thesis": {}, "m15": dict(lo=0.015), "m3": dict(lo=0.03, hi=9.0), "d30": dict(d=0.30), "d15": dict(d=0.15),
         "at10": dict(exit="at10"), "ath": dict(ath=True)}
@@ -84,6 +85,21 @@ if VOL:
     # next trading day: Monday for a Friday), t 1.0 / 1.2 / 1.5 x the four D2 windows; range, earnings, top 3 as before
     VERSIONS = {f"t{round(t * 10):02d}-{w}-{vl}-{'fri' if fr else 'nofri'}": {**BASE, **ANY, "rs": "td", "t": t, "win2": w, "vol": vl, "fri": fr, "win": "next"}
                 for t in (1.0, 1.2, 1.5) for w in ("c30", "c120", "max30", "day") for vl in ("min", "none", "max") for fr in (False, True)}
+if D2B:
+    # the user, 2026-10-30: "D2 is not a constrain - it's a bonus, or it's come alone". Strong = t >= T, or:
+    #   alone  D2 over the window >= X with no t needed (X 1.0 / 2.0)
+    #   bonus  t >= 0.8 and D2 >= 0.5 (the bot's bonus entry)
+    #   tonly  no D2 path (the reference)
+    # T 1.2 / 1.5 / 1.8, window the last 30 min / the last 2 hours; volume >= 1.3x, range, earnings, no Friday, top 3 by t,
+    # next-day expiry (the next trading day), as before
+    D2V = {}
+    for t in (1.2, 1.5, 1.8):
+        D2V[f"tonly-t{round(t * 10)}"] = {**BASE, **ANY, "rs": "tor", "t": t, "win2": "c30", "alone": None, "bonus": False, "win": "next"}
+        for w in ("c30", "c120"):
+            for x in (1.0, 2.0):
+                D2V[f"alone-t{round(t * 10)}-{w}-x{round(x * 10)}"] = {**BASE, **ANY, "rs": "tor", "t": t, "win2": w, "alone": x, "bonus": False, "win": "next"}
+            D2V[f"bonus-t{round(t * 10)}-{w}"] = {**BASE, **ANY, "rs": "tor", "t": t, "win2": w, "alone": None, "bonus": True, "win": "next"}
+    VERSIONS = D2V
 RX = None
 BASE_EXPIRY = sim.expiry_for   # restored after each pick (set at import, so every worker has it)
 
@@ -190,7 +206,11 @@ def candidates(rows, v):
         for right, bet in (("C", 1), ("P", -1)):
             mv, pos, vw = bet * r["move"], r["pos"] if bet > 0 else 1 - r["pos"], bet * r["vwap"]
             e60, eday = bet * r["ex60"], bet * r["exday"]
-            if v["rs"] == "td":
+            if v["rs"] == "tor":
+                tt, e2 = bet * r["t"], r[f"{'c' if bet > 0 else 'p'}_{v['win2']}"]
+                strong = tt >= v["t"] or (v["alone"] is not None and e2 >= v["alone"]) or (v["bonus"] and tt >= 0.8 and e2 >= 0.5)
+                ex = tt
+            elif v["rs"] == "td":
                 strong = bet * r["t"] >= v["t"] and r[f"{'c' if bet > 0 else 'p'}_{v['win2']}"] >= v["d2"]
                 ex = bet * r["t"]
             else:
