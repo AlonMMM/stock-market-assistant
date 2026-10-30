@@ -529,6 +529,16 @@ def main():
         if os.environ.get("STR_TO"): jobs = [j for j in jobs if j[0]["date"] <= os.environ["STR_TO"]]
         with mp.Pool(8) as pool: T = [t for t in pool.map(trade, jobs, chunksize=8) if t]
         T = [x for t in T for x in (t if isinstance(t, list) else [t])]   # a shock buy with its retried buys
+        if os.environ.get("STR_SRC_BEST"):   # "e_shock15=plain10:plain15:...": that tag's buy takes the contract with the
+            # narrowest spread (of the mid) at the buy second among those versions (the user 2026-10-30: delta 0.35 to 0.10)
+            tag, vers = os.environ["STR_SRC_BEST"].split("="); vers = vers.split(":")
+            best = {}
+            for t in T:
+                if t["src"] != tag or t["v"] not in vers or t["spread"] is None: continue
+                key = (t["date"], t["sym"], t["minute"], t["entry"])
+                rank = (t["spread"], abs(t["delta"] - 0.2))
+                if key not in best or rank < best[key][0]: best[key] = (rank, t)
+            T = [t for t in T if t["src"] != tag] + [dict(x[1], v="plain20", picked=x[1]["v"]) for x in best.values()]
         for spec in os.environ.get("STR_SRC_V", "").split(","):   # "e_shock15=plain10": that tag's alerts buy that contract
             if not spec: continue
             tag, ver = spec.split("=")

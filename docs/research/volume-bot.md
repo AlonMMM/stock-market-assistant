@@ -1021,3 +1021,24 @@ at the buy and minute quotes for the sale from Databento. Real prices, flat2 2%,
 - 0.25 is the best balanced: the best check half (with and without 10-10), the drop 22% (vs 26.6%), within 2% of 0.20 on
   the totals. Both beat the plan in all six views. The same order holds with no spread limit or no burst filter
   (0.25 has the smallest drops there too).
+
+### The narrowest spread between delta 0.10 and 0.35 (2026-10-30)
+
+The user: "when we want to buy, search between delta 0.35 to 0.1 the delta with the best spread and buy only when <= 30%.
+It should add more trades." `STR_SRC_BEST=e_shock15=plain10:...:plain35`: of the six contracts (0.10, 0.15, ..., 0.35;
+plain35 newly picked and fetched) the one with the narrowest spread of the mid at the buy second, ties to the one nearest
+0.20. Real prices, flat2 2%, plan + shock.
+
+| Shock contract | Filter | Trades | Account (drop) | Without 10-10 | Tune | Check | Check without 10-10 | Live limits |
+|---|---|---|---|---|---|---|---|---|
+| 0.20 | <= 30%, burst >= 0 | 492 | $829,141 (26.6%) | $290,384 | $208,351 | $395,291 | $137,278 | $434,443 |
+| 0.25 | <= 30%, burst >= 0 | 505 | $812,654 (22.0%) | $283,169 | $200,721 | $404,035 | $141,249 | $432,349 |
+| 0.35 | <= 30%, burst >= 0 | 522 | $755,158 (21.6%) | $263,556 | $214,348 | $350,205 | $122,655 | $366,433 |
+| Narrowest | <= 30%, burst >= 0 | 527 | $782,092 (22.6%) | $273,462 | $219,171 | $352,170 | $124,359 | $387,758 |
+| Narrowest | <= 30% | 789 | $621,132 (28.6%) | $231,036 | $201,091 | $308,128 | $114,042 | $273,943 |
+| Narrowest | all | 855 | $486,041 (31.1%) | $178,801 | $169,454 | $285,889 | $104,924 | $221,681 |
+
+- It adds shock buys (594 under 30% vs 512 at 0.20), but the added ones (0.20 over 30%, another strike under) lose:
+  tune 34, +4.3% (median -18.7%); check 48, -15.9% (median -31.3%). A wide spread at 0.20 marks a bad shock, whatever strike.
+- The narrowest spread is mostly the dearest contract (0.35 or 0.30 in 229 of 594), and the dear contracts give back the
+  move (0.35 alone: check $350K). Not better than a fixed 0.20 / 0.25.
