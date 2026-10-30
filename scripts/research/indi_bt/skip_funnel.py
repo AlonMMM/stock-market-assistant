@@ -26,8 +26,8 @@ def main():
         elif t["status"] == "no_expiry": r = "no expiry 1-4 days out"
         elif t["status"] in ("no_prices", "no_strikes"): r = "no option prices"
         elif t["status"] == "no_fill": r = "no fill"
-        elif t["e_next"] == 0: r = "earnings tonight or next morning"
-        elif t["pre_rvol"] is not None and t["pre_rvol"] >= 4: r = "news: volume 4x+ before the signal"
+        elif t["e_next"] == 0: r = "earnings reaction day"
+        elif t["pre_rvol"] is not None and t["pre_rvol"] >= 4: r = "news: pre-market volume 4x+"
         else:
             s = pick.get((t["sym"], t["date"], t["right"], t["minute"]), "?")
             r = {"ok": "TRADED", "thin": "thin: under 200 contracts in 30 min", "cheap": "option under $0.20 ($0.10 IBIT)"}.get(s, "pick not found")
@@ -48,7 +48,7 @@ def main():
     for t, r in stage: by[t["sym"]][r] += 1
     for s, c in sorted(by.items(), key=lambda x: -sum(x[1].values())):
         tot = sum(c.values())
-        print(s, tot, c["TRADED"], c["thin: under 200 contracts in 30 min"], c["option under $0.20 ($0.10 IBIT)"], c["earnings tonight or next morning"], c["news: volume 4x+ before the signal"], c["no expiry 1-4 days out"] + c["no option prices"] + c["no fill"])
+        print(s, tot, c["TRADED"], c["thin: under 200 contracts in 30 min"], c["option under $0.20 ($0.10 IBIT)"], c["earnings reaction day"], c["news: pre-market volume 4x+"], c["no expiry 1-4 days out"] + c["no option prices"] + c["no fill"])
 
 
 if __name__ == "__main__":
