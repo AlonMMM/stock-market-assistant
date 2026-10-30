@@ -1136,3 +1136,27 @@ the logged $1,069,492 (428): one plan trade differs; the check half is identical
 - The plan's spread: skipping or stepping wins without 10-10, in the tune half and with live limits, but loses the
   check half with 10-10: that day's plan winners had wide spreads. Not a clean win.
 - Next: the shock with no floor together with each plan rule.
+
+### The plan with no liquidity floor, and a 40% spread cap, on top of the shock with no floor (2026-10-30)
+The user: "did you try no liquidity for the plan as well? Mix it with max spread 40%". The shock now buys with no
+liquidity floor (`lq0>step35`) in every row. New: the plan alerts picked with no floor (`lq0`, tags `3y50q` ...
+`3ycand5wq`, about 900 option windows fetched); leg_seconds `STR_PLAN_V` (the plan's version chain, e.g.
+`lq0>plain20`) and `STR_PLAN_CAP` (the spread cap, default 0.30). flat2 2%. The reference ($1,326,357) is a little
+above the row above ($1,314,633): the shock picks were refreshed with the plan's new tags.
+
+| Plan version | Account (drop) | Without 10-10 | Tune | Check | Check without 10-10 | Live limits | 2024 | 2025 | 2026 |
+|---|---|---|---|---|---|---|---|---|---|
+| As live (floor 200, no cap) | $1,326,357 (21.5%) | $459,376 | $289,320 | $450,368 | $158,898 | $574,790 | $141,148 | $558,145 | $164,760 |
+| **No liquidity floor** | **$1,426,390** (21.3%) | $482,827 | $288,946 | **$487,505** | $166,688 | $607,398 | $141,182 | $615,877 | $161,493 |
+| Skip a spread > 40% | $1,109,737 (21.5%) | $509,637 | $317,563 | $347,113 | $161,550 | $631,362 | $152,443 | $425,142 | $168,168 |
+| No floor + skip > 40% | $1,091,484 (20.0%) | $494,950 | $306,646 | $352,690 | $162,216 | $616,696 | $152,989 | $418,745 | $165,915 |
+| Skip a spread > 30% | $964,140 (19.9%) | **$554,372** | **$323,432** | $294,953 | **$169,606** | **$664,430** | $154,168 | $349,088 | $175,824 |
+| Step 0.25-0.35, else skip | $1,071,446 (21.0%) | $513,138 | $312,209 | $337,756 | $165,297 | $601,243 | $148,376 | $412,233 | $173,854 |
+| Step 0.25-0.35, else keep | $1,215,041 (21.4%) | $472,645 | $293,947 | $409,172 | $161,447 | $530,224 | $143,682 | $500,092 | $165,643 |
+
+- The plan with no floor: better on the headline, without 10-10, the check half (both ways) and live limits; the tune
+  half ties (-$374) and 2026 is $3K lower. A small, clean gain; the candidate to go with the shock's no floor.
+- Every spread cap is the same trade: it wins without 10-10, in the tune half and with live limits (the 30% skip by
+  the most: +$95K without 10-10, +$90K live limits), and gives back $100K-$360K on 10-10 alone, whose plan winners had
+  wide spreads. Whether that is a gain depends on whether such days come again; one day decides it (see giants).
+- The 40% cap sits between none and 30% on every column; adding no floor to it changes little.

@@ -540,10 +540,18 @@ def main():
                 rank = (t["spread"], abs(t["delta"] - 0.2))
                 if key not in best or rank < best[key][0]: best[key] = (rank, t)
             T = [t for t in T if t["src"] != tag] + [dict(x[1], v="plain20", picked=x[1]["v"]) for x in best.values()]
+        if os.environ.get("STR_PLAN_V"):   # "lq0>plain20" (the user 2026-10-30): every minute alert buys the first of these
+            # versions it has (lq0 = the 0.20 contract with no liquidity floor)
+            chain, first = os.environ["STR_PLAN_V"].split(">"), {}
+            for t in T:
+                if t["src"] == "e_shock15" or t["v"] not in chain: continue
+                k = (t["src"], t["date"], t["sym"], t["minute"], t["entry"])
+                if k not in first or chain.index(t["v"]) < chain.index(first[k]["v"]): first[k] = t
+            T = [t for t in T if t["src"] == "e_shock15" or t["v"] != "plain20"] + [dict(t, v="plain20", picked=t["v"]) for t in first.values()]
         if os.environ.get("STR_PLAN_STEP"):   # the user 2026-10-30: a minute alert's 0.20 buy over a 30% spread tries 0.25,
             # 0.30, then 0.35 and buys the first at <= 30%; none: "keep" buys the 0.20 anyway, "skip" buys nothing;
             # "cap" = no step, only the 0.20 buys at <= 30%. The shock's buys are left as they are.
-            mode, cap = os.environ["STR_PLAN_STEP"], 0.3
+            mode, cap = os.environ["STR_PLAN_STEP"], float(os.environ.get("STR_PLAN_CAP", "0.3"))   # STR_PLAN_CAP=0.4: a 40% cap
             alts = ("plain25", "plain30", "plain35")
             by = {}
             for t in T:
