@@ -98,13 +98,11 @@ function RowDetail({
   row,
   board,
   alerts,
-  onShowAlerts,
   onTrade,
 }: {
   row: WatchRow;
   board: Board;
   alerts: FeedAlert[];
-  onShowAlerts: () => void;
   onTrade?: (() => void) | undefined;
 }) {
   const changeUsd = row.changeUsd;
@@ -182,11 +180,6 @@ function RowDetail({
         </ul>
       )}
       <div className="wl-actions">
-        <button type="button" onClick={onShowAlerts}>
-          {alerts.length > 0
-            ? `${alerts.length} alert${alerts.length === 1 ? "" : "s"} today →`
-            : "Alerts"}
-        </button>
         {onTrade && (
           <button type="button" className="primary" onClick={onTrade}>
             Trade {row.ticker}
@@ -225,7 +218,6 @@ function ScoreCell({ score }: { score: number | null }) {
 export function WatchTable({
   board,
   alerts,
-  onShowAlerts,
   onTrade,
   onOpen,
   compare,
@@ -244,7 +236,6 @@ export function WatchTable({
   onOpen?: (ticker: string) => void;
   board: Board;
   alerts: FeedAlert[];
-  onShowAlerts: (ticker: string) => void;
   // Absent for visitors who cannot trade.
   onTrade?: ((ticker: string) => void) | undefined;
   // "vs sector" makes the page load the board with sector ETFs.
@@ -525,7 +516,6 @@ export function WatchTable({
                     row={r}
                     board={board}
                     alerts={today.filter((a) => a.ticker === r.ticker)}
-                    onShowAlerts={() => onShowAlerts(r.ticker)}
                     onTrade={onTrade ? () => onTrade(r.ticker) : undefined}
                   />
                 )}

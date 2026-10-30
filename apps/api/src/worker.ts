@@ -81,6 +81,7 @@ const stranglePortfolio = new PortfolioCache();
 import { handleCandles } from "../../../packages/market-data/src/candles.js";
 import { handleChartBars } from "../../../packages/market-data/src/chart-bars.js";
 import { handleTradeChart } from "../../../packages/market-data/src/trade-chart.js";
+import { handleBotBacktest } from "../../../packages/market-data/src/bot-backtest.js";
 import { handleControl } from "../../../packages/trading/src/control-api.js";
 import { changeRefusal } from "./owner-only.js";
 import { verifyAccess, type AccessIdentity } from "./access.js";
@@ -506,6 +507,39 @@ export default {
       const result = await handleTradeChart(
         Object.fromEntries(query),
         credentials,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    // The Main bot's backtest of one stock over a range (the Backtest page).
+    if (path === "/api/bot-backtest") {
+      if (request.method !== "POST")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "POST" },
+        });
+      let body: unknown;
+      try {
+        const text = await request.text();
+        if (text.length > 65536)
+          return Response.json({ error: "Request too large" }, { status: 413 });
+        body = JSON.parse(text);
+      } catch {
+        return Response.json(
+          { error: "Expected JSON object" },
+          { status: 400 },
+        );
+      }
+      const db = env.BARS_CACHE ? stores(env.BARS_CACHE) : undefined;
+      const result = await handleBotBacktest(
+        body,
+        credentials,
+        env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
+        fetch,
+        Date.now(),
+        db?.cache,
       );
       return Response.json(result.body, {
         status: result.status,

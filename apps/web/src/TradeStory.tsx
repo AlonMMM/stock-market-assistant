@@ -426,11 +426,14 @@ export function TradeStory({
   t,
   bot,
   source = bot ? "main" : "owner",
+  backtest,
   onClose,
 }: {
   t: ClosedTrade;
   bot: boolean;
   source?: TradeSource;
+  // A backtest's trade (the Backtest page): its story is given, not read from the bot's records.
+  backtest?: Story;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -479,7 +482,7 @@ export function TradeStory({
             ×
           </button>
         </header>
-        <TradeStoryBody t={t} source={source} />
+        <TradeStoryBody t={t} source={source} backtest={backtest} />
       </div>
     </dialog>,
     document.body,
@@ -498,11 +501,13 @@ export function TradeStoryBody({
   t,
   source,
   live,
+  backtest,
   compact = false,
 }: {
   t: ClosedTrade;
   source: TradeSource;
   live?: { held: number };
+  backtest?: Story | undefined;
   // Under a position: the brief summary, the stock and option panes, the
   // reasons folded, no fills table.
   compact?: boolean;
@@ -623,20 +628,28 @@ export function TradeStoryBody({
     }
   };
 
-  // The bot's records: the Main bot's or the volume bot's.
+  // The bot's records: the Main bot's or the volume bot's; a backtest's trade needs none.
+  let recordsPath: string | null =
+    source === "volume" ? "/api/strangle" : "/api/bot";
+  let ordersPath: string | null = "/api/portfolio/orders";
+  if (backtest) {
+    recordsPath = null;
+    ordersPath = null;
+  }
   const { value: records } = usePolling<BotView | StrangleView>(
-    source === "volume" ? "/api/strangle" : "/api/bot",
+    recordsPath,
     refreshMs,
     ignore,
   );
   const { value: orders } = usePolling<OrderDecisions>(
-    "/api/portfolio/orders",
+    ordersPath,
     refreshMs,
     ignore,
   );
   // The story is built once per answer: the chart redraws its lines and
   // markers when it changes, and the crosshair readout re-renders often.
   const story = useMemo<Story | null>(() => {
+    if (backtest) return backtest;
     if (source === "volume") {
       const own = volumeStory(t, records as StrangleView | null);
       if (own) return own;
@@ -649,7 +662,7 @@ export function TradeStoryBody({
       return botView ? unknownStory(t) : null;
     }
     return ownerStory(t, decisionFor(t, orders?.decisions ?? []));
-  }, [t, source, records, orders]);
+  }, [t, source, records, orders, backtest]);
   const stats = useMemo(
     () => (story && chart ? tradeStats(t, story, chart) : null),
     [t, story, chart],

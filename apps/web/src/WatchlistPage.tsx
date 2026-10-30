@@ -21,11 +21,9 @@ import {
 /** The watchlist as its own section (user 2026-10-16, IBKR-like layout). */
 export function WatchlistPage({
   modes,
-  onShowAlerts,
   onTrade,
 }: {
   modes: ReactNode;
-  onShowAlerts: (ticker: string) => void;
   onTrade: (ticker: string, mode?: "options" | "stock") => void;
 }) {
   // A stock's own page (user 2026-10-18), `#watchlist/NVDA`, and the price
@@ -138,7 +136,6 @@ export function WatchlistPage({
           night={prices.prices}
           alerts={status ? kept.current : []}
           onBack={close}
-          onShowAlerts={() => onShowAlerts(page)}
           onTrade={canTrade ? (how) => onTrade(page, how) : undefined}
         />
       ) : (
@@ -185,7 +182,6 @@ export function WatchlistPage({
               night={prices.prices}
               livePrices={prices.state}
               alerts={status ? kept.current : []}
-              onShowAlerts={onShowAlerts}
               onTrade={canTrade ? onTrade : undefined}
               onOpen={open}
               tools={

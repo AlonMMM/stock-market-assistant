@@ -2040,6 +2040,171 @@ main:has(> .backtest-page) {
 .reset:disabled {
   cursor: default;
 }
+/* The Backtest section: a bot over a period (BotBacktest.tsx). */
+.bot-bt .up {
+  color: var(--green-53);
+}
+.bot-bt .down {
+  color: var(--red-51);
+}
+.setup select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--gray-87);
+  border-radius: 10px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 14px;
+  color: var(--gray-27);
+}
+.bt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.bt-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.bt-add .reset {
+  align-self: center;
+}
+.setup .rule-field.switch-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.setup .rule-field.switch-row input {
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+}
+.bt-summary {
+  gap: 14px;
+}
+.bt-total {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bt-pnl {
+  font-size: 34px;
+  letter-spacing: -0.5px;
+  line-height: 1.15;
+}
+.bt-stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px 14px;
+}
+.bt-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bt-stats dt {
+  font-size: 12px;
+  color: var(--gray-49);
+}
+.bt-stats dd {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+.bt-skips summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.bt-skips ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+.bt-trades .card-head {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.bt-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+.bt-list li + li {
+  border-top: 1px solid var(--gray-92b);
+}
+.bt-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "when what result"
+    "when exit result";
+  gap: 2px 12px;
+  align-items: center;
+  padding: 10px 4px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.bt-row:hover:not(:disabled) {
+  background: var(--gray-95b);
+}
+.bt-row:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.bt-when {
+  grid-area: when;
+  font-size: 12px;
+  color: var(--gray-49);
+}
+.bt-what {
+  grid-area: what;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+.bt-what .state-chip {
+  padding: 0 8px;
+  font-size: 11px;
+}
+.bt-exit {
+  grid-area: exit;
+  font-size: 12px;
+}
+.bt-result {
+  grid-area: result;
+  text-align: right;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.bt-empty h2 {
+  margin: 0;
+  font-size: 18px;
+}
+@media (max-width: 520px) {
+  .bt-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "what result"
+      "when result"
+      "exit exit";
+  }
+  .bt-pnl {
+    font-size: 28px;
+  }
+}
 .run-block {
   display: flex;
   flex-direction: column;
