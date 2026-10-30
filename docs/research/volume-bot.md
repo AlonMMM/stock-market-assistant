@@ -1160,3 +1160,34 @@ above the row above ($1,314,633): the shock picks were refreshed with the plan's
   the most: +$95K without 10-10, +$90K live limits), and gives back $100K-$360K on 10-10 alone, whose plan winners had
   wide spreads. Whether that is a gain depends on whether such days come again; one day decides it (see giants).
 - The 40% cap sits between none and 30% on every column; adding no floor to it changes little.
+
+## Audit of the simulator (2026-10-30)
+The user doubted a 35-43% win rate on 0-2 DTE options. A code review of leg_seconds / leg_fallback / leg_realspread
+and checks on the trades found two bugs (both now behind switches, off by default so old runs reproduce):
+
+- **Dropped losers** (`STR_WALK_KEEP=1` fixes): `leg_fallback.walk` returned None when the option had no trade print in
+  the 3 minutes after the buy, and the trade vanished. Those trades average about -25% (17% won).
+- **Chase below the bid** (`STR_CHASE_NOFILL=ask` fixes): when the bid 10 s after the buy was above the price, the buy
+  was capped at +10%, under the bid. The live bot chases the ask for 3 minutes with no cap (ladder.ts), so the fix pays
+  the ask 10 s later (`=1` skips the trade instead: too harsh).
+
+Fine: no look-ahead in entry or exit (the exit sells at the book as the decision minute closed), zero bids = -100%, no
+duplicate or overlapping trades, nothing overnight, the giant winners match the stock's move and intrinsic value.
+Optimistic, not fixed: the buy at mid + 1/4 spread (the ask never came that low within 10 s in 63% of buys); size
+(at 2% most sales exceed the option's volume in the 5 minutes around them; at 3-5% far worse); the top-50 list is
+today's, applied to 2024.
+
+flat2 2%, q tags:
+
+| Version | Trades | Account (drop) | Without 10-10 | Tune | Check | Check without 10-10 | Live limits |
+|---|---|---|---|---|---|---|---|
+| Live, old model | 427 | $1,080,384 (20.5%) | $376,086 | $247,864 | $432,129 | $151,600 | $537,705 |
+| Live, fixed (chase to ask) | 430 | $782,861 (21.1%) | $289,360 | $213,791 | $360,826 | $135,485 | $392,938 |
+| No floor, old model | 460 | $1,426,390 (21.3%) | $482,827 | $288,946 | $487,505 | $166,688 | $607,398 |
+| No floor, walk fix only | 467 | $1,387,994 (21.4%) | $469,066 | $279,934 | $488,386 | $167,034 | $575,533 |
+| **No floor, fixed (chase to ask)** | 467 | **$1,011,767** (22.2%) | $362,862 | $242,569 | $411,139 | $150,531 | $426,679 |
+
+- The fixed model takes about 28-30% off both. No floor still beats live in every column and year; the candidate stands.
+- Per trade, fixed no floor: plan 42% won, average +45%, median -24%, +16% without its best 10; shock 36% won, +22%,
+  median -19%, -1% without its best 10. The win rate is real; the average is a few 10x days.
+- Every later volume-bot test runs with `STR_WALK_KEEP=1 STR_CHASE_NOFILL=ask`.

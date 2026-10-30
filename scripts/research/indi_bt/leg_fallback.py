@@ -52,7 +52,8 @@ def choose(cands, mode):
     return best
 
 
-TICK = float(os.environ.get("STR_TICK", "0"))   # STR_TICK=0.01: the model pays at least a cent over the middle, gets a cent under
+TICK = float(os.environ.get("STR_TICK", "0"))
+KEEP_NOPRINT = os.environ.get("STR_WALK_KEEP") == "1"   # the audit 2026-10-30: walk() dropped every trade whose option did not print in the 3 minutes after the buy (mostly losers)   # STR_TICK=0.01: the model pays at least a cent over the middle, gets a cent under
 
 
 def walk(sym, date, ct, side, contract, spot_side, u):
@@ -60,8 +61,10 @@ def walk(sym, date, ct, side, contract, spot_side, u):
     kb = {b[0]: b for b in day(contract, date)}
     sb = {b[0]: b for b in day(sym, date)}
     b0 = next((kb[q] for q in range(ct, ct + 4) if q in kb), None)
-    if not b0: return None
-    buy = max(sim.mid(b0) * (1 + SH), sim.mid(b0) + TICK); last = b0; best = spot_side
+    if not b0 and not KEEP_NOPRINT: return None
+    if not b0: b0 = (ct,)   # no option print after the buy (STR_WALK_KEEP=1): the exit runs on the stock alone, the book prices it
+    px = lambda b, sign: max(min(sim.mid(b) * (1 + sign * SH), sim.mid(b) + sign * TICK), 0.01) if len(b) > 1 else None
+    buy = px(b0, 1); last = b0; best = spot_side
     for t in range(b0[0] + 1, END + 1):
         if t in kb: last = kb[t]
         spot = sb[t][4] if t in sb else None
@@ -70,8 +73,8 @@ def walk(sym, date, ct, side, contract, spot_side, u):
         if EARLY_GIVE and t - b0[0] <= EARLY_MIN: give = EARLY_GIVE
         if NOSTOP_MIN and t - b0[0] <= NOSTOP_MIN and t < END: continue
         if t >= END or (spot and abs(spot / best - 1) >= give * u):
-            return buy, max(min(sim.mid(last) * (1 - SH), sim.mid(last) - TICK), 0.01), b0[0], t
-    return buy, max(min(sim.mid(last) * (1 - SH), sim.mid(last) - TICK), 0.01), b0[0], END
+            return buy, px(last, -1), b0[0], t
+    return buy, px(last, -1), b0[0], END
 
 
 def one(sig):
