@@ -58,6 +58,7 @@ import {
   signalRows,
   signalsCsv,
   skipCounts,
+  spreadPct,
   type SignalRow,
   statusWords,
   stepMs,
@@ -1151,17 +1152,23 @@ function SignalList({
               <th title="The option's return on what was paid. Not bought: the trade it would have made on Black-Scholes prices">
                 Return
               </th>
+              <th title="The backtest's buy price. Not bought: the what-if's buy (a model)">
+                Bought at
+              </th>
+              <th title="The real bid / ask as the signal minute closed, and the spread as a share of its middle (Databento or the bots' saved books; — without one)">
+                Bid / ask
+              </th>
+              <th title="Contracts of this option traded in the 30 minutes before the signal (the bot's liquidity check)">
+                Vol 30 min
+              </th>
               <th title="Strength against SPY (t-stat)">t</th>
-              <th title="The day's volume against normal">Vol</th>
+              <th title="The stock's day volume against normal">Vol ×</th>
               <th>D2</th>
               <th>Contract</th>
-              <th title="Bought: the fill. Not bought: its last price at the signal">
+              <th title="The option's last trade price at the signal, as the bot's pick read it">
                 Price
               </th>
               <th>Δ</th>
-              <th title="Contracts traded in the 30 minutes before the signal">
-                30 min
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -1192,12 +1199,17 @@ function SignalLine({
 }) {
   const fixed = (v: number | null, digits: number, unit = "") =>
     v === null ? "—" : `${v.toFixed(digits)}${unit}`;
+  const money = (v: number | null) => (v === null ? "—" : `$${v.toFixed(2)}`);
   const taken = r.trade?.status === "taken";
   let contract = "—";
   if (r.strike !== null && r.expiry !== null)
     contract = `${r.strike} ${r.right} ${r.expiry.slice(5)}`;
   let ret = "—";
   if (r.ret !== null) ret = signedPct(r.ret * 100);
+  let book = "—";
+  const spread = spreadPct(r);
+  if (r.bid !== null && r.ask !== null && spread !== null)
+    book = `${money(r.bid)} / ${money(r.ask)} · ${(spread * 100).toFixed(0)}%`;
   return (
     <tr className={r.bought ? "bought" : ""}>
       <td className="num">{israelDateTime(stepMs(r.date, r.minute))}</td>
@@ -1222,6 +1234,16 @@ function SignalLine({
         {ret}
         {r.model && <span className="small muted"> model</span>}
       </td>
+      <td className="num">
+        {money(r.boughtAt)}
+        {r.model && r.boughtAt !== null && (
+          <span className="small muted"> model</span>
+        )}
+      </td>
+      <td className="num">{book}</td>
+      <td className={`num${r.reason === "illiquid" ? " thin" : ""}`}>
+        {r.volume30 ?? "—"}
+      </td>
       <td className="num">{fixed(r.t, 1)}</td>
       <td className="num">{fixed(r.rvol, 1, "×")}</td>
       <td className="num">{fixed(r.d2, 1)}</td>
@@ -1229,13 +1251,8 @@ function SignalLine({
         {contract}
         {r.modelled && <span className="state-chip">Model</span>}
       </td>
-      <td className="num">
-        {r.price === null ? "—" : `$${r.price.toFixed(2)}`}
-      </td>
+      <td className="num">{money(r.price)}</td>
       <td className="num">{fixed(r.delta, 2)}</td>
-      <td className={`num${r.reason === "illiquid" ? " thin" : ""}`}>
-        {r.volume30 ?? "—"}
-      </td>
     </tr>
   );
 }

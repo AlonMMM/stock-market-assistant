@@ -254,7 +254,10 @@ export interface SignalRow {
   contract: string | null; // OCC: the one bought, looked at, or modelled
   strike: number | null;
   expiry: string | null;
-  price: number | null; // bought: the fill; skipped: its last price at the signal
+  price: number | null; // the option's last price at the signal, as the pick read it
+  boughtAt: number | null; // the backtest's buy: the fill, or the what-if's (a model)
+  bid: number | null; // the real book as the signal minute closed, when there is one
+  ask: number | null;
   delta: number | null;
   volume30: number | null;
   ret: number | null; // the option's return on what was paid, from its steps
@@ -298,6 +301,9 @@ function skipRow(k: SimSkip, i: number): SignalRow {
     strike: c?.strike ?? w?.strike ?? null,
     expiry: c?.expiry ?? w?.expiry ?? null,
     price: c?.price ?? null,
+    boughtAt: w?.steps[0]?.price ?? null,
+    bid: c?.book?.bid ?? null,
+    ask: c?.book?.ask ?? null,
     delta: c?.delta ?? null,
     volume30: c?.volume30 ?? null,
     ret: w?.ret ?? null,
@@ -340,7 +346,10 @@ export function signalRows(
         contract: t.contract,
         strike: t.strike,
         expiry: t.expiry,
-        price: t.steps[0]?.price ?? null,
+        price: t.signalPrice ?? null,
+        boughtAt: t.steps[0]?.price ?? null,
+        bid: t.book?.bid ?? null,
+        ask: t.book?.ask ?? null,
         delta: t.delta,
         volume30: t.volume30,
         ret: stepsReturn(t.steps),
@@ -356,6 +365,14 @@ export function signalRows(
   return rows.sort(
     (a, b) => stepMs(b.date, b.minute) - stepMs(a.date, a.minute),
   );
+}
+
+/** The real spread at the signal as a share of its middle; null without a book. */
+export function spreadPct(r: Pick<SignalRow, "bid" | "ask">): number | null {
+  if (r.bid === null || r.ask === null) return null;
+  const mid = (r.bid + r.ask) / 2;
+  if (!(mid > 0)) return null;
+  return (r.ask - r.bid) / mid;
 }
 
 const csvCell = (v: string | number | boolean | null) => {
@@ -386,6 +403,10 @@ export function signalsCsv(rows: readonly SignalRow[]): string {
     "strike",
     "expiry",
     "price",
+    "bought_at",
+    "bid",
+    "ask",
+    "spread_pct",
     "delta",
     "volume30",
     "return",
@@ -414,6 +435,10 @@ export function signalsCsv(rows: readonly SignalRow[]): string {
       r.strike,
       r.expiry,
       round(r.price, 4),
+      round(r.boughtAt, 4),
+      r.bid,
+      r.ask,
+      round(spreadPct(r), 4),
       round(r.delta, 3),
       r.volume30,
       round(r.ret, 4),

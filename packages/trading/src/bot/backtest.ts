@@ -148,6 +148,8 @@ export interface SimTrade {
   delta: number;
   volume30: number;
   fallback: boolean; // the cheap fallback chose it
+  signalPrice?: number; // the option's price at the signal, as the pick read it
+  book?: Book; // the real bid / ask as the signal minute closed, when there is one
   steps: SimStep[];
   // "quotes": bought and sold at real bids / asks on the stock's minute clock;
   // "trades": the contract had no quote at the signal, so the trade bars priced it.
@@ -168,6 +170,12 @@ export type SkipReason =
   | "illiquid"
   | "no_fill";
 
+/** A real bid / ask (option-quotes.ts). */
+export interface Book {
+  bid: number;
+  ask: number;
+}
+
 /** The contract the bot looked at for a signal, at the signal minute. */
 export interface SeenContract {
   symbol: string; // OCC
@@ -176,6 +184,7 @@ export interface SeenContract {
   delta: number; // |delta|, from the price's implied volatility
   price: number; // the option's last trade price within 10 minutes
   volume30: number; // contracts traded in the 30 minutes before the signal
+  book?: Book; // the real bid / ask as the signal minute closed, when there is one
 }
 
 /**
@@ -491,6 +500,7 @@ interface WalkInput {
 }
 
 interface Walked {
+  book: Book | null; // the real book at the signal
   steps: SimStep[];
   open: boolean;
   noFill: boolean;
@@ -528,9 +538,27 @@ async function walk(
         .optionQuotes(w.contract, w.date, days.at(-1)!)
         .catch(() => new Map<string, QuoteMinute[]>())
     : new Map<string, QuoteMinute[]>();
-  if (bookAt(quotes.get(w.date) ?? [], w.minute))
-    return walkQuotes(data, cal, w, s, days, quotes);
-  return walkTrades(data, cal, w, s, o, days);
+  const q = bookAt(quotes.get(w.date) ?? [], w.minute);
+  if (!q)
+    return { ...(await walkTrades(data, cal, w, s, o, days)), book: null };
+  const book = { bid: q.bid, ask: q.ask };
+  return { ...(await walkQuotes(data, cal, w, s, days, quotes)), book };
+}
+
+/** A contract's real book as a session minute closed; null without one. */
+async function bookOf(
+  data: BacktestData,
+  contract: string,
+  date: string,
+  minute: number,
+): Promise<Book | null> {
+  if (!data.optionQuotes) return null;
+  const quotes = await data
+    .optionQuotes(contract, date, date)
+    .catch(() => new Map<string, QuoteMinute[]>());
+  const q = bookAt(quotes.get(date) ?? [], minute);
+  if (!q) return null;
+  return { bid: q.bid, ask: q.ask };
 }
 
 // Real quotes as the research simulator reads them (leg_realspread.quote): the
@@ -567,7 +595,7 @@ async function walkQuotes(
   s: BotSettings,
   days: string[],
   quotes: Map<string, QuoteMinute[]>,
-): Promise<Walked> {
+): Promise<Omit<Walked, "book">> {
   const base: ExitRules = exitRules(s);
   const entryDay = quotes.get(w.date) ?? [];
   const q0 = bookAt(entryDay, w.minute)!;
@@ -619,7 +647,7 @@ async function walkQuotes(
     });
     state = { ...state, qty: Math.round(rem * nominal) };
   };
-  const done = (): Walked => ({
+  const done = (): Omit<Walked, "book"> => ({
     steps,
     open: false,
     noFill: false,
@@ -759,7 +787,7 @@ async function walkTrades(
   s: BotSettings,
   o: RunOptions,
   days: string[],
-): Promise<Walked> {
+): Promise<Omit<Walked, "book">> {
   const fill = o.fillPct / 100;
   const base: ExitRules = exitRules(s);
   const option = await data.optionRange(w.contract, w.date, days.at(-1)!);
@@ -798,7 +826,7 @@ async function walkTrades(
     });
     state = { ...state, qty: Math.round(rem * nominal) };
   };
-  const done = (): Walked => ({
+  const done = (): Omit<Walked, "book"> => ({
     steps,
     open: false,
     noFill: false,
@@ -1043,7 +1071,11 @@ export async function runStock(
         bonus: sig.bonus,
       };
       if (spot !== null) row.stock = spot;
-      if (seen) row.contract = seen;
+      if (seen) {
+        const book = await bookOf(data, seen.symbol, date, sig.minute);
+        row.contract = seen;
+        if (book) row.contract = { ...seen, book };
+      }
       if (model) row.whatIf = model;
       out.skips.push(row);
     };
@@ -1137,6 +1169,8 @@ export async function runStock(
       steps: walked.steps,
       open: walked.open,
       priced: walked.priced,
+      signalPrice: picked.price,
+      ...(walked.book ? { book: walked.book } : {}),
       watch: watch ? { name: watch.name, level: watch.level } : null,
     };
     out.trades.push(trade);
@@ -1256,6 +1290,8 @@ async function pyramid(
     steps: walked.steps,
     open: walked.open,
     priced: walked.priced,
+    signalPrice: picked.price,
+    ...(walked.book ? { book: walked.book } : {}),
     watch: null,
   };
 }

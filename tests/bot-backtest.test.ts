@@ -455,6 +455,49 @@ test("a skipped signal keeps what the bot saw and the trade it would have made o
   assert.ok(w.ret > 0, String(w.ret));
 });
 
+test("the real book at the signal is kept on a trade and on a skip's contract", async () => {
+  const { data } = fakeData(5000);
+  const quoted = withQuotes(data);
+  const skip = (
+    await runStock(
+      "NVDA",
+      [date],
+      { ...defaultSettings, pyramid: false },
+      quoted,
+      backtestCalendar,
+    )
+  ).skips[0]!;
+  const k = skip.contract!.strike;
+  const p = 3 * Math.exp(-(k - 100) / 3);
+  assert.ok(Math.abs(skip.contract!.book!.bid - (p - 0.01)) < 1e-9);
+  const trade = (
+    await runStock(
+      "NVDA",
+      [date],
+      { ...defaultSettings, skipPremarket: false, pyramid: false },
+      quoted,
+      backtestCalendar,
+    )
+  ).trades[0]!;
+  assert.ok(
+    Math.abs(
+      trade.book!.ask - (3 * Math.exp(-(trade.strike - 100) / 3) + 0.01),
+    ) < 1e-9,
+  );
+  assert.ok(trade.signalPrice! > 0);
+  // Without real quotes there is no book.
+  const bare = (
+    await runStock(
+      "NVDA",
+      [date],
+      { ...defaultSettings, skipPremarket: false, pyramid: false },
+      data,
+      backtestCalendar,
+    )
+  ).trades[0]!;
+  assert.equal(bare.book, undefined);
+});
+
 test("a thin contract's skip keeps its volume; with no expiry the what-if models a strike from the stock's volatility", async () => {
   const { data } = fakeData(1000);
   const thin = await runStock(
