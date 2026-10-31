@@ -2384,3 +2384,23 @@ $500K in 6-12 months, so for them the ladder is plain 3%.
   $140,047 (43.2%) - vs flat 3% $7,162,638 (43.3%) / check $1,168,632 (33.1%) / Fav 12m $259,262. App PR #227
   (`sizeSteps`, live and the Backtest account). For comparison, the tune-picked best by growth / drop was 2% -> 1.5% at
   $500K -> 1% from $1M (fair $2.55M / 33.9%, check drop 19.4%, Favorites = flat 2%).
+
+### 2.8 / 2.8.1 without early entry (2026-10-31)
+Another session's early_fair.py (Bot vs Indi "Test 2026-10-31: early entry re-tested the way the live bot runs it"):
+real SPY and stock trades every 5 s, every stock-day (false starts on days that never confirm included), the forming
+minute's volume not counted (as the live bot) -> early entry loses to the minute-close buy on both halves and lists
+(check fair $302,557 vs $580,989). It supersedes this session's partial fix above (SPY flat, signal minute only,
+forming volume still counted), which still showed early entry ahead. So the honest yardstick is the plain 1-second
+buy at the signal minute's close (`champ-1s`). Every fix, marked, split trades removed, 2% / 2.8.1 steps
+(account, drop, tune / check):
+
+| | Flat 2% | 2.8.1 steps (3 -> 2.5 -> 1.5 -> 1%) |
+|---|---|---|
+| 2.7 fair | $2,257,377 (34.6%) 413K / 576K | $3,099,177 (39.9%) 436K / 1,022K |
+| **2.8 fair** | **$2,901,992 (34.1%) 484K / 632K** | $3,872,419 (39.3%) 575K / 1,071K |
+| 2.7 Fav 12m | $185,663 (29.5%) | $152,030 (40.7%) |
+| **2.8 Fav 12m** | **$205,439 (30.1%)** | $179,759 (43.6%) |
+| 2.8 Fav 6m | $146,398 (30.1%) | $123,146 (43.6%) |
+
+2.8 still leads 2.7 (fair +29%, both halves; Favorites 12m +11%). Without early entry the 3% start of the steps loses
+to flat 2% on both Favorites lists (-12% / -16%, 13 points more drop) while it gains on the fair list (+33%, +5 points).
