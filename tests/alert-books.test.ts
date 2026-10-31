@@ -50,10 +50,12 @@ test("alert books: only |delta| 0.10-0.35, calls and puts", () => {
   ]);
 });
 
-test("alert books: a sample every step for 30 minutes, saved while it runs and at the end", async () => {
+test("alert books: every 2 s for 300 s, then once a minute until the last sale; batched reads", async () => {
   let now = Date.parse("2026-10-29T14:00:00Z");
+  const endAt = now + 20 * 60_000;
   let bid = 1;
   const s = store();
+  const reads: string[][] = [];
   const books = new AlertBooks({
     store: s,
     now: () => now,
@@ -62,48 +64,59 @@ test("alert books: a sample every step for 30 minutes, saved while it runs and a
         ? [q("call", 205, 0.3, bid), q("call", 220, 0.02, 0.01)]
         : [q("put", 195, -0.25, bid / 2)];
     },
+    async quotes(contracts) {
+      reads.push(contracts);
+      return contracts.map((c) =>
+        c.includes("C")
+          ? { ...q("call", 205, 0.3, bid), symbol: c }
+          : { ...q("put", 195, -0.25, bid / 2), symbol: c },
+      );
+    },
   });
-  await books.start({
+  const alert = {
     day: DAY,
     symbol: "NVDA",
     second: 3000,
-    kind: "fast",
+    kind: "fast" as const,
     expiry: EXP,
-  });
+    endAt,
+  };
+  await books.start(alert);
   assert.equal(books.active, 1);
-  for (let i = 0; i < 10; i++) {
+  // 300 s at 2 s: 150 reads, each one request for both contracts.
+  for (let i = 0; i < 150; i++) {
     now += bookWatch.everyMs;
-    bid += 0.1;
+    bid += 0.01;
     await books.step();
   }
-  // Saved every 30 s while it runs: 20 s in, only the first write.
+  // 149 at 2 s, and at 300 s the first minute read (a new minute).
+  assert.equal(reads.length, 150);
+  assert.deepEqual(reads[0], ["NVDA261029C00205000", "NVDA261029P00195000"]);
   let [saved] = s.alertBooks(DAY);
-  assert.equal(saved!.samples.length, 1);
-  now += 15_000;
-  await books.step();
-  [saved] = s.alertBooks(DAY);
-  assert.equal(saved!.samples.length, 12);
-  assert.deepEqual(
-    saved!.contracts.map((c) => c.symbol),
-    ["NVDA261029C00205000", "NVDA261029P00195000"],
-  );
+  assert.ok(saved!.samples.length >= 140);
   const last = saved!.samples.at(-1)!;
   assert.deepEqual(last.books[0], [bid, bid + 0.05]);
-  assert.deepEqual(last.books[1], [bid / 2, bid / 2 + 0.05]);
-  // Past 30 minutes: the last write, then the watch ends.
-  now += bookWatch.forMs;
+  // Then once a minute: 2-second steps in the same minute do not read.
+  const before = reads.length;
+  for (let i = 0; i < 60; i++) {
+    now += bookWatch.everyMs;
+    await books.step();
+  }
+  assert.ok(
+    reads.length - before <= 3,
+    `${reads.length - before} reads in 2 minutes`,
+  );
+  // Past the last sale: the last write, then the watch ends.
+  now = endAt;
   await books.step();
   assert.equal(books.active, 0);
   [saved] = s.alertBooks(DAY);
-  assert.equal(saved!.samples.length, 12);
-  // The same alert again does not start a second watch.
-  await books.start({
-    day: DAY,
-    symbol: "NVDA",
-    second: 3000,
-    kind: "fast",
-    expiry: EXP,
-  });
+  const minuteReads = saved!.samples.filter(
+    (x) => x.at - saved!.startedAt >= bookWatch.fineMs,
+  ).length;
+  assert.ok(minuteReads >= 2 && minuteReads <= 4);
+  // The same alert again does not start a second watch's row.
+  await books.start(alert);
   assert.equal(s.alertBooks(DAY).length, 1);
 });
 
@@ -124,21 +137,16 @@ test("alert books: no contract in range, no watch; a failed read is a gap", asyn
     now: () => now,
     chain: async () => [q("call", 200, 0.6, 3)],
   });
-  await none.start({
+  const at = {
     day: DAY,
-    symbol: "AMD",
     second: 10,
-    kind: "shock",
+    kind: "shock" as const,
     expiry: EXP,
-  });
+    endAt: 3_600_000,
+  };
+  await none.start({ ...at, symbol: "AMD" });
   assert.equal(none.active, 0);
-  await books.start({
-    day: DAY,
-    symbol: "NVDA",
-    second: 10,
-    kind: "shock",
-    expiry: EXP,
-  });
+  await books.start({ ...at, symbol: "NVDA" });
   fail = true;
   now += 40_000;
   await books.step();

@@ -121,6 +121,8 @@ export interface BotTrading {
     to: string,
   ): Promise<OptionQuote[]>;
   quote(contract: string): Promise<OptionQuote>;
+  /** Many contracts' quotes at once (the alert books); absent: one by one. */
+  quotes?(contracts: string[]): Promise<OptionQuote[]>;
   held(
     contract: string,
   ): Promise<{ qty: number; avgEntryPrice: number } | null>;

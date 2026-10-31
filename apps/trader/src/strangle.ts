@@ -250,6 +250,9 @@ export class StrangleBot {
     this.o = { now: Date.now, log: () => {}, ...options };
     this.books = new AlertBooks({
       chain: (u, right, from, to) => this.o.trading.chain(u, right, from, to),
+      ...(this.o.trading.quotes
+        ? { quotes: (c: string[]) => this.o.trading.quotes!(c) }
+        : {}),
       store: this.o.store,
       now: () => this.o.now(),
       log: (line) => this.o.log(line),
@@ -520,8 +523,9 @@ export class StrangleBot {
   }
 
   /**
-   * The option books around an alert, traded or not (alert-books.ts): the
-   * bot's expiry for the stock, else its nearest within a week.
+   * The option books around an alert, traded or not (alert-books.ts): every
+   * 2 s for 300 s, then once a minute to the bot's last sale; the bot's
+   * expiry for the stock, else its nearest within a week.
    */
   private async watchBooksOf(
     date: string,
@@ -548,6 +552,8 @@ export class StrangleBot {
         second,
         kind: shock ? "shock" : "fast",
         expiry,
+        // Once a minute after the first 300 s, until the bot's last sale.
+        endAt: newYorkToUtc(date, 570 + s.endMinute),
       });
     } catch (error) {
       this.event(

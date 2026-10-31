@@ -514,6 +514,9 @@ const strangle = (() => {
     trading: {
       chain: (u, right, from, to) => t.broker.chain(u, right, from, to),
       quote: (c) => t.broker.quote(c),
+      ...(t.broker.optionQuotes
+        ? { quotes: (c: string[]) => t.broker.optionQuotes!(c) }
+        : {}),
       held: async (c) => {
         const p = await t.broker.position(c).catch(() => null);
         return p && p.qty > 0 ? p : null;
