@@ -9,6 +9,48 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### The live rules replayed: $608,664 at the live floor, not $782,861 (2026-10-31)
+
+The user, 2026-10-31: "good so lets open the volume for backtesting on the app". The app's backtest
+(`packages/trading/src/strangle/backtest.ts`, app PR #224) replays the live bot's own code: the plan's minute alert,
+the shock alert, the news filter, the expiry, the side on 1-second prices (the 15-second cross, the shock's 5 checks
+within 300 s), the burst, the leg (`strangle/pick.ts`, shared with the trader), the buy 2 s after the side at the mid +
+a quarter of the spread with the chase to the ask, the give-back on minute closes, the sale at the bid, the account as
+leg_twice "flat" + leg_daycap. It was checked against leg_seconds.py's audited run (`audit/nofloor_ask` and
+`audit/live_ask`, `STR_WALK_KEEP=1 STR_CHASE_NOFILL=ask`, flat2 2%) on the research's own caches, the same alerts,
+news verdicts and 1-second books (`scripts/volume-backtest-check.ts` in the app repo), trade by trade:
+
+| Run (2024-02-01 to 2026-10-22, 54 stocks) | Trades | Avg a trade | $100K becomes (drop) | Live limits | Same as the research |
+|---|---|---|---|---|---|
+| Research, no floor (the $1,011,767 row) | 467 | +35.7% | $1,011,767 (22.2%) | $426,679 | |
+| Engine, research alerts, no floor | 426 | +35.5% | $827,157 (18.8%) | $393,657 | 406 identical (contract, buy, sale, exit) |
+| Engine, its own alerts, no floor | 428 | +35.4% | $830,895 (18.8%) | $395,274 | 406 identical |
+| Research, floor 200 (the $782,861 row) | 430 | | $782,861 (21.1%) | $392,938 | |
+| **Engine, floor 200 = the live rule (delta 0.20, plan + shock)** | 403 | +33.1% | **$608,664 (19.1%)** | $309,564 | 367 identical |
+| Engine, no floor, minute books only (no 1-second book) | 457 | +23.1% | $361,219 (23.8%) | $187,392 | 27 identical prices |
+
+The gap is the research's, three causes:
+
+- **A silent fallback strike.** `STR_PLAN_V=lq0>plain20` (and the shock's `lq0>step35`) keep "the first version that
+  has a trade": when the 0.20 contract was under $0.20, or had no book at the buy or the sale, the research traded
+  plain20's liquid strike instead. The live bot skips those (too cheap, or no fill). No floor: 41 plan trades,
+  +$156,008, one of them SLV 2026-08-28 +$78,444; and 6 shock trades.
+- **A same-minute tie.** A plan alert and a shock alert of a stock in the same minute: the research took the plan's
+  trade (its list order); the shock fires inside the minute, so the live bot watches it first and the stock is busy
+  for the plan. The engine keeps the time order (13 such pairs).
+- **The strike direction at the floor.** When the 0.20 leg trades under 200 contracts in 30 minutes, the live
+  `liquidOrder` tries only toward the money (0.25-0.50); plain20 (leg_fallback LOW 0.10) went further out first (0.10
+  to 0.20). 20 of the 430 floor-200 trades get another strike, and some thin legs plain20 rescued further out are no
+  trade live.
+
+So **the live rule (delta 0.20, floor 200, plan + shock, flat2 2%) is $608,664 with a 19.1% worst drop, not
+$782,861**, and $309,564 (19.2%) with the live limits; the no-floor candidate is $827,157 (18.8%), not $1,011,767. No
+floor still beats the floor by about the same ($218K vs $229K). The alerts agree: the engine's plan alerts include all
+16,026 of the research's (its extras were never listed, burst pre-filter, and trade twice), and the live shock rule
+(`fast.ts` `fastAlerts` + `shockRule`) reproduces all 320 research shock alerts of Feb-Apr 2024. Minute books alone are
+not enough for the buy ($361,219): the app backtest needs the 1-second books in D1 (`option_seconds`: sec_cache, the
+alert books backfill, and the live trader's alert books after each close).
+
 ### Status at the end of 2026-10-27 (read this first)
 
 - Top 50, 3 years, today's rules: -8.9% a trade (fresh run; the -9.1% of the morning moved with quotes added later in
@@ -1176,6 +1218,9 @@ duplicate or overlapping trades, nothing overnight, the giant winners match the 
 Optimistic, not fixed: the buy at mid + 1/4 spread (the ask never came that low within 10 s in 63% of buys); size
 (at 2% most sales exceed the option's volume in the 5 minutes around them; at 3-5% far worse); the top-50 list is
 today's, applied to 2024.
+
+Note (2026-10-31): these rows include trades on a silent fallback strike the live bot skips; the live rules make
+$827,157 (no floor) and $608,664 (floor 200, the live setting). See "The live rules replayed" at the top of the Log.
 
 flat2 2%, q tags:
 
