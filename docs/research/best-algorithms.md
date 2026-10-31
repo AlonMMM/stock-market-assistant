@@ -2341,3 +2341,20 @@ B6 fix (store.split_ratio / vol_factor in signals, defence_signals, sec_timing; 
 |---|---|---|---|---|---|---|
 | **2.8** | **$3,996,271 (33.9%)** | $561,752 / $750,610 | $725,082 | $1,050,750 | $260,083 (29.7%) | $159,125 |
 | 2.7 | $3,086,767 (34.2%) | $476,859 / $683,952 | $560,882 | $908,061 | $235,030 (28.5%) | $158,479 |
+
+### Size that steps down as the account grows (2026-10-31, the user's idea)
+The user: "on 100K keep with 3%, then on 500K go down to 2.5, on 1M 2%, 2M 1.5%, 4M 1% and goes on" (taken on: 8M+
+0.5%). The size read from the marked account as each day starts; each trade's return at its own size (sim.result, the
+cap). 2.8 with every fix, 2% flat as the yardstick (account, drop, tune / check):
+
+| Ladder | Fair | Fav 12m | Fav 6m |
+|---|---|---|---|
+| flat 2% | $3,996,228 (33.9%) 562K / 751K | $260,085 (29.7%) | $159,127 (29.7%) |
+| flat 3% | $7,162,638 (43.3%) 677K / 1,169K | $259,262 (43.2%) | $140,047 (43.2%) |
+| **3% -> 2.5 / 2 / 1.5 / 1 / 0.5% at $0.5M / 1M / 2M / 4M / 8M** | $6,179,802 (40.7%) 695K / 1,209K | = flat 3% | = flat 3% |
+| 2.5% -> 0.5% (one step lower) | $3,424,357 (38.6%) 694K / 1,088K | $265,105 (35.6%) | $152,131 (35.6%) |
+| 2% -> 0.5% | $3,287,259 (33.9%) | = flat 2% | = flat 2% |
+
+The worst drop comes while the account is small, so a ladder that starts at 3% keeps 3%'s drop there (40-43%); it calms
+only the big-account part of the curve (and fits the contracts' volume there, the audit's B3). The Favorites never pass
+$500K in 6-12 months, so for them the ladder is plain 3%.
