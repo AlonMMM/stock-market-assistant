@@ -61,6 +61,25 @@ when a stock has no liquid next-day option take the nearest liquid expiry 1-4 ca
   r2-fill      best 2 by t, no volume rule, down the list + fallback
 Picked on tune among the *-fill / -down versions; the pick and the reference on check; nights with 2 bets by weekday.
 Quotes: IC_PASS=list -> open23_dbx_list.csv (only the bets each night takes), dbx_fetch.py open23.
+
+IC_SET=score (nightly-bet, the user 2026-10-31 after the chart page of his last 12 night trades: "he like volume but this
+is not a trshold but a score. lets use volume as score", "the stock against the spy (more important than the volume)",
+"volume burst during the day (think of how you can calc it)", "stock that are running up in the last hour is most likely
+exustade ... if we have a pull back in the last hour we'll add score"). Gates (a stock-side can be scored): t >= 1.0 on
+its side, at least 0.70 of the day's range its way, no earnings night, no Friday. Four parts, each as its percentile
+among the gate-passing stock-sides of the tune weeks (so the check weeks do not set the scale):
+  RS     the bot's t at 15:57 (strength vs SPY x beta)                    weight 2 (the user: more important)
+  VOL    day volume to 15:57 / its 20-day median to 15:57 (log)           weight 1
+  BURST  the day's largest 5-minute volume / that stock's usual 5 minutes at the same time of day (20-day median per
+         minute), minutes 4-387 (log)                                      weight 1
+  PULL   minus the last hour's excess move vs SPY x beta on its side, in S30: a run into the close scores low, flat in
+         the middle, a pullback high                                       weight 1
+The weights, the user (before any result): "Against SPY = 5, Pullback = 4, Burst = 3, Volume = 2".
+A bet when the score is in the top 10% (or 5%) of the tune pool; at most 2 a night, highest score first, down the list,
+the next-day option or the nearest liquid one 1-4 days out, his exit. Set before running (weights RS, VOL, BURST, PULL):
+  t18-top3 (reference) / w5432-90 (5,2,3,4, top 10%) / w5432-95 (top 5%) / w-noburst-90 (5,2,0,4) /
+  w-nopull-90 (5,2,3,0) / w-equal-90 (1,1,1,1). Picked on tune among w*; the pick and the reference on check.
+Quotes: IC_PASS=list -> open24_dbx_list.csv, dbx_fetch.py open24.
 """
 import bisect, collections, csv, datetime as dt, glob, gzip, json, math, multiprocessing as mp, os, statistics as st, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -86,15 +105,16 @@ SIZES = rr.SIZES
 LISTING = os.environ.get("IC_PASS") == "list"
 M_IN = 387
 A0, Z = "2024-02-01", FR.Z
-EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15", "open16", "open22", "open23")]
+EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15", "open16", "open22", "open23", "open24")]
 VOL = os.environ.get("IC_SET") == "vol"
 D2B = os.environ.get("IC_SET") == "d2b"
 D3S = os.environ.get("IC_SET") == "d3"
-FILL = os.environ.get("IC_SET") == "fill"
+SCORE = os.environ.get("IC_SET") == "score"
+FILL = os.environ.get("IC_SET") in ("fill", "score")
 MANY = os.environ.get("IC_SET") == "many" or FILL
 RS = os.environ.get("IC_SET") == "rs" or VOL or D2B or D3S or MANY
-TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs", "d3": "_d3", "many": "_many", "fill": "_fill"}.get(os.environ.get("IC_SET"), "")
-LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv", "_d3": "open16_dbx_list.csv", "_many": "open22_dbx_list.csv", "_fill": "open23_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
+TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs", "d3": "_d3", "many": "_many", "fill": "_fill", "score": "_score"}.get(os.environ.get("IC_SET"), "")
+LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv", "_d3": "open16_dbx_list.csv", "_many": "open22_dbx_list.csv", "_fill": "open23_dbx_list.csv", "_score": "open24_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
 BASE = dict(lo=0.02, hi=0.04, d=0.20, exit="his", ath=False, pos=0.85, vwap=True, rs="60", vol="min", fri=False)
 CORE = {"thesis": {}, "m15": dict(lo=0.015), "m3": dict(lo=0.03, hi=9.0), "d30": dict(d=0.30), "d15": dict(d=0.15),
         "at10": dict(exit="at10"), "ath": dict(ath=True)}
@@ -150,8 +170,15 @@ if FILL:
                 "t18-fill": {**R, "t": 1.8, "n": 2, "fill": True, "win": "fb"},
                 "r2v13-fill": {**R, "t": -99, "n": 2, "fill": True, "win": "fb"},
                 "r2-fill": {**R, "t": -99, "n": 2, "fill": True, "win": "fb", "vol": "none"}}
+if SCORE:
+    SC = {**R, "rs": "score", "tmin": 1.0, "pos": 0.70, "vol": "none", "n": 2, "fill": True, "win": "fb", "q": 0.90}
+    VERSIONS = {"t18-top3": {**R, "t": 1.8, "n": 3},
+                "w5432-90": {**SC, "w": (5, 2, 3, 4)}, "w5432-95": {**SC, "w": (5, 2, 3, 4), "q": 0.95},
+                "w-noburst-90": {**SC, "w": (5, 2, 0, 4)}, "w-nopull-90": {**SC, "w": (5, 2, 3, 0)},
+                "w-equal-90": {**SC, "w": (1, 1, 1, 1)}}
 REF = "t18-top3" if MANY else None
 PICKABLE = [v for v in VERSIONS if v != "t18-top3" and (v.startswith("r2") or FILL)] if MANY else list(VERSIONS)
+SCALE = {}   # the tune pool's sorted parts, per (pos, tmin)
 RX = None
 BASE_EXPIRY = sim.expiry_for   # restored after each pick (set at import, so every worker has it)
 
@@ -188,11 +215,23 @@ def features(job):
     upto = [x for x in bars if x[0] <= M_IN]
     hi, lo = max(x[2] for x in upto), min(x[3] for x in upto)
     pv = sum((x[2] + x[3] + x[4]) / 3 * x[5] for x in upto); vol = sum(x[5] for x in upto)
-    past = []
+    past, pm = [], []
     for d in rr.CAL[max(0, i - 20):i]:
-        v = sum(x[5] for x in day(sym, d) if x[0] <= M_IN)
+        bb = day(sym, d)
+        v = sum(x[5] for x in bb if x[0] <= M_IN)
         if v: past.append(v)
+        if SCORE and len(bb) >= 380:
+            a = [0] * 390
+            for x in bb:
+                if 0 <= x[0] < 390: a[x[0]] += x[5]
+            pm.append(a)
     if len(past) < 10: return None
+    burst = None
+    if SCORE and len(pm) >= 10:
+        us = [st.median(a[m] for a in pm) for m in range(390)]
+        tv = [b[m][5] if m in b else 0 for m in range(390)]
+        rs_ = [sum(tv[m - 4:m + 1]) / sum(us[m - 4:m + 1]) for m in range(4, M_IN + 1) if sum(us[m - 4:m + 1]) > 0]
+        burst = max(rs_) if rs_ else None
     b_ = beta(sym, date, i, rr.CAL)
     if b_ is None: return None
     ex60 = (c[M_IN] / c[M_IN - 60] - 1) - b_ * (spy[M_IN] / spy[M_IN - 60] - 1)
@@ -210,7 +249,8 @@ def features(job):
             td[f"{side}_d3"] = x["d3"] if x else None
             td[f"{side}_d3_last"] = x["d3_last"] if x else None
     return dict(src=src, sym=sym, date=date, px=c[M_IN], move=c[M_IN] / pc - 1, pos=(c[M_IN] - lo) / (hi - lo) if hi > lo else 0.5,
-                vwap=c[M_IN] / (pv / vol) - 1 if vol else 0.0, ex60=ex60, exday=exday, **td, rvol=vol / st.median(past), pc=pc)
+                vwap=c[M_IN] / (pv / vol) - 1 if vol else 0.0, ex60=ex60, exday=exday, **td, rvol=vol / st.median(past), pc=pc,
+                burst=burst, lh=ex60 / cx["sd"])
 
 
 def tstrength(c, spy, b_, unit):
@@ -252,9 +292,42 @@ def ath_flags(rows):
             r["atl"] = bool(prior) and r["px"] < min(prior)
 
 
+def parts(r, bet):
+    return (bet * r["t"], math.log(max(r["rvol"], 1e-3)), math.log(max(r["burst"] or 1e-3, 1e-3)), -bet * r["lh"])
+
+
+def scored(rows, v):
+    """IC_SET=score: each night's gate-passing stock-sides by score, those at or above the tune pool's quantile q."""
+    global RX
+    if RX is None: RX = nf.reactions()
+    key = (v["pos"], v["tmin"])
+    pool = []
+    for r in rows:
+        if dt.date.fromisoformat(r["date"]).weekday() == 4 and not v["fri"]: continue
+        i = rr.CAL.index(r["date"])
+        if i + 1 < len(rr.CAL) and (i + 1) in set(RX.get(r["sym"], [])): continue
+        if r.get("burst") is None: continue
+        for right, bet in (("C", 1), ("P", -1)):
+            pos = r["pos"] if bet > 0 else 1 - r["pos"]
+            if bet * r["t"] >= v["tmin"] and pos >= v["pos"]: pool.append((r, right, parts(r, bet)))
+    if key not in SCALE:
+        tune = [p for r, _, p in pool if half(r["date"]) == "tune"]
+        SCALE[key] = [sorted(p[j] for p in tune) for j in range(4)]
+    S = SCALE[key]
+    pc = lambda j, x: bisect.bisect_right(S[j], x) / len(S[j])
+    sc = [(sum(w * pc(j, p[j]) for j, w in enumerate(v["w"])), r, right) for r, right, p in pool]
+    tsc = sorted(x for x, r, _ in sc if half(r["date"]) == "tune")
+    thr = tsc[int(v["q"] * (len(tsc) - 1))]
+    by = collections.defaultdict(list)
+    for x, r, right in sc:
+        if x >= thr: by[(r["src"], r["date"])].append((x, r, right))
+    return {k: [(r, right) for _, r, right in sorted(x, key=lambda q: -q[0])] for k, x in by.items()}
+
+
 def candidates(rows, v):
     """Each night's picks under version v: (row, right), at most 3, the strongest last-hour move first."""
     global RX
+    if v.get("rs") == "score": return scored(rows, v)
     if RX is None: RX = nf.reactions()
     by = collections.defaultdict(list)
     for r in rows:
