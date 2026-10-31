@@ -1853,3 +1853,21 @@ even ISO entry weeks, check = odd; `BT_X` overrides one exit setting, `BT_SEC_EX
 - Wider stops: none better; each loses a little and adds 1.5-2.3 points of drop. Keep -30%.
 - 1-second stops: far worse (-76%): 650 of 1079 trades stopped by second-level noise; the minute close is a filter.
   Do not stop on seconds.
+
+### Stock-based stops for losers, on the fixed walk (2026-10-31)
+The user: "re test an exit (as a stop, for looser holding) by the movement on the stock". champ-early, fair list,
+`BT_CLOCK=stock BT_CHASE=ask`, entry day, all out; S30 = the stock's usual 30-minute move.
+
+| Version | Sold by it | Won | 2% (drop) | Without 10-10 | Tune | Check | 1% |
+|---|---|---|---|---|---|---|---|
+| Fixed champion | - | 16.7% | $2,845,332 (27.6%) | $2,798,469 | $448,187 | $634,854 | $857,745 |
+| Trail 1.0 S30 from the best, losers only | 751 | 15.2% | $780,488 (28.0%) | $763,702 | $244,097 | $319,745 | $429,184 |
+| Trail 1.5, losers only | 468 | 16.4% | $2,429,127 (26.5%) | $2,376,883 | $387,589 | $626,728 | $785,411 |
+| Trail 2.0, losers only | 273 | 16.3% | $2,457,432 (28.2%) | $2,401,942 | $369,955 | $664,251 | $793,187 |
+| 1.0 S30 against the entry price (T_s30) | 300 | 16.3% | $2,967,242 (26.4%) | $2,908,748 | $468,689 | $633,095 | $888,054 |
+| Second level behind, 0.25 S30 (S_level) | 91 | 16.6% | $2,704,589 (26.7%) | $2,660,044 | $470,007 | $575,436 | $849,280 |
+
+- Trails from the best: worse, as on the old walk (a tight one sells most trades in their normal swings).
+- 1.0 S30 against the entry: +4% total, +5% tune, check a tie (-$1.8K), drop 1.2 points lower: the best stock stop,
+  not a clean win yet; next: 0.75 / 1.25 / 1.5 S30 around it.
+- The level stop: tune +5%, check -9%: no.
