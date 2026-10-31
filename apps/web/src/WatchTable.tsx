@@ -34,6 +34,7 @@ import {
   type WatchSort,
 } from "./live-model.js";
 import { DaySpark } from "./Sparkline.js";
+import { WatchPeek } from "./WatchPeek.js";
 import { israelClock, israelLabel } from "./time.js";
 import {
   scoreNote,
@@ -409,14 +410,14 @@ export function WatchTable({
                 <button
                   type="button"
                   className="wl-row wl-grid"
-                  {...(onOpen
-                    ? { "aria-label": `Open ${r.ticker}` }
-                    : { "aria-expanded": expanded })}
-                  onClick={() =>
-                    onOpen
-                      ? onOpen(r.ticker)
-                      : setOpen(expanded ? null : r.ticker)
-                  }
+                  aria-expanded={expanded}
+                  onClick={() => {
+                    // The first tap opens the quick look (and closes the
+                    // one before); a tap on the open row opens its page.
+                    if (expanded && onOpen) onOpen(r.ticker);
+                    else if (expanded) setOpen(null);
+                    else setOpen(r.ticker);
+                  }}
                 >
                   <span className="wl-cell wl-symbol">
                     <strong>{r.ticker}</strong>
@@ -530,7 +531,14 @@ export function WatchTable({
                     {r.alerts || "–"}
                   </span>
                 </button>
-                {expanded && (
+                {expanded && onOpen && (
+                  <WatchPeek
+                    row={r}
+                    date={board.date}
+                    onOpen={() => onOpen(r.ticker)}
+                  />
+                )}
+                {expanded && !onOpen && (
                   <RowDetail
                     row={r}
                     board={board}
