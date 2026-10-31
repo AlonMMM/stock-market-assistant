@@ -63,6 +63,8 @@ every run; S30 = the stock's usual 30-minute move, moves measured from the signa
 | 8 | "move the stop to 50/60/70%, as now we have a better stop" | Stop -50 / -60 / -70% on steps 6 and 7 | On step 6, -60%: $3,767,288 (25.1%), tune +6%, check +3%; on step 7 the check slips (-1.5%) | Giant-driven: median changed trade -2.9 pts; not adopted yet |
 | 9 | "add on this the add rule" | Stop -60% + staged exit + add 50% at +1.0 S30 within 10 min | $8,594,137 (29.7%), tune +32%, check +72% vs stop -60% alone | The best total; the add still giant-driven (10 trades = 85% of its points, median added trade -20 pts) |
 | 10 | "run it on the favorite" | Steps 6-9 on the Favorites (12 and 6 months) | 12m: champion $244,185 -> staged $256,014, stop -60% $272,126, + add $313,855 (drop 35.3%); check half lower for all (-3% / -3% / -10%) | Tune-only gains; the add fails the check half. Page: https://claude.ai/artifact/1TmWPpHbU7vSoAuKtKwmS1 |
+| 11 | "how is this working now ... after a fix that dropped 60%?" | Checks off / + stock stop / staged exit on the OLD walk | Old walk: staged $7,265,390 vs $7,258,326 (tie), check half -8%; checks off + stop -1.5% | The stock exits only help on the fixed walk: the fix hurt the option-price exits more |
+| 12 | "run this on the last 3 years" | Favorites 36 months (minute entries) | Champion $3,953,742 (30.4%); staged $3,595,914 (-9%); stop -60% $4,173,507 (check -12%); + add $11,124,421 (30.9%), tune +105%, check +37%, every year up | Staged and -60% fail; the add passes here (but median added trade -15 pts) |
 
 The candidate exit (step 6), as a `BT_X` overlay on the champion:
 `{"user_stop": {"checks": []}, "stock_stages": {"half": 0.5, "full": 1.0}}`; step 7 adds
@@ -2031,4 +2033,38 @@ The user: "run it on the favorite". The same runs' Favorites rows (export_early,
   the Favorites. The staged exit and the -60% stop are small (+5% / +11% total, check -3%); the add is +29% total with
   the check -10% and 7 points more drop. Without the best 5 trades the add is no better than the champion. Not ready
   for live; the add is a bet on giants.
+
+### Why the stock exits win now and lost before; the Favorites over 3 years (2026-10-31)
+The user: "before we already tested an exit by stock movements but never made it a candidate. how is this working now
+even better after a fix that dropped 60% of the gain?" and "run this on the last 3 years".
+
+The same exits on the old walk (`BT_CLOCK=trade BT_CHASE=cap BT_KEEP=0`, fair list, champ-early, 2%):
+
+| Version | Old walk | Tune | Check | Fixed walk | Tune | Check |
+|---|---|---|---|---|---|---|
+| Champion | $7,258,326 (24.1%) | $615,476 | $1,179,302 | $2,845,332 (27.6%) | $448,187 | $634,854 |
+| Checks off | $7,697,298 (26.7%) | $679,557 | $1,132,693 | $3,304,181 (32.4%) | $488,278 | $676,701 |
+| Checks off + all out at 1.0 S30 | $7,153,274 (25.6%) | $652,866 | $1,095,673 | $3,239,866 (27.8%) | $477,188 | $678,950 |
+| Staged (half 0.5, rest 1.0) | $7,265,390 (24.3%) | $670,923 | $1,082,895 | $3,431,770 (26.7%) | $506,039 | $678,163 |
+
+On the old walk the stock exits tie or lose (check half -7% to -8%), as in the 2026-10-24 / 27 tests. The fix cut the
+champion 61% but the staged version only 53%: the old walk flattered the option-price exits (checks, -30% stop) more
+than the stock ones. On the fixed walk the checks fire on time at the real mid; 465 trades sold by a check would, with
+the checks off, do 9 points worse at the median (101 better) but +1,184 points in all, from a few that come back big.
+So part of the "win" is the same giant pattern.
+
+The Favorites, 36 months (export_fav_long.py, 69 Favorites, Oct 2023 - Oct 2026, minute entries, real quotes, fixed
+walk, 2%; years from Oct 23):
+
+| Version | Account (drop) | Without best 5 | Tune | Check | 1% | Y1 | Y2 | Y3 |
+|---|---|---|---|---|---|---|---|---|
+| Champion | $3,953,742 (30.4%) | $808,356 | $550,546 | $718,149 | $998,410 | $225,474 | $527,668 | $332,316 |
+| Staged | $3,595,914 (31.0%) | $735,650 | $552,666 | $650,649 | $957,694 | $223,843 | $470,177 | $341,668 |
+| Staged, stop -60% | $4,173,507 (28.4%) | $850,861 | $659,034 | $633,276 | $1,035,213 | $225,571 | $544,867 | $339,569 |
+| Staged, stop -60%, + add | $11,124,421 (30.9%) | $1,921,715 | $1,131,201 | $983,417 | $2,486,192 | $266,187 | $996,121 | $419,545 |
+
+- Staged alone: -9% (check -9%): fails. Stop -60%: +6% but check -12%: fails.
+- The add: both halves up (+105% / +37%), every year up, drop +0.5 point, 2.4x without the best 5. Against stop -60%
+  alone: 350 trades changed, 102 better, median -15 points; the best 10 +5,396 points, the rest +2,311. The strongest
+  result so far, still a few-giants rule; fails the 12-month Favorites check half (-10%). Paper-test candidate.
 
