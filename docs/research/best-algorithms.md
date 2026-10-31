@@ -2239,3 +2239,24 @@ it fired on 3 trades only (the next level ahead touched and failed while already
 - The failed bounce barely fires on winners: the existing detector looks only at the next level ahead of the signal,
   within 30 minutes of touching it; winners mostly break it. A real test needs any level (day high, yesterday's, 5-day)
   reached while in profit, any time of day.
+
+### Indi's gain management from his real fills (2026-10-31, a diagnostic)
+The user: "Indi sells by the stock's behaviour, cuts his gains ... how come he's so wrong? research his gain
+management". Main account (silexx), option trades only, 2023-01 to 2026-10-08: 1,602 trades, 3,698 sales
+(actions.csv); scratchpad indi_gains/ (build.py, analyze.py, extra.py, split.py, rolls.py). P&L and trims from his
+fills; "what if held" from 1-minute option bar closes (no bid / ask; 513 of 732 trims priced at 15:50, 360 next morning).
+- Money: same-day 1,261 trades +$1.42M (25% won, median loser -21%, -$2.33M without the top 10); held overnight 341
+  +$10.95M (37% won, median loser -45%). His top 10 are 103-163% of each year; 16 of his top 20 held overnight. The
+  bot's shape, with more small winners (253 at 0 to +50%).
+- His contract is the bot's: median delta 0.175, 1 trading day to expiry.
+- Winners ended +100%+ overnight (58, +$16.5M): median entry 15:26, carried whole, trimmed on the entry day in 26%.
+  Big winners scale out: a third at ~+200%, then ~17% slices at +286 / +324 / +380 / +500%.
+- Trims are into strength (stock +3.2 S30 from entry, 0.56 off its best, still beating SPY x beta), not on
+  pullbacks; the "stuck" exit is the final sale (1.08 S30 off the best, excess vs SPY gone).
+- Counterfactual (estimates): his 732 profit trims took $16.7M; held to his own last exit they would have made $2.19M
+  more (+$2.35M for trims at +100%+, -$0.16M below +100%; same-day trades -$0.73M saved, overnight +$2.49M lost).
+  The median trimmed contract fell after the trim (0.91x by his exit, 0.66x by next morning): giants decide the sum.
+- Verdict: trimming costs him ~8-15% of his biggest trades; it pays only same-day and below +100%. His data agrees
+  with the bot's: do not cut the giants. Rules to test from it: no intraday trims on overnight candidates; a same-day
+  "stuck" exit only below +100% (1 S30 off the best and 15-min excess vs SPY <= 0); trim into strength at +200%+ (stock
+  3+ S30 from entry, within 0.5 S30 of its best); half out when a same-day +25-50% falls back to the entry.
