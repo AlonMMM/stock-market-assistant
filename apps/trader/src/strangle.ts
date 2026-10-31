@@ -76,7 +76,7 @@ import {
 } from "../../../packages/trading/src/strangle/fast.js";
 import type { BotMarket, BotTrading } from "./bot.js";
 import { FastTape, fetchFastBars, fetchFastDay } from "./strangle-fast.js";
-import { AlertBooks } from "./alert-books.js";
+import { AlertBooks, type AlertBookWatch } from "./alert-books.js";
 import {
   tradeCash,
   type StrangleEventKind,
@@ -498,7 +498,14 @@ export class StrangleBot {
             const second = (t + 1) * 10;
             // A slot passed while catching up (a start mid-session): no trade.
             if (this.sessionSecond() - second > 30) continue;
-            void this.watchBooksOf(date, symbol, second, r.isShock, s);
+            // Every alert's option books, traded or not (alert-books.ts).
+            void this.watchBooksOf(
+              date,
+              symbol,
+              second,
+              r.isShock ? "shock" : "fast",
+              s,
+            );
             await this.fastEntry(
               date,
               symbol,
@@ -531,7 +538,7 @@ export class StrangleBot {
     date: string,
     symbol: string,
     second: number,
-    shock: boolean,
+    kind: AlertBookWatch["kind"],
     s: StrangleSettings,
   ) {
     try {
@@ -550,7 +557,7 @@ export class StrangleBot {
         day: date,
         symbol,
         second,
-        kind: shock ? "shock" : "fast",
+        kind,
         expiry,
         // Once a minute after the first 300 s, until the bot's last sale.
         endAt: newYorkToUtc(date, 570 + s.endMinute),
@@ -961,8 +968,6 @@ export class StrangleBot {
       if (t.day === date && t.leg && t.leg.bought > 0)
         traded.set(t.symbol, (traded.get(t.symbol) ?? 0) + 1);
     for (const symbol of this.symbols) {
-      if (busy.has(symbol)) continue;
-      if ((traded.get(symbol) ?? 0) >= s.maxPerStock) continue;
       const hist = this.hist.get(symbol);
       if (!hist) continue;
       // A new burst at m: an alert now and none the minute before (the day's
@@ -973,6 +978,10 @@ export class StrangleBot {
       const first = firstAlert(sides, s.firstMinute, m);
       const isFirst = first !== null && first.minute === m;
       if (!isFirst && sides[m - 1]) continue;
+      // Every plan alert's option books, traded or not (alert-books.ts).
+      void this.watchBooksOf(date, symbol, (m + 1) * 60, "plan", s);
+      if (busy.has(symbol)) continue;
+      if ((traded.get(symbol) ?? 0) >= s.maxPerStock) continue;
       const added = this.o.store.addSignal({
         day: date,
         symbol,

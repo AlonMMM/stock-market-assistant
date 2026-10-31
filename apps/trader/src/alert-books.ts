@@ -2,7 +2,8 @@ import type { OptionQuote } from "../../../packages/trading/src/options.js";
 import type { BotTrading } from "./bot.js";
 import type { StrangleStore } from "./strangle-store.js";
 
-// The option books around every Volume bot alert, traded or not (user
+// The option books around every Volume bot alert (the plan's minute alert
+// and the shock; the 60-second alert when it is on), traded or not (user
 // 2026-10-31: "save every 2 second around the alert + delta 0.1 to 0.35";
 // "you can go with +300s, as for the plan you can go with minute check"), so
 // its backtest can fill at the real bid and ask instead of a model. At the
@@ -27,7 +28,7 @@ export interface AlertBookWatch {
   day: string;
   symbol: string;
   second: number; // the alert's session second (09:30 New York = 0)
-  kind: "fast" | "shock";
+  kind: "plan" | "fast" | "shock"; // the minute alert, the 60-second alert, the shock
   expiry: string;
   startedAt: number; // ms
   endAt: number; // ms: the bot's last sale minute
@@ -82,7 +83,7 @@ export class AlertBooks {
     day: string;
     symbol: string;
     second: number;
-    kind: "fast" | "shock";
+    kind: AlertBookWatch["kind"];
     expiry: string;
     endAt: number;
   }): Promise<void> {
