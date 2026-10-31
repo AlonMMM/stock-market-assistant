@@ -9,9 +9,63 @@
 > print in 3 minutes is kept), `BT_CHASE=ask` (the live bot chases the ask, no cap). champ-early, fair list, 2% / 1%:
 > as logged $7,258,326 / $1,484,410 (drop 24.1%); clock only $4,126,647; chase only $4,981,518; both **$2,845,332 /
 > $857,745** (drop 27.6%; tune $448,187, check $634,854, without 10-10 $2,798,469); keep only $7,182,743. Every later
-> Main bot test runs with `BT_CLOCK=stock BT_CHASE=ask`; rules chosen on the old walk need a recheck.
+> Main bot test runs with `BT_CLOCK=stock BT_CHASE=ask`; rules chosen on the old walk need a recheck. See "Read first" below for the whole story.
 >
 > 🏆 **Champion 2026-10-27 (morning): 2.5 + IBIT down to $0.10 + the pyramid (no cheap fallback).** Real quotes: fair list 2024-25 $415,971 / 14% vs the live 2.6 $302,905 / 16%; Favorites 24 months $403,255 / 17% vs $299,707 / 18%. Not live yet.
+
+## Read first: the 2026-10-31 audit, and the exit work built on it
+
+Every Main bot number before 2026-10-31 came from a walk with three bugs. Everything after it runs on the fixed walk.
+This section is the map: what was wrong, what changed, and the chain of tests that followed (details in the dated
+entries at the end of the Candidates section). The Volume bot had its own audit the day before
+(`STR_WALK_KEEP=1 STR_CHASE_NOFILL=ask`, see [volume-bot.md](volume-bot.md)).
+
+**Why the audit.** The user doubted a 35-40% options win rate ("very very rare"). The live bot buys on the second
+and checks its exits on every closed minute at the option's mid; the research walk did neither.
+
+**The bugs** (sim.py / sec_timing.py / opt_spread.py, commit caef5f0; all behind switches, off by default so old runs
+reproduce):
+
+| # | Bug | What it did | Fix |
+|---|---|---|---|
+| 1 | Exits ran on the option's trade-print clock | A thin option's 10/20-minute checks, -30% stop and 15:50 overnight decision ran only at its next print, often minutes late, at that print's price | `BT_CLOCK=stock`: one bar per stock minute, the option marked at the real book mid at the minute's end (as the live bot does) |
+| 2 | Signals with no option print in 3 minutes were dropped | Losers vanished from the list | `BT_KEEP=1` (implied by `BT_CLOCK=stock`) |
+| 3 | The 1-second buy's runaway cap (+10%) | On a runner the fill could land under the bid | `BT_CHASE=ask`: chase to the ask with no cap, as the live bot (`bot.ts` buy chase) |
+
+**What it cost** (champ-early, fair list, 2% / 1%): logged $7,258,326 / $1,484,410 (drop 24.1%) → clock alone
+$4,126,647, chase alone $4,981,518, keep alone $7,182,743, **all fixed $2,845,332 / $857,745** (drop 27.6%; tune
+$448,187, check $634,854). The champion was about 60% high. About 85% of the clock fix's loss came from overnight
+holds: the 15:50 carry read the last trade print instead of the mid, 15:50 decisions were skipped when the option
+did not trade after 15:50, morning sales ran late, and late checks let trades that had recovered through.
+
+**What this means for older entries.** Every rule in this log above this date was chosen on the old walk. The
+direction of a comparison may still hold, the sizes do not; a rule that touches exits, overnight or the buy price
+needs a recheck on the fixed walk before it is trusted. Not yet rechecked: early entry, the pyramid, IBIT $0.10,
+the D2 bonus.
+
+**Still not modelled:** the broker safety stop (`safetyStopPct`, 50% by default) that can fire at any second; fills
+better or worse than the book.
+
+**The exit tests on the fixed walk, in order** (all `BT_CLOCK=stock BT_CHASE=ask`, champ-early, fair list, both halves
+every run; S30 = the stock's usual 30-minute move, moves measured from the signal price):
+
+| Step | The user's question | Tested | Result (2%, drop) | Verdict |
+|---|---|---|---|---|
+| 0 | - | The fixed champion (checks 10/20 min, stop -30%, carry from +50%) | $2,845,332 (27.6%) | The new baseline |
+| 1 | "check 25%+ go overnight" | Carry from +25% | $3,037,966; tune -4%, check +11% | Not clean; maybe +35/+40% |
+| 2 | "test 35%-50% stop" | Stop -35 / -40 / -45 / -50% | $2.71-2.82M, drop +1.5-2.3 pts | Keep -30% (with the checks on) |
+| 3 | "one second exit, Black-Scholes -3% / bid" | 1-second price stops (`BT_SEC_EXIT=1`) | $677,487 (41.8%) | Far worse: second noise |
+| 4 | "an exit by the movement on the stock" | Trails 1.0/1.5/2.0 S30, 1.0 S30 against entry, level stop | Best: 1.0 S30 against $2,967,242 (26.4%), check a tie | Near tie |
+| 5 | "remove the 10-20 minutes check" | Checks off, with and without the 1.0 S30 stock stop | Checks off + stock stop $3,239,866 (27.8%), both halves up | Candidate |
+| 6 | "multiple exits ... exit half, bring back" | Staged exits, buy-backs | **Half out at 0.5 S30 against, rest at 1.0: $3,431,770 (26.7%)**, tune +13%, check +7% vs step 0 | **The candidate**; buy-backs worse |
+| 7 | "add 50% if it goes our direction in the first 10 minutes" | Add half size at +0.25 / +0.5 / +1.0 S30 within 10 min, staged exit on all of it | Add at +1.0: $7,980,114 (28.6%), tune +29%, check +81% vs step 6 | Promising, giant-driven (10 trades = 74% of the gain, median added trade -20 pts) |
+| 8 | "move the stop to 50/60/70%, as now we have a better stop" | Stop -50 / -60 / -70% on steps 6 and 7 | Running | - |
+
+The candidate exit (step 6), as a `BT_X` overlay on the champion:
+`{"user_stop": {"checks": []}, "stock_stages": {"half": 0.5, "full": 1.0}}`; step 7 adds
+`"add": {"within": 10, "move": 1.0, "share": 0.5}` inside `stock_stages`. The -30% stop (with the stock against),
+the 15:50 carry from +50%, the morning rules, takes and the thesis exit are unchanged. All in-sample (fair list, the
+rules' own period); the Favorites confirmation is next before any live change.
 
 Every time a backtested version beats the current champion, it is added here, and the user gets a big signal
 (see the rule in [AGENTS.md](../../AGENTS.md)). Losers and ties are not logged here; they go in the research log
