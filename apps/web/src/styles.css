@@ -8704,3 +8704,98 @@ i.added {
   font: inherit;
   font-size: 14px;
 }
+
+/* Phones: as many stocks on one screen as IBKR's watchlist (user 2026-10-31:
+   "see how many and easily i can watch many stocks here ... I want it to be
+   like this"). SPY and QQQ shrink to one thin line without the chart, the
+   title and the tools tighten, and each stock is one short row in smaller
+   type; the columns stay IBKR's. */
+@media (max-width: 759px) {
+  .mkt-strip {
+    gap: 6px;
+  }
+  .mkt-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto;
+    align-items: baseline;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 10px;
+  }
+  .mkt-card b,
+  .mkt-card .num {
+    font-size: 13px;
+  }
+  .mkt-card .num {
+    justify-self: end;
+    white-space: nowrap;
+  }
+  .mkt-card b small,
+  .mkt-card .mkt-spark {
+    display: none;
+  }
+  .wl-title {
+    align-items: center;
+    margin: 8px 0 0;
+    font-size: 18px;
+  }
+  .wl-pa {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+  .wl {
+    gap: 6px;
+    --wl-gap: 8px;
+    --wl-pad: 8px;
+  }
+  .wl-table {
+    border-radius: 10px;
+  }
+  .wl .wl-grid,
+  .wl-num {
+    font-size: 14px;
+  }
+  .wl-row {
+    min-height: 32px;
+  }
+  .wl-symbol strong {
+    font-size: 14.5px;
+  }
+  .wl-head {
+    padding-block: 6px;
+    letter-spacing: 0.02em;
+  }
+  .wl-head > .wl-cell {
+    font-size: 10px;
+  }
+  .wl-c {
+    margin-right: 2px;
+    font-size: 9px;
+    color: var(--wl-faint);
+  }
+  .wl-help {
+    display: none;
+  }
+}
+.wl-short {
+  display: none;
+}
+@media (max-width: 759px) {
+  .live-page {
+    gap: 8px;
+  }
+  .wl-head .wl-long {
+    display: none;
+  }
+  .wl-head .wl-short {
+    display: inline;
+  }
+}
+@media (max-width: 759px) {
+  /* clip, not hidden: the column header then stays at the top while the
+     stocks scroll under it, as in IBKR. */
+  .wl-table {
+    overflow: clip;
+  }
+}
