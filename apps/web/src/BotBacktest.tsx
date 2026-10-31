@@ -34,6 +34,7 @@ import {
   type Rules,
 } from "../../../packages/trading/src/bot/versions.js";
 import coreList from "../../../config/bot-universe.json";
+import volumeList from "../../../config/volume-bot-stocks.json";
 import { readJson } from "./api.js";
 import type { BotView } from "../../../packages/trading/src/bot-api.js";
 import {
@@ -287,7 +288,11 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
         text: `Loaded the Volume bot as it is now: delta ${live.delta}, ${live.sizePct}% a trade, ${live.shockAlert ? "plan + shock alerts" : "plan alerts"}, ${tickers.length} stocks.`,
       });
     } catch (e) {
-      setSetup({ ...next, bot: "volume" });
+      setSetup({
+        ...next,
+        bot: "volume",
+        tickers: volumeList.symbols.slice(0, maxStocks),
+      });
       setPaper({
         state: "failed",
         text: `The Volume bot's settings could not be read (${e instanceof Error ? e.message : "failed"}); its defaults are used.`,
@@ -613,6 +618,17 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                 >
                   Bot&apos;s core list ({coreList.symbols.length})
                 </button>
+                {isVolume && (
+                  <button
+                    type="button"
+                    className="chip"
+                    onClick={() =>
+                      patch({ tickers: volumeList.symbols.slice(0, maxStocks) })
+                    }
+                  >
+                    Volume bot top 50 ({volumeList.symbols.length})
+                  </button>
+                )}
                 {lists.map((l) => (
                   <button
                     type="button"
