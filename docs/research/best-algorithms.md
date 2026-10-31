@@ -2135,3 +2135,23 @@ once: fixed champion $3,202,862 / 26.6% (logged $2,845,332), tune $458,193 / che
 $7,258,326); staged $3,829,110; stop -60% $4,161,285; + add $9,977,389; Favorites 12m $243,492; 36m champion
 $4,490,376, + add $13,199,730. The comparisons above used the same sizing on both sides, so the verdicts stand; the
 pyramid's own value was understated. From here on, account replays read add rows as stored.
+
+### What makes an overnight keeper a big winner (2026-10-31, a diagnostic, fair list)
+The user: "understand what makes a nightly keeper a big winner ... differentiate it". champ-early, fixed walk, 125
+overnight holds (no pyramid adds); per hold, what was known at the 15:50 decision and the night multiple (what the kept
+part fetched / its 15:50 value). Script: scratchpad night.py (features: gain at 15:50, stock move from the signal / open /
+prior close and in the last hour in S30, close position in the day's range, day volume vs the 20-day usual, SPY day,
+relative move, moneyness, days to expiry, weekend, entry minute, IV).
+- The night is a giant game: median 0.70x, 56% under 0.8x, 26% at 1.5x or more; carrying earned +14,981 points of cost
+  vs selling at 15:50, +7,672 without the best 3 (check half +299). No single measure correlates past 0.21.
+- **The last hour run is the clean separator**: when the stock ran more than 1 S30 our way in the last hour (31 holds),
+  carrying lost in both halves (tune -687, check -621 points; -2,419 / -2,400 without the best 3), only 23% beat the
+  15:50 sale; the other 94 holds carried +16,290 (+10,353 / +5,936). A run into the close looks like exhaustion.
+- Day volume 2x usual or more (50 holds): 36% big vs 19%, but the low-volume holds still carry about zero (tune -221,
+  check +2,579): dropping them is not a clean win. Gain at 15:50 of +300% or more, calls over puts, an early entry: the
+  same shape (better big-rate, not a clean money split). Weekend and days to expiry: no consistent effect.
+- The 8 biggest nights (BA 2024-08-01, IBIT 2026-08-19, SMCI 2025-05-13, ORCL 2026-04-13, MSTR 2026-08-19, TSLA
+  2024-07-01, AAPL 2025-08-06, IBIT 2026-09-18): 7 of 8 at volume 1.9x+, last hour flat or giving back, 6 entered by
+  minute 11.
+- Candidate (not yet tested as a rule): sell at 15:50 instead of carrying when the last hour ran > 1 S30 our way.
+  Chosen after looking at the fair list: needs a proper sim run and the Favorites.
