@@ -38,6 +38,7 @@ if "open19" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "o
 if "open20" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open20"), "open20_dbx_list.csv", 391   # ten_back.py
 if "open21" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open21"), "open21_dbx_list.csv", 391   # liquid_free.py
 if "open22" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open22"), "open22_dbx_list.csv", 391   # indi_close.py IC_SET=many
+if "open23" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open23"), "open23_dbx_list.csv", 391   # indi_close.py IC_SET=fill
 NY = ZoneInfo("America/New_York")
 AUTH = "Basic " + base64.b64encode((os.environ["DATABENTO_API_KEY"] + ":").encode()).decode()
 HEAD = ["contract", "minute", "bid", "ask", "bid_sz", "ask_sz"]

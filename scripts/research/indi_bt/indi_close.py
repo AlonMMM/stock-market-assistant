@@ -50,6 +50,17 @@ bot's t at 15:57 and the best N are bought. Set before running (all: no earnings
   r2-fri    r2 + Fridays (Monday expiry)            r2-t10  r2 with t >= 1.0
 Picked on tune among the r2* versions by min(fair, Favorites) at 2%; the pick and the reference on check. Also: the
 share of trading nights with 2 bets. Quotes: IC_PASS=list -> open22_dbx_list.csv, dbx_fetch.py open22.
+
+IC_SET=fill (nightly-bet, the user 2026-10-31 "go." after nb_why.py: of each night's ranked candidates 70% have no
+next-day expiry and 17% a thin one, and IC_SET=many stopped at the top 2): go down the ranking until 2 bets trade, and
+when a stock has no liquid next-day option take the nearest liquid expiry 1-4 calendar days out ("fb"). Set before running:
+  t18-top3     the reference (tonly-t18: next-day only, top 3, no fill)
+  r2v13-down   best 2 by t, volume 1.3x, down the list, next-day only (the fill alone)
+  t18-fill     t >= 1.8, volume 1.3x, down the list + the 1-4 day fallback
+  r2v13-fill   best 2 by t, volume 1.3x, down the list + fallback
+  r2-fill      best 2 by t, no volume rule, down the list + fallback
+Picked on tune among the *-fill / -down versions; the pick and the reference on check; nights with 2 bets by weekday.
+Quotes: IC_PASS=list -> open23_dbx_list.csv (only the bets each night takes), dbx_fetch.py open23.
 """
 import bisect, collections, csv, datetime as dt, glob, gzip, json, math, multiprocessing as mp, os, statistics as st, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -75,14 +86,15 @@ SIZES = rr.SIZES
 LISTING = os.environ.get("IC_PASS") == "list"
 M_IN = 387
 A0, Z = "2024-02-01", FR.Z
-EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15", "open16", "open22")]
+EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15", "open16", "open22", "open23")]
 VOL = os.environ.get("IC_SET") == "vol"
 D2B = os.environ.get("IC_SET") == "d2b"
 D3S = os.environ.get("IC_SET") == "d3"
-MANY = os.environ.get("IC_SET") == "many"
+FILL = os.environ.get("IC_SET") == "fill"
+MANY = os.environ.get("IC_SET") == "many" or FILL
 RS = os.environ.get("IC_SET") == "rs" or VOL or D2B or D3S or MANY
-TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs", "d3": "_d3", "many": "_many"}.get(os.environ.get("IC_SET"), "")
-LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv", "_d3": "open16_dbx_list.csv", "_many": "open22_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
+TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs", "d3": "_d3", "many": "_many", "fill": "_fill"}.get(os.environ.get("IC_SET"), "")
+LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv", "_d3": "open16_dbx_list.csv", "_many": "open22_dbx_list.csv", "_fill": "open23_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
 BASE = dict(lo=0.02, hi=0.04, d=0.20, exit="his", ath=False, pos=0.85, vwap=True, rs="60", vol="min", fri=False)
 CORE = {"thesis": {}, "m15": dict(lo=0.015), "m3": dict(lo=0.03, hi=9.0), "d30": dict(d=0.30), "d15": dict(d=0.15),
         "at10": dict(exit="at10"), "ath": dict(ath=True)}
@@ -132,8 +144,14 @@ if MANY:
                 "r2-v13": {**R, "t": -99, "n": 2}, "r2": {**R, "t": -99, "n": 2, "vol": "none"},
                 "r2-p80": {**R, "t": -99, "n": 2, "vol": "none", "pos": 0.80}, "r2-fri": {**R, "t": -99, "n": 2, "vol": "none", "fri": True},
                 "r2-t10": {**R, "t": 1.0, "n": 2, "vol": "none"}}
+if FILL:
+    VERSIONS = {"t18-top3": {**R, "t": 1.8, "n": 3},
+                "r2v13-down": {**R, "t": -99, "n": 2, "fill": True},
+                "t18-fill": {**R, "t": 1.8, "n": 2, "fill": True, "win": "fb"},
+                "r2v13-fill": {**R, "t": -99, "n": 2, "fill": True, "win": "fb"},
+                "r2-fill": {**R, "t": -99, "n": 2, "fill": True, "win": "fb", "vol": "none"}}
 REF = "t18-top3" if MANY else None
-PICKABLE = [v for v in VERSIONS if v.startswith("r2")] if MANY else list(VERSIONS)
+PICKABLE = [v for v in VERSIONS if v != "t18-top3" and (v.startswith("r2") or FILL)] if MANY else list(VERSIONS)
 RX = None
 BASE_EXPIRY = sim.expiry_for   # restored after each pick (set at import, so every worker has it)
 
@@ -268,7 +286,7 @@ def candidates(rows, v):
             if v["vwap"] and vw <= 0: continue
             if v["ath"] and not (r["ath"] if bet > 0 else r["atl"]): continue
             by[(r["src"], r["date"])].append((ex, r, right))
-    return {k: [(r, right) for _, r, right in sorted(x, key=lambda q: -q[0])[:v.get("n", 3)]] for k, x in by.items()}
+    return {k: [(r, right) for _, r, right in sorted(x, key=lambda q: -q[0])[:99 if v.get("fill") else v.get("n", 3)]] for k, x in by.items()}
 
 
 def pick(r, right, d, win):
@@ -282,10 +300,20 @@ def pick(r, right, d, win):
         exps |= set(sim._exp[k])
     if win == "next":   # the next trading day's expiry (Monday for a Friday)
         a = b = rr.CAL[rr.CAL.index(r["date"]) + 1]
-    else:
+    elif win != "fb":
         a, b = (d0 + dt.timedelta(days=win[0])).isoformat(), (d0 + dt.timedelta(days=win[1])).isoformat()
+    if win == "fb":   # the next trading day's expiry if it is liquid, else the nearest liquid one 1-4 calendar days out
+        nd = rr.CAL[rr.CAL.index(r["date"]) + 1]
+        for e in sorted(e for e in exps if nd <= e <= (d0 + dt.timedelta(days=4)).isoformat()):
+            got = pick_exp(r, right, d, e)
+            if got: return got
+        return None
     exp = next((e for e in sorted(exps) if a <= e <= b), None)
     if not exp: return None
+    return pick_exp(r, right, d, exp)
+
+
+def pick_exp(r, right, d, exp):
     call = right == "C"
     ks = [k for k in sim.chain(r["sym"], exp, right) if (r["px"] <= k <= r["px"] * (1 + sim.C["otm_scan_max"]) if call else r["px"] * (1 - sim.C["otm_scan_max"]) <= k <= r["px"])]
     ks = sorted(ks, key=lambda k: abs(k - r["px"]))[:sim.C["max_strikes"]]
@@ -362,19 +390,25 @@ def main():
     print(len(tj), "trades to walk", flush=True)
     ks = list(tj)
     with mp.Pool(8) as pool: W = dict(zip(ks, pool.map(walk, [tj[k] for k in ks], chunksize=2)))
+
+    def taken(v, src, date, lst):   # the night's bets: the top N, or (fill) the first N down the ranking that trade
+        V = VERSIONS[v]; out = []
+        for r, right in lst:
+            w = W.get((src, date, r["sym"], right, V["d"], V["win"], V["exit"]))
+            if w: out.append(w)
+            if V.get("fill") and len(out) >= V["n"]: break
+        return out
     if LISTING:
-        rowsq = sorted({x for w in W.values() if w for x in w})
+        rowsq = sorted({x for v in VERSIONS for (src, date), lst in picks[v].items() for w in taken(v, src, date, lst) for x in w})
         with open(os.path.join(HERE, LIST_NAME), "w") as f:
             w = csv.writer(f); w.writerow(["date", "contract", "minute"]); w.writerows(rowsq)
         print(f"{len(rowsq)} rows on {len({x[0] for x in rowsq})} days -> {LIST_NAME}"); return
 
     def trades(v, src, part):
-        V = VERSIONS[v]; out = []
+        out = []
         for (s, date), lst in picks[v].items():
             if s != src or half(date) != part: continue
-            for r, right in lst:
-                w = W.get((src, date, r["sym"], right, V["d"], V["win"], V["exit"]))
-                if w: out.append(w)
+            out += taken(v, src, date, lst)
         return out
 
     def E(v, src, part, size): return [(w["date"], 389, 1.0, w["r"][size], 1) for w in trades(v, src, part)]
@@ -404,6 +438,14 @@ def main():
                 k = [min(cnt.get(d, 0), 2) for d in nights]
                 cells.append(f"{len(nights)} nights: {k.count(0) / len(k):.0%} / {k.count(1) / len(k):.0%} / {k.count(2) / len(k):.0%}")
             print(f"| {v} | {cells[0]} | {cells[1]} |", flush=True)
+        print("\n#### Nights with 2 bets by weekday, fair list, all weeks (Mon / Tue / Wed / Thu / Fri)\n\n| Version | Mon | Tue | Wed | Thu | Fri |\n|---|---|---|---|---|---|")
+        for v in VERSIONS:
+            cnt = collections.Counter(w["date"] for part in ("tune", "check") for w in trades(v, "fair", part))
+            cells = []
+            for wd in range(5):
+                nights = [d for d in days if d <= RB.LAST and dt.date.fromisoformat(d).weekday() == wd]
+                cells.append(f"{sum(cnt.get(d, 0) >= 2 for d in nights) / max(1, len(nights)):.0%}" if VERSIONS[v]["fri"] or wd != 4 else "-")
+            print(f"| {v} | {' | '.join(cells)} |", flush=True)
     best = max(PICKABLE, key=lambda v: min(out[(0.02, "tune", v)][i]["acct"] for i in (0, 1)))
     print(f"\nPicked on tune: {best} 🎯")
     for vv in [best] + ([REF] if REF else []):
