@@ -29,6 +29,7 @@ import { defaultSettings } from "../packages/trading/src/bot/settings.js";
 import type { MinuteBar } from "../packages/trading/src/bot/signal.js";
 import {
   clockText,
+  nightsHeld,
   paperSetup,
   parseTickers,
   periodParts,
@@ -36,6 +37,11 @@ import {
   periodRange,
   sessionsBetween,
 } from "../apps/web/src/bot-backtest-model.js";
+import {
+  runState,
+  startRun,
+  stopRun,
+} from "../apps/web/src/bot-backtest-run.js";
 
 const step = (
   date: string,
@@ -711,4 +717,86 @@ test("Same as paper takes the live version, rules, size, limits and watched stoc
   assert.equal(live.rules.stopPct, 25);
   assert.deepEqual(live.money, { sizePct: 3, maxBuysPerDay: 8, maxOpen: 5 });
   assert.deepEqual(live.tickers, ["NVDA", "TSLA"]);
+});
+
+test("Stop ends the run at once: the requests in flight are cancelled, the parts back stay, no new part starts", async () => {
+  const realFetch = globalThis.fetch;
+  const signals: AbortSignal[] = [];
+  let calls = 0;
+  globalThis.fetch = ((_url: string, init: RequestInit) => {
+    calls++;
+    const signal = init.signal!;
+    signals.push(signal);
+    // The first part comes back; the others hang until cancelled.
+    if (calls === 1)
+      return Promise.resolve(
+        Response.json({
+          symbol: "NVDA",
+          sessions: 1,
+          noData: 0,
+          trades: [],
+          skips: [],
+        }),
+      );
+    return new Promise((_, reject) =>
+      signal.addEventListener("abort", () =>
+        reject(new DOMException("aborted", "AbortError")),
+      ),
+    );
+  }) as typeof fetch;
+  try {
+    const ran = {
+      version: "2.7",
+      rules: {} as never,
+      fillPct: 2,
+      tickers: ["NVDA", "AMD", "TSLA", "MU", "META", "AAPL"],
+      from: "2026-10-01",
+      to: "2026-10-29",
+    };
+    const running = startRun(ran);
+    await new Promise((r) => setTimeout(r, 20));
+    const before = calls;
+    stopRun();
+    // At once: not busy, the stop and the part already back are kept.
+    assert.equal(runState().busy, null);
+    assert.deepEqual(runState().stopped, { done: 1, total: 6 });
+    assert.equal(runState().runs.length, 1);
+    await running;
+    assert.equal(
+      runState().errors.length,
+      0,
+      "cancelled parts are not failures",
+    );
+    assert.ok(
+      signals.slice(1).every((x) => x.aborted),
+      "the hanging requests are cancelled",
+    );
+    assert.equal(calls, before, "no new part starts after Stop");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("held: the nights a position was held after its entry day", () => {
+  const step = (date: string, kind: "buy" | "sell" | "carry") => ({
+    date,
+    minute: 10,
+    kind,
+    share: 1,
+    price: 1,
+    reason: "entry" as const,
+  });
+  assert.equal(
+    nightsHeld([step("2026-10-01", "buy"), step("2026-10-01", "sell")]),
+    0,
+  );
+  assert.equal(
+    nightsHeld([
+      step("2026-10-01", "buy"),
+      step("2026-10-01", "carry"),
+      step("2026-10-02", "sell"),
+    ]),
+    1,
+  );
+  assert.equal(nightsHeld([]), null);
 });

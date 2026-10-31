@@ -261,11 +261,18 @@ export interface SignalRow {
   delta: number | null;
   volume30: number | null;
   ret: number | null; // the option's return on what was paid, from its steps
+  nights: number | null; // sessions held after the entry day (0 = sold the same day)
   model: boolean; // ret is the Black-Scholes what-if, not the trade
   modelled: boolean; // the what-if's strike and expiry are the model's
   iv: number | null; // the what-if's volatility
   ivFrom: "option" | "stock" | null;
   trade: AccountTrade | null;
+}
+
+/** Sessions a position was held after its entry day: 0 when it was sold the same day. */
+export function nightsHeld(steps: readonly SimStep[]): number | null {
+  if (!steps.length) return null;
+  return new Set(steps.map((x) => x.date)).size - 1;
 }
 
 /** What the sales got back over what the buy paid, minus 1. */
@@ -307,6 +314,7 @@ function skipRow(k: SimSkip, i: number): SignalRow {
     delta: c?.delta ?? null,
     volume30: c?.volume30 ?? null,
     ret: w?.ret ?? null,
+    nights: w ? nightsHeld(w.steps) : null,
     model: w !== null,
     modelled: w?.modelled ?? false,
     iv: w?.iv ?? null,
@@ -353,6 +361,7 @@ export function signalRows(
         delta: t.delta,
         volume30: t.volume30,
         ret: stepsReturn(t.steps),
+        nights: nightsHeld(t.steps),
         model: false,
         modelled: false,
         iv: null,
@@ -410,6 +419,7 @@ export function signalsCsv(rows: readonly SignalRow[]): string {
     "delta",
     "volume30",
     "return",
+    "nights",
     "return_is_model",
     "model_strike",
     "model_iv",
@@ -442,6 +452,7 @@ export function signalsCsv(rows: readonly SignalRow[]): string {
       round(r.delta, 3),
       r.volume30,
       round(r.ret, 4),
+      r.nights,
       r.model,
       r.modelled,
       round(r.iv, 3),

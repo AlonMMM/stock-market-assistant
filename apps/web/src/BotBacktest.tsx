@@ -216,7 +216,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
     }
   }
   // The run lives outside the page: it goes on, and stays, across sections.
-  const { busy, errors, runs, ran } = useBacktestRun();
+  const { busy, errors, runs, ran, stopped } = useBacktestRun();
   const [filter, setFilter] = useState<"all" | "won" | "lost" | "refused">(
     "all",
   );
@@ -701,6 +701,12 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                   The setup changed since this run. Run again to see it.
                 </p>
               )}
+              {stopped && !busy && (
+                <p className="stale">
+                  Stopped after {stopped.done} of {stopped.total} parts: the
+                  result covers those parts only.
+                </p>
+              )}
               <Summary
                 ran={ran}
                 account={account}
@@ -1152,6 +1158,9 @@ function SignalList({
               <th title="The option's return on what was paid. Not bought: the trade it would have made on Black-Scholes prices">
                 Return
               </th>
+              <th title="How long it was held: sold the same day, or the nights held over (the what-if too)">
+                Held
+              </th>
               <th title="The backtest's buy price. Not bought: the what-if's buy (a model)">
                 Bought at
               </th>
@@ -1188,6 +1197,13 @@ function SignalList({
       </p>
     </details>
   );
+}
+
+/** "Same day", "1 night", "2 nights"; a dash when unknown. */
+function heldWords(nights: number | null): string {
+  if (nights === null) return "—";
+  if (nights === 0) return "Same day";
+  return `${nights} night${nights === 1 ? "" : "s"}`;
 }
 
 function SignalLine({
@@ -1234,6 +1250,7 @@ function SignalLine({
         {ret}
         {r.model && <span className="small muted"> model</span>}
       </td>
+      <td>{heldWords(r.nights)}</td>
       <td className="num">
         {money(r.boughtAt)}
         {r.model && r.boughtAt !== null && (
