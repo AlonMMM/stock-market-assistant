@@ -87,9 +87,12 @@ def ret_at(r, pct):
 
 # The account audit (the user, 2026-10-31: "overnight profits are counted too early. A trade's whole multi-day result is
 # added to equity on its entry day, and the next day's trades are sized on that money"). BT_ACCT=exit (the default):
-# a trade's P&L joins the account at the end of the day of its last sale; the account a day starts with (what the
-# trades entered that day are sized on) holds only closed trades. BT_ACCT=entry reproduces the runs before it.
-ACCT = os.environ.get("BT_ACCT", "exit")
+# a trade's P&L joins the account at the end of the day of its last sale (BT_ACCT=exit: a day's trades are sized on
+# closed trades only). BT_ACCT=entry reproduces the runs before it.
+# Corrected the same day (the user: "the big trade after a big trade is very rare"): sizing on closed trades only
+# understates (the live bot sizes on its account value, open positions marked), so the default is BT_ACCT=marked: a day
+# starts with the closed trades plus each open trade marked at its last 15:50 carry price; the drop counts the marks.
+ACCT = os.environ.get("BT_ACCT", "marked")
 
 
 def exit_day(r):
@@ -107,14 +110,28 @@ def account(T, pct, start=100_000):
             eq += sum(pct * eq * ret_at(r, pct) for r in rows)
             peak = max(peak, eq); dd = max(dd, 1 - eq / peak)
         return eq, dd
-    due = collections.defaultdict(float)
-    by = _by_day(T)
+    by, held = _by_day(T), []   # held: [stake, row, marks {day: return so far}]
+    def marks(r):
+        st_ = [x.split(" ") for x in (r.get("steps") or "").split(";") if x]
+        out = {}
+        for x in st_:
+            if len(x) >= 5 and x[2] == "carry":
+                sold = sum(float(y[3]) * float(y[4].lstrip("@")) for y in st_ if len(y) >= 5 and y[2] == "sell" and y[0] <= x[0])
+                out[x[0]] = (sold + float(x[3]) * float(x[4].lstrip("@"))) / r["cost"] - 1 if r.get("cost") else 0.0
+        return out
+    prev = None
     for d in sorted(set(by) | {exit_day(r) for r in T}):
-        base = eq
-        for r in by.get(d, []): due[exit_day(r)] += pct * base * ret_at(r, pct)
-        eq += due.pop(d, 0.0)
-        peak = max(peak, eq); dd = max(dd, 1 - eq / peak)
-    return eq + sum(due.values()), dd
+        marked = sum(stake * m.get(prev, 0.0) for stake, _, m in held) if ACCT == "marked" else 0.0
+        base = eq + marked
+        for r in by.get(d, []): held.append([pct * base, r, marks(r) if ACCT == "marked" else {}])
+        keep = []
+        for stake, r, m in held:
+            if exit_day(r) == d: eq += stake * ret_at(r, pct)
+            else: keep.append([stake, r, m])
+        held = keep
+        now = eq + (sum(stake * m.get(d, 0.0) for stake, _, m in held) if ACCT == "marked" else 0.0)
+        peak = max(peak, now); dd = max(dd, 1 - now / peak); prev = d
+    return eq + sum(stake * ret_at(r, pct) for stake, r, _ in held), dd
 
 
 def _by_day(T):

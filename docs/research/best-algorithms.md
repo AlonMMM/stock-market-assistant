@@ -2312,3 +2312,10 @@ Fixed early + sale-day account, fixed walk, 2% (adds once):
 
 The SPY look-ahead was worth 1-3%; the entry-day account 4-12%. Early entry still adds ~37% over the plain 1-second
 buy; 2.8 still leads 2.7 (+27% fair, both halves +17% / +9%; Favorites 12m +10%, check -4%; 6m even).
+- **Correction, the same evening** (the user: "entry-day booking cost money? the big trade after a big trade is very
+  rare"): the closed-only account above understates - the live bot sizes on its account value, open positions marked.
+  Marked at each 15:50 carry price (acct3.py; lists.py `BT_ACCT=marked`, now the default): 2.7 fair $3,154,689 (drop
+  34.2%; tune $473,389 / check $704,125) vs entry-day $3,176,347; 2.8 $4,080,278 (33.9%; $557,117 / $772,765) vs
+  $4,116,321; Favorites 12m 2.7 $233,694 / 2.8 $257,718 (vs $244,097 / $269,546). The entry-day bug is worth 1-4%, not
+  4-12%. What changes is the drop: with open positions marked every evening it is ~34% at 2% on the fair list (the old
+  replays only saw a trade when it closed). 268 of 1,088 fair trades are entered while an earlier one is held overnight.
