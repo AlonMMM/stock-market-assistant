@@ -2,7 +2,10 @@ import {
   D1PriceAlerts,
   handlePriceAlerts,
 } from "../../../packages/market-data/src/price-alerts.js";
-import { handleTicker } from "../../../packages/market-data/src/ticker.js";
+import {
+  handleTicker,
+  handleTickerCheck,
+} from "../../../packages/market-data/src/ticker.js";
 import {
   liveUrl,
   paperUrl,
@@ -447,6 +450,18 @@ export function buildApp(
     const result = await handleCandles(
       request.query as { ticker?: unknown; date?: unknown },
       alpaca,
+      alpaca.fetcher,
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.get("/api/tickers/check", async (request, reply) => {
+    const result = await handleTickerCheck(
+      request.query as Record<string, unknown>,
+      alpaca,
+      process.env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
       alpaca.fetcher,
     );
     return reply
