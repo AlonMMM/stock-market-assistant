@@ -1,8 +1,10 @@
 """The champion (2.7 at minute fills) on REAL option data before 2024 (the user, 2026-10-31: "yes, download it", and
 "extract only the stock list he used to trade in 2021-2022-2023 ... these are the hot stock"). Databento OPRA.PILLAR:
   definition  the listed contracts of each signal stock-day (parent SYM.OPT) -> expiries and strikes
-  ohlcv-1m    the option minute bars (the picker's price, the 30-minute volume floor, the simulator's bar walk)
-  cbbo-1m     the best bid / ask each minute (the real fills, as real_bench.py / opt_spread.py on 2024-26)
+  cbbo-1m     the best bid / ask each minute: the real fills (as real_bench.py / opt_spread.py on 2024-26) and, as the
+              mid, the option's minute bars for the picker and the walk (ohlcv-1m costs ~100x more: not bought for that)
+  ohlcv-1m    only the traded volume of the 30 minutes before each signal, for the 4 strikes nearest delta 0.15
+              (pre-picked by Black-Scholes at 1.43 x the 20-day realized volatility): the 200-contract floor
   statistics  open interest
 The list of a year = the stocks and ETFs Indi traded THAT year (his main account; index options left out): the hot names
 of the time, chosen with that year's knowledge. Stages (each resumable; files under data/local/x/bt/y<year>/):
@@ -10,7 +12,9 @@ of the time, chosen with that year's knowledge. Stages (each resumable; files un
   defs      the definitions of every signal stock-day
   cands     pass A: every signal's candidate strikes (1-7 day expiry, OTM within 20%, the 16 nearest the money)
   cost      Databento's own price of pass A (free metadata call per day); stops above MAX_USD
-  fetchA    pass A: ohlcv-1m, cbbo-1m, statistics for the signal days
+  volsel    the 4 strikes nearest delta 0.15 of every signal (the volume windows)
+  fetchA    pass A: cbbo-1m and statistics for the signal days
+  fetchV    the volume windows (ohlcv-1m)
   pick      the champion's pick on the real bars -> pass B: the picked contracts on the later days to expiry
   fetchB    pass B
   run       the walks (the champion's exits on the real bars, fills on the real quotes) and the tables
@@ -92,7 +96,20 @@ def nymin(ts):
 
 
 # ---- local option store ----
-odb = __import__("sqlite3").connect(os.path.join(D, "options.sqlite"), timeout=120)
+class _Locked:
+    """One connection shared by the download threads, each call under a lock."""
+    def __init__(self, path):
+        import sqlite3, threading
+        self.c, self.lock = sqlite3.connect(path, timeout=120, check_same_thread=False), threading.Lock()
+
+    def execute(self, *a):
+        with self.lock: return self.c.execute(*a)
+
+    def commit(self):
+        with self.lock: self.c.commit()
+
+
+odb = _Locked(os.path.join(D, "options.sqlite"))
 odb.execute("CREATE TABLE IF NOT EXISTS bars (symbol TEXT, date TEXT, bars TEXT, PRIMARY KEY (symbol, date))")
 odb.execute("CREATE TABLE IF NOT EXISTS done (key TEXT PRIMARY KEY)")
 _ob, _defs = {}, {}
@@ -106,12 +123,24 @@ def defs(und, date):
     return _defs[k]
 
 
+odb.execute("CREATE TABLE IF NOT EXISTS vol (symbol TEXT, date TEXT, vols TEXT, PRIMARY KEY (symbol, date))")
+
+
 def opt_day(sym, date):
+    """The option's minute bars from its quotes: each minute's close = the mid at the end of the minute (the row
+    labelled minute + 1, real_bench.quote's convention); volume only where a volume window was bought."""
     k = (sym, date)
     if k not in _ob:
         if len(_ob) > 20000: _ob.clear()
-        r = odb.execute("SELECT bars FROM bars WHERE symbol=? AND date=?", k).fetchone()
-        _ob[k] = json.loads(r[0]) if r else []
+        r = odb.execute("SELECT vols FROM vol WHERE symbol=? AND date=?", k).fetchone()
+        vols = {int(a): b for a, b in json.loads(r[0]).items()} if r else {}
+        out = []
+        for lab, bid, ask in RB.book(date).get(sym, []):
+            m = lab - 1
+            if 0 <= m < 390:
+                mid = round((bid + ask) / 2, 4)
+                out.append([m, mid, mid, mid, mid, vols.get(m, 0)])
+        _ob[k] = out
     return _ob[k]
 
 
@@ -208,40 +237,54 @@ def stage_cands():
     print("pass A:", len(by), "days,", sum(len(v) for v in by.values()), "contract-days", flush=True)
 
 
-def price_of(lst, label):
-    days = sorted(lst); tot = 0.0
-    sample = days[::max(1, len(days) // 25)]
-    per = []
-    for d in sample:
-        syms = lst[d][:2000]
-        c = sum(float(api("metadata.get_cost", dataset="OPRA.PILLAR", schema=s, stype_in="raw_symbol", symbols=",".join(pad(x) for x in syms),
-                          start=utc(d, 0), end=utc(d, 391))) for s in ("cbbo-1m", "ohlcv-1m"))
-        per.append(c / len(syms))
-    n = sum(len(v) for v in lst.values()); tot = st.mean(per) * n
-    print(f"{label}: {n:,} contract-days x ${st.mean(per):.5f} (sampled {len(sample)} days) = ~${tot:,.2f}", flush=True)
-    return tot
+def cost1(schema, syms, start, end):
+    return float(api("metadata.get_cost", dataset="OPRA.PILLAR", schema=schema, stype_in="raw_symbol",
+                     symbols=",".join(pad(x) for x in syms[:2000]), start=start, end=end))
+
+
+def stage_volsel2():
+    """The volume windows again, on the 4 strikes nearest delta 0.15 by the REAL quotes at the signal minute (the
+    first pass pre-picked them with the IV model and missed the real strike about half the time, e.g. earnings days).
+    Only strikes without a window yet at that signal are asked for."""
+    old = collections.defaultdict(set)
+    for d, m, syms in json.load(open(os.path.join(D, "volsel.json"))): old[(d, m)].update(syms)
+    jobs, n_new = [], 0
+    for t in signals():
+        m = int(t["minute"])
+        cands = cu.candidates(t["sym"], t["date"], m, t["right"], float(t["price"]))
+        if not cands: continue
+        near = [c[0] for c in sorted(cands, key=lambda c: abs(c[3] - 0.15))[:4]]
+        need = sorted(set(near) - old[(t["date"], m)])
+        if need:
+            jobs.append((t["date"], m, need)); n_new += len(need); old[(t["date"], m)].update(need)
+    json.dump(jobs, open(os.path.join(D, "volsel2.json"), "w"))
+    va = st.mean([cost1("ohlcv-1m", j[2], utc(j[0], max(0, j[1] - 30)), utc(j[0], j[1] + 1)) / len(j[2]) for j in jobs[::max(1, len(jobs) // 40)]]) if jobs else 0
+    print(f"volume windows 2: {len(jobs):,} signals, {n_new:,} new strike windows x ${va:.5f} = ~${va * n_new:,.2f}", flush=True)
+    if va * n_new > MAX_USD: raise SystemExit(f"~${va * n_new:,.2f} > MAX_USD ${MAX_USD:,.0f}: stopped")
 
 
 def stage_cost():
-    A = json.load(open(os.path.join(D, "passA.json")))
-    tot = price_of(A, "pass A")
-    nd = len({(r["sym"], r["date"]) for r in signals()})
-    print(f"definitions (already bought by the defs stage): {nd:,} stock-days x ~$0.007 = ~${nd * 0.007:,.2f}")
-    if tot > MAX_USD: raise SystemExit(f"pass A ~${tot:,.0f} > MAX_USD ${MAX_USD:,.0f}: stopped")
+    A = json.load(open(os.path.join(D, "passA.json"))); V = json.load(open(os.path.join(D, "volsel.json")))
+    days = sorted(A); sd = days[::max(1, len(days) // 25)]
+    qa = st.mean([(cost1("cbbo-1m", A[d], utc(d, -1), utc(d, 391)) + cost1("statistics", A[d], f"{d}T00:00", utc(d, 0))) / len(A[d]) for d in sd])
+    nA = sum(len(v) for v in A.values())
+    sv = V[::max(1, len(V) // 40)]
+    va = st.mean([cost1("ohlcv-1m", j[2], utc(j[0], max(0, j[1] - 30)), utc(j[0], j[1] + 1)) for j in sv])
+    nB = 2 * len(V)   # pass B: the picked contract on the later days, quotes only: at most ~2 later days a signal
+    tot = qa * nA + va * len(V) + qa * nB
+    print(f"quotes pass A {nA:,} contract-days x ${qa:.6f} = ${qa * nA:,.2f}; volume windows {len(V):,} x ${va:.5f} = ${va * len(V):,.2f}; "
+          f"pass B (upper bound) {nB:,} x ${qa:.6f} = ${qa * nB:,.2f}; total ~${tot:,.2f} (definitions already paid)", flush=True)
+    if tot > MAX_USD: raise SystemExit(f"~${tot:,.2f} > MAX_USD ${MAX_USD:,.0f}: stopped")
 
 
 def fetch_day(job):
     date, syms = job
-    key = f"{date}|{len(syms)}|{syms[0]}|{syms[-1]}"
+    key = f"q|{date}|{len(syms)}|{syms[0]}|{syms[-1]}"
     if odb.execute("SELECT 1 FROM done WHERE key=?", (key,)).fetchone(): return 0
-    bars = collections.defaultdict(list)
-    for r in rows("ohlcv-1m", syms, utc(date, 0), utc(date, 390)):
-        m = nymin(r["ts_event"])
-        if 0 <= m < 390: bars[r["symbol"].replace(" ", "")].append([m, float(r["open"]), float(r["high"]), float(r["low"]), float(r["close"]), int(r["volume"])])
     q = [(r["symbol"].replace(" ", ""), nymin(r["ts_recv"]), r["bid_px_00"], r["ask_px_00"], r["bid_sz_00"], r["ask_sz_00"])
          for r in rows("cbbo-1m", syms, utc(date, -1), utc(date, 391))]
     oi = {r["symbol"].replace(" ", ""): r["quantity"] for r in rows("statistics", syms, f"{date}T00:00", utc(date, 0)) if r.get("stat_type") == "9"}
-    # quotes and OI: merged with what the day's file already holds (pass A and pass B share a day's file)
+    # merged with what the day's file already holds (pass A and pass B share a day's file)
     for path, head, new in ((os.path.join(QDIR, f"{date}.csv.gz"), ["contract", "minute", "bid", "ask", "bid_sz", "ask_sz"], q),
                             (os.path.join(QDIR, "oi", f"{date}.csv.gz"), ["contract", "oi"], sorted(oi.items()))):
         old = [tuple(r) for r in csv.reader(gzip.open(path, "rt"))][1:] if os.path.exists(path) else []
@@ -250,18 +293,64 @@ def fetch_day(job):
         with gzip.open(path + ".tmp", "wt") as f:
             w = csv.writer(f); w.writerow(head); w.writerows(allr)
         os.replace(path + ".tmp", path)
-    for s, v in bars.items():
-        odb.execute("INSERT OR REPLACE INTO bars VALUES (?,?,?)", (s, date, json.dumps(sorted(v))))
     odb.execute("INSERT OR REPLACE INTO done VALUES (?)", (key,)); odb.commit()
     return len(q)
 
 
+def fetch_vol(job):
+    date, m, syms = job
+    key = f"v|{date}|{m}|{','.join(syms)}"
+    if odb.execute("SELECT 1 FROM done WHERE key=?", (key,)).fetchone(): return 0
+    got = collections.defaultdict(dict)
+    for r in rows("ohlcv-1m", syms, utc(date, max(0, m - 30)), utc(date, m + 1)):
+        mm = nymin(r["ts_event"])
+        if 0 <= mm < 390: got[r["symbol"].replace(" ", "")][mm] = int(r["volume"])
+    for s_ in syms:
+        r = odb.execute("SELECT vols FROM vol WHERE symbol=? AND date=?", (s_, date)).fetchone()
+        v = json.loads(r[0]) if r else {}
+        v.update({str(a): b for a, b in got.get(s_, {}).items()})
+        odb.execute("INSERT OR REPLACE INTO vol VALUES (?,?,?)", (s_, date, json.dumps(v)))
+    odb.execute("INSERT OR REPLACE INTO done VALUES (?)", (key,)); odb.commit()
+    return 1
+
+
+def rv20(und, date):
+    import math
+    i = IDX.get(date)
+    if not i or i < 22: return None
+    cs = []
+    for d in CAL[i - 21:i]:
+        b = _orig_day(und, d)
+        cs.append(b[-1][4] if b else None)
+    if not all(cs): return None
+    r = [math.log(cs[j] / cs[j - 1]) for j in range(1, len(cs))]
+    mu = sum(r) / len(r)
+    return 1.43 * math.sqrt(sum((x - mu) ** 2 for x in r) / len(r) * 252)
+
+
+def stage_volsel():
+    """The 4 strikes nearest delta 0.15 of every signal (Black-Scholes at 1.43 x the realized volatility)."""
+    jobs = []
+    for t in signals():
+        exp, cs = cands_of(t)
+        v = rv20(t["sym"], t["date"])
+        if not cs or not v: continue
+        m = int(t["minute"]); S = float(t["price"]); T = store.years_to_expiry(t["date"], m, exp)
+
+        def dlt(c):
+            k = int(c[-8:]) / 1000
+            return abs(abs(store.bs(S, k, T, v, sim.C["rate"], t["right"] == "C")[1]) - 0.15)
+        jobs.append((t["date"], m, sorted(sorted(cs, key=dlt)[:4])))
+    json.dump(jobs, open(os.path.join(D, "volsel.json"), "w"))
+    print("volume windows:", len(jobs), "signals x 4 strikes x 31 minutes", flush=True)
+
+
 def stage_fetch(name):
     L = json.load(open(os.path.join(D, f"{name}.json")))
-    jobs = [(d, sorted(v)) for d, v in sorted(L.items()) if v]
+    jobs = [(d, sorted(v)) for d, v in sorted(L.items()) if v] if not name.startswith("volsel") else [tuple(j) for j in L]
     done = 0
     with ThreadPoolExecutor(6) as ex:
-        for n in ex.map(fetch_day, jobs):
+        for n in ex.map(fetch_day if not name.startswith("volsel") else fetch_vol, jobs):
             done += 1
             if done % 25 == 0: print(f"{name} {done}/{len(jobs)} days", flush=True)
     print(f"{name} done: {len(jobs)} days", flush=True)
@@ -347,5 +436,5 @@ def stage_run():
 if __name__ == "__main__":
     for s in STAGES:
         print(f"== {YEAR} {s}", flush=True)
-        if s in ("fetchA", "fetchB"): stage_fetch("passA" if s == "fetchA" else "passB")
+        if s in ("fetchA", "fetchB", "fetchV", "fetchV2"): stage_fetch({"fetchA": "passA", "fetchB": "passB", "fetchV": "volsel", "fetchV2": "volsel2"}[s])
         else: globals()[f"stage_{s}"]()
