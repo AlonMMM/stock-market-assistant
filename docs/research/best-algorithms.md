@@ -1871,3 +1871,19 @@ The user: "re test an exit (as a stop, for looser holding) by the movement on th
 - 1.0 S30 against the entry: +4% total, +5% tune, check a tie (-$1.8K), drop 1.2 points lower: the best stock stop,
   not a clean win yet; next: 0.75 / 1.25 / 1.5 S30 around it.
 - The level stop: tune +5%, check -9%: no.
+
+### The 10 / 20-minute checks off, with and without the 1.0 S30 stock stop (2026-10-31)
+The user: "what happens if we remove the 10-20 minutes check if we have this?". `BT_X={"user_stop": {"checks": []}}`
+(the -30% stop with the stock against stays; the -20% on the rest after the half has no half to follow), fixed walk.
+
+| Version | Won | 2% (drop) | Without 10-10 | Tune | Check | 1% |
+|---|---|---|---|---|---|---|
+| Fixed champion (checks on) | 16.7% | $2,845,332 (27.6%) | $2,798,469 | $448,187 | $634,854 | $857,745 |
+| + stock stop 1.0 S30 | 16.3% | $2,967,242 (26.4%) | $2,908,748 | $468,689 | $633,095 | $888,054 |
+| Checks off | 20.4% | $3,304,181 (32.4%) | $3,249,761 | $488,278 | $676,701 | $930,796 |
+| **Checks off + stock stop 1.0 S30** | 18.3% | **$3,239,866 (27.8%)** | $3,175,997 | $477,188 | $678,950 | $929,327 |
+
+- Checks off wins both halves (+9% tune, +7% check) but the drop goes 27.6% -> 32.4%.
+- Checks off + the stock stop wins both halves (+6.5% tune, +7% check, +14% total, +8% at 1%) at the same drop
+  (27.8%): the stock stop does the checks' job of cutting losers, with fewer good trades cut. The candidate.
+  In-sample (the fair list, the period the rules were built on); confirm on Favorites before a live change.
