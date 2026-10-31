@@ -2161,3 +2161,21 @@ relative move, moneyness, days to expiry, weekend, entry minute, IV).
   pullback before the close is not a warning, the opposite of the last-hour run (which stays the one clean split: holds
   with no last-hour run and under 35% given back carry +16,043, +8,734 without the best 3). As a same-day exit the
   give-back already failed (2026-10-27: 2.5-3.0 S30 from the best sells the winners in their normal swings).
+
+### The day-end decision at 15:55 / 15:57, and the overnight split measured at 15:57 (2026-10-31, not better)
+The user: "what if we look on all of it at 15:57?". `BT_X={"eod_minute": 385 | 387}` (decide the night and sell the
+rest then), fixed walk, champ-early, 2% (adds counted once):
+
+| Decision | Fair (drop) | Tune | Check | Fav 12m | Fav 6m |
+|---|---|---|---|---|---|
+| 15:50 (now) | $3,202,862 (26.6%) | $458,193 | $699,020 | $243,492 | $162,555 |
+| 15:55 | $2,800,296 (26.9%) | $416,984 | $671,559 | $220,145 | $143,486 |
+| 15:57 | $3,019,500 (27.0%) | $444,426 | $679,415 | $234,010 | $143,806 |
+
+Not better (as on 2026-10-23 on the old walk): 15:57 is -6% on the fair list (both halves -3%), -4% and -12% on the
+Favorites. The overnight split redone on the 15:57 run's 123 holds, all measured at 15:57: the last-hour run
+(14:57-15:57) > +1 S30 no longer separates (38 holds +2,435, tune +783 / check +1,652, 42% beat the sale) - the
+15:50 finding does not survive a 7-minute shift of the window, so it is likely noise. Last 7 minutes falling more
+than 0.5 S30 against (19 holds): 21% beat the sale, -2,042 without the best 3, but tune +1,286 with them: no clean
+split. Volume 2x+ and gain +300%+ keep the same shape as at 15:50 (more giants, not a clean money split).
+The "sell at 15:50 after a last-hour run" candidate is dropped.
