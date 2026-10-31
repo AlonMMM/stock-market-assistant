@@ -244,7 +244,6 @@ export interface RunOptions {
 export const defaultFillPct = 2;
 const rate = 0.045;
 const barMaxAge = 10; // minutes: the last bar a contract's price is read from
-const fillWithin = 3; // minutes after the signal for the buy's bar
 const priorDays = 20;
 
 // ---- Black-Scholes, as store.py ----
@@ -852,15 +851,26 @@ async function walkTrades(
     const open = first && first.m <= 5 ? first.o : null;
     const prevClose = prevBars.at(-1)?.c ?? null;
     const nextDay = cal.nextSessions(date, 1)[0]!;
+    const traded = new Map((option.get(date) ?? []).map((b) => [b.m, b]));
     let today: MinuteBar | null = null;
     let carried = false;
-    for (const b of option.get(date) ?? []) {
-      if (k === 0 && b.m <= w.minute) continue;
-      last = { date, bar: b };
-      today = b;
+    // Every session minute is a check, on the stock's clock, as the live bot
+    // checks every closed minute (the audit 2026-10-31: walking only the
+    // minutes the option traded ran a thin option's checks, stop and 15:50
+    // decision at its next print, often much later). The option is marked at
+    // its last trade, of any age; a sale takes the minute's trade bar, else
+    // that last trade.
+    for (let m = k === 0 ? w.minute + 1 : 0; m < length; m++) {
+      const b = traded.get(m) ?? null;
+      if (b) {
+        last = { date, bar: b };
+        today = b;
+      }
       if (cost === null) {
-        if (b.m > w.minute + fillWithin)
-          return { steps: [], open: false, noFill: true, priced: "trades" };
+        // The buy at the first print after the signal. A signal whose option
+        // prints late is still bought (the audit: dropping them dropped mostly
+        // losers); only a day with no print at all has no price.
+        if (!b) continue;
         cost = mid(b) * (1 + fill);
         state = { ...state, cost };
         steps.push({
@@ -873,19 +883,20 @@ async function walkTrades(
         });
         continue;
       }
-      // The failed break (entry day): all out on the bar after it failed.
+      const price = b ? mid(b) : last!.bar.c;
+      // The failed break (entry day): all out the minute after it failed.
       if (k === 0 && watch && watch.state === "watching" && s.sellFailedBreak) {
-        watch = advanceWatch(watch, stockBars, b.m - 1, w.right);
-        if (watch.state === "failed" && b.m < rules.eodMinute) {
-          sell(date, b.m, mid(b), rem, "failed-break");
+        watch = advanceWatch(watch, stockBars, m - 1, w.right);
+        if (watch.state === "failed" && m < rules.eodMinute) {
+          sell(date, m, price, rem, "failed-break");
           return done();
         }
       }
       if (pending) {
         sell(
           date,
-          b.m,
-          mid(b),
+          m,
+          price,
           pending.share === "all" ? rem : pending.share,
           pending.reason,
         );
@@ -894,14 +905,14 @@ async function walkTrades(
       }
       const strength =
         k === 0 && s.sellOnWeakness
-          ? (cState(stockBars, spyBars, w.prior, b.m)?.t ?? null)
+          ? (cState(stockBars, spyBars, w.prior, m)?.t ?? null)
           : null;
       const decision = nextAction(
         state,
         {
-          minute: b.m,
-          stock: closeAt(stockBars, b.m),
-          option: b.c,
+          minute: m,
+          stock: closeAt(stockBars, m),
+          option: last!.bar.c,
           strength,
           isExpiryDay: date === w.expiry,
           sessionBeforeExpiry: nextDay <= w.expiry,
@@ -916,10 +927,10 @@ async function walkTrades(
       if (decision.reason === "carry") {
         steps.push({
           date,
-          minute: b.m,
+          minute: m,
           kind: "carry",
           share: rem,
-          price: b.c,
+          price: last!.bar.c,
           reason: "carry",
         });
         carried = true;
@@ -935,13 +946,15 @@ async function walkTrades(
     }
     if (cost === null)
       return { steps: [], open: false, noFill: true, priced: "trades" };
-    if (carried || !today) continue; // a day without a trade in the contract: on to the next
-    // A sale decided on the day's last bar, or a day that ended held without
-    // the 15:50 decision (no bar then): at the last bar's close, as the bot
-    // sells everything not carried.
+    if (carried) continue;
+    if (!today && !pending) continue; // a day without a trade in the contract: on to the next
+    // A sale decided on the day's last minute, or a day that ended held
+    // without a 15:50 decision: at the last trade, as the bot sells
+    // everything not carried.
     const reason: ExitReason =
       pending?.reason ?? (date === w.expiry ? "expiry-day" : "close-1550");
-    sell(date, today.m, today.c, rem, reason);
+    const end = last!.bar;
+    sell(date, length - 1, end.c, rem, reason);
     return done();
   }
   if (cost === null)
@@ -1135,7 +1148,7 @@ export async function runStock(
     if (walked.noFill) {
       await skipSeen(
         "no_fill",
-        `no ${picked.contract.strike} trade within ${fillWithin} minutes`,
+        `no ${picked.contract.strike} trade after the signal that day`,
         {
           symbol: picked.contract.symbol,
           strike: picked.contract.strike,
@@ -1268,7 +1281,7 @@ async function pyramid(
   if (walked.noFill)
     return {
       skip: "no_fill",
-      detail: `no ${picked.contract.strike} trade within ${fillWithin} minutes`,
+      detail: `no ${picked.contract.strike} trade after the signal that day`,
       minute: sig.minute,
     };
   return {
