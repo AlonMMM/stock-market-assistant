@@ -1236,3 +1236,31 @@ flat2 2%, q tags:
 - Per trade, fixed no floor: plan 42% won, average +45%, median -24%, +16% without its best 10; shock 36% won, +22%,
   median -19%, -1% without its best 10. The win rate is real; the average is a few 10x days.
 - Every later volume-bot test runs with `STR_WALK_KEEP=1 STR_CHASE_NOFILL=ask`, the defaults since 2026-10-31 (`STR_WALK_KEEP=0 STR_CHASE_NOFILL=cap` = before the audit).
+
+## Option books around every plan and shock alert, bought for 3 months (2026-10-31)
+
+The user, 2026-10-31: "I want to start to save the needed data for alerts from this bot" ... "i want to save every 2
+second around the alert + delta 0.1 to 0.35" ... "F60x2 is currently not in use. only plan and shock is relevant" ...
+"go for both". The live trader saves the same from now on (apps/trader/src/alert-books.ts); this fills the past.
+
+- Script `scripts/research/indi_bt/alert_books_hist.py` (steps alerts, list, cost, fetch, store, upload). Alerts on the
+  69 Favorites, 2026-08-03 to 2026-10-30: the plan alert as the live bot fires it (checked minute by minute against the
+  TypeScript `alerts()` on NVDA 2026-10-28 and COIN 2026-09-03) and the shock (F60, 15x, 09:40-15:30).
+- Contracts: |delta| 0.10-0.35, calls and puts, the bot's expiry (nearest within 4 days); delta from Black-Scholes at
+  the alert price with the 20-day volatility x 1.15. Adjusted series (BABA2 ...) left out.
+- Bought from Databento OPRA: cbbo-1s from the alert second - 2 s to + 300 s per alert, and cbbo-1m from the day's first
+  alert minute to 15:30 for the union of the day's contracts. $3.00 (metadata.get_cost over the exact request list:
+  plan 1-second $2.08, shock 1-second $0.47, minutes $0.45).
+
+| | Alerts | Stock-days | Stored |
+|---|---|---|---|
+| Plan | 2,559 | 862 | 2,529 alert windows (30 had no contract in the band) |
+| Shock | 1,156 | 663 | 1,112 alert windows (43 none in the band, 1 not resolved) |
+| Minutes | | 1,111 | 11,493 contract-days |
+
+- Stored in `data/local/alert-books.sqlite`: `alert_books_hist` (one row per alert, shaped like the live
+  `AlertBookWatch`: contracts with their delta, samples every 2 s for 300 s of [bid, ask] per contract) and
+  `minute_books` ([[m, bid, ask], ...], m = the minute whose close the book is). The minute books also went to the
+  app's D1 `option_quotes` as "databento" (10,354 contract-days new or changed; the rest were already there).
+- Gaps: AVGO 2026-09-02 (Databento resolved none of that day's contracts); 10 alert windows with no quote at all and 136
+  under half filled, all thin names (AMBA, LMND, SIRI, TSEM, ...).
