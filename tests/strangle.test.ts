@@ -1114,3 +1114,15 @@ test("shock (2026-10-30): an expiry 3 days out is no trade; a leg under minPrice
   assert.equal(wide.calls.filter((c) => c.kind === "buy").length, 0);
   assert.match(wide.store.recentTrades(DAY)[0]!.closeReason!, /spread/);
 });
+
+test("alert books (2026-10-31): every plan alert starts its option books", async () => {
+  const h = harness({ mode: "dry" }, { day: climbThenFall() });
+  await h.run(565, 610); // the alert at 10:09 is read at 10:10
+  await new Promise((done) => setTimeout(done, 20)); // the books start in the background
+  const [b] = h.store.alertBooks(DAY);
+  assert.equal(b!.kind, "plan");
+  assert.equal(b!.second, 40 * 60, "the end of the alert minute");
+  // The harness chain: calls 0.35 / 0.28 / 0.2 and puts 0.36 / 0.28 / 0.2.
+  assert.equal(b!.contracts.length, 5);
+  assert.ok(b!.samples.length >= 1);
+});

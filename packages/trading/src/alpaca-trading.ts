@@ -319,6 +319,24 @@ export class AlpacaTrading implements Broker {
     return quote(symbol, s);
   }
 
+  /** Up to 100 contracts a request (/v1beta1/options/snapshots?symbols=). */
+  async optionQuotes(symbols: string[]): Promise<OptionQuote[]> {
+    const out: OptionQuote[] = [];
+    for (let i = 0; i < symbols.length; i += 100) {
+      const body = await this.call<{
+        snapshots: Record<string, Snapshot> | null;
+      }>(this.dataUrl, "/v1beta1/options/snapshots", {
+        query: {
+          symbols: symbols.slice(i, i + 100).join(","),
+          feed: this.feed,
+        },
+      });
+      for (const [symbol, s] of Object.entries(body.snapshots ?? {}))
+        out.push(quote(symbol, s));
+    }
+    return out;
+  }
+
   async stockPrice(symbol: string): Promise<number | null> {
     // No `feed`: Alpaca uses the best one the account is subscribed to.
     const body = await this.call<{ trade?: { p?: number } }>(

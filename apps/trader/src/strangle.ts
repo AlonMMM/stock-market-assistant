@@ -75,7 +75,8 @@ import {
   type FastWindows,
 } from "../../../packages/trading/src/strangle/fast.js";
 import type { BotMarket, BotTrading } from "./bot.js";
-import { FastTape, fetchFastDay } from "./strangle-fast.js";
+import { FastTape, fetchFastBars, fetchFastDay } from "./strangle-fast.js";
+import { AlertBooks, type AlertBookWatch } from "./alert-books.js";
 import {
   tradeCash,
   type StrangleEventKind,
@@ -194,6 +195,12 @@ const outcomeWords: Record<string, string> = {
   error: "failed",
 };
 
+/** The date a week after `date` (YYYY-MM-DD). */
+const weekLater = (date: string) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + 7 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
 export class StrangleBot {
   private readonly o: Required<Omit<StrangleOptions, "earnings">> & {
     earnings?: StrangleOptions["earnings"];
@@ -238,8 +245,18 @@ export class StrangleBot {
     { leg: number | null; stock: number | null; at: number }
   >();
 
+  private readonly books: AlertBooks;
   constructor(options: StrangleOptions) {
     this.o = { now: Date.now, log: () => {}, ...options };
+    this.books = new AlertBooks({
+      chain: (u, right, from, to) => this.o.trading.chain(u, right, from, to),
+      ...(this.o.trading.quotes
+        ? { quotes: (c: string[]) => this.o.trading.quotes!(c) }
+        : {}),
+      store: this.o.store,
+      now: () => this.o.now(),
+      log: (line) => this.o.log(line),
+    });
   }
 
   // ---- settings ----
@@ -364,6 +381,7 @@ export class StrangleBot {
     if (wall >= close + 5 && this.summarized !== date) {
       this.summarized = date;
       await this.summary(date);
+      void this.keepFastBars(date);
     }
   }
 
@@ -480,6 +498,14 @@ export class StrangleBot {
             const second = (t + 1) * 10;
             // A slot passed while catching up (a start mid-session): no trade.
             if (this.sessionSecond() - second > 30) continue;
+            // Every alert's option books, traded or not (alert-books.ts).
+            void this.watchBooksOf(
+              date,
+              symbol,
+              second,
+              r.isShock ? "shock" : "fast",
+              s,
+            );
             await this.fastEntry(
               date,
               symbol,
@@ -501,6 +527,91 @@ export class StrangleBot {
     } finally {
       this.fastBusy = false;
     }
+  }
+
+  /**
+   * The option books around an alert, traded or not (alert-books.ts): every
+   * 2 s for 300 s, then once a minute to the bot's last sale; the bot's
+   * expiry for the stock, else its nearest within a week.
+   */
+  private async watchBooksOf(
+    date: string,
+    symbol: string,
+    second: number,
+    kind: AlertBookWatch["kind"],
+    s: StrangleSettings,
+  ) {
+    try {
+      let expiry = await this.expiryFor(symbol, date, s).catch(() => null);
+      if (!expiry) {
+        const week = await this.o.trading.chain(
+          symbol,
+          "call",
+          date,
+          weekLater(date),
+        );
+        expiry = week.map((q) => q.expiry).sort()[0] ?? null;
+      }
+      if (!expiry) return;
+      await this.books.start({
+        day: date,
+        symbol,
+        second,
+        kind,
+        expiry,
+        // Once a minute after the first 300 s, until the bot's last sale.
+        endAt: newYorkToUtc(date, 570 + s.endMinute),
+      });
+    } catch (error) {
+      this.event(
+        "error",
+        `Alert books of ${symbol} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /** Every 2 seconds: the running alerts' option books. */
+  async watchBooks(): Promise<void> {
+    await this.books.step();
+  }
+
+  /**
+   * After the close: every watched stock's 10-second bars of the session,
+   * kept for good (user 2026-10-31, the Volume bot's backtest data). From
+   * today's tape when it ran to the close, else fetched from the trades.
+   */
+  private async keepFastBars(date: string) {
+    const close = coreClose(date);
+    if (close === null || !this.o.market.trades) return;
+    const openMs = newYorkToUtc(date, 570);
+    const endMs = newYorkToUtc(date, close);
+    // Today's tape counts only when it was read to the close.
+    const tape =
+      this.tape !== null && this.tape.cursor >= endMs ? this.tape : null;
+    const have = new Set(this.o.store.fastBarSymbols(date));
+    const queue = this.symbols.filter((sym) => !have.has(sym));
+    let kept = 0;
+    let failed = 0;
+    const worker = async () => {
+      for (let sym = queue.shift(); sym; sym = queue.shift()) {
+        try {
+          const bars = tape
+            ? tape.day(sym)
+            : await fetchFastBars(this.o.market, sym, openMs, endMs);
+          if (bars && bars.v.some((v) => v > 0)) {
+            this.o.store.saveFastBars(sym, date, bars);
+            kept++;
+          }
+        } catch {
+          failed++;
+        }
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    this.event(
+      "info",
+      `10-second bars of ${date} kept for ${kept} stocks${failed ? ` (${failed} failed)` : ""}`,
+    );
   }
 
   private async fastEntry(
@@ -579,8 +690,9 @@ export class StrangleBot {
             fastWindows,
           );
           if (got) {
-            this.o.store.saveFastDay(symbol, d, got);
-            w = got;
+            this.o.store.saveFastDay(symbol, d, got.windows);
+            this.o.store.saveFastBars(symbol, d, got.bars);
+            w = got.windows;
           }
         }
         if (w) prior.push(w);
@@ -856,8 +968,6 @@ export class StrangleBot {
       if (t.day === date && t.leg && t.leg.bought > 0)
         traded.set(t.symbol, (traded.get(t.symbol) ?? 0) + 1);
     for (const symbol of this.symbols) {
-      if (busy.has(symbol)) continue;
-      if ((traded.get(symbol) ?? 0) >= s.maxPerStock) continue;
       const hist = this.hist.get(symbol);
       if (!hist) continue;
       // A new burst at m: an alert now and none the minute before (the day's
@@ -868,6 +978,10 @@ export class StrangleBot {
       const first = firstAlert(sides, s.firstMinute, m);
       const isFirst = first !== null && first.minute === m;
       if (!isFirst && sides[m - 1]) continue;
+      // Every plan alert's option books, traded or not (alert-books.ts).
+      void this.watchBooksOf(date, symbol, (m + 1) * 60, "plan", s);
+      if (busy.has(symbol)) continue;
+      if ((traded.get(symbol) ?? 0) >= s.maxPerStock) continue;
       const added = this.o.store.addSignal({
         day: date,
         symbol,

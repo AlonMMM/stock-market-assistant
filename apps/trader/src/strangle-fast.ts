@@ -115,14 +115,13 @@ export class FastTape {
   }
 }
 
-/** A whole past session of one stock, as windows; null without trades. */
-export async function fetchFastDay(
+/** A whole past session of one stock in 10-second bars; null without trades. */
+export async function fetchFastBars(
   market: BotMarket,
   symbol: string,
   openMs: number,
   endMs: number,
-  windows: (day: FastDay) => FastWindows,
-): Promise<FastWindows | null> {
+): Promise<FastDay | null> {
   if (!market.trades) return null;
   const builder = new TradeBarBuilder(10, openMs, endMs);
   let n = 0;
@@ -131,5 +130,18 @@ export async function fetchFastDay(
     for (const t of list) builder.add(toTrade(t));
   });
   if (!n) return null;
-  return storedWindows(windows(dayFromBars(builder.bars(), openMs)));
+  return dayFromBars(builder.bars(), openMs);
+}
+
+/** A whole past session of one stock, as windows and its bars; null without trades. */
+export async function fetchFastDay(
+  market: BotMarket,
+  symbol: string,
+  openMs: number,
+  endMs: number,
+  windows: (day: FastDay) => FastWindows,
+): Promise<{ windows: FastWindows; bars: FastDay } | null> {
+  const bars = await fetchFastBars(market, symbol, openMs, endMs);
+  if (!bars) return null;
+  return { windows: storedWindows(windows(bars)), bars };
 }
