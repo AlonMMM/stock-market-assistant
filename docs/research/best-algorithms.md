@@ -2363,3 +2363,7 @@ $500K in 6-12 months, so for them the ladder is plain 3%.
   $3,996,228 (33.9%); 2.5% ladder + half $3,145,241 (30.6%). Favorites 12m $206,191 (33.0%) / $188,094 (29.7%) vs
   flat 2% $260,085 (29.7%). It brings the drop to flat 2%'s, for far less money: the account is under -20% on 28-41%
   of trade days and the giant that ends a drop comes at half size (as on 2026-10-27 and 2026-10-31). Not better.
+- The same at 75% size (the user: "what about 75% size?"), 3% ladder, cut at -20%: back within 10% of the high / back
+  +10% off the low: fair $4,531,878 / $4,852,623 (38.3%) vs the plain 2.5% ladder $3,424,357 (38.6%); Favorites 12m
+  $240,567 / $238,904 (36.7%) vs $265,105 (35.6%); 6m $146,055 / $145,530 (36.7%) vs $152,131 (35.6%). At the same drop
+  it beats the lower starting size on the fair list (+32-42%) and loses on both Favorites lists (-4% to -10%): mixed.
