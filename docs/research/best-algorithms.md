@@ -2214,3 +2214,21 @@ pick and exits, real book 93-97%), fair list: same side 30 min 136 retries, 16% 
 tune $533,396 / check $585,596; either side $3,007,331; after a loss $3,139,723; 60 min 108 retries $3,648,500
 (29.1%), tune $571,475 / check $638,436. Tune up 16-25%, check down 9-19%, drop +3 points: not better (as on
 2026-10-27).
+
+### Stock exits for winners: 25% at the first pullback after +200%, the rest at a full pullback; a failed bounce on winners (2026-10-31, not better)
+The user: "for 200%+ sell 25% on the first pullback (test a couple of pullbacks), then exit on the full pullback" and
+"if the stock bounces from resistance/support, exit when you confirm it is going down". sim.py `big_stage {arm 2.0,
+first, share 0.25, full}` (the stock's best since the option first reached +200%, any day held) and `fb_win {arm,
+share}` (failed_break_minute, only when the option is up `arm` then). Fixed walk, champ-early, 2% (fair / tune / check;
+Favorites 12m / 6m):
+today $3,202,862 (26.6%) 458K / 699K, $243,492, $162,555;
+big_stage 0.5 / 1.5 $261,755 (29.9%), $154,448, $99,758 (209 sales; nights 140 -> 75); 0.5 / 2.0 $608,040; 1.0 / 2.0
+$672,582; 1.0 / 3.0 $1,040,104 (33.3%), $212,621, $105,830;
+fb_win +50% all $2,671,416 (28.5%), +100% all $3,338,706 (26.6%; tune +4%, check the same), +50% half $2,966,568 -
+it fired on 3 trades only (the next level ahead touched and failed while already up +50%).
+- The pullback exit destroys the giants (-67% to -92%): a +200% trade is mid-move, and the stock's normal swing (and
+  the overnight gap, read at the first minute) is a "full pullback"; it halves the nights. Same lesson as 2026-10-27's
+  huge-winner stops, much worse at +200%.
+- The failed bounce barely fires on winners: the existing detector looks only at the next level ahead of the signal,
+  within 30 minutes of touching it; winners mostly break it. A real test needs any level (day high, yesterday's, 5-day)
+  reached while in profit, any time of day.
