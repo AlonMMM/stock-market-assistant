@@ -120,6 +120,17 @@ export function WatchlistPage({
             }
           />
         </div>
+        {!page && (
+          <button
+            type="button"
+            className="wl-pa-head"
+            aria-label={`Price alerts${armedAlerts > 0 ? `, ${armedAlerts} armed` : ""}`}
+            onClick={() => open("alerts")}
+          >
+            <BellIcon />
+            {armedAlerts > 0 && <span className="num">{armedAlerts}</span>}
+          </button>
+        )}
         {modes}
       </header>
       {page === "alerts" ? (
