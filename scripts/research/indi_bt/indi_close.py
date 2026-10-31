@@ -119,6 +119,7 @@ from store import day
 B = "data/local/x/bt"
 SIZES = rr.SIZES
 LISTING = os.environ.get("IC_PASS") == "list"
+NOFLOOR = False   # sig_lasthour.py SL_SET=all14: any priced option, no $0.20 / 200-contract floor
 M_IN = 387
 A0, Z = "2024-02-01", FR.Z
 EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15", "open16", "open22", "open23", "open24", "open26", "open27")]
@@ -426,7 +427,7 @@ def pick_exp(r, right, d, exp):
         sim.expiry_for = BASE_EXPIRY
     if not cands: return None
     best = min(cands, key=lambda x: abs(x[3] - d))
-    if best[4] < (0.10 if r["sym"] == "IBIT" else 0.20) or best[5] < 200: return None
+    if not NOFLOOR and (best[4] < (0.10 if r["sym"] == "IBIT" else 0.20) or best[5] < 200): return None
     return best[0], exp
 
 

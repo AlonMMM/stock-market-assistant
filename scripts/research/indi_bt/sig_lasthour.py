@@ -19,6 +19,11 @@ SL_SET=late (the user 2026-11-01: "if we take only the signals that came after 1
 every signal-day, bought or not (any status), with a signal at or after 13:30; versions by the latest signal's time
 t1330 / t1430 / t1500, and t1430-flat (also the last hour <= +0.5); the option is picked at 15:57 the same way. Quotes
 open30. Picked on tune by the average per bet; the pick and t1430 (the user's rule) on check.
+SL_SET=all14 (the user 2026-11-01: "lets not filter it for now and place the bbet", after it showed the signal files
+keep only a day's first signal): every stock-side-day with a c12_15 signal at or after 14:30, the repeats included
+(defence_signals.py BT_ALL=1 -> s_all_c12_15_<year>.csv, signals end 15:44, Feb 2024 - 2026-10-12), no Friday, earnings
+or last-hour filter. Two versions on the same bets: floor (the usual $0.20 and 200 contracts in the last 30 minutes)
+and nofloor (any option with a price at 15:57, delta 0.20 nearest). Both halves shown; quotes open31.
 
   node --env-file=.env <dir>/run.mjs sig_lasthour.py      (from the app repo root)
 """
@@ -30,9 +35,10 @@ import retry_roll as rr
 from store import day
 from split import half
 
-ic.EXTRAS += [os.path.join(HERE, "dbx_cache", "open29"), os.path.join(HERE, "dbx_cache", "open30")]
+ic.EXTRAS += [os.path.join(HERE, "dbx_cache", x) for x in ("open29", "open30", "open31")]
 LATE = os.environ.get("SL_SET") == "late"
-QTAG = "open30" if LATE else "open29"
+ALL14 = os.environ.get("SL_SET") == "all14"
+QTAG = "open31" if ALL14 else "open30" if LATE else "open29"
 B = "data/local/x/bt"
 LEVELS = {"lh000": 0.0, "lh050": 0.5, "lh100": 1.0}
 
@@ -49,8 +55,46 @@ def lasthour(job):
 
 
 def walk(job):
-    key, r, right = job
-    return key, ic.walk(("fair", r, right, 0.20, "fb", "his"))
+    key, r, right = job[:3]
+    ic.NOFLOOR = len(job) > 3 and job[3]
+    return (key + (ic.NOFLOOR,) if len(job) > 3 else key), ic.walk(("fair", r, right, 0.20, "fb", "his"))
+
+
+def all14():
+    """SL_SET=all14: every late signal-day, both floors, no filter."""
+    sig = {}
+    for f in sorted(glob.glob(f"{B}/s_all_c12_15_20*.csv")):
+        for r in csv.DictReader(open(f)):
+            ms = [int(x) for x in r["minutes"].split()]
+            if max(ms) >= 300: sig[(r["sym"], r["date"], r["right"])] = (min(ms), max(ms))
+    keys = [k for k in sig if ic.A0 <= k[1] <= ic.RB.LAST and rr.CAL.index(k[1]) + 1 < len(rr.CAL)]
+    print(f"stock-side-days with a signal at or after 14:30: {len(sig):,}; in the period {len(keys):,}; first fired before 14:30: "
+          f"{sum(sig[k][0] < 300 for k in keys):,}", flush=True)
+    with mp.Pool(8) as p: LH = {k: v for k, v in p.map(lasthour, sorted(keys), chunksize=20) if v}
+    jobs = [((s, d, rt), {"sym": s, "date": d, "px": v["px"]}, rt, nf) for (s, d, rt), v in LH.items() for nf in (False, True)]
+    with mp.Pool(8) as p: W = {k: w for k, w in p.map(walk, jobs, chunksize=4) if w}
+    if ic.LISTING:
+        rows = sorted({x for w in W.values() for x in w})
+        with open(os.path.join(HERE, f"{QTAG}_dbx_list.csv"), "w") as fh:
+            wr = csv.writer(fh); wr.writerow(["date", "contract", "minute"]); wr.writerows(rows)
+        print(f"{len(rows)} rows on {len({x[0] for x in rows})} days -> {QTAG}_dbx_list.csv"); return
+    head = ("| Version | Half | Bets | Big (+300%) | Their avg | Others' avg | Per bet | Median | Per bet without best 5 | "
+            "$100K at 2% / worst drop | at 3% | Per bet by year (bets) |\n|---|---|---|---|---|---|---|---|---|---|---|---|")
+    print(f"with a 15:57 price: {len(LH):,}; got an option: floor {sum(not k[3] for k in W):,}, nofloor {sum(k[3] for k in W):,}\n\n" + head)
+    for nf, name in ((False, "floor"), (True, "nofloor")):
+        for part in ("tune", "check"):
+            out = row(sorted((w for k, w in W.items() if k[3] == nf and half(k[1]) == part), key=lambda w: w["date"]))
+            if out: print(f"| {name} | {part} | {out[0]} |", flush=True)
+        T = [w for k, w in W.items() if k[3] == nf]
+        fri = [w for w in T if dt.date.fromisoformat(w["date"]).weekday() == 4]
+        early = [w for k, w in W.items() if k[3] == nf and sig[k[:3]][0] < 300]
+        for lbl, S in (("Friday nights", fri), ("first fired before 14:30", early), ("first fired 14:30 or later", [w for k, w in W.items() if k[3] == nf and sig[k[:3]][0] >= 300])):
+            out = row(sorted(S, key=lambda w: w["date"]))
+            if out: print(f"| {name}: {lbl} | both | {out[0]} |")
+        nights = collections.Counter(w["date"] for w in T)
+        print(f"| {name}: bets a night | | max {max(nights.values())}, median {st.median(nights.values())}, nights {len(nights)} |")
+    json.dump([dict(date=w["date"], sym=w["sym"], right=w["right"], contract=w["contract"], nofloor=k[3], first=sig[k[:3]][0],
+                    last=sig[k[:3]][1], r={str(a): x for a, x in w["r"].items()}) for k, w in W.items()], open(f"{B}/sig_lasthour_all14_trades.json", "w"))
 
 
 def row(T):
@@ -68,6 +112,7 @@ def row(T):
 
 
 def main():
+    if ALL14: return all14()
     sig = {}
     for f in sorted(glob.glob(f"{B}/sg_c12_15_20*_trades.csv")):
         for r in csv.DictReader(open(f)):
