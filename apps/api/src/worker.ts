@@ -83,6 +83,7 @@ import { handleChartBars } from "../../../packages/market-data/src/chart-bars.js
 import { handleTradeChart } from "../../../packages/market-data/src/trade-chart.js";
 import { handleBotBacktest } from "../../../packages/market-data/src/bot-backtest.js";
 import { D1OptionQuotes } from "../../../packages/market-data/src/option-quotes.js";
+import { D1OptionBars } from "../../../packages/market-data/src/option-bars.js";
 import { handleControl } from "../../../packages/trading/src/control-api.js";
 import { changeRefusal } from "./owner-only.js";
 import { verifyAccess, type AccessIdentity } from "./access.js";
@@ -100,6 +101,7 @@ let cache:
       db: D1Like;
       cache: D1BarCache;
       quotes: D1OptionQuotes;
+      optionBars: D1OptionBars;
       baselines: D1BaselineStore;
       strengths: D1StrengthStore;
       sigmas: D1MarksSigmaStore;
@@ -115,6 +117,7 @@ function stores(db: D1Like) {
       db,
       cache: new D1BarCache(db),
       quotes: new D1OptionQuotes(db),
+      optionBars: new D1OptionBars(db),
       baselines: new D1BaselineStore(db),
       strengths: new D1StrengthStore(db),
       sigmas: new D1MarksSigmaStore(db),
@@ -544,6 +547,7 @@ export default {
         Date.now(),
         db?.cache,
         db?.quotes,
+        db?.optionBars,
       );
       return Response.json(result.body, {
         status: result.status,

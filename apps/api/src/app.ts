@@ -27,6 +27,7 @@ import { handleTradeChart } from "../../../packages/market-data/src/trade-chart.
 import { handleBotBacktest } from "../../../packages/market-data/src/bot-backtest.js";
 import type { BarCache } from "../../../packages/market-data/src/bar-cache.js";
 import type { OptionQuoteStore } from "../../../packages/market-data/src/option-quotes.js";
+import type { OptionBarStore } from "../../../packages/market-data/src/option-bars.js";
 import {
   handleBoard,
   type StrengthStore,
@@ -73,6 +74,7 @@ export function buildApp(
     fetcher?: typeof fetch;
     cache?: BarCache;
     quotes?: OptionQuoteStore; // real option quotes uploaded from the Mac (option-quotes.ts)
+    optionBars?: OptionBarStore; // option minute bars the backtest read, kept (option-bars.ts)
     baselines?: BaselineStore; // stored Rel vol baselines for the board
     strengths?: StrengthStore; // stored β/σ vs SPY for the board's score
     sigmas?: MarksSigmaStore; // stored σ curves of the marked-sections score
@@ -496,6 +498,7 @@ export function buildApp(
       Date.now(),
       alpaca.cache,
       alpaca.quotes,
+      alpaca.optionBars,
     );
     return reply.code(result.status).send(result.body);
   });

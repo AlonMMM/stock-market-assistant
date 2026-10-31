@@ -2,6 +2,7 @@ import { AlpacaFeed } from "./alpaca.js";
 import { minuteHistory, tickerPattern, type Credentials } from "./backtest.js";
 import type { BarCache, CacheStats } from "./bar-cache.js";
 import type { OptionQuoteStore } from "./option-quotes.js";
+import type { OptionBarStore } from "./option-bars.js";
 import type { RawBar } from "./bars.js";
 import {
   coreClose,
@@ -152,6 +153,7 @@ export class AlpacaBacktestData implements BacktestData {
     private readonly tradingUrl: string,
     private readonly fetcher: typeof fetch,
     private readonly quotes?: OptionQuoteStore,
+    private readonly optionStore?: OptionBarStore,
   ) {}
 
   bars(symbol: string, date: string) {
@@ -279,11 +281,24 @@ export class AlpacaBacktestData implements BacktestData {
   }
 
   async optionDay(contracts: string[], date: string) {
-    const need = contracts.filter((c) => !this.days.has(`${c}|${date}`));
+    let need = contracts.filter((c) => !this.days.has(`${c}|${date}`));
+    // The stored days first (option-bars.ts); a failed read only means fetching.
+    if (need.length && this.optionStore) {
+      const stored = await this.optionStore
+        .get(need, date)
+        .catch(() => new Map<string, MinuteBar[]>());
+      for (const [c, bars] of stored) this.days.set(`${c}|${date}`, bars);
+      need = need.filter((c) => !stored.has(c));
+    }
     if (need.length) {
       const got = await this.optionBars(need, date, date);
-      for (const c of need)
-        this.days.set(`${c}|${date}`, got.get(c)?.get(date) ?? []);
+      const fetched = new Map(
+        need.map((c) => [c, got.get(c)?.get(date) ?? []] as const),
+      );
+      for (const [c, bars] of fetched) this.days.set(`${c}|${date}`, bars);
+      await this.keep(
+        [...fetched].map(([contract, bars]) => ({ contract, date, bars })),
+      );
     }
     return new Map(contracts.map((c) => [c, this.days.get(`${c}|${date}`)!]));
   }
@@ -293,7 +308,17 @@ export class AlpacaBacktestData implements BacktestData {
       (await this.optionBars([contract], from, to)).get(contract) ??
       new Map<string, MinuteBar[]>();
     for (const m of got.values()) m.sort((a, b) => a.m - b.m);
+    await this.keep([...got].map(([date, bars]) => ({ contract, date, bars })));
     return got;
+  }
+
+  /** Stores fetched days of finished sessions, one batch; a failed write is not an error. */
+  private async keep(
+    days: { contract: string; date: string; bars: MinuteBar[] }[],
+  ) {
+    const finished = days.filter((d) => d.date <= this.lastSession);
+    if (!this.optionStore || !finished.length) return;
+    await this.optionStore.put(finished).catch(() => {});
   }
 
   async optionQuotes(
@@ -323,6 +348,7 @@ export async function handleBotBacktest(
   now = Date.now(),
   cache?: BarCache,
   quotes?: OptionQuoteStore,
+  optionStore?: OptionBarStore,
 ): Promise<{ status: number; body: BotBacktestResponse | { error: string } }> {
   if (!credentials.key || !credentials.secret)
     return {
@@ -376,6 +402,7 @@ export async function handleBotBacktest(
       tradingUrl,
       fetcher,
       quotes,
+      optionStore,
     );
     const run = await runStock(
       symbol,
