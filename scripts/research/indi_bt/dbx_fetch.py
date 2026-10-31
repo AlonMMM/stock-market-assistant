@@ -31,6 +31,12 @@ if "open13" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "o
 if "shockt" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "shockt"), "shockt_dbx_list.csv", 391   # shock_test.py
 if "open14" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open14"), "open14_dbx_list.csv", 391   # indi_close.py IC_SET=vol
 if "open15" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open15"), "open15_dbx_list.csv", 391   # indi_close.py IC_SET=d2b
+if "open16" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open16"), "open16_dbx_list.csv", 391   # indi_close.py IC_SET=d3
+if "open17" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open17"), "open17_dbx_list.csv", 391   # late_start.py
+if "open18" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open18"), "open18_dbx_list.csv", 391   # thin_retry.py
+if "open19" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open19"), "open19_dbx_list.csv", 391   # open_window.py
+if "open20" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open20"), "open20_dbx_list.csv", 391   # ten_back.py
+if "open21" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open21"), "open21_dbx_list.csv", 391   # liquid_free.py
 NY = ZoneInfo("America/New_York")
 AUTH = "Basic " + base64.b64encode((os.environ["DATABENTO_API_KEY"] + ":").encode()).decode()
 HEAD = ["contract", "minute", "bid", "ask", "bid_sz", "ask_sz"]
