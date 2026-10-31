@@ -2277,3 +2277,10 @@ walk, champ-early, 2% (fair / tune / check; Favorites 12m / 6m):
   (nights fall by 40-50%). Indi's overnight giants are late entries (median 15:26) and his same-day trades are a
   different book; the bot enters at 09:40-10:30 and needs the afternoon. Trimming into strength cuts the giants
   (-49%). The scratch helps the Favorites 6m (+9% / +18%) and loses the fair list (-31% / -54%). The guard is a tie.
+
+### 2.8 + hold late winners (2026-10-31, the user's rule; added to 2.8.0)
+The user: "do not sell if we bought after 15:00 and positive". sim.py `late_hold {from 330}` over 2.8, fixed walk, 2%:
+fair $4,228,594 (25.5%) tune $551,096 / check $767,306 vs 2.8 $4,161,285 (25.5%) $540,512 / $769,879; Favorites 12m
+$273,972 vs $269,142 (check the same), 6m $166,015 vs $163,088. 15 of 1,006 fair entries are at 15:00+; 3 trades change
+(AAPL 2025-06-30 -16 points, META 2026-05-27 -2, AI 2026-09-02 +9) plus one pyramid add kept: about neutral, +1.6% to
++1.8% on every list, check a tie. In the app's 2.8.0 as `lateHold` (PR #223).

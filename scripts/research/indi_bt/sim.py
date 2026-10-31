@@ -496,6 +496,9 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 continue
             if t >= X["eod_minute"]: continue
             # Indi's gain management, from his fills (indi_rules.py; the user, 2026-10-31: "lets build tests for those"):
+            LH = X.get("late_hold")  # {from}: the user's 2.8 rule (2026-10-31: "do not sell if we bought after 15:00 and
+            # positive"): an entry at minute `from` or later is not sold on its entry day while above its cost (to 15:50)
+            if LH and k == 0 and minute >= LH["from"] and g > 0: continue
             GW = X.get("guard_win")  # {arm, late}: no intraday sale on an overnight candidate - once the option was up `arm`,
             # or the entry was at minute `late` or later, nothing is sold on the entry day before the 15:50 decision
             if GW and k == 0 and (peak / cost - 1 >= GW["arm"] or minute >= GW.get("late", 999)): continue
