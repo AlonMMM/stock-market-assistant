@@ -2155,3 +2155,9 @@ relative move, moneyness, days to expiry, weekend, entry minute, IV).
   minute 11.
 - Candidate (not yet tested as a rule): sell at 15:50 instead of carrying when the last hour ran > 1 S30 our way.
   Chosen after looking at the fair list: needs a proper sim run and the Favorites.
+- Give-back by 15:50 (the user: "if the stock goes up 5% but lost 3 of it?"), in S30 and as a share of the run since
+  the signal: the typical hold ran 6.2 S30 and gave back 0.9 (16%). Gave back 35%+ (18 holds): carrying about zero
+  (+154; tune -362, check +516); gave back 2+ S30 (28 holds): +6,024, check median night 1.00x. No clean signal; a
+  pullback before the close is not a warning, the opposite of the last-hour run (which stays the one clean split: holds
+  with no last-hour run and under 35% given back carry +16,043, +8,734 without the best 3). As a same-day exit the
+  give-back already failed (2026-10-27: 2.5-3.0 S30 from the best sells the winners in their normal swings).
