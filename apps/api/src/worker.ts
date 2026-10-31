@@ -4,7 +4,10 @@ import {
   D1PriceAlerts,
   handlePriceAlerts,
 } from "../../../packages/market-data/src/price-alerts.js";
-import { handleTicker } from "../../../packages/market-data/src/ticker.js";
+import {
+  handleTicker,
+  handleTickerCheck,
+} from "../../../packages/market-data/src/ticker.js";
 import {
   liveUrl,
   paperUrl,
@@ -465,6 +468,22 @@ export default {
       const result = await handleCandles(
         { ticker: query.get("ticker"), date: query.get("date") },
         credentials,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path === "/api/tickers/check") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const result = await handleTickerCheck(
+        Object.fromEntries(new URL(request.url).searchParams),
+        credentials,
+        env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
       );
       return Response.json(result.body, {
         status: result.status,
