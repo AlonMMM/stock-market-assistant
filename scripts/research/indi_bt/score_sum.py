@@ -19,28 +19,51 @@ LISTS = [("fair list", lambda t: t["sym"] in HIS40 and t["sym"] in PRIOR[t["date
          ("151 unseen", lambda t: t["sym"] not in HIS40)]
 
 
+def held(cost, steps):
+    """What account() needs to book a trade the live bot's way, from its walk (sim.py steps (day, minute, side, share,
+    price, rule) or "day,minute,side,share,price,rule;..." strings): dict(exit_day=the day of its last sale,
+    marks={day: its return so far at that day's 15:50 carry price}). Spread it into the row: dict(..., **held(c, s))."""
+    if isinstance(steps, str): steps = [x.split(",") for x in steps.split(";") if x]
+    st_ = [(s_[0], int(s_[1]), s_[2], float(s_[3]), float(s_[4])) for s_ in steps]
+    sells = [s_ for s_ in st_ if s_[2] == "sell"]
+    exit_day = max((s_[0] for s_ in sells), default=st_[0][0] if st_ else None)
+    marks = {}
+    for d, m, side, q, px in st_:
+        if side == "carry" and cost:
+            got = sum(s_[3] * s_[4] for s_ in sells if s_[0] <= d)
+            marks[d] = (got + q * px) / cost - 1
+    return dict(exit_day=exit_day, marks=marks)
+
+
 def account(T, pct=0.01):
-    """1% (pct) of the account at the start of each trade's entry day, from $100,000. A trade whose row has `exit_day`
-    (its last sale) joins the account at the end of that day, and a day's trades are sized on closed trades only (the
-    audit of 2026-10-31: "overnight profits are counted too early"); a row without it joins at once, as before - its
-    figures run high when trades are held overnight."""
-    if any(t.get("exit_day") for t in T):
-        import collections
-        by, due = collections.defaultdict(list), collections.defaultdict(float)
-        for t in T: by[t["date"]].append(t)
-        eq, peak, dd = 1e5, 1e5, 0.0
-        for d in sorted(set(by) | {t.get("exit_day") or t["date"] for t in T}):
-            base = eq
-            for t in by.get(d, []): due[t.get("exit_day") or t["date"]] += pct * base * max(-1, float(t["pnl"]) / 1e4)
-            eq += due.pop(d, 0.0)
-            peak = max(peak, eq); dd = max(dd, 1 - eq / peak)
-        return eq + sum(due.values()), dd
-    eq, cur, start, peak, dd = 1e5, None, 1e5, 1e5, 0.0
-    for t in T:
-        if t["date"] != cur:
-            cur = t["date"]; start = eq; peak = max(peak, eq); dd = max(dd, 1 - eq / peak)
-        eq += pct * start * max(-1, float(t["pnl"]) / 1e4)
-    return eq, max(dd, 1 - eq / max(peak, eq))
+    """pct of the account a trade, from $100,000; a row's pnl is its result at $10K. A day's trades are sized on the
+    account as that day starts: closed trades plus the open ones marked at their last 15:50 carry price (the live bot
+    sizes on its account value). A row with `exit_day` (see held()) joins the account at the end of that day, and its
+    `marks` count in the drop while it is held (the audit of 2026-10-31: the whole result used to join on the entry
+    day). A row without `exit_day` joins at once, as before: its figures run 1-4% high when trades are held overnight."""
+    if not any(isinstance(t, dict) and t.get("exit_day") for t in T):
+        eq, cur, start, peak, dd = 1e5, None, 1e5, 1e5, 0.0
+        for t in T:
+            if t["date"] != cur:
+                cur = t["date"]; start = eq; peak = max(peak, eq); dd = max(dd, 1 - eq / peak)
+            eq += pct * start * max(-1, float(t["pnl"]) / 1e4)
+        return eq, max(dd, 1 - eq / max(peak, eq))
+    import collections
+    by = collections.defaultdict(list)
+    for t in T: by[t["date"]].append(t)
+    days = sorted(set(by) | {t.get("exit_day") or t["date"] for t in T})
+    eq, peak, dd, open_, prev = 1e5, 1e5, 0.0, [], None
+    for d in days:
+        base = eq + sum(stake * (t.get("marks") or {}).get(prev, 0.0) for stake, t in open_)
+        for t in by.get(d, []): open_.append((pct * base, t))
+        keep = []
+        for stake, t in open_:
+            if (t.get("exit_day") or t["date"]) == d: eq += stake * max(-1, float(t["pnl"]) / 1e4)
+            else: keep.append((stake, t))
+        open_ = keep
+        now = eq + sum(stake * (t.get("marks") or {}).get(d, 0.0) for stake, t in open_)
+        peak = max(peak, now); dd = max(dd, 1 - now / peak); prev = d
+    return eq + sum(stake * max(-1, float(t["pnl"]) / 1e4) for stake, t in open_), dd
 
 
 def main():
