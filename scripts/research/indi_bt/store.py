@@ -146,6 +146,30 @@ def day(sym, date):
     return _cache[k]
 
 
+SPLITS = (2, 3, 4, 5, 8, 10, 15, 20, 25, 30, 40, 50)
+
+
+def split_ratio(sym, prev, date):
+    """The split between two sessions read from the raw bars (the audit of 2026-10-31, B6: the bars are not adjusted, so
+    a 10:1 split made the volume baseline ~10x too low for 20 sessions): N when yesterday's close / today's open is
+    within 4% of N for a forward N:1 split, 1 / N for a 1:N reverse one, else 1."""
+    a, b = day(sym, prev), day(sym, date)
+    if not a or not b or not b[0][1]: return 1
+    r = a[-1][4] / b[0][1]
+    for n in SPLITS:
+        if abs(r / n - 1) < 0.04: return n
+        if abs(r * n - 1) < 0.04: return 1 / n
+    return 1
+
+
+def vol_factor(sym, d, date, cal):
+    """What a session's share volume is multiplied by to count in today's shares: the product of the splits after it."""
+    i, j = cal.index(d), cal.index(date)
+    f = 1
+    for k in range(i + 1, j + 1): f *= split_ratio(sym, cal[k - 1], cal[k])
+    return f
+
+
 def calendar():
     """Trading days = days with SPY bars."""
     return [r[0] for r in db.execute("SELECT date FROM bars WHERE symbol='SPY' ORDER BY date")]

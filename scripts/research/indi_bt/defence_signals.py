@@ -19,7 +19,7 @@ day, the first minute a rule holds in either direction. Rules:
 import collections, csv, json, math, multiprocessing as mp, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from store import P, day, calendar
+from store import P, day, calendar, vol_factor
 from signals import series, beta
 from levels import ctx
 
@@ -143,7 +143,8 @@ def stock(sym):
         hist = []
         for d in cal[i - 20:i]:
             v = [0] * 390
-            for x in day(sym, d): v[x[0]] = x[5]
+            f = vol_factor(sym, d, date, cal)   # in today's shares across a split (B6)
+            for x in day(sym, d): v[x[0]] = x[5] * f
             acc, cum = 0, []
             for x in v: acc += x; cum.append(acc)
             if cum[-1] > 0: hist.append(cum)

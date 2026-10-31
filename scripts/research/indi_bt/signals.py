@@ -14,7 +14,7 @@ The trade is entered on the next minute's option bar (sim.py).
   python3 signals.py [start] [end] [calm|retest]   -> data/local/x/bt/signals[_mode].csv
 """
 import csv, json, os, sys, statistics as st
-from store import P, DATA, day, calendar
+from store import P, DATA, day, calendar, vol_factor
 
 E = P["entry"]
 
@@ -138,7 +138,8 @@ class Day:
         hist = []
         for d in cal[max(0, cal_idx - 20):cal_idx]:
             v = [0] * 390
-            for b in day(self.sym, d): v[b[0]] = b[5]
+            f = vol_factor(self.sym, d, self.date, cal)   # in today's shares across a split (B6)
+            for b in day(self.sym, d): v[b[0]] = b[5] * f
             c_ = [0] * 390; t_ = 0
             for m in range(390): t_ += v[m]; c_[m] = t_
             if c_[-1] > 0: hist.append(c_)
@@ -179,7 +180,8 @@ class Day:
         hist = []
         for d in cal[max(0, i0 - 20):i0]:
             v = [0] * 390
-            for b in day(self.sym, d): v[b[0]] = b[5]
+            f = vol_factor(self.sym, d, self.date, cal)   # in today's shares across a split (B6)
+            for b in day(self.sym, d): v[b[0]] = b[5] * f
             c_, t_ = [0] * 390, 0
             for m in range(390): t_ += v[m]; c_[m] = t_
             if c_[-1] > 0: hist.append(c_)

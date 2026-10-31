@@ -31,7 +31,7 @@ from levels import ctx
 from score_sum import account, held as booked
 from signals import series, beta
 from split import half
-from store import calendar, day
+from store import calendar, day, vol_factor
 
 B = "data/local/x/bt"
 SEC = os.path.join(HERE, "sec_cache", "main")
@@ -155,7 +155,8 @@ def honest_second(t, stock, every=1, novol=False):
     prior = []
     for d in CAL[i - 20:i]:
         v = [0] * 390
-        for x in day(sym, d): v[x[0]] = x[5]
+        f = vol_factor(sym, d, date, CAL)   # in today's shares across a split (B6)
+        for x in day(sym, d): v[x[0]] = x[5] * f
         acc, run_ = [], 0
         for k in range(390): run_ += v[k]; acc.append(run_)
         prior.append(acc)
@@ -208,7 +209,8 @@ def old_second(t, stock, every=1, novol=False):
     hist = []
     for d in CAL[i - 20:i]:
         v = [0] * 390
-        for x in day(sym, d): v[x[0]] = x[5]
+        f = vol_factor(sym, d, date, CAL)   # in today's shares across a split (B6)
+        for x in day(sym, d): v[x[0]] = x[5] * f
         hist.append(sum(v[:m0 + 1]))
     hist = sorted(h for h in hist if h > 0)
     if len(hist) < 10 or not (c[m0 - 1] and spy[m0] and spy[m0 - 1]): return None
