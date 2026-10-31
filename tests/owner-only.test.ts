@@ -34,7 +34,12 @@ test("owner only: the owner changes, in any letter case", () => {
 });
 
 test("owner only: computing is not changing", () => {
-  for (const path of ["/api/backtest", "/api/day-chart", "/api/replay"])
+  for (const path of [
+    "/api/backtest",
+    "/api/bot-backtest",
+    "/api/day-chart",
+    "/api/replay",
+  ])
     assert.equal(changeRefusal("POST", path, viewer, owner), null);
 });
 
