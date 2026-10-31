@@ -1832,3 +1832,24 @@ Dashboard tab "Optimisation 2024-25": https://claude.ai/artifact/8hwVRYjvFphR4Ro
     The user's next split, 100-399 at half and 400+ at 1x: 2.5 $209,284 / 13% on 12 months (+8%), $140,544 / 13% on 6
     (+11%), against $208,829 / 12% and $141,245 / 12% for the 500 split; 2.4 $176,373 / 11% (-6%) and $111,157 / 11%
     (-10%). Within a point of the 500 split either way; the 500 split keeps the drop at the base's 12%.
+
+### Overnight from +25%, stops -35% to -50%, and a 1-second stop exit, on the fixed walk (2026-10-31)
+The user, after the audit: "lets check 25%+ go overnight", "lets test 35%-50% stop", "try use one second exit ...
+Black-Scholes -3% / bid, the lower of the 2". champ-early, fair list, all with `BT_CLOCK=stock BT_CHASE=ask`; tune =
+even ISO entry weeks, check = odd; `BT_X` overrides one exit setting, `BT_SEC_EXIT=1` the 1-second stops (sim.sec_stop).
+
+| Version | Trades | Won | 2% (drop) | Without 10-10 | Tune | Check | 1% |
+|---|---|---|---|---|---|---|---|
+| Fixed champion (carry +50%, stop -30%) | 1087 | 16.7% | $2,845,332 (27.6%) | $2,798,469 | $448,187 | $634,854 | $857,745 |
+| Overnight from +25% | 1087 | 15.5% | $3,037,966 (27.0%) | $2,987,931 | $429,734 | $706,941 | $889,360 |
+| Stop -35% | 1087 | 17.2% | $2,817,553 (29.1%) | $2,767,076 | $432,933 | $650,805 | $853,467 |
+| Stop -40% | 1087 | 17.4% | $2,713,945 (29.8%) | $2,668,264 | $433,117 | $626,608 | $837,888 |
+| Stop -45% | 1087 | 17.6% | $2,784,911 (29.7%) | $2,739,043 | $436,192 | $638,460 | $848,651 |
+| Stop -50% | 1087 | 18.0% | $2,820,704 (29.9%) | $2,778,335 | $444,723 | $634,260 | $854,223 |
+| 1-second price stops (BS -3% / bid) | 1079 | 13.9% | $677,487 (41.8%) | $664,457 | $270,743 | $250,233 | $367,929 |
+
+- Overnight from +25%: +7% on the total, +11% in the check half, but -4% in the tune half: not a clean win (fails the
+  both-halves bar); more nights, fewer winners (15.5%). Keep +50%; worth a finer sweep (+35% / +40%).
+- Wider stops: none better; each loses a little and adds 1.5-2.3 points of drop. Keep -30%.
+- 1-second stops: far worse (-76%): 650 of 1079 trades stopped by second-level noise; the minute close is a filter.
+  Do not stop on seconds.

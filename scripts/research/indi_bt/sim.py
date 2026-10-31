@@ -274,8 +274,77 @@ def walk_bars(und, sym, d, start, last):
     return bars
 
 
+# BT_X='{"carry_min_gain": 0.25}': exit settings laid over whatever the caller set (nested dicts merged), for a test
+# that changes one exit rule without editing the scripts (the user 2026-10-31: overnight from +25%, stops -35% to -50%)
+OVR = __import__("json").loads(os.environ.get("BT_X", "{}"))
+
+
+def overlay(x, o):
+    for k, v in o.items():
+        if isinstance(v, dict) and isinstance(x.get(k), dict): x[k] = dict(x[k]); overlay(x[k], v)
+        else: x[k] = v
+
+
+# BT_SEC_EXIT=1 (the user 2026-10-31: "use one second exit ... Black-Scholes -3% / bid, the lower of the 2"): on the entry
+# day the price stops (U_out: the -X% stop with the stock against; U_rest: the rest after the half) are checked every
+# second, on the option valued by Black-Scholes at the stock's 1-second close (sec_cache/main/stock, the whole entry
+# day) with the implied volatility of its mid as the minute before closed; a hit sells at once at the lower of that
+# value - 3% and the last bid (the book as the minute before closed). Rule names end "_1s"; the real-fill pricing keeps
+# their price. Time checks (10 / 20 minutes, 15:50) and carried days stay on minutes.
+SEC_EXIT = os.environ.get("BT_SEC_EXIT") == "1"
+_SECS = {}
+
+
+def stock_secs(sym, d):
+    k = (sym, d)
+    if k not in _SECS:
+        if len(_SECS) > 40: _SECS.clear()
+        import gzip
+        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sec_cache", "main", "stock", f"{d}_{sym}.csv.gz")
+        _SECS[k] = {int(r[0]): float(r[4]) for r in csv.reader(gzip.open(p, "rt")) if r} if os.path.exists(p) else None
+    return _SECS[k]
+
+
+def sec_stop(und, sym, d, t, minute, bet, basis, st, uout, exp, sp0):
+    """-> (second, price, rule) of the first price stop inside minute t, or None."""
+    import real_bench as RB
+    from store import bs
+    secs = stock_secs(und, d)
+    if not secs or t < 1: return None
+    q = RB.quote(sym, d, t - 1)
+    prev = (q[0] + q[1]) / 2 if q and q[1] > 0 else None
+    if prev is None:
+        b = last_bar(day(sym, d), t - 1, 30)
+        prev = b[4] if b else None
+    s_prev = next((secs[x] for x in range(60 * t - 1, 60 * t - 61, -1) if x in secs), None)
+    if not prev or not s_prev: return None
+    K = float(sym[-8:]) / 1000; call = bet > 0
+    T = years_to_expiry(d, t, exp)
+    x = iv_delta(prev, s_prev, K, T, C["rate"], call)
+    if not x: return None
+    iv = x[0]
+    AH = X.get("after_half")
+    for sec in range(60 * t, 60 * t + 60):
+        px = secs.get(sec)
+        if px is None: continue
+        v = bs(px, K, T, iv, C["rate"], call)[0]
+        g = v / basis - 1
+        against = bet * (px - sp0) < 0
+        rule = None
+        if AH and st.get("half_q"):
+            lvl = st["half_px"] / basis - 1 if AH.get("out") == "half_px" else AH.get("out")
+            if lvl is not None and g <= lvl and (against or not AH.get("need_against", True)): rule = "U_rest_1s"
+        if rule is None and g <= uout and against: rule = "U_out_1s"
+        if rule:
+            bid = q[0] if q else None
+            price = v * 0.97 if bid is None else min(v * 0.97, bid)
+            return sec, max(price, 0.0), rule
+    return None
+
+
 def walk(und, date, minute, right, sym, exp, cal, limit=None):
     """Walks one contract from the signal minute to the last sale. -> (entry, steps, flags)."""
+    if OVR: overlay(X, OVR)
     bet = 1 if right == "C" else -1
     i0 = cal.index(date)
     dates = [d for d in cal[i0:] if d <= exp]
@@ -336,6 +405,12 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 if rule == "U_check10": st["half_q"], st["half_px"] = q, steps[-1][4]
                 pending = None
                 if rem <= 1e-9: return cost, steps, ""
+            if SEC_EXIT and k == 0 and X.get("user_stop") and sd.ok and not early and t > minute + 1 and uout is not None:
+                if st.get("sp0") is None: st["sp0"] = sd.c[minute]
+                hit = sec_stop(und, sym, d, t, minute, bet, basis, st, uout, exp, st["sp0"]) if st["sp0"] else None
+                if hit:
+                    steps.append((d, t, "sell", round(rem, 4), round(hit[1], 4), hit[2]))
+                    return cost, steps, ""
             NX = X.get("night_x")  # carried days: stop / take profit from the last 15:50 price (night_x.py)
             if NX and carry_day and t >= NX["from"] and t < X["eod_minute"]:
                 c = b[4]; ref = next(s[4] for s in reversed(steps) if s[2] == "carry")

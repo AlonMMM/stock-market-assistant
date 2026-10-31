@@ -94,7 +94,7 @@ def price(steps, c, cost, sale):
     """The real fills of a walk; -> (real cost, steps)."""
     real, rcost = [], cost
     for d, m, side, q, px, rule in steps:
-        if side not in ("buy", "sell"): real.append((d, m, side, q, px, rule)); continue
+        if side not in ("buy", "sell") or rule.endswith("_1s"): real.append((d, m, side, q, px, rule)); continue   # _1s: priced at its second (sim.sec_stop)
         at = max(m - 1, 0)
         k = RB.quote(c, d, at)
         if not k: real.append((d, m, side, q, px, rule)); continue
