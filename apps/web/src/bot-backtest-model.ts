@@ -6,7 +6,9 @@ import {
 import type { AccountTrade } from "../../../packages/trading/src/bot/backtest-account.js";
 import type {
   SimSkip,
+  SimStep,
   SkipReason,
+  StockRun,
 } from "../../../packages/trading/src/bot/backtest.js";
 import type { BotSettings } from "../../../packages/trading/src/bot/settings.js";
 import {
@@ -221,13 +223,234 @@ export const skipWords: Record<SkipReason, string> = {
 };
 
 export function skipCounts(
-  skips: readonly SimSkip[],
+  skips: readonly Pick<SimSkip, "reason">[],
 ): { reason: SkipReason; label: string; count: number }[] {
   const by = new Map<SkipReason, number>();
   for (const s of skips) by.set(s.reason, (by.get(s.reason) ?? 0) + 1);
   return [...by]
     .map(([reason, count]) => ({ reason, label: skipWords[reason], count }))
     .sort((a, b) => b.count - a.count);
+}
+
+// ---- every signal: bought or not, what the bot saw, what came of it ----
+
+/** One signal of the run (the user, 2026-10-31: "why we did not bought, what the bot saw, what would happen if the bot does gets in"). */
+export interface SignalRow {
+  key: string;
+  symbol: string;
+  date: string;
+  minute: number;
+  right: "C" | "P";
+  t: number | null;
+  rvol: number | null;
+  d2: number | null;
+  bonus: boolean;
+  pyramid: boolean;
+  stock: number | null;
+  bought: boolean; // the bot bought it (a limit may still have refused the buy)
+  outcome: string; // "Bought", or why not
+  reason: SkipReason | "bought";
+  detail: string;
+  contract: string | null; // OCC: the one bought, looked at, or modelled
+  strike: number | null;
+  expiry: string | null;
+  price: number | null; // the option's last price at the signal, as the pick read it
+  boughtAt: number | null; // the backtest's buy: the fill, or the what-if's (a model)
+  bid: number | null; // the real book as the signal minute closed, when there is one
+  ask: number | null;
+  delta: number | null;
+  volume30: number | null;
+  ret: number | null; // the option's return on what was paid, from its steps
+  model: boolean; // ret is the Black-Scholes what-if, not the trade
+  modelled: boolean; // the what-if's strike and expiry are the model's
+  iv: number | null; // the what-if's volatility
+  ivFrom: "option" | "stock" | null;
+  trade: AccountTrade | null;
+}
+
+/** What the sales got back over what the buy paid, minus 1. */
+export function stepsReturn(steps: readonly SimStep[]): number | null {
+  const cost = steps[0]?.price;
+  if (!cost || cost <= 0) return null;
+  const back = steps
+    .filter((x) => x.kind === "sell")
+    .reduce((sum, x) => sum + x.share * x.price, 0);
+  return back / cost - 1;
+}
+
+function skipRow(k: SimSkip, i: number): SignalRow {
+  const w = k.whatIf ?? null;
+  const c = k.contract ?? null;
+  return {
+    key: `skip|${k.symbol}|${k.date}|${k.minute}|${i}`,
+    symbol: k.symbol,
+    date: k.date,
+    minute: k.minute,
+    right: k.right,
+    t: k.t ?? null,
+    rvol: k.rvol ?? null,
+    d2: k.d2 ?? null,
+    bonus: k.bonus ?? false,
+    pyramid: k.pyramid,
+    stock: k.stock ?? null,
+    bought: false,
+    outcome: skipWords[k.reason],
+    reason: k.reason,
+    detail: k.detail,
+    contract: c?.symbol ?? w?.contract ?? null,
+    strike: c?.strike ?? w?.strike ?? null,
+    expiry: c?.expiry ?? w?.expiry ?? null,
+    price: c?.price ?? null,
+    boughtAt: w?.steps[0]?.price ?? null,
+    bid: c?.book?.bid ?? null,
+    ask: c?.book?.ask ?? null,
+    delta: c?.delta ?? null,
+    volume30: c?.volume30 ?? null,
+    ret: w?.ret ?? null,
+    model: w !== null,
+    modelled: w?.modelled ?? false,
+    iv: w?.iv ?? null,
+    ivFrom: w?.ivFrom ?? null,
+    trade: null,
+  };
+}
+
+/** Every signal of the runs, newest first: the bought ones and the skipped ones. */
+export function signalRows(
+  runs: readonly StockRun[],
+  account: readonly AccountTrade[],
+): SignalRow[] {
+  const byId = new Map(account.map((a) => [a.trade.id, a]));
+  const rows: SignalRow[] = [];
+  for (const run of runs) {
+    for (const t of run.trades) {
+      const a = byId.get(t.id) ?? null;
+      let outcome = "Bought";
+      if (a && a.status !== "taken") outcome = statusWords[a.status];
+      rows.push({
+        key: `trade|${t.id}`,
+        symbol: t.symbol,
+        date: t.date,
+        minute: t.minute,
+        right: t.right,
+        t: t.t,
+        rvol: t.rvol,
+        d2: t.d2,
+        bonus: t.bonus,
+        pyramid: t.pyramid,
+        stock: t.stock,
+        bought: true,
+        outcome,
+        reason: "bought",
+        detail: "",
+        contract: t.contract,
+        strike: t.strike,
+        expiry: t.expiry,
+        price: t.signalPrice ?? null,
+        boughtAt: t.steps[0]?.price ?? null,
+        bid: t.book?.bid ?? null,
+        ask: t.book?.ask ?? null,
+        delta: t.delta,
+        volume30: t.volume30,
+        ret: stepsReturn(t.steps),
+        model: false,
+        modelled: false,
+        iv: null,
+        ivFrom: null,
+        trade: a,
+      });
+    }
+    run.skips.forEach((k, i) => rows.push(skipRow(k, i)));
+  }
+  return rows.sort(
+    (a, b) => stepMs(b.date, b.minute) - stepMs(a.date, a.minute),
+  );
+}
+
+/** The real spread at the signal as a share of its middle; null without a book. */
+export function spreadPct(r: Pick<SignalRow, "bid" | "ask">): number | null {
+  if (r.bid === null || r.ask === null) return null;
+  const mid = (r.bid + r.ask) / 2;
+  if (!(mid > 0)) return null;
+  return (r.ask - r.bid) / mid;
+}
+
+const csvCell = (v: string | number | boolean | null) => {
+  if (v === null) return "";
+  const text = String(v);
+  if (!/[",\n]/.test(text)) return text;
+  return `"${text.replaceAll('"', '""')}"`;
+};
+const round = (v: number | null, digits: number) =>
+  v === null ? null : Number(v.toFixed(digits));
+
+/** The rows as CSV, for a spreadsheet: one line a signal. */
+export function signalsCsv(rows: readonly SignalRow[]): string {
+  const head = [
+    "date",
+    "time_ny",
+    "symbol",
+    "side",
+    "t",
+    "volume_x",
+    "d2",
+    "d2_bonus",
+    "pyramid",
+    "stock",
+    "outcome",
+    "detail",
+    "contract",
+    "strike",
+    "expiry",
+    "price",
+    "bought_at",
+    "bid",
+    "ask",
+    "spread_pct",
+    "delta",
+    "volume30",
+    "return",
+    "return_is_model",
+    "model_strike",
+    "model_iv",
+    "model_iv_from",
+  ];
+  const lines = rows.map((r) => {
+    const ny = 570 + r.minute;
+    const time = `${String(Math.floor(ny / 60)).padStart(2, "0")}:${String(ny % 60).padStart(2, "0")}`;
+    return [
+      r.date,
+      time,
+      r.symbol,
+      r.right,
+      round(r.t, 2),
+      round(r.rvol, 2),
+      round(r.d2, 2),
+      r.bonus,
+      r.pyramid,
+      round(r.stock, 2),
+      r.outcome,
+      r.detail,
+      r.contract,
+      r.strike,
+      r.expiry,
+      round(r.price, 4),
+      round(r.boughtAt, 4),
+      r.bid,
+      r.ask,
+      round(spreadPct(r), 4),
+      round(r.delta, 3),
+      r.volume30,
+      round(r.ret, 4),
+      r.model,
+      r.modelled,
+      round(r.iv, 3),
+      r.ivFrom,
+    ]
+      .map(csvCell)
+      .join(",");
+  });
+  return [head.join(","), ...lines].join("\n") + "\n";
 }
 
 export const statusWords: Record<AccountTrade["status"], string> = {

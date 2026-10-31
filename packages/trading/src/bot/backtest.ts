@@ -148,6 +148,8 @@ export interface SimTrade {
   delta: number;
   volume30: number;
   fallback: boolean; // the cheap fallback chose it
+  signalPrice?: number; // the option's price at the signal, as the pick read it
+  book?: Book; // the real bid / ask as the signal minute closed, when there is one
   steps: SimStep[];
   // "quotes": bought and sold at real bids / asks on the stock's minute clock;
   // "trades": the contract had no quote at the signal, so the trade bars priced it.
@@ -168,6 +170,44 @@ export type SkipReason =
   | "illiquid"
   | "no_fill";
 
+/** A real bid / ask (option-quotes.ts). */
+export interface Book {
+  bid: number;
+  ask: number;
+}
+
+/** The contract the bot looked at for a signal, at the signal minute. */
+export interface SeenContract {
+  symbol: string; // OCC
+  strike: number;
+  expiry: string;
+  delta: number; // |delta|, from the price's implied volatility
+  price: number; // the option's last trade price within 10 minutes
+  volume30: number; // contracts traded in the 30 minutes before the signal
+  book?: Book; // the real bid / ask as the signal minute closed, when there is one
+}
+
+/**
+ * The trade the bot would have made had it bought (the user 2026-10-31: "what
+ * would happen if the bot does gets in (use Black-Scholes prices)"): the
+ * contract it looked at, or a modelled one at the target delta and the first
+ * expiry in range when it saw none, walked with the bot's own exits on
+ * Black-Scholes prices from the stock's minutes, at the volatility implied by
+ * the option's price at the signal (or the stock's own 20-day volatility), the
+ * same fill correction as a trade. A model: real options were not traded.
+ */
+export interface WhatIf {
+  contract: string;
+  strike: number;
+  expiry: string;
+  modelled: boolean; // the strike and expiry are the model's, not the chain's
+  iv: number;
+  ivFrom: "option" | "stock";
+  steps: SimStep[];
+  ret: number; // what the sales got back over what was paid, minus 1
+  open: boolean;
+}
+
 /** A signal the bot did not buy, and why. */
 export interface SimSkip {
   symbol: string;
@@ -177,6 +217,14 @@ export interface SimSkip {
   reason: SkipReason;
   detail: string;
   pyramid: boolean;
+  // What the bot saw at the signal: its strength, volume and D2, the stock.
+  t?: number;
+  rvol?: number;
+  d2?: number | null;
+  bonus?: boolean;
+  stock?: number;
+  contract?: SeenContract; // missing when no contract was priced
+  whatIf?: WhatIf; // missing on a pyramid's skip, or when it cannot be modelled
 }
 
 export interface StockRun {
@@ -227,8 +275,8 @@ function bs(
   return [k * Math.exp(-r * t) * cdf(-d2) - s * cdf(-d1), cdf(d1) - 1];
 }
 
-/** |delta| from the implied volatility of a price; null outside the model's range. */
-export function impliedDelta(
+/** The volatility that prices the option at `price`; null outside the model's range. */
+export function impliedVol(
   price: number,
   spot: number,
   strike: number,
@@ -249,7 +297,33 @@ export function impliedDelta(
     if (bs(spot, strike, years, m, r, call)[0] < price) lo = m;
     else hi = m;
   }
-  return Math.abs(bs(spot, strike, years, m, r, call)[1]);
+  return m;
+}
+
+/** |delta| from the implied volatility of a price; null outside the model's range. */
+export function impliedDelta(
+  price: number,
+  spot: number,
+  strike: number,
+  years: number,
+  call: boolean,
+  r = rate,
+): number | null {
+  const v = impliedVol(price, spot, strike, years, call, r);
+  if (v === null) return null;
+  return Math.abs(bs(spot, strike, years, v, r, call)[1]);
+}
+
+/** The Black-Scholes price of an option, and its delta. */
+export function bsPrice(
+  spot: number,
+  strike: number,
+  years: number,
+  vol: number,
+  call: boolean,
+  r = rate,
+): [number, number] {
+  return bs(spot, strike, years, vol, r, call);
 }
 
 /** Years from a session minute to 16:00 New York on the expiry day, at least 10 minutes. */
@@ -305,7 +379,13 @@ type Pick =
       volume30: number;
       fallback: boolean;
     }
-  | { ok: false; reason: SkipReason; detail: string };
+  | {
+      ok: false;
+      reason: SkipReason;
+      detail: string;
+      seen?: SeenContract;
+      expiry?: string; // the expiry it read, when there was one
+    };
 
 /** The bot's contract for a signal, from the chain and its bars up to the signal minute. */
 async function pick(
@@ -338,7 +418,8 @@ async function pick(
     )
     .sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot))
     .slice(0, rules.maxStrikes);
-  if (!near.length) return { ok: false, reason: "no_strikes", detail: "" };
+  if (!near.length)
+    return { ok: false, reason: "no_strikes", detail: "", expiry };
   const bars = await data.optionDay(
     near.map((c) => c.symbol),
     date,
@@ -362,22 +443,37 @@ async function pick(
       delta: call ? delta : -delta,
     });
   }
+  const volume30Of = (contract: string) =>
+    (bars.get(contract) ?? [])
+      .filter((b) => minute - 30 < b.m && b.m <= minute)
+      .reduce((sum, b) => sum + b.v, 0);
+  const seenOf = (q: OptionQuote, price: number): SeenContract => ({
+    symbol: q.symbol,
+    strike: q.strike,
+    expiry,
+    delta: Math.abs(q.delta ?? 0),
+    price,
+    volume30: volume30Of(q.symbol),
+  });
   const picked = pickContract(quotes, spot, side, date, rules);
   if (!picked.ok) {
     let detail = "";
     if (picked.reason === "too_cheap" && picked.quote)
       detail = `${picked.quote.strike} at $${picked.quote.bid.toFixed(2)}, under $${rules.minPrice.toFixed(2)}`;
-    return { ok: false, reason: picked.reason, detail };
+    const seen = picked.quote
+      ? seenOf(picked.quote, picked.quote.bid)
+      : undefined;
+    return { ok: false, reason: picked.reason, detail, seen, expiry };
   }
   const contract = near.find((c) => c.symbol === picked.quote.symbol)!;
-  const volume30 = (bars.get(contract.symbol) ?? [])
-    .filter((b) => minute - 30 < b.m && b.m <= minute)
-    .reduce((sum, b) => sum + b.v, 0);
+  const volume30 = volume30Of(contract.symbol);
   if (volume30 < rules.minVolume30)
     return {
       ok: false,
       reason: "illiquid",
       detail: `${contract.strike}: ${volume30} contracts in 30 minutes, under ${rules.minVolume30}`,
+      seen: { ...seenOf(picked.quote, picked.mid), delta: picked.delta },
+      expiry,
     };
   return {
     ok: true,
@@ -404,6 +500,7 @@ interface WalkInput {
 }
 
 interface Walked {
+  book: Book | null; // the real book at the signal
   steps: SimStep[];
   open: boolean;
   noFill: boolean;
@@ -441,9 +538,27 @@ async function walk(
         .optionQuotes(w.contract, w.date, days.at(-1)!)
         .catch(() => new Map<string, QuoteMinute[]>())
     : new Map<string, QuoteMinute[]>();
-  if (bookAt(quotes.get(w.date) ?? [], w.minute))
-    return walkQuotes(data, cal, w, s, days, quotes);
-  return walkTrades(data, cal, w, s, o, days);
+  const q = bookAt(quotes.get(w.date) ?? [], w.minute);
+  if (!q)
+    return { ...(await walkTrades(data, cal, w, s, o, days)), book: null };
+  const book = { bid: q.bid, ask: q.ask };
+  return { ...(await walkQuotes(data, cal, w, s, days, quotes)), book };
+}
+
+/** A contract's real book as a session minute closed; null without one. */
+async function bookOf(
+  data: BacktestData,
+  contract: string,
+  date: string,
+  minute: number,
+): Promise<Book | null> {
+  if (!data.optionQuotes) return null;
+  const quotes = await data
+    .optionQuotes(contract, date, date)
+    .catch(() => new Map<string, QuoteMinute[]>());
+  const q = bookAt(quotes.get(date) ?? [], minute);
+  if (!q) return null;
+  return { bid: q.bid, ask: q.ask };
 }
 
 // Real quotes as the research simulator reads them (leg_realspread.quote): the
@@ -480,7 +595,7 @@ async function walkQuotes(
   s: BotSettings,
   days: string[],
   quotes: Map<string, QuoteMinute[]>,
-): Promise<Walked> {
+): Promise<Omit<Walked, "book">> {
   const base: ExitRules = exitRules(s);
   const entryDay = quotes.get(w.date) ?? [];
   const q0 = bookAt(entryDay, w.minute)!;
@@ -532,7 +647,7 @@ async function walkQuotes(
     });
     state = { ...state, qty: Math.round(rem * nominal) };
   };
-  const done = (): Walked => ({
+  const done = (): Omit<Walked, "book"> => ({
     steps,
     open: false,
     noFill: false,
@@ -672,7 +787,7 @@ async function walkTrades(
   s: BotSettings,
   o: RunOptions,
   days: string[],
-): Promise<Walked> {
+): Promise<Omit<Walked, "book">> {
   const fill = o.fillPct / 100;
   const base: ExitRules = exitRules(s);
   const option = await data.optionRange(w.contract, w.date, days.at(-1)!);
@@ -711,7 +826,7 @@ async function walkTrades(
     });
     state = { ...state, qty: Math.round(rem * nominal) };
   };
-  const done = (): Walked => ({
+  const done = (): Omit<Walked, "book"> => ({
     steps,
     open: false,
     noFill: false,
@@ -908,31 +1023,97 @@ export async function runStock(
         detail,
         pyramid,
       });
+    const spot = closeAt(day, sig.minute);
+    const levels = priorLevels(priorSessions.slice(-5).map((p) => p.stock));
+    const watch =
+      s.sellFailedBreak && spot !== null
+        ? watchFor(levels, day, sig.minute, spot, sig.right)
+        : null;
+    // A skipped signal keeps what the bot saw and the trade it would have made.
+    const skipSeen = async (
+      reason: SkipReason,
+      detail: string,
+      seen: SeenContract | undefined,
+      expiryRead: string | undefined,
+    ) => {
+      const model =
+        spot === null
+          ? null
+          : await whatIf(
+              data,
+              cal,
+              s,
+              o,
+              {
+                symbol,
+                date,
+                minute: sig.minute,
+                right: sig.right,
+                stock: spot,
+                prior,
+                priorStock: priorSessions.map((p) => p.stock),
+                watch,
+              },
+              seen,
+              expiryRead,
+            ).catch(() => null);
+      const row: SimSkip = {
+        symbol,
+        date,
+        minute: sig.minute,
+        right: sig.right,
+        reason,
+        detail,
+        pyramid: false,
+        t: sig.t,
+        rvol: sig.rvol,
+        d2: sig.d2,
+        bonus: sig.bonus,
+      };
+      if (spot !== null) row.stock = spot;
+      if (seen) {
+        const book = await bookOf(data, seen.symbol, date, sig.minute);
+        row.contract = seen;
+        if (book) row.contract = { ...seen, book };
+      }
+      if (model) row.whatIf = model;
+      out.skips.push(row);
+    };
     // The news filter: no entry on an earnings reaction day or a busy pre-market.
     const news = await newsBlock(symbol, date, s, data, cal);
+    if (spot === null) {
+      if (news) skip(news.reason, news.detail);
+      continue;
+    }
+    const picking = pick(data, symbol, date, sig.minute, sig.right, spot, s);
     if (news) {
-      skip(news.reason, news.detail);
+      // The contract it would have bought, though the filter stopped it; a
+      // failed read only loses that, never the run.
+      const picked = await picking.catch(() => null);
+      let seen: SeenContract | undefined;
+      let expiryRead: string | undefined;
+      if (picked?.ok) {
+        seen = {
+          symbol: picked.contract.symbol,
+          strike: picked.contract.strike,
+          expiry: picked.contract.expiry,
+          delta: picked.delta,
+          price: picked.price,
+          volume30: picked.volume30,
+        };
+        expiryRead = picked.contract.expiry;
+      } else if (picked) {
+        seen = picked.seen;
+        expiryRead = picked.expiry;
+      }
+      await skipSeen(news.reason, news.detail, seen, expiryRead);
       continue;
     }
-    const spot = closeAt(day, sig.minute);
-    if (spot === null) continue;
-    const picked = await pick(
-      data,
-      symbol,
-      date,
-      sig.minute,
-      sig.right,
-      spot,
-      s,
-    );
+    const picked = await picking;
     if (!picked.ok) {
-      skip(picked.reason, picked.detail);
+      await skipSeen(picked.reason, picked.detail, picked.seen, picked.expiry);
       continue;
     }
-    const levels = priorLevels(priorSessions.slice(-5).map((p) => p.stock));
-    const watch = s.sellFailedBreak
-      ? watchFor(levels, day, sig.minute, spot, sig.right)
-      : null;
     const walked = await walk(
       data,
       cal,
@@ -951,9 +1132,18 @@ export async function runStock(
       o,
     );
     if (walked.noFill) {
-      skip(
+      await skipSeen(
         "no_fill",
         `no ${picked.contract.strike} trade within ${fillWithin} minutes`,
+        {
+          symbol: picked.contract.symbol,
+          strike: picked.contract.strike,
+          expiry: picked.contract.expiry,
+          delta: picked.delta,
+          price: picked.price,
+          volume30: picked.volume30,
+        },
+        picked.contract.expiry,
       );
       continue;
     }
@@ -979,6 +1169,8 @@ export async function runStock(
       steps: walked.steps,
       open: walked.open,
       priced: walked.priced,
+      signalPrice: picked.price,
+      ...(walked.book ? { book: walked.book } : {}),
       watch: watch ? { name: watch.name, level: watch.level } : null,
     };
     out.trades.push(trade);
@@ -1098,7 +1290,172 @@ async function pyramid(
     steps: walked.steps,
     open: walked.open,
     priced: walked.priced,
+    signalPrice: picked.price,
+    ...(walked.book ? { book: walked.book } : {}),
     watch: null,
+  };
+}
+
+// ---- what if it had bought: the bot's walk on Black-Scholes prices ----
+
+/** The stock's volatility over the sessions before: daily closes, annualised; null under 10 days. */
+function stockVol(
+  priorStock: readonly (readonly MinuteBar[])[],
+): number | null {
+  const closes = priorStock
+    .map((d) => d.at(-1)?.c)
+    .filter((c): c is number => c !== undefined && c > 0);
+  const moves = closes.slice(1).map((c, i) => Math.log(c / closes[i]!));
+  if (moves.length < 10) return null;
+  const mean = moves.reduce((a, b) => a + b, 0) / moves.length;
+  const variance =
+    moves.reduce((a, b) => a + (b - mean) ** 2, 0) / (moves.length - 1);
+  const v = Math.sqrt(variance * 252);
+  return v > 0 ? v : null;
+}
+
+/** The strike at |delta| `target`, to the nearest step of the stock's price. */
+function strikeAt(
+  spot: number,
+  years: number,
+  vol: number,
+  call: boolean,
+  target: number,
+): number {
+  // |delta| falls as the strike moves out of the money on either side.
+  let near = spot;
+  let far = call ? spot * 3 : spot / 3;
+  for (let i = 0; i < 60; i++) {
+    const k = (near + far) / 2;
+    if (Math.abs(bs(spot, k, years, vol, rate, call)[1]) > target) near = k;
+    else far = k;
+  }
+  let step = 1;
+  if (spot < 25) step = 0.5;
+  if (spot >= 200) step = 5;
+  return Math.round(near / step) * step;
+}
+
+/** The option's minutes on a session, priced by Black-Scholes from the stock's. */
+function modelBars(
+  stock: readonly MinuteBar[],
+  date: string,
+  c: { strike: number; expiry: string; call: boolean; vol: number },
+): MinuteBar[] {
+  return stock.map((b) => {
+    const years = yearsToExpiry(date, b.m, c.expiry);
+    const p = Math.max(0.01, bs(b.c, c.strike, years, c.vol, rate, c.call)[0]);
+    // Every minute trades, so no fill waits for a print.
+    return { m: b.m, o: p, h: p, l: p, c: p, v: 1_000_000 };
+  });
+}
+
+/** The backtest's data with one modelled contract's minutes in place of the market's. */
+function modelData(
+  data: BacktestData,
+  cal: BacktestCalendar,
+  symbol: string,
+  c: {
+    contract: string;
+    strike: number;
+    expiry: string;
+    call: boolean;
+    vol: number;
+  },
+): BacktestData {
+  const day = (date: string) => modelBars(data.bars(symbol, date), date, c);
+  return {
+    bars: (sym, date) => data.bars(sym, date),
+    premarket: (sym, date) => data.premarket(sym, date),
+    chain: (sym, right, from, to) => data.chain(sym, right, from, to),
+    earnings: (date) => data.earnings(date),
+    lastSession: data.lastSession,
+    optionDay: async (contracts, date) =>
+      new Map(contracts.map((k) => [k, k === c.contract ? day(date) : []])),
+    optionRange: async (contract, from, to) => {
+      const out = new Map<string, MinuteBar[]>();
+      if (contract !== c.contract) return out;
+      for (const d of [from, ...cal.nextSessions(from, 30)])
+        if (d <= to) out.set(d, day(d));
+      return out;
+    },
+  };
+}
+
+/** The walk the bot would have made on a skipped signal; null when it cannot be modelled. */
+async function whatIf(
+  data: BacktestData,
+  cal: BacktestCalendar,
+  s: BotSettings,
+  o: RunOptions,
+  w: {
+    symbol: string;
+    date: string;
+    minute: number;
+    right: "C" | "P";
+    stock: number;
+    prior: Prior;
+    priorStock: readonly (readonly MinuteBar[])[];
+    watch: BreakWatch | null;
+  },
+  seen: SeenContract | undefined,
+  expiryRead: string | undefined,
+): Promise<WhatIf | null> {
+  const call = w.right === "C";
+  const rules = pickRules(s, w.symbol);
+  const expiry = seen?.expiry ?? expiryRead ?? expiryWindow(w.date, rules)[0];
+  const years = yearsToExpiry(w.date, w.minute, expiry);
+  let vol: number | null = null;
+  let ivFrom: WhatIf["ivFrom"] = "option";
+  if (seen && seen.price > 0)
+    vol = impliedVol(seen.price, w.stock, seen.strike, years, call);
+  if (vol === null) {
+    vol = stockVol(w.priorStock);
+    ivFrom = "stock";
+  }
+  if (vol === null) return null;
+  const strike =
+    seen?.strike ?? strikeAt(w.stock, years, vol, call, rules.delta);
+  const contract = seen?.symbol ?? occOf(w.symbol, expiry, w.right, strike);
+  const model = modelData(data, cal, w.symbol, {
+    contract,
+    strike,
+    expiry,
+    call,
+    vol,
+  });
+  const walked = await walk(
+    model,
+    cal,
+    {
+      symbol: w.symbol,
+      date: w.date,
+      minute: w.minute,
+      right: w.right,
+      stock: w.stock,
+      contract,
+      expiry,
+      watch: w.watch,
+      prior: w.prior,
+    },
+    s,
+    o,
+  );
+  if (walked.noFill || !walked.steps.length) return null;
+  const cost = walked.steps[0]!.price;
+  const back = walked.steps
+    .filter((x) => x.kind === "sell")
+    .reduce((sum, x) => sum + x.share * x.price, 0);
+  return {
+    contract,
+    strike,
+    expiry,
+    modelled: !seen,
+    iv: vol,
+    ivFrom,
+    steps: walked.steps,
+    ret: cost > 0 ? back / cost - 1 : 0,
+    open: walked.open,
   };
 }
 
