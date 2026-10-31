@@ -44,6 +44,7 @@ if "open25" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "o
 if "open26" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open26"), "open26_dbx_list.csv", 391   # indi_close.py IC_SET=o2
 if "open27" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open27"), "open27_dbx_list.csv", 391   # indi_close.py IC_SET=delta
 if "open28" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open28"), "open28_dbx_list.csv", 391   # nightly_bt.py NB_SET=delta
+if "open29" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open29"), "open29_dbx_list.csv", 391   # sig_lasthour.py
 NY = ZoneInfo("America/New_York")
 AUTH = "Basic " + base64.b64encode((os.environ["DATABENTO_API_KEY"] + ":").encode()).decode()
 HEAD = ["contract", "minute", "bid", "ask", "bid_sz", "ask_sz"]
