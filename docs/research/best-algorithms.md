@@ -2097,3 +2097,16 @@ fill model on both sides, 2%, account (tune / check):
 - Bot vs Indi (34CHCtYWPgexzP51zze9vV): all 20 data files replaced with the fixed-walk exports; a note at the top says
   the written figures in the Research / How it works text are from before the fix.
 
+
+### The champion's drops at 3%, fixed walk (2026-10-31, a diagnostic)
+The user: "investigate the drops. lets look at 3% and check biggest drop and what happens in there". champ-early, fair
+list, 3% (ret_3pct, the 10% night cap at 3%): six drops of 30% or more; the worst 35.9% (2024-11-11 -> 2025-01-17,
+recovered 2025-03-10); the current one -32.4% since 2026-09-21. Inside the worst: 61 trades, 10% won (17% elsewhere),
+the median loser -31% (-30% elsewhere), 29 of 32 trade days lost (12 in a row); the loss is the -30% stop (-$101K), the
+rest's -20% (-$44K) and the 20-minute check (-$27K); overnight holds made money. The current one: 36 trades, 6% won,
+14 of 14 days lost. SPY on drop days looks the same as on other days (range 0.86% vs 0.84%, trend share 0.48 vs 0.47),
+trades a day 2.1 vs 2.35, win rate flat by trades a day: the drops are droughts of giants, not a market type or a new
+kind of loss, and each one ends on one giant day (2026-08-19, 2026-09-18). Size: the fair list peaks near 3% ($5.16M,
+drop 35.9%; 4% $4.89M / 44.8%); the 12-month Favorites peak at 2% ($244K; 3% $232K / 39.8%); the 36-month Favorites
+still rise to 5% (drop 56%). 3% is at or past the top on two of three lists; 2-2.5% keeps most of the money with
+10-ish points less drop.
