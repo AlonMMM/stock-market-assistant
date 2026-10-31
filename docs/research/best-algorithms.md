@@ -1,6 +1,15 @@
 # Best algorithms log
 
 > 🏆 **New champion 2026-10-27 (later the same day): the champion below + early entry** (buy at the first second inside the signal minute the rule holds): 1-second real fills, tune $330,459 vs $306,551, check $484,041 vs $428,884 (fair list), Favorites 12m $238,078 vs $212,222 (export_early.py, Bot vs Indi `champ-early` / `champ-1s`). Not live yet.
+
+> ⚠️ **Audit 2026-10-31: the champion's figures are high.** The walk (sim.py) checked every exit only on minutes the
+> option traded (a thin option's 10-minute check, -30% stop and 15:50 ran at its next print) and marked it at trade
+> prices, and the 1-second buy's runaway cap (+10%) could fill under the bid. Fixed behind switches: `BT_CLOCK=stock`
+> (every stock minute, the option at its book mid as the live bot marks it; implies `BT_KEEP=1`, a signal with no option
+> print in 3 minutes is kept), `BT_CHASE=ask` (the live bot chases the ask, no cap). champ-early, fair list, 2% / 1%:
+> as logged $7,258,326 / $1,484,410 (drop 24.1%); clock only $4,126,647; chase only $4,981,518; both **$2,845,332 /
+> $857,745** (drop 27.6%; tune $448,187, check $634,854, without 10-10 $2,798,469); keep only $7,182,743. Every later
+> Main bot test runs with `BT_CLOCK=stock BT_CHASE=ask`; rules chosen on the old walk need a recheck.
 >
 > 🏆 **Champion 2026-10-27 (morning): 2.5 + IBIT down to $0.10 + the pyramid (no cheap fallback).** Real quotes: fair list 2024-25 $415,971 / 14% vs the live 2.6 $302,905 / 16%; Favorites 24 months $403,255 / 17% vs $299,707 / 18%. Not live yet.
 

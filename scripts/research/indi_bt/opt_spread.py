@@ -102,7 +102,8 @@ def price(steps, c, cost, sale):
         if side == "buy":
             p = mid + (ask - mid) / 2
             later = RB.quote(c, d, at + 1)
-            if later and later[0] > p: p = min(later[1], p * 1.1)
+            if later and later[0] > p:   # BT_CHASE=ask (the audit 2026-10-31): the live bot chases the ask, no +10% cap
+                p = later[1] if os.environ.get("BT_CHASE") == "ask" else min(later[1], p * 1.1)
             if rule != "rebuy": rcost = p
         else:
             limit = None

@@ -229,6 +229,51 @@ def failed_break_minute(und, date, minute, bet):
     return None
 
 
+# The audit of 2026-10-31 (the user: "fix it. also fix #1"), both off by default so earlier runs reproduce:
+#   BT_KEEP=1      a signal whose option did not trade in the 3 minutes after it is still bought (it was dropped as
+#                  "no_fill": live, the bot owns that option); priced like a minute with no trade below
+#   BT_CLOCK=stock the walk checks every minute the STOCK traded, as the live bot does, not only minutes the option
+#                  traded (a thin option's 10-minute check ran at its next print, IBIT 2026-10-30: 13:01 for 11:27);
+#                  each minute's option price is its book mid as that minute closed (real_bench.quote), as the live
+#                  bot marks it (its -30% stop and checks read the mid), else that minute's trade bar, else the last
+#                  trade. Implies BT_KEEP. Not modelled either way: the broker's own safety stop (50%), any second.
+CLOCK = os.environ.get("BT_CLOCK", "")
+KEEP = os.environ.get("BT_KEEP") == "1" or CLOCK == "stock"
+
+
+def book_bar(sym, d, t, last):
+    """A bar for minute t when the option did not trade: the book's mid as t closed, else the last trade, else None."""
+    import real_bench as RB
+    q = RB.quote(sym, d, t)
+    if q and q[1] > 0:
+        m = (q[0] + q[1]) / 2
+        return [t, m, m, m, m, 0]
+    if last:
+        c = last[4]
+        return [t, c, c, c, c, 0]
+    return None
+
+
+def walk_bars(und, sym, d, start, last):
+    """The bars the walk reads on day d: the option's trade bars, or with BT_CLOCK=stock one per stock minute."""
+    bars = day(sym, d)
+    if CLOCK == "stock":
+        ob = {b[0]: b for b in bars}
+        seq = []
+        for sb in day(und, d):
+            t = sb[0]
+            # the mark the live bot reads: the book's mid every minute (its stops and checks use the option's mid); a
+            # trade bar only when there is no book
+            q = book_bar(sym, d, t, None) if t > start else None
+            b = q or ob.get(t) or (book_bar(sym, d, t, last) if t > start else None)
+            if b: seq.append(b); last = b
+        return seq
+    if KEEP and start >= 0 and not any(start < b[0] <= start + 3 for b in bars):
+        b = book_bar(sym, d, start + 1, last)
+        if b: return [b] + [x for x in bars if x[0] > start + 1]
+    return bars
+
+
 def walk(und, date, minute, right, sym, exp, cal, limit=None):
     """Walks one contract from the signal minute to the last sale. -> (entry, steps, flags)."""
     bet = 1 if right == "C" else -1
@@ -249,8 +294,10 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
     if X.get("user_stop") and X["user_stop"].get("out_by_dte"):
         dte0 = (dt.date.fromisoformat(exp) - dt.date.fromisoformat(date)).days
         uout = next((o for lim, o in X["user_stop"]["out_by_dte"] if dte0 <= lim), uout)
+    last = last_bar(day(sym, date), minute, 390) if KEEP else None   # the option's last trade at the signal
     for k, d in enumerate(dates):
-        bars = day(sym, d)
+        bars = walk_bars(und, sym, d, minute if k == 0 else -1, last) if KEEP else day(sym, d)
+        if bars: last = bars[-1]
         sd = Day(und, d, bet, cal, cal.index(d))
         spyc = series(day("SPY", d))[0] if X.get("stall_rs") and k == 0 else None
         start = minute if k == 0 else -1
