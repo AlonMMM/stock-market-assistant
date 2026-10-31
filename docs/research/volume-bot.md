@@ -9,6 +9,35 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### Random side: the side carries the result, not luck on wild days (2026-10-31)
+
+The user, 2026-10-31: "do #2" (the outside audit's control test). `random_side.py` (`fetch`, `run`): the 430 trades of
+the audited live run ($782,861, `live_ask` "[flat2] shock <= 30%, burst >= 0"; the dump reproduces it exactly) again
+on the OTHER side: same trigger second, same version (plain20 / the shock's step35), same expiry, the opposite right,
+bought on its real 1-second book, the give-back walked the other way, sold at the real minute bid (Databento, new books
+in `data/random_side/`). 80 trades have no opposite contract (under the $0.20 / 200-contract floor after the move),
+3 no quote: 347 pairs. Then 200 seeds flip a coin for each trade's side. 2% a trade, $100K.
+
+| View (347 pairs) | Bot's side | Other side | Random: median (10-90th) | Random >= bot |
+|---|---|---|---|---|
+| flat2, 3 years | $445,879 | $17,769 | $100,497 ($64K-$152K) | 0/200 |
+| flat2, without 2025-10-10 | $217,334 | $22,661 | $73,177 ($51K-$106K) | 0/200 |
+| flat2, tune (to 2025-07) | $172,479 | $47,622 | $94,718 ($74K-$116K) | 0/200 |
+| flat2, check (2025-07 on) | $253,793 | $36,052 | $106,609 ($73K-$152K) | 0/200 |
+| flat2, check without 2025-10-10 | $124,489 | $46,681 | $78,276 ($54K-$106K) | 4/200 |
+| live limits, 3 years | $266,767 | $22,021 | $82,179 ($54K-$117K) | 0/200 |
+
+Per trade, net: bot's side 38% won, +28.9% average, median -25.2%, +8.0% without its best 10; other side 23% won,
+-24.9%, median -34.9%; both sides half each (a strangle) +2.0%, median -14.7%. Bot's side minus other side +53.7
+points a trade (t 5.3), median +12.9, +37.8 without 2025-10-10.
+
+- The options were priced fairly (the strangle is about flat): everything is the side. Following the move after a
+  fast cross with the burst the same way beat fading it by a wide margin, in both halves and without 10-10.
+- Caveat: the cross-15 s and burst filters were chosen on these years by the bot's side's results, which by
+  construction also picks alerts where the other side lost; the check half was seen while choosing. The unfiltered
+  rule's side was right 49.7% of the time. Next: the same test on the unfiltered alerts, and the frozen version on paper.
+- The 83 unpaired trades are left out of every column (the bot's side on the 347 is $445,879, not $782,861).
+
 ### The live rules replayed: $608,664 at the live floor, not $782,861 (2026-10-31)
 
 The user, 2026-10-31: "good so lets open the volume for backtesting on the app". The app's backtest
