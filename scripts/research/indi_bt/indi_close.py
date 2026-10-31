@@ -40,6 +40,16 @@ stock's excess minute moves vs SPY x beta) >= T and its D2 (the excess on SPY-do
   plus t12-c30-d1 (D2 >= 1.0) and m3 (the earlier pick: move >= 3%, top 15%, VWAP, last hour > SPY) for reference.
 The night's top 3 by t. Picked on tune by min(fair, Favorites) at 2%; only the pick on check.
 Quotes: IC_PASS=list -> open12_dbx_list.csv, dbx_fetch.py open12.
+
+IC_SET=many ("nightly-bet", the user, 2026-10-31: "lets try to make a lot more trading. I want that almost every night
+we'll take a 2 bets"): rank, not a bar. Each night the stock-sides that pass the version's filters are ranked by the
+bot's t at 15:57 and the best N are bought. Set before running (all: no earnings night, next-day expiry, his exit):
+  t18-top3  t >= 1.8, top 10% of range, volume 1.3x, no Friday, top 3 (= tonly-t18, the reference)
+  t18-top2  the same, top 2                         r2-v13  best 2 by t, no t floor, top 10%, volume 1.3x
+  r2        best 2 by t, top 10%, no volume rule    r2-p80  r2 with the top 20% of the range
+  r2-fri    r2 + Fridays (Monday expiry)            r2-t10  r2 with t >= 1.0
+Picked on tune among the r2* versions by min(fair, Favorites) at 2%; the pick and the reference on check. Also: the
+share of trading nights with 2 bets. Quotes: IC_PASS=list -> open22_dbx_list.csv, dbx_fetch.py open22.
 """
 import bisect, collections, csv, datetime as dt, glob, gzip, json, math, multiprocessing as mp, os, statistics as st, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -65,13 +75,14 @@ SIZES = rr.SIZES
 LISTING = os.environ.get("IC_PASS") == "list"
 M_IN = 387
 A0, Z = "2024-02-01", FR.Z
-EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15", "open16")]
+EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15", "open16", "open22")]
 VOL = os.environ.get("IC_SET") == "vol"
 D2B = os.environ.get("IC_SET") == "d2b"
 D3S = os.environ.get("IC_SET") == "d3"
-RS = os.environ.get("IC_SET") == "rs" or VOL or D2B or D3S
-TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs", "d3": "_d3"}.get(os.environ.get("IC_SET"), "")
-LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv", "_d3": "open16_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
+MANY = os.environ.get("IC_SET") == "many"
+RS = os.environ.get("IC_SET") == "rs" or VOL or D2B or D3S or MANY
+TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs", "d3": "_d3", "many": "_many"}.get(os.environ.get("IC_SET"), "")
+LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv", "_d3": "open16_dbx_list.csv", "_many": "open22_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
 BASE = dict(lo=0.02, hi=0.04, d=0.20, exit="his", ath=False, pos=0.85, vwap=True, rs="60", vol="min", fri=False)
 CORE = {"thesis": {}, "m15": dict(lo=0.015), "m3": dict(lo=0.03, hi=9.0), "d30": dict(d=0.30), "d15": dict(d=0.15),
         "at10": dict(exit="at10"), "ath": dict(ath=True)}
@@ -115,6 +126,14 @@ if D3S:
         for t in (1.0, 1.2, 1.5):
             D3V[f"and-{k}-t{round(t * 10)}"] = {**BASE, **ANY, "rs": "d3and", "t": t, "k3": k, "x3": 0.5, "win": "next"}
     VERSIONS = D3V
+if MANY:
+    R = {**BASE, **ANY, "rs": "rank", "win": "next", "win2": "c30"}
+    VERSIONS = {"t18-top3": {**R, "t": 1.8, "n": 3}, "t18-top2": {**R, "t": 1.8, "n": 2},
+                "r2-v13": {**R, "t": -99, "n": 2}, "r2": {**R, "t": -99, "n": 2, "vol": "none"},
+                "r2-p80": {**R, "t": -99, "n": 2, "vol": "none", "pos": 0.80}, "r2-fri": {**R, "t": -99, "n": 2, "vol": "none", "fri": True},
+                "r2-t10": {**R, "t": 1.0, "n": 2, "vol": "none"}}
+REF = "t18-top3" if MANY else None
+PICKABLE = [v for v in VERSIONS if v.startswith("r2")] if MANY else list(VERSIONS)
 RX = None
 BASE_EXPIRY = sim.expiry_for   # restored after each pick (set at import, so every worker has it)
 
@@ -232,6 +251,8 @@ def candidates(rows, v):
                 if v["rs"] == "d3and": strong = tt >= v["t"] and x3 is not None and x3 >= v["x3"]
                 else: strong = tt >= v["t"] or (v["x3"] is not None and x3 is not None and tt >= v["tlow"] and x3 >= v["x3"])
                 ex = tt
+            elif v["rs"] == "rank":
+                tt = bet * r["t"]; strong = tt >= v["t"]; ex = tt
             elif v["rs"] == "tor":
                 tt, e2 = bet * r["t"], r[f"{'c' if bet > 0 else 'p'}_{v['win2']}"]
                 strong = tt >= v["t"] or (v["alone"] is not None and e2 >= v["alone"]) or (v["bonus"] and tt >= 0.8 and e2 >= 0.5)
@@ -247,7 +268,7 @@ def candidates(rows, v):
             if v["vwap"] and vw <= 0: continue
             if v["ath"] and not (r["ath"] if bet > 0 else r["atl"]): continue
             by[(r["src"], r["date"])].append((ex, r, right))
-    return {k: [(r, right) for _, r, right in sorted(x, key=lambda q: -q[0])[:3]] for k, x in by.items()}
+    return {k: [(r, right) for _, r, right in sorted(x, key=lambda q: -q[0])[:v.get("n", 3)]] for k, x in by.items()}
 
 
 def pick(r, right, d, win):
@@ -372,13 +393,25 @@ def main():
     for v in VERSIONS:
         tf, tv = out[(0.02, "tune", v)]
         print(f"| {v} | ${tf['acct']:,} / {tf['dd']:.0%} | ${tv['acct']:,} / {tv['dd']:.0%} | {desc(trades(v, 'fair', 'tune'))} | {desc(trades(v, 'fav', 'tune'))} |", flush=True)
-    best = max(VERSIONS, key=lambda v: min(out[(0.02, "tune", v)][i]["acct"] for i in (0, 1)))
+    if MANY:   # nights with 2+ bets: of the trading nights each list could trade (Fridays count only where allowed)
+        print("\n#### Nights with bets (tune weeks): share of nights with 0 / 1 / 2+ walked trades\n\n| Version | Fair | Fav |\n|---|---|---|")
+        for v in VERSIONS:
+            cells = []
+            for src in L:
+                nights = [d for d in days if half(d) == "tune" and (src == "fair" or d >= FR.A24) and d <= RB.LAST
+                          and (VERSIONS[v]["fri"] or dt.date.fromisoformat(d).weekday() != 4)]
+                cnt = collections.Counter(w["date"] for w in trades(v, src, "tune"))
+                k = [min(cnt.get(d, 0), 2) for d in nights]
+                cells.append(f"{len(nights)} nights: {k.count(0) / len(k):.0%} / {k.count(1) / len(k):.0%} / {k.count(2) / len(k):.0%}")
+            print(f"| {v} | {cells[0]} | {cells[1]} |", flush=True)
+    best = max(PICKABLE, key=lambda v: min(out[(0.02, "tune", v)][i]["acct"] for i in (0, 1)))
     print(f"\nPicked on tune: {best} 🎯")
-    for s in SIZES: out[(s, "check", best)] = [rr.stats(E(best, src, "check", s), s) for src in L]
-    print(f"\n#### The pick on the check weeks\n\n| Size | Check fair | Check fav | Fair: n, win, median, sum, giants, rest | Fav: same |\n|---|---|---|---|---|")
-    for s in SIZES:
-        cf, cv = out[(s, "check", best)]
-        print(f"| {s:.0%} | ${cf['acct']:,} / {cf['dd']:.0%} | ${cv['acct']:,} / {cv['dd']:.0%} | {desc(trades(best, 'fair', 'check'))} | {desc(trades(best, 'fav', 'check'))} |", flush=True)
+    for vv in [best] + ([REF] if REF else []):
+        for s in SIZES: out[(s, "check", vv)] = [rr.stats(E(vv, src, "check", s), s) for src in L]
+        print(f"\n#### {vv} on the check weeks\n\n| Size | Check fair | Check fav | Fair: n, win, median, sum, giants, rest | Fav: same |\n|---|---|---|---|---|")
+        for s in SIZES:
+            cf, cv = out[(s, "check", vv)]
+            print(f"| {s:.0%} | ${cf['acct']:,} / {cf['dd']:.0%} | ${cv['acct']:,} / {cv['dd']:.0%} | {desc(trades(vv, 'fair', 'check'))} | {desc(trades(vv, 'fav', 'check'))} |", flush=True)
     # the champion + the pick (each trade at the size, the close trades on their entry day)
     champ = json.load(open(f"{B}/champ_entries.json")) if os.path.exists(f"{B}/champ_entries.json") else None
     if champ:
