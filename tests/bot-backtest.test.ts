@@ -5,6 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mergeSources } from "../packages/market-data/src/option-quotes.js";
+import { D1OptionBars } from "../packages/market-data/src/option-bars.js";
+import { SqliteD1 } from "../apps/api/src/sqlite-d1.js";
 import {
   AlpacaBacktestData,
   backtestCalendar,
@@ -454,6 +456,66 @@ test("the option data calls fetch unbound, as Cloudflare Workers require", async
   assert.equal(chain[0]?.strike, 105);
   const day = await data.optionDay(["NVDA260904C00105000"], date);
   assert.deepEqual(day.get("NVDA260904C00105000"), []);
+});
+
+test("option bars are kept: a finished day's bars and volume are stored, read back without Alpaca, an empty day too", async () => {
+  const store = new D1OptionBars(new SqliteD1(":memory:"));
+  const liquid = "NVDA260904C00105000",
+    thin = "NVDA260904C00110000";
+  let calls = 0;
+  const alpaca = (() => {
+    calls++;
+    return Promise.resolve(
+      Response.json({
+        bars: {
+          [liquid]: [
+            // 09:41 and 09:42 New York on the date (EDT, UTC-4)
+            { t: `${date}T13:41:00Z`, o: 1, h: 1.2, l: 0.9, c: 1.1, v: 150 },
+            { t: `${date}T13:42:00Z`, o: 1.1, h: 1.3, l: 1, c: 1.2, v: 90 },
+          ],
+        },
+        next_page_token: null,
+      }),
+    );
+  }) as unknown as typeof fetch;
+  const make = (fetcher: typeof fetch) =>
+    new AlpacaBacktestData(
+      new Map(),
+      date,
+      { key: "k", secret: "s" },
+      "https://paper-api.alpaca.markets",
+      fetcher,
+      undefined,
+      store,
+    );
+  const first = await make(alpaca).optionDay([liquid, thin], date);
+  assert.equal(calls, 1);
+  assert.deepEqual(
+    first.get(liquid)?.map((b) => [b.m, b.v]),
+    [
+      [11, 150],
+      [12, 90],
+    ],
+  );
+  // A second run reads the stored day: no Alpaca call, the same volume.
+  const offline = (() =>
+    Promise.reject(new Error("no network"))) as unknown as typeof fetch;
+  const again = await make(offline).optionDay([liquid, thin], date);
+  assert.deepEqual(again.get(liquid), first.get(liquid));
+  assert.deepEqual(again.get(thin), []);
+  // A session after the last finished one is never stored.
+  const later = "2099-01-02";
+  const live = new AlpacaBacktestData(
+    new Map(),
+    date,
+    { key: "k", secret: "s" },
+    "https://paper-api.alpaca.markets",
+    alpaca,
+    undefined,
+    store,
+  );
+  await live.optionDay([liquid], later);
+  assert.equal((await store.get([liquid], later)).size, 0);
 });
 
 test("the page splits a period into parts and reads typed tickers", () => {
