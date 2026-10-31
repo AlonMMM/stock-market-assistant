@@ -2321,3 +2321,23 @@ buy; 2.8 still leads 2.7 (+27% fair, both halves +17% / +9%; Favorites 12m +10%,
   $4,116,321; Favorites 12m 2.7 $233,694 / 2.8 $257,718 (vs $244,097 / $269,546). The entry-day bug is worth 1-4%, not
   4-12%. What changes is the drop: with open positions marked every evening it is ~34% at 2% on the fair list (the old
   replays only saw a trade when it closed). 268 of 1,088 fair trades are entered while an earlier one is held overnight.
+
+### The audit sheet of 2026-10-31 (14 code points) and 2.8 with every fix
+An outside audit sheet (14 points); the user's calls: B10 fix (broker stop -60% by default, app PR #225), B5 keep for
+now, B9 fix (replay.py: one replay for every headline; `REPLAY_MODE=entry` reproduces the logged $4,161,285 exactly),
+B6 fix (store.split_ratio / vol_factor in signals, defence_signals, sec_timing; app signal.ts in PR #225), B3 later
+(capacity: at $4M a 2% order, ~1,176 contracts, is more than the contract's 30-minute volume on 57% of trades; under
+~$500K it never binds). B1 / B4 fixed earlier the same day; B2 partly (marked at 15:50; not intraday).
+- B5 measured: paying the ask on every buy (the live bot's chase) instead of mid + 1/4 spread costs 2.2% a buy on
+  average (56% of 2.8's buys already pay the ask) and halves 2.8's fair account at 2% ($4.12M -> $2.06M, entry-day
+  replay). Kept as is for now (the user).
+- B6: 11 splits in 127 stocks since Oct 2023 (AVGO / NVDA / SMCI 10:1, WMT 3:1, PANW 2:1, IBKR 4:1, NOW 5:1, CRWD 4:1,
+  CVNA 5:1, IGV 5:1, SOXX 3:1), no false ones. 2.8's trades inside a split's 20-session window: fair 3 of 1,007, all
+  fail the volume rule once fixed (AVGO 2024-07-23 2.97x -> 0.41x, NVDA 2024-06-18 4.63x -> 0.69x, AVGO 2024-07-31
+  2.47x -> 1.34x); Favorites 12m 1 (CRWD 2026-07-08). Scored with those removed (the fix can only drop or delay).
+2.8 and 2.7 with every fix (fixed walk, early entry without SPY's end-of-minute price, splits, marked booking; replay.py):
+
+| | Fair 2% (drop) | Tune / check | Without best 5 | 1% | Fav 12m 2% | Fav 6m 2% |
+|---|---|---|---|---|---|---|
+| **2.8** | **$3,996,271 (33.9%)** | $561,752 / $750,610 | $725,082 | $1,050,750 | $260,083 (29.7%) | $159,125 |
+| 2.7 | $3,086,767 (34.2%) | $476,859 / $683,952 | $560,882 | $908,061 | $235,030 (28.5%) | $158,479 |
