@@ -42,7 +42,7 @@ for (const symbol of symbols) {
       newYorkToUtc(d, coreClose(d)!),
       fastWindows,
     );
-    if (w) prior.push(w);
+    if (w) prior.push(w.windows);
   }
   bases.set(symbol, fastBaseline(prior));
   console.log(`${symbol}: ${prior.length} sessions`);

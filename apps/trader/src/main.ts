@@ -541,6 +541,10 @@ const sideTimer = strangle
 const fastTimer = strangle
   ? setInterval(() => void strangle.watchFast(), 2_000)
   : null;
+// The option books around each alert, every 2 seconds (alert-books.ts).
+const booksTimer = strangle
+  ? setInterval(() => void strangle.watchBooks(), 2_000)
+  : null;
 api.get("/v1/strangle", async () => {
   if (!strangle) throw new RequestError(strangleOff, 409);
   return strangle.status();
@@ -724,6 +728,7 @@ async function stop() {
   if (strangleTimer) clearInterval(strangleTimer);
   if (sideTimer) clearInterval(sideTimer);
   if (fastTimer) clearInterval(fastTimer);
+  if (booksTimer) clearInterval(booksTimer);
   if (recordTimer) clearInterval(recordTimer);
   botStore.close();
   strangleStore.close();
