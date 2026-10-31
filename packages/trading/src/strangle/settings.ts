@@ -128,9 +128,12 @@ export const defaultStrangleSettings: StrangleSettings = {
   lastMinute: 209,
   delta: 0.35,
   minPrice: 0.2,
-  // 0, no liquidity floor (the user 2026-10-30, "no need >200"): with real quotes and the audited
-  // simulator (volume-bot.md, 2026-10-30), plan + shock at 2% from $100K: $1,011,767 with no floor
-  // vs $782,861 at 200, ahead in both halves, without 10 Oct 2025 and with the live limits.
+  // 0, no liquidity floor (the user 2026-10-30, "no need >200"): ahead of the 200 floor in both
+  // halves, without 10 Oct 2025 and with the live limits (volume-bot.md, 2026-10-30). Not the live
+  // rule's result: the research's $1,011,767 (no floor) and $782,861 (200) include trades it took on
+  // a fallback strike the live bot skips. Replayed with the live rules (strangle/backtest.ts,
+  // volume-bot.md 2026-10-31), plan + shock at 2% from $100K, no limits: $827,157 with no floor,
+  // $608,664 (worst drop 19.1%) at 200, the saved live setting.
   minVolume: 0,
   liquidFallback: true,
   confirmUnits: 0.25,

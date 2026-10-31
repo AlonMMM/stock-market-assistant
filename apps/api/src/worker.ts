@@ -89,6 +89,7 @@ import { D1OptionQuotes } from "../../../packages/market-data/src/option-quotes.
 import { D1OptionBars } from "../../../packages/market-data/src/option-bars.js";
 import { handleVolumeBacktest } from "../../../packages/market-data/src/volume-backtest.js";
 import { D1VolumeData } from "../../../packages/market-data/src/volume-data.js";
+import { syncVolumeDay } from "../../../packages/market-data/src/volume-daily.js";
 import { handleControl } from "../../../packages/trading/src/control-api.js";
 import { changeRefusal } from "./owner-only.js";
 import { verifyAccess, type AccessIdentity } from "./access.js";
@@ -164,6 +165,7 @@ export default {
       COLLECTOR_TOKEN?: string;
       TRADER_URL?: string;
       TRADER_TOKEN?: string;
+      TRADER_READ_TOKEN?: string;
       // The watchlist the Indi bot also trades; else the one named "favorite".
       BOT_WATCHLIST?: string;
     },
@@ -224,6 +226,17 @@ export default {
           ).catch((error: unknown) => `failed: ${String(error)}`)
         : "no favorites list";
       console.log(`bot favorites: ${line}`);
+    }
+    // The Volume bot's backtest data for the day, once after the close: the
+    // trader's fired alerts and alert books into D1 (volume-daily.ts).
+    if (env.BARS_CACHE && ny.minute % 5 === 0) {
+      const line = await syncVolumeDay({
+        trader: { url: env.TRADER_URL, token: env.TRADER_READ_TOKEN },
+        store: stores(env.BARS_CACHE).volume,
+        now: Date.now(),
+      }).catch((error: unknown) => `failed: ${String(error)}`);
+      if (line !== "not yet" && line !== "done" && line !== "not a session")
+        console.log(`volume data: ${line}`);
     }
     // The user's price alerts (user 2026-10-18), checked every minute.
     if (env.BARS_CACHE) {

@@ -4,9 +4,15 @@
 // (local data only).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { backtestCalendar } from "../packages/market-data/src/bot-backtest.js";
+import {
+  backtestCalendar,
+  handleBotBacktest,
+} from "../packages/market-data/src/bot-backtest.js";
 import { previousSessions } from "../packages/market-data/src/calendar.js";
-import { secondsFromTrades } from "../packages/market-data/src/volume-backtest.js";
+import {
+  handleVolumeBacktest,
+  secondsFromTrades,
+} from "../packages/market-data/src/volume-backtest.js";
 import {
   bsPrice,
   occSymbol,
@@ -463,4 +469,40 @@ test("volume backtest data: the last trade each second by Alpaca's bar rules", (
     [2400, 100.5],
     [2402, 101],
   ]);
+});
+
+test("backtest handlers: a range in early 2024 is read back from its end, not 400 sessions back (the calendar starts in 2024)", async () => {
+  const down = (async () =>
+    new Response("", { status: 500 })) as unknown as typeof fetch;
+  const credentials = { key: "k", secret: "s" };
+  const now = Date.parse("2026-10-31T12:00:00Z");
+  const body = { symbol: "NVDA", from: "2024-02-01", to: "2024-02-29" };
+  // Past the dates: the market data fails here (502), not the calendar.
+  const v = await handleVolumeBacktest(
+    body,
+    credentials,
+    "https://paper",
+    down,
+    now,
+  );
+  assert.equal(v.status, 502);
+  const b = await handleBotBacktest(
+    body,
+    credentials,
+    "https://paper",
+    down,
+    now,
+  );
+  assert.equal(b.status, 502);
+  const long = await handleVolumeBacktest(
+    { ...body, to: "2024-06-28" },
+    credentials,
+    "https://paper",
+    down,
+    now,
+  );
+  assert.deepEqual(long, {
+    status: 400,
+    body: { error: "At most 60 sessions a request" },
+  });
 });

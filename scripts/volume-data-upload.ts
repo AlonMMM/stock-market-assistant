@@ -8,8 +8,14 @@
 //   seconds  the research's 1-second Databento windows after its alerts
 //            (leg_seconds.py sec_cache): the stocks' last price each second
 //            -> stock_seconds, the contracts' books -> option_seconds
+//   books    the alert books backfill (data/local/alert-books.sqlite,
+//            alert_books_hist: every plan and shock alert of Aug 3 - Oct 30
+//            2026, the |delta| 0.10-0.35 calls and puts every 2 s for 300 s,
+//            Databento cbbo-1s), shaped like the live trader's alert books
+//            -> option_seconds, a window a contract (volume-daily.ts
+//            bookWindows, as the scheduled step stores the live ones)
 //
-//   node --import tsx scripts/volume-data-upload.ts shock|seconds --from YYYY-MM-DD --to YYYY-MM-DD [--symbols A,B] [--apply]
+//   node --import tsx scripts/volume-data-upload.ts shock|seconds|books --from YYYY-MM-DD --to YYYY-MM-DD [--symbols A,B] [--apply]
 //
 // Without --apply the SQL files are written (data/local/volume-upload/) and
 // counted, nothing is sent; with it each file goes up with `wrangler d1
@@ -30,6 +36,10 @@ import {
   newYorkToUtc,
   previousSessions,
 } from "../packages/market-data/src/calendar.js";
+import {
+  bookWindows,
+  type TraderBooks,
+} from "../packages/market-data/src/volume-daily.js";
 import {
   optionSecondsTable,
   stockSecondsTable,
@@ -303,11 +313,60 @@ function seconds() {
   );
 }
 
+// ---- books: the alert books backfill ----
+
+function books() {
+  const db = new DatabaseSync(`${MAIN}/data/local/alert-books.sqlite`, {
+    readOnly: true,
+  });
+  const rows = db
+    .prepare(
+      "SELECT day, symbol, second, kind, contracts, data FROM alert_books_hist WHERE day BETWEEN ? AND ? ORDER BY day, second",
+    )
+    .all(from, to) as {
+    day: string;
+    symbol: string;
+    second: number;
+    kind: string;
+    contracts: string;
+    data: string;
+  }[];
+  const lines: string[] = [];
+  let alerts = 0;
+  let windows = 0;
+  for (const r of rows) {
+    if (only.length && !only.includes(r.symbol)) continue;
+    const samples = JSON.parse(
+      gunzipSync(Buffer.from(r.data.slice(3), "base64")).toString(),
+    ) as TraderBooks["samples"];
+    const ws = bookWindows({
+      day: r.day,
+      symbol: r.symbol,
+      second: r.second,
+      kind: r.kind,
+      contracts: JSON.parse(r.contracts) as { symbol: string }[],
+      samples,
+    });
+    alerts++;
+    for (const w of ws) {
+      lines.push(
+        `INSERT OR REPLACE INTO option_seconds (contract, date, start, end, rows) VALUES (${q(w.contract)}, ${q(w.date)}, ${w.start}, ${w.end}, ${q(pack(w.rows))});`,
+      );
+      windows++;
+    }
+  }
+  console.log(
+    `${alerts} alerts' books, ${windows} option windows, ${from} .. ${to}`,
+  );
+  send(writeFiles("books", optionSecondsTable, lines));
+}
+
 if (step === "shock") shock();
+else if (step === "books") books();
 else if (step === "seconds") seconds();
 else {
   console.error(
-    "usage: volume-data-upload.ts shock|seconds --from --to [--symbols] [--compare FILE] [--apply]",
+    "usage: volume-data-upload.ts shock|seconds|books --from --to [--symbols] [--compare FILE] [--apply]",
   );
   process.exit(1);
 }

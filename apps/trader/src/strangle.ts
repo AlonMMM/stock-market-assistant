@@ -81,6 +81,7 @@ import { FastTape, fetchFastBars, fetchFastDay } from "./strangle-fast.js";
 import { AlertBooks, type AlertBookWatch } from "./alert-books.js";
 import {
   tradeCash,
+  type FastAlertRow,
   type StrangleEventKind,
   type StrangleOrder,
   type StrangleStore,
@@ -488,6 +489,15 @@ export class StrangleBot {
             if (!r.fire.step(t, st.on)) continue;
             if (t < r.rule.firstSlot || t > r.rule.lastSlot) continue;
             const second = (t + 1) * 10;
+            // Every fired alert is kept for the website's backtest, a late one too.
+            this.o.store.saveFastAlert({
+              day: date,
+              symbol,
+              second,
+              kind: r.isShock ? "shock" : "fast",
+              price: cf[t]!,
+              up: st.up,
+            });
             // A slot passed while catching up (a start mid-session): no trade.
             if (this.sessionSecond() - second > 30) continue;
             // Every alert's option books, traded or not (alert-books.ts).
@@ -565,6 +575,19 @@ export class StrangleBot {
   /** Every 2 seconds: the running alerts' option books. */
   async watchBooks(): Promise<void> {
     await this.books.step();
+  }
+
+  /** A day's fired 10-second alerts and alert books, for the website's backtest data (read-only). */
+  alertData(day: string): {
+    day: string;
+    alerts: FastAlertRow[];
+    books: AlertBookWatch[];
+  } {
+    return {
+      day,
+      alerts: this.o.store.fastAlerts(day),
+      books: this.o.store.alertBooks(day),
+    };
   }
 
   /**

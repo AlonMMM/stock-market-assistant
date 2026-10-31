@@ -1,4 +1,4 @@
-import type { D1Like } from "./bar-cache.js";
+import type { D1Like, D1Statement } from "./bar-cache.js";
 import type {
   SecondBook,
   ShockAlert,
@@ -21,6 +21,12 @@ export const stockSecondsTable =
   "CREATE TABLE IF NOT EXISTS stock_seconds (symbol TEXT NOT NULL, date TEXT NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL, rows TEXT NOT NULL, PRIMARY KEY (symbol, date, start))";
 export const optionSecondsTable =
   "CREATE TABLE IF NOT EXISTS option_seconds (contract TEXT NOT NULL, date TEXT NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL, rows TEXT NOT NULL, PRIMARY KEY (contract, date, start))";
+// The days the scheduled step copied from the trader (volume-daily.ts).
+export const volumeDaysTable =
+  "CREATE TABLE IF NOT EXISTS volume_days (date TEXT PRIMARY KEY, alerts INTEGER NOT NULL, windows INTEGER NOT NULL, synced_at INTEGER NOT NULL)";
+
+// Statements a batch: each batch is one Worker subrequest.
+const perBatch = 50;
 
 export interface VolumeDataStore {
   /** A stock's shock alerts over [from, to]. */
@@ -46,6 +52,23 @@ export interface VolumeDataStore {
     from: number,
     to: number,
   ): Promise<SecondBook[]>;
+  /** Stores fired 10-second alerts. */
+  putAlerts(
+    alerts: { symbol: string; kind: "shock" | "fast"; alert: ShockAlert }[],
+  ): Promise<void>;
+  /** Stores option windows ([second, bid, ask] rows). */
+  putOptionWindows(
+    windows: {
+      contract: string;
+      date: string;
+      start: number;
+      end: number;
+      rows: [number, number, number][];
+    }[],
+  ): Promise<void>;
+  /** Whether the scheduled step already copied a day from the trader. */
+  daySynced(date: string): Promise<boolean>;
+  markDay(date: string, alerts: number, windows: number): Promise<void>;
 }
 
 export async function packJson(value: unknown): Promise<string> {
@@ -76,7 +99,69 @@ export class D1VolumeData implements VolumeDataStore {
       this.db.prepare(volumeAlertsTable),
       this.db.prepare(stockSecondsTable),
       this.db.prepare(optionSecondsTable),
+      this.db.prepare(volumeDaysTable),
     ]));
+  }
+
+  private async write(statements: D1Statement[]) {
+    for (let i = 0; i < statements.length; i += perBatch)
+      await this.db.batch(statements.slice(i, i + perBatch));
+  }
+
+  async putAlerts(
+    alerts: { symbol: string; kind: "shock" | "fast"; alert: ShockAlert }[],
+  ) {
+    await this.init();
+    await this.write(
+      alerts.map(({ symbol, kind, alert: a }) =>
+        this.db
+          .prepare(
+            "INSERT OR REPLACE INTO volume_alerts (symbol, date, kind, second, price, up) VALUES (?, ?, ?, ?, ?, ?)",
+          )
+          .bind(symbol, a.date, kind, a.second, a.price, a.up ? 1 : 0),
+      ),
+    );
+  }
+
+  async putOptionWindows(
+    windows: {
+      contract: string;
+      date: string;
+      start: number;
+      end: number;
+      rows: [number, number, number][];
+    }[],
+  ) {
+    await this.init();
+    const statements: D1Statement[] = [];
+    for (const w of windows)
+      statements.push(
+        this.db
+          .prepare(
+            "INSERT OR REPLACE INTO option_seconds (contract, date, start, end, rows) VALUES (?, ?, ?, ?, ?)",
+          )
+          .bind(w.contract, w.date, w.start, w.end, await packJson(w.rows)),
+      );
+    await this.write(statements);
+  }
+
+  async daySynced(date: string) {
+    await this.init();
+    const { results } = await this.db
+      .prepare("SELECT date FROM volume_days WHERE date = ?")
+      .bind(date)
+      .all();
+    return results.length > 0;
+  }
+
+  async markDay(date: string, alerts: number, windows: number) {
+    await this.init();
+    await this.db
+      .prepare(
+        "INSERT OR REPLACE INTO volume_days (date, alerts, windows, synced_at) VALUES (?, ?, ?, ?)",
+      )
+      .bind(date, alerts, windows, Date.now())
+      .run();
   }
 
   async shocks(symbol: string, from: string, to: string) {
