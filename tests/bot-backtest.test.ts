@@ -29,6 +29,7 @@ import {
   runAccount,
 } from "../packages/trading/src/bot/backtest-account.js";
 import { defaultSettings } from "../packages/trading/src/bot/settings.js";
+import { defaultExitRules } from "../packages/trading/src/bot/exits.js";
 import type { MinuteBar } from "../packages/trading/src/bot/signal.js";
 import {
   clockText,
@@ -284,6 +285,39 @@ test("a stock's run buys the signal's contract on the next bar and sells it by t
   // The option never moved and the stock kept climbing: no stop, sold at 15:50.
   assert.equal(t.steps.at(-1)!.reason, "close-1550");
   assert.equal(t.priced, "trades");
+});
+
+test("a thin option with no quotes: bought at its first print, however late, and checked every stock minute", async () => {
+  const { data } = fakeData(1000);
+  const signal = defaultSettings.firstEntryMin;
+  // The option prints 10 minutes after the signal, then once at minute 200.
+  const thin: BacktestData = {
+    ...data,
+    optionRange: async (contract, from, to) => {
+      const all = await data.optionRange(contract, from, to);
+      return new Map(
+        [...all].map(([d, bars]) => [
+          d,
+          bars.filter((b) => b.m === signal + 10 || b.m === 200),
+        ]),
+      );
+    },
+  };
+  const run = await runStock(
+    "NVDA",
+    [date],
+    { ...defaultSettings, pyramid: false },
+    thin,
+    backtestCalendar,
+    { fillPct: 2 },
+  );
+  assert.equal(run.skips.length, 0, JSON.stringify(run.skips));
+  const t = run.trades[0]!;
+  assert.equal(t.steps[0]!.minute, signal + 10);
+  // The 15:50 decision runs at 15:50 on the last trade, not at the last print (minute 200).
+  const last = t.steps.at(-1)!;
+  assert.equal(last.reason, "close-1550");
+  assert.equal(last.minute, defaultExitRules.eodMinute + 1);
 });
 
 /** The fake data with a real book every minute for every contract: the bar's price -/+ a cent. */
