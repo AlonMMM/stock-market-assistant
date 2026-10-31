@@ -649,6 +649,12 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 unit, p0 = st["ss"]; px = sd.c[min(t, 389)]
                 if unit and px:
                     mv = bet * (px - p0) / unit
+                    # add {within, move, share} (the user 2026-10-31: "add 50% if it goes in our direction in the first 10
+                    # minutes, then the 2-step exit for all the premium"): once, `share` of the first buy more, bought at the
+                    # next minute (the rebuy fill), when the stock is `move` S30 our way within `within` minutes of the signal
+                    A = SS.get("add")
+                    if A and not st.get("added") and t - minute <= A["within"] and mv >= A["move"]:
+                        st["added"] = True; st["rb_q"] = A.get("share", 0.5); st["rb_pending"] = True; continue
                     if SS.get("full") is not None and mv <= -SS["full"]: pending = ("all", "T_full"); continue
                     if SS.get("half") is not None and not st.get("ss_half") and mv <= -SS["half"]:
                         st["ss_half"] = True; st["rb_q"] = rem * SS.get("share", 0.5); st["rebought"] = False

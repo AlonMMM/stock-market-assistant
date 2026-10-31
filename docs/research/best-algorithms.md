@@ -1907,3 +1907,22 @@ stop on; moves from the signal price in S30; fixed walk, champ-early, fair list.
   all-out candidate (+6% tune, check a tie), with the lowest drop (26.7%). The new candidate.
 - Buying back: worse every way (-20% to -29%, deeper drops): the stock back at the signal price is usually a pause
   before the next leg against, and the half is paid at the ask. Looser stages (0.75 / 1.25) worse.
+
+### Add 50% when the stock moves our way in the first 10 minutes, on top of the staged exit (2026-10-31)
+The user: "add 50% if it goes in our direction in the first 10 minutes, then the 2-step exit for all the premium".
+`stock_stages.add` {within 10, move, share 0.5}, bought the next minute at the real ask side (the rebuy fill), extra
+money on top of the 2% trade; checks off, -30% stop, half out at 0.5 S30 against, the rest at 1.0; fixed walk.
+
+| Version | Trades added | Won | 2% (drop) | Without 10-10 | Tune | Check | 1% |
+|---|---|---|---|---|---|---|---|
+| Staged exit, no add (candidate) | - | 16.7% | $3,431,770 (26.7%) | $3,359,191 | $506,039 | $678,163 | $956,642 |
+| Add at +0.25 S30 | 683 | 16.6% | $6,468,755 (35.1%) | $6,272,477 | $578,421 | $1,118,346 | $2,092,487 |
+| Add at +0.5 S30 | 543 | 15.7% | $5,910,629 (33.5%) | $5,727,076 | $565,446 | $1,045,304 | $1,919,530 |
+| **Add at +1.0 S30** | 297 | 16.0% | **$7,980,114 (28.6%)** | $7,847,584 | $651,378 | $1,225,112 | $2,251,336 |
+
+- Add at +1.0 S30 wins both halves (+29% tune, +81% check) with 2 points more drop. It is not just more size: the
+  candidate at the same average risk (2.27% a trade) makes $4,838,869 with a 29.9% drop.
+- But it rests on giants: of the +120 points it adds over 297 trades, 89 come from 10 trades (MSTR and IBIT
+  2026-08-19, BA 2024-05-23, FSLR 2024-05-22, SMCI 2025-05-13); the median added trade is 20 points worse and only
+  27% of them gain (the add is paid at the ask after the move, then the move often stalls). Promising, not proven:
+  needs the Favorites (other stocks) before any live change.
