@@ -62,6 +62,7 @@ every run; S30 = the stock's usual 30-minute move, moves measured from the signa
 | 7 | "add 50% if it goes our direction in the first 10 minutes" | Add half size at +0.25 / +0.5 / +1.0 S30 within 10 min, staged exit on all of it | Add at +1.0: $7,980,114 (28.6%), tune +29%, check +81% vs step 6 | Promising, giant-driven (10 trades = 74% of the gain, median added trade -20 pts) |
 | 8 | "move the stop to 50/60/70%, as now we have a better stop" | Stop -50 / -60 / -70% on steps 6 and 7 | On step 6, -60%: $3,767,288 (25.1%), tune +6%, check +3%; on step 7 the check slips (-1.5%) | Giant-driven: median changed trade -2.9 pts; not adopted yet |
 | 9 | "add on this the add rule" | Stop -60% + staged exit + add 50% at +1.0 S30 within 10 min | $8,594,137 (29.7%), tune +32%, check +72% vs stop -60% alone | The best total; the add still giant-driven (10 trades = 85% of its points, median added trade -20 pts) |
+| 10 | "run it on the favorite" | Steps 6-9 on the Favorites (12 and 6 months) | 12m: champion $244,185 -> staged $256,014, stop -60% $272,126, + add $313,855 (drop 35.3%); check half lower for all (-3% / -3% / -10%) | Tune-only gains; the add fails the check half. Page: https://claude.ai/artifact/1TmWPpHbU7vSoAuKtKwmS1 |
 
 The candidate exit (step 6), as a `BT_X` overlay on the champion:
 `{"user_stop": {"checks": []}, "stock_stages": {"half": 0.5, "full": 1.0}}`; step 7 adds
@@ -2014,4 +2015,20 @@ list. The live broker safety stop (`safetyStopPct` 50) would fire first at -60 /
   +32%, check +72%, drop +4.6 points. Against the add on the -30% stop: tune +9%, check -1.5%. The add's part is as
   before: 297 trades changed, 82 gain, median -20 points, the best 10 (FSLR 2024-05-22, BA 2024-05-23, META 2026-09-21,
   ORCL 2025-07-02, IBIT 2026-09-18, AMD 2025-03-26 ...) bring 85% of its points.
+
+### The staged exit, the -60% stop and the add on the Favorites (2026-10-31)
+The user: "run it on the favorite". The same runs' Favorites rows (export_early, fav12 / fav6), fixed walk, 2%:
+
+| Version | 12 months (drop) | Without best 5 | Tune | Check | 6 months |
+|---|---|---|---|---|---|
+| Fixed champion | $244,185 (28.5%) | $64,277 | $223,781 | $109,118 | $160,359 |
+| Staged exit | $256,014 (29.0%) | $67,439 | $240,768 | $106,332 | $165,876 |
+| Staged exit, stop -60% | $272,126 (30.3%) | $71,627 | $256,442 | $106,116 | $161,978 |
+| Staged exit + add | $303,340 (35.5%) | $64,422 | $301,245 | $100,696 | $172,733 |
+| Staged exit, stop -60%, + add | $313,855 (35.3%) | $66,597 | $321,006 | $97,772 | $163,225 |
+
+- Every version adds money in the tune half and loses a little in the check half; none passes the both-halves bar on
+  the Favorites. The staged exit and the -60% stop are small (+5% / +11% total, check -3%); the add is +29% total with
+  the check -10% and 7 points more drop. Without the best 5 trades the add is no better than the champion. Not ready
+  for live; the add is a bet on giants.
 
