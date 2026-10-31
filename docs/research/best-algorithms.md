@@ -2180,3 +2180,12 @@ Favorites. The overnight split redone on the 15:57 run's 123 holds, all measured
 than 0.5 S30 against (19 holds): 21% beat the sale, -2,042 without the best 3, but tune +1,286 with them: no clean
 split. Volume 2x+ and gain +300%+ keep the same shape as at 15:50 (more giants, not a clean money split).
 The "sell at 15:50 after a last-hour run" candidate is dropped.
+- T / V / D2 / D3 at 15:50 (the user: "differentiate the night holding with T V D2 D3"), the same 125 holds: rank
+  correlation with the night multiple T -0.08, V +0.13, D2 -0.17, D3 +0.12. No split holds in both halves: the
+  strongest T (>= 2.5) carries worst (+833; check -703); low volume (< 1.5x) has 11% big nights but tune -1,360 / check
+  +1,472; D2 is inverted (D2 < 0 best, check +8,251, tune -990 without the best 3); D3 >= 1.25 tune +6,655 / check
+  +1,676 but -2,930 without the best 3 on check; "2+ of 4 strong" tune +9,359 / check +1,728 (-2,863 without the best
+  3). Only V 1.5-2.5x is positive in both halves without the best 3 (+469 / +501), too small to be a rule. The night
+  stays unpredictable from the day's strength measures.
+- Bot vs Indi: a "Best that day" column (best_day.py in the scratchpad, dataset best_day): the option's highest mid on
+  the entry day after the buy, as a raw share over the price paid, and when.
