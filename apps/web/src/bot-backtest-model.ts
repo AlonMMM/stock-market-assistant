@@ -46,7 +46,7 @@ export const parallel = 4;
 export type BotId = "main" | "volume";
 export const bots: { id: BotId; name: string; ready: boolean }[] = [
   { id: "main", name: "🤖 Main bot", ready: true },
-  { id: "volume", name: "🎯 Volume bot (coming soon)", ready: false },
+  { id: "volume", name: "🎯 Volume bot", ready: true },
 ];
 
 export const periods = [

@@ -8962,3 +8962,74 @@ i.added {
     font-weight: 600;
   }
 }
+
+/* The Volume bot's backtest (the user, 2026-10-31): what priced each fill,
+   and a trade that opens its details in place. */
+.vbt-priced {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 2px;
+}
+.vbt-priced-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--gray-95b);
+  color: var(--gray-41);
+}
+.vbt-priced-chip.seconds {
+  background: var(--green-94b);
+  color: var(--green-39);
+}
+.vbt-priced-chip.bars {
+  background: var(--red-93);
+  color: var(--red-41b);
+}
+.vbt-mark {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--gray-95b);
+  color: var(--gray-41);
+}
+.vbt-mark.bars {
+  background: var(--red-93);
+  color: var(--red-41b);
+}
+.vbt-trade > summary {
+  list-style: none;
+}
+.vbt-trade > summary::-webkit-details-marker {
+  display: none;
+}
+.vbt-trade[open] > summary {
+  background: var(--gray-95b);
+}
+.vbt-facts {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 4px 4px 12px 126px;
+  font-size: 13px;
+}
+.vbt-facts div {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 8px;
+}
+.vbt-facts dt {
+  color: var(--gray-49);
+}
+.vbt-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .vbt-facts {
+    padding-left: 4px;
+  }
+}
