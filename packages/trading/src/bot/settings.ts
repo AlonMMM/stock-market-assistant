@@ -59,9 +59,10 @@ export interface BotSettings {
   off: string[];
   // Trade size
   sizePct: number;
-  // The size steps down as the account grows (the owner, 2026-10-31: "3% until
-  // 300K -> 2.5 until 1M, 1.5 at 1M and 1 at 4M"): from each step's account
-  // value on (the account as the day starts), `pct` instead of sizePct.
+  // The size steps down as the account grows (version 2.8.1; the owner,
+  // 2026-10-31: "3% until 300K -> 2.5 until 1M, 1.5 at 1M and 1 at 4M"): from
+  // each step's account value on (the account as the day starts), `pct`
+  // instead of sizePct. A version rule (versions.ts), not an owner limit.
   sizeSteps: SizeStep[];
   maxBuysPerDay: number;
   maxOpen: number;

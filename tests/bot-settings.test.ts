@@ -36,9 +36,9 @@ import {
 test("versions: distinct ids oldest first; the defaults are the current version's rules", () => {
   const ids = botVersions.map((v) => v.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(currentVersion, "2.8.0");
+  assert.equal(currentVersion, "2.8.1");
   assert.equal(defaultSettings.version, currentVersion);
-  assert.equal(matchingVersion(defaultSettings)?.id, "2.8.0");
+  assert.equal(matchingVersion(defaultSettings)?.id, "2.8.1");
   assert.deepEqual(rulesOf(defaultSettings), botVersions.at(-1)!.rules);
   // Each version differs from the one before, and 2.1 is 2.0 plus the failed-break sale.
   for (let i = 1; i < botVersions.length; i++)
@@ -81,20 +81,24 @@ test("versions: distinct ids oldest first; the defaults are the current version'
     "stockStages false → true",
     "lateHold false → true",
   ]);
+  // 2.8.1 is 2.8 with the size stepping down as the account grows.
+  assert.deepEqual(ruleChanges(botVersions[10]!.rules, botVersions[9]!), [
+    "sizeSteps none → 2.5% from $300,000, 1.5% from $1,000,000, 1% from $4,000,000",
+  ]);
 });
 
 test("versions: the label is the version, starred when its rules were changed; an own label stays", () => {
-  assert.equal(versionLabel(defaultSettings), "2.8.0");
-  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.8.0*");
+  assert.equal(versionLabel(defaultSettings), "2.8.1");
+  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.8.1*");
   // The IBIT list is a rule: changing it stars the label.
   assert.equal(
     versionLabel({ ...defaultSettings, lowFloorSymbols: ["IBIT", "MSTR"] }),
-    "2.8.0*",
+    "2.8.1*",
   );
   // The owner's limits and lists are not rules: no star.
   assert.equal(
     versionLabel({ ...defaultSettings, sizePct: 1, off: ["TSLA"] }),
-    "2.8.0",
+    "2.8.1",
   );
   const own = { ...defaultSettings, version: "2.2-test", stopPct: 40 };
   assert.equal(versionLabel(own), "2.2-test");
@@ -110,7 +114,7 @@ test("versions: applying one sets its rules and keeps the owner's limits", () =>
   assert.equal(s.sellFailedBreak, false);
   assert.equal(s.sizePct, 1);
   assert.equal(versionLabel(s), "1.0.0");
-  const back = applyVersion(s, "2.8.0");
+  const back = applyVersion(s, "2.8.1");
   assert.deepEqual(rulesOf(back), rulesOf(defaultSettings));
   assert.equal(applyVersion(s, "mine").version, "mine");
 });
@@ -157,7 +161,7 @@ test("versions: parse checks the label; a record saved before versions gets the 
     "2.0.0",
   );
   assert.equal(withDefaults({ stopPct: 40 }).version, currentVersion);
-  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.8.0*");
+  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.8.1*");
   // ...and none of the 2.7 rules came with it.
   assert.equal(withDefaults({ stopPct: 30 }).pyramid, false);
   // A saved version is kept as saved.
@@ -579,6 +583,7 @@ test("numbering: every id is MAJOR.MINOR.PATCH; ids from before the scheme read 
       "2.6.0",
       "2.7.0",
       "2.8.0",
+      "2.8.1",
     ],
   );
   assert.equal(canonicalVersion("2.6"), "2.6.0");

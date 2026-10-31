@@ -248,7 +248,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
         tickers: live.tickers,
         money: { ...setup.money, ...live.money },
       });
-      const steps = live.money.sizeSteps
+      const steps = (live.rules.sizeSteps ?? [])
         .map((x) => `${x.pct}% from $${x.from.toLocaleString("en-US")}`)
         .join(", ");
       let stepsNote = "";
@@ -368,6 +368,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
       ran
         ? runAccount(trades, {
             ...setup.money,
+            sizeSteps: ran.rules.sizeSteps ?? [],
             nightCapPct: ran.rules.nightCapPct,
             fillPct: ran.fillPct,
           })
@@ -780,9 +781,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                     max={10}
                     step={0.5}
                     onChange={(v) =>
-                      patch({
-                        money: { ...setup.money, sizePct: v, sizeSteps: [] },
-                      })
+                      patch({ money: { ...setup.money, sizePct: v } })
                     }
                   />
                   <label className="rule-field switch-row">

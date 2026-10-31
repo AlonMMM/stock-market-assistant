@@ -828,12 +828,7 @@ test("Same as paper takes the live version, rules, size, limits and watched stoc
   );
   assert.equal(live.version, "2.7.0");
   assert.equal(live.rules.stopPct, 25);
-  assert.deepEqual(live.money, {
-    sizePct: 3,
-    sizeSteps: defaultSettings.sizeSteps,
-    maxBuysPerDay: 8,
-    maxOpen: 5,
-  });
+  assert.deepEqual(live.money, { sizePct: 3, maxBuysPerDay: 8, maxOpen: 5 });
   assert.deepEqual(live.tickers, ["NVDA", "TSLA"]);
 });
 

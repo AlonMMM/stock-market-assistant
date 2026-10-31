@@ -680,10 +680,7 @@ export function paperSetup(
 ): {
   version: string;
   rules: Rules;
-  money: Pick<
-    BotSettings,
-    "sizePct" | "sizeSteps" | "maxBuysPerDay" | "maxOpen"
-  >;
+  money: Pick<BotSettings, "sizePct" | "maxBuysPerDay" | "maxOpen">;
   tickers: string[];
 } {
   const off = new Set(settings.off.map((t) => t.toUpperCase()));
@@ -696,7 +693,6 @@ export function paperSetup(
     rules,
     money: {
       sizePct: settings.sizePct,
-      sizeSteps: settings.sizeSteps,
       maxBuysPerDay: settings.maxBuysPerDay,
       maxOpen: settings.maxOpen,
     },

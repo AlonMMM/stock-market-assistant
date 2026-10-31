@@ -55,6 +55,10 @@ export function algorithmSteps(r: Rules): AlgorithmStep[] {
   if (r.pyramid)
     pyramid = `After a D2 entry, when the stock first reaches the full signal (t ${r.minT}+) that day on the same side and the first position is up, one more position of ${r.pyramidSharePct}% of the size in a fresh pick; each position then exits on its own.`;
   steps.push({ name: "Pyramid", text: pyramid });
+  let size = "Your size on every trade.";
+  if (r.sizeSteps.length)
+    size = `Your size while the account is small; then ${r.sizeSteps.map((x) => `${x.pct}% from $${x.from.toLocaleString("en-US")}`).join(", ")} (the account's value as the day starts).`;
+  steps.push({ name: "Size", text: size });
   let checks =
     "No 10- and 20-minute checks: the position is held until a stop, a failed break or the day exit.";
   if (r.checks)
