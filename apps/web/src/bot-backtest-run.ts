@@ -29,6 +29,8 @@ export interface RunState {
   errors: string[];
   runs: BotBacktestResponse[];
   ran: Ran | null;
+  // Set when the user stopped the run: the parts back by then, of all of them.
+  stopped?: { done: number; total: number } | null;
 }
 
 const resultKey = "sma.botBacktest.result.v1";
@@ -45,6 +47,7 @@ function savedResult(): RunState {
       errors: saved.errors ?? [],
       runs: saved.runs,
       ran: saved.ran,
+      stopped: saved.stopped ?? null,
     };
   } catch {
     return empty;
@@ -53,7 +56,9 @@ function savedResult(): RunState {
 
 let state: RunState | null = null;
 const listeners = new Set<() => void>();
-let stopped = false;
+// The run in flight: its id (a newer run replaces it) and what cancels its requests.
+let runId = 0;
+let controller: AbortController | null = null;
 
 function current(): RunState {
   state ??= savedResult();
@@ -66,13 +71,19 @@ function set(next: Partial<RunState>) {
 }
 
 function save() {
-  const { ran, runs, errors } = current();
+  const { ran, runs, errors, stopped } = current();
   try {
-    localStorage.setItem(resultKey, JSON.stringify({ ran, runs, errors }));
+    localStorage.setItem(
+      resultKey,
+      JSON.stringify({ ran, runs, errors, stopped }),
+    );
   } catch {
     // Too big for the browser's storage: kept until the tab closes.
   }
 }
+
+/** The run's state now, outside React. */
+export const runState = (): RunState => current();
 
 export function useBacktestRun(): RunState {
   return useSyncExternalStore((l) => {
@@ -81,8 +92,19 @@ export function useBacktestRun(): RunState {
   }, current);
 }
 
+/**
+ * Stops the run now (the user, 2026-10-31: "add stop button that works"): the
+ * requests in flight are cancelled, no new part starts, and the parts already
+ * back stay as the result. The server may finish a cancelled part; it is not read.
+ */
 export function stopRun() {
-  stopped = true;
+  const busy = current().busy;
+  if (!busy) return;
+  runId++;
+  controller?.abort();
+  controller = null;
+  set({ busy: null, stopped: { done: busy.done, total: busy.total } });
+  save();
 }
 
 export async function startRun(ran: Ran) {
@@ -91,20 +113,24 @@ export async function startRun(ran: Ran) {
   const jobs = periodParts(ran.from, ran.to).flatMap((p) =>
     ran.tickers.map((symbol) => ({ symbol, ...p })),
   );
-  stopped = false;
+  const id = ++runId;
+  const abort = new AbortController();
+  controller = abort;
+  const live = () => runId === id;
   const startedAt = Date.now();
   set({
     busy: { done: 0, total: jobs.length, startedAt, lastDoneAt: startedAt },
     errors: [],
     runs: [],
     ran,
+    stopped: null,
   });
   let next = 0;
   let done = 0;
   const got: BotBacktestResponse[] = [];
   const failed: string[] = [];
   const worker = async () => {
-    while (next < jobs.length && !stopped) {
+    while (next < jobs.length && live()) {
       const job = jobs[next++]!;
       try {
         const response = await fetch("/api/bot-backtest", {
@@ -115,16 +141,21 @@ export async function startRun(ran: Ran) {
             rules: ran.rules,
             fillPct: ran.fillPct,
           }),
-          signal: AbortSignal.timeout(180000),
+          signal: AbortSignal.any([abort.signal, AbortSignal.timeout(180000)]),
         });
-        got.push(await readJson<BotBacktestResponse>(response));
+        const body = await readJson<BotBacktestResponse>(response);
+        if (!live()) return;
+        got.push(body);
         set({ runs: [...got] });
       } catch (e) {
+        // A stopped run's cancelled requests are not failures.
+        if (!live()) return;
         failed.push(
           `${job.symbol} ${job.from} → ${job.to}: ${e instanceof Error ? e.message : String(e)}`,
         );
         set({ errors: [...failed] });
       }
+      if (!live()) return;
       done++;
       set({
         busy: { done, total: jobs.length, startedAt, lastDoneAt: Date.now() },
@@ -132,6 +163,8 @@ export async function startRun(ran: Ran) {
     }
   };
   await Promise.all(Array.from({ length: parallel }, worker));
+  if (!live()) return;
+  controller = null;
   set({ busy: null });
   save();
 }
