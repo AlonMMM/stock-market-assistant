@@ -55,7 +55,10 @@ import {
   ruleGroups,
   runClock,
   sessionsBetween,
+  signalRows,
+  signalsCsv,
   skipCounts,
+  type SignalRow,
   statusWords,
   stepMs,
   type BotId,
@@ -265,6 +268,10 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
           })
         : null,
     [trades, setup.money, ran],
+  );
+  const signals = useMemo(
+    () => signalRows(runs, account?.trades ?? []),
+    [runs, account],
   );
   const shown = (account?.trades ?? [])
     .filter((a) => {
@@ -712,21 +719,11 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                   />
                 </Suspense>
               )}
-              {skips.length > 0 && (
-                <details className="card bt-skips">
-                  <summary>
-                    {skips.length} signal{skips.length === 1 ? "" : "s"} not
-                    bought by the bot&apos;s filters
-                  </summary>
-                  <ul>
-                    {skipCounts(skips).map((s) => (
-                      <li key={s.reason}>
-                        {s.label}: {s.count}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
+              <SignalList
+                rows={signals}
+                skipsCount={skips.length}
+                onOpen={setOpen}
+              />
               <TradeList
                 trades={shown}
                 filter={filter}
@@ -1061,6 +1058,185 @@ function Summary({
         . Simulated, not a promise.
       </p>
     </section>
+  );
+}
+
+/** Every signal of the run in one folded table: bought or not, what the bot saw, what came of it. */
+function SignalList({
+  rows,
+  skipsCount,
+  onOpen,
+}: {
+  rows: SignalRow[];
+  skipsCount: number;
+  onOpen: (a: AccountTrade) => void;
+}) {
+  const [which, setWhich] = useState<"all" | "bought" | "skipped">("all");
+  const [reason, setReason] = useState<string>("");
+  if (!rows.length) return null;
+  const reasons = skipCounts(
+    rows.flatMap((r) => (r.reason === "bought" ? [] : [{ reason: r.reason }])),
+  );
+  const shown = rows.filter((r) => {
+    if (which === "bought" && !r.bought) return false;
+    if (which === "skipped" && r.bought) return false;
+    if (reason && r.reason !== reason) return false;
+    return true;
+  });
+  const modelled = rows.filter((r) => r.model);
+  const modelWon = modelled.filter((r) => (r.ret ?? 0) > 0).length;
+  const download = () => {
+    const url = URL.createObjectURL(
+      new Blob([signalsCsv(shown)], { type: "text/csv" }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "backtest-signals.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const filters = [
+    ["all", "All"],
+    ["bought", "Bought"],
+    ["skipped", "Not bought"],
+  ] as const;
+  return (
+    <details className="card bt-signals">
+      <summary>
+        {rows.length} signal{rows.length === 1 ? "" : "s"} ·{" "}
+        {rows.length - skipsCount} bought · {skipsCount} not bought
+        {modelled.length > 0 &&
+          ` · if bought: ${modelWon} of ${modelled.length} would have gained`}
+      </summary>
+      <div className="bt-signals-tools">
+        <div
+          className="segmented small"
+          role="group"
+          aria-label="Which signals"
+        >
+          {filters.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={which === id}
+              onClick={() => setWhich(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <select
+          aria-label="Why not bought"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        >
+          <option value="">Every reason</option>
+          {reasons.map((r) => (
+            <option key={r.reason} value={r.reason}>
+              {r.label} ({r.count})
+            </option>
+          ))}
+        </select>
+        <button type="button" className="link" onClick={download}>
+          Download CSV
+        </button>
+      </div>
+      <div className="bt-signals-scroll">
+        <table className="bt-signals-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Stock</th>
+              <th title="Strength against SPY (t-stat)">t</th>
+              <th title="The day's volume against normal">Vol</th>
+              <th>D2</th>
+              <th>Outcome</th>
+              <th>Contract</th>
+              <th title="Bought: the fill. Not bought: its last price at the signal">
+                Price
+              </th>
+              <th>Δ</th>
+              <th title="Contracts traded in the 30 minutes before the signal">
+                30 min
+              </th>
+              <th title="The option's return on what was paid. Not bought: the trade it would have made on Black-Scholes prices">
+                Return
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((r) => (
+              <SignalLine key={r.key} r={r} onOpen={onOpen} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted small">
+        Times in {israelLabel}. Not bought: the return is a model, the
+        bot&apos;s own exits on Black-Scholes prices from the stock&apos;s
+        minutes, at the volatility of the option&apos;s price at the signal (or
+        the stock&apos;s 20-day volatility when it had none). A{" "}
+        <span className="state-chip">Model</span> contract was not in the chain:
+        the target delta at the first expiry in range.
+      </p>
+    </details>
+  );
+}
+
+function SignalLine({
+  r,
+  onOpen,
+}: {
+  r: SignalRow;
+  onOpen: (a: AccountTrade) => void;
+}) {
+  const fixed = (v: number | null, digits: number, unit = "") =>
+    v === null ? "—" : `${v.toFixed(digits)}${unit}`;
+  const taken = r.trade?.status === "taken";
+  let contract = "—";
+  if (r.strike !== null && r.expiry !== null)
+    contract = `${r.strike} ${r.right} ${r.expiry.slice(5)}`;
+  let ret = "—";
+  if (r.ret !== null) ret = signedPct(r.ret * 100);
+  return (
+    <tr className={r.bought ? "bought" : ""}>
+      <td className="num">{israelDateTime(stepMs(r.date, r.minute))}</td>
+      <td>
+        {taken && r.trade ? (
+          <button
+            type="button"
+            className="link"
+            onClick={() => onOpen(r.trade!)}
+          >
+            <strong>{r.symbol}</strong>
+          </button>
+        ) : (
+          <strong>{r.symbol}</strong>
+        )}{" "}
+        {r.right === "C" ? "Call" : "Put"}
+        {r.bonus && <span className="state-chip">D2</span>}
+        {r.pyramid && <span className="state-chip">Pyramid</span>}
+      </td>
+      <td className="num">{fixed(r.t, 1)}</td>
+      <td className="num">{fixed(r.rvol, 1, "×")}</td>
+      <td className="num">{fixed(r.d2, 1)}</td>
+      <td title={r.detail || undefined}>{r.outcome}</td>
+      <td className="num">
+        {contract}
+        {r.modelled && <span className="state-chip">Model</span>}
+      </td>
+      <td className="num">
+        {r.price === null ? "—" : `$${r.price.toFixed(2)}`}
+      </td>
+      <td className="num">{fixed(r.delta, 2)}</td>
+      <td className={`num${r.reason === "illiquid" ? " thin" : ""}`}>
+        {r.volume30 ?? "—"}
+      </td>
+      <td className={`num${tone(r.ret)}`}>
+        {ret}
+        {r.model && <span className="small muted"> model</span>}
+      </td>
+    </tr>
   );
 }
 

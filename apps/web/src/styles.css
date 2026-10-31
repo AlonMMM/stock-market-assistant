@@ -2136,6 +2136,60 @@ main:has(> .backtest-page) {
   padding-left: 18px;
   font-size: 13px;
 }
+/* Every signal of the run, folded: a wide table that scrolls on its own. */
+.bt-signals summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.bt-signals-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0;
+}
+.bt-signals-tools select {
+  font: inherit;
+  font-size: 13px;
+}
+.bt-signals-scroll {
+  max-height: 480px;
+  overflow: auto;
+  border: 1px solid var(--gray-87);
+  border-radius: 10px;
+}
+.bt-signals-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.bt-signals-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 8px;
+  background: var(--gray-95b);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--gray-49);
+}
+.bt-signals-table td {
+  padding: 5px 8px;
+  border-top: 1px solid var(--gray-91);
+}
+.bt-signals-table tr.bought td {
+  background: var(--surface);
+  font-weight: 600;
+}
+.bt-signals-table td.thin {
+  color: var(--orange-48);
+}
+.bt-signals-table .state-chip {
+  margin-left: 4px;
+}
 .bt-trades .card-head {
   align-items: center;
   flex-wrap: wrap;

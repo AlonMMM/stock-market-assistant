@@ -424,6 +424,66 @@ test("a busy pre-market skips the signal when the news filter is on", async () =
   assert.equal(off.trades.length, 1);
 });
 
+test("a skipped signal keeps what the bot saw and the trade it would have made on Black-Scholes prices", async () => {
+  const { data } = fakeData(5000);
+  const run = await runStock(
+    "NVDA",
+    [date],
+    { ...defaultSettings, pyramid: false },
+    data,
+    backtestCalendar,
+  );
+  const skip = run.skips[0]!;
+  assert.equal(skip.reason, "premarket");
+  assert.ok(skip.t! > 0 && skip.rvol! > 0 && skip.stock! > 0);
+  // The contract it would have bought, though the news filter stopped it.
+  const off = await runStock(
+    "NVDA",
+    [date],
+    { ...defaultSettings, skipPremarket: false, pyramid: false },
+    data,
+    backtestCalendar,
+  );
+  assert.equal(skip.contract?.symbol, off.trades[0]!.contract);
+  assert.equal(skip.contract?.volume30, 550); // 11 minutes of 50 since the open
+  const w = skip.whatIf!;
+  assert.equal(w.contract, skip.contract!.symbol);
+  assert.equal(w.ivFrom, "option");
+  assert.equal(w.modelled, false);
+  assert.equal(w.steps[0]!.kind, "buy");
+  // The stock climbs all day, so the modelled call gains.
+  assert.ok(w.ret > 0, String(w.ret));
+});
+
+test("a thin contract's skip keeps its volume; with no expiry the what-if models a strike from the stock's volatility", async () => {
+  const { data } = fakeData(1000);
+  const thin = await runStock(
+    "NVDA",
+    [date],
+    { ...defaultSettings, pyramid: false, minVolume: 5000 },
+    data,
+    backtestCalendar,
+  );
+  assert.equal(thin.trades.length, 0);
+  assert.equal(thin.skips[0]?.reason, "illiquid");
+  assert.equal(thin.skips[0]?.contract?.volume30, 550); // 11 minutes of 50 since the open
+  assert.ok(thin.skips[0]?.whatIf);
+  const none = await runStock(
+    "NVDA",
+    [date],
+    { ...defaultSettings, pyramid: false },
+    { ...data, chain: async () => [] },
+    backtestCalendar,
+  );
+  const skip = none.skips[0]!;
+  assert.equal(skip.reason, "no_expiry");
+  assert.equal(skip.contract, undefined);
+  assert.equal(skip.whatIf?.modelled, true);
+  assert.equal(skip.whatIf?.ivFrom, "stock");
+  // An out-of-the-money call at about the target delta
+  assert.ok(skip.whatIf!.strike > skip.stock!, String(skip.whatIf!.strike));
+});
+
 test("the option data calls fetch unbound, as Cloudflare Workers require", async () => {
   // Workers throw "Illegal invocation" when fetch runs with a foreign `this`.
   const fetcher = function (this: unknown, input: URL) {
