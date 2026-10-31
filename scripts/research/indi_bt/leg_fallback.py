@@ -53,7 +53,7 @@ def choose(cands, mode):
 
 
 TICK = float(os.environ.get("STR_TICK", "0"))
-KEEP_NOPRINT = os.environ.get("STR_WALK_KEEP") == "1"   # the audit 2026-10-30: walk() dropped every trade whose option did not print in the 3 minutes after the buy (mostly losers)   # STR_TICK=0.01: the model pays at least a cent over the middle, gets a cent under
+KEEP_NOPRINT = os.environ.get("STR_WALK_KEEP", "1") == "1"   # on by default (STR_WALK_KEEP=0 = before the audit); the audit 2026-10-30: walk() dropped every trade whose option did not print in the 3 minutes after the buy (mostly losers)   # STR_TICK=0.01: the model pays at least a cent over the middle, gets a cent under
 
 
 def walk(sym, date, ct, side, contract, spot_side, u):

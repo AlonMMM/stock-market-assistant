@@ -229,7 +229,8 @@ def failed_break_minute(und, date, minute, bet):
     return None
 
 
-# The audit of 2026-10-31 (the user: "fix it. also fix #1"), both off by default so earlier runs reproduce:
+# The audit of 2026-10-31 (the user: "fix it. also fix #1"); ON by default since 2026-10-31 (the user: "all the fixes
+# should be on by default"). The old walk, to reproduce runs logged before the audit: BT_CLOCK=trade BT_CHASE=cap BT_KEEP=0.
 #   BT_KEEP=1      a signal whose option did not trade in the 3 minutes after it is still bought (it was dropped as
 #                  "no_fill": live, the bot owns that option); priced like a minute with no trade below
 #   BT_CLOCK=stock the walk checks every minute the STOCK traded, as the live bot does, not only minutes the option
@@ -237,8 +238,8 @@ def failed_break_minute(und, date, minute, bet):
 #                  each minute's option price is its book mid as that minute closed (real_bench.quote), as the live
 #                  bot marks it (its -30% stop and checks read the mid), else that minute's trade bar, else the last
 #                  trade. Implies BT_KEEP. Not modelled either way: the broker's own safety stop (50%), any second.
-CLOCK = os.environ.get("BT_CLOCK", "")
-KEEP = os.environ.get("BT_KEEP") == "1" or CLOCK == "stock"
+CLOCK = os.environ.get("BT_CLOCK", "stock")
+KEEP = os.environ.get("BT_KEEP", "1") == "1" or CLOCK == "stock"
 
 
 def book_bar(sym, d, t, last):

@@ -1190,4 +1190,4 @@ flat2 2%, q tags:
 - The fixed model takes about 28-30% off both. No floor still beats live in every column and year; the candidate stands.
 - Per trade, fixed no floor: plan 42% won, average +45%, median -24%, +16% without its best 10; shock 36% won, +22%,
   median -19%, -1% without its best 10. The win rate is real; the average is a few 10x days.
-- Every later volume-bot test runs with `STR_WALK_KEEP=1 STR_CHASE_NOFILL=ask`.
+- Every later volume-bot test runs with `STR_WALK_KEEP=1 STR_CHASE_NOFILL=ask`, the defaults since 2026-10-31 (`STR_WALK_KEEP=0 STR_CHASE_NOFILL=cap` = before the audit).

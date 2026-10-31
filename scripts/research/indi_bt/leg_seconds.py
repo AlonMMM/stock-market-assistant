@@ -295,7 +295,7 @@ def trade(job):
             return None   # STR_MAX_SPREAD=0.1: no buy when the spread at the buy is over 10% of the mid (the user, 2026-10-28)
         later = book_at(rows, sec + LAG + 10)
         if later and later[0] > buy:
-            chase = os.environ.get("STR_CHASE_NOFILL")   # the audit 2026-10-30: the capped chase filled under the bid
+            chase = os.environ.get("STR_CHASE_NOFILL", "ask")   # the audit 2026-10-30: the capped chase filled under the bid; ask is the default, STR_CHASE_NOFILL=cap = before the audit
             if chase == "1" and later[0] > buy * 1.1: return None
             if chase == "ask": buy = later[1]   # the live bot chases the ask for 3 minutes, no cap (ladder.ts)
             else: buy = min(later[1], buy * 1.1)

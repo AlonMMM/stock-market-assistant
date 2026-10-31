@@ -70,8 +70,8 @@ def usual(bid, ask):
 def runaway(book, s, p, look=10):
     nxt = at(book, s + look)
     if nxt and nxt[1] > p:
-        # BT_CHASE=ask (the audit 2026-10-31): the +10% cap could fill under the bid; the live bot chases the ask, no cap
-        if os.environ.get("BT_CHASE") == "ask": return nxt[2]
+        # BT_CHASE=ask, the default (the audit 2026-10-31; BT_CHASE=cap = the old walk): the +10% cap could fill under the bid; the live bot chases the ask, no cap
+        if os.environ.get("BT_CHASE", "ask") == "ask": return nxt[2]
         return min(nxt[2], p * 1.1)
     return p
 

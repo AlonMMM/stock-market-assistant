@@ -23,8 +23,9 @@ entries at the end of the Candidates section). The Volume bot had its own audit 
 **Why the audit.** The user doubted a 35-40% options win rate ("very very rare"). The live bot buys on the second
 and checks its exits on every closed minute at the option's mid; the research walk did neither.
 
-**The bugs** (sim.py / sec_timing.py / opt_spread.py, commit caef5f0; all behind switches, off by default so old runs
-reproduce):
+**The bugs** (sim.py / sec_timing.py / opt_spread.py, commit caef5f0). **On by default since 2026-10-31** (the user:
+"all the fixes should be on by default"); to reproduce a run logged before the audit, set `BT_CLOCK=trade BT_CHASE=cap
+BT_KEEP=0` (the Volume bot's: `STR_WALK_KEEP=0 STR_CHASE_NOFILL=cap`):
 
 | # | Bug | What it did | Fix |
 |---|---|---|---|
