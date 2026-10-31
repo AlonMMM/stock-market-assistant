@@ -35,7 +35,8 @@ def main():
         print(f"\n### unseen with options trading, {cut:.0%}+ of signals tradeable: {len(keep)} stocks\n{', '.join(keep)}\n")
         print("| Pick | Trades | Winners | At 1% / worst drop | At 2% / worst drop | 2024 / 2025 / 2026 at $10K | Without the best 5 at 1% | Added: n, winners, sum | Added without their best 5 |\n|---|---|---|---|---|---|---|---|---|")
         for mode in c2.MODES:
-            rows = [dict(date=t["date"], pnl=str(pt(r[mode])), added=t["status"] != "ok") for t, r in L if mode in r]
+            rows = [dict(date=t["date"], pnl=str(pt(r[mode])), added=t["status"] != "ok", **r[mode + "#h"])
+                    for t, r in L if mode in r]
             a1, d1 = account(rows); a2, d2 = account(rows, 0.02)
             top = set(sorted(range(len(rows)), key=lambda i: -float(rows[i]["pnl"]))[:5])
             a5, _ = account([r for i, r in enumerate(rows) if i not in top])

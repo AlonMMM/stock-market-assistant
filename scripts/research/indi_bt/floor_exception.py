@@ -28,7 +28,7 @@ import real_bench as RB
 import fav_real as FR
 from d2_failed_break import CHAMP
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held as booked
 from store import calendar
 from split import half
 
@@ -73,7 +73,8 @@ def one(job):
                 rcost, real = OS.price(steps, c[0], cost, "bid")
                 fills = [s for s in steps if s[2] in ("buy", "sell")]
                 row = dict(r1=sim.result(rcost, real, 0.01), r2=sim.result(rcost, real, 0.02), r05=sim.result(rcost, real, 0.005),
-                           cov=int(all(RB.quote(c[0], s[0], max(s[1] - 1, 0)) for s in fills)), price=c[4])
+                           cov=int(all(RB.quote(c[0], s[0], max(s[1] - 1, 0)) for s in fills)), price=c[4],
+                           h=booked(rcost, real))
                 if kind == "main":
                     sells = [s for s in real if s[2] == "sell" and s[0] == t["date"]]
                     held = {}
@@ -102,21 +103,23 @@ def entries(R, src, exc, fb, pyramid):
         if r["src"] == src and r["kind"] == "add" and r["exc"] == exc and r["fb"] == fb: adds.setdefault((r["date"], r["sym"], r["right"]), []).append(r)
     E = []
     for r in main:
-        E.append((r["date"], r["minute"], 1.0, r["r1"], r["r2"], r["sym"], r["cov"]))
+        E.append((r["date"], r["minute"], 1.0, r["r1"], r["r2"], r["sym"], r["cov"], r["h"]))
         if not (pyramid and r["d2"]): continue
         for a in sorted(adds.get((r["date"], r["sym"], r["right"]), []), key=lambda x: x["minute"]):
             if a["minute"] <= r["minute"]: continue
             share, up = r["held"].get(a["minute"], (0, None))
-            if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a["r05"], a["r1"], a["sym"], a["cov"]))
+            if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a["r05"], a["r1"], a["sym"], a["cov"], a["h"]))
             break
     return E
 
 
 def stats(E, a, z, size, part=None):
-    R = sorted(e for e in E if a <= e[0] <= z and (part is None or half(e[0]) == part))
+    R = sorted((e for e in E if a <= e[0] <= z and (part is None or half(e[0]) == part)), key=lambda e: e[:7])
     if not R: return None
     k = 3 if size == 0.01 else 4
-    pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[k]))) for e in R]
+    # booked on the sale day, marks at the leg's units (an add is half)
+    pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[k])), exit_day=e[7]["exit_day"],
+                marks={d: e[2] * v for d, v in e[7]["marks"].items()}) for e in R]
     acct, dd = account(pnl, size)
     top = set(sorted(range(len(R)), key=lambda i: -R[i][2] * R[i][3])[:5])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in top], size)
@@ -130,7 +133,7 @@ def main():
     print(len(jobs), "signals", flush=True)
     with mp.Pool(8) as pool: R = [r for rows in pool.map(one, jobs, chunksize=4) for r in rows]
     with open(f"{B}/floor_exception_trades.csv", "w") as f:
-        keys = [k for k in R[0] if k != "held"]
+        keys = [k for k in R[0] if k not in ("held", "h")]
         w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore"); w.writeheader(); w.writerows(R)
     out = {}
     cuts = {"fair": (("2024-25", "2024-01-01", "2025-12-31"), ("2026", "2026-01-01", "2026-12-31")),

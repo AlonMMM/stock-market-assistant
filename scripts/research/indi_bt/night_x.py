@@ -23,7 +23,7 @@ import news_filter as nf
 from store import calendar
 from tiers_round import H, NIGHT
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held as booked
 
 B = "data/local/x/bt"
 CAL = calendar()
@@ -41,7 +41,8 @@ def walk(t):
         if cost is None: out[lab] = None; continue
         carry = next((s for s in steps if s[2] == "carry"), None)
         first = None if carry is None else carry[4] / cost - 1
-        out[lab] = (sim.result(cost, steps), first, sorted({s[5] for s in steps if s[5].startswith("NX_")}))
+        out[lab] = (sim.result(cost, steps), first, sorted({s[5] for s in steps if s[5].startswith("NX_")}),
+                   booked(cost, steps))
     return (t["date"], t["sym"], t["minute"]), out
 
 
@@ -57,7 +58,7 @@ def main():
         print(f"\n### {lname}: {len(L)} trades, {len(held)} held overnight\n")
         print("| Version | Per trade 2024 / 2025 / 2026 | At 1% | At 2% | Held trades: sum of returns, +100-300% / +300%+ |\n|---|---|---|---|---|")
         for lab, _ in VERSIONS:
-            rows = [dict(t, pnl=str(1e4 * max(-1, R[key(t)][lab][0]))) for t in L]
+            rows = [dict(t, pnl=str(1e4 * max(-1, R[key(t)][lab][0])), **R[key(t)][lab][3]) for t in L]
             yr = [[float(x["pnl"]) for x in rows if x["date"][:4] == y] for y in ("2024", "2025", "2026")]
             a1, d1 = account(rows); a2, d2 = account(rows, 0.02)
             small = sum(R[key(t)][lab][0] for t in held if R[key(t)]["Champion"][1] < 3)

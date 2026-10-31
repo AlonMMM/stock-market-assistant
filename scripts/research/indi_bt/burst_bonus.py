@@ -30,7 +30,7 @@ import real_bench as RB
 from d2_failed_break import CHAMP
 from levels import ctx
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held as booked
 from signals import series, beta
 from split import half
 from store import calendar, day
@@ -90,12 +90,18 @@ def trade(ev):
     if cost is None: return None
     fills = [s for s in steps if s[2] in ("buy", "sell")]
     cov = sum(bool(RB.quote(c[0], s[0], max(s[1] - 1, 0))) for s in fills) / len(fills)
-    return dict(ev, r=sim.result(cost, steps, SIZE), cov=cov)
+    return dict(ev, r=sim.result(cost, steps, SIZE), cov=cov, h=booked(cost, steps))
+
+
+def book(r, k):
+    """score_sum.held of a leg, its marks at k times the size (as its pnl)."""
+    h = booked(r["paid"], r["steps"])
+    return dict(h, marks={d: k * x for d, x in h["marks"].items()})
 
 
 def acct(E):
-    R = sorted(E)
-    pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[3]))) for e in R]
+    R = sorted(E, key=lambda e: e[:4])
+    pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[3])), **e[4]) for e in R]
     a, dd = account(pnl, SIZE)
     top = set(sorted(range(len(R)), key=lambda i: -R[i][2] * R[i][3])[:5])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in top], SIZE)
@@ -133,12 +139,12 @@ def main():
         for r in R:
             if r["src"] != src or r["kind"] != "main" or half(r["date"]) != part or r["date"] < a: continue
             k = 1.5 if any(mm <= r["minute"] for mm in conf.get((r["sym"], r["date"], r["right"]), [])) else 1.0
-            E.append((r["date"], r["minute"], k, sim.result(r["paid"], r["steps"], SIZE * k)))
+            E.append((r["date"], r["minute"], k, sim.result(r["paid"], r["steps"], SIZE * k), book(r, k)))
             if not r["d2"]: continue
             for x in sorted(adds.get((src, r["date"], r["sym"], r["right"]), []), key=lambda q: q["minute"]):
                 if x["minute"] <= r["minute"]: continue
                 share, up = r["held"].get(x["minute"], (0, None))
-                if share > 0 and up is not None and up > 0: E.append((x["date"], x["minute"], 0.5 * k, sim.result(x["paid"], x["steps"], SIZE * 0.5 * k)))
+                if share > 0 and up is not None and up > 0: E.append((x["date"], x["minute"], 0.5 * k, sim.result(x["paid"], x["steps"], SIZE * 0.5 * k), book(x, 0.5 * k)))
                 break
         return E
 
@@ -154,7 +160,7 @@ def main():
             res, n, pl, cov = {}, {}, {}, {}
             for src, a in lists:
                 new = [t for t in TA if t["src"] == src and (t["burst"], t["wait"]) == (name, w) and half(t["date"]) == "tune" and t["date"] >= a]
-                E = champ(src, "tune", a) + [(t["date"], t["minute"], 1.0, t["r"]) for t in new]
+                E = champ(src, "tune", a) + [(t["date"], t["minute"], 1.0, t["r"], t["h"]) for t in new]
                 res[src], n[src], pl[src] = acct(E), len(new), round(sum(1e4 * max(-1, t["r"]) for t in new))
                 cov[src] = round(sum(t["cov"] == 1 for t in new) / max(1, len(new)), 2)
             out[f"tune|A|{name}|{w}"] = dict(res=res, n=n, pnl=pl)
@@ -170,7 +176,7 @@ def main():
     print("### Check weeks, one run\n\n| Variant | Fair list | Favorites 24m | Without the best 5 (fair / fav) |\n|---|---|---|---|")
     cb = {src: acct(champ(src, "check", a)) for src, a in lists}
     if kind == "A":
-        cv = {src: acct(champ(src, "check", a) + [(t["date"], t["minute"], 1.0, t["r"]) for t in TA if t["src"] == src and (t["burst"], t["wait"]) == (name, w) and half(t["date"]) == "check" and t["date"] >= a]) for src, a in lists}
+        cv = {src: acct(champ(src, "check", a) + [(t["date"], t["minute"], 1.0, t["r"], t["h"]) for t in TA if t["src"] == src and (t["burst"], t["wait"]) == (name, w) and half(t["date"]) == "check" and t["date"] >= a]) for src, a in lists}
     else:
         cv = {src: acct(champ(src, "check", a, (name, w))) for src, a in lists}
     for lab, x in (("champion", cb), (best, cv)):

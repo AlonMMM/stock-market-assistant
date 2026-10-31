@@ -13,7 +13,7 @@ import news_filter as nf
 from store import calendar
 from tiers_round import H, NIGHT
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = calendar()
@@ -29,7 +29,7 @@ def walk(t):
         cost, steps, _ = sim.walk(t["sym"], t["date"], int(t["minute"]), t["right"], t["contract"], t["expiry"], CAL)
         if cost is None: out[lab] = None; continue
         carry = next((s for s in steps if s[2] == "carry"), None)
-        out[lab] = (sim.result(cost, steps), None if carry is None else carry[4] / cost - 1)
+        out[lab] = (sim.result(cost, steps), None if carry is None else carry[4] / cost - 1, held(cost, steps))
     return (t["date"], t["sym"], t["minute"]), out
 
 
@@ -41,7 +41,7 @@ def main():
     key = lambda t: (t["date"], t["sym"], t["minute"])
     fair = [t for t in T if t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]] and all(R[key(t)][l] for l, _ in VERSIONS)]
     uns = [t for t in T if t["sym"] not in HIS40 and all(R[key(t)][l] for l, _ in VERSIONS)]
-    acc = lambda L, lab, pct=0.01: account([dict(t, pnl=str(1e4 * max(-1, R[key(t)][lab][0]))) for t in L], pct)
+    acc = lambda L, lab, pct=0.01: account([dict(t, pnl=str(1e4 * max(-1, R[key(t)][lab][0])), **R[key(t)][lab][2]) for t in L], pct)
     for m in (3, 4, 5):
         big = [t for t in fair if (R[key(t)]["Champion"][1] or -9) >= m]
         pass

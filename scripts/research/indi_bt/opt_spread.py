@@ -36,7 +36,7 @@ import news_filter as nf
 import real_bench as RB
 from d2_failed_break import CHAMP
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held as booked
 
 B = "data/local/x/bt"
 CAL = RB.CAL
@@ -137,14 +137,15 @@ def one(t):
         for sale in SALES:
             rcost, real = price(steps, p[0], cost, sale)
             out.append(dict(rule=rule, floor=floor, sale=sale, date=date, sym=t["sym"], right=t["right"], minute=m, contract=p[0],
-                            spread=spread((p[0],), date, m), r1=sim.result(rcost, real, 0.01), r2=sim.result(rcost, real, 0.02)))
+                            spread=spread((p[0],), date, m), r1=sim.result(rcost, real, 0.01), r2=sim.result(rcost, real, 0.02),
+                            h=booked(rcost, real)))
     return out
 
 
 def stats(rows, a, z):
     R = sorted([r for r in rows if a <= r["date"] <= z], key=lambda r: (r["date"], r["minute"]))
     if not R: return None
-    pnl = lambda r, k: dict(date=r["date"], pnl=str(1e4 * max(-1, r[k])))
+    pnl = lambda r, k: dict(date=r["date"], pnl=str(1e4 * max(-1, r[k])), **r["h"])
     a1, d1 = account([pnl(r, "r1") for r in R]); a2, d2 = account([pnl(r, "r2") for r in R], 0.02)
     top = set(sorted(range(len(R)), key=lambda i: -R[i]["r1"])[:5])
     a5, _ = account([pnl(r, "r1") for i, r in enumerate(R) if i not in top])
@@ -160,7 +161,7 @@ def main():
          and t["sym"] in PRIOR[t["date"][:4]] and t["date"] <= LAST]
     with mp.Pool(8) as pool: res = [r for rs in pool.map(one, T, chunksize=8) for r in rs]
     with open(f"{B}/opt_spread_trades.csv", "w") as f:
-        w = csv.DictWriter(f, fieldnames=list(res[0])); w.writeheader(); w.writerows(res)
+        w = csv.DictWriter(f, fieldnames=[k for k in res[0] if k != "h"], extrasaction="ignore"); w.writeheader(); w.writerows(res)
     out = {}
     print("| Contract | Floor | Sale | 2024-25 trades | 2024-25 at 1% / drop | 2024-25 at 2% / drop | 2024-25 w/o best 5 | 2026 at 1% / drop |\n|---|---|---|---|---|---|---|---|")
     for rule in RULES:

@@ -15,7 +15,7 @@ import news_filter as nf
 from store import calendar, day
 from tiers_round import H, NIGHT
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = calendar()
@@ -32,7 +32,8 @@ def one(t):
         if cost is None: return None
         sales = [s for s in steps if s[2] == "sell" and s[0] == t["date"]]
         first = min((s[1] - m0 for s in sales), default=None)
-        out[name] = (sim.result(cost, steps), "|".join(s[5] for s in steps[1:]), first, sales[0][5] if sales else None)
+        out[name] = (sim.result(cost, steps), "|".join(s[5] for s in steps[1:]), first, sales[0][5] if sales else None,
+                     held(cost, steps))
     bars = day(t["contract"], t["date"])
     cost = out["Bot today"][0]
     return (t["date"], t["sym"], t["minute"]), out
@@ -58,7 +59,7 @@ def main():
         print("First sale, minutes after the entry: " + ", ".join(f"≤{m}: {sum(1 for x in mins if x <= m)}" for m in (2, 5, 10, 20, 60)) + f" of {len(mins)} same-day sellers.\n")
         print("| Version | Winners | Per trade at $10K: 2024 / 2025 / 2026 | Without the best 5 (per trade) | At 1%, worst drop | At 2%, worst drop | Stop / failed-break sales |\n|---|---|---|---|---|---|---|")
         for name, _ in VERSIONS:
-            rows = [dict(date=t["date"], sym=t["sym"], pnl=str(pt(R[key(t)][name][0]))) for t in L]
+            rows = [dict(date=t["date"], sym=t["sym"], pnl=str(pt(R[key(t)][name][0])), **R[key(t)][name][4]) for t in L]
             pnl = [float(r["pnl"]) for r in rows]
             yr = [st.fmean([float(r["pnl"]) for r in rows if r["date"][:4] == y] or [0]) for y in ("2024", "2025", "2026")]
             wo = sorted(pnl)[:-5]

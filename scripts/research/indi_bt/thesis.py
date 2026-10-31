@@ -16,7 +16,7 @@ import news_filter as nf
 from store import calendar
 from tiers_round import H, NIGHT
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = calendar()
@@ -54,7 +54,7 @@ def one(t):
         if v["thesis"]: sim.X["thesis"] = v["thesis"]
         cost, steps, _ = sim.walk(t["sym"], t["date"], int(t["minute"]), t["right"], t["contract"], t["expiry"], CAL)
         if cost is None: return None
-        out[name] = (sim.result(cost, steps), "|".join(s[5] for s in steps[1:]))
+        out[name] = (sim.result(cost, steps), "|".join(s[5] for s in steps[1:]), held(cost, steps))
     return (t["date"], t["sym"], t["minute"]), out
 
 
@@ -70,7 +70,7 @@ def main():
         print(f"\n### {lname}: {len(L)} trades, 2024-2026\n")
         print("| Version | Winners | Per trade at $10K: 2024 / 2025 / 2026 | Without the best 5 (per trade) | At 1%, worst drop | At 2%, worst drop | Sales: thesis / stop / checks / 15:50 / night |\n|---|---|---|---|---|---|---|")
         for name, _ in VERSIONS:
-            rows = [dict(date=t["date"], sym=t["sym"], pnl=str(pt(R[key(t)][name][0]))) for t in L]
+            rows = [dict(date=t["date"], sym=t["sym"], pnl=str(pt(R[key(t)][name][0])), **R[key(t)][name][2]) for t in L]
             pnl = [float(r["pnl"]) for r in rows]
             yr = [st.fmean([float(r["pnl"]) for r in rows if r["date"][:4] == y] or [0]) for y in ("2024", "2025", "2026")]
             wo = sorted(pnl)[:-5]

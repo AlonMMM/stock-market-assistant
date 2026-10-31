@@ -29,7 +29,7 @@ import news_filter as nf
 from store import day, calendar, iv_delta, years_to_expiry
 from tiers_round import H, NIGHT
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held as booked
 from levels import ctx, NEAR, BREAK, BACK
 
 B = "data/local/x/bt"
@@ -68,6 +68,7 @@ def walk(t):
         cost, steps, _ = sim.walk(t["sym"], t["date"], int(t["minute"]), t["right"], t["contract"], t["expiry"], CAL)
         if cost is None: return None
         out[name] = sim.result(cost, steps)
+        out[name + "#h"] = booked(cost, steps)
         if name == "base": out["cost"], out["steps"] = cost, steps
     out["lv"] = levels_now(t)
     out["hedge"] = hedge(t, out["cost"], out["steps"])
@@ -127,9 +128,10 @@ def main():
             rows, changed = [], 0
             for t in L:
                 r = R[key(t)]; v = pick(r, rule)
+                walk_ = next(n for n in ("base", "low", "none") if r[n] == v)  # the walk v came from
                 if hg: v = v + hg * r["hedge"]
                 if abs(v - r["base"]) > 1e-9: changed += 1
-                rows.append(dict(date=t["date"], pnl=str(1e4 * max(-1, v))))
+                rows.append(dict(date=t["date"], pnl=str(1e4 * max(-1, v)), **r[walk_ + "#h"]))
             a1, d1 = account(rows); a2, d2 = account(rows, 0.02)
             yr = " / ".join(f"{sum(float(x['pnl']) for x in rows if x['date'][:4] == y) / 1e3:+,.0f}K" for y in ("2024", "2025", "2026"))
             name = rule if not hg else f"hedge {int(hg * 100)}% of delta"

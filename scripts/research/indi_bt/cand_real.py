@@ -28,7 +28,7 @@ import real_bench as RB
 import opt_spread as OS
 from d2_failed_break import CHAMP
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held as booked
 
 B = "data/local/x/bt"
 CAL = RB.CAL
@@ -93,7 +93,7 @@ def one(job):
             rcost, real = OS.price(steps, c[0], cost, "bid")
             row = dict(kind=kind, delta=delta, path=path, date=t["date"], sym=t["sym"], right=t["right"], minute=int(t["minute"]),
                        contract=c[0], src=src, v30=c[5], d2=int(float(t.get("c_t") or 9) < 1.8), cost=rcost,
-                       r1=sim.result(rcost, real, 0.01), r05=sim.result(rcost, real, 0.005))
+                       r1=sim.result(rcost, real, 0.01), r05=sim.result(rcost, real, 0.005), h=booked(rcost, real))
             if kind == "main":
                 # the share still held and the real mid against the real cost, minute by minute on the entry day (pyramid)
                 sold, held = 0.0, {}
@@ -114,13 +114,15 @@ def curve(entries):
 
 
 def stats(R, a, z):
-    R = sorted([r for r in R if a <= r[0] <= z])
+    R = sorted([r for r in R if a <= r[0] <= z], key=lambda r: r[:5])
     if not R: return None
-    pnl = [dict(date=d, pnl=str(1e4 * s * max(-1, x))) for d, m, s, x, sym in R]
+    # booked on the sale day, marks at the leg's size (an add is half)
+    pnl = [dict(date=d, pnl=str(1e4 * s * max(-1, x)), exit_day=h["exit_day"], marks={k: s * v for k, v in h["marks"].items()})
+           for d, m, s, x, sym, h in R]
     a1, d1 = account(pnl)
     top = set(sorted(range(len(R)), key=lambda i: -R[i][2] * R[i][3])[:5])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in top])
-    return dict(trades=len(R), winners=sum(x > 0 for _, _, _, x, _ in R), per_trade=round(sum(1e4 * s * max(-1, x) for _, _, s, x, _ in R) / len(R)),
+    return dict(trades=len(R), winners=sum(x > 0 for _, _, _, x, _, _ in R), per_trade=round(sum(1e4 * s * max(-1, x) for _, _, s, x, _, _ in R) / len(R)),
                 acct1=round(a1), dd1=round(d1, 4), no_best5=round(a5),
                 best5=[dict(sym=R[i][4], date=R[i][0], pnl=round(1e4 * R[i][2] * R[i][3])) for i in sorted(top, key=lambda i: -R[i][2] * R[i][3])])
 
@@ -148,12 +150,12 @@ def main():
                     s = 1.0
                     if "fb-half" in sizing and r["src"] == "cheap": s = 0.5
                     if sizing == "tiers" and r["v30"] < 500: s = 0.5
-                    E.append((r["date"], r["minute"], s, r["r1"] if s == 1 else r["r05"], r["sym"]))
+                    E.append((r["date"], r["minute"], s, r["r1"] if s == 1 else r["r05"], r["sym"], r["h"]))
                     if "pyramid" in sizing and r["d2"]:
                         for a in sorted(adds.get((r["date"], r["sym"], r["right"], path), []), key=lambda x: x["minute"]):
                             if a["minute"] <= r["minute"]: continue
                             share, up = r["held"].get(a["minute"], (0, None))
-                            if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a["r05"], a["sym"]))
+                            if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a["r05"], a["sym"], a["h"]))
                             break
                 key = f"{delta}|{path}|{sizing}"
                 out[key] = dict(delta=delta, path=path, sizing=sizing, tune=stats(E, "2024-01-01", "2025-12-31"),

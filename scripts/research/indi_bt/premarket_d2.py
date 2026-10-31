@@ -30,7 +30,7 @@ from store import db, _get, NY, calendar, day
 from signals import beta
 from levels import ctx
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = calendar()
@@ -141,6 +141,7 @@ def run():
         base += [(slug, t) for t in T if t["e_next"] != 0 and (t["pre_rvol"] is None or t["pre_rvol"] < 4) and t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]]]
     with mp.Pool(6) as pool: BR = [r for r in pool.map(eb.one, base, chunksize=8) if r]
     rows = [r[0] for r in BR]
+    H = {r[0]["key"]: held(r[1]["cost"], r[1]["steps"]) for r in BR + [x[3] for x in R if x and x[3]]}
     cand = [r for r in rows if r["version"] == "d2-bonus"]
     pm = collections.defaultdict(list); why = collections.Counter()
     for slug, s, side, r, w in [x for x in R if x]:
@@ -157,8 +158,8 @@ def run():
     for slug, T in versions.items():
         if not T: print(f"| {slug} | 0 |"); continue
         T = sorted(T, key=lambda r: (r["date"], int(r["minute"])))
-        x = [dict(date=r["date"], pnl=str(pt(r["ret"]))) for r in T]
-        a1, d1 = account(x); a2, d2 = account([dict(date=r["date"], pnl=str(pt(r["ret_2pct"]))) for r in T], 0.02)
+        x = [dict(date=r["date"], pnl=str(pt(r["ret"])), **H[r["key"]]) for r in T]
+        a1, d1 = account(x); a2, d2 = account([dict(date=r["date"], pnl=str(pt(r["ret_2pct"])), **H[r["key"]]) for r in T], 0.02)
         top = sorted(range(len(T)), key=lambda i: -float(T[i]["ret"]))[:5]
         a5, _ = account([y for i, y in enumerate(x) if i not in set(top)])
         yr = " / ".join(f"{sum(pt(r['ret']) for r in T if r['date'][:4] == y) / 1e3:+,.0f}K" for y in ("2024", "2025", "2026"))

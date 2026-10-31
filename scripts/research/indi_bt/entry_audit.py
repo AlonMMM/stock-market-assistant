@@ -24,7 +24,7 @@ import news_filter as nf
 import real_bench as RB
 from d2_failed_break import CHAMP
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 from store import day
 
 B = "data/local/x/bt"
@@ -70,6 +70,7 @@ def one(t):
         rcost, real = price(steps, p[0], cost, early)
         out[f"{tag}_cost"] = round(rcost, 4)
         for s in SIZES: out[f"{tag}_r{round(s * 100)}"] = sim.result(rcost, real, s)
+        out[f"{tag}_h"] = held(rcost, real)
         if tag == "b":
             sells = [s for s in real if s[2] == "sell"]
             last = sells[-1]
@@ -117,7 +118,8 @@ def capped(R, size, key):
 def stats(R, key, size, a="", z="9"):
     rows = sorted((r for r in R if a <= r["date"] <= z), key=lambda r: (r["date"], r["minute"]))
     if not rows: return None
-    pnl = [dict(date=r["date"], pnl=str(1e4 * max(-1, r[key]))) for r in rows]
+    h = key.split("_")[0] + "_h"  # the same fills' sale day and 15:50 marks
+    pnl = [dict(date=r["date"], pnl=str(1e4 * max(-1, r[key])), **r[h]) for r in rows]
     eq, dd = account(pnl, size)
     top = set(sorted(range(len(rows)), key=lambda i: -rows[i][key])[:5])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in top], size)
@@ -153,7 +155,7 @@ def main():
          and t["sym"] in PRIOR[t["date"][:4]] and t["date"] <= LAST]
     with mp.Pool(8) as pool: R = [r for r in pool.map(one, T, chunksize=8) if r]
     with open(f"{B}/entry_audit_trades.csv", "w") as f:
-        cols = [k for k in R[0] if k != "mark"]
+        cols = [k for k in R[0] if k not in ("mark", "a_h", "b_h")]
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore"); w.writeheader(); w.writerows(R)
     out = {}
     print("| Step | Size | Period | Trades | Winners | Per trade at $10K | End / worst drop | Without best 5 | Years at $10K | Pauses |\n|---|---|---|---|---|---|---|---|---|---|")

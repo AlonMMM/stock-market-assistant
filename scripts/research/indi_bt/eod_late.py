@@ -14,7 +14,7 @@ import news_filter as nf
 from store import calendar
 from tiers_round import H, NIGHT
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held as booked
 
 B = "data/local/x/bt"
 CAL = calendar()
@@ -29,7 +29,8 @@ def walk(t):
     for _, m in VERSIONS:
         sim.X.clear(); sim.X.update({**X0, "eod_minute": m})
         cost, steps, _ = sim.walk(t["sym"], t["date"], int(t["minute"]), t["right"], t["contract"], t["expiry"], CAL)
-        out[m] = None if cost is None else (sim.result(cost, steps), any(s[5] == "eod_carry" for s in steps))
+        out[m] = None if cost is None else (sim.result(cost, steps), any(s[5] == "eod_carry" for s in steps),
+                                             booked(cost, steps))
     return (t["date"], t["sym"], t["minute"]), out
 
 
@@ -43,7 +44,8 @@ def main():
         print(f"\n### {lname}: {len(L)} trades\n")
         print("| Day-end decision | Held overnight | Per trade 2024 / 2025 / 2026 | At 1% | At 2% |\n|---|---|---|---|---|")
         for lab, m in VERSIONS:
-            rows = [dict(t, pnl=str(1e4 * max(-1, R[(t["date"], t["sym"], t["minute"])][m][0]))) for t in L]
+            rows = [dict(t, pnl=str(1e4 * max(-1, R[(t["date"], t["sym"], t["minute"])][m][0])),
+                         **R[(t["date"], t["sym"], t["minute"])][m][2]) for t in L]
             held = sum(R[(t["date"], t["sym"], t["minute"])][m][1] for t in L)
             yr = [[float(x["pnl"]) for x in rows if x["date"][:4] == y] for y in ("2024", "2025", "2026")]
             a1, d1 = account(rows); a2, d2 = account(rows, 0.02)

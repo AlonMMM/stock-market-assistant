@@ -175,7 +175,9 @@ def summary(rows=None):
                     if not L: continue
                     kept = sum(str(r["kept"]) == "True" for r in L)
                     for ex in EXITS:
-                        pn = [dict(date=r["date"], pnl=str(1e4 * max(-1, float(r[ex])))) for r in L]
+                        # bought after 15:50, sold the next session: booked then (score_sum.account)
+                        pn = [dict(date=r["date"], pnl=str(1e4 * max(-1, float(r[ex]))),
+                                   exit_day=CAL[IDX[r["date"]] + 1]) for r in L]
                         a1, d1 = account(pn)
                         top = set(sorted(range(len(pn)), key=lambda k: -float(pn[k]["pnl"]))[:5])
                         a5, _ = account([p for k, p in enumerate(pn) if k not in top])

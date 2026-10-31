@@ -21,7 +21,7 @@ import news_filter as nf
 from store import day, calendar
 from tiers_round import H, NIGHT
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 from levels import ctx, ahead, NEAR, BREAK, BACK, WAIT, EOD
 
 B = "data/local/x/bt"
@@ -38,7 +38,8 @@ def walk(t):
     cost, steps, _ = sim.walk(t["sym"], t["date"], m0, t["right"], t["contract"], t["expiry"], CAL)
     if cost is None: return None
     ret = sim.result(cost, steps)
-    out = dict(key=(t["date"], t["sym"], t["minute"]), ret=ret, cf=None, rebuy=None, rebuy_min=None)
+    out = dict(key=(t["date"], t["sym"], t["minute"]), ret=ret, cf=None, rebuy=None, rebuy_min=None,
+               h=held(cost, steps))
     x = ctx(t["sym"], t["date"])
     a = ahead(x, m0, bet) if x and x["c"][m0] is not None else None
     if not a: return out
@@ -66,7 +67,7 @@ def walk(t):
         if p is not None and bet * (p - lv) / sd0 >= BREAK:
             sim.X.clear(); sim.X.update(X0)
             c2, s2, _ = sim.walk(t["sym"], t["date"], m, t["right"], t["contract"], t["expiry"], CAL)
-            if c2 is not None: out["rebuy"], out["rebuy_min"] = sim.result(c2, s2), m
+            if c2 is not None: out["rebuy"], out["rebuy_min"], out["rebuy_h"] = sim.result(c2, s2), m, held(c2, s2)
             break
     return out
 
@@ -75,12 +76,16 @@ def rows_for(t, r, v):
     """-> account rows (pnl at $10K) for version v of one trade; a rebuy is a second row the same day."""
     base = dict(date=t["date"], sym=t["sym"])
     pt = lambda x: str(1e4 * max(-1, x))
-    if v == "Champion" or r["cf"] is None: return [dict(base, pnl=pt(r["ret"]))]
+    if v == "Champion" or r["cf"] is None: return [dict(base, pnl=pt(r["ret"]), **r["h"])]
     half = v.startswith("half")
     first = 0.5 * r["cf"] + 0.5 * r["ret"] if half else r["cf"]
     out = [dict(base, pnl=pt(first))]
+    if half:  # the kept half rides the champion's walk; the sold half is cf
+        out[0].update(exit_day=r["h"]["exit_day"], marks={d: 0.5 * r["cf"] + 0.5 * x for d, x in r["h"]["marks"].items()})
     if v.endswith("rebuy") and r["rebuy"] is not None:
-        out.append(dict(base, pnl=str(1e4 * max(-1, r["rebuy"]) * (0.5 if half else 1))))
+        k = 0.5 if half else 1
+        h = dict(r["rebuy_h"], marks={d: k * x for d, x in r["rebuy_h"]["marks"].items()})
+        out.append(dict(base, pnl=str(1e4 * max(-1, r["rebuy"]) * k), **h))
     return out
 
 

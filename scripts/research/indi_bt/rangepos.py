@@ -28,7 +28,7 @@ import opt_spread as OS
 import real_bench as RB
 from d2_failed_break import CHAMP
 from levels import ctx
-from score_sum import account
+from score_sum import account, held as booked
 from split import half
 from store import calendar
 
@@ -53,7 +53,8 @@ def walk_at(t, m, price):
     if cost is None: return None
     rcost, real = OS.price(steps, c[0], cost, "bid")
     row = dict(r1=sim.result(rcost, real, 0.01), r05=sim.result(rcost, real, 0.005), r2=sim.result(rcost, real, 0.02),
-               r3=sim.result(rcost, real, 0.03), r15=sim.result(rcost, real, 0.015), over=int(any(s[2] == "carry" for s in steps)))
+               r3=sim.result(rcost, real, 0.03), r15=sim.result(rcost, real, 0.015), over=int(any(s[2] == "carry" for s in steps)),
+               h=booked(rcost, real))
     early = [s for s in steps if s[2] == "sell" and s[0] == t["date"] and s[1] <= m + 20]
     sold = sum(s[3] for s in early)
     path = "full at 20"
@@ -97,20 +98,22 @@ def entries(R, adds, src, v, part, size, a=""):
     for r in R:
         if r["src"] != src or r["kind"] != "main" or half(r["date"]) != part or r["date"] < a or v not in r["v"]: continue
         x, m = r["v"][v], r["at"][v]
-        E.append((r["date"], m, 1.0, x[full], x["over"]))
+        E.append((r["date"], m, 1.0, x[full], x["over"], x["h"]))
         if not r["d2"]: continue
         for ad in sorted(adds.get((src, r["date"], r["sym"], r["right"]), []), key=lambda q: q["minute"]):
             if ad["minute"] <= m or v not in ad["v"]: continue
             share, up = x["held"].get(ad["minute"], (0, None))
-            if share > 0 and up is not None and up > 0: E.append((ad["date"], ad["minute"], 0.5, ad["v"][v][halfk], ad["v"][v]["over"]))
+            if share > 0 and up is not None and up > 0: E.append((ad["date"], ad["minute"], 0.5, ad["v"][v][halfk], ad["v"][v]["over"], ad["v"][v]["h"]))
             break
     return E
 
 
 def stats(E, size):
-    R = sorted(E)
+    R = sorted(E, key=lambda e: e[:5])
     usd = [1e4 * e[2] * max(-1, e[3]) for e in R]
-    pnl = [dict(date=e[0], pnl=str(u)) for e, u in zip(R, usd)]
+    # booked on the sale day; an add's marks at its half size
+    pnl = [dict(date=e[0], pnl=str(u), exit_day=e[5]["exit_day"], marks={d: e[2] * v for d, v in e[5]["marks"].items()})
+           for e, u in zip(R, usd)]
     acct, dd = account(pnl, size)
     top = sorted(range(len(R)), key=lambda i: -usd[i])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in set(top[:5])], size)

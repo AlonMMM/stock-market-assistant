@@ -19,7 +19,7 @@ import cheap_up as cu
 import news_filter as nf
 from store import calendar
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = calendar()
@@ -70,6 +70,7 @@ def one(t):
         cost, steps, _ = sim.walk(t["sym"], t["date"], minute, t["right"], p[0], p[1], CAL)
         if cost is None: continue
         out[mode] = sim.result(cost, steps)
+        out[mode + "#h"] = held(cost, steps)
         if p[2]: out[mode + "|pick"] = (round(abs(p[2][3]), 3), p[2][4], p[2][5])
     return key, out
 
@@ -86,7 +87,8 @@ def main():
         print(f"\n### {lname}: {len(L)} signals ({sum(t['status'] == 'too_cheap' for t in L)} too cheap, {sum(t['status'] == 'illiquid' for t in L)} illiquid)\n")
         print("| Pick | Trades | Winners | At 1% / worst drop | At 2% / worst drop | 2024 / 2025 / 2026 at $10K | Without the best 5 at 1% | Added: n, winners, per trade, sum | Added without their best 5 |\n|---|---|---|---|---|---|---|---|---|")
         for mode in MODES:
-            rows = [dict(date=t["date"], pnl=str(pt(R[key(t)][mode])), added=t["status"] != "ok") for t in L if mode in R[key(t)]]
+            rows = [dict(date=t["date"], pnl=str(pt(R[key(t)][mode])), added=t["status"] != "ok",
+                         **R[key(t)][mode + "#h"]) for t in L if mode in R[key(t)]]
             a1, d1 = account(rows); a2, d2 = account(rows, 0.02)
             top = set(sorted(range(len(rows)), key=lambda i: -float(rows[i]["pnl"]))[:5])
             a5, _ = account([r for i, r in enumerate(rows) if i not in top])

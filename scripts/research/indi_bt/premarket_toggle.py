@@ -22,7 +22,7 @@ import news_filter as nf
 import real_bench as RB
 import opt_spread as OS
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held as booked
 
 B = "data/local/x/bt"
 LAST = RB.LAST
@@ -41,7 +41,8 @@ def one(job):
     rcost, real = OS.price(steps, c[0], cost, "bid")
     row = dict(kind=kind, bot=bot, date=t["date"], sym=t["sym"], right=t["right"], minute=int(t["minute"]), contract=c[0],
                src=src, d2=int(float(t.get("c_t") or 9) < 1.8), pre_rvol=t["pre_rvol"], cost=rcost,
-               **{f"r{k}": sim.result(rcost, real, s) for k, s in (("05", 0.005), ("1", 0.01), ("2", 0.02))})
+               **{f"r{k}": sim.result(rcost, real, s) for k, s in (("05", 0.005), ("1", 0.01), ("2", 0.02))},
+               h=booked(rcost, real))
     if kind == "main":
         sells = [s for s in real if s[2] == "sell" and s[0] == t["date"]]
         held = {}
@@ -53,18 +54,19 @@ def one(job):
 
 
 def stats(E, a, z):
-    """E: (date, minute, units, ret at 1% a unit's size, ret at 2%, sym)."""
-    R = sorted(e for e in E if a <= e[0] <= z)
+    """E: (date, minute, units, ret at 1% a unit's size, ret at 2%, sym, held())."""
+    R = sorted((e for e in E if a <= e[0] <= z), key=lambda e: e[:6])
     if not R: return None
-    p1 = [dict(date=d, pnl=str(1e4 * u * max(-1, x))) for d, m, u, x, _, s in R]
-    p2 = [dict(date=d, pnl=str(1e4 * u * max(-1, y))) for d, m, u, _, y, s in R]
+    bk = lambda u, h: dict(exit_day=h["exit_day"], marks={k: u * v for k, v in h["marks"].items()})  # booked on the sale day
+    p1 = [dict(date=d, pnl=str(1e4 * u * max(-1, x)), **bk(u, h)) for d, m, u, x, _, s, h in R]
+    p2 = [dict(date=d, pnl=str(1e4 * u * max(-1, y)), **bk(u, h)) for d, m, u, _, y, s, h in R]
     a1, d1 = account(p1)
     a2, d2 = account(p2, 0.02)
     top = set(sorted(range(len(R)), key=lambda i: -R[i][2] * R[i][3])[:5])
     a5, _ = account([p for i, p in enumerate(p1) if i not in top])
-    yr = {y: round(sum(1e4 * u * max(-1, x) for d, m, u, x, _, s in R if d[:4] == y)) for y in ("2024", "2025", "2026")}
-    return dict(trades=len(R), winners=sum(x > 0 for _, _, _, x, _, _ in R),
-                per_trade=round(sum(1e4 * u * max(-1, x) for _, _, u, x, _, _ in R) / len(R)),
+    yr = {y: round(sum(1e4 * u * max(-1, x) for d, m, u, x, _, s, _ in R if d[:4] == y)) for y in ("2024", "2025", "2026")}
+    return dict(trades=len(R), winners=sum(x > 0 for _, _, _, x, _, _, _ in R),
+                per_trade=round(sum(1e4 * u * max(-1, x) for _, _, u, x, _, _, _ in R) / len(R)),
                 acct1=round(a1), dd1=round(d1, 4), acct2=round(a2), dd2=round(d2, 4), no_best5=round(a5), years=yr,
                 best5=[dict(sym=R[i][5], date=R[i][0], pnl=round(1e4 * R[i][2] * R[i][3])) for i in sorted(top, key=lambda i: -R[i][2] * R[i][3])])
 
@@ -77,13 +79,13 @@ def entries(M, adds, skip, pyramid):
     E = []
     for r in M:
         if not kept(r, skip): continue
-        E.append((r["date"], r["minute"], 1.0, r["r1"], r["r2"], r["sym"]))
+        E.append((r["date"], r["minute"], 1.0, r["r1"], r["r2"], r["sym"], r["h"]))
         if not (pyramid and r["d2"]): continue
         for a in sorted(adds.get((r["date"], r["sym"], r["right"], r["bot"]), []), key=lambda x: x["minute"]):
             if a["minute"] <= r["minute"]: continue
             share, up = r["held"].get(a["minute"], (0, None))
             # half a size: the 1% curve reads the 0.5% return, the 2% curve the 1% return
-            if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a["r05"], a["r1"], a["sym"]))
+            if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a["r05"], a["r1"], a["sym"], a["h"]))
             break
     return E
 
@@ -97,7 +99,7 @@ def main():
     jobs = [("main", b, t) for b in BOTS for t in main_t] + [("add", "2.6", t) for t in add_t]
     with mp.Pool(8) as pool: res = [r for r in pool.map(one, jobs, chunksize=8) if r]
     with open(f"{B}/premarket_toggle_trades.csv", "w") as f:
-        cols = [k for k in res[0] if k != "held"]
+        cols = [k for k in res[0] if k not in ("held", "h")]
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore"); w.writeheader(); w.writerows(res)
     adds = {}
     for r in res:

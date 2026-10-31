@@ -16,7 +16,7 @@ import news_filter as nf
 from store import calendar
 from tiers_round import H, NIGHT
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = calendar()
@@ -34,6 +34,7 @@ def one(t):
         cost, steps, _ = sim.walk(t["sym"], t["date"], int(t["minute"]), t["right"], t["contract"], t["expiry"], CAL)
         if cost is None: return None
         out[name] = sim.result(cost, steps)
+        out[name + "#h"] = held(cost, steps)
         out[name + "#df"] = any(s[5] == "DF_defence" for s in steps)
     return (t["date"], t["sym"], t["minute"]), out
 
@@ -51,7 +52,7 @@ def main():
         print(f"\n### {lname}: {len(L)} trades\n")
         print("| Version | Defence sales | Winners | At 1% / worst drop | At 2% / worst drop | 2024 / 2025 / 2026 at $10K | Without the best 5 at 1% | Trades changed, their sum |\n|---|---|---|---|---|---|---|---|")
         for name, _ in VERSIONS:
-            rows = [dict(date=t["date"], pnl=str(pt(R[key(t)][name]))) for t in L]
+            rows = [dict(date=t["date"], pnl=str(pt(R[key(t)][name])), **R[key(t)][name + "#h"]) for t in L]
             a1, d1 = account(rows); a2, d2 = account(rows, 0.02)
             top = set(sorted(range(len(rows)), key=lambda k: -float(rows[k]["pnl"]))[:5])
             a5, _ = account([r for k, r in enumerate(rows) if k not in top])

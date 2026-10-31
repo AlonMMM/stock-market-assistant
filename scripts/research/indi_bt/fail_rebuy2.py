@@ -21,7 +21,7 @@ import news_filter as nf
 from store import day, calendar
 from tiers_round import H, NIGHT
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 from levels import ctx, ahead, NEAR, BREAK, BACK, WAIT, EOD
 
 B = "data/local/x/bt"
@@ -38,7 +38,8 @@ def walk(t):
     sim.X.clear(); sim.X.update(X0)
     cost, steps, _ = sim.walk(t["sym"], t["date"], m0, t["right"], t["contract"], t["expiry"], CAL)
     if cost is None: return None
-    out = dict(key=(t["date"], t["sym"], t["minute"]), ret=sim.result(cost, steps), cf=None, rb={})
+    out = dict(key=(t["date"], t["sym"], t["minute"]), ret=sim.result(cost, steps), cf=None, rb={},
+               h=held(cost, steps), rbh={})
     x = ctx(t["sym"], t["date"])
     a = ahead(x, m0, bet) if x and x["c"][m0] is not None else None
     if not a: return out
@@ -62,7 +63,7 @@ def walk(t):
     sold = sum(s[3] * s[4] for s in before); rem = 1 - sum(s[3] for s in before)
     out["cf"] = (sold + rem * sim.mid(nxt) * (1 - sim.SH)) / cost - 1
     for lab, XV, tries in VERSIONS:
-        res, m, armed = [], nxt[0] + 1, True
+        res, hs, m, armed = [], [], nxt[0] + 1, True
         while m <= LAST_BUY and len(res) < tries:
             p = x["c"][m]
             if p is not None and not armed and bet * (lv - p) >= 0: armed = True  # back under the level first
@@ -70,13 +71,13 @@ def walk(t):
                 sim.X.clear(); sim.X.update(XV)
                 c2, s2, _ = sim.walk(t["sym"], t["date"], m, t["right"], t["contract"], t["expiry"], CAL)
                 if c2 is None: break
-                res.append((m, sim.result(c2, s2)))
+                res.append((m, sim.result(c2, s2))); hs.append(held(c2, s2))
                 outs = [s for s in s2 if s[2] == "sell"]
                 if any(s[2] == "carry" for s in s2) or not outs or outs[-1][0] != t["date"]: break
                 m, armed = outs[-1][1] + 1, False
                 continue
             m += 1
-        out["rb"][lab] = res
+        out["rb"][lab], out["rbh"][lab] = res, hs
     return out
 
 
@@ -96,9 +97,10 @@ def main():
             rows, rb = [], []
             for t in L:
                 r = R[key(t)]; base = dict(date=t["date"], sym=t["sym"])
-                if v is None or r["cf"] is None: rows.append(dict(base, pnl=pt(r["ret"]))); continue
+                if v is None or r["cf"] is None: rows.append(dict(base, pnl=pt(r["ret"]), **r["h"])); continue
                 rows.append(dict(base, pnl=pt(r["cf"])))
-                for _, x in r["rb"].get(v, []): rows.append(dict(base, pnl=pt(x))); rb.append(x)
+                for (_, x), h in zip(r["rb"].get(v, []), r["rbh"].get(v, [])):
+                    rows.append(dict(base, pnl=pt(x), **h)); rb.append(x)
             yr = [sum(float(x["pnl"]) for x in rows if x["date"][:4] == y) / max(1, sum(t["date"][:4] == y for t in L)) for y in ("2024", "2025", "2026")]
             a1, d1 = account(rows); a2, d2 = account(rows, 0.02)
             rbt = f"{len(rb)} ({sum(x > 0 for x in rb)}), {sum(1e4 * max(-1, x) for x in rb) / 1e3:+,.0f}K" if rb else "-"

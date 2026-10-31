@@ -31,7 +31,7 @@ import floor_exception as fe
 import opt_spread as OS
 import real_bench as RB
 from d2_failed_break import CHAMP
-from score_sum import account
+from score_sum import account, held as booked
 from split import half
 from store import calendar, day, iv_delta
 
@@ -175,12 +175,12 @@ def entries(R, src, part, setting):
     E = []
 
     def leg(r, units):
-        if setting is None: return (r["date"], units, r["r1"] if units == 1 else r["r05"], 0.0, 1, r)
+        if setting is None: return (r["date"], units, r["r1"] if units == 1 else r["r05"], 0.0, 1, r, booked(r["paid"], r["steps"]))
         o = order(r, *setting)
-        if o is None: return (r["date"], units, None, 0.0, 0, r)
+        if o is None: return (r["date"], units, None, 0.0, 0, r, None)
         paid, steps = o
         ret = sim.result(paid, steps, 0.01 * units)
-        return (r["date"], units, ret, 1 - paid / r["paid"], 1, r)
+        return (r["date"], units, ret, 1 - paid / r["paid"], 1, r, booked(paid, steps))
     for r in main:
         E.append(leg(r, 1.0))
         if not r["d2"]: continue
@@ -194,7 +194,9 @@ def entries(R, src, part, setting):
 
 def acct(E):
     rows = sorted((e for e in E if e[2] is not None), key=lambda e: (e[0], e[5]["minute"]))
-    pnl = [dict(date=e[0], pnl=str(1e4 * e[1] * max(-1, e[2]))) for e in rows]
+    # booked on the sale day, marks at the leg's size (an add is half)
+    pnl = [dict(date=e[0], pnl=str(1e4 * e[1] * max(-1, e[2])), exit_day=e[6]["exit_day"],
+                marks={d: e[1] * v for d, v in e[6]["marks"].items()}) for e in rows]
     a, dd = account(pnl)
     top = set(sorted(range(len(rows)), key=lambda i: -rows[i][1] * rows[i][2])[:5])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in top])

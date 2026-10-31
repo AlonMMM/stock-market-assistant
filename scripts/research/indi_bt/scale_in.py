@@ -20,7 +20,7 @@ from signals import series
 from tiers_round import H, NIGHT
 import news_filter as nf
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 PREFIX = (sys.argv[1:] or ["w_flat_n100"])[0]  # the trades to scale in (default: the C signal at t >= 2)
@@ -44,17 +44,25 @@ def add_minute(t, rule, cost):
     return None
 
 
+def mix(parts):
+    """account()'s booking of legs [(held() dict, result, weight)] closed as one trade, on the last leg's sale day."""
+    fin = lambda h, x, d: h["marks"].get(d, max(-1, x) if d >= h["exit_day"] else 0.0)
+    days = set().union(*(h["marks"] for h, _, _ in parts))
+    return dict(exit_day=max(h["exit_day"] for h, _, _ in parts),
+                marks={d: sum(w * fin(h, x, d) for h, x, w in parts) for d in days})
+
+
 def run(t):
     cost, steps, _ = sim.walk(t["sym"], t["date"], int(t["minute"]), t["right"], t["contract"], t["expiry"], CAL)
     if cost is None: return None
     r1 = sim.result(cost, steps)
-    out = dict(key=(t["date"], t["sym"], t["minute"]), r1=r1)
+    out = dict(key=(t["date"], t["sym"], t["minute"]), r1=r1, h1=held(cost, steps))
     for rule in "ABCD":
         am = add_minute(t, rule, cost)
-        r2 = None
+        r2, out[rule + "#h"] = None, None
         if am is not None:
             c2, s2, _ = sim.walk(t["sym"], t["date"], am, t["right"], t["contract"], t["expiry"], CAL)
-            if c2 is not None: r2 = sim.result(c2, s2)
+            if c2 is not None: r2, out[rule + "#h"] = sim.result(c2, s2), held(c2, s2)
         out[rule] = r2
     return out
 
@@ -75,13 +83,15 @@ def main():
             rows = []
             for t in L:
                 r = R[(t["date"], t["sym"], t["minute"])]
+                legs = [(r["h1"], r["r1"], 1.0)]
                 if rule is None: pnl, used = float(t["pnl"]), 1.0
-                elif rule == "half": pnl, used = 0.5e4 * max(-1, r["r1"]), 0.5
+                elif rule == "half": pnl, used = 0.5e4 * max(-1, r["r1"]), 0.5; legs = [(r["h1"], r["r1"], 0.5)]
                 else:
                     r2 = r[rule]
                     pnl = 0.5e4 * max(-1, r["r1"]) + (0.5e4 * max(-1, r2) if r2 is not None else 0)
                     used = 1.0 if r2 is not None else 0.5
-                rows.append(dict(t, pnl=str(pnl), _used=used))
+                    legs = [(r["h1"], r["r1"], 0.5)] + ([(r[rule + "#h"], r2, 0.5)] if r2 is not None else [])
+                rows.append(dict(t, pnl=str(pnl), _used=used, **mix(legs)))
             yr = [[float(x["pnl"]) for x in rows if x["date"][:4] == y] for y in ("2024", "2025", "2026")]
             added = sum(x["_used"] == 1.0 for x in rows) if rule not in (None, "half") else ""
             a1, d1 = account(rows); a2, d2 = account(rows, 0.02)

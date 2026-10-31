@@ -37,7 +37,7 @@ import news_filter as nf
 import opt_spread as OS
 import real_bench as RB
 from d2_failed_break import CHAMP
-from score_sum import account
+from score_sum import account, held as booked
 
 YEAR = sys.argv[1]
 STAGES = sys.argv[2:]
@@ -391,14 +391,14 @@ def walk(t):
         k = RB.quote(c[0], t["date"], mm)
         held[mm] = (1 - sum(s[3] for s in sells if s[1] <= mm), None if not k else (k[0] + k[1]) / 2 / rcost - 1)
     return dict(kind=t["kind"], date=t["date"], minute=m, sym=t["sym"], right=t["right"], d2=int(float(t["c_t"]) < 1.8),
-                news_ok=t["news_ok"], contract=c[0], cost=rcost, quoted=int(rcost != cost), held=held, **r)
+                news_ok=t["news_ok"], contract=c[0], cost=rcost, quoted=int(rcost != cost), held=held, h=booked(rcost, real), **r)
 
 
 def stage_run():
     S = signals()
     with mp.Pool(8) as pool: R = [r for r in pool.map(walk, S, chunksize=8) if r]
     with open(os.path.join(D, "trades.csv"), "w") as f:
-        w = csv.DictWriter(f, [k for k in R[0] if k != "held"], extrasaction="ignore"); w.writeheader(); w.writerows(R)
+        w = csv.DictWriter(f, [k for k in R[0] if k not in ("held", "h")], extrasaction="ignore"); w.writeheader(); w.writerows(R)
     main = [r for r in R if r["kind"] == "main" and r["news_ok"]]
     adds = collections.defaultdict(list)
     for r in R:
@@ -410,16 +410,18 @@ def stage_run():
     for size, (full, halfk) in ((0.02, ("r2", "r1")), (0.03, ("r3", "r15"))):
         E = []
         for r in main:
-            E.append((r["date"], r["minute"], 1.0, r[full], r["sym"]))
+            E.append((r["date"], r["minute"], 1.0, r[full], r["sym"], r["h"]))
             if not r["d2"]: continue
             for a in sorted(adds[(r["date"], r["sym"], r["right"])], key=lambda q: q["minute"]):
                 if a["minute"] <= r["minute"]: continue
                 share, up = r["held"].get(a["minute"], (0, None))
-                if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a[halfk], a["sym"]))
+                if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a[halfk], a["sym"], a["h"]))
                 break
-        E.sort()
+        E.sort(key=lambda e: e[:5])
         usd = [1e4 * e[2] * max(-1, e[3]) for e in E]
-        pnl = [dict(date=e[0], pnl=str(u)) for e, u in zip(E, usd)]
+        # booked on the sale day, marks at the leg's size (an add is half)
+        pnl = [dict(date=e[0], pnl=str(u), exit_day=e[5]["exit_day"], marks={d: e[2] * v for d, v in e[5]["marks"].items()})
+               for e, u in zip(E, usd)]
         acct, dd = account(pnl, size)
         top = sorted(range(len(E)), key=lambda i: -usd[i])
         a5, _ = account([p for i, p in enumerate(pnl) if i not in set(top[:5])], size)

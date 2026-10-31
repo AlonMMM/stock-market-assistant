@@ -25,7 +25,7 @@ import cheap_up2 as cu2
 import real_bench as RB
 import opt_spread as OS
 from d2_failed_break import CHAMP
-from score_sum import account
+from score_sum import account, held as booked
 
 RB.DBX = os.path.join(HERE, "dbx_cache", "fav")
 B = "data/local/x/bt"
@@ -72,7 +72,8 @@ def one(job):
                src="cheap" if t["status"] == "too_cheap" else "pick", d2=int(float(t["c_t"]) < 1.8),
                old1=sim.result(cost, steps, 0.01), old2=sim.result(cost, steps, 0.02), old05=sim.result(cost, steps, 0.005), old1_=sim.result(cost, steps, 0.01),
                real1=sim.result(rcost, real, 0.01), real2=sim.result(rcost, real, 0.02), real05=sim.result(rcost, real, 0.005),
-               fills=sum(s[2] in ("buy", "sell") for s in steps), no_quote=miss)
+               fills=sum(s[2] in ("buy", "sell") for s in steps), no_quote=miss,
+               old_h=booked(cost, steps), real_h=booked(rcost, real))
     if kind in ("v25", "v26"):
         held = {}
         sells = [s for s in real if s[2] == "sell" and s[0] == t["date"]]
@@ -85,10 +86,12 @@ def one(job):
 
 def stats(E, a, size):
     """E: (date, minute, units, ret at 1% a unit's cap, ret at 2%..., sym) -> account at `size` per unit."""
-    R = sorted([e for e in E if e[0] >= a])
+    R = sorted([e for e in E if e[0] >= a], key=lambda e: e[:6])
     if not R: return None
     k = 3 if size == 0.01 else 4
-    pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[k]))) for e in R]
+    # booked on the sale day, marks at the leg's units (an add is half)
+    pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[k])), exit_day=e[6]["exit_day"],
+                marks={d: e[2] * v for d, v in e[6]["marks"].items()}) for e in R]
     acct, dd = account(pnl, size)
     top = set(sorted(range(len(R)), key=lambda i: -R[i][2] * R[i][3])[:5])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in top], size)
@@ -102,7 +105,7 @@ def main():
     jobs = [("v24", t) for t in S24] + [("v25", t) for t in S25] + [("v26", t) for t in S25] + [("add", t) for t in S24] + [("add25", t) for t in S24]
     with mp.Pool(8) as pool: res = [r for r in pool.map(one, jobs, chunksize=8) if r]
     with open(f"{B}/fav_real_trades.csv", "w") as f:
-        keys = [k for k in res[0] if k != "held"]
+        keys = [k for k in res[0] if k not in ("held", "old_h", "real_h")]
         w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore"); w.writeheader(); w.writerows(res)
     adds = {"add": {}, "add25": {}}
     for r in res:
@@ -119,13 +122,13 @@ def main():
             E = []
             for r in base:
                 units = 0.5 if name == "pyramid+fb-half" and r["src"] == "cheap" else 1.0
-                if units == 1: E.append((r["date"], r["minute"], 1.0, r[f"{price}1"], r[f"{price}2"], r["sym"]))
-                else: E.append((r["date"], r["minute"], 0.5, r[f"{price}05"], r[f"{price}1"], r["sym"]))
+                if units == 1: E.append((r["date"], r["minute"], 1.0, r[f"{price}1"], r[f"{price}2"], r["sym"], r[f"{price}_h"]))
+                else: E.append((r["date"], r["minute"], 0.5, r[f"{price}05"], r[f"{price}1"], r["sym"], r[f"{price}_h"]))
                 if name.startswith("pyramid") and r["d2"]:
                     for a in sorted(add_of.get((r["date"], r["sym"], r["right"]), []), key=lambda x: x["minute"]):
                         if a["minute"] <= r["minute"]: continue
                         share, up = r["held"].get(a["minute"], (0, None))
-                        if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a[f"{price}05"], a[f"{price}1"], a["sym"]))
+                        if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a[f"{price}05"], a[f"{price}1"], a["sym"], a[f"{price}_h"]))
                         break
             for period, a in (("24m", A24), ("12m", A12), ("6m", A6)):
                 for size in (0.01, 0.02):

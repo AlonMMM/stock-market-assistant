@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import d2_liquid as d
 import sim, news_filter as nf
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 SPREADS = (0.02, 0.05, 0.10)
 
 def one(t):
@@ -16,7 +16,7 @@ def one(t):
         for sh in SPREADS:
             sim.SH = sh; sim.X.clear(); sim.X.update(d.CHAMP)
             cost, steps, _ = sim.walk(t["sym"], t["date"], int(t["minute"]), t["right"], c[0], c[1], d.CAL)
-            if cost is not None: out[(cheap, sh)] = (sim.result(cost, steps, 0.01), c[5], c[4])
+            if cost is not None: out[(cheap, sh)] = (sim.result(cost, steps, 0.01), c[5], c[4], held(cost, steps))
     sim.SH = 0.02
     return (t["date"], t["sym"], t["minute"]), out
 
@@ -29,7 +29,7 @@ def base(t, cheap):
         if not c: return None
         p = (c[0], c[1])
     cost, steps, _ = sim.walk(t["sym"], t["date"], int(t["minute"]), t["right"], p[0], p[1], d.CAL)
-    return None if cost is None else sim.result(cost, steps, 0.01)
+    return None if cost is None else (sim.result(cost, steps, 0.01), held(cost, steps))
 
 def both(t): return (t["date"], t["sym"], t["minute"]), (base(t, False), base(t, True))
 
@@ -56,8 +56,10 @@ if __name__ == "__main__":
             rows = []
             for t in T:
                 b = Bs[k(t)][int(cheap)]
-                if b is not None: rows.append(dict(date=t["date"], pnl=str(pt(b)), add=False))
-                elif (cheap, sh) in A.get(k(t), {}): rows.append(dict(date=t["date"], pnl=str(pt(A[k(t)][(cheap, sh)][0])), add=True))
+                if b is not None: rows.append(dict(date=t["date"], pnl=str(pt(b[0])), add=False, **b[1]))
+                elif (cheap, sh) in A.get(k(t), {}):
+                    a = A[k(t)][(cheap, sh)]
+                    rows.append(dict(date=t["date"], pnl=str(pt(a[0])), add=True, **a[3]))
             ad = sorted((float(r["pnl"]) for r in rows if r["add"]), reverse=True)
             a1, d1 = account(rows)
             top = set(sorted(range(len(rows)), key=lambda i: -float(rows[i]["pnl"]))[:5])

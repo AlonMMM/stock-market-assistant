@@ -27,7 +27,7 @@ import fav_real as FR
 import floor_exception as fe
 import news_filter as nf
 from d2_failed_break import CHAMP
-from score_sum import account
+from score_sum import account, held as booked
 from store import P, calendar, day
 
 B = "data/local/x/bt"
@@ -66,7 +66,7 @@ def walk(job):
             held[mm] = (1 - sum(s[3] for s in sells if s[1] <= mm), None if last is None else last / cost - 1)
         return dict(mode=mode, kind=t["kind"], date=t["date"], minute=m, sym=t["sym"], right=t["right"],
                     d2=int(float(t["c_t"]) < 1.8), news_ok=t["news_ok"], iv=c[6], delta=c[3], cost=cost,
-                    over=int(any(s[2] == "carry" for s in steps)), held=held, **r)
+                    over=int(any(s[2] == "carry" for s in steps)), held=held, h=booked(cost, steps), **r)
     except Exception as e:
         return dict(mode=mode, error=f"{type(e).__name__}: {e}", sym=t["sym"], date=t["date"])
 
@@ -79,20 +79,22 @@ def entries(R, mode, lst, year, size):
         if r["mode"] == mode and r["kind"] == "add" and r["date"][:4] == year and r["sym"] in lst: adds[(r["date"], r["sym"], r["right"])].append(r)
     E = []
     for r in main:
-        E.append((r["date"], r["minute"], 1.0, r[full]))
+        E.append((r["date"], r["minute"], 1.0, r[full], r["h"]))
         if not r["d2"]: continue
         for a in sorted(adds[(r["date"], r["sym"], r["right"])], key=lambda q: q["minute"]):
             if a["minute"] <= r["minute"]: continue
             share, up = r["held"].get(a["minute"], (0, None))
-            if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a[halfk]))
+            if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5, a[halfk], a["h"]))
             break
     return E
 
 
 def stats(E, size):
-    R = sorted(E)
+    R = sorted(E, key=lambda e: e[:4])
     usd = [1e4 * e[2] * max(-1, e[3]) for e in R]
-    pnl = [dict(date=e[0], pnl=str(u)) for e, u in zip(R, usd)]
+    # booked on the sale day, marks at the leg's share (an add is half)
+    pnl = [dict(date=e[0], pnl=str(u), exit_day=e[4]["exit_day"], marks={d: e[2] * v for d, v in e[4]["marks"].items()})
+           for e, u in zip(R, usd)]
     acct, dd = account(pnl, size)
     top = sorted(range(len(R)), key=lambda i: -usd[i])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in set(top[:5])], size)
@@ -112,7 +114,7 @@ def main():
     R = [r for r in R if "error" not in r]
     print(len(R), "walked;", len(err), "errors", collections.Counter(e["error"][:60] for e in err).most_common(5), flush=True)
     with open(f"{B}/bs22_trades.csv", "w") as f:
-        cols = [k for k in R[0] if k != "held"]
+        cols = [k for k in R[0] if k not in ("held", "h")]
         w = csv.DictWriter(f, cols, extrasaction="ignore"); w.writeheader(); w.writerows(R)
     out = {}
     for size in SIZES:

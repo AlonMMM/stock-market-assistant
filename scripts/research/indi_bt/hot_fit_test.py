@@ -20,7 +20,7 @@ C = sim.C
 import news_filter as nf
 from store import calendar
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 from d2_failed_break import CHAMP
 
 B = "data/local/x/bt"
@@ -65,7 +65,7 @@ def one(t):
             p = (c[0], c[1])
         sim.X.clear(); sim.X.update(VERSIONS[t["v"]][2])
         cost, steps, _ = sim.walk(t["sym"], t["date"], minute, t["right"], p[0], p[1], CAL)
-        if cost is not None: out[mode] = (sim.result(cost, steps, 0.01), sim.result(cost, steps, 0.02))  # the overnight cap at each size
+        if cost is not None: out[mode] = (sim.result(cost, steps, 0.01), sim.result(cost, steps, 0.02), held(cost, steps))  # the overnight cap at each size
     return t["k"], out
 
 
@@ -106,10 +106,10 @@ def main():
         for lname, lf in LISTS:
             L = [t for t in T if t["v"] == v and lf(t)]
             for mode in MODES:
-                rows = [dict(date=t["date"], pnl=str(pt(R[t["k"]][mode][0])), sym=t["sym"]) for t in L if mode in R[t["k"]]]
+                rows = [dict(date=t["date"], pnl=str(pt(R[t["k"]][mode][0])), sym=t["sym"], **R[t["k"]][mode][2]) for t in L if mode in R[t["k"]]]
                 if not rows: continue
                 a1, d1 = account(rows)
-                a2, d2 = account([dict(date=t["date"], pnl=str(pt(R[t["k"]][mode][1]))) for t in L if mode in R[t["k"]]], 0.02)
+                a2, d2 = account([dict(date=t["date"], pnl=str(pt(R[t["k"]][mode][1])), **R[t["k"]][mode][2]) for t in L if mode in R[t["k"]]], 0.02)
                 top = sorted(range(len(rows)), key=lambda i: -float(rows[i]["pnl"]))[:5]
                 a5, _ = account([r for i, r in enumerate(rows) if i not in set(top)])
                 yr = " / ".join(f"{sum(float(r['pnl']) for r in rows if r['date'][:4] == y) / 1e3:+,.0f}K" for y in ("2024", "2025", "2026"))

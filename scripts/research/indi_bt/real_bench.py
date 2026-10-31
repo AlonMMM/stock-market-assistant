@@ -24,7 +24,7 @@ import sim
 import export_bench as eb
 import news_filter as nf
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = eb.CAL
@@ -99,13 +99,14 @@ def one(job):
                 half_spread=None if spread is None else round(spread, 4), oi=oi(t["date"], p[0]),
                 old_1=sim.result(cost, steps, 0.01), old_2=sim.result(cost, steps, 0.02),
                 real_1=sim.result(rcost, real, 0.01), real_2=sim.result(rcost, real, 0.02),
+                old_h=held(cost, steps), real_h=held(rcost, real),
                 fills=sum(s[2] in ("buy", "sell") for s in steps), no_quote=miss,
                 exit=last_sell[-1][5] if last_sell else "", overnight=int(any(s[0] != t["date"] for s in steps)))
 
 
 def stats(R, key):
     rows = sorted(R, key=lambda r: (r["date"], r["minute"]))
-    pnl = lambda r, k: dict(date=r["date"], pnl=str(1e4 * max(-1, r[k])))
+    pnl = lambda r, k: dict(date=r["date"], pnl=str(1e4 * max(-1, r[k])), **r[f"{key}_h"])
     a1, d1 = account([pnl(r, f"{key}_1") for r in rows])
     a2, d2 = account([pnl(r, f"{key}_2") for r in rows], 0.02)
     top = set(sorted(range(len(rows)), key=lambda i: -rows[i][f"{key}_1"])[:5])
@@ -128,7 +129,8 @@ def main():
     jobs.sort(key=lambda j: j[1]["date"])
     with mp.Pool(8) as pool: res = [r for r in pool.map(one, jobs, chunksize=16) if r]
     with open(f"{B}/real_bench_trades.csv", "w") as f:
-        w = csv.DictWriter(f, fieldnames=list(res[0])); w.writeheader(); w.writerows(res)
+        w = csv.DictWriter(f, fieldnames=[k for k in res[0] if not k.endswith("_h")], extrasaction="ignore")
+        w.writeheader(); w.writerows(res)
     out = {}
     print("| Version | Trades | No-quote fills | Old: 1% / drop | Real: 1% / drop | Old: 2% / drop | Real: 2% / drop | Real without best 5 | Real per trade at $10K |\n|---|---|---|---|---|---|---|---|---|")
     for slug, v in eb.VERSIONS.items():

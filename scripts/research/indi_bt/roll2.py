@@ -20,7 +20,7 @@ from store import day, calendar
 from tiers_round import H, NIGHT
 import news_filter as nf
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = calendar(); IX = {d: i for i, d in enumerate(CAL)}
@@ -33,11 +33,20 @@ def left_minutes(date, minute, exp):
     return (IX[exp] - IX[date]) * 390 + 390 - minute
 
 
+def both(h1, first, h2, roll, w):
+    """The rolled trade's booking for account(): the first leg plus w x the roll, sold when the later leg is."""
+    if h2 is None: return h1
+    fin = lambda h, x, d: h["marks"].get(d, x if d >= h["exit_day"] else 0.0)
+    days = set(h1["marks"]) | set(h2["marks"])
+    return dict(exit_day=max(h1["exit_day"], h2["exit_day"]),
+                marks={d: fin(h1, first, d) + w * fin(h2, max(-1, roll), d) for d in days})
+
+
 def run(t):
     sim.X.clear(); sim.X.update(X0)
     cost, steps, _ = sim.walk(t["sym"], t["date"], int(t["minute"]), t["right"], t["contract"], t["expiry"], CAL)
     if cost is None: return None
-    out = dict(key=(t["date"], t["sym"], t["minute"]), base=sim.result(cost, steps))
+    out = dict(key=(t["date"], t["sym"], t["minute"]), base=sim.result(cost, steps), h=held(cost, steps))
     if t["expiry"] not in IX: return out
     lm = left_minutes(t["date"], int(t["minute"]), t["expiry"])
     for near, frac, share in itertools.product(NEARS, FRACS, SHARES):
@@ -47,7 +56,7 @@ def run(t):
         if not r: continue
         first = sim.result(c1, s1)
         spot = [x for x in day(t["sym"], r[0]) if x[0] <= r[1]]
-        roll = None
+        roll, h2 = None, None
         if spot:
             sim.X.clear(); sim.X.update(X0)
             old = sim.C["delta"]; sim.C["delta"] = 0.30
@@ -55,8 +64,9 @@ def run(t):
             sim.C["delta"] = old
             if rp:
                 c2, s2, _ = sim.walk(t["sym"], r[0], r[1], t["right"], rp[0], rp[1], CAL)
-                if c2 is not None: roll = sim.result(c2, s2)
+                if c2 is not None: roll, h2 = sim.result(c2, s2), held(c2, s2)
         out[(near, frac, share)] = (first, r[3], r[4] / c1, roll)
+        out[(near, frac, share, "h")] = (held(c1, s1), h2)
     return out
 
 
@@ -75,14 +85,15 @@ def main():
             rows, n, b0, b1 = [], 0, 0.0, 0.0
             for t in L:
                 r = R[(t["date"], t["sym"], t["minute"])]
-                pnl = r["base"] * 1e4
+                pnl, h = r["base"] * 1e4, r["h"]
                 x = r.get(v[:3]) if v else None
                 if x:
                     first, sold, px, roll = x
                     fund = 1e4 * sold * (px if v[3] == "proceeds" else 1.0)
                     new = first * 1e4 + (fund * max(-1, roll) if roll is not None else 0)
                     n += roll is not None; b0 += pnl; b1 += new; pnl = new
-                rows.append(dict(t, pnl=str(pnl)))
+                    h = both(r[v[:3] + ("h",)][0], first, r[v[:3] + ("h",)][1], roll, fund / 1e4)
+                rows.append(dict(t, pnl=str(pnl), **h))
             yr = [sorted(float(x["pnl"]) for x in rows if x["date"][:4] == y) for y in ("2024", "2025", "2026")]
             a1, d1 = account(rows); a2, d2 = account(rows, 0.02)
             lab = "champion (no roll)" if v is None else f"near {v[0]:.0%} left, within {v[1]:.0%} of the time, sell {v[2]:.0%}, fund {v[3]}"

@@ -33,7 +33,7 @@ import floor_exception as fe
 import opt_spread as OS
 import real_bench as RB
 from d2_failed_break import CHAMP
-from score_sum import account
+from score_sum import account, held as booked
 from split import half
 from store import calendar
 
@@ -72,7 +72,7 @@ def one(job):
         rcost, real = OS.price(steps, c[0], cost, "bid")
         row = dict(r1=sim.result(rcost, real, 0.01), r05=sim.result(rcost, real, 0.005), r2=sim.result(rcost, real, 0.02),
                    r3=sim.result(rcost, real, 0.03), r15=sim.result(rcost, real, 0.015), over=int(any(s[2] == "carry" for s in steps)),
-                   rebuy=int(any(s[5] == "rebuy" for s in steps)), rules=sorted({s[5] for s in steps if s[2] == "sell"}))
+                   rebuy=int(any(s[5] == "rebuy" for s in steps)), rules=sorted({s[5] for s in steps if s[2] == "sell"}), h=booked(rcost, real))
         if kind == "main":
             sells = [s for s in real if s[2] == "sell" and s[0] == t["date"]]
             held = {}
@@ -85,27 +85,30 @@ def one(job):
 
 
 def entries(R, adds, src, v, part, size, a=""):
-    """(date, minute, weight, return, overnight, key) of every trade of variant v: the main legs and the pyramid adds."""
+    """(date, minute, weight, return, overnight, key, held()) of every trade of variant v: the main legs and the pyramid adds."""
     full, halfk = SIZES[size]
     E = []
     for r in R:
         if r["src"] != src or r["kind"] != "main" or half(r["date"]) != part or r["date"] < a or v not in r["v"]: continue
         x = r["v"][v]
-        E.append((r["date"], r["minute"], 1.0, x[full], x["over"], (r["date"], r["sym"], r["right"], "main")))
+        E.append((r["date"], r["minute"], 1.0, x[full], x["over"], (r["date"], r["sym"], r["right"], "main"), x["h"]))
         if not r["d2"]: continue
         for ad in sorted(adds.get((src, r["date"], r["sym"], r["right"]), []), key=lambda q: q["minute"]):
             if ad["minute"] <= r["minute"] or v not in ad["v"]: continue
             share, up = x["held"].get(ad["minute"], (0, None))
             if share > 0 and up is not None and up > 0:
-                E.append((ad["date"], ad["minute"], 0.5, ad["v"][v][halfk], ad["v"][v]["over"], (r["date"], r["sym"], r["right"], "add")))
+                E.append((ad["date"], ad["minute"], 0.5, ad["v"][v][halfk], ad["v"][v]["over"], (r["date"], r["sym"], r["right"], "add"),
+                          ad["v"][v]["h"]))
             break
     return E
 
 
 def stats(E, size):
-    R = sorted(E)
+    R = sorted(E, key=lambda e: e[:6])
     usd = [1e4 * e[2] * max(-1, e[3]) for e in R]   # each trade at $10K (an add at $5K)
-    pnl = [dict(date=e[0], pnl=str(u)) for e, u in zip(R, usd)]
+    # booked on the sale day; an add's marks at its half size
+    pnl = [dict(date=e[0], pnl=str(u), exit_day=e[6]["exit_day"], marks={d: e[2] * v for d, v in e[6]["marks"].items()})
+           for e, u in zip(R, usd)]
     acct, dd = account(pnl, size)
     top = sorted(range(len(R)), key=lambda i: -usd[i])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in set(top[:5])], size)

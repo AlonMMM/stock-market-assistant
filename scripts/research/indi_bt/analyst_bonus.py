@@ -29,7 +29,7 @@ import fav_real as FR
 import news_filter as nf
 import real_bench as RB
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held as booked
 from split import half
 from store import calendar
 
@@ -98,6 +98,12 @@ def leg_ret(r, units):
     return sim.result(r["paid"], r["steps"], 0.01 * units)
 
 
+def book(r, k):
+    """score_sum.held of a leg, its marks at k times the size (as its pnl)."""
+    h = booked(r["paid"], r["steps"])
+    return dict(h, marks={d: k * x for d, x in h["marks"].items()})
+
+
 def entries(R, src, part, v, A):
     sized = v in ("size-ud", "size-all", "combo")
     skip = v in ("skip-ud", "combo")
@@ -117,19 +123,19 @@ def entries(R, src, part, v, A):
         mult = 1.0
         if sized and (ud or (v == "size-all" and conf)): mult = 1.5; touched += 1
         if r["pre"]: touched += 1; ADDED.append((v, r["src"], r["date"], r["sym"], r["right"], "confirms" if ud else "against", round(1e4 * max(-1, leg_ret(r, 1.0)))))
-        E.append((r["date"], r["minute"], mult, leg_ret(r, mult), r["sym"]))
+        E.append((r["date"], r["minute"], mult, leg_ret(r, mult), r["sym"], book(r, mult)))
         if not r["d2"]: continue
         for a in sorted(adds.get((r["date"], r["sym"], r["right"]), []), key=lambda x: x["minute"]):
             if a["minute"] <= r["minute"] or a["pre"]: continue
             share, up = r["held"].get(a["minute"], (0, None))
-            if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5 * mult, leg_ret(a, 0.5 * mult), a["sym"]))
+            if share > 0 and up is not None and up > 0: E.append((a["date"], a["minute"], 0.5 * mult, leg_ret(a, 0.5 * mult), a["sym"], book(a, 0.5 * mult)))
             break
     return E, touched
 
 
 def stats(E):
-    R = sorted(E)
-    pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[3]))) for e in R]
+    R = sorted(E, key=lambda e: e[:5])
+    pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[3])), **e[5]) for e in R]
     acct, dd = account(pnl)
     top = set(sorted(range(len(R)), key=lambda i: -R[i][2] * R[i][3])[:5])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in top])

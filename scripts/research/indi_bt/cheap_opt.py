@@ -32,7 +32,7 @@ import opt_spread as OS
 import real_bench as RB
 from d2_failed_break import CHAMP
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 from store import calendar
 
 B = "data/local/x/bt"
@@ -79,11 +79,11 @@ def one(t):
             sim.X.clear(); sim.X.update(CHAMP)
             cost, steps, _ = sim.walk(t["sym"], t["date"], m, t["right"], c[0], c[1], CAL)
             if cost is None: walked[c[0]] = None; continue
-            row = dict(f2_1=sim.result(cost, steps, 0.01), f2_2=sim.result(cost, steps, 0.02))
+            row = dict(f2_1=sim.result(cost, steps, 0.01), f2_2=sim.result(cost, steps, 0.02), f2_h=held(cost, steps))
             if fair:
                 rcost, real = OS.price(steps, c[0], cost, "bid")
                 fills = [s for s in steps if s[2] in ("buy", "sell")]
-                row.update(real_1=sim.result(rcost, real, 0.01), real_2=sim.result(rcost, real, 0.02),
+                row.update(real_1=sim.result(rcost, real, 0.01), real_2=sim.result(rcost, real, 0.02), real_h=held(rcost, real),
                            cov=sum(bool(RB.quote(c[0], s[0], max(s[1] - 1, 0))) for s in fills) / len(fills))
             walked[c[0]] = row
         if not walked[c[0]]: continue
@@ -95,7 +95,8 @@ def one(t):
 def stats(R, key, size):
     R = sorted(R, key=lambda r: (r["date"], r["minute"]))
     if not R: return None
-    pnl = [dict(date=r["date"], pnl=str(1e4 * max(-1, r[key]))) for r in R]
+    h = key.split("_")[0] + "_h"  # the same walk's sale day and 15:50 marks
+    pnl = [dict(date=r["date"], pnl=str(1e4 * max(-1, r[key])), **r[h]) for r in R]
     a, dd = account(pnl, size)
     top = set(sorted(range(len(R)), key=lambda i: -R[i][key])[:5])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in top], size)
@@ -116,7 +117,8 @@ def main():
     print(len(T), "signals,", sum(t.get("src") == "hot" for t in T), "on the hot stocks", flush=True)
     with mp.Pool(8) as pool: R = [r for rows in pool.map(one, T, chunksize=4) for r in rows]
     with open(f"{B}/cheap_opt_trades.csv", "w") as f:
-        w = csv.DictWriter(f, fieldnames=list(dict.fromkeys(k for r in R for k in r))); w.writeheader(); w.writerows(R)
+        w = csv.DictWriter(f, fieldnames=list(dict.fromkeys(k for r in R for k in r if not k.endswith("_h"))), extrasaction="ignore")
+        w.writeheader(); w.writerows(R)
     out = {}
     for lname, cuts in (("fair", (("2024-25", "2024-01-01", "2025-12-31"), ("2026", "2026-01-01", "2026-12-31"))), ("unseen", (("all", "", "9"),)), ("hot", (("2024-25", "2024-01-01", "2025-12-31"), ("2026", "2026-01-01", "2026-12-31"), ("all", "", "9")))):
         print(f"\n### {lname}\n")

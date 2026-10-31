@@ -31,7 +31,7 @@ from store import day
 from signals import series, beta
 from levels import ctx
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = eb.CAL
@@ -94,6 +94,7 @@ def first_trades(job):
     r = eb.one(("d2-bonus", t))
     if not r: return None
     row, path = r
+    row = dict(row, **held(path["cost"], path["steps"]))  # its sale day and 15:50 marks, for account()
     steps = [(a, int(b), c, float(d), float(e), f) for a, b, c, d, e, f in (s.split(",") for s in path["steps"].split(";"))]
     sells = [s for s in steps if s[2] == "sell"]
     full_day = all(s[0] == t["date"] for s in sells) and not any(s[2] == "carry" for s in steps)
@@ -139,7 +140,7 @@ def reentries(job):
             got = {}
             for xname, slug in REX.items():
                 r = eb.one((slug, t2))
-                if r: got[xname] = r[0]
+                if r: got[xname] = dict(r[0], **held(r[1]["cost"], r[1]["steps"]))
             out[rule] = got or None
         if len(out) == len(RULES): break
     return a, out
@@ -162,8 +163,9 @@ def main():
 
     def show(name, rows):
         rows = sorted(rows, key=lambda r: (r["date"], int(r["minute"])))
-        x = [dict(date=r["date"], pnl=str(pt(r["ret"]))) for r in rows]
-        a1, d1 = account(x); a2, d2 = account([dict(date=r["date"], pnl=str(pt(r["ret_2pct"]))) for r in rows], 0.02)
+        bk = lambda r: dict(exit_day=r["exit_day"], marks=r["marks"])
+        x = [dict(date=r["date"], pnl=str(pt(r["ret"])), **bk(r)) for r in rows]
+        a1, d1 = account(x); a2, d2 = account([dict(date=r["date"], pnl=str(pt(r["ret_2pct"])), **bk(r)) for r in rows], 0.02)
         top = set(sorted(range(len(rows)), key=lambda i: -float(rows[i]["ret"]))[:5])
         a5, _ = account([y for i, y in enumerate(x) if i not in top])
         yr = " / ".join(f"{sum(pt(r['ret']) for r in rows if r['date'][:4] == y) / 1e3:+,.0f}K" for y in ("2024", "2025", "2026"))

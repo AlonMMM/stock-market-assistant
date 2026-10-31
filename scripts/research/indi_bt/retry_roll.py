@@ -37,7 +37,7 @@ import floor_exception as fe
 import opt_spread as OS
 import real_bench as RB
 from d2_failed_break import CHAMP
-from score_sum import account
+from score_sum import account, held as booked
 from signals import series
 from split import half
 from store import calendar, day, iv_delta, years_to_expiry
@@ -122,7 +122,8 @@ def one(job):
     rcost, real, book = base
     out = dict(src=src, kind=kind, date=date, minute=m0, sym=sym, right=right, d2=int(float(t.get("c_t") or 9) < 1.8),
                base={s: sim.result(rcost, real, s) for s in SIZES} | {"h": {s: sim.result(rcost, real, s / 2) for s in SIZES}},
-               over=int(any(s[0] != date for s in real if s[2] == "sell")), book=book, retry={}, roll={})
+               over=int(any(s[0] != date for s in real if s[2] == "sell")), book=book, retry={}, roll={},
+               hd=booked(rcost, real))
     sells = [s for s in real if s[2] == "sell"]
     if kind == "add": return out
     held = {}
@@ -146,7 +147,8 @@ def one(job):
                 c1 = pick(sym, date, m1, r1, cl[m1])
                 g1 = leg(sym, date, m1, r1, c1) if c1 else None
                 done[(m1, r1)] = None if not g1 else dict(minute=m1, right=r1, t=t1, contract=c1[0], book=g1[2],
-                                                          r={s: sim.result(g1[0], g1[1], s) for s in SIZES})
+                                                          r={s: sim.result(g1[0], g1[1], s) for s in SIZES},
+                                                          hd=booked(g1[0], g1[1]))
             if done[(m1, r1)]: out["retry"][v] = done[(m1, r1)]
     # 2. the roll: the stock at (or near) the strike while the position is held, then the entry rule on the same side
     bet = 1 if right == "C" else -1
@@ -190,15 +192,20 @@ def one(job):
         exits = {**CHAMP, "carry_force_first": True} if mode == "night" else CHAMP
         g2 = leg(sym, d, mm, right, c2, exits) if c2 else None
         if not g2: continue
+        # booked on the new leg's sale day: the old leg's marks before the roll, then its gross result + the new leg's
+        mo, mn = booked(rcost, old), booked(g2[0], g2[1])
+        g_old = sum(x[3] * x[4] for x in old if x[2] == "sell") / rcost - 1
         for f, fund in FUNDS.items():
-            r = {}
+            r, hd = {}, {}
             for s in SIZES:
                 ro = sim.result(rcost, old, s)
                 # fund(ro) of the first stake into the new leg: a position of s x fund(ro) of the account (the overnight cap at that size)
                 rn = sim.result(g2[0], g2[1], s * fund(ro))
                 r[s] = ro + fund(ro) * max(-1, rn)
+                hd[s] = dict(exit_day=mn["exit_day"], marks={**{x: y for x, y in mo["marks"].items() if x < d},
+                                                             **{x: g_old + fund(ro) * y for x, y in mn["marks"].items()}})
             out["roll"][v + f] = dict(day=d, minute=mm, contract=c2[0], book=g2[2], old=round(sim.result(rcost, old, 0.02), 3),
-                                      new=round(sim.result(g2[0], g2[1], 0.02), 3), r=r)
+                                      new=round(sim.result(g2[0], g2[1], 0.02), 3), r=r, hd=hd)
     return out
 
 
@@ -206,23 +213,26 @@ def entries(R, adds, src, v, part, size, a=""):
     E = []
     for r in R:
         if r["src"] != src or r["kind"] != "main" or half(r["date"]) != part or r["date"] < a: continue
-        ret = r["base"][size]
-        if v in ROLLV and v in r["roll"]: ret = r["roll"][v]["r"][size]
-        E.append((r["date"], r["minute"], 1.0, ret, r["over"]))
+        ret, hd = r["base"][size], r["hd"]
+        if v in ROLLV and v in r["roll"]: ret, hd = r["roll"][v]["r"][size], r["roll"][v]["hd"][size]
+        E.append((r["date"], r["minute"], 1.0, ret, r["over"], hd))
         if v in RETRY and v in r["retry"]:
-            x = r["retry"][v]; E.append((r["date"], x["minute"], 1.0, x["r"][size], 0))
+            x = r["retry"][v]; E.append((r["date"], x["minute"], 1.0, x["r"][size], 0, x["hd"]))
         if not r["d2"]: continue
         for ad in sorted(adds.get((src, r["date"], r["sym"], r["right"]), []), key=lambda q: q["minute"]):
             if ad["minute"] <= r["minute"]: continue
             share, up = r["held"].get(ad["minute"], (0, None))
-            if share > 0 and up is not None and up > 0: E.append((ad["date"], ad["minute"], 0.5, ad["base"]["h"][size], ad["over"]))
+            if share > 0 and up is not None and up > 0: E.append((ad["date"], ad["minute"], 0.5, ad["base"]["h"][size], ad["over"], ad["hd"]))
             break
     return E
 
 
 def stats(E, size):
-    R = sorted(E)
+    R = sorted(E, key=lambda e: e[:5])
     pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[3]))) for e in R]
+    for p, e in zip(pnl, R):  # a 6th element: the leg's held() (other scripts pass 5)
+        h = e[5] if len(e) > 5 and isinstance(e[5], dict) and "exit_day" in e[5] else None
+        if h: p.update(exit_day=h["exit_day"], marks={d: e[2] * v for d, v in h["marks"].items()})
     acct, dd = account(pnl, size)
     top = set(sorted(range(len(R)), key=lambda i: -R[i][2] * R[i][3])[:5])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in top], size)

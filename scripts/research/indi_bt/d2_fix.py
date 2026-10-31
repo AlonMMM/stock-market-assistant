@@ -34,7 +34,7 @@ import floor_exception as fe
 import news_filter as nf
 import real_bench as RB
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held as booked
 from split import half
 
 B = "data/local/x/bt"
@@ -94,7 +94,7 @@ def walk(job):
         held[mm] = (1 - sum(s[3] for s in sells if s[0] == date and s[1] <= mm), None if not q else (q[0] + q[1]) / 2 / rcost - 1)
     return dict(src=src, date=date, sym=sym, right=right, minute=m0, d2=int(float(t.get("c_t") or 9) < 1.8),
                 r={s: sim.result(rcost, real, s) for s in SIZES}, h={s: sim.result(rcost, real, s / 2) for s in SIZES},
-                over=int(any(s[0] != date for s in sells)), held=held, book=bk)
+                over=int(any(s[0] != date for s in sells)), held=held, book=bk, hd=booked(rcost, real))
 
 
 def key(src, t): return (src, t["date"], t["sym"], t["right"], int(t["minute"]))
@@ -102,9 +102,11 @@ def key(src, t): return (src, t["date"], t["sym"], t["right"], int(t["minute"]))
 
 def stats(E, size):
     """rr.stats plus the median trade, the giants (+300%), the non-giant sum and the years, each trade at $10K."""
-    R = sorted(E)
+    R = sorted(E, key=lambda e: e[:5])
     usd = [1e4 * e[2] * max(-1, e[3]) for e in R]
-    pnl = [dict(date=e[0], pnl=str(u)) for e, u in zip(R, usd)]
+    # booked on the sale day, marks at the leg's size (an add is half)
+    pnl = [dict(date=e[0], pnl=str(u), exit_day=e[5]["exit_day"], marks={d: e[2] * v for d, v in e[5]["marks"].items()})
+           for e, u in zip(R, usd)]
     acct, dd = account(pnl, size)
     top = set(sorted(range(len(R)), key=lambda i: -usd[i])[:5])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in top], size)
@@ -159,12 +161,12 @@ def main():
             if half(date) != part or date < a: continue
             x = W.get(key(src, t))
             if not x: continue
-            E.append((date, x["minute"], 1.0, x["r"][size], x["over"]))
+            E.append((date, x["minute"], 1.0, x["r"][size], x["over"], x["hd"]))
             if not x["d2"]: continue
             for ad in sorted(A.get((src, date, sym, x["right"]), []), key=lambda q: q["minute"]):
                 if ad["minute"] <= x["minute"]: continue
                 share, up = x["held"].get(ad["minute"], (0, None))
-                if share > 0 and up is not None and up > 0: E.append((date, ad["minute"], 0.5, ad["h"][size], ad["over"]))
+                if share > 0 and up is not None and up > 0: E.append((date, ad["minute"], 0.5, ad["h"][size], ad["over"], ad["hd"]))
                 break
         return E
 

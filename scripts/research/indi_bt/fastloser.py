@@ -99,8 +99,13 @@ def adds_of(R):
     return A
 
 
+def scaled(h, k):
+    """score_sum.held of a leg (runup.walk_at's h), its marks at k times the size (as its pnl)."""
+    return dict(h, marks={d: k * x for d, x in h["marks"].items()})
+
+
 def entries(R, A, src, part, size, flag=lambda r: False, a=""):
-    """(date, minute, share, ret, over) for the account; a flagged main leg (and its add) at half size."""
+    """(date, minute, share, ret, over, held) for the account; a flagged main leg (and its add) at half size."""
     full, halfk = FLAT[size]
     E = []
     for r in R:
@@ -108,21 +113,22 @@ def entries(R, A, src, part, size, flag=lambda r: False, a=""):
         x, m = r["v_"], r["minute"]
         k = 0.5 if flag(r) else 1.0
         # at half size the night cap binds as for a trade of half the size
-        E.append((r["date"], m, k, x[halfk] if k < 1 else x[full], x["over"]))
+        E.append((r["date"], m, k, x[halfk] if k < 1 else x[full], x["over"], scaled(x["h"], k)))
         if not r["d2entry"]: continue
         for ad in sorted(A.get((src, r["date"], r["sym"], r["right"]), []), key=lambda q: q["minute"]):
             if ad["minute"] <= m: continue
             share, up = x["held"].get(ad["minute"], (0, None))
             if share > 0 and up is not None and up > 0:
-                E.append((ad["date"], ad["minute"], 0.5 * k, ad["v_"]["r05" if k < 1 else halfk], ad["v_"]["over"]))
+                E.append((ad["date"], ad["minute"], 0.5 * k, ad["v_"]["r05" if k < 1 else halfk], ad["v_"]["over"],
+                          scaled(ad["v_"]["h"], 0.5 * k)))
             break
     return E
 
 
 def stats(E, size):
-    R = sorted(E)
+    R = sorted(E, key=lambda e: e[:5])
     usd = [1e4 * e[2] * max(-1, e[3]) for e in R]
-    pnl = [dict(date=e[0], pnl=str(u)) for e, u in zip(R, usd)]
+    pnl = [dict(date=e[0], pnl=str(u), **e[5]) for e, u in zip(R, usd)]
     acct, dd = account(pnl, size)
     top = sorted(range(len(R)), key=lambda i: -usd[i])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in set(top[:5])], size)

@@ -20,7 +20,7 @@ import news_filter as nf
 from store import calendar, day, iv_delta
 from tiers_round import H, NIGHT
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = calendar()
@@ -89,6 +89,7 @@ def one(t):
             cost, steps, _ = sim.walk(t["sym"], t["date"], minute, t["right"], csym, exp, CAL)
             if cost is None: continue
             out[f"{name}|{mode}"] = sim.result(cost, steps)
+            out[f"{name}|{mode}#h"] = held(cost, steps)
             if c: out[f"{name}|{mode}|pick"] = (round(c[3], 3), c[4], c[5])
     return key, out
 
@@ -108,7 +109,8 @@ def main():
         for name, _ in EXITS:
             for mode in ("plain", "cheap", "liquid", "both"):
                 k = f"{name}|{mode}"
-                rows = [dict(date=t["date"], pnl=str(pt(R[key(t)][k])), sym=t["sym"], added=t["status"] != "ok") for t in L if k in R[key(t)]]
+                rows = [dict(date=t["date"], pnl=str(pt(R[key(t)][k])), sym=t["sym"], added=t["status"] != "ok",
+                             **R[key(t)][k + "#h"]) for t in L if k in R[key(t)]]
                 if not rows: continue
                 a1, d1 = account(rows); a2, d2 = account(rows, 0.02)
                 top = set(sorted(range(len(rows)), key=lambda i: -float(rows[i]["pnl"]))[:5])

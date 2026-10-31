@@ -16,7 +16,7 @@ import news_filter as nf
 from store import calendar
 from tiers_round import H, NIGHT
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = calendar()
@@ -33,7 +33,9 @@ def one(t):
         cost, steps, _ = sim.walk(t["sym"], t["date"], int(t["minute"]), t["right"], t["contract"], t["expiry"], CAL)
         if cost is None: return None
         out[name] = sim.result(cost, steps)
-    out["failed break on t >= 1.8 only"] = out["failed break" if float(t["c_t"]) >= 1.8 else "no failed break"]
+        out[name + "#h"] = held(cost, steps)
+    pick = "failed break" if float(t["c_t"]) >= 1.8 else "no failed break"
+    out["failed break on t >= 1.8 only"], out["failed break on t >= 1.8 only#h"] = out[pick], out[pick + "#h"]
     return (t["entry"], t["date"], t["sym"], t["minute"]), out
 
 
@@ -53,7 +55,7 @@ def main():
         for ename, _ in ENTRIES:
             L = [t for t in T if t["entry"] == ename and lf(t) and key(t) in R]
             for xname in [n for n, _ in EXITS] + ["failed break on t >= 1.8 only"] * (ename == "D2 bonus"):
-                rows = [dict(date=t["date"], pnl=str(pt(R[key(t)][xname]))) for t in L]
+                rows = [dict(date=t["date"], pnl=str(pt(R[key(t)][xname])), **R[key(t)][xname + "#h"]) for t in L]
                 a1, d1 = account(rows); a2, d2 = account(rows, 0.02)
                 top = set(sorted(range(len(rows)), key=lambda k: -float(rows[k]["pnl"]))[:5])
                 a5, _ = account([r for k, r in enumerate(rows) if k not in top])

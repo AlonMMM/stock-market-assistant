@@ -19,7 +19,7 @@ from signals import series, beta
 from tiers_round import H, NIGHT
 import news_filter as nf
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = calendar(); IX = {d: i for i, d in enumerate(CAL)}
@@ -65,7 +65,7 @@ def run(t):
     base = sim.result(cost, steps)
     bet = 1 if t["right"] == "C" else -1
     carried = sorted({s[0] for s in steps if s[0] > t["date"]})
-    out = dict(key=(t["date"], t["sym"], t["minute"]), base=base)
+    out = dict(key=(t["date"], t["sym"], t["minute"]), base=base, h=held(cost, steps))
     if not carried: return out
     R1 = curves(t["sym"], t["date"])[1]
     C = {d: curves(t["sym"], d) for d in carried}
@@ -105,7 +105,7 @@ def main():
     lists = [("fair list", lambda t: t["sym"] in HIS40 and t["sym"] in PRIOR[t["date"][:4]]), ("151 unseen", lambda t: t["sym"] not in HIS40)]
     for lname, lf in lists:
         L = [t for t in T if lf(t) and (t["date"], t["sym"], t["minute"]) in R]
-        print(f"\n### {lname}: {len(L)} trades, {sum('cut' in R[(t['date'], t['sym'], t['minute'])] or len(R[(t['date'], t['sym'], t['minute'])]) > 2 for t in L)} carried\n")
+        print(f"\n### {lname}: {len(L)} trades, {sum('cut' in R[(t['date'], t['sym'], t['minute'])] or len(R[(t['date'], t['sym'], t['minute'])]) > 3 for t in L)} carried\n")
         print("| Version | Cut early | Carried trades, $ (base -> new) | 2024 / 2025 / 2026 per trade | At 1% | At 2% |\n|---|---|---|---|---|---|")
         for name in ["champion"] + list(RULES):
             rows, cuts, cb, cn = [], 0, 0.0, 0.0
@@ -114,8 +114,11 @@ def main():
                 if abs(r["base"] - float(t["pnl"]) / 1e4) > 0.01: print("differs", t["date"], t["sym"], r["base"], t["pnl"])
                 v = r["base"] if name == "champion" else r.get(name, r["base"])
                 if name in r.get("cut", {}): cuts += 1
-                if len(r) > 2: cb += r["base"]; cn += v
-                rows.append(dict(t, pnl=str(1e4 * max(-1, v))))
+                if len(r) > 3: cb += r["base"]; cn += v
+                h = r["h"]
+                if name in r.get("cut", {}):  # sold on the cut day; the marks before it are the walk's
+                    d2 = r["cut"][name][0]; h = dict(exit_day=d2, marks={d: x for d, x in h["marks"].items() if d < d2})
+                rows.append(dict(t, pnl=str(1e4 * max(-1, v)), **h))
             yr = [[float(x["pnl"]) for x in rows if x["date"][:4] == y] for y in ("2024", "2025", "2026")]
             a1, d1 = account(rows); a2, d2 = account(rows, 0.02)
             print(f"| {name} | {cuts} | {cb * 1e4:+,.0f} -> {cn * 1e4:+,.0f} | " + " / ".join(f"{st.fmean(v):+,.0f}" for v in yr)

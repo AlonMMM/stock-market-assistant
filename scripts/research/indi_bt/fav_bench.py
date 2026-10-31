@@ -21,7 +21,7 @@ import fav_real as FR
 import d2_liquid as dl
 import news_filter as nf
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = eb.CAL
@@ -41,7 +41,7 @@ def one(job):
     sim.X.clear(); sim.X.update(exits)
     cost, steps, _ = sim.walk(t["sym"], t["date"], int(t["minute"]), t["right"], p[0], p[1], CAL)
     if cost is None: return None
-    return slug, src, t["date"], t["sym"], sim.result(cost, steps, 0.01), sim.result(cost, steps, 0.02)
+    return slug, src, t["date"], t["sym"], sim.result(cost, steps, 0.01), sim.result(cost, steps, 0.02), held(cost, steps)
 
 
 def signals():
@@ -67,8 +67,8 @@ def main():
         for slug, v in V.items():
             T = sorted((r for r in R if r[0] == slug and r[1] == src and r[2] >= a), key=lambda r: r[2])
             if not T: continue
-            rows = [dict(date=r[2], pnl=str(pt(r[4]))) for r in T]
-            a1, d1 = account(rows); a2, d2 = account([dict(date=r[2], pnl=str(pt(r[5]))) for r in T], 0.02)
+            rows = [dict(date=r[2], pnl=str(pt(r[4])), **r[6]) for r in T]
+            a1, d1 = account(rows); a2, d2 = account([dict(date=r[2], pnl=str(pt(r[5])), **r[6]) for r in T], 0.02)
             top = sorted(range(len(T)), key=lambda i: -T[i][4])[:5]
             a5, _ = account([x for i, x in enumerate(rows) if i not in set(top)])
             per = sum(float(x["pnl"]) for x in rows) / len(rows)

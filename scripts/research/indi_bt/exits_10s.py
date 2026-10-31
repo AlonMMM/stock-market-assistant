@@ -32,7 +32,7 @@ from store import NY, bs, calendar, day, iv_delta, years_to_expiry
 from signals import Day
 from tiers_round import H, NIGHT
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 TEN_DB = os.environ.get("BT_10S_DB", "data/local/bars-10s.sqlite")
@@ -189,6 +189,7 @@ def one(t):
     if c0 is None or c1 is None or c2 is None: return None
     return dict(key=key, ret={"sim": sim.result(c0, s0), "1-min": sim.result(c1, s1), "10-s": sim.result(c2, s2)},
                 rules={"sim": rules_of(s0), "1-min": rules_of(s1), "10-s": rules_of(s2)}, errs=errs,
+                h={"sim": held(c0, s0), "1-min": held(c1, s1), "10-s": held(c2, s2)},
                 first={"sim": s0[1] if len(s0) > 1 else None, "10-s": s2[1] if len(s2) > 1 else None})
 
 
@@ -224,7 +225,7 @@ def main():
         print("| Version | Winners | Per trade at $10K | Without the best 5 (per trade, at 1%) | At 1% (return), worst drop | At 2%, worst drop |\n|---|---|---|---|---|---|")
         for v in VERSIONS:
             if v == "1-min" and not bad: continue
-            rows = [dict(date=t["date"], sym=t["sym"], pnl=str(pt(R[key(t)]["ret"][v]))) for t in L]
+            rows = [dict(date=t["date"], sym=t["sym"], pnl=str(pt(R[key(t)]["ret"][v])), **R[key(t)]["h"][v]) for t in L]
             pnl = [float(r["pnl"]) for r in rows]
             best = set(sorted(range(len(rows)), key=lambda i: -pnl[i])[:5])
             wo = [r for i, r in enumerate(rows) if i not in best]

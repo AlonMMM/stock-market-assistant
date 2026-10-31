@@ -13,7 +13,7 @@ import news_filter as nf
 from store import calendar
 from tiers_round import H, NIGHT
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 
 B = "data/local/x/bt"
 CAL = calendar()
@@ -28,7 +28,7 @@ def walk(t):
         sim.X.clear(); sim.X.update(X0); sim.X["carry_min_gain"] = g
         cost, steps, _ = sim.walk(t["sym"], t["date"], int(t["minute"]), t["right"], t["contract"], t["expiry"], CAL)
         if cost is None: return None
-        out[g] = (sim.result(cost, steps), any(s[2] == "carry" for s in steps))
+        out[g] = (sim.result(cost, steps), any(s[2] == "carry" for s in steps), held(cost, steps))
     return out
 
 
@@ -42,7 +42,7 @@ def main():
         L = [t for t in T if lf(t) and key(t) in R]
         print(f"\n### {lname}: {len(L)} trades\n\n| Hold from | Held | Account at 1% / worst drop | At 2% / worst drop | 2024 / 2025 / 2026 (P&L at $10K) | Without best 5, at 1% |\n|---|---|---|---|---|---|")
         for g in GAINS:
-            rows = [dict(date=t["date"], pnl=str(1e4 * max(-1, R[key(t)][g][0]))) for t in L]
+            rows = [dict(date=t["date"], pnl=str(1e4 * max(-1, R[key(t)][g][0])), **R[key(t)][g][2]) for t in L]
             a1, d1 = account(rows); a2, d2 = account(rows, 0.02)
             top = set(sorted(range(len(rows)), key=lambda k: -float(rows[k]["pnl"]))[:5])
             a5, _ = account([x for k, x in enumerate(rows) if k not in top])

@@ -48,7 +48,7 @@ def main():
                 if r["v"] != loose or r["src"] != src or r["kind"] != "main" or half(r["date"]) != part or r["date"] < a: continue
                 first = champ_first.get((src, r["date"], r["sym"]))
                 if first is not None and r["minute"] >= first: continue
-                E.append((r["date"], r["minute"], size, sim.result(r["paid"], r["steps"], 0.01 * size), r["sym"], r["cov"], 1))
+                E.append((r["date"], r["minute"], size, sim.result(r["paid"], r["steps"], 0.01 * size), r["sym"], r["cov"], 1, DW.book(r, size)))
                 extra += 1
         return E, extra
 

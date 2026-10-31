@@ -28,7 +28,7 @@ from store import calendar, day
 from signals import series, beta
 from levels import ctx
 from low_delta import HIS40, PRIOR
-from score_sum import account
+from score_sum import account, held
 from d2_failed_break import CHAMP
 
 B = "data/local/x/bt"
@@ -135,6 +135,7 @@ def one(t):
         cost, steps, _ = sim.walk(t["sym"], t["date"], m, t["right"], p[0], p[1], CAL)
         if cost is None: continue
         out[mode] = (sim.result(cost, steps, 0.01), sim.result(cost, steps, 0.02))
+        out[mode + "#h"] = held(cost, steps)
         at[mode] = m
     return (t["date"], t["sym"], t["minute"]), out, at
 
@@ -154,9 +155,9 @@ def main():
         print("| Pick | Trades | Winners | Per trade at $10K | At 1% / worst drop | At 2% / worst drop | 2024 / 2025 / 2026 at $10K | Without the best 5 at 1% | Added: n, winners, sum, without their best 5 | Best added |\n|---|---|---|---|---|---|---|---|---|---|")
         for mode in MODES:
             base = "cheap" if mode.startswith("cheap") else "plain"
-            rows = [dict(date=t["date"], pnl=str(pt(R[key(t)][mode][0])), t=t) for t in L if mode in R[key(t)]]
+            rows = [dict(date=t["date"], pnl=str(pt(R[key(t)][mode][0])), t=t, **R[key(t)][mode + "#h"]) for t in L if mode in R[key(t)]]
             a1, d1 = account(rows)
-            a2, d2 = account([dict(date=t["date"], pnl=str(pt(R[key(t)][mode][1]))) for t in L if mode in R[key(t)]], 0.02)
+            a2, d2 = account([dict(date=t["date"], pnl=str(pt(R[key(t)][mode][1])), **R[key(t)][mode + "#h"]) for t in L if mode in R[key(t)]], 0.02)
             top = set(sorted(range(len(rows)), key=lambda i: -float(rows[i]["pnl"]))[:5])
             a5, _ = account([r for i, r in enumerate(rows) if i not in top])
             yr = " / ".join(f"{sum(float(r['pnl']) for r in rows if r['date'][:4] == y) / 1e3:+,.0f}K" for y in ("2024", "2025", "2026"))

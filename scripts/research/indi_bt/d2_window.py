@@ -22,7 +22,7 @@ import fair_fill as FF
 import fav_real as FR
 import floor_exception as fe
 import real_bench as RB
-from score_sum import account
+from score_sum import account, held as booked
 from split import half
 
 B = "data/local/x/bt"
@@ -54,6 +54,12 @@ def one(job):
     return dict(r, v=v, cov=int(cov))
 
 
+def book(r, k):
+    """score_sum.held of a leg, its marks at k times the size (as its pnl)."""
+    h = booked(r["paid"], r["steps"])
+    return dict(h, marks={d: k * x for d, x in h["marks"].items()})
+
+
 SIZE = float(os.environ.get("DW_SIZE", "0.02"))   # 2% a trade by default (the user, 2026-10-27); an add: half at half
 
 
@@ -61,19 +67,19 @@ def entries(R, adds, v, src, part, a=""):
     E = []
     for r in R:
         if r["v"] != v or r["src"] != src or r["kind"] != "main" or half(r["date"]) != part or r["date"] < a: continue
-        E.append((r["date"], r["minute"], 1.0, sim.result(r["paid"], r["steps"], SIZE), r["sym"], r["cov"], r["d2"]))
+        E.append((r["date"], r["minute"], 1.0, sim.result(r["paid"], r["steps"], SIZE), r["sym"], r["cov"], r["d2"], book(r, 1.0)))
         if not r["d2"]: continue
         for x in sorted(adds.get((src, r["date"], r["sym"], r["right"]), []), key=lambda q: q["minute"]):
             if x["minute"] <= r["minute"]: continue
             share, up = r["held"].get(x["minute"], (0, None))
-            if share > 0 and up is not None and up > 0: E.append((x["date"], x["minute"], 0.5, sim.result(x["paid"], x["steps"], SIZE / 2), x["sym"], x["cov"], 0))
+            if share > 0 and up is not None and up > 0: E.append((x["date"], x["minute"], 0.5, sim.result(x["paid"], x["steps"], SIZE / 2), x["sym"], x["cov"], 0, book(x, 0.5)))
             break
     return E
 
 
 def stats(E):
-    R = sorted(E)
-    pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[3]))) for e in R]
+    R = sorted(E, key=lambda e: e[:7])
+    pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[3])), **e[7]) for e in R]
     acct, dd = account(pnl, SIZE)
     top = set(sorted(range(len(R)), key=lambda i: -R[i][2] * R[i][3])[:5])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in top], SIZE)

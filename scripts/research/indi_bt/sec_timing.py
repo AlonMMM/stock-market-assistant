@@ -28,7 +28,7 @@ import fair_fill as FF
 import fav_real as FR
 import floor_exception as fe
 from levels import ctx
-from score_sum import account
+from score_sum import account, held as booked
 from signals import series, beta
 from split import half
 from store import calendar, day
@@ -286,34 +286,36 @@ def one(job):
 
 
 def leg(r, v, units):
-    """-> the leg's return per unit at this size under variant v."""
+    """-> (the leg's return per unit at this size under variant v, its booking: score_sum.held)."""
     got = r["buys"].get(v)
-    if not got or v == "now": return sim.result(r["paid"], r["steps"], 0.01 * units)
+    now = (sim.result(r["paid"], r["steps"], 0.01 * units), booked(r["paid"], r["steps"]))
+    if not got or v == "now": return now
     s, paid = got
     first_sale = min((x[1] for x in r["steps"] if x[2] == "sell" and x[0] == r["date"]), default=999)
     m = (s // 60) if s is not None else r["fill_m"]
-    if m >= first_sale: return sim.result(r["paid"], r["steps"], 0.01 * units)
+    if m >= first_sale: return now
     steps = [(r["date"], m, "buy", 1.0, paid, "entry")] + r["steps"][1:]
-    return sim.result(paid, steps, 0.01 * units)
+    return sim.result(paid, steps, 0.01 * units), booked(paid, steps)
 
 
 def entries(R, adds, v, src, part, a=""):
     E = []
     for r in R:
         if r["src"] != src or r["kind"] != "main" or half(r["date"]) != part or r["date"] < a: continue
-        E.append((r["date"], r["minute"], 1.0, leg(r, v, 1.0)))
+        E.append((r["date"], r["minute"], 1.0, *leg(r, v, 1.0)))
         if not r["d2"]: continue
         for x in sorted(adds.get((src, r["date"], r["sym"], r["right"]), []), key=lambda q: q["minute"]):
             if x["minute"] <= r["minute"]: continue
             share, up = r["held"].get(x["minute"], (0, None))
-            if share > 0 and up is not None and up > 0: E.append((x["date"], x["minute"], 0.5, leg(x, v, 0.5)))
+            if share > 0 and up is not None and up > 0: E.append((x["date"], x["minute"], 0.5, *leg(x, v, 0.5)))
             break
     return E
 
 
 def stats(E):
-    R = sorted(E)
-    pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[3]))) for e in R]
+    R = sorted(E, key=lambda e: e[:4])
+    pnl = [dict(date=e[0], pnl=str(1e4 * e[2] * max(-1, e[3])), exit_day=e[4]["exit_day"],
+                marks={d: e[2] * v for d, v in e[4]["marks"].items()}) for e in R]
     acct, dd = account(pnl)
     top = set(sorted(range(len(R)), key=lambda i: -R[i][2] * R[i][3])[:5])
     a5, _ = account([p for i, p in enumerate(pnl) if i not in top])
