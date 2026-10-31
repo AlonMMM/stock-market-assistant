@@ -2367,3 +2367,9 @@ $500K in 6-12 months, so for them the ladder is plain 3%.
   +10% off the low: fair $4,531,878 / $4,852,623 (38.3%) vs the plain 2.5% ladder $3,424,357 (38.6%); Favorites 12m
   $240,567 / $238,904 (36.7%) vs $265,105 (35.6%); 6m $146,055 / $145,530 (36.7%) vs $152,131 (35.6%). At the same drop
   it beats the lower starting size on the fair list (+32-42%) and loses on both Favorites lists (-4% to -10%): mixed.
+- Cuts and a boost on the 3% ladder (the user: "0.8 size when down 15%, back to normal at -10%; half size at -30%;
+  also on a new high 1.3-1.5x until -5% from the top"): fair cuts $3,045,245 (35.7%), + boost 1.3x $2,942,044
+  (35.6%), + boost 1.5x $3,363,925 (35.1%) vs flat 2% $3,996,228 (33.9%); Favorites 12m $188,827 / $183,739 / $186,674
+  (34.5-36.3%) vs flat 2% $260,085 (29.7%); 6m $115,331 / $112,485 / $112,908 vs $159,127. Every plan has more drop
+  and less money than flat 2% on all three lists; the boost adds nothing (a new high usually comes right after a giant,
+  and a dry spell follows). Not better: flat 2% (or the plain 3% ladder for more money at ~41% drop).
