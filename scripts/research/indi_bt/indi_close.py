@@ -90,6 +90,12 @@ all at 09:32"). Today's pick (t >= 1.8, top 10% of range, volume 1.3x, no earnin
                 else all at 09:32
   t18-o2close   the same with "our way" = the stock at 09:32 vs the entry day's close
 Quotes: IC_PASS=list -> open26_dbx_list.csv, dbx_fetch.py open26 (the next day to the close).
+
+IC_SET=delta (nightly-bet, the user 2026-10-31: "we do not know to predict next day and with option we'll loose most of
+the time. but we want a big move, and if we hit 1/8 big we will win", then "go and test it" on the plan: the big-winner
+rate and a cheaper / dearer option): today's pick (t >= 1.8, top 10%, volume 1.3x, top 3, next-day expiry, his exit)
+at delta 0.10 / 0.15 / 0.20 / 0.30. Read by bigrate.py on unique bets (the fair list and the Favorites as one list).
+Quotes: IC_PASS=list -> open27_dbx_list.csv, dbx_fetch.py open27.
 """
 import bisect, collections, csv, datetime as dt, glob, gzip, json, math, multiprocessing as mp, os, statistics as st, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -115,17 +121,18 @@ SIZES = rr.SIZES
 LISTING = os.environ.get("IC_PASS") == "list"
 M_IN = 387
 A0, Z = "2024-02-01", FR.Z
-EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15", "open16", "open22", "open23", "open24", "open26")]
+EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15", "open16", "open22", "open23", "open24", "open26", "open27")]
 VOL = os.environ.get("IC_SET") == "vol"
 D2B = os.environ.get("IC_SET") == "d2b"
 D3S = os.environ.get("IC_SET") == "d3"
+DELTA = os.environ.get("IC_SET") == "delta"
 O2 = os.environ.get("IC_SET") == "o2"
 SCORE = os.environ.get("IC_SET") == "score"
 FILL = os.environ.get("IC_SET") in ("fill", "score")
-MANY = os.environ.get("IC_SET") == "many" or FILL or O2
+MANY = os.environ.get("IC_SET") == "many" or FILL or O2 or DELTA
 RS = os.environ.get("IC_SET") == "rs" or VOL or D2B or D3S or MANY
-TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs", "d3": "_d3", "many": "_many", "fill": "_fill", "score": "_score", "o2": "_o2"}.get(os.environ.get("IC_SET"), "")
-LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv", "_d3": "open16_dbx_list.csv", "_many": "open22_dbx_list.csv", "_fill": "open23_dbx_list.csv", "_score": "open24_dbx_list.csv", "_o2": "open26_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
+TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs", "d3": "_d3", "many": "_many", "fill": "_fill", "score": "_score", "o2": "_o2", "delta": "_delta"}.get(os.environ.get("IC_SET"), "")
+LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv", "_d3": "open16_dbx_list.csv", "_many": "open22_dbx_list.csv", "_fill": "open23_dbx_list.csv", "_score": "open24_dbx_list.csv", "_o2": "open26_dbx_list.csv", "_delta": "open27_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
 BASE = dict(lo=0.02, hi=0.04, d=0.20, exit="his", ath=False, pos=0.85, vwap=True, rs="60", vol="min", fri=False)
 CORE = {"thesis": {}, "m15": dict(lo=0.015), "m3": dict(lo=0.03, hi=9.0), "d30": dict(d=0.30), "d15": dict(d=0.15),
         "at10": dict(exit="at10"), "ath": dict(ath=True)}
@@ -190,9 +197,12 @@ if SCORE:
 if O2:
     VERSIONS = {"t18-his": {**R, "t": 1.8, "n": 3}, "t18-o2open": {**R, "t": 1.8, "n": 3, "exit": "o2open"},
                 "t18-o2close": {**R, "t": 1.8, "n": 3, "exit": "o2close"}}
-REF = ("t18-his" if O2 else "t18-top3") if MANY else None
+if DELTA:
+    VERSIONS = {f"t18-d{round(d * 100):02d}": {**R, "t": 1.8, "n": 3, "d": d} for d in (0.10, 0.15, 0.20, 0.30)}
+REF = ("t18-his" if O2 else "t18-d20" if DELTA else "t18-top3") if MANY else None
 PICKABLE = [v for v in VERSIONS if v != "t18-top3" and (v.startswith("r2") or FILL)] if MANY else list(VERSIONS)
 if O2: PICKABLE = ["t18-o2open", "t18-o2close"]
+if DELTA: PICKABLE = [v for v in VERSIONS if v != "t18-d20"]
 SCALE = {}   # the tune pool's sorted parts, per (pos, tmin)
 RX = None
 BASE_EXPIRY = sim.expiry_for   # restored after each pick (set at import, so every worker has it)

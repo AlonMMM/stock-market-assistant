@@ -21,6 +21,8 @@ Picked on tune among the four scores by the end balance at 2%; the pick and the 
 the day to 15:57 and earlier sessions. One look-ahead in scale only: the percentiles come from all tune weeks 2024-2026,
 so a 2024 night is ranked on a scale that includes later nights; live, a trailing year would set it.
 Quotes: IC_PASS=list -> open25_dbx_list.csv, dbx_fetch.py open25.
+NB_SET=delta (the user 2026-10-31 "go and test it": the big-winner rate by the option's delta): a3r2p0 at delta 0.10 /
+0.15 / 0.20 / 0.30 -> nightly_bt_delta_trades.json, read by bigrate.py; quotes open28.
 
   node --env-file=.env <dir>/run.mjs nightly_bt.py      (from the app repo root)
 """
@@ -32,12 +34,18 @@ import retry_roll as rr
 from store import day
 from split import half
 
-ic.EXTRAS.append(os.path.join(HERE, "dbx_cache", "open25"))
+ic.EXTRAS += [os.path.join(HERE, "dbx_cache", "open25"), os.path.join(HERE, "dbx_cache", "open28")]
+DSET = os.environ.get("NB_SET") == "delta"
 LISTING = ic.LISTING
 F = "data/local/x/bt/nightly_feat.csv.gz"
 B = "data/local/x/bt"
 PARTS = {"ACT": ("rvol", "rvol_late", "burst_n"), "RS": ("rs_day", "t"), "PULL": ("depth", "-lh_run")}
 VERSIONS = {"a3r2p2": (3, 2, 2), "a3r2p0": (3, 2, 0), "equal": (1, 1, 1), "user": (5, 5, 4)}
+DELTAS = {v: 0.20 for v in VERSIONS}
+if DSET:
+    VERSIONS = {f"a3r2p0-d{round(d * 100):02d}": (3, 2, 0) for d in (0.10, 0.15, 0.20, 0.30)}
+    DELTAS = {v: int(v[-2:]) / 100 for v in VERSIONS}
+DELTAS["ref"] = 0.20
 Q, N_NIGHT, TRY = 0.80, 2, 6
 
 
@@ -66,8 +74,8 @@ def px(job):
 
 
 def walk(job):
-    key, r, right, win = job
-    w = ic.walk(("fair", r, right, 0.20, win, "his"))
+    key, r, right, win, d = job
+    w = ic.walk(("fair", r, right, d, win, "his"))
     return key, w
 
 
@@ -100,21 +108,21 @@ def main():
         for d, lst in P.items():
             for r in lst:
                 if not PX.get((r["sym"], d)): continue
-                key = (r["sym"], d, r["side"], WIN[v])
-                jobs[key] = (key, {"sym": r["sym"], "date": d, "px": PX[(r["sym"], d)]}, r["side"], WIN[v])
+                key = (r["sym"], d, r["side"], WIN[v], DELTAS[v])
+                jobs[key] = (key, {"sym": r["sym"], "date": d, "px": PX[(r["sym"], d)]}, r["side"], WIN[v], DELTAS[v])
     print(len(jobs), "trades to walk", flush=True)
     with mp.Pool(8) as pool_: W = dict(pool_.map(walk, list(jobs.values()), chunksize=4))
 
     def taken(v, d):
         out = []
         for r in picks[v].get(d, []):
-            w = W.get((r["sym"], d, r["side"], WIN[v]))
+            w = W.get((r["sym"], d, r["side"], WIN[v], DELTAS[v]))
             if w: out.append((r, w))
             if v != "ref" and len(out) >= N_NIGHT: break
         return out
     if LISTING:
         rowsq = sorted({x for v in picks for d in picks[v] for _, w in taken(v, d) for x in w})
-        with open(os.path.join(HERE, "open25_dbx_list.csv"), "w") as fh:
+        with open(os.path.join(HERE, "open28_dbx_list.csv" if DSET else "open25_dbx_list.csv"), "w") as fh:
             wr = csv.writer(fh); wr.writerow(["date", "contract", "minute"]); wr.writerows(rowsq)
         print(f"{len(rowsq)} rows on {len({x[0] for x in rowsq})} days -> open25_dbx_list.csv"); return
 
@@ -143,7 +151,7 @@ def main():
     print(f"\nfills on the real book: {sum(bk) / max(1, len(bk)):.0%} of {len(bk)}")
     json.dump({f"{v}|{p}": [dict(date=w["date"], sym=w["sym"], right=w["right"], contract=w["contract"], r={str(k): x for k, x in w["r"].items()})
                             for _, w in trades(v, p)] for v in ["ref"] + list(VERSIONS) for p in ("tune", "check")},
-              open(f"{B}/nightly_bt_trades.json", "w"))
+              open(f"{B}/nightly_bt{'_delta' if DSET else ''}_trades.json", "w"))
 
 
 if __name__ == "__main__":
