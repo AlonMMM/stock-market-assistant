@@ -2406,3 +2406,17 @@ buy at the signal minute's close (`champ-1s`). Every fix, marked, split trades r
 
 2.8 still leads 2.7 (fair +29%, both halves; Favorites 12m +11%). Without early entry the 3% start of the steps loses
 to flat 2% on both Favorites lists (-12% / -16%, 13 points more drop) while it gains on the fair list (+33%, +5 points).
+
+### 2.8 on the 24 / 36-month Favorites, with the late hold (2026-10-31)
+The dashboard's 2.8 on the long Favorites was the step-8 run without the late hold, and the 24 months had none, so
+picking 2.8 there fell back to 2.7. New run (export_fav_long.py, minute fills, the 2.8 overlay
+`{"user_stop": {"checks": [], "out": -0.6}, "stock_stages": {"half": 0.5, "full": 1.0}, "late_hold": {"from": 330}}`),
+now `x-stop60-m` on both lists. Marked account, 2%, ±2% fills (whole / tune / check):
+
+| | 2.7 minute fills | 2.8 minute fills |
+|---|---|---|
+| Favorites 24m | $1,839,147 (28.6%) / $695,438 / $276,044 | $1,933,758 (29.5%) / $809,401 / $249,477 |
+| Favorites 36m | $4,413,964 (29.1%) / $573,066 / $804,252 | $4,667,210 (29.5%) / $686,366 / $710,166 |
+
+2.8 is ahead on the whole period (+5% / +6%) and on tune (+16% / +20%), but behind on check on both (-10% / -12%),
+as step 12 found for the stop -60% on the 36 months. The late hold changes 8 of ~2,400 trades.
