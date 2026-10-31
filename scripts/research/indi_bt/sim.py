@@ -394,7 +394,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 return cost, steps, ""
             if st.get("rb_pending"):  # the rebuy (rebuy): the part sold at the +10 check, back at this bar
                 st["rb_pending"] = False; st["rebought"] = True
-                q = st["half_q"]; p_ = mid(b) * (1 + SH)
+                q = st.get("rb_q") or st["half_q"]; p_ = mid(b) * (1 + SH)
                 basis = (rem * basis + q * p_) / (rem + q); rem += q
                 steps.append((d, t, "buy", round(q, 4), round(p_, 4), "rebuy"))
             if pending:
@@ -635,6 +635,29 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                     if TH.get("s30") and unit and bet * (px - sd.c[minute]) <= -TH["s30"] * unit: pending = ("all", "T_s30"); continue
                     if TH.get("bar") and sb and (px < sb[3] if bet > 0 else px > sb[2]): pending = ("all", "T_bar"); continue
                     if TH.get("t") is not None and tser and tser[tt] is not None and bet * tser[tt] <= TH["t"]: pending = ("all", "T_tstat"); continue
+            SS = X.get("stock_stages")  # the user 2026-10-31 ("multiple exit half than exit full phases. exit half than
+            # bring back when it looks good again"), the entry day, on the stock's move from the signal price in S30 units:
+            # {half: 0.5, share: 0.5, full: 1.0, back: 0.0, until: 330, repeat: false}: `share` of what is held out once the
+            # stock is `half` S30 against; all out at `full` against; with `back`, the part sold bought back once the stock
+            # is `back` S30 on our side of the signal price again (before minute `until`); `repeat`: the half can fire again
+            # after a buy back
+            if SS and k == 0 and sd.ok and not hold:
+                if "ss" not in st:
+                    from levels import ctx
+                    cx = ctx(und, d); p0 = sd.c[minute]
+                    st["ss"] = (cx["sd"] * p0 if cx and cx["sd"] and p0 else None, p0)
+                unit, p0 = st["ss"]; px = sd.c[min(t, 389)]
+                if unit and px:
+                    mv = bet * (px - p0) / unit
+                    if SS.get("full") is not None and mv <= -SS["full"]: pending = ("all", "T_full"); continue
+                    if SS.get("half") is not None and not st.get("ss_half") and mv <= -SS["half"]:
+                        st["ss_half"] = True; st["rb_q"] = rem * SS.get("share", 0.5); st["rebought"] = False
+                        pending = (st["rb_q"], "T_half"); continue
+                    if SS.get("back") is not None and st.get("ss_half") and not st.get("rebought") and not st.get("rb_pending") \
+                            and mv >= SS["back"] and t <= SS.get("until", 330):
+                        st["rb_pending"] = True
+                        if SS.get("repeat"): st["ss_half"] = False
+                        continue
             DF = X.get("defence")  # {window, out}: the stock stops holding up on the market's bad minutes
             if DF and k == 0 and sd.ok and sd.beta is not None and t - minute >= DF["window"]:
                 if "df" not in st:

@@ -1887,3 +1887,23 @@ The user: "what happens if we remove the 10-20 minutes check if we have this?". 
 - Checks off + the stock stop wins both halves (+6.5% tune, +7% check, +14% total, +8% at 1%) at the same drop
   (27.8%): the stock stop does the checks' job of cutting losers, with fewer good trades cut. The candidate.
   In-sample (the fair list, the period the rules were built on); confirm on Favorites before a live change.
+
+### Staged stock exits and buy-backs, checks off (2026-10-31)
+The user: "multiple exits, and multiple exit half than exit full phases. exit half than bring back when it looks good
+again". sim.py `stock_stages` {half, share, full, back, repeat}; all with the 10 / 20-minute checks off and the -30%
+stop on; moves from the signal price in S30; fixed walk, champ-early, fair list.
+
+| Version | Halves / fulls / buy-backs | Won | 2% (drop) | Without 10-10 | Tune | Check | 1% |
+|---|---|---|---|---|---|---|---|
+| Today's rules (checks on) | - | 16.7% | $2,845,332 (27.6%) | $2,798,469 | $448,187 | $634,854 | $857,745 |
+| All out at 1.0 S30 (= the candidate, same numbers) | 0 / - / 0 | 18.3% | $3,239,866 (27.8%) | $3,175,997 | $477,188 | $678,950 | $929,327 |
+| **Half at 0.5, the rest at 1.0** | 620 / 392 / 0 | 16.7% | **$3,431,770 (26.7%)** | $3,359,191 | $506,039 | $678,163 | $956,642 |
+| Half 0.5, rest 1.0, buy back at the signal price | 620 / 392 / 212 | 17.0% | $2,572,767 (29.1%) | $2,525,743 | $454,697 | $565,820 | $827,291 |
+| Half 0.5, rest 1.0, buy back at +0.25 | 620 / 385 / 170 | 17.0% | $2,655,511 (31.5%) | $2,609,372 | $448,124 | $592,584 | $844,859 |
+| Half 0.75, rest 1.25 | 498 / 263 / 0 | 18.8% | $3,018,911 (28.9%) | $2,954,526 | $478,697 | $630,652 | $899,791 |
+| Half 0.5, rest 1.0, buy back at the signal, repeat | 619 / 397 / 267 | 16.8% | $2,314,326 (29.2%) | $2,277,037 | $447,770 | $516,856 | $783,929 |
+
+- Half at 0.5 S30, the rest at 1.0: the best so far: +21% over today's rules (+13% tune, +7% check) and +6% over the
+  all-out candidate (+6% tune, check a tie), with the lowest drop (26.7%). The new candidate.
+- Buying back: worse every way (-20% to -29%, deeper drops): the stock back at the signal price is usually a pause
+  before the next leg against, and the half is paid at the ask. Looser stages (0.75 / 1.25) worse.
