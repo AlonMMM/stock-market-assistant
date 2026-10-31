@@ -343,6 +343,23 @@ def sec_stop(und, sym, d, t, minute, bet, basis, st, uout, exp, sp0):
     return None
 
 
+def be_level(sym, d, t, exp, bet, opt_px, stock_px, basis):
+    """The stock price at which the option would be worth `basis` (what was paid), at the option's implied volatility now
+    (Black-Scholes): the be_lock stop. None when the price is outside the model's range."""
+    from store import bs
+    K = float(sym[-8:]) / 1000; call = bet > 0
+    T = years_to_expiry(d, t, exp)
+    x = iv_delta(opt_px, stock_px, K, T, C["rate"], call)
+    if not x: return None
+    lo, hi = (stock_px * 0.5, stock_px) if call else (stock_px, stock_px * 1.5)
+    for _ in range(50):
+        m = (lo + hi) / 2
+        v = bs(m, K, T, x[0], C["rate"], call)[0]
+        if (v > basis) == call: hi = m
+        else: lo = m
+    return (lo + hi) / 2
+
+
 def walk(und, date, minute, right, sym, exp, cal, limit=None):
     """Walks one contract from the signal minute to the last sale. -> (entry, steps, flags)."""
     if OVR: overlay(X, OVR)
@@ -699,6 +716,18 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                     if TH.get("s30") and unit and bet * (px - sd.c[minute]) <= -TH["s30"] * unit: pending = ("all", "T_s30"); continue
                     if TH.get("bar") and sb and (px < sb[3] if bet > 0 else px > sb[2]): pending = ("all", "T_bar"); continue
                     if TH.get("t") is not None and tser and tser[tt] is not None and bet * tser[tt] <= TH["t"]: pending = ("all", "T_tstat"); continue
+            BE = X.get("be_lock")  # the user 2026-11-01 ("when we up 20% calculate the stock down we need to exit that will
+            # make us breakeven"), the entry day: once the option bar closes `arm` over what was paid, the stock price where
+            # the option would be worth what was paid (be_level) becomes a stop on the stock; all out when the stock gets
+            # there. {arm, update}: with update, the level is worked out again at each later bar still `arm` up and the
+            # tighter one kept (theta lowers the option at the same stock price as the day goes on); target: the level is
+            # where the option is worth that much over what was paid (0.1 = +10%), so a lock sale is a small win
+            if BE and k == 0 and sd.ok and not hold:
+                spx = sd.c[min(t, 389)]
+                if spx and g >= BE["arm"] and (st.get("be") is None or BE.get("update")):
+                    lvl = be_level(sym, d, t, exp, bet, c, spx, basis * (1 + BE.get("target", 0.0)))
+                    if lvl: st["be"] = lvl if st.get("be") is None else (max if bet > 0 else min)(st["be"], lvl)
+                if spx and st.get("be") and bet * (spx - st["be"]) <= 0: pending = ("all", "BE_lock"); continue
             SS = X.get("stock_stages")  # the user 2026-10-31 ("multiple exit half than exit full phases. exit half than
             # bring back when it looks good again"), the entry day, on the stock's move from the signal price in S30 units:
             # {half: 0.5, share: 0.5, full: 1.0, back: 0.0, until: 330, repeat: false}: `share` of what is held out once the

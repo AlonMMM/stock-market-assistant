@@ -2432,3 +2432,29 @@ exit -$86K, the 15:50 sale -$62K, the option stop -$16K; overnight holds made +$
 pyramid adds have the same shares inside and out. Same verdict as 2.7's at 3%: a drought of giants with the usual
 small losers, not a market type a rule can see. What is left to try is the cost of each loser, not the timing:
 a smaller starter with the rest added on confirmation.
+
+### Break-even lock on the stock (2026-11-01, a candidate, small)
+The user: "when we up 20% calculate the stock down we need to exit that will make us breakeven" (after "I need to
+increase the overall win rate"). sim.py `be_lock {arm, update, target}`: on the entry day, once the option bar closes
+`arm` over what was paid, the stock price where the option is worth what was paid (x (1 + target)) at its implied
+volatility then (Black-Scholes, `be_level`) becomes a stock stop, all out there; `update` works it out again at each
+later bar still `arm` up and keeps the tighter one. On 2.8 (f28's overlay + be_lock), champ-1s (the honest 1-second
+buy at the signal minute's close), marked account, 2%, tune / check (scratchpad score_be.py, look 1):
+
+| Version | Won | Fair (drop) | Tune / check | Fav 12m | Fav 6m |
+|---|---|---|---|---|---|
+| 2.8 | 17.2% | $2,956,494 (34.1%) | 479K / 650K | $203,655 | $145,127 |
+| arm +30%, set once | 16.8% | $3,141,030 (32.7%) | 493K / 670K | $200,234 | $148,033 |
+| arm +50%, set once | 16.3% | $2,985,761 (33.1%) | 474K / 664K | $203,031 | $149,397 |
+| **arm +50%, updated** | **18.6%** | **$3,129,481 (32.2%)** | 475K / 692K | $212,181 | $149,658 |
+| arm +100%, updated | 18.3% | $3,129,450 (34.2%) | 504K / 654K | $195,824 | $138,189 |
+| arm +20% / +30%, updated | 20.5% / 19.9% | $807,303 / $1,574,971 | 488K / 167K; 454K / 350K | $153K / $148K | $136K / $119K |
+| arm +50%, updated, +10% / +20% cushion | 20.7% / 24.1% | $1,192,573 / $601,475 | 367K / 342K; 362K / 175K | $216K / $193K | $157K / $143K |
+| arm +30%, updated, +10% | 24.5% | $416,699 (39.6%) | 321K / 130K | $175,197 | $136,227 |
+| arm +100%, updated, +20% | 19.2% | $3,040,669 (33.7%) | 488K / 655K | $201,658 | $143,553 |
+
+Set once, the lock sells at a median -24% (theta and the spread by the time the stock is back), so wins fall. Updated
+at +50%: lock sales median -7% (37% won), every list up (+6% / +4% / +3%), check up on all three, tune a tie (-1%),
+drop ~2 points less, without the best 5 $617K vs $582K. Every rule that lifts wins past ~20% (an earlier arm or a
+cushion) cuts the giants (+100% trades 78 -> 47-63) and loses half or more on the fair list. Win rate and money pull
+against each other here: the giants first dip near the cost. Candidate: arm +50%, updated (a small gain).
