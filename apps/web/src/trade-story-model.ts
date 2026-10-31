@@ -349,6 +349,14 @@ export function botExitWords(
       "Strength gone",
       `The stock's edge over SPY since the open fell to t ${r.weaknessT}: all sold on the entry day.`,
     ],
+    "stage-half": [
+      "Staged exit, half",
+      `The stock was ${r.stageHalfS30} of its usual 30-minute move against the price at the signal: half sold.`,
+    ],
+    "stage-full": [
+      "Staged exit, the rest",
+      `The stock was ${r.stageFullS30} of its usual 30-minute move against the price at the signal: the rest sold.`,
+    ],
     "failed-break": [
       "Failed break",
       `The stock reached ${level} and fell back without breaking it: all sold on the entry day.`,

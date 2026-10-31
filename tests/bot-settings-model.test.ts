@@ -102,7 +102,7 @@ test("reset keeps on/off and the mode", () => {
     stopPct: 45,
   };
   const r = resetToDefaults(s);
-  assert.equal(r.stopPct, 30);
+  assert.equal(r.stopPct, 60);
   assert.equal(r.enabled, false);
   assert.equal(r.mode, "dry");
 });
@@ -119,31 +119,34 @@ test("warnings: a safety stop above the stop, and a big trade size", () => {
 
 test("the version card: the chosen version, its changes and the entry label", () => {
   const clean = versionState(defaultSettings);
-  assert.equal(clean.known?.id, "2.7.0");
+  assert.equal(clean.known?.id, "2.8.0");
   assert.deepEqual(clean.changes, []);
-  assert.equal(clean.label, "2.7.0");
+  assert.equal(clean.label, "2.8.0");
   assert.equal(clean.latest, true);
   assert.equal(clean.bump, null);
   assert.equal(clean.next, null);
   const patch = versionState({ ...defaultSettings, weaknessT: 0.25 });
   assert.equal(patch.bump, "patch");
-  assert.equal(patch.next, "2.7.1");
-  assert.equal(patch.label, "2.7.0*");
+  assert.equal(patch.next, "2.8.1");
+  assert.equal(patch.label, "2.8.0*");
   const edited = versionState({ ...defaultSettings, stopPct: 40 });
   assert.equal(edited.bump, "minor");
-  assert.equal(edited.next, "2.8.0");
-  assert.deepEqual(edited.changes, ["stopPct 30 → 40"]);
-  assert.equal(edited.label, "2.7.0*");
+  assert.equal(edited.next, "2.9.0");
+  assert.deepEqual(edited.changes, ["stopPct 60 → 40"]);
+  assert.equal(edited.label, "2.8.0*");
   const old = versionState({ ...defaultSettings, version: "2.0" });
   assert.equal(old.latest, false);
   assert.deepEqual(old.changes, [
+    "stopPct 30 → 60",
     "restStopPct 0 → 20",
+    "checks true → false",
     "sellOnWeakness false → true",
     "holdFromPct 100 → 50",
     "d2Entry false → true",
     "lowFloorSymbols none → IBIT",
     "pyramid false → true",
     "earlyEntry false → true",
+    "stockStages false → true",
   ]);
   const own = versionState({ ...defaultSettings, version: "mine" });
   assert.equal(own.known, undefined);
@@ -158,6 +161,7 @@ test("each version opens to its full algorithm in words", () => {
     "Contract",
     "Pyramid",
     "Early checks",
+    "Staged stock exit",
     "Failed break",
     "Strength gone",
     "Stop",
@@ -193,6 +197,15 @@ test("each version opens to its full algorithm in words", () => {
   assert.match(text(v27.rules, "Contract"), /skipped under \$0\.20/);
   assert.match(text(v27.rules, "Pyramid"), /50% of the size/);
   assert.match(text(v1.rules, "Pyramid"), /^Off/);
+  // 2.8: the staged stock exit, no checks, the stop at -60%.
+  const v28 = botVersions.find((v) => v.id === "2.8.0")!;
+  assert.match(
+    text(v28.rules, "Staged stock exit"),
+    /half is sold once the stock is 0\.5 of its usual 30-minute move against the price at the signal, the rest at 1 against/,
+  );
+  assert.match(text(v27.rules, "Staged stock exit"), /^Off/);
+  assert.match(text(v28.rules, "Early checks"), /^No 10- and 20-minute checks/);
+  assert.match(text(v28.rules, "Stop"), /down 60%/);
   // The rules as set, not only a version's: a changed stop and no volume floor.
   const own = text({ ...defaultSettings, stopPct: 40, minVolume: 0 }, "Stop");
   assert.match(own, /down 40%/);

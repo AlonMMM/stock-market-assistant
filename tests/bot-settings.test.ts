@@ -36,9 +36,9 @@ import {
 test("versions: distinct ids oldest first; the defaults are the current version's rules", () => {
   const ids = botVersions.map((v) => v.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(currentVersion, "2.7.0");
+  assert.equal(currentVersion, "2.8.0");
   assert.equal(defaultSettings.version, currentVersion);
-  assert.equal(matchingVersion(defaultSettings)?.id, "2.7.0");
+  assert.equal(matchingVersion(defaultSettings)?.id, "2.8.0");
   assert.deepEqual(rulesOf(defaultSettings), botVersions.at(-1)!.rules);
   // Each version differs from the one before, and 2.1 is 2.0 plus the failed-break sale.
   for (let i = 1; i < botVersions.length; i++)
@@ -74,20 +74,26 @@ test("versions: distinct ids oldest first; the defaults are the current version'
     "pyramid false → true",
     "earlyEntry false → true",
   ]);
+  // 2.8 is 2.7 with the staged stock exit, no checks and the stop at -60%.
+  assert.deepEqual(ruleChanges(botVersions[9]!.rules, botVersions[8]!), [
+    "stopPct 30 → 60",
+    "checks true → false",
+    "stockStages false → true",
+  ]);
 });
 
 test("versions: the label is the version, starred when its rules were changed; an own label stays", () => {
-  assert.equal(versionLabel(defaultSettings), "2.7.0");
-  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.7.0*");
+  assert.equal(versionLabel(defaultSettings), "2.8.0");
+  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.8.0*");
   // The IBIT list is a rule: changing it stars the label.
   assert.equal(
     versionLabel({ ...defaultSettings, lowFloorSymbols: ["IBIT", "MSTR"] }),
-    "2.7.0*",
+    "2.8.0*",
   );
   // The owner's limits and lists are not rules: no star.
   assert.equal(
     versionLabel({ ...defaultSettings, sizePct: 1, off: ["TSLA"] }),
-    "2.7.0",
+    "2.8.0",
   );
   const own = { ...defaultSettings, version: "2.2-test", stopPct: 40 };
   assert.equal(versionLabel(own), "2.2-test");
@@ -103,7 +109,7 @@ test("versions: applying one sets its rules and keeps the owner's limits", () =>
   assert.equal(s.sellFailedBreak, false);
   assert.equal(s.sizePct, 1);
   assert.equal(versionLabel(s), "1.0.0");
-  const back = applyVersion(s, "2.7.0");
+  const back = applyVersion(s, "2.8.0");
   assert.deepEqual(rulesOf(back), rulesOf(defaultSettings));
   assert.equal(applyVersion(s, "mine").version, "mine");
 });
@@ -150,7 +156,7 @@ test("versions: parse checks the label; a record saved before versions gets the 
     "2.0.0",
   );
   assert.equal(withDefaults({ stopPct: 40 }).version, currentVersion);
-  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.7.0*");
+  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.8.0*");
   // ...and none of the 2.7 rules came with it.
   assert.equal(withDefaults({ stopPct: 30 }).pyramid, false);
   // A saved version is kept as saved.
@@ -230,7 +236,7 @@ test("parse: the defaults pass; values are checked, snapped to the step and tick
 test("saved values over the defaults; a bad saved record falls back whole", () => {
   assert.equal(withDefaults({ stopPct: 40 }).stopPct, 40);
   assert.equal(withDefaults({ stopPct: 40 }).delta, 0.15);
-  assert.equal(withDefaults({ stopPct: 999 }).stopPct, 30);
+  assert.equal(withDefaults({ stopPct: 999 }).stopPct, 60);
   assert.equal(withDefaults(null).mode, "live");
 });
 
@@ -273,7 +279,76 @@ test("settings become the signal, contract and exit rules", () => {
   assert.equal(exits.stopOut, -0.4);
   assert.equal(exits.carryMinGain, 1.5);
   assert.equal(exits.carryMaxNights, 0);
-  assert.equal(exitRules(defaultSettings).checks.length, 2);
+  assert.equal(exitRules(defaultSettings).checks.length, 0);
+  assert.equal(
+    exitRules({ ...defaultSettings, checks: true }).checks.length,
+    2,
+  );
+  assert.deepEqual(exitRules(defaultSettings).stages, { half: 0.5, full: 1 });
+  assert.equal(
+    exitRules({ ...defaultSettings, stockStages: false }).stages,
+    null,
+  );
+});
+
+test("the staged stock exit (2.8): half at 0.5 S30 against the signal price, the rest at 1.0, the entry day only", () => {
+  const position = {
+    right: "C" as const,
+    qty: 10,
+    cost: 1,
+    entryMinute: 30,
+    entryStock: 100,
+    nights: 0,
+    checksDone: [],
+    morningDone: false,
+  };
+  // The stock's usual 30-minute move: 1% of its price, so 1 S30 = $1.00 here.
+  const market = {
+    minute: 35,
+    stock: 99.6,
+    option: 0.9,
+    unit: 0.01,
+    isExpiryDay: false,
+    sessionBeforeExpiry: true,
+    open: null,
+    prevClose: null,
+  };
+  const r = exitRules(defaultSettings);
+  // 0.4 S30 against: held.
+  assert.deepEqual(nextAction(position, market, r).sell, 0);
+  // 0.5 S30 against: half.
+  const half = nextAction(position, { ...market, stock: 99.5 }, r);
+  assert.deepEqual([half.sell, half.reason], [5, "stage-half"]);
+  // Once the half is sold, the same move holds the rest...
+  const after = { ...position, qty: 5, stageHalfSold: true };
+  assert.equal(nextAction(after, { ...market, stock: 99.5 }, r).sell, 0);
+  // ...until 1.0 S30 against: all of it.
+  const full = nextAction(after, { ...market, stock: 99 }, r);
+  assert.deepEqual([full.sell, full.reason], [5, "stage-full"]);
+  // A put is the mirror: the stock up 1.0 S30 sells all.
+  const put = nextAction(
+    { ...position, right: "P" },
+    { ...market, stock: 101 },
+    r,
+  );
+  assert.deepEqual([put.sell, put.reason], [10, "stage-full"]);
+  // Without the stock's unit, or off, or on a carried day: no staged sale.
+  assert.equal(
+    nextAction(position, { ...market, stock: 99, unit: null }, r).sell,
+    0,
+  );
+  const off = exitRules({ ...defaultSettings, stockStages: false });
+  assert.equal(nextAction(position, { ...market, stock: 99 }, off).sell, 0);
+  const night = { ...position, nights: 1, morningDone: true };
+  assert.equal(
+    nextAction(night, { ...market, minute: 60, stock: 99 }, r).sell,
+    0,
+  );
+  // The stop is -60% with the stock against: -50% holds, -60% sells all.
+  const unitless = { ...market, unit: null, stock: 99.9 };
+  assert.equal(nextAction(position, { ...unitless, option: 0.5 }, r).sell, 0);
+  const stop = nextAction(position, { ...unitless, option: 0.4 }, r);
+  assert.deepEqual([stop.sell, stop.reason], [10, "stop-30"]);
 });
 
 test("without the checks, a losing entry is not sold at +10 minutes", () => {
@@ -296,7 +371,11 @@ test("without the checks, a losing entry is not sold at +10 minutes", () => {
     open: null,
     prevClose: null,
   };
-  const on = nextAction(position, market, exitRules(defaultSettings));
+  const on = nextAction(
+    position,
+    market,
+    exitRules({ ...defaultSettings, checks: true }),
+  );
   assert.deepEqual([on.sell, on.reason], [5, "check-10"]);
   const off = nextAction(
     position,
@@ -470,6 +549,7 @@ test("numbering: every id is MAJOR.MINOR.PATCH; ids from before the scheme read 
       "2.5.0",
       "2.6.0",
       "2.7.0",
+      "2.8.0",
     ],
   );
   assert.equal(canonicalVersion("2.6"), "2.6.0");

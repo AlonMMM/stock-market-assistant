@@ -597,6 +597,7 @@ async function walkQuotes(
   quotes: Map<string, QuoteMinute[]>,
 ): Promise<Omit<Walked, "book">> {
   const base: ExitRules = exitRules(s);
+  const unit = stockUnit(data, cal, w);
   const entryDay = quotes.get(w.date) ?? [];
   const q0 = bookAt(entryDay, w.minute)!;
   let cost = (q0.bid + 3 * q0.ask) / 4;
@@ -709,6 +710,7 @@ async function walkQuotes(
           stock: closeAt(stockBars, m),
           option: mark,
           strength,
+          unit: k === 0 ? unit : null,
           isExpiryDay: date === w.expiry,
           sessionBeforeExpiry: nextDay <= w.expiry,
           open,
@@ -719,6 +721,8 @@ async function walkQuotes(
       state = { ...state, ...decision.update };
       if (decision.reason === "check-10" && decision.sell > 0)
         state = { ...state, halfSold: true };
+      if (decision.reason === "stage-half" && decision.sell > 0)
+        state = { ...state, stageHalfSold: true };
       if (decision.reason === "carry") {
         steps.push({
           date,
@@ -779,6 +783,16 @@ async function walkQuotes(
   return done();
 }
 
+/** The stock's usual 30-minute move from the 5 sessions before the entry (the staged exit's unit), or null. */
+function stockUnit(
+  data: BacktestData,
+  cal: BacktestCalendar,
+  w: WalkInput,
+): number | null {
+  const before = cal.previousSessions(w.date, 5);
+  return priorLevels(before.map((d) => data.bars(w.symbol, d)))?.unit ?? null;
+}
+
 /** The walk on the option's trade bars, when it has no quotes. */
 async function walkTrades(
   data: BacktestData,
@@ -790,6 +804,7 @@ async function walkTrades(
 ): Promise<Omit<Walked, "book">> {
   const fill = o.fillPct / 100;
   const base: ExitRules = exitRules(s);
+  const unit = stockUnit(data, cal, w);
   const option = await data.optionRange(w.contract, w.date, days.at(-1)!);
   const steps: SimStep[] = [];
   let cost: number | null = null;
@@ -914,6 +929,7 @@ async function walkTrades(
           stock: closeAt(stockBars, m),
           option: last!.bar.c,
           strength,
+          unit: k === 0 ? unit : null,
           isExpiryDay: date === w.expiry,
           sessionBeforeExpiry: nextDay <= w.expiry,
           open,
@@ -924,6 +940,8 @@ async function walkTrades(
       state = { ...state, ...decision.update };
       if (decision.reason === "check-10" && decision.sell > 0)
         state = { ...state, halfSold: true };
+      if (decision.reason === "stage-half" && decision.sell > 0)
+        state = { ...state, stageHalfSold: true };
       if (decision.reason === "carry") {
         steps.push({
           date,

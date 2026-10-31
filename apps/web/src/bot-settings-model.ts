@@ -44,6 +44,7 @@ export {
 } from "../../../packages/trading/src/bot/algorithm.js";
 export type SwitchKey =
   | "checks"
+  | "stockStages"
   | "sellOnWeakness"
   | "sellFailedBreak"
   | "cheapFallback"

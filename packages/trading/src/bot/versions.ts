@@ -48,7 +48,10 @@ export type RuleKey =
   | "lowFloorPrice"
   | "pyramid"
   | "pyramidSharePct"
-  | "earlyEntry";
+  | "earlyEntry"
+  | "stockStages"
+  | "stageHalfS30"
+  | "stageFullS30";
 
 export type Rules = Pick<BotSettings, RuleKey>;
 
@@ -80,6 +83,9 @@ export const ruleKeys: readonly RuleKey[] = [
   "pyramid",
   "pyramidSharePct",
   "earlyEntry",
+  "stockStages",
+  "stageHalfS30",
+  "stageFullS30",
 ];
 
 export interface BotVersion {
@@ -119,6 +125,9 @@ const v1: Rules = {
   pyramid: false,
   pyramidSharePct: 50,
   earlyEntry: false,
+  stockStages: false,
+  stageHalfS30: 0.5,
+  stageFullS30: 1,
 };
 // 2.0: the V2 champion (t 1.8, the overnight cap, the news filter).
 const v2: Rules = {
@@ -167,6 +176,23 @@ const v27: Rules = {
   pyramid: true,
   pyramidSharePct: 50,
   earlyEntry: true,
+};
+// 2.8: the staged stock exit (the user, 2026-10-31: "add the Staged + stop -60%
+// as our new version"; research/indi-v2 best-algorithms.md, after the backtest
+// audit): the 10 / 20-minute checks are off; on the entry day half is sold once
+// the stock is half its usual 30-minute move (S30) against the price at the
+// signal, the rest at a full S30 against; the option stop is -60% (was -30%).
+// Fixed backtest, 2%: fair list $4,161,285 / 25.5% vs 2.7's $3,202,862 / 26.6%
+// (tune +18%, check +10%); the Favorites 12 months $269,142 vs $243,492, 36
+// months $4,678,380 vs $4,490,376 (every year up); the check half lower on 3
+// of the 5 lists, so it runs as the new version to be proven live.
+const v28: Rules = {
+  ...v27,
+  checks: false,
+  stopPct: 60,
+  stockStages: true,
+  stageHalfS30: 0.5,
+  stageFullS30: 1,
 };
 
 /** Every version, oldest first. */
@@ -242,6 +268,14 @@ export const botVersions: readonly BotVersion[] = [
       "2.5 without the cheap fallback; IBIT is bought down to $0.10; after a D2 entry, half a size more when the stock reaches the full signal that day while the first position is up; and the signal is checked every few seconds inside the minute, buying at the first check it holds.",
     rules: v27,
   },
+  {
+    id: "2.8.0",
+    name: "2.7 + the staged stock exit, stop −60%",
+    since: "2026-10-31",
+    notes:
+      "No 10- and 20-minute checks. On the entry day, half is sold when the stock is half its usual 30-minute move against the price at the signal, the rest at a full move against; the option stop is −60% (was −30%).",
+    rules: v28,
+  },
 ];
 
 /** The version a new bot runs. */
@@ -283,6 +317,7 @@ export const minorKeys: ReadonlySet<RuleKey> = new Set<RuleKey>([
   "cheapFallback",
   "pyramid",
   "earlyEntry",
+  "stockStages",
   "skipEarnings",
   "skipPremarket",
 ]);

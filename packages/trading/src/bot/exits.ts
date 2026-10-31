@@ -9,7 +9,10 @@
 //     10-minute check sold half, the rest at `restStopOut` (-20% since
 //     version 2.4) instead;
 //   - the signal's own t-stat vs SPY × beta (cumulative from the open) down to
-//     `strengthOut` or under: sell all (the 2026-10-24 champion, exits.ts T).
+//     `strengthOut` or under: sell all (the 2026-10-24 champion, exits.ts T);
+//   - the staged stock exit (`stages`, version 2.8, sim.py stock_stages): half
+//     once the stock is `half` of its usual 30-minute move (S30) against the
+//     price at the signal, all at `full` against.
 // 15:50: hold overnight what is up >= carryMinGain (+50% since version 2.3,
 //   +100% before; a next session before expiry, at
 //   most 2 nights); sell the rest. What is held is worth at most `nightCapPct`
@@ -32,6 +35,8 @@ export interface ExitRules {
   // The signal's t-stat, in the bet's direction, at or under which the entry
   // day sells all; null is off. The entry needed 1.8.
   strengthOut: number | null;
+  // The staged stock exit, in S30 against the signal price; null is off.
+  stages: { half: number; full: number } | null;
   eodMinute: number; // 15:50
   carryMinGain: number; // hold overnight from this option return
   carryMaxNights: number;
@@ -48,6 +53,7 @@ export const defaultExitRules: ExitRules = {
   stopOut: -0.3,
   restStopOut: null,
   strengthOut: null,
+  stages: null,
   eodMinute: 380,
   carryMinGain: 1,
   carryMaxNights: 2,
@@ -67,6 +73,8 @@ export interface BotPositionState {
   morningDone: boolean;
   // The 10-minute check sold part of it (the caller reads its sales).
   halfSold?: boolean;
+  // The staged exit's half was sold (the caller reads its sales).
+  stageHalfSold?: boolean;
 }
 
 export interface ExitMarket {
@@ -76,6 +84,9 @@ export interface ExitMarket {
   // The signal's t-stat now on the call side (a put's is the negation), from
   // the closed minutes; null when it cannot be computed.
   strength?: number | null;
+  // The stock's usual 30-minute move as a fraction of its price (levels.ts
+  // priorLevels unit), for the staged exit; null when unknown.
+  unit?: number | null;
   isExpiryDay: boolean;
   // A session after today on or before the expiry date (a carry is possible).
   sessionBeforeExpiry: boolean;
@@ -90,6 +101,8 @@ export type ExitReason =
   | "stop-30"
   | "rest-stop"
   | "strength-gone"
+  | "stage-half"
+  | "stage-full"
   | "close-1550"
   | "carry"
   | "morning-gap-keep"
@@ -197,6 +210,15 @@ export function nextAction(
       : bet * mk.strength;
   if (r.strengthOut !== null && strength !== null && strength <= r.strengthOut)
     return { sell: p.qty, reason: "strength-gone", update: {} };
+  // The staged stock exit: the stock's move from the signal price in S30.
+  const unit = mk.unit ?? null;
+  if (r.stages && unit && mk.stock !== null && p.entryStock > 0) {
+    const move = (bet * (mk.stock - p.entryStock)) / (unit * p.entryStock);
+    if (move <= -r.stages.full)
+      return { sell: p.qty, reason: "stage-full", update: {} };
+    if (!p.stageHalfSold && move <= -r.stages.half)
+      return { sell: share(p.qty, 0.5), reason: "stage-half", update: {} };
+  }
   const against = mk.stock !== null && bet * (mk.stock - p.entryStock) < 0;
   const held = mk.minute - p.entryMinute;
   const due = r.checks.findIndex(

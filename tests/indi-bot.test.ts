@@ -1198,47 +1198,47 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
   const saved = h.bot.setSettings({
     ...h.bot.settings(),
     sizePct: 1,
-    safetyStopPct: 60,
+    safetyStopPct: 70,
   });
   assert.equal(saved.sizePct, 1);
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy");
   assert.equal(buy?.body.sizePct, 1);
-  assert.equal(buy?.body.stopPct, 60);
+  assert.equal(buy?.body.stopPct, 70);
   const texts = h.bot
     .status()
     .activity.map((e) => e.text)
     .join("\n");
-  assert.match(texts, /Settings changed: sizePct 2 → 1; safetyStopPct 50 → 60/);
+  assert.match(texts, /Settings changed: sizePct 2 → 1; safetyStopPct 65 → 70/);
   assert.equal(h.bot.status().settings.sizePct, 1);
 });
 
 test("versions: every entry is stamped with the version in force; changed rules star it; the owner can pick an older one", async () => {
   const h = harness("live");
-  assert.equal(h.bot.status().version, "2.7.0");
+  assert.equal(h.bot.status().version, "2.8.0");
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy");
-  assert.match(String(buy?.body.note), /· bot 2\.7\.0$/);
+  assert.match(String(buy?.body.note), /· bot 2\.8\.0$/);
   const [p] = h.store.openPositions();
-  assert.equal(p!.version, "2.7.0");
-  assert.equal(h.store.signals(DAY)[0]!.version, "2.7.0");
-  assert.equal(h.bot.status().positions[0]!.version, "2.7.0");
+  assert.equal(p!.version, "2.8.0");
+  assert.equal(h.store.signals(DAY)[0]!.version, "2.8.0");
+  assert.equal(h.bot.status().positions[0]!.version, "2.8.0");
   const texts = () =>
     h.bot
       .status()
       .activity.map((e) => e.text)
       .join("\n");
-  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.7\.0$/m);
+  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.8\.0$/m);
 
-  // The stop changed from 2.7's: the next entry is stamped "2.7.0*".
+  // The stop changed from 2.8's: the next entry is stamped "2.8.0*".
   const edited = harness("live");
   edited.bot.setSettings({ ...edited.bot.settings(), stopPct: 40 });
-  assert.equal(edited.bot.status().version, "2.7.0*");
+  assert.equal(edited.bot.status().version, "2.8.0*");
   await edited.run(DAY, 565, 600);
-  assert.equal(edited.store.openPositions()[0]!.version, "2.7.0*");
+  assert.equal(edited.store.openPositions()[0]!.version, "2.8.0*");
   assert.match(
     String(edited.calls.find((c) => c.kind === "buy")?.body.note),
-    /· bot 2\.7\.0\*$/,
+    /· bot 2\.8\.0\*$/,
   );
 
   // Version 1.0 picked: its rules (t 2, no night cap, no news filter) run, and the feed says so.
@@ -1246,6 +1246,9 @@ test("versions: every entry is stamped with the version in force; changed rules 
   const picked = old.bot.setSettings({
     ...old.bot.settings(),
     version: "1.0",
+    stopPct: 30,
+    checks: true,
+    stockStages: false,
     minT: 2,
     nightCapPct: 0,
     skipEarnings: false,
@@ -1267,7 +1270,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
       .status()
       .activity.map((e) => e.text)
       .join("\n"),
-    /Settings changed: version "2\.7\.0" → "1\.0"; restStopPct 20 → 0; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false; skipEarnings true → false; skipPremarket true → false; lowFloorSymbols \["IBIT"\] → \[\]; pyramid true → false; earlyEntry true → false/,
+    /Settings changed: version "2\.8\.0" → "1\.0"; stopPct 60 → 30; restStopPct 20 → 0; checks false → true; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false; skipEarnings true → false; skipPremarket true → false; lowFloorSymbols \["IBIT"\] → \[\]; pyramid true → false; earlyEntry true → false; stockStages true → false/,
   );
 });
 
@@ -1591,11 +1594,12 @@ test("runner (live): a failed break at the day's high sells all, with the level 
 
 test("runner (live): with the failed-break sale off the bot only notes it and keeps the position", async () => {
   const h = harness("live", {}, failedBreakDay);
-  // The strength-gone sale is off too: the falling stock would trip it.
+  // The strength-gone sale and the staged exit are off too: the falling stock would trip them.
   h.bot.setSettings({
     ...h.bot.settings(),
     sellFailedBreak: false,
     sellOnWeakness: false,
+    stockStages: false,
   });
   await h.run(DAY, 565, 640);
   assert.equal(h.calls.filter((c) => c.kind === "sell").length, 0);
@@ -1622,6 +1626,8 @@ test("exits run on every tick, between minutes, on the stock's last trade", asyn
   // into its minute, not only on a minute's close.
   const live = new Map<string, number>();
   const h = harness("live");
+  // 2.7's exits: the 10-minute check (2.8 has none).
+  h.bot.setSettings(applyVersion(h.bot.settings(), "2.7.0"));
   (h.bot as unknown as { o: { market: BotMarket } }).o.market.lastPrices =
     async () => live;
   await h.run(DAY, 565, 585);
@@ -1636,6 +1642,23 @@ test("exits run on every tick, between minutes, on the stock's last trade", asyn
   const sells = h.calls.filter((c) => c.kind === "sell");
   assert.equal(sells.length, 1);
   assert.match(String(sells[0]!.body.note), /10-min check/);
+});
+
+test("2.8: the staged exit sells on the stock's move against the signal price, with no 10-minute check", async () => {
+  const live = new Map<string, number>();
+  const h = harness("live");
+  (h.bot as unknown as { o: { market: BotMarket } }).o.market.lastPrices =
+    async () => live;
+  await h.run(DAY, 565, 585);
+  const [p] = h.store.openPositions();
+  assert.equal(p!.status, "open");
+  // Far below the signal price: many of the stock's usual 30-minute moves against the call.
+  live.set("NVDA", p!.entryStock * 0.9);
+  await h.tickAt(DAY, 586, 20);
+  const sells = h.calls.filter((c) => c.kind === "sell");
+  assert.equal(sells.length, 1);
+  assert.match(String(sells[0]!.body.note), /Staged exit: .* sold all/);
+  assert.doesNotMatch(String(sells[0]!.body.note), /10-min check/);
 });
 
 test("broker setting 'both': an account that throws does not undo the other's entry", async () => {
@@ -1769,7 +1792,7 @@ test("pyramid: the full signal after a D2 entry that is up buys half a size more
   assert.deepEqual(buys[0]!.options, { repeatOk: true });
   assert.match(
     String(buys[0]!.body.note),
-    /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.7\.0$/,
+    /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.8\.0$/,
   );
   const open = h.store.openPositions();
   const add = open.find((p) => p.addOf === "first");
@@ -1797,11 +1820,12 @@ test("pyramid: no add when the first position is not up, is the other side, is n
     /NVDA pyramid: the first position is not up/,
   );
   const put = await withFirst({ right: "P" });
-  // kept open past the full signal: no strength exit, no timed checks (the stock rises against a put)
+  // kept open past the full signal: no strength exit, no timed checks, no staged exit (the stock rises against a put)
   put.h.bot.setSettings({
     ...put.h.bot.settings(),
     sellOnWeakness: false,
     checks: false,
+    stockStages: false,
   });
   await put.h.run(DAY, 565, 570 + put.M + 3);
   assert.equal(put.h.calls.filter((c) => c.kind === "buy").length, 0);
