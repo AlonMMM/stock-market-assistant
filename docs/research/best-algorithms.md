@@ -2421,3 +2421,14 @@ now `x-stop60-m` on both lists. Marked account, 2%, ±2% fills (whole / tune / c
 
 2.8 is ahead on the whole period (+5% / +6%) and on tune (+16% / +20%), but behind on check on both (-10% / -12%),
 as step 12 found for the stop -60% on the 36 months. The late hold changes 8 of ~2,400 trades.
+
+### 2.8's drops at 2%, a diagnostic (2026-11-01)
+The user: "I still see big drops. I still want to dig in to remove them". x-stop60 (2.8, fair list, marked account,
+flat 2%, scratchpad drops28.py): six drops of 20%+ (2024-08-22 -> 11-07 -20.7%; 2024-11-11 -> 2025-01-17 -33.9%;
+2025-05-14 -> 06-11 -26.6%; 2026-07-02 -> 08-18 -21.3%; 2026-08-31 -> 09-17 -23.9%; 2026-09-21 -> 10-12 -23.5%).
+Trades closed inside them: 287, 12% won (20% the rest of the time), +100% trades 4.2% of them (8.0% the rest), the
+median loser -33% (-29%). Inside the drops the staged stock exit's losers lose -$599K (at $10K a trade), the thesis
+exit -$86K, the 15:50 sale -$62K, the option stop -$16K; overnight holds made +$662K even there. Side, entry time and
+pyramid adds have the same shares inside and out. Same verdict as 2.7's at 3%: a drought of giants with the usual
+small losers, not a market type a rule can see. What is left to try is the cost of each loser, not the timing:
+a smaller starter with the rest added on confirmation.
