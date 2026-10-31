@@ -2358,3 +2358,8 @@ cap). 2.8 with every fix, 2% flat as the yardstick (account, drop, tune / check)
 The worst drop comes while the account is small, so a ladder that starts at 3% keeps 3%'s drop there (40-43%); it calms
 only the big-account part of the curve (and fits the contracts' volume there, the audit's B3). The Favorites never pass
 $500K in 6-12 months, so for them the ladder is plain 3%.
+- The ladder + half size in a drawdown (the user: "start it with 3% and add a half size when we are down 20% and back
+  when we recover 10%"): fair 3% ladder + half $1,514,111 (33.5%; half size on 28% of trade days) vs flat 2%
+  $3,996,228 (33.9%); 2.5% ladder + half $3,145,241 (30.6%). Favorites 12m $206,191 (33.0%) / $188,094 (29.7%) vs
+  flat 2% $260,085 (29.7%). It brings the drop to flat 2%'s, for far less money: the account is under -20% on 28-41%
+  of trade days and the giant that ends a drop comes at half size (as on 2026-10-27 and 2026-10-31). Not better.
