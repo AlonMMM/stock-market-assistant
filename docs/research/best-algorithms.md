@@ -61,6 +61,7 @@ every run; S30 = the stock's usual 30-minute move, moves measured from the signa
 | 6 | "multiple exits ... exit half, bring back" | Staged exits, buy-backs | **Half out at 0.5 S30 against, rest at 1.0: $3,431,770 (26.7%)**, tune +13%, check +7% vs step 0 | **The candidate**; buy-backs worse |
 | 7 | "add 50% if it goes our direction in the first 10 minutes" | Add half size at +0.25 / +0.5 / +1.0 S30 within 10 min, staged exit on all of it | Add at +1.0: $7,980,114 (28.6%), tune +29%, check +81% vs step 6 | Promising, giant-driven (10 trades = 74% of the gain, median added trade -20 pts) |
 | 8 | "move the stop to 50/60/70%, as now we have a better stop" | Stop -50 / -60 / -70% on steps 6 and 7 | On step 6, -60%: $3,767,288 (25.1%), tune +6%, check +3%; on step 7 the check slips (-1.5%) | Giant-driven: median changed trade -2.9 pts; not adopted yet |
+| 9 | "add on this the add rule" | Stop -60% + staged exit + add 50% at +1.0 S30 within 10 min | $8,594,137 (29.7%), tune +32%, check +72% vs stop -60% alone | The best total; the add still giant-driven (10 trades = 85% of its points, median added trade -20 pts) |
 
 The candidate exit (step 6), as a `BT_X` overlay on the champion:
 `{"user_stop": {"checks": []}, "stock_stages": {"half": 0.5, "full": 1.0}}`; step 7 adds
@@ -2006,4 +2007,11 @@ list. The live broker safety stop (`safetyStopPct` 50) would fire first at -60 /
   losers come back big while most losers lose a little more. With the add, the check half slips (-1.5%).
 - Not adopted yet; with the staged exit, -60% is the leaning. Confirm on the Favorites, and the broker stop would need
   raising to match.
+
+
+- The combination (the user: "add on this the add rule we saw that helps"): stop -60% + staged exit + the add at +1.0
+  S30 = $8,594,137 (29.7%), tune $712,276, check $1,206,573, 1% $2,341,886. Against stop -60% without the add: tune
+  +32%, check +72%, drop +4.6 points. Against the add on the -30% stop: tune +9%, check -1.5%. The add's part is as
+  before: 297 trades changed, 82 gain, median -20 points, the best 10 (FSLR 2024-05-22, BA 2024-05-23, META 2026-09-21,
+  ORCL 2025-07-02, IBIT 2026-09-18, AMD 2025-03-26 ...) bring 85% of its points.
 
