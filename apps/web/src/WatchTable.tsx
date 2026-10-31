@@ -94,6 +94,13 @@ const columns: [WatchSort | null, string, "left" | "right", boolean][] = [
   ["alerts", "Alerts", "right", false],
 ];
 
+// The phone header's short words (user 2026-10-31: the IBKR-dense list).
+const phoneLabels: Partial<Record<WatchSort, string>> = {
+  last: "Last",
+  relVolume: "RVol",
+  volume: "Vol",
+};
+
 function RowDetail({
   row,
   board,
@@ -350,6 +357,18 @@ export function WatchTable({
                   : "vs SPY"
                 : label;
             const cls = `wl-cell ${align}${phone ? "" : " wl-wide"}${key === "volume" ? " wl-vol" : ""}`;
+            // Phones show a short word, so the header stays on one line.
+            const short = key ? phoneLabels[key] : undefined;
+            const shown = short ? (
+              <>
+                <span className="wl-long">{text}</span>
+                <span className="wl-short" aria-hidden="true">
+                  {short}
+                </span>
+              </>
+            ) : (
+              text
+            );
             if (!key)
               return (
                 <span key={text} className={cls}>
@@ -371,7 +390,7 @@ export function WatchTable({
                 aria-label={`Sort by ${text}${key === "change" ? " (size of move)" : ""}${active ? (descending ? ", highest first" : ", lowest first") : ""}`}
                 onClick={() => pick(key)}
               >
-                {text}
+                {shown}
                 <span aria-hidden="true" className="wl-arrow">
                   {active ? (descending ? "▼" : "▲") : "↕"}
                 </span>
