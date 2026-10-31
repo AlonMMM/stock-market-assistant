@@ -2190,3 +2190,11 @@ The "sell at 15:50 after a last-hour run" candidate is dropped.
   stays unpredictable from the day's strength measures.
 - Bot vs Indi: a "Best that day" column (best_day.py in the scratchpad, dataset best_day): the option's highest mid on
   the entry day after the buy, as a raw share over the price paid, and when.
+
+### How high the entries ever got (2026-10-31, a diagnostic)
+The user: "cutting winners to make more winners. first: how many entries were ever +10%? 25%? 50%? 100%?". champ-early,
+fixed walk, entries only (no pyramid adds); the best = the highest book mid on the entry day after the buy (best_day)
+or any 5-minute close while held, over the price paid. Fair list, 1,006 entries, 16% end winners:
+ever +10% 76% (79% of them end below zero), +25% 62% (74%), +50% 44% (64%), +100% 28% (53%), +200% 14% (37%), +500% 6%
+(12%); never above the price paid 11%. Favorites 12m (509): +10% 74%, +25% 61%, +50% 45% (62% end below zero), +100%
+27% (51%), +200% 15%, +500% 6%. A mid is not a bid, and a peak can last one minute.
