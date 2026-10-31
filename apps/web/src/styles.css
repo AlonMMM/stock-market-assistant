@@ -3930,6 +3930,21 @@ dialog.why::backdrop {
 .chain td.c-iv {
   color: var(--gray-49);
 }
+/* Volume: the last 30 minutes on top, today under it, smaller. */
+.chain td.c-vol {
+  line-height: 1.15;
+}
+.chain td.c-vol span {
+  display: block;
+}
+.chain td.c-vol .v30.thin {
+  color: var(--orange-48);
+  font-weight: 600;
+}
+.chain td.c-vol .vday {
+  color: var(--gray-49);
+  font-size: 0.8em;
+}
 .chain td.side {
   cursor: pointer;
 }

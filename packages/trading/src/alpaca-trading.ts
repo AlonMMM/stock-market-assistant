@@ -11,6 +11,7 @@ import type {
   StockTicket,
 } from "./broker.js";
 import { parseOccSymbol, type OptionQuote, type Right } from "./options.js";
+import { newYork } from "../../market-data/src/calendar.js";
 
 type Fetcher = typeof fetch;
 
@@ -21,6 +22,7 @@ export type { Order, TradingClient } from "./broker.js";
 
 interface Snapshot {
   latestQuote?: { bp?: number; ap?: number; t?: string };
+  dailyBar?: { v?: number; t?: string } | null;
   greeks?: { delta?: number } | null;
   impliedVolatility?: number;
 }
@@ -55,6 +57,8 @@ function quote(symbol: string, s: Snapshot): OptionQuote {
   const delta = s.greeks?.delta;
   const iv = s.impliedVolatility;
   const at = s.latestQuote?.t ? Date.parse(s.latestQuote.t) : undefined;
+  const dayAt = s.dailyBar?.t ? Date.parse(s.dailyBar.t) : NaN;
+  const volume = s.dailyBar?.v;
   return {
     symbol,
     ...parsed,
@@ -63,6 +67,9 @@ function quote(symbol: string, s: Snapshot): OptionQuote {
     delta: typeof delta === "number" && Number.isFinite(delta) ? delta : null,
     iv: typeof iv === "number" && Number.isFinite(iv) && iv > 0 ? iv : null,
     ...(at !== undefined && Number.isFinite(at) ? { quotedAt: at } : {}),
+    ...(typeof volume === "number" && Number.isFinite(dayAt)
+      ? { volume, volumeDate: newYork(dayAt).date }
+      : {}),
   };
 }
 
@@ -229,6 +236,43 @@ export class AlpacaTrading implements Broker {
       ...q,
       openInterest: open.get(q.symbol) ?? null,
     }));
+  }
+
+  /**
+   * Contracts traded per option over the 30 minutes up to `end` (ms), from
+   * the minute bars; an option with no trade there is absent (0).
+   */
+  async optionVolume30(
+    symbols: string[],
+    end: number,
+  ): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    for (let i = 0; i < symbols.length; i += 100) {
+      let pageToken: string | undefined;
+      do {
+        const body = await this.call<{
+          bars: Record<string, { v?: number }[] | null> | null;
+          next_page_token?: string | null;
+        }>(this.dataUrl, "/v1beta1/options/bars", {
+          query: {
+            symbols: symbols.slice(i, i + 100).join(","),
+            timeframe: "1Min",
+            start: new Date(end - 30 * 60000).toISOString(),
+            end: new Date(end).toISOString(),
+            limit: "10000",
+            ...(pageToken ? { page_token: pageToken } : {}),
+          },
+        });
+        for (const [symbol, bars] of Object.entries(body.bars ?? {}))
+          out.set(
+            symbol,
+            (out.get(symbol) ?? 0) +
+              (bars ?? []).reduce((sum, b) => sum + (b.v ?? 0), 0),
+          );
+        pageToken = body.next_page_token ?? undefined;
+      } while (pageToken);
+    }
+    return out;
   }
 
   private async openInterest(
