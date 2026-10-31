@@ -2379,3 +2379,8 @@ $500K in 6-12 months, so for them the ladder is plain 3%.
   (34.5-36.3%) vs flat 2% $260,085 (29.7%); 6m $115,331 / $112,485 / $112,908 vs $159,127. Every plan has more drop
   and less money than flat 2% on all three lists; the boost adds nothing (a new high usually comes right after a giant,
   and a dry spell follows). Not better: flat 2% (or the plain 3% ladder for more money at ~41% drop).
+- **The owner's pick (2026-10-31): 3% under $300K, 2.5% to $1M, 1.5% to $4M, 1% from $4M** (2.8 with every fix, marked):
+  fair $5,020,559 (39.0%), tune $673,622 (41.0%) / check $1,167,393 (24.9%); Favorites 12m $297,769 (40.1%), 6m
+  $140,047 (43.2%) - vs flat 3% $7,162,638 (43.3%) / check $1,168,632 (33.1%) / Fav 12m $259,262. App PR #227
+  (`sizeSteps`, live and the Backtest account). For comparison, the tune-picked best by growth / drop was 2% -> 1.5% at
+  $500K -> 1% from $1M (fair $2.55M / 33.9%, check drop 19.4%, Favorites = flat 2%).
