@@ -9,7 +9,7 @@
 > print in 3 minutes is kept), `BT_CHASE=ask` (the live bot chases the ask, no cap). champ-early, fair list, 2% / 1%:
 > as logged $7,258,326 / $1,484,410 (drop 24.1%); clock only $4,126,647; chase only $4,981,518; both **$2,845,332 /
 > $857,745** (drop 27.6%; tune $448,187, check $634,854, without 10-10 $2,798,469); keep only $7,182,743. Every later
-> Main bot test runs with `BT_CLOCK=stock BT_CHASE=ask`; rules chosen on the old walk need a recheck. See "Read first" below for the whole story.
+> Main bot test runs on the fixed walk (the default since 2026-10-31). The champion's rules were rechecked the same day: no verdict flips, 2.7 stays the champion; fixed figures: fair $2,845,332 / 27.6%, Favorites 12m $244,185, 36m $3,953,742 (minute entries). See "Read first" below for the whole story.
 >
 > 🏆 **Champion 2026-10-27 (morning): 2.5 + IBIT down to $0.10 + the pyramid (no cheap fallback).** Real quotes: fair list 2024-25 $415,971 / 14% vs the live 2.6 $302,905 / 16%; Favorites 24 months $403,255 / 17% vs $299,707 / 18%. Not live yet.
 
@@ -2069,4 +2069,30 @@ walk, 2%; years from Oct 23):
 - The add: both halves up (+105% / +37%), every year up, drop +0.5 point, 2.4x without the best 5. Against stop -60%
   alone: 350 trades changed, 102 better, median -15 points; the best 10 +5,396 points, the rest +2,311. The strongest
   result so far, still a few-giants rule; fails the 12-month Favorites check half (-10%). Paper-test candidate.
+
+### The champion's rules rechecked on the fixed walk (2026-10-31)
+The user: "the champion now is after bug fixes right?" -> "yes" (recheck the rules, put the fixed numbers on Bot vs
+Indi). The benchmark exports re-run with the fixes on (export_bench, fav_bench, export_champ, export_early,
+export_fav_long, export_big, fill_models, fair_bench, rets_extra, spread_book); each rule against itself off, the same
+fill model on both sides, 2%, account (tune / check):
+
+| Rule | List | With | Without | Old walk (with / without) |
+|---|---|---|---|---|
+| Early entry (champ-early vs champ-1s) | fair | $2,845,332 (448K / 635K) | $1,955,900 (381K / 513K) | $7.18M / $5.08M |
+| | fav12 | $244,185 (224K / 109K) | $189,519 (197K / 96K) | $347K / $273K |
+| Pyramid (champ vs d25-ibit, minute fills) | fair | $4,176,456 (487K / 858K) | $3,616,696 (471K / 769K) | $9.49M / $7.81M |
+| | fav12 | $332,316 (234K / 142K) | $330,569 (239K / 138K) | $442K / $445K |
+| IBIT $0.10 (champ vs pyr-nc) | fair | $4,176,456 (487K / 858K) | $2,756,407 (304K / 907K) | $9.49M / $6.19M |
+| | fav12 | $332,316 (234K / 142K) | $204,023 (141K / 144K) | $442K / $267K |
+| D2 bonus (2.5 vs 2.4) | fair | $2,371,623 (291K / 814K) | $1,314,160 (386K / 341K) | $5.32M / $2.74M |
+| | fav12 | $201,766 (145K / 139K) | $186,626 (172K / 108K) | $268K / $248K |
+| Cheap fallback (2.6 vs 2.5) | fair | $2,590,702 (363K / 713K) | $2,371,623 (291K / 814K) | $6.03M / $5.32M |
+
+- No verdict flips: early entry holds (both halves, both lists); the pyramid holds on the fair list and ties on the
+  Favorites; IBIT $0.10 is tune-only (check -5% fair, -1% Favorites), as on the old walk; the D2 bonus is mixed halves
+  (tune lower, check much higher), as before; the cheap fallback stays off. 2.7 stays the champion.
+- Minute fills (champ, $4.18M) stay above the 1-second fills (champ-early, $2.85M) on both walks: compare within a fill
+  model only.
+- Bot vs Indi (34CHCtYWPgexzP51zze9vV): all 20 data files replaced with the fixed-walk exports; a note at the top says
+  the written figures in the Research / How it works text are from before the fix.
 
