@@ -61,6 +61,16 @@ export function algorithmSteps(r: Rules): AlgorithmStep[] {
     checks =
       "10 minutes after the entry, if the stock is against the entry price, half is sold; 20 minutes after, if it is still against, the rest.";
   steps.push({ name: "Early checks", text: checks });
+  let stages =
+    "Off: the stock's move against the entry is not acted on by itself.";
+  if (r.stockStages)
+    stages = `On the entry day, half is sold once the stock is ${r.stageHalfS30} of its usual 30-minute move against the price at the signal, the rest at ${r.stageFullS30} against.`;
+  steps.push({ name: "Staged stock exit", text: stages });
+  let late = "Off: an entry after 15:00 meets the same exits as any other.";
+  if (r.lateHold)
+    late =
+      "An entry at 15:00 or later is not sold on its entry day while it is above its cost; the 15:50 decision still runs.";
+  steps.push({ name: "Late entries", text: late });
   let failed = "Off: a level that holds is not acted on.";
   if (r.sellFailedBreak)
     failed =

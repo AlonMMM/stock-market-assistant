@@ -29,6 +29,7 @@ import {
   runAccount,
 } from "../packages/trading/src/bot/backtest-account.js";
 import { defaultSettings } from "../packages/trading/src/bot/settings.js";
+import { defaultExitRules } from "../packages/trading/src/bot/exits.js";
 import type { MinuteBar } from "../packages/trading/src/bot/signal.js";
 import {
   clockText,
@@ -284,6 +285,90 @@ test("a stock's run buys the signal's contract on the next bar and sells it by t
   // The option never moved and the stock kept climbing: no stop, sold at 15:50.
   assert.equal(t.steps.at(-1)!.reason, "close-1550");
   assert.equal(t.priced, "trades");
+});
+
+test("a thin option with no quotes: bought at its first print, however late, and checked every stock minute", async () => {
+  const { data } = fakeData(1000);
+  const signal = defaultSettings.firstEntryMin;
+  // The option prints 10 minutes after the signal, then once at minute 200.
+  const thin: BacktestData = {
+    ...data,
+    optionRange: async (contract, from, to) => {
+      const all = await data.optionRange(contract, from, to);
+      return new Map(
+        [...all].map(([d, bars]) => [
+          d,
+          bars.filter((b) => b.m === signal + 10 || b.m === 200),
+        ]),
+      );
+    },
+  };
+  const run = await runStock(
+    "NVDA",
+    [date],
+    { ...defaultSettings, pyramid: false },
+    thin,
+    backtestCalendar,
+    { fillPct: 2 },
+  );
+  assert.equal(run.skips.length, 0, JSON.stringify(run.skips));
+  const t = run.trades[0]!;
+  assert.equal(t.steps[0]!.minute, signal + 10);
+  // The 15:50 decision runs at 15:50 on the last trade, not at the last print (minute 200).
+  const last = t.steps.at(-1)!;
+  assert.equal(last.reason, "close-1550");
+  assert.equal(last.minute, defaultExitRules.eodMinute + 1);
+});
+
+test("2.8 in the backtest: the staged exit sells when the stock falls against the signal price", async () => {
+  const { data } = fakeData(1000);
+  const signal = defaultSettings.firstEntryMin;
+  // After the buy the stock drops 2% (many of its usual 30-minute moves) and
+  // stays there; the strength exit is off so the staged exit is what is tested.
+  const falling: BacktestData = {
+    ...data,
+    bars: (symbol, d) => {
+      const bars = data.bars(symbol, d);
+      if (symbol !== "NVDA" || d !== date) return bars;
+      return bars.map((b) =>
+        b.m > signal + 5
+          ? { ...b, o: b.o * 0.98, h: b.h * 0.98, l: b.l * 0.98, c: b.c * 0.98 }
+          : b,
+      );
+    },
+  };
+  const run = await runStock(
+    "NVDA",
+    [date],
+    { ...defaultSettings, pyramid: false, sellOnWeakness: false },
+    falling,
+    backtestCalendar,
+    { fillPct: 2 },
+  );
+  const t = run.trades[0]!;
+  const reasons = t.steps.filter((x) => x.kind === "sell").map((x) => x.reason);
+  assert.ok(reasons.includes("stage-full"), reasons.join(","));
+  assert.ok(!reasons.includes("check-10"), reasons.join(","));
+  // With 2.7's rules the same day goes through the 10-minute check instead.
+  const old = await runStock(
+    "NVDA",
+    [date],
+    {
+      ...defaultSettings,
+      pyramid: false,
+      sellOnWeakness: false,
+      checks: true,
+      stockStages: false,
+      stopPct: 30,
+    },
+    falling,
+    backtestCalendar,
+    { fillPct: 2 },
+  );
+  const oldReasons = old.trades[0]!.steps.filter((x) => x.kind === "sell").map(
+    (x) => x.reason,
+  );
+  assert.ok(oldReasons.includes("check-10"), oldReasons.join(","));
 });
 
 /** The fake data with a real book every minute for every contract: the bar's price -/+ a cent. */

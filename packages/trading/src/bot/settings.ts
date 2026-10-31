@@ -117,6 +117,15 @@ export interface BotSettings {
   // minute, on the stocks' and SPY's latest trades, and bought at the first
   // check it holds, not when the minute closes.
   earlyEntry: boolean;
+  // The staged stock exit (version 2.8): on the entry day, half is sold once
+  // the stock is stageHalfS30 of its usual 30-minute move (S30) against the
+  // price at the signal, the rest at stageFullS30 against.
+  stockStages: boolean;
+  stageHalfS30: number;
+  stageFullS30: number;
+  // An entry at 15:00 or later is not sold on its entry day while above its
+  // cost, up to the 15:50 decision (version 2.8).
+  lateHold: boolean;
 }
 
 export type NumberKey = {
@@ -138,12 +147,13 @@ export const defaultSettings: BotSettings = {
   sizePct: 2,
   maxBuysPerDay: 5,
   maxOpen: 4,
-  stopPct: 30,
+  stopPct: 60,
   restStopPct: 20,
-  safetyStopPct: 50,
+  // Above the stop (-60% since version 2.8), or the broker's stop fires first.
+  safetyStopPct: 65,
   dayLossPct: 5,
   drawdownPausePct: 15,
-  checks: true,
+  checks: false,
   sellOnWeakness: true,
   weaknessT: 0.5,
   sellFailedBreak: false,
@@ -168,6 +178,10 @@ export const defaultSettings: BotSettings = {
   pyramid: true,
   pyramidSharePct: 50,
   earlyEntry: true,
+  stockStages: true,
+  stageHalfS30: 0.5,
+  stageFullS30: 1,
+  lateHold: true,
 };
 
 // Values the backtest never ran.
@@ -191,7 +205,7 @@ export const limits: Record<
   sizePct: [0.5, 5, 0.5],
   maxBuysPerDay: [1, 10, 1],
   maxOpen: [1, 10, 1],
-  stopPct: [15, 60, 5],
+  stopPct: [15, 70, 5],
   restStopPct: [0, 50, 5],
   weaknessT: [0, 1.5, 0.1],
   safetyStopPct: [30, 80, 5],
@@ -211,6 +225,8 @@ export const limits: Record<
   firstEntryMin: [5, 60, 5],
   lowFloorPrice: [0.05, 1, 0.05],
   pyramidSharePct: [25, 100, 25],
+  stageHalfS30: [0.25, 2, 0.25],
+  stageFullS30: [0.5, 3, 0.25],
 };
 
 const booleans: BooleanKey[] = [
@@ -225,6 +241,8 @@ const booleans: BooleanKey[] = [
   "skipPremarket",
   "pyramid",
   "earlyEntry",
+  "stockStages",
+  "lateHold",
 ];
 const ticker = /^[A-Z][A-Z.]{0,5}$/;
 const maxTickers = 200;
@@ -363,6 +381,9 @@ function restStop(s: BotSettings): number | null {
   return -s.restStopPct / 100;
 }
 
+/** 15:00 New York: an entry from here is held while above its cost (lateHold). */
+export const lateHoldMinute = 330;
+
 export function exitRules(s: BotSettings): ExitRules {
   let checks = defaultExitRules.checks;
   if (!s.checks) checks = [];
@@ -371,6 +392,10 @@ export function exitRules(s: BotSettings): ExitRules {
     checks,
     stopOut: -s.stopPct / 100,
     restStopOut: restStop(s),
+    stages: s.stockStages
+      ? { half: s.stageHalfS30, full: s.stageFullS30 }
+      : null,
+    lateHoldFrom: s.lateHold ? lateHoldMinute : null,
     strengthOut: s.sellOnWeakness ? s.weaknessT : null,
     carryMinGain: s.holdFromPct / 100,
     carryMaxNights: s.maxNights,

@@ -177,6 +177,8 @@ function reasonText(reason: ExitReason, s: BotSettings): string {
     "stop-30": `Down ${s.stopPct}% with the stock against the entry`,
     "rest-stop": `The rest after the 10-min half: down ${s.restStopPct}% with the stock against the entry`,
     "strength-gone": `Strength gone: the stock's edge over SPY since the open fell to t ${s.weaknessT}`,
+    "stage-half": `Staged exit: the stock is ${s.stageHalfS30} of its usual 30-min move against the signal price, sold half`,
+    "stage-full": `Staged exit: the stock is ${s.stageFullS30} of its usual 30-min move against the signal price, sold all`,
     "close-1550": "Sold at 15:50",
     carry: `Held overnight (up ${s.holdFromPct}% or more)`,
     "morning-gap-keep": "Morning: gapped our way, sold half",
@@ -1530,6 +1532,7 @@ export class IndiBot {
         ...p,
         nights: p.day === date ? 0 : p.nights,
         halfSold: p.sales.some((x) => x.reason === "check-10"),
+        stageHalfSold: p.sales.some((x) => x.reason === "stage-half"),
       };
       // The signal's strength now, from the closed minutes (the scan's prior data).
       const prior = this.prior.get(p.symbol);
@@ -1545,6 +1548,9 @@ export class IndiBot {
           stock: live.get(p.symbol) ?? this.lastClose(p.symbol, m),
           option: mid,
           strength,
+          // The stock's usual 30-minute move, for the staged exit (entry day only).
+          unit:
+            p.day === date ? (this.levels.get(p.symbol)?.unit ?? null) : null,
           isExpiryDay: expiry === date,
           sessionBeforeExpiry: nextSession(date) <= expiry,
           open: first && first.m <= 5 ? first.o : null,

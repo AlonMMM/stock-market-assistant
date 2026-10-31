@@ -85,7 +85,7 @@ The user's request: no Alerts tab, and the Backtest section tests a bot on stock
 - **Sections:** Watchlist · Trading · Backtest. The Alerts page and its links are gone; an old `#alerts` link or a
   Telegram alert link opens the Watchlist (the stock's page). The collector, the alerts on the Watchlist and the
   Volume bot's use of them are unchanged.
-- **Backtest:** bot (Main bot; the Volume bot is "coming soon", its live rules need second data), version (1.0.0–2.7.0),
+- **Backtest:** bot (Main bot; the Volume bot is "coming soon", its live rules need second data), version (1.0.0–2.8.0),
   stocks (typed, the bot's core list or a watchlist, up to 40), period (presets or dates from 2024-02-01), the rules
   (editable, starred when changed) and the money (start, size %, compounding, fee a contract, buys a day, open
   positions, fill cost). Result: total P&L, return, win rate, worst drop, the account curve, the skipped signals,
