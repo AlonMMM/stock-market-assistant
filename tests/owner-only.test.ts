@@ -39,6 +39,7 @@ test("owner only: computing is not changing", () => {
     "/api/bot-backtest",
     "/api/day-chart",
     "/api/replay",
+    "/api/volume-backtest",
   ])
     assert.equal(changeRefusal("POST", path, viewer, owner), null);
 });

@@ -552,6 +552,15 @@ api.get("/v1/strangle", async () => {
   if (!strangle) throw new RequestError(strangleOff, 409);
   return strangle.status();
 });
+// A day's fired 10-second alerts and alert books, read after the close by the
+// website's scheduled step into D1 (volume-daily.ts) for the backtest.
+api.get("/v1/strangle/alert-data", async (request) => {
+  if (!strangle) throw new RequestError(strangleOff, 409);
+  const day = (request.query as { day?: unknown }).day;
+  if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day))
+    throw new RequestError("day must be a date (YYYY-MM-DD)");
+  return strangle.alertData(day);
+});
 api.get("/v1/strangle/settings", async () => {
   if (!strangle) throw new RequestError(strangleOff, 409);
   return strangle.settings();

@@ -92,9 +92,15 @@ function parseRequest(body: unknown, lastSession: string) {
     throw new InputError(`Option data starts on ${firstBacktestDate}`);
   if (to > lastSession)
     throw new InputError(`The last session with final data is ${lastSession}`);
-  const dates = [...previousSessions(to, 400), to].filter(
-    (d) => d >= from && coreClose(d) !== null,
-  );
+  // Back from `to` one session at a time: the calendar starts in 2024, so a
+  // fixed count back (400 sessions) failed for an early-2024 range.
+  const dates: string[] = [];
+  for (
+    let d = to;
+    d >= from && dates.length <= maxBacktestSessions;
+    d = previousSessions(d, 1)[0]!
+  )
+    if (coreClose(d) !== null) dates.unshift(d);
   if (!dates.length) throw new InputError("No sessions in the range");
   if (dates.length > maxBacktestSessions)
     throw new InputError(`At most ${maxBacktestSessions} sessions a request`);

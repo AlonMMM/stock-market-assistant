@@ -16,11 +16,7 @@ import {
   type NewsCalendar,
 } from "../../../packages/trading/src/bot/news.js";
 import type { OptionQuote } from "../../../packages/trading/src/options.js";
-import {
-  liquidOrder,
-  pickContract,
-  type Picked,
-} from "../../../packages/trading/src/bot/picker.js";
+import { pickContract } from "../../../packages/trading/src/bot/picker.js";
 import {
   cState,
   priorFrom,
@@ -40,14 +36,20 @@ import {
   burstAgrees,
   burstAtSecond,
   burstOf,
+  daysBetween,
   giveBackExit,
   legQty,
   minuteCloseExit,
+  shockRules,
   sideOf,
   strengthAgrees,
   waitedOut,
   type Leg,
 } from "../../../packages/trading/src/strangle/decide.js";
+import {
+  legAt,
+  legDeltas,
+} from "../../../packages/trading/src/strangle/pick.js";
 import {
   clockOf,
   defaultStrangleSettings,
@@ -79,6 +81,7 @@ import { FastTape, fetchFastBars, fetchFastDay } from "./strangle-fast.js";
 import { AlertBooks, type AlertBookWatch } from "./alert-books.js";
 import {
   tradeCash,
+  type FastAlertRow,
   type StrangleEventKind,
   type StrangleOrder,
   type StrangleStore,
@@ -150,20 +153,10 @@ const soldOf = (result: unknown): number => {
   return typeof r?.result?.sold === "number" ? r.result.sold : 0;
 };
 
-// The shock alert's entry (volume-bot.md 2026-10-30): the side held on 5
-// 1-second checks in a row within 300 s of the alert; the leg stepped toward
-// the money up to 0.35 delta; no buy over a 30% spread.
-const shockHoldChecks = 5;
-const shockHoldWithin = 300;
-const shockMaxDelta = 0.35;
-const shockMaxSpread = 0.3;
-
-/** Calendar days from `date` to `expiry` (both YYYY-MM-DD). */
-const daysBetween = (date: string, expiry: string) =>
-  Math.round(
-    (Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) /
-      86_400_000,
-  );
+// The shock alert's entry: shockRules (strangle/decide.ts), shared with the backtest.
+const shockHoldChecks = shockRules.holdChecks;
+const shockHoldWithin = shockRules.holdWithin;
+const shockMaxSpread = shockRules.maxSpread;
 
 /** The alert's name at the start of a watch's detail. */
 function alertWords(fast?: { shock?: boolean }): string {
@@ -496,6 +489,15 @@ export class StrangleBot {
             if (!r.fire.step(t, st.on)) continue;
             if (t < r.rule.firstSlot || t > r.rule.lastSlot) continue;
             const second = (t + 1) * 10;
+            // Every fired alert is kept for the website's backtest, a late one too.
+            this.o.store.saveFastAlert({
+              day: date,
+              symbol,
+              second,
+              kind: r.isShock ? "shock" : "fast",
+              price: cf[t]!,
+              up: st.up,
+            });
             // A slot passed while catching up (a start mid-session): no trade.
             if (this.sessionSecond() - second > 30) continue;
             // Every alert's option books, traded or not (alert-books.ts).
@@ -573,6 +575,19 @@ export class StrangleBot {
   /** Every 2 seconds: the running alerts' option books. */
   async watchBooks(): Promise<void> {
     await this.books.step();
+  }
+
+  /** A day's fired 10-second alerts and alert books, for the website's backtest data (read-only). */
+  alertData(day: string): {
+    day: string;
+    alerts: FastAlertRow[];
+    books: AlertBookWatch[];
+  } {
+    return {
+      day,
+      alerts: this.o.store.fastAlerts(day),
+      books: this.o.store.alertBooks(day),
+    };
   }
 
   /**
@@ -1079,7 +1094,7 @@ export class StrangleBot {
     if (!expiry) return { outcome: "no_expiry", detail: "" };
     // The shock alert: an expiry at most 2 calendar days out (volume-bot.md
     // 2026-10-30: its 3-4 DTE trades lost in both halves).
-    if (fast?.shock && daysBetween(date, expiry) > 2)
+    if (fast?.shock && daysBetween(date, expiry) > shockRules.maxDays)
       return {
         outcome: "no_expiry",
         detail: "the shock alert trades an expiry at most 2 days out",
@@ -1458,40 +1473,17 @@ export class StrangleBot {
     }
   }
 
-  /** The liquid fallback: the first strike in liquidOrder's order with enough volume, or null. */
-  private async liquidLeg(
-    quotes: OptionQuote[],
-    stock: number,
-    right: "call" | "put",
-    expiry: string,
-    picked: { quote: OptionQuote; delta: number },
-    rules: { otmScanMax: number; maxStrikes: number; minPrice: number },
-    day: string,
-    minute: number,
-    minVolume: number,
-  ): Promise<{ quote: OptionQuote; mid: number; delta: number } | null> {
-    for (const c of liquidOrder(quotes, stock, right, expiry, picked, rules)) {
-      const volume = await this.o.market.optionVolume30(
-        c.quote.symbol,
-        day,
-        minute,
-      );
-      if (volume >= minVolume) return c;
-    }
-    return null;
-  }
-
   /** The side came: pick that leg and buy it, or end the trade with why not. */
   /**
-   * The leg at one delta: the pick, the picked leg's book kept with the
-   * signal, then the volume check with the liquid fallback.
+   * The leg at one delta (strangle/pick.ts, shared with the backtest): the
+   * pick, the picked leg's book kept with the signal, then the volume check
+   * with the liquid fallback.
    */
   private async legAt(
     t: StrangleTrade,
     quotes: OptionQuote[],
     stock: number,
     right: "call" | "put",
-    expiry: string,
     dte: number,
     delta: number,
     m: number,
@@ -1499,60 +1491,35 @@ export class StrangleBot {
   ): Promise<
     | {
         ok: true;
-        got: Extract<Picked, { ok: true }>;
+        got: { quote: OptionQuote; mid: number; delta: number };
         fallback: string;
         book: ReturnType<typeof bookOf>;
       }
     | { ok: false; outcome: string; detail: string }
   > {
-    const pick = {
+    let book: ReturnType<typeof bookOf>;
+    const got = await legAt(
+      quotes,
+      stock,
+      right,
+      t.day,
+      dte,
       delta,
-      dteMin: dte,
-      dteMax: dte,
-      otmScanMax: 0.2,
-      maxStrikes: 16,
-      minPrice: s.minPrice,
-      minVolume30: s.minVolume,
-      cheapFallback: false, // the Volume bot keeps its own legs: no fallback
-    };
-    let got = pickContract(quotes, stock, right, t.day, pick);
-    // The picked leg's bid / ask, kept with the signal (paper fills are not real ones).
-    const chosen = got.quote;
-    const book = bookOf(chosen, this.o.now(), "alpaca"); // its own Alpaca paper account
-    if (chosen && book)
-      this.o.store.setSignalBook(t.day, t.symbol, {
-        ...book,
-        contract: chosen.symbol,
-      });
-    if (!got.ok) return { ok: false, outcome: got.reason, detail: right };
-    let fallback = "";
-    if (s.minVolume > 0) {
-      const first = got.quote.symbol;
-      const volume = await this.o.market.optionVolume30(first, t.day, m);
-      if (volume < s.minVolume) {
-        const liquid = s.liquidFallback
-          ? await this.liquidLeg(
-              quotes,
-              stock,
-              right,
-              expiry,
-              got,
-              pick,
-              t.day,
-              m,
-              s.minVolume,
-            )
-          : null;
-        if (!liquid)
-          return {
-            ok: false,
-            outcome: "thin",
-            detail: `${this.words(first)}: ${volume} contracts in 30 minutes`,
-          };
-        got = { ok: true, ...liquid };
-        fallback = ` (liquid fallback: ${this.words(first)} traded ${volume})`;
-      }
-    }
+      s,
+      (contract) => this.o.market.optionVolume30(contract, t.day, m),
+      (contract) => this.words(contract),
+      (chosen) => {
+        // The picked leg's bid / ask, kept with the signal (paper fills are not real ones).
+        book = bookOf(chosen, this.o.now(), "alpaca"); // its own Alpaca paper account
+        if (book)
+          this.o.store.setSignalBook(t.day, t.symbol, {
+            ...book,
+            contract: chosen.symbol,
+          });
+      },
+    );
+    if (!got.ok) return got;
+    let fallback = got.fallback;
     if (delta !== s.delta)
       fallback += ` (the ${s.delta.toFixed(2)} leg too cheap or thin: ${delta.toFixed(2)} delta)`;
     return { ok: true, got, fallback, book };
@@ -1609,13 +1576,9 @@ export class StrangleBot {
     const quotes = await this.o.trading.chain(t.symbol, right, expiry, expiry);
     // The shock steps 0.05 toward the money, up to 0.35, while the leg is too
     // cheap or too thin (volume-bot.md 2026-10-30, "step35"); the rest pick once.
-    const deltas = [s.delta];
-    if (t.shock)
-      for (let d = s.delta + 0.05; d <= shockMaxDelta + 1e-9; d += 0.05)
-        deltas.push(Math.round(d * 100) / 100);
     let leg: Awaited<ReturnType<typeof this.legAt>> | null = null;
-    for (const delta of deltas) {
-      leg = await this.legAt(t, quotes, stock, right, expiry, dte, delta, m, s);
+    for (const delta of legDeltas(s, !!t.shock)) {
+      leg = await this.legAt(t, quotes, stock, right, dte, delta, m, s);
       if (leg.ok) break;
     }
     if (!leg || !leg.ok)

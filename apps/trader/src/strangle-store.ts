@@ -14,6 +14,16 @@ import type { OptionBook } from "./option-book.js";
 
 export type StrangleEventKind = "info" | "signal" | "skip" | "order" | "error";
 
+/** A fired 10-second alert as the backtest replays it (strangle/backtest.ts ShockAlert). */
+export interface FastAlertRow {
+  day: string;
+  symbol: string;
+  second: number; // session second its slot ended (09:30 New York = 0)
+  kind: "shock" | "fast";
+  price: number; // the slot's close: the side lines' start
+  up: boolean;
+}
+
 export interface StrangleEvent {
   at: number;
   kind: StrangleEventKind;
@@ -119,6 +129,10 @@ export class StrangleStore {
         day TEXT NOT NULL, symbol TEXT NOT NULL, second INTEGER NOT NULL,
         kind TEXT NOT NULL, expiry TEXT NOT NULL, data BLOB NOT NULL,
         updated_at INTEGER NOT NULL,
+        PRIMARY KEY (day, symbol, second, kind));
+      CREATE TABLE IF NOT EXISTS strangle_fast_alerts (
+        day TEXT NOT NULL, symbol TEXT NOT NULL, second INTEGER NOT NULL,
+        kind TEXT NOT NULL, price REAL NOT NULL, up INTEGER NOT NULL,
         PRIMARY KEY (day, symbol, second, kind));
     `);
     // Since re-entry (2026-10-26) a stock can have several alerts a day:
@@ -322,6 +336,29 @@ export class StrangleStore {
         )
         .all(day) as { data: Uint8Array }[]
     ).map((r) => JSON.parse(gunzipSync(r.data).toString()) as AlertBookWatch);
+  }
+
+  /**
+   * Keeps a fired 10-second alert (the shock, or the 60-second alert),
+   * traded or not, for the website's backtest (volume_alerts in D1).
+   */
+  saveFastAlert(a: FastAlertRow) {
+    this.db
+      .prepare(
+        "INSERT OR IGNORE INTO strangle_fast_alerts (day, symbol, second, kind, price, up) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(a.day, a.symbol, a.second, a.kind, a.price, a.up ? 1 : 0);
+  }
+
+  /** A day's fired 10-second alerts, oldest first. */
+  fastAlerts(day: string): FastAlertRow[] {
+    return (
+      this.db
+        .prepare(
+          "SELECT day, symbol, second, kind, price, up FROM strangle_fast_alerts WHERE day = ? ORDER BY second, symbol",
+        )
+        .all(day) as (Omit<FastAlertRow, "up"> & { up: number })[]
+    ).map((r) => ({ ...r, up: r.up === 1 }));
   }
 
   setting(name: string): string | undefined {

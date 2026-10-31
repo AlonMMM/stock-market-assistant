@@ -28,6 +28,8 @@ import { handleCandles } from "../../../packages/market-data/src/candles.js";
 import { handleChartBars } from "../../../packages/market-data/src/chart-bars.js";
 import { handleTradeChart } from "../../../packages/market-data/src/trade-chart.js";
 import { handleBotBacktest } from "../../../packages/market-data/src/bot-backtest.js";
+import { handleVolumeBacktest } from "../../../packages/market-data/src/volume-backtest.js";
+import type { VolumeDataStore } from "../../../packages/market-data/src/volume-data.js";
 import type { BarCache } from "../../../packages/market-data/src/bar-cache.js";
 import type { OptionQuoteStore } from "../../../packages/market-data/src/option-quotes.js";
 import type { OptionBarStore } from "../../../packages/market-data/src/option-bars.js";
@@ -78,6 +80,7 @@ export function buildApp(
     cache?: BarCache;
     quotes?: OptionQuoteStore; // real option quotes uploaded from the Mac (option-quotes.ts)
     optionBars?: OptionBarStore; // option minute bars the backtest read, kept (option-bars.ts)
+    volume?: VolumeDataStore; // the Volume bot's backtest: shock alerts and 1-second windows (volume-data.ts)
     baselines?: BaselineStore; // stored Rel vol baselines for the board
     strengths?: StrengthStore; // stored β/σ vs SPY for the board's score
     sigmas?: MarksSigmaStore; // stored σ curves of the marked-sections score
@@ -514,6 +517,21 @@ export function buildApp(
       alpaca.cache,
       alpaca.quotes,
       alpaca.optionBars,
+    );
+    return reply.code(result.status).send(result.body);
+  });
+  // The Volume bot's backtest of one stock over a range (strangle/backtest.ts).
+  app.post("/api/volume-backtest", async (request, reply) => {
+    const result = await handleVolumeBacktest(
+      request.body,
+      alpaca,
+      process.env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
+      alpaca.fetcher,
+      Date.now(),
+      alpaca.cache,
+      alpaca.quotes,
+      alpaca.optionBars,
+      alpaca.volume,
     );
     return reply.code(result.status).send(result.body);
   });
