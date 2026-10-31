@@ -1147,10 +1147,13 @@ function SignalList({
             <tr>
               <th>When</th>
               <th>Stock</th>
+              <th>Outcome</th>
+              <th title="The option's return on what was paid. Not bought: the trade it would have made on Black-Scholes prices">
+                Return
+              </th>
               <th title="Strength against SPY (t-stat)">t</th>
               <th title="The day's volume against normal">Vol</th>
               <th>D2</th>
-              <th>Outcome</th>
               <th>Contract</th>
               <th title="Bought: the fill. Not bought: its last price at the signal">
                 Price
@@ -1158,9 +1161,6 @@ function SignalList({
               <th>Δ</th>
               <th title="Contracts traded in the 30 minutes before the signal">
                 30 min
-              </th>
-              <th title="The option's return on what was paid. Not bought: the trade it would have made on Black-Scholes prices">
-                Return
               </th>
             </tr>
           </thead>
@@ -1217,10 +1217,14 @@ function SignalLine({
         {r.bonus && <span className="state-chip">D2</span>}
         {r.pyramid && <span className="state-chip">Pyramid</span>}
       </td>
+      <td title={r.detail || undefined}>{r.outcome}</td>
+      <td className={`num${tone(r.ret)}`}>
+        {ret}
+        {r.model && <span className="small muted"> model</span>}
+      </td>
       <td className="num">{fixed(r.t, 1)}</td>
       <td className="num">{fixed(r.rvol, 1, "×")}</td>
       <td className="num">{fixed(r.d2, 1)}</td>
-      <td title={r.detail || undefined}>{r.outcome}</td>
       <td className="num">
         {contract}
         {r.modelled && <span className="state-chip">Model</span>}
@@ -1231,10 +1235,6 @@ function SignalLine({
       <td className="num">{fixed(r.delta, 2)}</td>
       <td className={`num${r.reason === "illiquid" ? " thin" : ""}`}>
         {r.volume30 ?? "—"}
-      </td>
-      <td className={`num${tone(r.ret)}`}>
-        {ret}
-        {r.model && <span className="small muted"> model</span>}
       </td>
     </tr>
   );
