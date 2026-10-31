@@ -2199,3 +2199,18 @@ or any 5-minute close while held, over the price paid. Fair list, 1,006 entries,
 ever +10% 76% (79% of them end below zero), +25% 62% (74%), +50% 44% (64%), +100% 28% (53%), +200% 14% (37%), +500% 6%
 (12%); never above the price paid 11%. Favorites 12m (509): +10% 74%, +25% 61%, +50% 45% (62% end below zero), +100%
 27% (51%), +200% 15%, +500% 6%. A mid is not a bid, and a peak can last one minute.
+
+### Loser exits side by side on all lists; a 30-minute retry; staged 0.75 / 1.25 again (2026-10-31, adds counted once)
+Fixed walk, champ-early, 2%. Fair / Favorites 12m / 6m (tune / check on the fair list):
+today $3,202,862 (26.6%) 458K / 699K, $243,492, $162,555; + stock stop 1.0 S30 against $3,315,392 (25.4%) 474K / 700K,
+$230,949, $170,382; checks off + 1.0 S30 $3,696,709 (27.9%) 481K / 769K, $245,750, $155,140; staged 0.5 / 1.0
+$3,829,110 (26.3%) 510K / 750K, $254,741, $167,847; staged + stop -60% $4,161,285 (25.5%) 541K / 770K, $269,142,
+$163,088; checks off alone $3,858,372 (31.6%), $238,117, $139,089. Every stock exit wins both fair halves and loses
+3-6% of the Favorites 12m check half: a tie off the fair list. Staged 0.75 / 1.25: $3,374,739 (28.0%), $251,619,
+$162,135, behind 0.5 / 1.0 everywhere (looser lines hold more nights: 158 vs 145); 1.0 / 1.5 stopped (the user: "not
+good").
+A second try 30 / 60 minutes after a trade sold on its entry day (retry30.py in the scratchpad; the champion's rule,
+pick and exits, real book 93-97%), fair list: same side 30 min 136 retries, 16% won, median -21%, $3,123,542 (29.9%),
+tune $533,396 / check $585,596; either side $3,007,331; after a loss $3,139,723; 60 min 108 retries $3,648,500
+(29.1%), tune $571,475 / check $638,436. Tune up 16-25%, check down 9-19%, drop +3 points: not better (as on
+2026-10-27).

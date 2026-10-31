@@ -358,7 +358,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
             steps.append((date, minute, "buy", 1.0, round(cost, 4), f"entry_{FILL}"))
     st = dict(cut1=False, armed=False, t1=False, plan=None, k=0)
     pending = None  # (share of original or 'all', rule)
-    fb = failed_break_minute(und, date, minute, bet) if X.get("failed_break") else None
+    fb = failed_break_minute(und, date, minute, bet) if X.get("failed_break") or X.get("fb_win") else None
     # the -X% stop can depend on days to expiry at the entry: out_by_dte [[max dte, out], ...] (user, 2026-10-24)
     uout = (X.get("user_stop") or {}).get("out")
     if X.get("user_stop") and X["user_stop"].get("out_by_dte"):
@@ -390,7 +390,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
             early = k == 0 and t - minute < X.get("first_exit_min", 0)  # no stop / failed-break sale this soon after the entry (user, 2026-10-24)
             hold = k == 0 and t - minute < X.get("hold_first", 0)  # no stop of any kind yet (hold_first)
             early = early or hold
-            if fb is not None and k == 0 and t > fb and cost is not None and not early:  # the failed-break sale: all of what is left
+            if fb is not None and X.get("failed_break") and k == 0 and t > fb and cost is not None and not early:  # the failed-break sale: all of what is left
                 steps.append((d, t, "sell", round(rem, 4), round(max(mid(b) * (1 - SH), 0.01), 4), "F_break"))
                 return cost, steps, ""
             if st.get("rb_pending"):  # the rebuy (rebuy): the part sold at the +10 check, back at this bar
@@ -598,6 +598,29 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
             # (under carry_min_dte days to expiry), once up `arm` over the cost, all out `trail` under the option's high
             if NC and peak / cost - 1 >= NC["arm"] and (dt.date.fromisoformat(exp) - dt.date.fromisoformat(d)).days < X["carry_min_dte"]:
                 if c <= peak * (1 - NC["trail"]): pending = ("all", "NC_trail"); continue
+            BS_ = X.get("big_stage")  # {arm, first, share, full}, big_stage.py (the user, 2026-10-31: "for 200%+ - sell 25% on the
+            # first pullback ... than exit on full pullback"): once the option was up `arm` (any day held), the stock's best
+            # since then; `share` of the original position out at the first pullback of `first` x S30, all out at `full` x S30
+            if BS_ and sd.ok and peak / cost - 1 >= BS_["arm"]:
+                if "bs" not in st:
+                    from levels import ctx
+                    cx = ctx(und, dates[0]); st["bs"] = [cx["sd"] if cx else None, None, False]
+                px = sd.c[min(t, 389)]
+                if st["bs"][0] and px:
+                    best = st["bs"][1] or px
+                    st["bs"][1] = max(best, px) if bet > 0 else min(best, px)
+                    back = -bet * (px / st["bs"][1] - 1) / st["bs"][0]
+                    if back >= BS_["full"]: pending = ("all", "S_bigfull"); continue
+                    if not st["bs"][2] and back >= BS_["first"]:
+                        st["bs"][2] = True
+                        if rem > BS_["share"] + 1e-9: pending = (BS_["share"], "S_bigpart"); continue
+            FW = X.get("fb_win")  # {arm, share}, big_stage.py (the user, 2026-10-31: "if stock do bounce from resistance/support,
+            # exit when you confirm it going down"): the failed break (the next level ahead reached, then 0.5 S30 back without
+            # breaking it, failed_break_minute) sells `share` of what is left, only when the option is up `arm` or more then
+            if FW and fb is not None and k == 0 and t > fb and not st.get("fbw"):
+                st["fbw"] = True
+                if g >= FW["arm"] and not early:
+                    pending = ("all" if FW["share"] >= 1 else rem * FW["share"], "F_break_win"); continue
             BT_ = X.get("big_trail")  # {arm, k}: once the option was up `arm` (any day held), out when the stock gives back k x S30
             # from its best since then (the user, 2026-10-27: "from some gain we should start to take profits")
             if BT_ and sd.ok and peak / cost - 1 >= BT_["arm"]:
