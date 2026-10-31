@@ -4,7 +4,10 @@
 // (week.py, research/indi-v2) with scripts/bot-backtest-run.ts.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergeSources } from "../packages/market-data/src/option-quotes.js";
+import {
+  D1OptionQuotes,
+  mergeSources,
+} from "../packages/market-data/src/option-quotes.js";
 import { D1OptionBars } from "../packages/market-data/src/option-bars.js";
 import { SqliteD1 } from "../apps/api/src/sqlite-d1.js";
 import {
@@ -531,6 +534,31 @@ test("a thin contract's skip keeps its volume; with no expiry the what-if models
   assert.equal(skip.whatIf?.ivFrom, "stock");
   // An out-of-the-money call at about the target delta
   assert.ok(skip.whatIf!.strike > skip.stock!, String(skip.whatIf!.strike));
+});
+
+test("the backtest reads Databento's quotes only, never the live bot's saved books", async () => {
+  const db = new SqliteD1(":memory:");
+  const store = new D1OptionQuotes(db);
+  await store.get("X", date, date); // makes the table
+  const put = (source: string, quotes: number[][]) =>
+    db
+      .prepare(
+        "INSERT INTO option_quotes (contract, date, source, quotes, stored_at) VALUES (?, ?, ?, ?, 0)",
+      )
+      .bind("IBIT261102C00045500", date, source, JSON.stringify(quotes))
+      .run();
+  await put("databento", [[5, 0.1, 0.12]]);
+  await put("live", [
+    [5, 0.12, 0.13],
+    [6, 0.11, 0.12],
+  ]);
+  const day = (await store.get("IBIT261102C00045500", date, date)).get(date);
+  assert.deepEqual(day, [{ m: 5, bid: 0.1, ask: 0.12 }]);
+  // A day with only the live bot's books has no quotes for the backtest.
+  await db
+    .prepare("DELETE FROM option_quotes WHERE source = 'databento'")
+    .run();
+  assert.equal((await store.get("IBIT261102C00045500", date, date)).size, 0);
 });
 
 test("the option data calls fetch unbound, as Cloudflare Workers require", async () => {

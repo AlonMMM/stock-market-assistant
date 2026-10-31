@@ -10,6 +10,10 @@ export type { QuoteMinute };
 // - "databento": cbbo-1m, every minute of a contract's day;
 // - "live": the books the bots saved at their signals, buys and sales; on a
 //   minute with both, the live one wins (it is what the paper account saw).
+// The backtest reads Databento's only (the user, 2026-10-31: "take signals
+// list from the backtest not from the realbot" ... "do not use it"): its
+// prices and books are the market's, never the live bot's. The live rows stay
+// stored; a store made with both sources merges them as above.
 // One row per contract, day and source; `quotes` is the compact JSON
 // [[minute, bid, ask], ...], gzipped and base64'd with a "gz:" prefix like the
 // bar cache, or plain JSON. A minute is the session minute (09:30 New York = 0)
@@ -50,7 +54,10 @@ export function mergeSources(
 
 export class D1OptionQuotes implements OptionQuoteStore {
   private ready?: Promise<unknown>;
-  constructor(private db: D1Like) {}
+  constructor(
+    private db: D1Like,
+    private sources: readonly string[] = ["databento"],
+  ) {}
   private init() {
     return (this.ready ??= this.db.prepare(quotesTable).run());
   }
@@ -58,9 +65,9 @@ export class D1OptionQuotes implements OptionQuoteStore {
     await this.init();
     const { results } = await this.db
       .prepare(
-        "SELECT date, source, quotes FROM option_quotes WHERE contract = ? AND date BETWEEN ? AND ?",
+        `SELECT date, source, quotes FROM option_quotes WHERE contract = ? AND date BETWEEN ? AND ? AND source IN (${this.sources.map(() => "?").join(", ")})`,
       )
-      .bind(contract, from, to)
+      .bind(contract, from, to, ...this.sources)
       .all<{ date: string; source: string; quotes: string }>();
     const byDate = new Map<
       string,

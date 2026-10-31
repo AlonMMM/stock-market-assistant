@@ -102,8 +102,9 @@ export interface BacktestData {
   ): Promise<Map<string, MinuteBar[]>>;
   /**
    * One contract's real quotes on each session from `from` to `to`, by date,
-   * oldest minute first: Databento's and the bots' saved books, uploaded from
-   * the Mac. Absent, or a day without them: the trade bars price the trade.
+   * oldest minute first: Databento's, uploaded from the Mac (never the live
+   * bots' saved books). Absent, or a day without them: the trade bars price
+   * the trade.
    */
   optionQuotes?(
     contract: string,
