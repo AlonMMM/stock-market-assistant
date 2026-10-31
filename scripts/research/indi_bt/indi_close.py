@@ -80,6 +80,16 @@ the next-day option or the nearest liquid one 1-4 days out, his exit. Set before
   t18-top3 (reference) / w5432-90 (5,2,3,4, top 10%) / w5432-95 (top 5%) / w-noburst-90 (5,2,0,4) /
   w-nopull-90 (5,2,3,0) / w-equal-90 (1,1,1,1). Picked on tune among w*; the pick and the reference on check.
 Quotes: IC_PASS=list -> open24_dbx_list.csv, dbx_fetch.py open24.
+
+IC_SET=o2 (nightly-bet, the user 2026-10-31: "I want to change the way we exist and re-run the test: if the 2 minutes
+openning goes in our way- sell after 2 minutes half and let the other run to the end of the day"; against us: "Sell
+all at 09:32"). Today's pick (t >= 1.8, top 10% of range, volume 1.3x, no earnings, no Friday, top 3, next-day expiry).
+"Our way" read two ways, both set before running:
+  t18-his       his exit (the reference)
+  t18-o2open    the stock at 09:32 above (calls) / below (puts) the 09:30 open: half at 09:32, the rest at 15:55;
+                else all at 09:32
+  t18-o2close   the same with "our way" = the stock at 09:32 vs the entry day's close
+Quotes: IC_PASS=list -> open26_dbx_list.csv, dbx_fetch.py open26 (the next day to the close).
 """
 import bisect, collections, csv, datetime as dt, glob, gzip, json, math, multiprocessing as mp, os, statistics as st, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -105,16 +115,17 @@ SIZES = rr.SIZES
 LISTING = os.environ.get("IC_PASS") == "list"
 M_IN = 387
 A0, Z = "2024-02-01", FR.Z
-EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15", "open16", "open22", "open23", "open24")]
+EXTRAS = [os.path.join(HERE, "dbx_cache", x) for x in ("open2", "open3", "open4", "open5", "open7", "open8", "open9", "open10", "open11", "open12", "open14", "open15", "open16", "open22", "open23", "open24", "open26")]
 VOL = os.environ.get("IC_SET") == "vol"
 D2B = os.environ.get("IC_SET") == "d2b"
 D3S = os.environ.get("IC_SET") == "d3"
+O2 = os.environ.get("IC_SET") == "o2"
 SCORE = os.environ.get("IC_SET") == "score"
 FILL = os.environ.get("IC_SET") in ("fill", "score")
-MANY = os.environ.get("IC_SET") == "many" or FILL
+MANY = os.environ.get("IC_SET") == "many" or FILL or O2
 RS = os.environ.get("IC_SET") == "rs" or VOL or D2B or D3S or MANY
-TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs", "d3": "_d3", "many": "_many", "fill": "_fill", "score": "_score"}.get(os.environ.get("IC_SET"), "")
-LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv", "_d3": "open16_dbx_list.csv", "_many": "open22_dbx_list.csv", "_fill": "open23_dbx_list.csv", "_score": "open24_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
+TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs", "d3": "_d3", "many": "_many", "fill": "_fill", "score": "_score", "o2": "_o2"}.get(os.environ.get("IC_SET"), "")
+LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv", "_d3": "open16_dbx_list.csv", "_many": "open22_dbx_list.csv", "_fill": "open23_dbx_list.csv", "_score": "open24_dbx_list.csv", "_o2": "open26_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
 BASE = dict(lo=0.02, hi=0.04, d=0.20, exit="his", ath=False, pos=0.85, vwap=True, rs="60", vol="min", fri=False)
 CORE = {"thesis": {}, "m15": dict(lo=0.015), "m3": dict(lo=0.03, hi=9.0), "d30": dict(d=0.30), "d15": dict(d=0.15),
         "at10": dict(exit="at10"), "ath": dict(ath=True)}
@@ -176,8 +187,12 @@ if SCORE:
                 "w5432-90": {**SC, "w": (5, 2, 3, 4)}, "w5432-95": {**SC, "w": (5, 2, 3, 4), "q": 0.95},
                 "w-noburst-90": {**SC, "w": (5, 2, 0, 4)}, "w-nopull-90": {**SC, "w": (5, 2, 3, 0)},
                 "w-equal-90": {**SC, "w": (1, 1, 1, 1)}}
-REF = "t18-top3" if MANY else None
+if O2:
+    VERSIONS = {"t18-his": {**R, "t": 1.8, "n": 3}, "t18-o2open": {**R, "t": 1.8, "n": 3, "exit": "o2open"},
+                "t18-o2close": {**R, "t": 1.8, "n": 3, "exit": "o2close"}}
+REF = ("t18-his" if O2 else "t18-top3") if MANY else None
 PICKABLE = [v for v in VERSIONS if v != "t18-top3" and (v.startswith("r2") or FILL)] if MANY else list(VERSIONS)
+if O2: PICKABLE = ["t18-o2open", "t18-o2close"]
 SCALE = {}   # the tune pool's sorted parts, per (pos, tmin)
 RX = None
 BASE_EXPIRY = sim.expiry_for   # restored after each pick (set at import, so every worker has it)
@@ -424,7 +439,16 @@ def walk(job):
     s = lambda m: next((sc[k] for k in range(m, -1, -1) if sc[k]), None)
     cost = buy[4]
     steps = [(r["date"], M_IN, "buy", 1.0, cost, "entry"), (r["date"], 389, "carry", 1.0, o0.get(389, buy)[4], "eod_carry")]
-    if exit_ == "at10":
+    if exit_ in ("o2open", "o2close"):
+        nb = day(r["sym"], nd)
+        ref_ = nb[0][1] if exit_ == "o2open" and nb and nb[0][0] == 0 else day(r["sym"], r["date"])[-1][4]
+        p2, pe = oc(2), oc(385)
+        if p2 is None or pe is None or s(2) is None: return None
+        if bet * (s(2) / ref_ - 1) > 0:
+            steps += [(nd, 2, "sell", 0.5, p2, "o2_half"), (nd, 385, "sell", 0.5, pe, "o2_eod")]
+        else:
+            steps.append((nd, 2, "sell", 1.0, p2, "o2_out"))
+    elif exit_ == "at10":
         p = oc(30)
         if p is None: return None
         steps.append((nd, 30, "sell", 1.0, p, "at10"))
