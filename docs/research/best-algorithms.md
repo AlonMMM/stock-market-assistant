@@ -2284,3 +2284,31 @@ fair $4,228,594 (25.5%) tune $551,096 / check $767,306 vs 2.8 $4,161,285 (25.5%)
 $273,972 vs $269,142 (check the same), 6m $166,015 vs $163,088. 15 of 1,006 fair entries are at 15:00+; 3 trades change
 (AAPL 2025-06-30 -16 points, META 2026-05-27 -2, AI 2026-09-02 +9) plus one pyramid add kept: about neutral, +1.6% to
 +1.8% on every list, check a tie. In the app's 2.8.0 as `lateHold` (PR #223).
+
+### Two more audit fixes: early entry's SPY look-ahead, and P&L counted on the entry day (2026-10-31)
+The user: "the current champion peeks ahead. Its early entry buys partway through a minute using SPY's price at the
+end of that minute. It also only tests signals already known to hold at the minute's close" and "lists.py:88-93:
+overnight profits are counted too early. A trade's whole multi-day result is added to equity on its entry day, and the
+next day's trades are sized on that money". Both confirmed.
+- Early entry (sec_timing.early_second): SPY's move to the minute's END was spread over its seconds (no SPY seconds on
+  disk), and only confirmed signal minutes were searched. Fix, on by default (`BT_EARLY=old` reproduces): SPY flat
+  since its last closed minute. Fired 552 -> 441 of 1,004 fair entries. Searching every minute from 09:40
+  (`BT_EARLY_SCAN=1`, off by default) moves 133 buys ~3 minutes earlier for +2,870 points - but only false starts on
+  days that later confirmed are visible (no 1-second data for days that never confirm, mostly losers): one-sided, so
+  not counted. Remaining, unmeasured: false starts on days with no confirmed signal.
+- The account: a trade's P&L now joins on the day of its last sale, and a day's trades are sized on closed trades only
+  (lists.py `BT_ACCT=exit` default, `entry` reproduces; score_sum.account when a row has `exit_day`; scratchpad
+  acct2.py `honest`). The other 77 scripts using score_sum.account still book on the entry day (their rows have no
+  sale date): their figures run ~4-12% high when trades are held overnight.
+Fixed early + sale-day account, fixed walk, 2% (adds once):
+
+| Version | Fair (drop) | Tune | Check | Without best 5 | Fav 12m | Fav 6m |
+|---|---|---|---|---|---|---|
+| 2.7 as logged today | $3,202,862 (26.6%) | $458,193 | $699,020 | | $243,492 | $162,555 |
+| 2.7, sale-day account only | $2,862,922 (28.3%) | $474,441 | $644,440 | $566,610 | $233,548 | |
+| **2.7, both fixes** | **$2,836,744 (28.7%)** | $478,844 | $632,370 | $561,079 | $234,170 | $159,193 |
+| 2.7 without early entry (1-second buy) | $2,074,494 (28.5%) | $413,665 | $533,864 | $447,220 | $184,782 | |
+| **2.8, both fixes** | **$3,612,880 (28.0%)** | $559,905 | $687,372 | $716,163 | $256,896 | $159,384 |
+
+The SPY look-ahead was worth 1-3%; the entry-day account 4-12%. Early entry still adds ~37% over the plain 1-second
+buy; 2.8 still leads 2.7 (+27% fair, both halves +17% / +9%; Favorites 12m +10%, check -4%; 6m even).

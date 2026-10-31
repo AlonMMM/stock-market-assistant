@@ -97,6 +97,17 @@ def plain(book, s, look=10):
     return s, round(runaway(book, s, usual(q[1], q[2]), look), 4)
 
 
+def early_buy(book, s, contract, date, look):
+    """The buy at second s (+ LAG): on the 1-second book when it covers that second, else (an earlier false start, before
+    the book's window; BT_EARLY_SCAN=1 only) the ask on the minute's real book as that minute closed (real_bench.quote):
+    after the second, never a stale price from before the move that triggered it."""
+    if book and book[0][0] <= s + LAG: return plain(book, s + LAG, look)
+    import real_bench as RB
+    q = RB.quote(contract, date, s // 60)
+    if not q: return None
+    return s + LAG, round(q[1], 4)
+
+
 def spike(book, stock, D, unit, side, x):
     p_now, p_back = at(stock, D), at(stock, D - 15)
     if not (p_now and p_back): return plain(book, D)
@@ -109,8 +120,81 @@ def spike(book, stock, D, unit, side, x):
     return plain(book, D + 60)
 
 
+# The early entry's audit (the user, 2026-10-31: "the current champion peeks ahead ... uses SPY's price at the end of that
+# minute. It also only tests signals already known to hold at the minute's close"). BT_EARLY=honest (the default): SPY
+# held at its last closed minute inside the forming one (no SPY seconds on disk), and every minute from the first entry
+# minute (FIRST_ENTRY) to the signal's is searched, so a false start before the confirmed minute buys there.
+# BT_EARLY=old reproduces the runs before it. Not covered either way: a false start on a day the rule never holds at a
+# minute's close (no 1-second data for those stock-days). Because of that, the search of the earlier minutes is OFF by
+# default (BT_EARLY_SCAN=1 turns it on): on the stock-days we have it only finds false starts that later confirmed (133
+# trades, +2,870 points on the fair list, mostly good days), while the ones that never confirm (mostly losers) are
+# missing, so it adds a one-sided gain. The default keeps the signal minute only, SPY flat in it.
+EARLY = os.environ.get("BT_EARLY", "honest")
+EARLY_SCAN = os.environ.get("BT_EARLY_SCAN", "0") == "1"
+FIRST_ENTRY = 10
+
+
 def early_second(t, stock, every=1, novol=False):
-    """The first second inside the signal minute where the rule holds with the minute so far, or None."""
+    """The first second the rule holds with the minute so far, or None (see EARLY)."""
+    if EARLY != "old": return honest_second(t, stock, every, novol)
+    return old_second(t, stock, every, novol)
+
+
+def honest_second(t, stock, every=1, novol=False):
+    """BT_EARLY=honest: SPY flat since its last closed minute; every minute from FIRST_ENTRY to the signal's."""
+    sym, date, m0 = t["sym"], t["date"], int(t["minute"])
+    i = CAL.index(date)
+    bars, sbars = day(sym, date), day("SPY", date)
+    b_ = beta(sym, date, i, CAL)
+    cx = ctx(sym, date)
+    if b_ is None or not cx or not cx["sd"] or m0 < 2: return None
+    unit = cx["sd"]
+    c, spy = series(bars)[0], series(sbars)[0]
+    vol = [0] * 390
+    for x in bars: vol[x[0]] = x[5]
+    prior = []
+    for d in CAL[i - 20:i]:
+        v = [0] * 390
+        for x in day(sym, d): v[x[0]] = x[5]
+        acc, run_ = [], 0
+        for k in range(390): run_ += v[k]; acc.append(run_)
+        prior.append(acc)
+    side = 1 if t["right"] == "C" else -1
+    by_min = collections.defaultdict(list)
+    for sec, px, v in stock: by_min[sec // 60].append((sec, px, v))
+    n = s1 = s2 = 0.0
+    ex = []
+    def add(m):
+        nonlocal n, s1, s2
+        if c[m] and c[m - 1] and spy[m] and spy[m - 1]:
+            rs, rp = c[m] / c[m - 1] - 1, spy[m] / spy[m - 1] - 1
+            x = rs - b_ * rp
+            n += 1; s1 += x; s2 += x * x
+            ex.append((m, rp, x))
+    start = min(FIRST_ENTRY, m0) if EARLY_SCAN else m0
+    for m in range(1, start): add(m)
+    for m in range(start, m0 + 1):
+        hist = sorted(a[m] for a in prior if a[m] > 0)
+        if len(hist) >= 10 and c[m - 1]:
+            usual_v = hist[len(hist) // 2]
+            d2 = sum(side * x / unit for mm, rp, x in ex if mm > m - 30 and side * rp < 0)
+            cum_before = sum(vol[:m])
+            vsec = 0
+            for sec, px, v in by_min.get(m, []):
+                vsec += v
+                if (sec - 60 * m + 1) % every: continue
+                x = px / c[m - 1] - 1   # SPY flat since its last closed minute: its move counts 0
+                nn, ss1, ss2 = n + 1, s1 + x, s2 + x * x
+                mu = ss1 / nn; var = max(ss2 / nn - mu * mu, 0.0)
+                tt = side * (mu / math.sqrt(var) * math.sqrt(nn) if var > 0 else 0.0)
+                rv = (cum_before + (0 if novol else vsec)) / usual_v
+                if rv >= 1.5 and (tt >= 1.8 or (tt >= 1.2 and d2 >= 1.5)): return sec
+        add(m)
+    return None
+
+
+def old_second(t, stock, every=1, novol=False):
+    """BT_EARLY=old: the first second inside the signal minute where the rule holds with the minute so far, or None."""
     sym, date, m0 = t["sym"], t["date"], int(t["minute"])
     i = CAL.index(date)
     bars, sbars = day(sym, date), day("SPY", date)
@@ -186,15 +270,15 @@ def one(job):
             if kind == "main":
                 try: es = early_second(t, stock)
                 except Exception: es = None
-                res["early"] = plain(book, es + LAG) if es is not None else res["now-1s"]
-                res["early-r60"] = plain(book, es + LAG, 60) if es is not None else res["now-1s-r60"]
+                res["early"] = early_buy(book, es, r["contract"], t["date"], 10) if es is not None else res["now-1s"]
+                res["early-r60"] = early_buy(book, es, r["contract"], t["date"], 60) if es is not None else res["now-1s-r60"]
                 for every in (5, 10):
                     try: ev = early_second(t, stock, every)
                     except Exception: ev = None
-                    res[f"early{every}-r60"] = plain(book, ev + LAG, 60) if ev is not None else res["now-1s-r60"]
+                    res[f"early{every}-r60"] = early_buy(book, ev, r["contract"], t["date"], 60) if ev is not None else res["now-1s-r60"]
                 try: ev = early_second(t, stock, 5, novol=True)
                 except Exception: ev = None
-                res["early5nv-r60"] = plain(book, ev + LAG, 60) if ev is not None else res["now-1s-r60"]
+                res["early5nv-r60"] = early_buy(book, ev, r["contract"], t["date"], 60) if ev is not None else res["now-1s-r60"]
     r.pop("path", None)
     r["buys"] = {k: v for k, v in res.items() if v}
     r["has_book"] = int(bool(book))

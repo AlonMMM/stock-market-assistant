@@ -85,13 +85,36 @@ def ret_at(r, pct):
     return r.get(f"ret_{round(pct * 100)}pct", r["ret"])
 
 
+# The account audit (the user, 2026-10-31: "overnight profits are counted too early. A trade's whole multi-day result is
+# added to equity on its entry day, and the next day's trades are sized on that money"). BT_ACCT=exit (the default):
+# a trade's P&L joins the account at the end of the day of its last sale; the account a day starts with (what the
+# trades entered that day are sized on) holds only closed trades. BT_ACCT=entry reproduces the runs before it.
+ACCT = os.environ.get("BT_ACCT", "exit")
+
+
+def exit_day(r):
+    """The day of the trade's last sale (its entry day when the steps say nothing later)."""
+    days = [x.split(" ")[0] for x in (r.get("steps") or "").split(";") if " sell " in x]
+    return max(days + [r["date"]])
+
+
 def account(T, pct, start=100_000):
-    """Each trade costs `pct` of the account at the start of its entry day; its P&L joins the account at the day's end."""
+    """Each trade costs `pct` of the account at the start of its entry day; its P&L joins the account at the end of the
+    day of its last sale (BT_ACCT=entry: at the end of its entry day)."""
     eq, peak, dd = start, start, 0.0
-    for d, rows in sorted(_by_day(T).items()):
-        eq += sum(pct * eq * ret_at(r, pct) for r in rows)
+    if ACCT == "entry":
+        for d, rows in sorted(_by_day(T).items()):
+            eq += sum(pct * eq * ret_at(r, pct) for r in rows)
+            peak = max(peak, eq); dd = max(dd, 1 - eq / peak)
+        return eq, dd
+    due = collections.defaultdict(float)
+    by = _by_day(T)
+    for d in sorted(set(by) | {exit_day(r) for r in T}):
+        base = eq
+        for r in by.get(d, []): due[exit_day(r)] += pct * base * ret_at(r, pct)
+        eq += due.pop(d, 0.0)
         peak = max(peak, eq); dd = max(dd, 1 - eq / peak)
-    return eq, dd
+    return eq + sum(due.values()), dd
 
 
 def _by_day(T):
