@@ -495,6 +495,43 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                     pending = ("all", "eod_close" + tag)
                 continue
             if t >= X["eod_minute"]: continue
+            # Indi's gain management, from his fills (indi_rules.py; the user, 2026-10-31: "lets build tests for those"):
+            GW = X.get("guard_win")  # {arm, late}: no intraday sale on an overnight candidate - once the option was up `arm`,
+            # or the entry was at minute `late` or later, nothing is sold on the entry day before the 15:50 decision
+            if GW and k == 0 and (peak / cost - 1 >= GW["arm"] or minute >= GW.get("late", 999)): continue
+            IR = X.get("stuck_exit") or X.get("trim_strength")
+            if IR and sd.ok:
+                if "ir" not in st:
+                    from levels import ctx
+                    cx = ctx(und, dates[0]); p0_ = sd.c[minute] if k == 0 else None
+                    st["ir"] = dict(unit=cx["sd"] if cx and cx["sd"] else None, p0=p0_, best=p0_)
+                ir = st["ir"]; tt = min(t, 389); px = sd.c[tt]
+                if ir["p0"] is None and k == 0: ir["p0"] = ir["best"] = sd.c[minute]
+                if px and ir["unit"] and ir["p0"]:
+                    ir["best"] = max(ir["best"] or px, px) if bet > 0 else min(ir["best"] or px, px)
+                    off_best = bet * (ir["best"] - px) / px / ir["unit"]   # S30 back from the stock's best since the entry
+                    from_entry = bet * (px / ir["p0"] - 1) / ir["unit"]
+                    ex15 = None
+                    if sd.beta is not None and tt >= 15 and sd.c[tt - 15]:
+                        spy_ = st.setdefault(("spy", d), series(day("SPY", d))[0])
+                        if spy_[tt] and spy_[tt - 15]:
+                            ex15 = bet * ((px / sd.c[tt - 15] - 1) - sd.beta * (spy_[tt] / spy_[tt - 15] - 1))
+                    SX = X.get("stuck_exit")  # {lo, hi, off_best}: the entry day, the option between lo and hi and never at hi
+                    # yet, the stock off_best S30 back from its best and its last 15 minutes no better than SPY x beta: all out
+                    if SX and k == 0 and peak / cost - 1 < SX["hi"] and SX["lo"] <= g < SX["hi"] and off_best >= SX["off_best"] \
+                            and ex15 is not None and ex15 <= 0:
+                        pending = ("all", "I_stuck"); continue
+                    TS = X.get("trim_strength")  # {arm, from_entry, near_best, share}: once, any day held, the option up `arm`,
+                    # the stock from_entry S30 our way, within near_best S30 of its best and beating SPY x beta (15 min): sell `share`
+                    if TS and not st.get("ts_done") and g >= TS["arm"] and from_entry >= TS["from_entry"] \
+                            and off_best <= TS["near_best"] and ex15 is not None and ex15 > 0:
+                        st["ts_done"] = True
+                        if rem > TS["share"] + 1e-9: pending = (TS["share"], "I_trim"); continue
+            SM = X.get("scratch_small")  # {arm, cap, share}: the entry day, a trade once up `arm` (never `cap`) back to its cost:
+            # sell `share` of what is left, once
+            if SM and k == 0 and not st.get("sm_done") and SM["arm"] <= peak / cost - 1 < SM["cap"] and g <= 0:
+                st["sm_done"] = True
+                pending = ("all" if SM["share"] >= 1 else rem * SM["share"], "I_scratch"); continue
             if g <= X["floor"]: pending = ("all", "L3_floor"); continue
             SG = X.get("stock_trail")  # {k, early_min, early_k}: the Volume bot's exit as a stop, the entry day (user, 2026-10-26):
             # out once the stock gives back k x S30 from its best since the entry; the first early_min minutes use early_k

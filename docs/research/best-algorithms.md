@@ -2261,3 +2261,19 @@ fills; "what if held" from 1-minute option bar closes (no bid / ask; 513 of 732 
   with the bot's: do not cut the giants. Rules to test from it: no intraday trims on overnight candidates; a same-day
   "stuck" exit only below +100% (1 S30 off the best and 15-min excess vs SPY <= 0); trim into strength at +200%+ (stock
   3+ S30 from entry, within 0.5 S30 of its best); half out when a same-day +25-50% falls back to the entry.
+
+### Indi's gain rules on top of 2.8 (2026-10-31, not better)
+The user: "lets build tests for those" (the four rules from his fills). sim.py `guard_win`, `stuck_exit`,
+`trim_strength`, `scratch_small`, each over 2.8 (`user_stop {checks [], out -0.6}`, `stock_stages {0.5, 1.0}`), fixed
+walk, champ-early, 2% (fair / tune / check; Favorites 12m / 6m):
+2.8 $4,161,285 (25.5%) 541K / 770K, $269,142, $163,088;
+1 no intraday sale once +100% or entry >= 15:00: $4,107,275 (25.6%) 552K / 744K, $279,221, $167,865 (a tie);
+2 stuck exit < +100%, 1.0 S30 off the best and 15-min excess <= 0: $1,629,060 (30.1%), $166,143, $134,523 (276 sales;
+  nights 158 -> 93); at 0.75 S30 $930,335 (344 sales, nights 74);
+3 trim 25% into strength at +200%: $2,104,851 (24.0%), $232,764, $148,235 (119 trims);
+4 a +25% (never +100%) trade back to cost: half $2,865,507 (26.0%) 464K / 617K, $272,688, $177,808; all $1,923,445
+  (32.4%), $272,388, $191,706.
+- None better. The stuck exit is the worst: the bot's trades stall midday and run later; it sells the future carries
+  (nights fall by 40-50%). Indi's overnight giants are late entries (median 15:26) and his same-day trades are a
+  different book; the bot enters at 09:40-10:30 and needs the afternoon. Trimming into strength cuts the giants
+  (-49%). The scratch helps the Favorites 6m (+9% / +18%) and loses the fair list (-31% / -54%). The guard is a tie.
