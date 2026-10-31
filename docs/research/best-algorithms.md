@@ -60,7 +60,7 @@ every run; S30 = the stock's usual 30-minute move, moves measured from the signa
 | 5 | "remove the 10-20 minutes check" | Checks off, with and without the 1.0 S30 stock stop | Checks off + stock stop $3,239,866 (27.8%), both halves up | Candidate |
 | 6 | "multiple exits ... exit half, bring back" | Staged exits, buy-backs | **Half out at 0.5 S30 against, rest at 1.0: $3,431,770 (26.7%)**, tune +13%, check +7% vs step 0 | **The candidate**; buy-backs worse |
 | 7 | "add 50% if it goes our direction in the first 10 minutes" | Add half size at +0.25 / +0.5 / +1.0 S30 within 10 min, staged exit on all of it | Add at +1.0: $7,980,114 (28.6%), tune +29%, check +81% vs step 6 | Promising, giant-driven (10 trades = 74% of the gain, median added trade -20 pts) |
-| 8 | "move the stop to 50/60/70%, as now we have a better stop" | Stop -50 / -60 / -70% on steps 6 and 7 | Running | - |
+| 8 | "move the stop to 50/60/70%, as now we have a better stop" | Stop -50 / -60 / -70% on steps 6 and 7 | On step 6, -60%: $3,767,288 (25.1%), tune +6%, check +3%; on step 7 the check slips (-1.5%) | Giant-driven: median changed trade -2.9 pts; not adopted yet |
 
 The candidate exit (step 6), as a `BT_X` overlay on the champion:
 `{"user_stop": {"checks": []}, "stock_stages": {"half": 0.5, "full": 1.0}}`; step 7 adds
@@ -1982,3 +1982,28 @@ money on top of the 2% trade; checks off, -30% stop, half out at 0.5 S30 against
   2026-08-19, BA 2024-05-23, FSLR 2024-05-22, SMCI 2025-05-13); the median added trade is 20 points worse and only
   27% of them gain (the add is paid at the ask after the move, then the move often stalls). Promising, not proven:
   needs the Favorites (other stocks) before any live change.
+
+### The -30% option stop widened to -50 / -60 / -70%, on the staged exit and the add (2026-10-31)
+The user: "lets move the stop to 50%/60%/70%, as now we have a better stop". `user_stop.out` -0.5 / -0.6 / -0.7,
+checks off, staged exit (half 0.5 S30, rest 1.0), with and without the add at +1.0 S30; fixed walk, champ-early, fair
+list. The live broker safety stop (`safetyStopPct` 50) would fire first at -60 / -70% unless raised; not modelled.
+
+| Version | Option-stop sales | Won | 2% (drop) | Without 10-10 | Tune | Check | 1% |
+|---|---|---|---|---|---|---|---|
+| Staged exit, stop -30% | 350 | 16.7% | $3,431,770 (26.7%) | $3,359,191 | $506,039 | $678,163 | $956,642 |
+| Stop -50% | 70 | 17.6% | $3,499,639 (26.0%) | $3,425,625 | $504,464 | $693,734 | $967,120 |
+| Stop -60% | 12 | 17.8% | $3,767,288 (25.1%) | $3,687,613 | $537,927 | $700,334 | $1,003,424 |
+| Stop -70% | 2 | 17.8% | $3,790,679 (25.1%) | $3,710,510 | $544,213 | $696,543 | $1,006,405 |
+| Staged + add, stop -30% | - | 16.0% | $7,980,114 (28.6%) | $7,847,584 | $651,378 | $1,225,112 | $2,251,336 |
+| + add, stop -50% | - | 16.8% | $8,171,989 (30.0%) | $8,036,272 | $679,091 | $1,203,371 | $2,283,092 |
+| + add, stop -60% | - | 17.0% | $8,594,137 (29.7%) | $8,451,410 | $712,276 | $1,206,573 | $2,341,886 |
+| + add, stop -70% | - | 17.0% | $8,626,689 (29.9%) | $8,483,421 | $721,340 | $1,195,926 | $2,346,026 |
+
+- At -60% the option stop almost never fires (12 sales); the stock stages do the cutting. On the staged exit it wins
+  both halves (+6% tune, +3% check) with a lower drop (25.1%). -70% is the same as -60% (no stop at all, in effect).
+- But it rests on giants: of 340 changed trades only 98 gain, the median is 2.9 points worse, and the best 10 bring
+  +1,306 points against +474 in all (2026-02-06 +349, 2026-06-26 +183, 2025-02-06 +182): the wider stop lets a few
+  losers come back big while most losers lose a little more. With the add, the check half slips (-1.5%).
+- Not adopted yet; with the staged exit, -60% is the leaning. Confirm on the Favorites, and the broker stop would need
+  raising to match.
+
