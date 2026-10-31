@@ -11,6 +11,13 @@
 > $857,745** (drop 27.6%; tune $448,187, check $634,854, without 10-10 $2,798,469); keep only $7,182,743. Every later
 > Main bot test runs on the fixed walk (the default since 2026-10-31). The champion's rules were rechecked the same day: no verdict flips, 2.7 stays the champion; fixed figures: fair $2,845,332 / 27.6%, Favorites 12m $244,185, 36m $3,953,742 (minute entries). See "Read first" below for the whole story.
 >
+> 🏆 **Version 2.8.0 chosen 2026-10-31 (the user: "add the Staged + stop −60% as our new version"):** 2.7 with the
+> 10 / 20-minute checks off, the staged stock exit (half at 0.5 S30 against the signal price, the rest at 1.0) and the
+> stop at −60%. Fixed walk, 2%: fair $4,161,285 / 25.5% vs $3,202,862 / 26.6%; Favorites 12m $269,142 vs $243,492; 36m
+> $4,678,380 vs $4,490,376. The check half is lower on 3 of 5 lists: live to be proven. App PR #223 (live bot +
+> Backtest page; includes #218). Research overlay: `BT_X={"user_stop": {"checks": [], "out": -0.6}, "stock_stages":
+> {"half": 0.5, "full": 1.0}}`; Bot vs Indi version `x-stop60`.
+>
 > 🏆 **Champion 2026-10-27 (morning): 2.5 + IBIT down to $0.10 + the pyramid (no cheap fallback).** Real quotes: fair list 2024-25 $415,971 / 14% vs the live 2.6 $302,905 / 16%; Favorites 24 months $403,255 / 17% vs $299,707 / 18%. Not live yet.
 
 ## Read first: the 2026-10-31 audit, and the exit work built on it
