@@ -1209,7 +1209,7 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
     .status()
     .activity.map((e) => e.text)
     .join("\n");
-  assert.match(texts, /Settings changed: sizePct 2 → 1; safetyStopPct 65 → 70/);
+  assert.match(texts, /Settings changed: sizePct 2 → 1; safetyStopPct 60 → 70/);
   assert.equal(h.bot.status().settings.sizePct, 1);
 });
 

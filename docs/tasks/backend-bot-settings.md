@@ -114,8 +114,10 @@ a version.
 - 2.8.0 (2026-10-31, the user: "add the Staged + stop −60% as our new version"): 2.7 with the 10 / 20-minute checks
   off, the staged stock exit on (`stockStages`: on the entry day half out at `stageHalfS30` = 0.5 of the stock's usual
   30-minute move against the signal price, the rest at `stageFullS30` = 1.0; exits.ts `stages`, sim.py `stock_stages`)
-  and the stop at −60% (`stopPct` 60, its slider now to 70). The default broker safety stop is −65% so it stays below
-  the stop; an owner's saved −50% would fire first (the settings page warns). Also `lateHold` (the user: "do not sell if we
+  and the stop at −60% (`stopPct` 60, its slider now to 70). The default broker safety stop is −60%, at the stop (the
+  owner, 2026-10-31); an owner's saved −50% would fire first (the settings page warns when it is above the stop).
+- Splits (the audit's B6, 2026-10-31): the bars are raw, so `signal.ts` reads a split from yesterday's close / the next
+  open (within 4% of N or 1 / N) and puts the prior sessions' volume curves in today's shares (`splitRatio`). Also `lateHold` (the user: "do not sell if we
   bought after 15:00 and positive"): an entry at 15:00 or later is not sold on its entry day while above its cost, up
   to the 15:50 decision (`exits.ts` `lateHoldFrom`, minute 330). Research: best-algorithms.md, 2026-10-31.
 - `versions.ts`: `minorKeys`, `ruleBump(key, from, to)`, `versionBump(fromRules, toRules)` (the biggest change,

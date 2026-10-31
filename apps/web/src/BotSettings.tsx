@@ -1043,7 +1043,7 @@ export function BotSettingsPage({ onBack }: { onBack: () => void }) {
               s={s}
               warn={
                 (spec.key === "sizePct" && s.sizePct > 3) ||
-                (spec.key === "safetyStopPct" && s.safetyStopPct <= s.stopPct)
+                (spec.key === "safetyStopPct" && s.safetyStopPct < s.stopPct)
               }
               onChange={(v) => put({ [spec.key]: v })}
             />

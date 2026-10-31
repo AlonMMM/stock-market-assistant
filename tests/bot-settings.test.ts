@@ -3,6 +3,11 @@ import test from "node:test";
 import { handleBotSettings } from "../packages/trading/src/bot-api.js";
 import { nextAction, nightCapSell } from "../packages/trading/src/bot/exits.js";
 import {
+  cState,
+  priorFrom,
+  splitRatio,
+} from "../packages/trading/src/bot/signal.js";
+import {
   defaultSettings,
   drawdown,
   entryBrokers,
@@ -290,6 +295,43 @@ test("settings become the signal, contract and exit rules", () => {
     exitRules({ ...defaultSettings, stockStages: false }).stages,
     null,
   );
+});
+
+test("splits: the prior volume is put in today's shares (a 10:1 split no longer passes the volume rule)", () => {
+  assert.equal(splitRatio(1208.65, 121.0), 10);
+  assert.equal(splitRatio(100, 400), 1 / 4);
+  assert.equal(splitRatio(100, 97), 1);
+  // 20 sessions at 1,000 shares a minute at $100, then a 10:1 split: today trades 10,000 a minute at $10.
+  // a small wiggle so beta and the t-stat can be computed
+  const bar = (m: number, p: number, v: number) => {
+    const c = p * (1 + 0.001 * Math.sin(m) + 0.0005 * Math.cos(3 * m));
+    return { m, o: c, h: c, l: c, c, v };
+  };
+  const session = (p: number, v: number) =>
+    Array.from({ length: 390 }, (_, m) => bar(m, p, v));
+  const days = Array.from({ length: 20 }, () => ({
+    stock: session(100, 1000),
+    spy: session(500, 1000),
+  }));
+  const prior = priorFrom(days);
+  assert.ok(Math.abs(prior.lastClose! - 100) < 1);
+  const today = session(10, 10000).slice(0, 60);
+  const spy = session(500, 1000).slice(0, 60);
+  const st = cState(today, spy, prior, 59);
+  // the same activity as usual: rvol 1, not 10
+  assert.ok(st && Math.abs(st.rvol - 1) < 1e-9, String(st?.rvol));
+  // and a split inside the prior sessions: the older ones count in the later shares
+  const mixed = priorFrom([
+    ...Array.from({ length: 10 }, () => ({
+      stock: session(100, 1000),
+      spy: session(500, 1000),
+    })),
+    ...Array.from({ length: 10 }, () => ({
+      stock: session(10, 10000),
+      spy: session(500, 1000),
+    })),
+  ]);
+  assert.ok(mixed.curves.every((c) => c.at(-1) === 390 * 10000));
 });
 
 test("the staged stock exit (2.8): half at 0.5 S30 against the signal price, the rest at 1.0, the entry day only", () => {
