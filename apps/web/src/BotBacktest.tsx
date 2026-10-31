@@ -298,6 +298,20 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
     patch({
       tickers: [...new Set([...setup.tickers, ...more])].slice(0, maxStocks),
     });
+  // Typed tickers are checked against Alpaca's stock list first; a made-up
+  // one is named and not added (the quick picks are known lists).
+  const [checking, setChecking] = useState(false);
+  const [unknown, setUnknown] = useState<string[]>([]);
+  const addTyped = async () => {
+    const wanted = parseTickers(typed);
+    if (!wanted.length || checking) return;
+    setChecking(true);
+    const known = await checkTickers(wanted);
+    setChecking(false);
+    setUnknown(wanted.filter((t) => !known.includes(t)));
+    addTickers(known);
+    setTyped("");
+  };
 
   return (
     <div className="backtest-page bot-bt">
@@ -420,22 +434,23 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                   onKeyDown={(e) => {
                     if (e.key !== "Enter") return;
                     e.preventDefault();
-                    addTickers(parseTickers(typed));
-                    setTyped("");
+                    void addTyped();
                   }}
                 />
                 <button
                   type="button"
                   className="reset"
-                  disabled={!parseTickers(typed).length}
-                  onClick={() => {
-                    addTickers(parseTickers(typed));
-                    setTyped("");
-                  }}
+                  disabled={!parseTickers(typed).length || checking}
+                  onClick={() => void addTyped()}
                 >
-                  Add
+                  {checking ? "Checking…" : "Add"}
                 </button>
               </div>
+              {unknown.length > 0 && (
+                <p className="stale" role="status">
+                  Not added, no such US stock: {unknown.join(", ")}
+                </p>
+              )}
               <div
                 className="preset-chips"
                 role="group"
@@ -1068,6 +1083,20 @@ function Summary({
   );
 }
 
+/** The typed tickers that are real US stocks; when the check fails, all of them. */
+async function checkTickers(symbols: string[]): Promise<string[]> {
+  try {
+    const r = await fetch(
+      `/api/tickers/check?symbols=${encodeURIComponent(symbols.join(","))}`,
+    );
+    if (!r.ok) return symbols;
+    const body = (await r.json()) as { known?: string[] };
+    return symbols.filter((s) => body.known?.includes(s));
+  } catch {
+    return symbols;
+  }
+}
+
 /** Every signal of the run in one folded table: bought or not, what the bot saw, what came of it. */
 function SignalList({
   rows,
@@ -1293,7 +1322,7 @@ function TradeList({
     ["all", "All"],
     ["won", "Won"],
     ["lost", "Lost"],
-    ["refused", "Not bought"],
+    ["refused", "Over the limits"],
   ] as const;
   return (
     <section className="card bt-trades" aria-label="Trades">
@@ -1315,8 +1344,15 @@ function TradeList({
       {total === 0 && (
         <p className="muted">No signal was bought in this period.</p>
       )}
-      {total > 0 && trades.length === 0 && (
+      {total > 0 && trades.length === 0 && filter !== "refused" && (
         <p className="muted">None of these.</p>
+      )}
+      {total > 0 && trades.length === 0 && filter === "refused" && (
+        <p className="muted">
+          No buy was stopped by the account limits (a day&apos;s buys, open
+          positions, a size too small). Signals the bot&apos;s filters skipped
+          are in the signals list above.
+        </p>
       )}
       <ul className="bt-list">
         {trades.map((a) => (

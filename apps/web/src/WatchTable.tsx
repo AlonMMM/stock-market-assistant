@@ -34,6 +34,7 @@ import {
   type WatchSort,
 } from "./live-model.js";
 import { DaySpark } from "./Sparkline.js";
+import { WatchPeek } from "./WatchPeek.js";
 import { israelClock, israelLabel } from "./time.js";
 import {
   scoreNote,
@@ -93,6 +94,13 @@ const columns: [WatchSort | null, string, "left" | "right", boolean][] = [
   ["range", "Day range", "left", false],
   ["alerts", "Alerts", "right", false],
 ];
+
+// The phone header's short words (user 2026-10-31: the IBKR-dense list).
+const phoneLabels: Partial<Record<WatchSort, string>> = {
+  last: "Last",
+  relVolume: "RVol",
+  volume: "Vol",
+};
 
 function RowDetail({
   row,
@@ -350,6 +358,18 @@ export function WatchTable({
                   : "vs SPY"
                 : label;
             const cls = `wl-cell ${align}${phone ? "" : " wl-wide"}${key === "volume" ? " wl-vol" : ""}`;
+            // Phones show a short word, so the header stays on one line.
+            const short = key ? phoneLabels[key] : undefined;
+            const shown = short ? (
+              <>
+                <span className="wl-long">{text}</span>
+                <span className="wl-short" aria-hidden="true">
+                  {short}
+                </span>
+              </>
+            ) : (
+              text
+            );
             if (!key)
               return (
                 <span key={text} className={cls}>
@@ -371,7 +391,7 @@ export function WatchTable({
                 aria-label={`Sort by ${text}${key === "change" ? " (size of move)" : ""}${active ? (descending ? ", highest first" : ", lowest first") : ""}`}
                 onClick={() => pick(key)}
               >
-                {text}
+                {shown}
                 <span aria-hidden="true" className="wl-arrow">
                   {active ? (descending ? "▼" : "▲") : "↕"}
                 </span>
@@ -390,14 +410,14 @@ export function WatchTable({
                 <button
                   type="button"
                   className="wl-row wl-grid"
-                  {...(onOpen
-                    ? { "aria-label": `Open ${r.ticker}` }
-                    : { "aria-expanded": expanded })}
-                  onClick={() =>
-                    onOpen
-                      ? onOpen(r.ticker)
-                      : setOpen(expanded ? null : r.ticker)
-                  }
+                  aria-expanded={expanded}
+                  onClick={() => {
+                    // The first tap opens the quick look (and closes the
+                    // one before); a tap on the open row opens its page.
+                    if (expanded && onOpen) onOpen(r.ticker);
+                    else if (expanded) setOpen(null);
+                    else setOpen(r.ticker);
+                  }}
                 >
                   <span className="wl-cell wl-symbol">
                     <strong>{r.ticker}</strong>
@@ -511,7 +531,14 @@ export function WatchTable({
                     {r.alerts || "–"}
                   </span>
                 </button>
-                {expanded && (
+                {expanded && onOpen && (
+                  <WatchPeek
+                    row={r}
+                    date={board.date}
+                    onOpen={() => onOpen(r.ticker)}
+                  />
+                )}
+                {expanded && !onOpen && (
                   <RowDetail
                     row={r}
                     board={board}

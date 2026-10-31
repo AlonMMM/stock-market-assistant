@@ -236,3 +236,65 @@ export async function handleTicker(
     },
   };
 }
+
+/**
+ * `GET /api/tickers/check?symbols=NVDA,DDDD`: which typed tickers are real US
+ * stocks (user 2026-10-31: "there is no validation on the stock if it's
+ * exist"). Alpaca's asset record decides: a 404 is unknown. A ticker whose
+ * check failed (Alpaca down) is not called unknown, so it is still added.
+ */
+export async function handleTickerCheck(
+  query: { symbols?: unknown },
+  credentials: Credentials,
+  tradingUrl: string,
+  fetcher: typeof fetch = fetch,
+): Promise<{
+  status: number;
+  body: { known: string[]; unknown: string[] } | { error: string };
+}> {
+  if (!credentials.key || !credentials.secret)
+    return {
+      status: 503,
+      body: { error: "Alpaca credentials are not configured on the server" },
+    };
+  const symbols = [
+    ...new Set(
+      (typeof query.symbols === "string" ? query.symbols : "")
+        .toUpperCase()
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => tickerPattern.test(s)),
+    ),
+  ];
+  if (!symbols.length)
+    return { status: 400, body: { error: "Give US tickers" } };
+  if (symbols.length > 50)
+    return { status: 400, body: { error: "At most 50 tickers a check" } };
+  const headers = {
+    "APCA-API-KEY-ID": credentials.key,
+    "APCA-API-SECRET-KEY": credentials.secret,
+  };
+  const found = await Promise.all(
+    symbols.map((s) =>
+      fetcher
+        .call(globalThis, `${tradingUrl}/v2/assets/${encodeURIComponent(s)}`, {
+          headers,
+          signal: AbortSignal.timeout(8000),
+        })
+        .then(async (r) => {
+          if (r.status === 404) return false;
+          if (!r.ok) return true;
+          const asset = (await r.json()) as { class?: unknown };
+          return asset.class === "us_equity";
+        })
+        .catch(() => true),
+    ),
+  );
+  return {
+    status: 200,
+    body: {
+      known: symbols.filter((_, i) => found[i]),
+      unknown: symbols.filter((_, i) => !found[i]),
+    },
+  };
+}
