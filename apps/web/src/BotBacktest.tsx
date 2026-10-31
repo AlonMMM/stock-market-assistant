@@ -966,14 +966,14 @@ function Empty() {
       <p className="muted small">
         How it is simulated: the live bot&apos;s own rules, checked every minute
         on the stock&apos;s clock. Prices are real bids and asks when the
-        contract has them (Databento, and the bots&apos; own saved books,
-        uploaded from the research Mac): a buy pays the middle plus a quarter of
-        the spread, or the ask when the price ran away; a sale gets the bid. A
-        contract without them is priced from its trades (marked &quot;Trade
-        prices&quot;): a buy on its next minute bar at the middle plus the fill
-        cost, a sale at the middle less it. Early entry is read at the
-        minute&apos;s close. The daily loss limit and the drawdown pause are not
-        applied.
+        contract has them (Databento&apos;s, uploaded from the research Mac;
+        never the live bot&apos;s own books): a buy pays the middle plus a
+        quarter of the spread, or the ask when the price ran away; a sale gets
+        the bid. A contract without them is priced from its trades (marked
+        &quot;Trade prices&quot;): a buy on its next minute bar at the middle
+        plus the fill cost, a sale at the middle less it. Early entry is read at
+        the minute&apos;s close. The daily loss limit and the drawdown pause are
+        not applied.
       </p>
     </section>
   );
@@ -1164,7 +1164,7 @@ function SignalList({
               <th title="The backtest's buy price. Not bought: the what-if's buy (a model)">
                 Bought at
               </th>
-              <th title="The real bid / ask as the signal minute closed, and the spread as a share of its middle (Databento or the bots' saved books; — without one)">
+              <th title="The real bid / ask as the signal minute closed, and the spread as a share of its middle (Databento; — without one)">
                 Bid / ask
               </th>
               <th title="Contracts of this option traded in the 30 minutes before the signal (the bot's liquidity check)">
