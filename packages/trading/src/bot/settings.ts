@@ -59,6 +59,10 @@ export interface BotSettings {
   off: string[];
   // Trade size
   sizePct: number;
+  // The size steps down as the account grows (the owner, 2026-10-31: "3% until
+  // 300K -> 2.5 until 1M, 1.5 at 1M and 1 at 4M"): from each step's account
+  // value on (the account as the day starts), `pct` instead of sizePct.
+  sizeSteps: SizeStep[];
   maxBuysPerDay: number;
   maxOpen: number;
   // Losses
@@ -128,6 +132,22 @@ export interface BotSettings {
   lateHold: boolean;
 }
 
+export interface SizeStep {
+  from: number; // account value, dollars
+  pct: number; // of the account, per trade
+}
+
+/** The size of a trade for an account value: sizePct, or the last step at or under the value. */
+export function sizeAt(
+  sizePct: number,
+  steps: readonly SizeStep[],
+  account: number,
+): number {
+  let pct = sizePct;
+  for (const step of steps) if (account >= step.from) pct = step.pct;
+  return pct;
+}
+
 export type NumberKey = {
   [K in keyof BotSettings]: BotSettings[K] extends number ? K : never;
 }[keyof BotSettings];
@@ -144,7 +164,12 @@ export const defaultSettings: BotSettings = {
   followFavorites: true,
   added: [],
   off: ["QQQ", "SQQQ"],
-  sizePct: 2,
+  sizePct: 3,
+  sizeSteps: [
+    { from: 300_000, pct: 2.5 },
+    { from: 1_000_000, pct: 1.5 },
+    { from: 4_000_000, pct: 1 },
+  ],
   maxBuysPerDay: 5,
   maxOpen: 4,
   stopPct: 60,
@@ -333,7 +358,32 @@ export function parseSettings(
     out[key] = list;
   }
   out.added = out.added.filter((t) => !neverWatched.includes(t));
+  const steps = parseSizeSteps(body.sizeSteps);
+  if (steps === null)
+    return {
+      ok: false,
+      error:
+        "sizeSteps must be up to 6 steps of { from: dollars, rising, pct: 0.5 to 5 }",
+    };
+  out.sizeSteps = steps;
   return { ok: true, value: out };
+}
+
+/** Size steps from a request: rising account values, each size within the size's limits; null when wrong. */
+function parseSizeSteps(v: unknown): SizeStep[] | null {
+  if (!Array.isArray(v) || v.length > 6) return null;
+  const [min, max] = limits.sizePct;
+  const out: SizeStep[] = [];
+  for (const x of v) {
+    if (!isObject(x)) return null;
+    const { from, pct } = x;
+    if (typeof from !== "number" || !Number.isFinite(from) || from <= 0)
+      return null;
+    if (typeof pct !== "number" || pct < min || pct > max) return null;
+    if (out.length && from <= out.at(-1)!.from) return null;
+    out.push({ from, pct });
+  }
+  return out;
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {

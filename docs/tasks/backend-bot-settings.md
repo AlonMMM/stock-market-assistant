@@ -99,6 +99,11 @@ a version.
   for the rules in force. The owner's limits are worded by the pages, not here.
 - A new version is a new entry in `botVersions` (and a new default): the research log decides what gets one.
 
+- Size steps (2026-10-31, the owner: "3% until 300K -> 2.5 until 1M, 1.5 at 1M and 1 at 4M"): `sizeSteps`, a list of
+  `{ from, pct }` (rising account values, each size within the size's limits). A buy is sized `sizeAt(sizePct, steps,
+account)` on the account's value as the day started; the Backtest page's account does the same (`MoneySettings.sizeSteps`,
+  loaded with the paper bot). An owner's limit, not a version rule. Research: best-algorithms.md, "Size that steps down".
+
 ### Numbering: MAJOR.MINOR.PATCH (2026-10-28, user: "bot version is smt like 2.6.0 ... map each change to future number")
 
 | Digit | Moves when                                                                                  | Settings                                                                                                                                                                                                                                                                      |

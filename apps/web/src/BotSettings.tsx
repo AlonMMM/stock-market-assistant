@@ -97,11 +97,25 @@ interface Group {
   switches: [SwitchKey, string, string][];
 }
 
-function groups(): Group[] {
+/** The size steps in words: "2.5% from $300K, 1.5% from $1M"; "" when none. */
+function stepsText(steps: BotSettings["sizeSteps"]): string {
+  const money = (v: number) => {
+    if (v < 1e6) return `$${Math.round(v / 1e3)}K`;
+    const whole = v % 1e6 === 0;
+    return `$${(v / 1e6).toFixed(whole ? 0 : 1)}M`;
+  };
+  return steps.map((x) => `${x.pct}% from ${money(x.from)}`).join(", ");
+}
+
+function groups(s: BotSettings): Group[] {
+  const steps = stepsText(s.sizeSteps);
+  let sizeSub = "How much each buy spends";
+  if (steps)
+    sizeSub = `How much each buy spends; as the account grows (its value as the day starts): ${steps}`;
   return [
     {
       title: "Trade size",
-      sub: "How much each buy spends",
+      sub: sizeSub,
       sliders: [
         {
           key: "sizePct",
@@ -1030,7 +1044,7 @@ export function BotSettingsPage({ onBack }: { onBack: () => void }) {
         <p className="notice">The bot&apos;s stock lists are not available.</p>
       )}
 
-      {groups().map((g) => (
+      {groups(s).map((g) => (
         <section key={g.title} className="bot-card bs-card">
           <div className="bs-card-head">
             <h2>{g.title}</h2>

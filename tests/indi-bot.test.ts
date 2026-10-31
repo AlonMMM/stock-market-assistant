@@ -63,7 +63,9 @@ import { BotStore } from "../apps/trader/src/bot-store.js";
 import { applyVersion } from "../packages/trading/src/bot/versions.js";
 import {
   defaultSettings,
+  parseSettings,
   pickRules,
+  sizeAt,
 } from "../packages/trading/src/bot/settings.js";
 import type { BotPosition } from "../apps/trader/src/bot-store.js";
 
@@ -753,7 +755,7 @@ test("runner (live): signal -> buy with the bot tag -> no check sale while winni
   const buy = h.calls.find((c) => c.kind === "buy");
   assert.ok(buy);
   assert.equal(buy.body.contract, "NVDA261023C00110000");
-  assert.equal(buy.body.sizePct, 2);
+  assert.equal(buy.body.sizePct, 3);
   assert.equal(buy.body.tag, "🤖 Main bot");
   const [p] = h.store.openPositions();
   assert.equal(p!.status, "open");
@@ -1209,7 +1211,7 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
     .status()
     .activity.map((e) => e.text)
     .join("\n");
-  assert.match(texts, /Settings changed: sizePct 2 → 1; safetyStopPct 65 → 70/);
+  assert.match(texts, /Settings changed: sizePct 3 → 1; safetyStopPct 65 → 70/);
   assert.equal(h.bot.status().settings.sizePct, 1);
 });
 
@@ -1327,19 +1329,44 @@ test("settings: the most open positions and the daily loss limit hold new buys",
   assert.match(s!.detail, /down 6\.0% today/);
 });
 
+test("size steps: a buy is sized for the account as the day started (3%, 2.5% from $300K, 1.5% from $1M, 1% from $4M)", async () => {
+  assert.equal(sizeAt(3, defaultSettings.sizeSteps, 100_000), 3);
+  assert.equal(sizeAt(3, defaultSettings.sizeSteps, 300_000), 2.5);
+  assert.equal(sizeAt(3, defaultSettings.sizeSteps, 999_999), 2.5);
+  assert.equal(sizeAt(3, defaultSettings.sizeSteps, 1_000_000), 1.5);
+  assert.equal(sizeAt(3, defaultSettings.sizeSteps, 5_000_000), 1);
+  assert.equal(sizeAt(3, [], 5_000_000), 3);
+  const h = harness("live");
+  h.setEquity(1_200_000);
+  await h.run(DAY, 565, 600);
+  const buy = h.calls.find((c) => c.kind === "buy");
+  assert.equal(buy?.body.sizePct, 1.5);
+  // steps must rise and stay within the size's limits
+  const bad = parseSettings({
+    ...defaultSettings,
+    sizeSteps: [
+      { from: 1_000_000, pct: 2 },
+      { from: 500_000, pct: 1 },
+    ],
+  });
+  assert.equal(bad.ok, false);
+  const none = parseSettings({ ...defaultSettings, sizeSteps: [] });
+  assert.ok(none.ok && none.value.sizeSteps.length === 0);
+});
+
 test("settings: the drawdown pause switches the bot off and says so", async () => {
   const h = harness("dry");
   h.bot.setSettings({ ...h.bot.settings(), drawdownPausePct: 5 });
-  await h.run(DAY, 565, 600); // would buy 33 at 0.60
+  await h.run(DAY, 565, 600); // would buy 50 at 0.60 (3%)
   h.setMid(0.3);
   h.setEquity(10000);
-  await h.run(DAY, 601, 960); // sold at 15:50 at 0.30: −$990, 9.9% of 10,000
+  await h.run(DAY, 601, 960); // sold at 15:50 at 0.30: −$1,500, 15% of 10,000
   const status = h.bot.status();
   assert.equal(status.enabled, false);
   assert.ok(h.notes.some((n) => n.includes("paused")));
   assert.match(
     status.activity.map((e) => e.text).join("\n"),
-    /Paused: the bot's trades are down \$990/,
+    /Paused: the bot's trades are down \$1500/,
   );
   // Switched back on, the pause counts from then.
   h.bot.setEnabled(true);
@@ -1787,7 +1814,7 @@ test("pyramid: the full signal after a D2 entry that is up buys half a size more
   await h.run(DAY, 565, 570 + M + 3);
   const buys = h.calls.filter((c) => c.kind === "buy");
   assert.equal(buys.length, 1, "one add");
-  assert.equal(buys[0]!.body.sizePct, 1); // half of 2%
+  assert.equal(buys[0]!.body.sizePct, 1.5); // half of 3%
   assert.equal(buys[0]!.body.contract, contract);
   // The add passes the service's 60-second repeat check (user 2026-10-28).
   assert.deepEqual(buys[0]!.options, { repeatOk: true });

@@ -37,6 +37,7 @@ import {
   exitRules,
   pickRules,
   signalParams,
+  sizeAt,
   watchedStocks,
   withDefaults,
   botBrokers,
@@ -1195,7 +1196,12 @@ export class IndiBot {
           detail: `${this.words(contract)} is already in the account${at}`,
         };
     }
-    const sizePct = add ? (s.sizePct * add.sharePct) / 100 : s.sizePct;
+    // The size for the account as the day started (sizeSteps step it down as it grows).
+    const dayStart =
+      this.dayStartEquity.get(broker) ??
+      (await this.equity(broker).catch(() => 0));
+    const tradePct = sizeAt(s.sizePct, s.sizeSteps, dayStart);
+    const sizePct = add ? (tradePct * add.sharePct) / 100 : tradePct;
     const position: BotPosition = {
       ...base,
       id: randomUUID(),
