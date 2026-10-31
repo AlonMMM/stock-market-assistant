@@ -87,6 +87,8 @@ import { handleTradeChart } from "../../../packages/market-data/src/trade-chart.
 import { handleBotBacktest } from "../../../packages/market-data/src/bot-backtest.js";
 import { D1OptionQuotes } from "../../../packages/market-data/src/option-quotes.js";
 import { D1OptionBars } from "../../../packages/market-data/src/option-bars.js";
+import { handleVolumeBacktest } from "../../../packages/market-data/src/volume-backtest.js";
+import { D1VolumeData } from "../../../packages/market-data/src/volume-data.js";
 import { handleControl } from "../../../packages/trading/src/control-api.js";
 import { changeRefusal } from "./owner-only.js";
 import { verifyAccess, type AccessIdentity } from "./access.js";
@@ -105,6 +107,7 @@ let cache:
       cache: D1BarCache;
       quotes: D1OptionQuotes;
       optionBars: D1OptionBars;
+      volume: D1VolumeData;
       baselines: D1BaselineStore;
       strengths: D1StrengthStore;
       sigmas: D1MarksSigmaStore;
@@ -121,6 +124,7 @@ function stores(db: D1Like) {
       cache: new D1BarCache(db),
       quotes: new D1OptionQuotes(db),
       optionBars: new D1OptionBars(db),
+      volume: new D1VolumeData(db),
       baselines: new D1BaselineStore(db),
       strengths: new D1StrengthStore(db),
       sigmas: new D1MarksSigmaStore(db),
@@ -567,6 +571,42 @@ export default {
         db?.cache,
         db?.quotes,
         db?.optionBars,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    // The Volume bot's backtest of one stock over a range (strangle/backtest.ts).
+    if (path === "/api/volume-backtest") {
+      if (request.method !== "POST")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "POST" },
+        });
+      let body: unknown;
+      try {
+        const text = await request.text();
+        if (text.length > 65536)
+          return Response.json({ error: "Request too large" }, { status: 413 });
+        body = JSON.parse(text);
+      } catch {
+        return Response.json(
+          { error: "Expected JSON object" },
+          { status: 400 },
+        );
+      }
+      const db = env.BARS_CACHE ? stores(env.BARS_CACHE) : undefined;
+      const result = await handleVolumeBacktest(
+        body,
+        credentials,
+        env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
+        fetch,
+        Date.now(),
+        db?.cache,
+        db?.quotes,
+        db?.optionBars,
+        db?.volume,
       );
       return Response.json(result.body, {
         status: result.status,

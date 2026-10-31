@@ -12,6 +12,8 @@ const computeOnly = new Set([
   "/api/bot-backtest",
   "/api/day-chart",
   "/api/replay",
+  // The Volume bot's backtest: also only market data kept (its stock seconds).
+  "/api/volume-backtest",
 ]);
 
 /** Why a request may not change anything, or null when it may go on. */

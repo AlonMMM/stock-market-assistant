@@ -156,3 +156,24 @@ export function legQty(equity: number, sizePct: number, price: number): number {
   if (!(price > 0) || !(equity > 0)) return 0;
   return Math.floor((equity * sizePct) / 100 / (price * 100));
 }
+
+/**
+ * The shock alert's entry (volume-bot.md 2026-10-30): the side held on 5
+ * 1-second checks in a row within 300 s of the alert; the leg stepped toward
+ * the money up to 0.35 delta; no buy over a 30% spread; an expiry at most 2
+ * calendar days out (its 3-4 DTE trades lost in both halves).
+ */
+export const shockRules = {
+  holdChecks: 5,
+  holdWithin: 300,
+  maxDelta: 0.35,
+  maxSpread: 0.3,
+  maxDays: 2,
+};
+
+/** Calendar days from `date` to `expiry` (both YYYY-MM-DD). */
+export const daysBetween = (date: string, expiry: string) =>
+  Math.round(
+    (Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) /
+      86_400_000,
+  );

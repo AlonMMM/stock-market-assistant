@@ -1491,14 +1491,18 @@ async function whatIf(
   };
 }
 
-/** The news filter's reason to skip a stock's signal on a day, or null. */
-async function newsBlock(
+/** The news filter's reason to skip a stock's signal on a day, or null (the Volume bot's backtest too). */
+export async function newsBlock(
   symbol: string,
   date: string,
-  s: BotSettings,
-  data: BacktestData,
+  s: { skipPremarket: boolean; skipEarnings: boolean },
+  data: {
+    premarket: BacktestData["premarket"];
+    earnings: BacktestData["earnings"];
+    bars: BacktestData["bars"];
+  },
   cal: BacktestCalendar,
-): Promise<{ reason: SkipReason; detail: string } | null> {
+): Promise<{ reason: "premarket" | "earnings"; detail: string } | null> {
   if (s.skipPremarket) {
     const before = cal.previousSessions(date, 20);
     const ratio = premarketRatio(
