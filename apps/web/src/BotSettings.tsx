@@ -213,6 +213,11 @@ function groups(): Group[] {
           "On the entry day, sell half when the stock moves against the signal price by the first amount below, the rest at the second (in its usual 30-minute moves).",
         ],
         [
+          "lateHold",
+          "Hold late winners",
+          "An entry at 15:00 or later is not sold on its entry day while it is above its cost, up to the 15:50 decision.",
+        ],
+        [
           "sellOnWeakness",
           "Strength-gone sale",
           "On the entry day, sell all when the stock's strength vs SPY × beta since the open (the t-stat the entry needed) falls to the level below.",

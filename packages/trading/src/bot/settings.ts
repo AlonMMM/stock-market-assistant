@@ -123,6 +123,9 @@ export interface BotSettings {
   stockStages: boolean;
   stageHalfS30: number;
   stageFullS30: number;
+  // An entry at 15:00 or later is not sold on its entry day while above its
+  // cost, up to the 15:50 decision (version 2.8).
+  lateHold: boolean;
 }
 
 export type NumberKey = {
@@ -178,6 +181,7 @@ export const defaultSettings: BotSettings = {
   stockStages: true,
   stageHalfS30: 0.5,
   stageFullS30: 1,
+  lateHold: true,
 };
 
 // Values the backtest never ran.
@@ -238,6 +242,7 @@ const booleans: BooleanKey[] = [
   "pyramid",
   "earlyEntry",
   "stockStages",
+  "lateHold",
 ];
 const ticker = /^[A-Z][A-Z.]{0,5}$/;
 const maxTickers = 200;
@@ -376,6 +381,9 @@ function restStop(s: BotSettings): number | null {
   return -s.restStopPct / 100;
 }
 
+/** 15:00 New York: an entry from here is held while above its cost (lateHold). */
+export const lateHoldMinute = 330;
+
 export function exitRules(s: BotSettings): ExitRules {
   let checks = defaultExitRules.checks;
   if (!s.checks) checks = [];
@@ -387,6 +395,7 @@ export function exitRules(s: BotSettings): ExitRules {
     stages: s.stockStages
       ? { half: s.stageHalfS30, full: s.stageFullS30 }
       : null,
+    lateHoldFrom: s.lateHold ? lateHoldMinute : null,
     strengthOut: s.sellOnWeakness ? s.weaknessT : null,
     carryMinGain: s.holdFromPct / 100,
     carryMaxNights: s.maxNights,

@@ -196,6 +196,7 @@ export const ruleGroups: RuleGroup[] = [
         label: "Staged exit: the rest out at",
         unit: "× S30",
       },
+      { key: "lateHold", label: "Hold late winners (entry 15:00+)" },
       { key: "stopPct", label: "Stop", unit: "%" },
       {
         key: "restStopPct",

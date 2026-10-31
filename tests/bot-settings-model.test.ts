@@ -147,6 +147,7 @@ test("the version card: the chosen version, its changes and the entry label", ()
     "pyramid false → true",
     "earlyEntry false → true",
     "stockStages false → true",
+    "lateHold false → true",
   ]);
   const own = versionState({ ...defaultSettings, version: "mine" });
   assert.equal(own.known, undefined);
@@ -162,6 +163,7 @@ test("each version opens to its full algorithm in words", () => {
     "Pyramid",
     "Early checks",
     "Staged stock exit",
+    "Late entries",
     "Failed break",
     "Strength gone",
     "Stop",
@@ -206,6 +208,8 @@ test("each version opens to its full algorithm in words", () => {
   assert.match(text(v27.rules, "Staged stock exit"), /^Off/);
   assert.match(text(v28.rules, "Early checks"), /^No 10- and 20-minute checks/);
   assert.match(text(v28.rules, "Stop"), /down 60%/);
+  assert.match(text(v28.rules, "Late entries"), /15:00 or later is not sold/);
+  assert.match(text(v27.rules, "Late entries"), /^Off/);
   // The rules as set, not only a version's: a changed stop and no volume floor.
   const own = text({ ...defaultSettings, stopPct: 40, minVolume: 0 }, "Stop");
   assert.match(own, /down 40%/);

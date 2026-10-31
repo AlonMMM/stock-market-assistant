@@ -37,6 +37,9 @@ export interface ExitRules {
   strengthOut: number | null;
   // The staged stock exit, in S30 against the signal price; null is off.
   stages: { half: number; full: number } | null;
+  // An entry at this session minute or later is not sold on its entry day
+  // while above its cost (the 15:50 decision still runs); null is off.
+  lateHoldFrom: number | null;
   eodMinute: number; // 15:50
   carryMinGain: number; // hold overnight from this option return
   carryMaxNights: number;
@@ -54,6 +57,7 @@ export const defaultExitRules: ExitRules = {
   restStopOut: null,
   strengthOut: null,
   stages: null,
+  lateHoldFrom: null,
   eodMinute: 380,
   carryMinGain: 1,
   carryMaxNights: 2,
@@ -203,6 +207,9 @@ export function nextAction(
     if (g <= r.stopOut) return { sell: p.qty, reason: "stop-30", update: {} };
     return hold;
   }
+  // A late entry that is up is held to the 15:50 decision (version 2.8).
+  if (r.lateHoldFrom !== null && p.entryMinute >= r.lateHoldFrom && g > 0)
+    return hold;
   // The entry day: the thesis first (the signal's strength gone), then your stop.
   const strength =
     mk.strength === null || mk.strength === undefined

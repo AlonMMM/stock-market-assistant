@@ -66,6 +66,11 @@ export function algorithmSteps(r: Rules): AlgorithmStep[] {
   if (r.stockStages)
     stages = `On the entry day, half is sold once the stock is ${r.stageHalfS30} of its usual 30-minute move against the price at the signal, the rest at ${r.stageFullS30} against.`;
   steps.push({ name: "Staged stock exit", text: stages });
+  let late = "Off: an entry after 15:00 meets the same exits as any other.";
+  if (r.lateHold)
+    late =
+      "An entry at 15:00 or later is not sold on its entry day while it is above its cost; the 15:50 decision still runs.";
+  steps.push({ name: "Late entries", text: late });
   let failed = "Off: a level that holds is not acted on.";
   if (r.sellFailedBreak)
     failed =

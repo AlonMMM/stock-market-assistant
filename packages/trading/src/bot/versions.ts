@@ -51,7 +51,8 @@ export type RuleKey =
   | "earlyEntry"
   | "stockStages"
   | "stageHalfS30"
-  | "stageFullS30";
+  | "stageFullS30"
+  | "lateHold";
 
 export type Rules = Pick<BotSettings, RuleKey>;
 
@@ -86,6 +87,7 @@ export const ruleKeys: readonly RuleKey[] = [
   "stockStages",
   "stageHalfS30",
   "stageFullS30",
+  "lateHold",
 ];
 
 export interface BotVersion {
@@ -128,6 +130,7 @@ const v1: Rules = {
   stockStages: false,
   stageHalfS30: 0.5,
   stageFullS30: 1,
+  lateHold: false,
 };
 // 2.0: the V2 champion (t 1.8, the overnight cap, the news filter).
 const v2: Rules = {
@@ -185,7 +188,10 @@ const v27: Rules = {
 // Fixed backtest, 2%: fair list $4,161,285 / 25.5% vs 2.7's $3,202,862 / 26.6%
 // (tune +18%, check +10%); the Favorites 12 months $269,142 vs $243,492, 36
 // months $4,678,380 vs $4,490,376 (every year up); the check half lower on 3
-// of the 5 lists, so it runs as the new version to be proven live.
+// of the 5 lists, so it runs as the new version to be proven live. Also (the
+// user, the same day: "do not sell if we bought after 15:00 and positive"): an
+// entry at 15:00 or later is not sold on its entry day while above its cost,
+// up to the 15:50 decision.
 const v28: Rules = {
   ...v27,
   checks: false,
@@ -193,6 +199,7 @@ const v28: Rules = {
   stockStages: true,
   stageHalfS30: 0.5,
   stageFullS30: 1,
+  lateHold: true,
 };
 
 /** Every version, oldest first. */
@@ -273,7 +280,7 @@ export const botVersions: readonly BotVersion[] = [
     name: "2.7 + the staged stock exit, stop −60%",
     since: "2026-10-31",
     notes:
-      "No 10- and 20-minute checks. On the entry day, half is sold when the stock is half its usual 30-minute move against the price at the signal, the rest at a full move against; the option stop is −60% (was −30%).",
+      "No 10- and 20-minute checks. On the entry day, half is sold when the stock is half its usual 30-minute move against the price at the signal, the rest at a full move against; the option stop is −60% (was −30%). An entry at 15:00 or later is not sold before 15:50 while it is above its cost.",
     rules: v28,
   },
 ];
@@ -318,6 +325,7 @@ export const minorKeys: ReadonlySet<RuleKey> = new Set<RuleKey>([
   "pyramid",
   "earlyEntry",
   "stockStages",
+  "lateHold",
   "skipEarnings",
   "skipPremarket",
 ]);

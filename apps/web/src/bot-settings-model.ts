@@ -45,6 +45,7 @@ export {
 export type SwitchKey =
   | "checks"
   | "stockStages"
+  | "lateHold"
   | "sellOnWeakness"
   | "sellFailedBreak"
   | "cheapFallback"

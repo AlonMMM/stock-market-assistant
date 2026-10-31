@@ -79,6 +79,7 @@ test("versions: distinct ids oldest first; the defaults are the current version'
     "stopPct 30 → 60",
     "checks true → false",
     "stockStages false → true",
+    "lateHold false → true",
   ]);
 });
 
@@ -343,6 +344,34 @@ test("the staged stock exit (2.8): half at 0.5 S30 against the signal price, the
   assert.equal(
     nextAction(night, { ...market, minute: 60, stock: 99 }, r).sell,
     0,
+  );
+  // A late entry (15:00 or later) that is up is held: no staged sale...
+  const late = { ...position, entryMinute: 335 };
+  assert.equal(
+    nextAction(late, { ...market, minute: 345, stock: 99, option: 1.1 }, r)
+      .sell,
+    0,
+  );
+  // ...but one that is down meets the exits as usual...
+  const lateDown = nextAction(
+    late,
+    { ...market, minute: 345, stock: 99, option: 0.9 },
+    r,
+  );
+  assert.deepEqual([lateDown.sell, lateDown.reason], [10, "stage-full"]);
+  // ...and the 15:50 decision still runs: up +10% is not a carry, so it is sold.
+  const lateClose = nextAction(
+    late,
+    { ...market, minute: 380, stock: 99, option: 1.1 },
+    r,
+  );
+  assert.deepEqual([lateClose.sell, lateClose.reason], [10, "close-1550"]);
+  // Off: the late winner meets the staged exit.
+  const noHold = exitRules({ ...defaultSettings, lateHold: false });
+  assert.equal(
+    nextAction(late, { ...market, minute: 345, stock: 99, option: 1.1 }, noHold)
+      .reason,
+    "stage-full",
   );
   // The stop is -60% with the stock against: -50% holds, -60% sells all.
   const unitless = { ...market, unit: null, stock: 99.9 };
