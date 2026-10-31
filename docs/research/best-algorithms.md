@@ -2110,3 +2110,28 @@ kind of loss, and each one ends on one giant day (2026-08-19, 2026-09-18). Size:
 drop 35.9%; 4% $4.89M / 44.8%); the 12-month Favorites peak at 2% ($244K; 3% $232K / 39.8%); the 36-month Favorites
 still rise to 5% (drop 56%). 3% is at or past the top on two of three lists; 2-2.5% keeps most of the money with
 10-ish points less drop.
+
+### Drawdown sizing: cut size 15% under the high, full again within 5% of it (2026-10-31, not better)
+The user: "size down after we're 15% down - go back up after you fill to 5% from the last top". Fixed walk; each trade
+recomputed at its own size (sim.result, the 10% night cap at that size); account (worst drop, share of days 20%+ under
+the high), tune / check:
+
+| List | Flat 2% | 2% -> 2/3 | 2% -> half | Flat 2.5% | Flat 3% | 3% -> 2/3 | 3% -> half |
+|---|---|---|---|---|---|---|---|
+| Fair | $3,202,806 (26.6%, 6%) 458K / 699K | $1,732,003 (23.5%) 384K / 598K | $1,205,668 (21.4%) 340K / 479K | $4,321,437 (31.2%, 14%) | $5,163,654 (35.9%, 24%) | $2,591,495 (30.6%) 366K / 738K | $1,435,797 (27.4%) 268K / 592K |
+| Fav 12m | $243,492 (29.4%) 218K / 112K | $211,504 (24.8%) | $175,851 (22.9%) 160K / 119K | $242,721 (34.7%) | $232,290 (39.8%) | $203,482 (33.5%) | $164,990 (30.6%) |
+| Fav 36m (minute) | $4,490,462 (29.9%) 562K / 798K | $3,130,567 (25.3%) | $1,808,930 (22.9%) 353K / 644K | $6,676,916 (35.9%) | $9,147,882 (40.9%) | $5,564,796 (33.8%) | $2,768,127 (29.4%) |
+
+- It cuts the drop (3%: 35.9% -> 27.4% at half size) but costs far more than a smaller flat size with the same drop:
+  3% -> half $1.44M / 27.4% vs flat 2% $3.20M / 26.6%; 3% -> 2/3 $2.59M / 30.6% vs flat 2.5% $4.32M / 31.2%. Same on
+  both Favorites lists. The bot is under -15% on 26-55% of days, and the giant that ends a drop is caught at the cut
+  size. Both halves lower on the fair list. Not better (as on 2026-10-27): to cut the drop, cut the flat size.
+
+**Correction, account sizing of a pyramid add (2026-10-31).** export_champ.rets / export_early / export_fav_long store
+an add's returns already as half a trade at half the size (`k * sim.result(cost, steps, size * k)`, k = 0.5); the
+dashboard reads them as they are. The research summaries (table.py-style replays, and this log's account figures,
+including the "as logged" $7,258,326) multiplied `added` rows by 0.5 again, counting each add at a quarter. Counted
+once: fixed champion $3,202,862 / 26.6% (logged $2,845,332), tune $458,193 / check $699,020; old walk $8,338,386 (logged
+$7,258,326); staged $3,829,110; stop -60% $4,161,285; + add $9,977,389; Favorites 12m $243,492; 36m champion
+$4,490,376, + add $13,199,730. The comparisons above used the same sizing on both sides, so the verdicts stand; the
+pyramid's own value was understated. From here on, account replays read add rows as stored.
