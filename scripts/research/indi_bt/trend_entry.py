@@ -53,8 +53,12 @@ def trend_rules(t, m0, bet, cx, base, out):
     from store import day
     bars = {b[0]: b for b in day(t["sym"], t["date"])}
     B = [bars[m] for m in range(0, m0 + 1) if m in bars]
-    if len(B) < 24 or not (cx and cx["sd"]):
-        for v in TREND: out["v"][v] = base; out["at"][v] = m0
+    # the volume gate needs no bars (fixed 2026-11-01: a 24-bar minimum used to skip every rule for the early signals)
+    rv = float(t.get("c_rvol") or 0)
+    if rv >= 2.0: out["v"]["rv20"] = base; out["at"]["rv20"] = m0
+    if rv >= 3.0: out["v"]["rv30"] = base; out["at"]["rv30"] = m0
+    if len(B) < 4 or not (cx and cx["sd"]):
+        for v in ("conf3", "climax", "extveto"): out["v"][v] = base; out["at"][v] = m0
         return
     hi = lambda b: b[2] if bet > 0 else -b[3]
     # conf3: a buy-stop over the 3 bars up to the signal, live for the next 3 minutes
@@ -66,13 +70,10 @@ def trend_rules(t, m0, bet, cx, base, out):
             got = walk_at(t, m, px)
             if got: out["v"]["conf3"] = got; out["at"]["conf3"] = m
             break
-    rv = float(t.get("c_rvol") or 0)
-    if rv >= 2.0: out["v"]["rv20"] = base; out["at"]["rv20"] = m0
-    if rv >= 3.0: out["v"]["rv30"] = base; out["at"]["rv30"] = m0
     # VWAP and the 14-minute RSI up to the signal
     pv = sum((b[2] + b[3] + b[4]) / 3 * b[5] for b in B); vol = sum(b[5] for b in B)
     vwap = pv / vol if vol else B[-1][4]
-    ch = [B[i][4] - B[i - 1][4] for i in range(len(B) - 14, len(B))]
+    ch = [B[i][4] - B[i - 1][4] for i in range(max(1, len(B) - 14), len(B))]
     up = sum(x for x in ch if x > 0); dn = -sum(x for x in ch if x < 0)
     rsi = 100.0 if dn == 0 else 100 - 100 / (1 + up / dn)
     px0 = B[-1][4]
@@ -80,7 +81,7 @@ def trend_rules(t, m0, bet, cx, base, out):
     rsi_bet = rsi if bet > 0 else 100 - rsi
     if not (ext >= 2.5 or rsi_bet >= 85): out["v"]["extveto"] = base; out["at"]["extveto"] = m0
     # the climax: big bodies the bet's way, or a volume bar with a wick against the bet
-    prev = B[-23:-3]
+    prev = B[-23:-3] or B[:1]
     body = sum(abs(b[4] - b[1]) for b in prev) / len(prev) or 1e-9
     avgv = sum(b[5] for b in prev) / len(prev) or 1e-9
     last3 = B[-3:]

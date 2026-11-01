@@ -2610,23 +2610,25 @@ are up on the fair list (+3% to +22%) and about flat on the Favorites: tune and 
 The tune spike trades hold 3 giants (17 -> 14 kept on the fair list); a later, higher entry resets the staged exit's
 reference so a second dip sells it (AVGO). Win rate unchanged (16-20%).
 
-### Entry timing rules from the research report, on 2.9 (2026-11-01, not better; rv20 a drop candidate)
+### Entry timing rules from the research report, on 2.9 (2026-11-01, not better; corrected run)
 The user: "go ahead and do a deep research for technical analysis for how to enter a trending swing and try it out".
 Report: app repo reports/Trend entry timing rules.md (pros buy the break, not the pullback; news / relative volume decide
 continuation; no measured intraday exhaustion rule). trend_entry.py, spike_entry.py's setup (2.9's exits, real quotes,
-the real price paid); 5 versions set before running, look 1. At 2% (fair / Favorites 24m):
+the real price paid); 5 versions set before running. **The first run had a bug** (a 24-bar minimum skipped every rule
+for the signals in the first ~24 minutes, most of them; it showed rv20 at $525,438 / $750,227 on tune): the corrected
+run (look 2 of the same versions) at 2%, end / drop and the average trade at $10K:
 
-| Version | Tune | Check |
+| Version | Tune fair / Favorites | Check fair / Favorites |
 |---|---|---|
-| 2.9 | $376,230 (29%) / $555,017 (18%) | $478,021 (25%) / $143,834 (25%) |
-| conf3 (buy-stop over the last 3 bars' high, 3 minutes) | $380,078 (28%) / $531,728 (18%) | $482,359 (34%) / $136,172 (35%) |
-| 🎯 rv20 (volume since the open >= 2.0x, the signal needs 1.5) | **$525,438 (17%) / $750,227 (16%)** | $383,728 (23%) / $170,489 (26%) |
-| rv30 (>= 3.0x) | $288,378 (27%) / $378,077 (22%) | $353,406 (21%) / $149,570 (24%) |
-| climax (defer a climax bar to a new high of day, VWAP cancels) | $370,665 / $543,261 | $345,688 (41%) / $102,909 (42%) |
-| extveto (control: skip at >= 2.5 S30 past VWAP or RSI14 >= 85) | $355,023 (32%) / $513,927 (23%) | $483,852 (22%) / $134,666 (27%) |
+| 2.9 | $376,230 (29%) +1,703 / $555,017 (18%) +2,090 | $478,021 (25%) +1,817 / $143,834 (25%) +556 |
+| conf3 (buy-stop over the last 3 bars' high, 3 minutes) | $261,742 (34%) / $431,607 (21%) | $418,469 (36%) / $134,069 (34%) |
+| rv20 (volume since the open >= 2.0x; ~30% of the trades) | $308,627 (11%) +4,561 / $273,857 (13%) +3,930 | $278,270 (21%) +4,064 / $152,208 (22%) +1,721 |
+| rv30 (>= 3.0x; 25-34 trades) | $92,107 / $89,397 | $283,325 (9%) / $154,360 (7%) |
+| 🎯 climax (defer a climax bar to a new high of day; 8-13 trades change) | $373,151 (28%) / $543,363 (18%) | $345,020 (41%) / $102,708 (42%) |
+| extveto (control: >= 2.5 S30 past VWAP or RSI14 >= 85) | $199,824 (39%) / $258,376 (18%) | $476,825 (20%) / $121,058 (22%) |
 
-Verdict: not better. The pick rv20 is +40% / +35% on tune with the drop 12 / 2 points less, on check the Favorites
-+19% but the fair list -20%, drops 2 points less / 1 more; without the best 5 check fair $122,526 vs $140,330. The trades
-it removes (1.5-2.0x volume): tune 199 fair, -$171K with 2 giants; check 195, +$160K with 6 giants: the halves disagree.
-conf3 ties on tune and loses the drop on check; the climax defer touches 7-12 trades and costs 2 check giants; the
-extension veto drops giants as expected. rv20 is the one to watch for the drop (the live setting minRvol 2.0).
+Verdict: not better; every version loses on tune. The finding is rv20's average trade: about double 2.9's on all four
+cells (+4,561 vs +1,703, +3,930 vs +2,090, +4,064 vs +1,817, +1,721 vs +556), with the drop far smaller (11-22% vs
+18-29%), because it trades a third as often. The trades it drops (volume 1.5-2.0x, ~70%) still add up positive
+(+$239K / +$566K tune, +$339K / +$22K check, with 7-10 giants) though they lose $490-545K a half without their giants.
+Next: size by the volume ratio (the 1.5-2.0x trades smaller) instead of skipping them.
