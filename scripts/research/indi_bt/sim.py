@@ -241,6 +241,7 @@ def failed_break_minute(und, date, minute, bet):
 #                  bot marks it (its -30% stop and checks read the mid), else that minute's trade bar, else the last
 #                  trade. Implies BT_KEEP. Not modelled either way: the broker's own safety stop (50%), any second.
 CLOCK = os.environ.get("BT_CLOCK", "stock")
+PAID_SKIP = os.environ.get("BT_PAID_SKIP") == "1"
 KEEP = os.environ.get("BT_KEEP", "1") == "1" or CLOCK == "stock"
 
 
@@ -409,7 +410,11 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                 if paid: cost = paid
                 peak = b[4]; basis = cost
                 steps.append((d, t, "buy", 1.0, round(cost, 4), "entry_limit" if limit is not None else "entry"))
-                continue
+                # A real fill (`paid`) is the book as the signal minute closed, so this bar is the first minute the
+                # position is held and its exits are checked, as the live bot's and the app's Backtest walk (2026-11-01,
+                # the app parity run: AAPL 2026-10-13's -30% stop came a minute after the buy in the app, 4 later here).
+                # BT_PAID_SKIP=1 = the old walk (no exit check on the entry bar), to reproduce runs before.
+                if not (paid and not PAID_SKIP): continue
             early = k == 0 and t - minute < X.get("first_exit_min", 0)  # no stop / failed-break sale this soon after the entry (user, 2026-10-24)
             hold = k == 0 and t - minute < X.get("hold_first", 0)  # no stop of any kind yet (hold_first)
             # grace N (the user, 2026-11-01: "give it a 5/10 minutes of grace (we do have the 60% stop anyway)"): on the

@@ -33,17 +33,37 @@ DBX = os.path.join(HERE, "dbx_cache", "indi")
 Q, OI = {}, {}
 
 
+# BT_BOOKS=all (default since 2026-11-01, the user: "I want them to be aligned" with the app's Backtest page): a day's books
+# are read from EVERY dbx_cache folder, as quotes_upload.py sends them all to the app's store (a contract fetched for
+# another list was missing here: CRCL, GLD, WMT priced on the bar model where the app had the real book), and a book with
+# a $0 bid is kept as the upload keeps it (0 <= bid <= ask, ask > 0). DBX's own rows win a minute both have.
+# BT_BOOKS=list = the old read (DBX only, bid > 0), to reproduce runs before.
+BOOKS = os.environ.get("BT_BOOKS", "all")
+
+
+def _rows(path, by, keep):
+    rd = csv.DictReader(gzip.open(path, "rt"))
+    if not {"contract", "minute", "bid", "ask"} <= set(rd.fieldnames or []): return
+    for r in rd:
+        if not r["bid"] or not r["ask"]: continue
+        bid, ask = float(r["bid"]), float(r["ask"])
+        if keep(bid, ask): by.setdefault(r["contract"], {})[int(r["minute"])] = (int(r["minute"]), bid, ask)
+
+
 def book(date):
     if date not in Q:
-        if len(Q) > 3: Q.clear()
+        if len(Q) > 7: Q.clear()
         by = {}
         path = os.path.join(DBX, f"{date}.csv.gz")
-        if os.path.exists(path):
-            for r in csv.DictReader(gzip.open(path, "rt")):
-                if r["bid"] and r["ask"] and float(r["ask"]) > 0 and float(r["bid"]) > 0:
-                    by.setdefault(r["contract"], []).append((int(r["minute"]), float(r["bid"]), float(r["ask"])))
-        for v in by.values(): v.sort()
-        Q[date] = by
+        if BOOKS == "all":
+            root = os.path.join(HERE, "dbx_cache")
+            others = [p for p in glob.glob(os.path.join(root, "**", f"{date}.csv.gz"), recursive=True)
+                      if f"{os.sep}oi{os.sep}" not in p and os.path.abspath(p) != os.path.abspath(path)]
+            for p in sorted(others) + ([path] if os.path.exists(path) else []):
+                _rows(p, by, lambda bid, ask: ask > 0 and 0 <= bid <= ask)
+        elif os.path.exists(path):
+            _rows(path, by, lambda bid, ask: ask > 0 and bid > 0)
+        Q[date] = {c: sorted(v.values()) for c, v in by.items()}
     return Q[date]
 
 
@@ -55,6 +75,9 @@ def oi(date, c):
     return OI[date].get(c)
 
 
+QUOTE_LATE = os.environ.get("BT_QUOTE_LATE") == "1"
+
+
 def quote(c, date, minute):
     """The book at the end of `minute`, at most 5 minutes old. A cache row's minute is the book as that minute BEGAN
     (dbx_fetch.py: cbbo-1m's ts_recv is the interval's end), so the end of `minute` is the row labelled minute + 1.
@@ -63,7 +86,10 @@ def quote(c, date, minute):
     row labelled j + 1 86% of the time, j 65%, j - 1 52%; label_test in the log)."""
     v = book(date).get(c)
     if not v: return None
-    i = bisect.bisect(v, (minute + 2, 1e9, 1e9)) - 1
+    # Fixed 2026-11-01 (the app parity run): `minute + 2` here also took the row labelled minute + 2, the book as minute + 1
+    # closed, so every real fill was a minute late (NVDA 2026-08-05 bought at $0.635 on the 10:41 book, the app's $0.6525
+    # is the 10:40 one). BT_QUOTE_LATE=1 = the old lookup, to reproduce runs before.
+    i = bisect.bisect(v, (minute + (2 if QUOTE_LATE else 1), 1e9, 1e9)) - 1
     if i < 0 or v[i][0] < minute - 3: return None
     return v[i][1], v[i][2]
 

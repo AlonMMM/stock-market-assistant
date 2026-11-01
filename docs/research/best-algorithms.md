@@ -2,6 +2,17 @@
 
 > 🏆 **New champion 2026-10-27 (later the same day): the champion below + early entry** (buy at the first second inside the signal minute the rule holds): 1-second real fills, tune $330,459 vs $306,551, check $484,041 vs $428,884 (fair list), Favorites 12m $238,078 vs $212,222 (export_early.py, Bot vs Indi `champ-early` / `champ-1s`). Not live yet.
 
+> ⚠️ **2026-11-01: the real-quote fills were a minute late; app and research now agree trade for trade.** The app
+> parity run (the user: "I expect it to be the same trade exactly"; "I want them to be align") found
+> `real_bench.quote(minute)` returning the row labelled minute + 2 (the book as minute + 1 closed), not minute + 1 as its
+> docstring and the 2026-10-27 label fix say: every real buy and sale since then was priced a minute late. Fixed, on by
+> default (`BT_QUOTE_LATE=1` = the old lookup), with two more: a day's books are read from every `dbx_cache` folder as the
+> app's store holds them, $0 bids kept (`BT_BOOKS=all`; `list` = the old one folder), and a real-fill walk (`paid`) checks
+> its exits on the entry bar as the app and the live bot do (`BT_PAID_SKIP=1` = old). Live 2.7.0 settings, its 75 stocks,
+> 2026-07-31..10-30, 3%: app Backtest engine and `app_twin.py` 184 / 184 trades identical, same fills, $100,949 / 42.4% drop
+> both (before: 6 of 184 the same). **Every real-quote figure in this log before this date moves**; re-run a result
+> before leaning on it. App side: PR fix/backtest-align (`scripts/bot-backtest-compare.ts`).
+
 > ⛔ **Early entry fails the fair test (2026-10-31, early_fair.py).** sec_timing.py's "early" used SPY's end-of-minute
 > move inside the minute and only searched signals that held at the close. Re-tested on real stock and SPY trades the way
 > bot.ts runs it (5-s checks, forming volume 0, fades included), it loses to the minute-close buy on both halves and both
