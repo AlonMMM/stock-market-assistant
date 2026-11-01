@@ -41,9 +41,9 @@ import {
 test("versions: distinct ids oldest first; the defaults are the current version's rules", () => {
   const ids = botVersions.map((v) => v.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(currentVersion, "2.8.0");
+  assert.equal(currentVersion, "2.9.0");
   assert.equal(defaultSettings.version, currentVersion);
-  assert.equal(matchingVersion(defaultSettings)?.id, "2.8.0");
+  assert.equal(matchingVersion(defaultSettings)?.id, "2.9.0");
   assert.deepEqual(rulesOf(defaultSettings), botVersions.at(-1)!.rules);
   // Each version differs from the one before, and 2.1 is 2.0 plus the failed-break sale.
   for (let i = 1; i < botVersions.length; i++)
@@ -86,20 +86,32 @@ test("versions: distinct ids oldest first; the defaults are the current version'
     "stockStages false → true",
     "lateHold false → true",
   ]);
+  // 2.8.1 is 2.8 with the size stepping down as the account grows.
+  assert.deepEqual(ruleChanges(botVersions[10]!.rules, botVersions[9]!), [
+    "sizeSteps none → 2.5% from $300,000, 1.5% from $1,000,000, 1% from $4,000,000",
+  ]);
+  // 2.9 is 2.8.1 (its size steps kept) with the break-even lock from +50%.
+  assert.deepEqual(ruleChanges(botVersions[11]!.rules, botVersions[10]!), [
+    "breakEvenLock false → true",
+  ]);
+  assert.deepEqual(
+    botVersions[11]!.rules.sizeSteps,
+    botVersions[10]!.rules.sizeSteps,
+  );
 });
 
 test("versions: the label is the version, starred when its rules were changed; an own label stays", () => {
-  assert.equal(versionLabel(defaultSettings), "2.8.0");
-  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.8.0*");
+  assert.equal(versionLabel(defaultSettings), "2.9.0");
+  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.9.0*");
   // The IBIT list is a rule: changing it stars the label.
   assert.equal(
     versionLabel({ ...defaultSettings, lowFloorSymbols: ["IBIT", "MSTR"] }),
-    "2.8.0*",
+    "2.9.0*",
   );
   // The owner's limits and lists are not rules: no star.
   assert.equal(
     versionLabel({ ...defaultSettings, sizePct: 1, off: ["TSLA"] }),
-    "2.8.0",
+    "2.9.0",
   );
   const own = { ...defaultSettings, version: "2.2-test", stopPct: 40 };
   assert.equal(versionLabel(own), "2.2-test");
@@ -115,7 +127,7 @@ test("versions: applying one sets its rules and keeps the owner's limits", () =>
   assert.equal(s.sellFailedBreak, false);
   assert.equal(s.sizePct, 1);
   assert.equal(versionLabel(s), "1.0.0");
-  const back = applyVersion(s, "2.8.0");
+  const back = applyVersion(s, "2.9.0");
   assert.deepEqual(rulesOf(back), rulesOf(defaultSettings));
   assert.equal(applyVersion(s, "mine").version, "mine");
 });
@@ -162,7 +174,7 @@ test("versions: parse checks the label; a record saved before versions gets the 
     "2.0.0",
   );
   assert.equal(withDefaults({ stopPct: 40 }).version, currentVersion);
-  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.8.0*");
+  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.9.0*");
   // ...and none of the 2.7 rules came with it.
   assert.equal(withDefaults({ stopPct: 30 }).pyramid, false);
   // A saved version is kept as saved.
@@ -621,6 +633,8 @@ test("numbering: every id is MAJOR.MINOR.PATCH; ids from before the scheme read 
       "2.6.0",
       "2.7.0",
       "2.8.0",
+      "2.8.1",
+      "2.9.0",
     ],
   );
   assert.equal(canonicalVersion("2.6"), "2.6.0");
@@ -721,4 +735,197 @@ test("numbering: a set of changes takes the biggest; the next id from it", () =>
     versionBump(at("2.6.0"), { ...at("2.6.0"), lowFloorSymbols: ["IBIT"] }),
     "patch",
   );
+});
+
+test("the break-even lock (2.9): armed at +50%, the stock back at the level sells all", async () => {
+  const { breakEvenStock, tighterLevel } =
+    await import("../packages/trading/src/bot/lock.js");
+  const { blackScholes, impliedVolatility } =
+    await import("../packages/trading/src/option-estimate.js");
+  // The level is where the option, at the volatility implied now, is worth the cost.
+  const years = 2 / 365;
+  const level = breakEvenStock("C", 197.5, years, 1.23, 191.31, 0.78)!;
+  const vol = impliedVolatility("call", 1.23, 191.31, 197.5, years, 0.045)!;
+  assert.ok(
+    Math.abs(blackScholes("call", level, 197.5, years, vol, 0.045) - 0.78) <
+      1e-6,
+  );
+  assert.ok(level < 191.31 && level > 185);
+  // A put's level is above the stock; a price no volatility reaches gives none.
+  const putLevel = breakEvenStock("P", 176, years, 1.5, 178, 1)!;
+  assert.ok(putLevel > 178);
+  assert.equal(breakEvenStock("C", 197.5, years, 0, 191.31, 0.78), null);
+  assert.equal(breakEvenStock("C", 197.5, years, 1e6, 191.31, 0.78), null);
+  // The tighter of two levels: the higher for a call, the lower for a put.
+  assert.equal(tighterLevel("C", 190, 191), 191);
+  assert.equal(tighterLevel("P", 190, 191), 190);
+  assert.equal(tighterLevel("C", null, 191), 191);
+
+  const r = exitRules(defaultSettings);
+  assert.deepEqual(r.lock, { arm: 0.5 });
+  assert.equal(
+    exitRules({ ...defaultSettings, breakEvenLock: false }).lock,
+    null,
+  );
+  const position = {
+    right: "C" as const,
+    qty: 10,
+    cost: 0.78,
+    entryMinute: 10,
+    entryStock: 189.76,
+    nights: 0,
+    checksDone: [],
+    morningDone: false,
+  };
+  const market = {
+    minute: 15,
+    stock: 191.31,
+    option: 1.23,
+    unit: null,
+    strike: 197.5,
+    years,
+    isExpiryDay: false,
+    sessionBeforeExpiry: true,
+    open: null,
+    prevClose: null,
+  };
+  // Up 58%: armed, the level is stored, nothing sold.
+  const armed = nextAction(position, market, r);
+  assert.equal(armed.sell, 0);
+  assert.ok(Math.abs(armed.update.lockLevel! - level) < 1e-9);
+  // Up only 40% and not armed before: no level, nothing stored.
+  const low = nextAction(position, { ...market, option: 1.09 }, r);
+  assert.deepEqual([low.sell, low.update.lockLevel], [0, undefined]);
+  // Armed (the level kept with the position, as after a restart): the stock
+  // above it holds, at it sells all, even with the option no longer up 50%.
+  const held = { ...position, lockLevel: 190.5 };
+  assert.equal(
+    nextAction(held, { ...market, stock: 190.6, option: 0.9 }, r).sell,
+    0,
+  );
+  const sold = nextAction(held, { ...market, stock: 190.5, option: 0.9 }, r);
+  assert.deepEqual([sold.sell, sold.reason], [10, "break-even-lock"]);
+  // A new level only replaces a looser one: it ratchets up for a call.
+  const up = nextAction({ ...position, lockLevel: 185 }, market, r);
+  assert.ok(Math.abs(up.update.lockLevel! - level) < 1e-9);
+  const keep = nextAction({ ...position, lockLevel: 191 }, market, r);
+  assert.equal(keep.update.lockLevel, undefined);
+  // A put: the stock back up at its level sells.
+  const put = nextAction(
+    { ...position, right: "P", lockLevel: 180 },
+    { ...market, stock: 180.2, option: 1 },
+    r,
+  );
+  assert.deepEqual([put.sell, put.reason], [10, "break-even-lock"]);
+  // Off, unknown strike or time, or a carried day: no lock.
+  const off = exitRules({ ...defaultSettings, breakEvenLock: false });
+  assert.equal(
+    nextAction(held, { ...market, stock: 190, option: 0.9 }, off).reason,
+    null,
+  );
+  assert.equal(
+    nextAction(position, { ...market, strike: null }, r).update.lockLevel,
+    undefined,
+  );
+  const night = { ...held, nights: 1, morningDone: true };
+  assert.equal(
+    nextAction(night, { ...market, minute: 60, stock: 190, option: 0.9 }, r)
+      .sell,
+    0,
+  );
+  // A late winner (entry 15:00+, up) is held to 15:50 before the lock.
+  const late = { ...held, entryMinute: 335 };
+  assert.equal(
+    nextAction(late, { ...market, minute: 345, stock: 190, option: 0.9 }, r)
+      .sell,
+    0,
+  );
+  // The strength exit comes first when both fire.
+  const both = nextAction(
+    held,
+    { ...market, stock: 190, option: 0.9, strength: 0.2 },
+    r,
+  );
+  assert.equal(both.reason, "strength-gone");
+  // A new level rides on another rule's decision (here the staged half).
+  const staged = nextAction(
+    { ...position, entryStock: 192.5 },
+    { ...market, unit: 0.01 },
+    r,
+  );
+  assert.equal(staged.reason, "stage-half");
+  assert.ok(staged.update.lockLevel! > 0);
+});
+
+test("2.9 review fixes: the ladder never raises the size; an unknown account trades small; saved settings keep the lock as they were", async () => {
+  const { sizeAt } = await import("../packages/trading/src/bot/settings.js");
+  const steps = defaultSettings.sizeSteps;
+  // From 2%, "2.5% from $300K" keeps 2%; the lower steps still apply.
+  assert.equal(sizeAt(2, steps, 500_000), 2);
+  assert.equal(sizeAt(2, steps, 2_000_000), 1.5);
+  assert.equal(sizeAt(3, steps, 500_000), 2.5);
+  // The account read failed (0): the smallest size, never the base.
+  assert.equal(sizeAt(3, steps, 0), 1);
+  assert.equal(sizeAt(0.5, steps, 0), 0.5);
+  assert.equal(sizeAt(3, [], 0), 3);
+  // Saved as 2.8.1 / 2.8.0 before the lock existed: the lock stays off.
+  const of = (version: string) => {
+    const saved: Record<string, unknown> = { ...defaultSettings, version };
+    delete saved.breakEvenLock;
+    delete saved.lockArmPct;
+    return withDefaults(saved);
+  };
+  assert.equal(of("2.8.1").breakEvenLock, false);
+  assert.equal(of("2.8.1").version, "2.8.1");
+  assert.equal(of("2.8.0").breakEvenLock, false);
+  // An own label from before: the new rules off too, not the current version's.
+  const own: Record<string, unknown> = { ...defaultSettings, version: "mine" };
+  delete own.breakEvenLock;
+  delete own.sizeSteps;
+  const mine = withDefaults(own);
+  assert.equal(mine.breakEvenLock, false);
+  assert.deepEqual(mine.sizeSteps, []);
+  assert.equal(mine.version, "mine");
+});
+
+test("2.9 review fixes: the lock arms at exactly +50% and decides on the minute close, not a live print", () => {
+  const r = exitRules(defaultSettings);
+  const position = {
+    right: "C" as const,
+    qty: 4,
+    cost: 1,
+    entryMinute: 10,
+    entryStock: 189.76,
+    nights: 0,
+    checksDone: [],
+    morningDone: false,
+  };
+  const market = {
+    minute: 15,
+    stock: 191.31,
+    option: 1.5,
+    unit: null,
+    strike: 197.5,
+    years: 2 / 365,
+    isExpiryDay: false,
+    sessionBeforeExpiry: true,
+    open: null,
+    prevClose: null,
+  };
+  // Exactly +50% arms.
+  assert.ok(nextAction(position, market, r).update.lockLevel! > 0);
+  const held = { ...position, lockLevel: 190.5 };
+  // A live print through the level with the minute closing above it: held.
+  assert.equal(
+    nextAction(held, { ...market, option: 0.9, stock: 190.2, close: 190.7 }, r)
+      .sell,
+    0,
+  );
+  // The minute closes at the level: sold.
+  const sold = nextAction(
+    held,
+    { ...market, option: 0.9, stock: 190.7, close: 190.5 },
+    r,
+  );
+  assert.deepEqual([sold.sell, sold.reason], [4, "break-even-lock"]);
 });

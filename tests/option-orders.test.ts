@@ -181,6 +181,16 @@ test("ladder: does not send when the spread is too wide", async () => {
   assert.equal(calls[0], "buy 3 @ 1");
 });
 
+test("ladder: a forced buy is not sent when the option has no bid", async () => {
+  const { client, calls } = fakeClient([[0, 0.6]], null);
+  const result = await buyWithLadder(client, symbol, 3, {
+    ...fast,
+    anySpread: true,
+  });
+  assert.equal(result.status, "rejected-spread");
+  assert.deepEqual(calls, []);
+});
+
 test("ladder: raises until filled", async () => {
   const { client, calls } = fakeClient([[1.0, 1.1]], 1.07);
   const result = await buyWithLadder(client, symbol, 3, fast);

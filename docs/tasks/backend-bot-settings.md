@@ -99,6 +99,12 @@ a version.
   for the rules in force. The owner's limits are worded by the pages, not here.
 - A new version is a new entry in `botVersions` (and a new default): the research log decides what gets one.
 
+- Version 2.8.1 (2026-10-31, the owner: "3% until 300K -> 2.5 until 1M, 1.5 at 1M and 1 at 4M ... commit it as the current
+  2.8.1"): 2.8 + `sizeSteps`, a version rule: a list of `{ from, pct }` (rising account values, each size within the
+  size's limits). A buy is sized `sizeAt(sizePct, steps, account)` on the account's value as the day started; below the
+  first step it is the owner's `sizePct` (3%). The Backtest page's account takes the steps from the version's rules.
+  Strictly a new rule is MINOR by the scheme below; 2.8.1 by the owner's call. Lists of objects compare by JSON.
+
 ### Numbering: MAJOR.MINOR.PATCH (2026-10-28, user: "bot version is smt like 2.6.0 ... map each change to future number")
 
 | Digit | Moves when                                                                                  | Settings                                                                                                                                                                                                                                                                      |

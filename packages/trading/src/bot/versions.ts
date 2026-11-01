@@ -52,7 +52,10 @@ export type RuleKey =
   | "stockStages"
   | "stageHalfS30"
   | "stageFullS30"
-  | "lateHold";
+  | "lateHold"
+  | "sizeSteps"
+  | "breakEvenLock"
+  | "lockArmPct";
 
 export type Rules = Pick<BotSettings, RuleKey>;
 
@@ -88,6 +91,9 @@ export const ruleKeys: readonly RuleKey[] = [
   "stageHalfS30",
   "stageFullS30",
   "lateHold",
+  "sizeSteps",
+  "breakEvenLock",
+  "lockArmPct",
 ];
 
 export interface BotVersion {
@@ -131,6 +137,9 @@ const v1: Rules = {
   stageHalfS30: 0.5,
   stageFullS30: 1,
   lateHold: false,
+  sizeSteps: [],
+  breakEvenLock: false,
+  lockArmPct: 50,
 };
 // 2.0: the V2 champion (t 1.8, the overnight cap, the news filter).
 const v2: Rules = {
@@ -201,6 +210,33 @@ const v28: Rules = {
   stageFullS30: 1,
   lateHold: true,
 };
+// 2.8.1 (the owner, 2026-10-31: "3% until 300K -> 2.5 until 1M, 1.5 at 1M and 1
+// at 4M ... commit it as the current 2.8.1"): 2.8 with the size stepping down as
+// the account grows (the owner's base size, 3%, below $300K). 2.8 with every
+// audit fix, marked at 15:50: fair list $5,020,559 / 39.0% vs flat 3%
+// $7,162,638 / 43.3%; check half $1,167,393 / 24.9% vs $1,168,632 / 33.1%;
+// the Favorites 12 months $297,769 vs $259,262.
+const v281: Rules = {
+  ...v28,
+  sizeSteps: [
+    { from: 300_000, pct: 2.5 },
+    { from: 1_000_000, pct: 1.5 },
+    { from: 4_000_000, pct: 1 },
+  ],
+};
+
+// 2.9 (the owner, 2026-11-01: "add it now in all the places needed as 2.9, do
+// not forget to use 2.8.1 (ladder)"): 2.8.1 + the break-even lock (research
+// sim.py be_lock {arm 0.5, update}): on the entry day, once the option is +50%,
+// the stock price where Black-Scholes at the option's implied volatility then
+// values it at its cost is a stop on the stock, worked out again each minute it
+// is still +50% (the tighter level kept). Fresh runs on the real fill price, 2%:
+// fair list $3,455,683 / 32.2% vs 2.8's $3,138,672 / 34.4% (tune and check up);
+// with the size steps $4,399,581 / 37.2% vs 2.8.1's $4,148,061 / 39.6%; the
+// Favorites 12 / 6 / 24 / 36 months ahead with the drop 0.4-4 points less. The
+// gain rests on about 10 changed trades (the strict check fails); the owner
+// shipped it for the smaller drop and the higher win rate.
+const v29: Rules = { ...v281, breakEvenLock: true, lockArmPct: 50 };
 
 /** Every version, oldest first. */
 export const botVersions: readonly BotVersion[] = [
@@ -283,6 +319,22 @@ export const botVersions: readonly BotVersion[] = [
       "No 10- and 20-minute checks. On the entry day, half is sold when the stock is half its usual 30-minute move against the price at the signal, the rest at a full move against; the option stop is −60% (was −30%). An entry at 15:00 or later is not sold before 15:50 while it is above its cost.",
     rules: v28,
   },
+  {
+    id: "2.8.1",
+    name: "2.8 + the size steps down as the account grows",
+    since: "2026-10-31",
+    notes:
+      "2.8's rules; each trade's size steps down as the account grows: your size (3%) below $300K, 2.5% from $300K, 1.5% from $1M, 1% from $4M, on the account as the day starts.",
+    rules: v281,
+  },
+  {
+    id: "2.9.0",
+    name: "2.8.1 + the break-even lock",
+    since: "2026-11-01",
+    notes:
+      "2.8.1's rules and size steps. On the entry day, once the option is up 50%, the bot works out the stock price where the option would be worth what was paid (Black-Scholes at its implied volatility now, again each minute it is still up 50%, the tighter level kept) and sells all if the stock gets back there.",
+    rules: v29,
+  },
 ];
 
 /** The version a new bot runs. */
@@ -326,6 +378,7 @@ export const minorKeys: ReadonlySet<RuleKey> = new Set<RuleKey>([
   "earlyEntry",
   "stockStages",
   "lateHold",
+  "breakEvenLock",
   "skipEarnings",
   "skipPremarket",
 ]);
@@ -375,8 +428,11 @@ export function rulesOf(s: Rules): Rules {
 }
 
 // A rule is a number, a boolean or a list of tickers (compared in order).
+// Lists by their contents (JSON: a list of size steps is a list of objects).
 const sameValue = (a: unknown, b: unknown): boolean =>
-  Array.isArray(a) && Array.isArray(b) ? a.join() === b.join() : a === b;
+  Array.isArray(a) && Array.isArray(b)
+    ? JSON.stringify(a) === JSON.stringify(b)
+    : a === b;
 
 export const sameRules = (a: Rules, b: Rules): boolean =>
   ruleKeys.every((key) => sameValue(a[key], b[key]));
@@ -386,8 +442,13 @@ export function matchingVersion(s: Rules): BotVersion | undefined {
   return [...botVersions].reverse().find((v) => sameRules(v.rules, s));
 }
 
+const itemText = (x: unknown): string => {
+  if (typeof x !== "object" || x === null) return String(x);
+  const { from, pct } = x as { from?: number; pct?: number };
+  return `${pct}% from $${(from ?? 0).toLocaleString("en-US")}`;
+};
 const ruleText = (v: unknown): string =>
-  Array.isArray(v) ? v.join(", ") || "none" : String(v);
+  Array.isArray(v) ? v.map(itemText).join(", ") || "none" : String(v);
 
 /** Where the rules differ from a version's, in words ("stopPct 30 → 40"). */
 export function ruleChanges(s: Rules, v: BotVersion): string[] {

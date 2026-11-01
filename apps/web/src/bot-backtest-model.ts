@@ -46,7 +46,7 @@ export const parallel = 4;
 export type BotId = "main" | "volume";
 export const bots: { id: BotId; name: string; ready: boolean }[] = [
   { id: "main", name: "🤖 Main bot", ready: true },
-  { id: "volume", name: "🎯 Volume bot (coming soon)", ready: false },
+  { id: "volume", name: "🎯 Volume bot", ready: true },
 ];
 
 export const periods = [
@@ -197,6 +197,8 @@ export const ruleGroups: RuleGroup[] = [
         unit: "× S30",
       },
       { key: "lateHold", label: "Hold late winners (entry 15:00+)" },
+      { key: "breakEvenLock", label: "Break-even lock" },
+      { key: "lockArmPct", label: "Break-even lock: armed from", unit: "%" },
       { key: "stopPct", label: "Stop", unit: "%" },
       {
         key: "restStopPct",

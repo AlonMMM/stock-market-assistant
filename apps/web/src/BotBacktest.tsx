@@ -34,6 +34,7 @@ import {
   type Rules,
 } from "../../../packages/trading/src/bot/versions.js";
 import coreList from "../../../config/bot-universe.json";
+import volumeList from "../../../config/volume-bot-stocks.json";
 import { readJson } from "./api.js";
 import type { BotView } from "../../../packages/trading/src/bot-api.js";
 import {
@@ -69,9 +70,34 @@ import {
   startRun,
   stopRun,
   useBacktestRun,
+  volumeRun,
   type Busy,
   type Ran,
+  type RanBase,
 } from "./bot-backtest-run.js";
+import {
+  defaultStrangleSettings,
+  strangleStocks,
+  strangleWithDefaults,
+  type StrangleSettings,
+} from "../../../packages/trading/src/strangle/settings.js";
+import { volumeAccount } from "../../../packages/trading/src/strangle/backtest.js";
+import {
+  VolumeEmpty,
+  VolumeRules,
+  VolumeSignalList,
+  VolumeSummary,
+  VolumeTradeList,
+} from "./VolumeBacktest.js";
+import {
+  closedVolumeTrade,
+  defaultVolumeMoney,
+  sameRun,
+  volumeMoney,
+  volumeRows,
+  type VolumeMoneySetup,
+} from "./volume-backtest-model.js";
+import { Card, NumberRow } from "./backtest-ui.js";
 import { signedPct, signedUsd, tone, usd } from "./format.js";
 import {
   israelClock,
@@ -104,6 +130,13 @@ interface Setup {
   to: string;
   money: Omit<MoneySettings, "nightCapPct" | "fillPct">;
   fillPct: number;
+  // The Volume bot's: its settings (from the live bot's, then changed here),
+  // the live ones they started from, and the account's money.
+  volume: {
+    settings: StrangleSettings;
+    base: StrangleSettings | null;
+    money: VolumeMoneySetup;
+  };
 }
 
 /** The last session whose data is final now (the server's rule). */
@@ -127,6 +160,11 @@ function defaultSetup(last: string): Setup {
     to,
     money,
     fillPct: defaultFillPct,
+    volume: {
+      settings: defaultStrangleSettings,
+      base: null,
+      money: defaultVolumeMoney,
+    },
   };
 }
 
@@ -141,6 +179,13 @@ function savedSetup(last: string): Setup {
       ...saved,
       rules: { ...base.rules, ...saved.rules },
       money: { ...base.money, ...saved.money },
+      volume: {
+        settings: strangleWithDefaults({ ...saved.volume?.settings }),
+        base: saved.volume?.base
+          ? strangleWithDefaults(saved.volume.base)
+          : null,
+        money: { ...base.volume.money, ...saved.volume?.money },
+      },
     };
     // A preset period moves with the calendar.
     const preset = periods.find((p) => p.id === setup.period);
@@ -204,9 +249,14 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
         tickers: live.tickers,
         money: { ...setup.money, ...live.money },
       });
+      const steps = (live.rules.sizeSteps ?? [])
+        .map((x) => `${x.pct}% from $${x.from.toLocaleString("en-US")}`)
+        .join(", ");
+      let stepsNote = "";
+      if (steps) stepsNote = ` (stepping down as the account grows: ${steps})`;
       setPaper({
         state: "loaded",
-        text: `Loaded the paper bot as it is now: ${versionLabel(live.version, live.rules)}, ${live.money.sizePct}% a trade, ${live.money.maxBuysPerDay} buys a day, ${live.money.maxOpen} open, ${live.tickers.length} stocks.`,
+        text: `Loaded the paper bot as it is now: ${versionLabel(live.version, live.rules)}, ${live.money.sizePct}% a trade${stepsNote}, ${live.money.maxBuysPerDay} buys a day, ${live.money.maxOpen} open, ${live.tickers.length} stocks.`,
       });
     } catch (e) {
       setPaper({
@@ -215,8 +265,58 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
       });
     }
   }
-  // The run lives outside the page: it goes on, and stays, across sections.
-  const { busy, errors, runs, ran, stopped } = useBacktestRun();
+  // The Volume bot's settings start from the live bot's (the user,
+  // 2026-10-31): read once, and again with "Same as paper".
+  async function loadVolumePaper(next: Setup = setup) {
+    setPaper({ state: "loading" });
+    try {
+      const [saved, body] = await Promise.all([
+        fetch("/api/strangle/settings", {
+          signal: AbortSignal.timeout(15000),
+        }).then((r) => readJson<StrangleSettings>(r)),
+        fetch("/api/watchlists").then((r) =>
+          readJson<{ lists: Watchlist[] }>(r),
+        ),
+      ]);
+      const live = strangleWithDefaults(saved);
+      const favorites =
+        body.lists.find((l) => /favou?rite/i.test(l.name))?.tickers ?? [];
+      const tickers = strangleStocks(live, favorites).slice(0, maxStocks);
+      setSetup({
+        ...next,
+        bot: "volume",
+        ...(tickers.length ? { tickers } : {}),
+        volume: { ...next.volume, settings: live, base: live },
+      });
+      setPaper({
+        state: "loaded",
+        text: `Loaded the Volume bot as it is now: delta ${live.delta}, ${live.sizePct}% a trade, ${live.shockAlert ? "plan + shock alerts" : "plan alerts"}, ${tickers.length} stocks.`,
+      });
+    } catch (e) {
+      setSetup({
+        ...next,
+        bot: "volume",
+        tickers: volumeList.symbols.slice(0, maxStocks),
+      });
+      setPaper({
+        state: "failed",
+        text: `The Volume bot's settings could not be read (${e instanceof Error ? e.message : "failed"}); its defaults are used.`,
+      });
+    }
+  }
+  function pickBot(bot: BotId) {
+    const next = { ...setup, bot };
+    setPaper({ state: "idle" });
+    if (bot === "volume" && !setup.volume.base) void loadVolumePaper(next);
+    else setSetup(next);
+  }
+  const isVolume = setup.bot === "volume";
+
+  // The runs live outside the page: they go on, and stay, across sections.
+  const main = useBacktestRun();
+  const vol = volumeRun.use();
+  const { runs, ran } = main;
+  const { busy, errors, stopped } = isVolume ? vol : main;
   const [filter, setFilter] = useState<"all" | "won" | "lost" | "refused">(
     "all",
   );
@@ -242,11 +342,20 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
   const changes = versionById(setup.version)
     ? ruleChanges(setup.rules, versionById(setup.version)!)
     : [];
-  const runnable =
-    setup.bot === "main" && setup.tickers.length > 0 && sessions > 0 && !busy;
+  const runnable = setup.tickers.length > 0 && sessions > 0 && !busy;
 
   function run() {
     setOpen(null);
+    if (isVolume) {
+      void volumeRun.start({
+        settings: setup.volume.settings,
+        fillPct: setup.fillPct,
+        tickers: setup.tickers,
+        from: setup.from,
+        to: setup.to,
+      });
+      return;
+    }
     void startRun({
       version: versionLabel(setup.version, setup.rules),
       rules: setup.rules,
@@ -264,6 +373,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
       ran
         ? runAccount(trades, {
             ...setup.money,
+            sizeSteps: ran.rules.sizeSteps ?? [],
             nightCapPct: ran.rules.nightCapPct,
             fillPct: ran.fillPct,
           })
@@ -286,6 +396,34 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
         stepMs(b.trade.date, b.trade.minute) -
         stepMs(a.trade.date, a.trade.minute),
     );
+  // The Volume bot's result: the account applies the money and the size and
+  // limits settings at once; the rest needs a new run.
+  const vMoney = volumeMoney(setup.volume.money, setup.volume.settings);
+  const vAccount = useMemo(
+    () => (vol.ran ? volumeAccount(vol.runs, vMoney) : null),
+    // The money is rebuilt each render: its values, not the object, decide.
+    [vol.runs, vol.ran, JSON.stringify(vMoney)],
+  );
+  const vRows = useMemo(
+    () => volumeRows(vol.runs, vAccount),
+    [vol.runs, vAccount],
+  );
+  const vIgnored = [...new Set(vol.runs.flatMap((r) => r.ignored))];
+  const vStale =
+    vol.ran !== null &&
+    (!sameRun(vol.ran.settings, setup.volume.settings) ||
+      vol.ran.fillPct !== setup.fillPct ||
+      vol.ran.from !== setup.from ||
+      vol.ran.to !== setup.to ||
+      vol.ran.tickers.join() !== setup.tickers.join());
+  const volumeChanges = setup.volume.base
+    ? (Object.keys(setup.volume.base) as (keyof StrangleSettings)[]).filter(
+        (k) =>
+          JSON.stringify(setup.volume.base![k]) !==
+          JSON.stringify(setup.volume.settings[k]),
+      ).length
+    : 0;
+
   const stale =
     ran !== null &&
     (!sameRules(ran.rules, setup.rules) ||
@@ -324,7 +462,12 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
         {modes}
       </header>
 
-      {busy && ran && <RunLoader busy={busy} ran={ran} />}
+      {busy && !isVolume && ran && (
+        <RunLoader busy={busy} ran={ran} onStop={stopRun} />
+      )}
+      {busy && isVolume && vol.ran && (
+        <RunLoader busy={busy} ran={vol.ran} onStop={volumeRun.stop} />
+      )}
 
       <div className="backtest-layout">
         <form
@@ -340,7 +483,8 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
             <h1>Backtest</h1>
             <p>
               Runs a bot&apos;s rules over past sessions on the stocks you pick.
-              Simulated fills on Alpaca minute bars.
+              Fills on real quotes where there are any, else on Alpaca minute
+              bars.
             </p>
           </div>
           <fieldset className="setup-cards" disabled={busy !== null}>
@@ -351,7 +495,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                 Bot
                 <select
                   value={setup.bot}
-                  onChange={(e) => patch({ bot: e.target.value as BotId })}
+                  onChange={(e) => pickBot(e.target.value as BotId)}
                 >
                   {bots.map((b) => (
                     <option key={b.id} value={b.id} disabled={!b.ready}>
@@ -360,31 +504,46 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                   ))}
                 </select>
               </label>
-              <label>
-                Version
-                <select
-                  value={setup.version}
-                  onChange={(e) =>
-                    patch({
-                      version: e.target.value,
-                      rules: versionById(e.target.value)!.rules,
-                    })
-                  }
-                >
-                  {[...botVersions].reverse().map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.id} · {v.name}
-                      {v.id === currentVersion ? " (live)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className="muted small">{versionById(setup.version)?.notes}</p>
+              {!isVolume && (
+                <>
+                  <label>
+                    Version
+                    <select
+                      value={setup.version}
+                      onChange={(e) =>
+                        patch({
+                          version: e.target.value,
+                          rules: versionById(e.target.value)!.rules,
+                        })
+                      }
+                    >
+                      {[...botVersions].reverse().map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.id} · {v.name}
+                          {v.id === currentVersion ? " (live)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="muted small">
+                    {versionById(setup.version)?.notes}
+                  </p>
+                </>
+              )}
+              {isVolume && (
+                <p className="muted small">
+                  The live Volume bot&apos;s settings, changed below under
+                  Rules: plan and shock alerts, the side, the leg and the
+                  give-back.
+                </p>
+              )}
               <button
                 type="button"
                 className="bt-paper"
                 disabled={paper.state === "loading"}
-                onClick={() => void loadPaper()}
+                onClick={() =>
+                  void (isVolume ? loadVolumePaper() : loadPaper())
+                }
               >
                 {paper.state === "loading" ? "Reading paper…" : "Same as paper"}
               </button>
@@ -465,6 +624,17 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                 >
                   Bot&apos;s core list ({coreList.symbols.length})
                 </button>
+                {isVolume && (
+                  <button
+                    type="button"
+                    className="chip"
+                    onClick={() =>
+                      patch({ tickers: volumeList.symbols.slice(0, maxStocks) })
+                    }
+                  >
+                    Volume bot top 50 ({volumeList.symbols.length})
+                  </button>
+                )}
                 {lists.map((l) => (
                   <button
                     type="button"
@@ -549,149 +719,282 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
               </p>
             </Card>
 
-            <Card
-              title="Rules"
-              aside={
-                <span
-                  className={
-                    changes.length ? "rule-badge changed" : "rule-badge"
+            {!isVolume && (
+              <>
+                <Card
+                  title="Rules"
+                  aside={
+                    <span
+                      className={
+                        changes.length ? "rule-badge changed" : "rule-badge"
+                      }
+                    >
+                      {changes.length
+                        ? `${changes.length} changed`
+                        : `as ${setup.version}`}
+                    </span>
                   }
                 >
-                  {changes.length
-                    ? `${changes.length} changed`
-                    : `as ${setup.version}`}
-                </span>
-              }
-            >
-              <button
-                type="button"
-                className="disclosure"
-                aria-expanded={rulesOpen}
-                aria-controls="bt-rules"
-                onClick={() => setRulesOpen(!rulesOpen)}
-              >
-                Change the rules
-                <span aria-hidden="true">{rulesOpen ? "▴" : "▾"}</span>
-              </button>
-              <div id="bt-rules" className="rule-fields" hidden={!rulesOpen}>
-                {ruleGroups.map((g) => (
-                  <fieldset key={g.title} className="rule-group">
-                    <legend>{g.title}</legend>
-                    {g.fields.map((f) => (
-                      <RuleInput
-                        key={f.key}
-                        field={f}
-                        rules={setup.rules}
-                        base={versionById(setup.version)?.rules}
-                        onChange={(rules) => patch({ rules })}
-                      />
+                  <button
+                    type="button"
+                    className="disclosure"
+                    aria-expanded={rulesOpen}
+                    aria-controls="bt-rules"
+                    onClick={() => setRulesOpen(!rulesOpen)}
+                  >
+                    Change the rules
+                    <span aria-hidden="true">{rulesOpen ? "▴" : "▾"}</span>
+                  </button>
+                  <div
+                    id="bt-rules"
+                    className="rule-fields"
+                    hidden={!rulesOpen}
+                  >
+                    {ruleGroups.map((g) => (
+                      <fieldset key={g.title} className="rule-group">
+                        <legend>{g.title}</legend>
+                        {g.fields.map((f) => (
+                          <RuleInput
+                            key={f.key}
+                            field={f}
+                            rules={setup.rules}
+                            base={versionById(setup.version)?.rules}
+                            onChange={(rules) => patch({ rules })}
+                          />
+                        ))}
+                      </fieldset>
                     ))}
-                  </fieldset>
-                ))}
-                <button
-                  type="button"
-                  className="reset"
-                  disabled={!changes.length}
-                  onClick={() =>
-                    patch({ rules: versionById(setup.version)!.rules })
+                    <button
+                      type="button"
+                      className="reset"
+                      disabled={!changes.length}
+                      onClick={() =>
+                        patch({ rules: versionById(setup.version)!.rules })
+                      }
+                    >
+                      Back to {setup.version}
+                    </button>
+                  </div>
+                </Card>
+
+                <Card title="Money">
+                  <NumberRow
+                    label="Start"
+                    unit="$"
+                    value={setup.money.startEquity}
+                    min={1000}
+                    max={10_000_000}
+                    step={1000}
+                    onChange={(v) =>
+                      patch({ money: { ...setup.money, startEquity: v } })
+                    }
+                  />
+                  <NumberRow
+                    label="Size of one trade"
+                    unit="% of the account"
+                    value={setup.money.sizePct}
+                    min={0.5}
+                    max={10}
+                    step={0.5}
+                    onChange={(v) =>
+                      patch({ money: { ...setup.money, sizePct: v } })
+                    }
+                  />
+                  <label className="rule-field switch-row">
+                    <span>Compound (size from each day&apos;s account)</span>
+                    <input
+                      type="checkbox"
+                      checked={setup.money.compound}
+                      onChange={(e) =>
+                        patch({
+                          money: { ...setup.money, compound: e.target.checked },
+                        })
+                      }
+                    />
+                  </label>
+                  <NumberRow
+                    label="Fee per contract, each way"
+                    unit="$"
+                    value={setup.money.feePerContract}
+                    min={0}
+                    max={5}
+                    step={0.01}
+                    onChange={(v) =>
+                      patch({ money: { ...setup.money, feePerContract: v } })
+                    }
+                  />
+                  <NumberRow
+                    label="Most buys a day"
+                    value={setup.money.maxBuysPerDay}
+                    min={1}
+                    max={100}
+                    step={1}
+                    onChange={(v) =>
+                      patch({ money: { ...setup.money, maxBuysPerDay: v } })
+                    }
+                  />
+                  <NumberRow
+                    label="Most open positions"
+                    value={setup.money.maxOpen}
+                    min={1}
+                    max={100}
+                    step={1}
+                    onChange={(v) =>
+                      patch({ money: { ...setup.money, maxOpen: v } })
+                    }
+                  />
+                  <NumberRow
+                    label="Fill cost (needs a new run)"
+                    unit="% of the price"
+                    value={setup.fillPct}
+                    min={0}
+                    max={10}
+                    step={0.5}
+                    onChange={(v) => patch({ fillPct: v })}
+                  />
+                  <p className="muted small">
+                    Money settings apply to the result at once; the fill cost
+                    changes the run.
+                  </p>
+                </Card>
+              </>
+            )}
+            {isVolume && (
+              <>
+                <Card
+                  title="Rules"
+                  aside={
+                    <span
+                      className={
+                        volumeChanges ? "rule-badge changed" : "rule-badge"
+                      }
+                    >
+                      {volumeChanges ? `${volumeChanges} changed` : "as live"}
+                    </span>
                   }
                 >
-                  Back to {setup.version}
-                </button>
-              </div>
-            </Card>
+                  <button
+                    type="button"
+                    className="disclosure"
+                    aria-expanded={rulesOpen}
+                    aria-controls="bt-rules"
+                    onClick={() => setRulesOpen(!rulesOpen)}
+                  >
+                    Change the rules
+                    <span aria-hidden="true">{rulesOpen ? "▴" : "▾"}</span>
+                  </button>
+                  <div
+                    id="bt-rules"
+                    className="rule-fields"
+                    hidden={!rulesOpen}
+                  >
+                    <VolumeRules
+                      settings={setup.volume.settings}
+                      base={setup.volume.base}
+                      onChange={(settings) =>
+                        patch({ volume: { ...setup.volume, settings } })
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="reset"
+                      disabled={!volumeChanges}
+                      onClick={() =>
+                        patch({
+                          volume: {
+                            ...setup.volume,
+                            settings:
+                              setup.volume.base ?? defaultStrangleSettings,
+                          },
+                        })
+                      }
+                    >
+                      Back to the live settings
+                    </button>
+                  </div>
+                </Card>
 
-            <Card title="Money">
-              <NumberRow
-                label="Start"
-                unit="$"
-                value={setup.money.startEquity}
-                min={1000}
-                max={10_000_000}
-                step={1000}
-                onChange={(v) =>
-                  patch({ money: { ...setup.money, startEquity: v } })
-                }
-              />
-              <NumberRow
-                label="Size of one trade"
-                unit="% of the account"
-                value={setup.money.sizePct}
-                min={0.5}
-                max={10}
-                step={0.5}
-                onChange={(v) =>
-                  patch({ money: { ...setup.money, sizePct: v } })
-                }
-              />
-              <label className="rule-field switch-row">
-                <span>Compound (size from each day&apos;s account)</span>
-                <input
-                  type="checkbox"
-                  checked={setup.money.compound}
-                  onChange={(e) =>
-                    patch({
-                      money: { ...setup.money, compound: e.target.checked },
-                    })
-                  }
-                />
-              </label>
-              <NumberRow
-                label="Fee per contract, each way"
-                unit="$"
-                value={setup.money.feePerContract}
-                min={0}
-                max={5}
-                step={0.01}
-                onChange={(v) =>
-                  patch({ money: { ...setup.money, feePerContract: v } })
-                }
-              />
-              <NumberRow
-                label="Most buys a day"
-                value={setup.money.maxBuysPerDay}
-                min={1}
-                max={100}
-                step={1}
-                onChange={(v) =>
-                  patch({ money: { ...setup.money, maxBuysPerDay: v } })
-                }
-              />
-              <NumberRow
-                label="Most open positions"
-                value={setup.money.maxOpen}
-                min={1}
-                max={100}
-                step={1}
-                onChange={(v) =>
-                  patch({ money: { ...setup.money, maxOpen: v } })
-                }
-              />
-              <NumberRow
-                label="Fill cost (needs a new run)"
-                unit="% of the price"
-                value={setup.fillPct}
-                min={0}
-                max={10}
-                step={0.5}
-                onChange={(v) => patch({ fillPct: v })}
-              />
-              <p className="muted small">
-                Money settings apply to the result at once; the fill cost
-                changes the run.
-              </p>
-            </Card>
+                <Card title="Money">
+                  <NumberRow
+                    label="Start"
+                    unit="$"
+                    value={setup.volume.money.start}
+                    min={1000}
+                    max={10_000_000}
+                    step={1000}
+                    onChange={(v) =>
+                      patch({
+                        volume: {
+                          ...setup.volume,
+                          money: { ...setup.volume.money, start: v },
+                        },
+                      })
+                    }
+                  />
+                  <NumberRow
+                    label="Fee per contract, each way"
+                    unit="$"
+                    value={setup.volume.money.feePerContract}
+                    min={0}
+                    max={5}
+                    step={0.01}
+                    onChange={(v) =>
+                      patch({
+                        volume: {
+                          ...setup.volume,
+                          money: { ...setup.volume.money, feePerContract: v },
+                        },
+                      })
+                    }
+                  />
+                  <label className="rule-field switch-row">
+                    <span>
+                      The live bot&apos;s day limits
+                      <span className="hint">
+                        {" "}
+                        trades a day, open trades, the day&apos;s loss (under
+                        Rules)
+                      </span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={setup.volume.money.limits}
+                      onChange={(e) =>
+                        patch({
+                          volume: {
+                            ...setup.volume,
+                            money: {
+                              ...setup.volume.money,
+                              limits: e.target.checked,
+                            },
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                  <NumberRow
+                    label="Fill cost (needs a new run)"
+                    unit="% of the price"
+                    value={setup.fillPct}
+                    min={0}
+                    max={10}
+                    step={0.5}
+                    onChange={(v) => patch({ fillPct: v })}
+                  />
+                  <p className="muted small">
+                    The size and the limits are under Rules; they apply to the
+                    result at once, like the money. The fill cost only prices
+                    trades with no real book.
+                  </p>
+                </Card>
+              </>
+            )}
           </fieldset>
 
           <div className="run-block">
             <button type="submit" className="run" disabled={!runnable}>
               {busy ? "Running…" : "Run backtest"}
             </button>
-            {setup.bot !== "main" && (
-              <p className="muted small">
-                The Volume bot&apos;s backtest is coming next.
-              </p>
-            )}
           </div>
         </form>
 
@@ -708,52 +1011,98 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
               </ul>
             </div>
           )}
-          {!ran && <Empty />}
-          {ran && account && (
+          {!isVolume && (
             <>
-              {stale && !busy && (
-                <p className="stale">
-                  The setup changed since this run. Run again to see it.
-                </p>
-              )}
-              {stopped && !busy && (
-                <p className="stale">
-                  Stopped after {stopped.done} of {stopped.total} parts: the
-                  result covers those parts only.
-                </p>
-              )}
-              <Summary
-                ran={ran}
-                account={account}
-                money={setup.money}
-                skipsCount={skips.length}
-                busy={busy !== null}
-              />
-              {account.trades.length > 0 && (
-                <Suspense fallback={null}>
-                  <PnlChart
-                    history={{
-                      trades: account.trades
-                        .filter((a) => a.status === "taken")
-                        .map(closedTradeOf),
-                      baseEquity: account.start,
-                    }}
+              {!ran && <Empty />}
+              {ran && account && (
+                <>
+                  {stale && !busy && (
+                    <p className="stale">
+                      The setup changed since this run. Run again to see it.
+                    </p>
+                  )}
+                  {stopped && !busy && (
+                    <p className="stale">
+                      Stopped after {stopped.done} of {stopped.total} parts: the
+                      result covers those parts only.
+                    </p>
+                  )}
+                  <Summary
+                    ran={ran}
+                    account={account}
+                    money={setup.money}
+                    skipsCount={skips.length}
+                    busy={busy !== null}
                   />
-                </Suspense>
+                  {account.trades.length > 0 && (
+                    <Suspense fallback={null}>
+                      <PnlChart
+                        history={{
+                          trades: account.trades
+                            .filter((a) => a.status === "taken")
+                            .map(closedTradeOf),
+                          baseEquity: account.start,
+                        }}
+                      />
+                    </Suspense>
+                  )}
+                  <SignalList
+                    rows={signals}
+                    skipsCount={skips.length}
+                    onOpen={setOpen}
+                  />
+                  <TradeList
+                    trades={shown}
+                    filter={filter}
+                    onFilter={setFilter}
+                    rules={ran.rules}
+                    onOpen={setOpen}
+                    total={account.trades.length}
+                  />
+                </>
               )}
-              <SignalList
-                rows={signals}
-                skipsCount={skips.length}
-                onOpen={setOpen}
-              />
-              <TradeList
-                trades={shown}
-                filter={filter}
-                onFilter={setFilter}
-                rules={ran.rules}
-                onOpen={setOpen}
-                total={account.trades.length}
-              />
+            </>
+          )}
+          {isVolume && (
+            <>
+              {!vol.ran && <VolumeEmpty />}
+              {vol.ran && vAccount && (
+                <>
+                  {vStale && !busy && (
+                    <p className="stale">
+                      The setup changed since this run. Run again to see it.
+                    </p>
+                  )}
+                  {stopped && !busy && (
+                    <p className="stale">
+                      Stopped after {stopped.done} of {stopped.total} parts: the
+                      result covers those parts only.
+                    </p>
+                  )}
+                  <VolumeSummary
+                    ran={vol.ran}
+                    account={vAccount}
+                    money={vMoney}
+                    rows={vRows}
+                    ignored={vIgnored}
+                    busy={busy !== null}
+                  />
+                  {vAccount.taken > 0 && (
+                    <Suspense fallback={null}>
+                      <PnlChart
+                        history={{
+                          trades: vAccount.trades
+                            .filter((a) => a.status === "taken")
+                            .map(closedVolumeTrade),
+                          baseEquity: vAccount.start,
+                        }}
+                      />
+                    </Suspense>
+                  )}
+                  <VolumeSignalList rows={vRows} />
+                  <VolumeTradeList account={vAccount} />
+                </>
+              )}
             </>
           )}
         </div>
@@ -773,7 +1122,15 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
 }
 
 /** The run's loader, at the top: the moment in the period it has about reached. */
-function RunLoader({ busy, ran }: { busy: Busy; ran: Ran }) {
+function RunLoader({
+  busy,
+  ran,
+  onStop,
+}: {
+  busy: Busy;
+  ran: RanBase;
+  onStop: () => void;
+}) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 200);
@@ -830,82 +1187,11 @@ function RunLoader({ busy, ran }: { busy: Busy; ran: Ran }) {
         {busy.done} of {busy.total} parts · {ran.tickers.length} stocks ·{" "}
         {clockText(now - busy.startedAt)} · {left}
         {" · "}
-        <button type="button" className="reset" onClick={stopRun}>
+        <button type="button" className="reset" onClick={onStop}>
           Stop
         </button>
       </p>
     </section>
-  );
-}
-
-function Card({
-  title,
-  aside,
-  children,
-}: {
-  title: string;
-  aside?: ReactNode;
-  children: ReactNode;
-}) {
-  const id = `bt-card-${title.toLowerCase()}`;
-  return (
-    <section className="card setup-card" aria-labelledby={id}>
-      <div className="card-head">
-        <h2 id={id}>{title}</h2>
-        {aside}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function NumberRow({
-  label,
-  unit,
-  value,
-  min,
-  max,
-  step,
-  changed = false,
-  onChange,
-}: {
-  label: string;
-  unit?: string | undefined;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  changed?: boolean;
-  onChange: (v: number) => void;
-}) {
-  const [text, setText] = useState(String(value));
-  useEffect(() => setText(String(value)), [value]);
-  return (
-    <label className={changed ? "rule-field changed" : "rule-field"}>
-      <span>
-        {label}
-        {unit && <span className="hint"> {unit}</span>}
-      </span>
-      <input
-        type="number"
-        inputMode="decimal"
-        value={text}
-        min={min}
-        max={max}
-        step={step}
-        onChange={(e) => {
-          setText(e.target.value);
-          const v = Number(e.target.value);
-          if (
-            e.target.value !== "" &&
-            Number.isFinite(v) &&
-            v >= min &&
-            v <= max
-          )
-            onChange(v);
-        }}
-      />
-    </label>
   );
 }
 

@@ -97,11 +97,25 @@ interface Group {
   switches: [SwitchKey, string, string][];
 }
 
-function groups(): Group[] {
+/** The size steps in words: "2.5% from $300K, 1.5% from $1M"; "" when none. */
+function stepsText(steps: BotSettings["sizeSteps"]): string {
+  const money = (v: number) => {
+    if (v < 1e6) return `$${Math.round(v / 1e3)}K`;
+    const whole = v % 1e6 === 0;
+    return `$${(v / 1e6).toFixed(whole ? 0 : 1)}M`;
+  };
+  return steps.map((x) => `${x.pct}% from ${money(x.from)}`).join(", ");
+}
+
+function groups(s: BotSettings): Group[] {
+  const steps = stepsText(s.sizeSteps);
+  let sizeSub = "How much each buy spends";
+  if (steps)
+    sizeSub = `How much each buy spends; as the account grows (its value as the day starts): ${steps}`;
   return [
     {
       title: "Trade size",
-      sub: "How much each buy spends",
+      sub: sizeSub,
       sliders: [
         {
           key: "sizePct",
@@ -174,6 +188,15 @@ function groups(): Group[] {
           fmt: (v) => `${v} × S30`,
         },
         {
+          key: "lockArmPct",
+          label: "Break-even lock: armed from",
+          help: "With the break-even lock on: once the option is up this much on the entry day, the bot sells all if the stock gets back to where the option would be worth what was paid.",
+          min: 20,
+          max: 200,
+          step: 10,
+          fmt: (v) => `+${v}%`,
+        },
+        {
           key: "safetyStopPct",
           label: "Broker safety stop",
           help: "A stop order at the broker, in case the bot is down. Should sit below the stop above.",
@@ -211,6 +234,11 @@ function groups(): Group[] {
           "stockStages",
           "Staged stock exit",
           "On the entry day, sell half when the stock moves against the signal price by the first amount below, the rest at the second (in its usual 30-minute moves).",
+        ],
+        [
+          "breakEvenLock",
+          "Break-even lock",
+          "On the entry day, once the option is up by the amount below, sell all if the stock gets back to the price where the option would be worth what was paid (worked out from its implied volatility, again each minute it is still that far up).",
         ],
         [
           "lateHold",
@@ -1030,7 +1058,7 @@ export function BotSettingsPage({ onBack }: { onBack: () => void }) {
         <p className="notice">The bot&apos;s stock lists are not available.</p>
       )}
 
-      {groups().map((g) => (
+      {groups(s).map((g) => (
         <section key={g.title} className="bot-card bs-card">
           <div className="bs-card-head">
             <h2>{g.title}</h2>

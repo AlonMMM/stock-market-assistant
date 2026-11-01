@@ -32,7 +32,7 @@ import {
   type MinuteBar,
   type Prior,
 } from "./signal.js";
-import type { OptionQuote } from "../options.js";
+import { parseOccSymbol, type OptionQuote } from "../options.js";
 
 // The Main bot's backtest for the app's Backtest page (the user, 2026-10-30:
 // "test bot on a period on stocks ... the results is total gain/loss, and a
@@ -324,6 +324,15 @@ export function bsPrice(
   r = rate,
 ): [number, number] {
   return bs(spot, strike, years, vol, r, call);
+}
+
+/** A contract's strike (the break-even lock), or null when it is not an OCC symbol. */
+function occStrike(contract: string): number | null {
+  try {
+    return parseOccSymbol(contract).strike;
+  } catch {
+    return null;
+  }
 }
 
 /** Years from a session minute to 16:00 New York on the expiry day, at least 10 minutes. */
@@ -711,6 +720,8 @@ async function walkQuotes(
           option: mark,
           strength,
           unit: k === 0 ? unit : null,
+          strike: k === 0 ? occStrike(w.contract) : null,
+          years: k === 0 ? yearsToExpiry(date, m, w.expiry) : null,
           isExpiryDay: date === w.expiry,
           sessionBeforeExpiry: nextDay <= w.expiry,
           open,
@@ -930,6 +941,8 @@ async function walkTrades(
           option: last!.bar.c,
           strength,
           unit: k === 0 ? unit : null,
+          strike: k === 0 ? occStrike(w.contract) : null,
+          years: k === 0 ? yearsToExpiry(date, m, w.expiry) : null,
           isExpiryDay: date === w.expiry,
           sessionBeforeExpiry: nextDay <= w.expiry,
           open,

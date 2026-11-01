@@ -119,21 +119,21 @@ test("warnings: a safety stop above the stop, and a big trade size", () => {
 
 test("the version card: the chosen version, its changes and the entry label", () => {
   const clean = versionState(defaultSettings);
-  assert.equal(clean.known?.id, "2.8.0");
+  assert.equal(clean.known?.id, "2.9.0");
   assert.deepEqual(clean.changes, []);
-  assert.equal(clean.label, "2.8.0");
+  assert.equal(clean.label, "2.9.0");
   assert.equal(clean.latest, true);
   assert.equal(clean.bump, null);
   assert.equal(clean.next, null);
   const patch = versionState({ ...defaultSettings, weaknessT: 0.25 });
   assert.equal(patch.bump, "patch");
-  assert.equal(patch.next, "2.8.1");
-  assert.equal(patch.label, "2.8.0*");
+  assert.equal(patch.next, "2.9.1");
+  assert.equal(patch.label, "2.9.0*");
   const edited = versionState({ ...defaultSettings, stopPct: 40 });
   assert.equal(edited.bump, "minor");
-  assert.equal(edited.next, "2.9.0");
+  assert.equal(edited.next, "2.10.0");
   assert.deepEqual(edited.changes, ["stopPct 60 → 40"]);
-  assert.equal(edited.label, "2.8.0*");
+  assert.equal(edited.label, "2.9.0*");
   const old = versionState({ ...defaultSettings, version: "2.0" });
   assert.equal(old.latest, false);
   assert.deepEqual(old.changes, [
@@ -148,6 +148,8 @@ test("the version card: the chosen version, its changes and the entry label", ()
     "earlyEntry false → true",
     "stockStages false → true",
     "lateHold false → true",
+    "sizeSteps none → 2.5% from $300,000, 1.5% from $1,000,000, 1% from $4,000,000",
+    "breakEvenLock false → true",
   ]);
   const own = versionState({ ...defaultSettings, version: "mine" });
   assert.equal(own.known, undefined);
@@ -161,8 +163,10 @@ test("each version opens to its full algorithm in words", () => {
     "News filter",
     "Contract",
     "Pyramid",
+    "Size",
     "Early checks",
     "Staged stock exit",
+    "Break-even lock",
     "Late entries",
     "Failed break",
     "Strength gone",
@@ -196,6 +200,10 @@ test("each version opens to its full algorithm in words", () => {
   assert.match(text(v27.rules, "Signal"), /checked every 5 seconds/);
   assert.match(text(v1.rules, "Signal"), /checked once a minute/);
   assert.match(text(v27.rules, "Contract"), /IBIT down to \$0\.10/);
+  // 2.9: the break-even lock in words; off before it.
+  const v29 = botVersions.find((v) => v.id === "2.9.0")!;
+  assert.match(text(v29.rules, "Break-even lock"), /once the option is up 50%/);
+  assert.match(text(v27.rules, "Break-even lock"), /^Off/);
   assert.match(text(v27.rules, "Contract"), /skipped under \$0\.20/);
   assert.match(text(v27.rules, "Pyramid"), /50% of the size/);
   assert.match(text(v1.rules, "Pyramid"), /^Off/);

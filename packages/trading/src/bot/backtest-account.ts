@@ -1,3 +1,4 @@
+import { sizeAt, type SizeStep } from "./settings.js";
 import type { SimStep, SimTrade } from "./backtest.js";
 
 // The account over a backtest's trades (backtest.ts): every stock's trades in
@@ -9,6 +10,8 @@ import type { SimStep, SimTrade } from "./backtest.js";
 export interface MoneySettings {
   startEquity: number; // dollars
   sizePct: number; // of the account, per trade
+  // The size steps down as the account grows (settings.ts sizeSteps); none = flat.
+  sizeSteps?: readonly SizeStep[];
   // The size is a share of the account at the start of the day (true), or of
   // the starting account always (false).
   compound: boolean;
@@ -156,7 +159,8 @@ export function runAccount(
         continue;
       }
       const basis = money.compound ? dayStart : money.startEquity;
-      const budget = ((basis * money.sizePct) / 100) * t.sizeShare;
+      const pct = sizeAt(money.sizePct, money.sizeSteps ?? [], basis);
+      const budget = ((basis * pct) / 100) * t.sizeShare;
       const qty = Math.floor(budget / (s.price * 100));
       if (qty < 1) {
         a.status = "too-small";
