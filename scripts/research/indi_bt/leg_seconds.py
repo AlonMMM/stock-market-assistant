@@ -43,6 +43,7 @@ OUT = os.path.join(HERE, "sec_cache")
 NY = ZoneInfo("America/New_York")
 LAG = 2
 ENTRIES = ("close", "cross", "hold5", "hold10", "hold30")
+SHOCK_TAG = os.environ.get("STR_SHOCK_TAG", "e_shock15")   # the shock list's tag (e.g. e_shock15v54)
 VERSIONS = tuple(os.environ.get("SEC_VERSIONS", "plain20,step8c25").split(","))   # SEC_VERSIONS=plain20,plain10: the contracts to pick and run
 
 
@@ -133,9 +134,8 @@ def triggers(e):
     for t in range(e["m"] + 1, e["m"] + TW.WAIT + 1):
         if t in sb and abs(sb[t][4] / e["stock0"] - 1) >= th:
             out["close"] = ((t + 1) * 60, "C" if sb[t][4] > e["stock0"] else "P", sb[t][4]); break
-    p = stock_path(e)
-    if not os.path.exists(p): return out
-    secs = [(int(s), float(c)) for s, c in csv.reader(gzip.open(p, "rt"))]
+    secs = stock_rows(e)
+    if secs is None: return out
     run, side0 = 0, None
     for s, c in secs:
         side = None
@@ -170,6 +170,75 @@ def pick_for(job):
 
 
 def opt_path(e, contract, sec): return os.path.join(OUT, "opt", f"{e['date']}_{contract}_{sec}.csv.gz")
+
+
+# Data the research did not buy, read from where the app's backtest reads it (the user, 2026-11-01: "free", no purchase;
+# off unless set): SEC_STOCK_DB = a copy of the app's D1 (stock_seconds: the research's windows and the ones the app built
+# from Alpaca's trades), SEC_BOOKS_DB = data/local/alert-books.sqlite (the alert books backfill, Databento cbbo-1s every
+# 2 s for 300 s, |delta| 0.10-0.35, shaped as the app's D1 option_seconds: volume-daily.ts bookWindows). A sec_cache file,
+# when there is one, wins.
+def _unpack(text):
+    return json.loads(gzip.decompress(base64.b64decode(text[3:]))) if text.startswith("gz:") else json.loads(text)
+
+
+def stock_rows(e):
+    """The stock's (second, price) rows after the alert: the sec_cache file, else SEC_STOCK_DB's window. None: none."""
+    p = stock_path(e)
+    if os.path.exists(p): return [(int(s), float(c)) for s, c in csv.reader(gzip.open(p, "rt"))]
+    if not os.environ.get("SEC_STOCK_DB"): return None
+    import sqlite3
+    a = e["sec0"] if "sec0" in e else (e["m"] + 1) * 60
+    z = a + (300 if "sec0" in e else 15)   # the app's ask: the shock's 300 s, the plan's 15-s cross (volume-data.ts stock())
+    db = sqlite3.connect(f"file:{os.environ['SEC_STOCK_DB']}?mode=ro", uri=True)
+    r = db.execute("SELECT rows FROM stock_seconds WHERE symbol=? AND date=? AND start<=? AND end>=? ORDER BY start DESC LIMIT 1", (e["sym"], e["date"], a, z)).fetchone()
+    db.close()
+    return [(int(x[0]), float(x[1])) for x in _unpack(r[0]) if x[0] >= a] if r else None
+
+
+_BOOKS = {}
+
+
+def _book_windows(date, sym):
+    """The day's 1-second option windows as the app's D1 option_seconds holds them, by contract: [(start, rows)]. The
+    research's own files (volume-data-upload.ts seconds: start = side second - 2) and the alert books backfill
+    (volume-daily.ts bookWindows: a sample at `at` is the book as second at - 1 ended), each window as stored."""
+    import glob, sqlite3
+    out = {}
+    for f in glob.glob(os.path.join(OUT, "opt", f"{date}_{sym}[0-9]*.csv.gz")):
+        m = re.match(r"^\d{4}-\d{2}-\d{2}_([A-Z.]+\d{6}[CP]\d{8})_(\d+)\.csv\.gz$", os.path.basename(f))
+        if not m: continue
+        rows = [(int(a), b, c) for a, b, c in csv.reader(gzip.open(f, "rt")) if float(b) > 0 and float(c) > 0]
+        sec = int(m.group(2))
+        if rows: out.setdefault(m.group(1), {})[sec - 2 if date >= SEC1 else sec - 30] = (sec + 14, rows)
+    db = sqlite3.connect(f"file:{os.environ['SEC_BOOKS_DB']}?mode=ro", uri=True)
+    open_s = datetime.fromisoformat(f"{date}T09:30:00").replace(tzinfo=NY).timestamp()
+    for cs, data in db.execute("SELECT contracts, data FROM alert_books_hist WHERE day=? AND symbol=? ORDER BY second", (date, sym)):
+        names = [c["symbol"] for c in json.loads(cs)]
+        smp = _unpack(data)
+        for i, name in enumerate(names):
+            rows = sorted((int(x["at"] / 1000 - open_s) - 1, str(x["books"][i][0]), str(x["books"][i][1])) for x in smp
+                          if i < len(x["books"]) and x["books"][i] and x["books"][i][1] > 0 and x["books"][i][0] >= 0)
+            if rows: out.setdefault(name, {})[rows[0][0]] = (rows[-1][0], rows)   # the later upload (books) replaces
+    db.close()
+    return out
+
+
+def opt_rows(e, contract, sec):
+    """The contract's (second, bid, ask) rows around a buy at `sec` + LAG. Without SEC_BOOKS_DB: the research's own file.
+    With it: as the app reads D1 (volume-data.ts option(): every stored window overlapping [sec - 2, sec + 12], merged
+    by second, a later-starting window's second winning). None: no book."""
+    if not os.environ.get("SEC_BOOKS_DB"):
+        p = opt_path(e, contract, sec)
+        return [(int(a), b, c) for a, b, c in csv.reader(gzip.open(p, "rt"))] if os.path.exists(p) else None
+    key = (e["date"], e["sym"])
+    if key not in _BOOKS: _BOOKS.clear(); _BOOKS[key] = _book_windows(*key)
+    lo, hi = sec - LAG, sec + LAG + 10
+    by = {}
+    for start in sorted(_BOOKS[key].get(contract, {})):
+        end, rows = _BOOKS[key][contract][start]
+        if start <= hi and end >= lo:
+            for r in rows: by[r[0]] = r
+    return [by[k] for k in sorted(by)] or None
 
 
 def fetch_opt(args):
@@ -287,9 +356,8 @@ def trade(job):
     elif BARS:   # STR_FILL=bars: the option from its 1-minute bars, the bar's middle +- STR_SH (no quotes needed)
         ct = sec // 60; buy = None
     else:
-        p = opt_path(e, contract, sec)
-        if not os.path.exists(p): return None
-        rows = [r for r in csv.reader(gzip.open(p, "rt"))]
+        rows = opt_rows(e, contract, sec)
+        if rows is None: return None
         rows = [(int(a), b, c) for a, b, c in rows if float(b) > 0 and float(c) > 0]
         q = book_at(rows, sec + LAG)
         if force: q = force[2]
@@ -330,16 +398,15 @@ def trade(job):
     mid_in = (q[0] + q[1]) / 2
     stock_in = spot   # the minute close (close entry) or the trigger second's price
     if entry != "close":
-        sp = stock_path(e)
-        if os.path.exists(sp):
-            secs = [(int(a), float(b)) for a, b in csv.reader(gzip.open(sp, "rt"))]
+        secs = stock_rows(e)
+        if secs is not None:
             k = [c for a, c in secs if a <= (force[0] if force else sec + LAG)]
             if k: stock_in = k[-1]
     # Black-Scholes at the stock's price at the buy, the volatility of the option's last minute bar before the buy minute
     # (STR_FILTERS=shockbs, the user 2026-10-29: no buy over 5% above the fair price)
     fair = bs_price(e, contract, side, (sec // 60) - 1, ct, stock_in) if os.environ.get("STR_FILTERS") == "shockbs" else None
     alts, ok = [], None
-    if os.environ.get("STR_SHOCK_RETRY") and e.get("src") == "e_shock15" and not force and not BARS and entry == "hold5" and v == "plain20":
+    if os.environ.get("STR_SHOCK_RETRY") and e.get("src") == SHOCK_TAG and not force and not BARS and entry == "hold5" and v == "plain20":
         alts, ok = shock_retry(e, contract, side, sec, buy, fair, job)
     w = LF.walk(e["sym"], e["date"], ct, side, contract, spot, e["u"])
     if not w: return None
@@ -559,10 +626,10 @@ def main():
             # versions it has (lq0 = the 0.20 contract with no liquidity floor)
             chain, first = os.environ["STR_PLAN_V"].split(">"), {}
             for t in T:
-                if t["src"] == "e_shock15" or t["v"] not in chain: continue
+                if t["src"] == SHOCK_TAG or t["v"] not in chain: continue
                 k = (t["src"], t["date"], t["sym"], t["minute"], t["entry"])
                 if k not in first or chain.index(t["v"]) < chain.index(first[k]["v"]): first[k] = t
-            T = [t for t in T if t["src"] == "e_shock15" or t["v"] != "plain20"] + [dict(t, v="plain20", picked=t["v"]) for t in first.values()]
+            T = [t for t in T if t["src"] == SHOCK_TAG or t["v"] != "plain20"] + [dict(t, v="plain20", picked=t["v"]) for t in first.values()]
         if os.environ.get("STR_PLAN_STEP"):   # the user 2026-10-30: a minute alert's 0.20 buy over a 30% spread tries 0.25,
             # 0.30, then 0.35 and buys the first at <= 30%; none: "keep" buys the 0.20 anyway, "skip" buys nothing;
             # "cap" = no step, only the 0.20 buys at <= 30%. The shock's buys are left as they are.
@@ -570,7 +637,7 @@ def main():
             alts = ("plain25", "plain30", "plain35")
             by = {}
             for t in T:
-                if t["src"] == "e_shock15": continue
+                if t["src"] == SHOCK_TAG: continue
                 by.setdefault((t["src"], t["date"], t["sym"], t["minute"], t["entry"]), {})[t["v"]] = t
             drop, add = set(), []
             for vs in by.values():
@@ -617,7 +684,7 @@ def main():
             # 0.35 and buys the first at <= 30% (no step: the 30% filter skips it)
             by = {}
             for t in T:
-                if t["src"] == "e_shock15": by.setdefault((t["date"], t["sym"], t["minute"], t["entry"]), {})[t["v"]] = t
+                if t["src"] == SHOCK_TAG: by.setdefault((t["date"], t["sym"], t["minute"], t["entry"]), {})[t["v"]] = t
             drop, add = set(), []
             for vs in by.values():
                 t20 = vs.get("plain20")
@@ -680,18 +747,18 @@ def main():
             })
             if os.environ.get("STR_FILTERS") == "shockbs":   # the shock's own buys: spread limit, price over Black-Scholes, burst
                 def shock_ok(t, rule, burst):
-                    if t["src"] != "e_shock15": return True
+                    if t["src"] != SHOCK_TAG: return True
                     if burst and (t["am"] is None or t["am"] < 0): return False
                     if rule is None: return t["alt_for"] is None
                     return rule in (t["alt_for"] or t["ok"] or [])
-                FILTERS = {"no shock": lambda t: t["src"] != "e_shock15"}
+                FILTERS = {"no shock": lambda t: t["src"] != SHOCK_TAG}
                 for burst in (False, True):
                     for rule in [None] + [retry_name(c, g) for c in RETRY_CAPS for g in RETRY_GATES]:
                         if rule and not os.environ.get("STR_SHOCK_RETRY"): continue
                         name = f"shock{', ' + rule if rule else ''}{', burst >= 0' if burst else ''}"
                         FILTERS[name] = (lambda r, b: lambda t: shock_ok(t, r, b))(rule, burst)
                     FILTERS[f"shock <= 30%{', burst >= 0' if burst else ''}"] = (lambda b: lambda t: shock_ok(t, None, b) and (
-                        t["src"] != "e_shock15" or (t["spread"] is not None and t["spread"] <= 0.3)))(burst)
+                        t["src"] != SHOCK_TAG or (t["spread"] is not None and t["spread"] <= 0.3)))(burst)
             if os.environ.get("STR_FILTERS") == "move":
                 FILTERS = {"all": lambda t: True, "t >= 0": lambda t: ok(t, "t") and t["t"] >= 0}
                 for k in (2, 3, 4, 6):

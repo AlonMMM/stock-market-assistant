@@ -38,6 +38,27 @@ New lists, 54 stocks (the live list), 2026-07-31 .. 2026-10-30: `v54` (0/1 DTE, 
 `e_shock15v54` (shock: `shock15_v54.json` 590 alerts = D1's 581 + 9 of 10-29/30 not uploaded yet, prefiltered to 537),
 all with `SEC_AM_PRE=1.1` (a burst either way, a superset of the live burst filters).
 
+Data with no purchase (the user, 2026-11-01: "free"; $0.06 of stock seconds and about $1 of books would have been the
+Databento cost): `SEC_STOCK_DB` (a copy of the app's D1 after its run: the research's windows and the ones the app built
+from Alpaca's trades, looked up as the app does: the window starting nearest at or before the alert, covering 15 s /
+300 s) and `SEC_BOOKS_DB=data/local/alert-books.sqlite` (the 1-second books merged over every stored window around the
+buy, as the app's D1 option_seconds; the minute books for contracts dbx_cache lacks, `leg_realspread.quotes`). Off unless
+set; a sec_cache file still wins for the stock.
+
+Result, live settings, 3% a trade, live limits, $100K, 2026-07-31 .. 2026-10-30 (`STR_SHOCK_TAG=e_shock15v54`, tags
+above; the app from fix/backtest-align with the stock-window `ORDER BY start DESC`):
+
+| Engine | Trades | Won | $100K becomes | Worst drop |
+|---|---|---|---|---|
+| App backtest (the page's handler on a D1 snapshot) | 75 | 26 | $142,671 | 14.2% |
+| Research (leg_seconds.py run, live3, "shock <= 30%, burst >= 0") | 75 | 26 | $142,671 | 14.2% |
+
+All 75 trades identical (contract, entry second, exit minute, buy, sale, P&L); 16 more alerts refused the same way by
+both accounts. Before the alignment the same period gave the research 41 trades, $127,818 (7.9%). Gaps both share:
+5 shock alerts with no 1-second book at the buy (SLV x2, RGTI, TQQQ, COIN), and 9 shocks of 2026-10-29/30 (RGTI, SPCE,
+USO) not yet in the app's D1 (`volume-data-upload.ts shock`), 5 of them past the prefilter with no stock seconds to run
+on; the app also has 7 shocks with no priced strike (SPCE x5, AVGO 2026-09-02, F).
+
 ### Random side: the side carries the result, not luck on wild days (2026-10-31)
 
 The user, 2026-10-31: "do #2" (the outside audit's control test). `random_side.py` (`fetch`, `run`): the 430 trades of

@@ -65,6 +65,16 @@ def quotes(date):
             if not os.path.exists(path): continue
             for r in csv.DictReader(gzip.open(path, "rt")):
                 if r["bid"] and r["ask"] and float(r["ask"]) > 0: by.setdefault(r["contract"], []).append((int(r["minute"]), float(r["bid"]), float(r["ask"])))
+        if os.environ.get("SEC_BOOKS_DB"):   # the alert books backfill's minute books (the app's D1 option_quotes "databento",
+            # data/local/alert-books.sqlite minute_books, m = the minute whose close the book is = cache row m + 1), for the
+            # contracts the cache does not have (leg_seconds.py: SEC_BOOKS_DB, the user 2026-11-01 "free")
+            import base64, json, sqlite3
+            bdb = sqlite3.connect(f"file:{os.environ['SEC_BOOKS_DB']}?mode=ro", uri=True)
+            for c, q in bdb.execute("SELECT contract, quotes FROM minute_books WHERE date=?", (date,)):
+                if c in by: continue
+                rows = json.loads(gzip.decompress(base64.b64decode(q[3:]))) if q.startswith("gz:") else json.loads(q)
+                by[c] = [(int(m) + 1, float(b), float(k)) for m, b, k in rows if k is not None and b is not None and float(k) > 0 and 0 <= float(b) <= float(k)]   # as the app's mergeSources
+            bdb.close()
         for v in by.values(): v.sort()
         QUOTES[date] = by
     return QUOTES[date]
