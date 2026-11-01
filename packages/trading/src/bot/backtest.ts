@@ -23,6 +23,7 @@ import {
   exitRules,
   pickRules,
   signalParams,
+  volumeShare,
   type BotSettings,
 } from "./settings.js";
 import {
@@ -32,7 +33,7 @@ import {
   type MinuteBar,
   type Prior,
 } from "./signal.js";
-import { parseOccSymbol, type OptionQuote } from "../options.js";
+import { maxSizePct, parseOccSymbol, type OptionQuote } from "../options.js";
 
 // The Main bot's backtest for the app's Backtest page (the user, 2026-10-30:
 // "test bot on a period on stocks ... the results is total gain/loss, and a
@@ -1204,7 +1205,7 @@ export async function runStock(
       d2: sig.d2,
       bonus: sig.bonus,
       pyramid: false,
-      sizeShare: 1,
+      sizeShare: volumeShare(s, sig.rvol),
       stock: spot,
       strike: picked.contract.strike,
       expiry: picked.contract.expiry,
@@ -1325,7 +1326,11 @@ async function pyramid(
     d2: sig.d2,
     bonus: false,
     pyramid: true,
-    sizeShare: s.pyramidSharePct / 100,
+    // 2.10: the first leg and its add within 5% of the account (bot.ts enterAt).
+    sizeShare: Math.min(
+      (s.pyramidSharePct / 100) * first.sizeShare,
+      Math.max(0, maxSizePct / s.sizePct - first.sizeShare),
+    ),
     stock: spot,
     strike: picked.contract.strike,
     expiry: picked.contract.expiry,

@@ -116,13 +116,13 @@ test("missing strike returns a client error without sending", async () => {
 
 test("service buy: a refused buy creates no job and is logged", async () => {
   const { service, store, broker } = setup();
-  const out = await service.buy({ ...buyNvda, sizePct: 5 });
+  const out = await service.buy({ ...buyNvda, sizePct: 6 });
   assert.equal(out.status, "refused");
   assert.ok("refused" in out);
-  assert.match(out.refused.join(), /size: size 5% is outside 0–3%/);
+  assert.match(out.refused.join(), /size: size 6% is outside 0–5%/);
   assert.equal(store.runningJobs().length, 0);
   assert.equal(broker.orders.size, 0);
-  assert.match(store.recentLog()[0]!.outcome, /^refused: size: size 5%/);
+  assert.match(store.recentLog()[0]!.outcome, /^refused: size: size 6%/);
 });
 
 test("service: bad requests are refused before anything else", async () => {

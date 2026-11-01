@@ -105,7 +105,7 @@ test("engine buy: forced, the spread is not checked and the order is bought", as
   assert.equal(out.stop?.qty, out.qty);
   assert.equal(sent.length, 1);
   // Only the spread is skipped: any other failed check still refuses.
-  const big = await engine.buy({ contract: friday, sizePct: 5, force: true });
+  const big = await engine.buy({ contract: friday, sizePct: 6, force: true });
   assert.ok("refused" in big);
   assert.match(big.refused.join(), /^size: /);
 });

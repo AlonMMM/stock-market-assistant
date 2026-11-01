@@ -105,7 +105,7 @@ test("prices climb from the mid to 85% of the way to the ask", () => {
   assert.equal(ceilingPrice({ bid: 4.0, ask: 4.4 }), 4.35);
 });
 
-test("sizes whole contracts within the size, capped at 3%", () => {
+test("sizes whole contracts within the size, capped at 5%", () => {
   assert.deepEqual(sizeContracts(100000, 0.5, 1.17), {
     qty: 4,
     budget: 500,
@@ -113,7 +113,7 @@ test("sizes whole contracts within the size, capped at 3%", () => {
   });
   assert.equal(sizeContracts(100000, 0.5, 6).qty, 0);
   assert.equal(sizeContracts(100000, 3, 1).qty, 30);
-  assert.throws(() => sizeContracts(100000, 3.5, 1), /at most 3%/);
+  assert.throws(() => sizeContracts(100000, 5.5, 1), /at most 5%/);
   assert.throws(() => sizeContracts(100000, 0, 1));
 });
 

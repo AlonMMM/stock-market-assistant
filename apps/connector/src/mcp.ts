@@ -34,7 +34,7 @@ const order = {
   sizePct: {
     type: "number",
     description:
-      "Size as % of account equity, for example 0.5. At most 3. Ask the user when they did not state it.",
+      "Size as % of account equity, for example 0.5. At most 5. Ask the user when they did not state it.",
   },
   expiry: {
     type: "string",

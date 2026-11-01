@@ -119,21 +119,21 @@ test("warnings: a safety stop above the stop, and a big trade size", () => {
 
 test("the version card: the chosen version, its changes and the entry label", () => {
   const clean = versionState(defaultSettings);
-  assert.equal(clean.known?.id, "2.9.0");
+  assert.equal(clean.known?.id, "2.10.0");
   assert.deepEqual(clean.changes, []);
-  assert.equal(clean.label, "2.9.0");
+  assert.equal(clean.label, "2.10.0");
   assert.equal(clean.latest, true);
   assert.equal(clean.bump, null);
   assert.equal(clean.next, null);
   const patch = versionState({ ...defaultSettings, weaknessT: 0.25 });
   assert.equal(patch.bump, "patch");
-  assert.equal(patch.next, "2.9.1");
-  assert.equal(patch.label, "2.9.0*");
+  assert.equal(patch.next, "2.10.1");
+  assert.equal(patch.label, "2.10.0*");
   const edited = versionState({ ...defaultSettings, stopPct: 40 });
   assert.equal(edited.bump, "minor");
-  assert.equal(edited.next, "2.10.0");
+  assert.equal(edited.next, "2.11.0");
   assert.deepEqual(edited.changes, ["stopPct 60 → 40"]);
-  assert.equal(edited.label, "2.9.0*");
+  assert.equal(edited.label, "2.10.0*");
   const old = versionState({ ...defaultSettings, version: "2.0" });
   assert.equal(old.latest, false);
   assert.deepEqual(old.changes, [
@@ -150,6 +150,7 @@ test("the version card: the chosen version, its changes and the entry label", ()
     "lateHold false → true",
     "sizeSteps none → 2.5% from $300,000, 1.5% from $1,000,000, 1% from $4,000,000",
     "breakEvenLock false → true",
+    "volumeTiers none → 50% from 0×, 100% from 1.75×, 150% from 2.5×",
   ]);
   const own = versionState({ ...defaultSettings, version: "mine" });
   assert.equal(own.known, undefined);

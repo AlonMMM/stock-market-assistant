@@ -185,17 +185,17 @@ How the three user limits are counted (my reading, to be confirmed):
 
 Order-level:
 
-| Check                 | Rule                                                                                                       | Source         |
-| --------------------- | ---------------------------------------------------------------------------------------------------------- | -------------- |
-| Request               | known underlying, right is call or put, size and stop are numbers in range                                 | design         |
-| Size                  | at most 3% of equity; at least one contract fits, otherwise refused                                        | user-confirmed |
-| Stop                  | 40% default, 70% at most                                                                                   | user-confirmed |
-| Delta                 | the chosen strike is inside the range (0.10–0.15 by default); PROPOSED: refuse when the expiry has none    | proposed       |
-| Quote is usable       | bid > 0, ask > bid, and PROPOSED: the quote is at most 120 seconds old                                     | proposed       |
-| Spread                | at most 10% of mid, before sending and at every raise                                                      | user-confirmed |
-| Stop price exists     | the stop rounds to at least one tick and stays below the entry price                                       | design         |
-| Not a repeat          | PROPOSED: a second buy of the same underlying and right within 60 seconds is refused (a doubled tool call) | proposed       |
-| Contract not expiring | PROPOSED: no buy of a contract in its last 15 minutes                                                      | proposed       |
+| Check                 | Rule                                                                                                                                   | Source         |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| Request               | known underlying, right is call or put, size and stop are numbers in range                                                             | design         |
+| Size                  | at most 5% of equity (3% before 2026-11-01, raised for the Indi bot's 2.10 volume tier); at least one contract fits, otherwise refused | user-confirmed |
+| Stop                  | 40% default, 70% at most                                                                                                               | user-confirmed |
+| Delta                 | the chosen strike is inside the range (0.10–0.15 by default); PROPOSED: refuse when the expiry has none                                | proposed       |
+| Quote is usable       | bid > 0, ask > bid, and PROPOSED: the quote is at most 120 seconds old                                                                 | proposed       |
+| Spread                | at most 10% of mid, before sending and at every raise                                                                                  | user-confirmed |
+| Stop price exists     | the stop rounds to at least one tick and stays below the entry price                                                                   | design         |
+| Not a repeat          | PROPOSED: a second buy of the same underlying and right within 60 seconds is refused (a doubled tool call)                             | proposed       |
+| Contract not expiring | PROPOSED: no buy of a contract in its last 15 minutes                                                                                  | proposed       |
 
 ### Risk manager (`packages/trading/src/risk-manager.ts`)
 

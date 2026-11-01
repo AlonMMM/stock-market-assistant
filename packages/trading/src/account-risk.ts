@@ -4,7 +4,7 @@ import type { RiskRules } from "./risk-manager.js";
 // The owner's risk numbers for one account (user 2026-10-26: "risk manager
 // should have ui config to configure the numbers, per account/bot; by default
 // up to 5% losing day"). They replace the matching buy limits and risk
-// manager rules of that account's trader; everything else (the 3% size cap,
+// manager rules of that account's trader; everything else (the 5% size cap,
 // the stop cap, quote age, never short) stays as the code sets it.
 
 export interface AccountRisk {

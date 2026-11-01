@@ -51,10 +51,10 @@ risk rules apply (below).
 ## The account's risk rules (the owner's validator, unchanged)
 
 Every order is an ordinary `TraderService` buy or sell at the strangle's account: paper only, the global switch,
-never short, quotes ≤ 2 minutes old, spread ≤ 25% of the mid, ≤ 3% of the account per buy, ≤ 5% in one stock
+never short, quotes ≤ 2 minutes old, spread ≤ 25% of the mid, ≤ 5% of the account per buy (3% before 2026-11-01), ≤ 5% in one stock
 and side, ≤ 10% open risk, 10 buys a day, no buy after a 5% day loss, and **no buy while a held contract has no
 stop**. So every leg carries the broker's safety stop (`safetyStopPct`, default −70%, the most the rules allow);
-the give-back acts long before it. Sizes above 3% are refused by the per-buy cap; the refusal shows in the
+the give-back acts long before it. Sizes above 5% (3% before 2026-11-01) are refused by the per-buy cap; the refusal shows in the
 activity feed.
 
 ## Parity with the backtest
