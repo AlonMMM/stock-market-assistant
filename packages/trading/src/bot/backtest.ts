@@ -23,6 +23,7 @@ import {
   exitRules,
   pickRules,
   signalParams,
+  volumeShare,
   type BotSettings,
 } from "./settings.js";
 import {
@@ -1204,7 +1205,7 @@ export async function runStock(
       d2: sig.d2,
       bonus: sig.bonus,
       pyramid: false,
-      sizeShare: 1,
+      sizeShare: volumeShare(s, sig.rvol),
       stock: spot,
       strike: picked.contract.strike,
       expiry: picked.contract.expiry,
@@ -1325,7 +1326,7 @@ async function pyramid(
     d2: sig.d2,
     bonus: false,
     pyramid: true,
-    sizeShare: s.pyramidSharePct / 100,
+    sizeShare: (s.pyramidSharePct / 100) * first.sizeShare,
     stock: spot,
     strike: picked.contract.strike,
     expiry: picked.contract.expiry,

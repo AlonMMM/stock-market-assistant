@@ -138,6 +138,11 @@ export interface BotSettings {
   // is still that far up, the tighter level kept).
   breakEvenLock: boolean;
   lockArmPct: number;
+  // Size by the volume at the signal (version 2.10): a signal whose volume
+  // since the open is under lowVolumeBelow x its usual buys lowVolumeSizePct of
+  // the size (its pyramid add too); 0 = off.
+  lowVolumeBelow: number;
+  lowVolumeSizePct: number;
 }
 
 export interface SizeStep {
@@ -224,6 +229,8 @@ export const defaultSettings: BotSettings = {
   lateHold: true,
   breakEvenLock: true,
   lockArmPct: 50,
+  lowVolumeBelow: 2,
+  lowVolumeSizePct: 50,
 };
 
 // Values the backtest never ran.
@@ -270,6 +277,8 @@ export const limits: Record<
   stageHalfS30: [0.25, 2, 0.25],
   stageFullS30: [0.5, 3, 0.25],
   lockArmPct: [20, 200, 10],
+  lowVolumeBelow: [0, 5, 0.25],
+  lowVolumeSizePct: [25, 100, 25],
 };
 
 const booleans: BooleanKey[] = [
@@ -454,6 +463,16 @@ export const pickRules = (s: BotSettings, symbol?: string): PickRules => ({
 function restStop(s: BotSettings): number | null {
   if (s.restStopPct <= 0) return null;
   return -s.restStopPct / 100;
+}
+
+/**
+ * The share of the size a signal buys from its volume since the open (x its
+ * usual): lowVolumeSizePct / 100 under lowVolumeBelow, else 1 (version 2.10).
+ */
+export function volumeShare(s: BotSettings, rvol: number): number {
+  if (s.lowVolumeBelow > 0 && rvol < s.lowVolumeBelow)
+    return s.lowVolumeSizePct / 100;
+  return 1;
 }
 
 /** 15:00 New York: an entry from here is held while above its cost (lateHold). */

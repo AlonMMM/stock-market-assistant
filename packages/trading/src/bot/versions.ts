@@ -55,7 +55,9 @@ export type RuleKey =
   | "lateHold"
   | "sizeSteps"
   | "breakEvenLock"
-  | "lockArmPct";
+  | "lockArmPct"
+  | "lowVolumeBelow"
+  | "lowVolumeSizePct";
 
 export type Rules = Pick<BotSettings, RuleKey>;
 
@@ -94,6 +96,8 @@ export const ruleKeys: readonly RuleKey[] = [
   "sizeSteps",
   "breakEvenLock",
   "lockArmPct",
+  "lowVolumeBelow",
+  "lowVolumeSizePct",
 ];
 
 export interface BotVersion {
@@ -140,6 +144,8 @@ const v1: Rules = {
   sizeSteps: [],
   breakEvenLock: false,
   lockArmPct: 50,
+  lowVolumeBelow: 0,
+  lowVolumeSizePct: 50,
 };
 // 2.0: the V2 champion (t 1.8, the overnight cap, the news filter).
 const v2: Rules = {
@@ -237,6 +243,15 @@ const v281: Rules = {
 // gain rests on about 10 changed trades (the strict check fails); the owner
 // shipped it for the smaller drop and the higher win rate.
 const v29: Rules = { ...v281, breakEvenLock: true, lockArmPct: 50 };
+// 2.10 (the owner, 2026-11-01: "lets go with h20", after research/indi-v2
+// trend_entry.py found the trades entered with volume >= 2x average about twice
+// 2.9's trade on both halves and both lists): 2.9 with a signal whose volume
+// since the open is under 2.0x its usual bought at half size (its pyramid add
+// too). size_volume.py, real quotes, 2%: tune fair $358,139 / 19% and Favorites
+// $414,405 / 13% vs 2.9's $376,230 / 29% and $555,017 / 18%; check $379,870 /
+// 19% and $151,303 / 19% vs $478,021 / 25% and $143,834 / 25%; ahead of 2.9 cut
+// to the same drop (0.6-0.75 of the size) on both halves and both lists.
+const v210: Rules = { ...v29, lowVolumeBelow: 2, lowVolumeSizePct: 50 };
 
 /** Every version, oldest first. */
 export const botVersions: readonly BotVersion[] = [
@@ -335,6 +350,14 @@ export const botVersions: readonly BotVersion[] = [
       "2.8.1's rules and size steps. On the entry day, once the option is up 50%, the bot works out the stock price where the option would be worth what was paid (Black-Scholes at its implied volatility now, again each minute it is still up 50%, the tighter level kept) and sells all if the stock gets back there.",
     rules: v29,
   },
+  {
+    id: "2.10.0",
+    name: "2.9 + half size on weaker volume",
+    since: "2026-11-01",
+    notes:
+      "2.9's rules. A signal whose volume since the open is under 2× its usual for that time buys half the size (its pyramid add too); at 2× or more, the full size.",
+    rules: v210,
+  },
 ];
 
 /** The version a new bot runs. */
@@ -386,6 +409,7 @@ export const minorKeys: ReadonlySet<RuleKey> = new Set<RuleKey>([
 const offAtZero: ReadonlySet<RuleKey> = new Set<RuleKey>([
   "restStopPct",
   "nightCapPct",
+  "lowVolumeBelow",
 ]);
 
 /** How big a change of one rule from `from` to `to` is, or null when it is the same. */

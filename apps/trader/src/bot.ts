@@ -38,6 +38,7 @@ import {
   pickRules,
   signalParams,
   sizeAt,
+  volumeShare,
   watchedStocks,
   withDefaults,
   botBrokers,
@@ -990,6 +991,7 @@ export class IndiBot {
       openedAt: this.o.now(),
       closedAt: null,
       addOf: first.id,
+      ...(first.sizeShare !== undefined ? { sizeShare: first.sizeShare } : {}),
     };
     const book = bookOf(picked.quote, this.o.now(), broker);
     const result = await this.enterAt(
@@ -1099,7 +1101,13 @@ export class IndiBot {
     let fallback = "";
     if (picked.fallback === "cheap")
       fallback = ` · the 0.15-delta option was under $${pick.minPrice.toFixed(2)}, so the nearest strike at $${pick.minPrice.toFixed(2)} or more`;
-    const why = `Signal ${side} at ${clock(minute)}: strength t ${t.toFixed(1)}, volume ${rvol.toFixed(1)}× normal${fallback} · bot ${version}`;
+    // 2.10: weaker volume buys a share of the size (its pyramid add too).
+    const share = volumeShare(s, rvol);
+    const half =
+      share < 1
+        ? ` · ${Math.round(share * 100)}% of the size (volume under ${s.lowVolumeBelow}×)`
+        : "";
+    const why = `Signal ${side} at ${clock(minute)}: strength t ${t.toFixed(1)}, volume ${rvol.toFixed(1)}× normal${fallback}${half} · bot ${version}`;
     const base: Omit<BotPosition, "id" | "broker"> = {
       day: date,
       symbol,
@@ -1129,6 +1137,7 @@ export class IndiBot {
       openedAt: this.o.now(),
       closedAt: null,
       ...(opts.bonus ? { bonus: true } : {}),
+      ...(share < 1 ? { sizeShare: share } : {}),
     };
     const results: { broker: BotBroker; outcome: string; detail: string }[] =
       [];
@@ -1212,7 +1221,8 @@ export class IndiBot {
     const dayStart =
       this.dayStartEquity.get(broker) ??
       (await this.equity(broker).catch(() => 0));
-    const tradePct = sizeAt(s.sizePct, s.sizeSteps, dayStart);
+    const tradePct =
+      sizeAt(s.sizePct, s.sizeSteps, dayStart) * (base.sizeShare ?? 1);
     const sizePct = add ? (tradePct * add.sharePct) / 100 : tradePct;
     const position: BotPosition = {
       ...base,

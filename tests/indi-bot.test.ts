@@ -1217,30 +1217,30 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
 
 test("versions: every entry is stamped with the version in force; changed rules star it; the owner can pick an older one", async () => {
   const h = harness("live");
-  assert.equal(h.bot.status().version, "2.9.0");
+  assert.equal(h.bot.status().version, "2.10.0");
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy");
-  assert.match(String(buy?.body.note), /· bot 2\.9\.0$/);
+  assert.match(String(buy?.body.note), /· bot 2\.10\.0$/);
   const [p] = h.store.openPositions();
-  assert.equal(p!.version, "2.9.0");
-  assert.equal(h.store.signals(DAY)[0]!.version, "2.9.0");
-  assert.equal(h.bot.status().positions[0]!.version, "2.9.0");
+  assert.equal(p!.version, "2.10.0");
+  assert.equal(h.store.signals(DAY)[0]!.version, "2.10.0");
+  assert.equal(h.bot.status().positions[0]!.version, "2.10.0");
   const texts = () =>
     h.bot
       .status()
       .activity.map((e) => e.text)
       .join("\n");
-  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.9\.0$/m);
+  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.10\.0$/m);
 
-  // The stop changed from 2.8's: the next entry is stamped "2.9.0*".
+  // The stop changed from 2.10's: the next entry is stamped "2.10.0*".
   const edited = harness("live");
   edited.bot.setSettings({ ...edited.bot.settings(), stopPct: 40 });
-  assert.equal(edited.bot.status().version, "2.9.0*");
+  assert.equal(edited.bot.status().version, "2.10.0*");
   await edited.run(DAY, 565, 600);
-  assert.equal(edited.store.openPositions()[0]!.version, "2.9.0*");
+  assert.equal(edited.store.openPositions()[0]!.version, "2.10.0*");
   assert.match(
     String(edited.calls.find((c) => c.kind === "buy")?.body.note),
-    /· bot 2\.9\.0\*$/,
+    /· bot 2\.10\.0\*$/,
   );
 
   // Version 1.0 picked: its rules (t 2, no night cap, no news filter) run, and the feed says so.
@@ -1253,6 +1253,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
     stockStages: false,
     lateHold: false,
     breakEvenLock: false,
+    lowVolumeBelow: 0,
     sizeSteps: [],
     minT: 2,
     nightCapPct: 0,
@@ -1275,7 +1276,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
       .status()
       .activity.map((e) => e.text)
       .join("\n"),
-    /Settings changed: version "2\.9\.0" → "1\.0"; sizeSteps \[\{"from":300000,"pct":2\.5\},\{"from":1000000,"pct":1\.5\},\{"from":4000000,"pct":1\}\] → \[\]; stopPct 60 → 30; restStopPct 20 → 0; checks false → true; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false; skipEarnings true → false; skipPremarket true → false; lowFloorSymbols \["IBIT"\] → \[\]; pyramid true → false; earlyEntry true → false; stockStages true → false; lateHold true → false/,
+    /Settings changed: version "2\.10\.0" → "1\.0"; sizeSteps \[\{"from":300000,"pct":2\.5\},\{"from":1000000,"pct":1\.5\},\{"from":4000000,"pct":1\}\] → \[\]; stopPct 60 → 30; restStopPct 20 → 0; checks false → true; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false; skipEarnings true → false; skipPremarket true → false; lowFloorSymbols \["IBIT"\] → \[\]; pyramid true → false; earlyEntry true → false; stockStages true → false; lateHold true → false/,
   );
 });
 
@@ -1823,7 +1824,7 @@ test("pyramid: the full signal after a D2 entry that is up buys half a size more
   assert.deepEqual(buys[0]!.options, { repeatOk: true });
   assert.match(
     String(buys[0]!.body.note),
-    /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.9\.0$/,
+    /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.10\.0$/,
   );
   const open = h.store.openPositions();
   const add = open.find((p) => p.addOf === "first");
@@ -1956,4 +1957,30 @@ test("early entry: the signal inside the minute buys before the minute closes; o
   assert.equal(late.calls.filter((c) => c.kind === "buy").length, 0);
   await late.tickAt(DAY, 570 + M + 1, 20);
   assert.equal(late.calls.filter((c) => c.kind === "buy").length, 1);
+});
+
+test("2.10: a signal under the volume line buys half the size, with the reason in its note; at or over it, the whole size", async () => {
+  // The harness's signal runs at 2.0x volume: at the 2.0x line it buys the whole size.
+  const full = harness("live");
+  full.setEquity(100_000);
+  await full.run(DAY, 565, 600);
+  assert.equal(full.calls.find((c) => c.kind === "buy")?.body.sizePct, 3);
+  assert.equal(full.store.openPositions()[0]?.sizeShare, undefined);
+  // A higher line (2.5x): the same signal buys half, and the position keeps its share.
+  const half = harness("live");
+  half.setEquity(100_000);
+  half.bot.setSettings({ ...half.bot.settings(), lowVolumeBelow: 2.5 });
+  await half.run(DAY, 565, 600);
+  assert.equal(half.calls.find((c) => c.kind === "buy")?.body.sizePct, 1.5);
+  assert.equal(half.store.openPositions()[0]?.sizeShare, 0.5);
+  assert.match(
+    String(half.calls.find((c) => c.kind === "buy")?.body.note),
+    /50% of the size \(volume under 2\.5×\)/,
+  );
+  // Off at 0: the whole size.
+  const off = harness("live");
+  off.setEquity(100_000);
+  off.bot.setSettings({ ...off.bot.settings(), lowVolumeBelow: 0 });
+  await off.run(DAY, 565, 600);
+  assert.equal(off.calls.find((c) => c.kind === "buy")?.body.sizePct, 3);
 });

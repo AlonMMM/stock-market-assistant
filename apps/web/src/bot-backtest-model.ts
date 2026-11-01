@@ -186,6 +186,22 @@ export const ruleGroups: RuleGroup[] = [
     ],
   },
   {
+    title: "Size by volume",
+    fields: [
+      {
+        key: "lowVolumeBelow",
+        label: "Smaller size below volume",
+        unit: "× usual",
+        help: "Off at 0. Version 2.10: half size under 2×.",
+      },
+      {
+        key: "lowVolumeSizePct",
+        label: "That smaller size",
+        unit: "% of a trade",
+      },
+    ],
+  },
+  {
     title: "Exits",
     fields: [
       { key: "checks", label: "10- and 20-minute checks" },
