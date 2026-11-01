@@ -13,7 +13,8 @@ export interface LadderOptions {
   // An order already at the broker (sent while the market was closed): it is
   // raised from its own price, and no new order is sent.
   existing?: Order;
-  // A forced buy: the spread is not checked, before sending or while raising.
+  // A forced buy: the spread is not checked, before sending or while raising;
+  // a quote with no bid still stops it.
   anySpread?: boolean;
   // After the planned raises, keep raising to the current ask, every
   // `intervalMs`, for up to this long or until filled (the bot, user
@@ -109,7 +110,10 @@ export async function buyWithLadder(
       `working the waiting order @ ${price.toFixed(2)} (bid ${quote.bid}, ask ${quote.ask})`,
     );
   } else {
-    if (!check.ok && !options.anySpread)
+    // A forced buy lifts the spread limit only: an option with no bid is
+    // never sent (user 2026-11-01, the bot buys at any spread).
+    const noBid = !(quote.bid > 0);
+    if (noBid || (!check.ok && !options.anySpread))
       return {
         status: "rejected-spread",
         quote,
@@ -139,7 +143,7 @@ export async function buyWithLadder(
     if (status(order) === "filled" || status(order) === "closed") break;
     quote = await client.quote(symbol);
     check = spreadCheck(quote);
-    if (!check.ok && !options.anySpread) {
+    if (!(quote.bid > 0) || (!check.ok && !options.anySpread)) {
       spreadWidened = true;
       log(`spread ${(check.ratio * 100).toFixed(1)}% of mid; stopped raising`);
       break;
