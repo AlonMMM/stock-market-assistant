@@ -2485,3 +2485,53 @@ against each other here: the giants first dip near the cost. Candidate: arm +50%
   $5.71 vs $4.88. So the lock level (and every option-percent rule: the -60% stop, the +50% overnight hold) is set off
   a price the live bot would not have paid. The sale prices are real; the timing is a little off. To fix before 2.9:
   walk with the real fill as basis and re-run 2.8 and the lock.
+
+### 2.9 release audit, research half (2026-11-01)
+2.9 = 2.8.1 (the size ladder) + be_lock {arm 0.5, update}. bot-release §1-§4 on today's code.
+
+**Fix first (§1): the walk now decides exits on the real fill.** `sim.walk(..., paid=None)` (sim.py:363, 377, 407): with
+`paid`, the walk's cost / basis is the real buy, so every option-percent rule (-60% stop, the +50% overnight hold,
+be_lock's level) reads gains off what was paid. export_early.py `rewalk()` (:29-55, :76) walks each variant again with its
+own 1-second fill; export_fav_long.py (:53-57) walks the real-book column again with its real buy. `BT_BASIS=model` = the
+old way (reproduces f28 within 0.03%: $2,955,813 vs $2,956,480). The +-2/5/10% columns were already consistent. Effect on
+2.8: fair $2,956,480 -> $3,138,672 (+6%); fav12 $203,655 -> $199,012; fav6 $145,126 -> $142,462; fav36 real
+$1,164,321 -> $1,096,100, fav24 real $675,124 -> $638,635. 14 more fair-list trades (pyramid adds: "up" read off the
+cheaper real fill).
+
+**Fresh runs (scratchpad indiaudit/r28, r29, r29a40, r29a60, r28m, fl28r, fl29r, fl_be40u, fl_be60u; score_rel.py),
+marked account, real quotes, champ-1s (no early entry):**
+
+| List | 2.8 at 2% | 2.9 at 2% | 2.8.1 ladder | 2.9 ladder |
+|---|---|---|---|---|
+| Fair | $3,138,672 (34.4%) 497K / 666K | $3,455,683 (32.2%) 523K / 695K | $4,148,061 (39.6%) 586K / 1,102K | $4,399,581 (37.2%) 623K / 1,318K |
+| Fav 12m | $199,012 (30.8%) 231K / 90K | $201,958 (30.4%) 232K / 91K | $169,411 (42.2%) | $174,234 (41.7%) |
+| Fav 6m | $142,462 (30.8%) 156K / 96K | $143,988 (30.4%) 154K / 98K | $118,245 (42.2%) | $120,810 (41.7%) |
+| Fav 24m real | $638,635 (35.2%) 518K / 129K | $766,590 (32.4%) 555K / 144K | $844,327 (46.7%) | $1,152,050 (43.3%) |
+| Fav 36m real | $1,096,100 (39.3%) 389K / 294K | $1,270,570 (36.1%) 413K / 321K | $1,408,632 (52.6%) | $1,503,186 (48.7%) |
+
+(tune / check after the drop.) Without the best 5 (2%): fair 638K -> 704K, fav12 54.1K -> 54.8K, fav6 44.7K -> 44.9K, fav24
+146K -> 176K, fav36 241K -> 280K. Every half up except fav6 tune (-1.4%); worst drop 0.4-3 points lower everywhere.
+By year (fair, 2%): 2024 x3.68 -> x3.51, 2025 x2.86 -> x3.38, 2026 x2.98 -> x2.91 (every year positive both).
+Neighbours: arm 0.4 worse on every list (fair $2,825,402, fav36 real $989,833); arm 0.6 fair $3,289,630 (below 0.5),
+fav36 real $1,411,681 (above), fav12 / 6 about equal: 0.5-0.6 is a plateau, 0.4 a cliff.
+
+**§2 where the gain comes from (trades changed vs 2.8, at $10K, 2%):** fair 165 (111 helped / 54 hurt), median +1,105,
+sum +33K, without the best 10 -41K, without the worst 10 +201K; fav12 77, median +820, sum -1K, w/o best 10 -51K; fav6 45,
+median +1,015, sum -3K, w/o best 10 -50K; fav24 real 143, median +1,224, sum +76K, w/o best 10 +6K; fav36 real 192, median
++1,208, sum +56K, w/o best 10 -19K. The median changed trade is up on every list and 2 of 3 are helped, but the sum rests
+on the ~10 best saves against a few giants cut (on the strict bot-release rule, FAIL). Looks: this idea's 3rd (look 1 the
+pick, 2 the long Favorites, 3 this fixed-basis re-run); variants tried on 2026-11-01: be20 / be30 / be50 (set once),
+be20u / be30u / be50u, be50t10 / be50t20 / be30t10, be100u / be100t20, beo30 / beo50 / beo100, arm 0.4 / 0.6 = 16.
+The 151 unseen stocks: NOT RUN (no export path). Mechanism: a trade whose stock has given back the whole move that made
+the option +50% is sold near what was paid instead of riding to the staged exit's -1 S30; the giants that first dip to
+break-even are the cost.
+
+**§4 risk (fair, 2% / ladder):** worst drop 34.4% -> 32.2% / 39.6% -> 37.2%; longest under water 78 -> 76 days; worst day
+2024-11-12 -11.6% -> -11.1% (ladder -12.3% -> -11.7%); worst 5 days -16.2% -> -15.9% (ladder -18.0% -> -16.6%). Fav36 real
+ladder: drop 52.6% -> 48.7%, under water 138 -> 117 days. Fav6: under water 27 -> 45 days (both sizes).
+**§1 sanity, 8 traced 2.9 trades (r29, seed 29):** every sale at the real bid (MSFT 08-01 T_half 0.56 = bid, BA 09-04
+BE_lock 0.51 = bid 0.51 / 0.57, +2%); buys at the 1-second book (MSFT 0.83 vs the minute-end 0.79 / 0.81 after the
+60-second chase; TSLA 2.10 vs 2.12 / 2.14 at the minute's end, the second's book); the best 3 (IBIT 2026-08-19 +2764%,
+BA 2024-08-01 +2661%, ORCL 2026-04-13 +2322%) are overnight holds the lock never touches.
+**For §6 (live parity):** the research arms on the option bar's close (last print) and takes the IV from it, and fires
+on the stock's minute close; live reads the option's quote mid and the stock's last trade - name both in the rule map.

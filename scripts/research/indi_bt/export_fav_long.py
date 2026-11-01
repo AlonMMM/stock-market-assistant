@@ -50,6 +50,12 @@ def walk(t, c, exits):
         out[model] = (cost, steps)
     cost, steps = out["f2"]
     rcost, real = OS.price(steps, c[0], cost, "bid")
+    # BT_BASIS "real" (default, the 2.9 release audit 2026-11-01): the real-book trade is walked again with its real buy as
+    # the walk's cost, so its exits read gains off what was really paid; "model" = the +-2% walk's exits repriced
+    if os.environ.get("BT_BASIS", "real") == "real":
+        sim.SH = 0.02
+        c2, s2, _ = sim.walk(t["sym"], t["date"], m0, t["right"], c[0], c[1], CAL, paid=rcost)
+        if c2 is not None: rcost, real = OS.price(s2, c[0], c2, "bid")
     out["real"] = (rcost, real)
     fills = [s for s in steps if s[2] in ("buy", "sell")]
     out["cov"] = round(sum(bool(RB.quote(c[0], s[0], max(s[1] - 1, 0))) for s in fills) / len(fills), 2)

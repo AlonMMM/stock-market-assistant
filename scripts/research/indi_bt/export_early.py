@@ -23,11 +23,42 @@ V = {"champ-1s": "now-1s-r60", "champ-early": "early-r60"}
 ec.V.update({"champ-1s": ("Champion, 1-second fills",), "champ-early": ("Champion + early entry",)})   # rows_of reads the name
 
 
+# BT_BASIS: "real" (default, the 2.9 release audit 2026-11-01): each variant is walked again with its own 1-second fill as
+# the walk's cost, so its exits (stops, the overnight hold, be_lock) read gains off what was really paid; "model" = the
+# old way (one walk on the minute model's buy, the 1-second price swapped in afterwards).
+BASIS = os.environ.get("BT_BASIS", "real")
+
+
+def rewalk(r, t, slug):
+    """-> (paid, real steps, held) of the leg walked with variant `slug`'s 1-second fill as its cost, or None."""
+    import sim, opt_spread as OS, real_bench as RB
+    got = r["buys"].get(V[slug])
+    if not got: return None
+    s, p = got
+    m0 = int(t["minute"]); c = r["contract"]; exp = sim_expiry(c)
+    sim.X.clear(); sim.X.update(ST.FF.CHAMP)
+    cost, steps, _ = sim.walk(t["sym"], t["date"], m0, t["right"], c, exp, ST.FF.CAL, paid=p)
+    if cost is None: return None
+    _, real = OS.price(steps, c, cost, "bid")
+    first_sale = min((x[1] for x in real if x[2] == "sell" and x[0] == t["date"]), default=999)
+    m = s // 60
+    if m >= first_sale: return None
+    real = [(t["date"], m, "buy", 1.0, p, "entry")] + real[1:]
+    sells = [x for x in real if x[2] == "sell" and x[0] == t["date"]]
+    held = {}
+    for mm in range(m0, 390):
+        k = RB.quote(c, t["date"], mm)
+        held[mm] = (1 - sum(x[3] for x in sells if x[1] <= mm), None if not k else (k[0] + k[1]) / 2 / p - 1)
+    return p, real, held
+
+
 def legs_of(r):
     """{slug: (paid, steps)} for one leg."""
     out = {}
     first_sale = min((x[1] for x in r["steps"] if x[2] == "sell" and x[0] == r["date"]), default=999)
     for slug, v in V.items():
+        if slug in r.get("walked", {}):
+            p, steps, _ = r["walked"][slug]; out[slug] = (p, steps); continue
         got = r["buys"].get(v)
         paid, steps = r["paid"], r["steps"]
         if got:
@@ -41,6 +72,8 @@ def legs_of(r):
 def one(job):
     r = ST.one(job[:3])
     if not r: return None
+    if BASIS == "real":
+        r["walked"] = {slug: w for slug in V if (w := rewalk(r, job[2], slug))}
     return job[0], job[1], job[2], r
 
 
@@ -68,7 +101,8 @@ def main():
             if r["d2"]:
                 for a, ar in sorted(adds.get((src, t["date"], t["sym"], t["right"]), []), key=lambda x: int(x[0]["minute"])):
                     if int(a["minute"]) <= int(t["minute"]): continue
-                    share, up = r["held"].get(int(a["minute"]), (0, None))
+                    held = r["walked"][slug][2] if slug in r.get("walked", {}) else r["held"]
+                    share, up = held.get(int(a["minute"]), (0, None))
                     if share > 0 and up is not None and up > 0:
                         legs.append((a, (ar["contract"], sim_expiry(ar["contract"])), legs_of(ar)[slug], True, f"{base}+add"))
                     break

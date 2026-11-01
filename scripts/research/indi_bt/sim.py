@@ -360,8 +360,11 @@ def be_level(sym, d, t, exp, bet, opt_px, stock_px, basis):
     return (lo + hi) / 2
 
 
-def walk(und, date, minute, right, sym, exp, cal, limit=None):
-    """Walks one contract from the signal minute to the last sale. -> (entry, steps, flags)."""
+def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
+    """Walks one contract from the signal minute to the last sale. -> (entry, steps, flags). `paid`: the price the trade
+    really paid (a real 1-second fill); when given, every exit decision (the stops, the overnight hold from +X%, be_lock)
+    reads gains off it instead of the minute model's buy (the 2.9 release audit, 2026-11-01: the 1-second exports
+    decided exits on the bar's middle + 2%, e.g. NVDA 2026-02-09 0.7803 vs the real 0.68)."""
     if OVR: overlay(X, OVR)
     bet = 1 if right == "C" else -1
     i0 = cal.index(date)
@@ -371,7 +374,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
     if FILL in ("close", "mid") and limit is None:  # BT_FILL: buy on the signal bar itself, at its close ("close") or its middle ("mid", looks ahead)
         b0 = last_bar(day(sym, date), minute, C["bar_max_age"])
         if b0:
-            cost = (b0[4] if FILL == "close" else mid(b0)) * (1 + SH); peak = b0[4]; basis = cost
+            cost = paid or (b0[4] if FILL == "close" else mid(b0)) * (1 + SH); peak = b0[4]; basis = cost
             steps.append((date, minute, "buy", 1.0, round(cost, 4), f"entry_{FILL}"))
     st = dict(cut1=False, armed=False, t1=False, plan=None, k=0)
     pending = None  # (share of original or 'all', rule)
@@ -401,6 +404,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
                 else:
                     if t > minute + 3: return None, [], "no_fill"
                     cost = (b[1] if FILL == "open" else mid(b)) * (1 + SH)
+                if paid: cost = paid
                 peak = b[4]; basis = cost
                 steps.append((d, t, "buy", 1.0, round(cost, 4), "entry_limit" if limit is not None else "entry"))
                 continue
