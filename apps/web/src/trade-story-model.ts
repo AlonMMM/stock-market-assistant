@@ -357,6 +357,10 @@ export function botExitWords(
       "Staged exit, the rest",
       `The stock was ${r.stageFullS30} of its usual 30-minute move against the price at the signal: the rest sold.`,
     ],
+    "break-even-lock": [
+      "Break-even lock",
+      `The option had been up ${r.lockArmPct}% or more, and the stock came back to the price where the option would be worth what was paid: all sold.`,
+    ],
     "failed-break": [
       "Failed break",
       `The stock reached ${level} and fell back without breaking it: all sold on the entry day.`,

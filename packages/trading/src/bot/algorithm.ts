@@ -70,6 +70,10 @@ export function algorithmSteps(r: Rules): AlgorithmStep[] {
   if (r.stockStages)
     stages = `On the entry day, half is sold once the stock is ${r.stageHalfS30} of its usual 30-minute move against the price at the signal, the rest at ${r.stageFullS30} against.`;
   steps.push({ name: "Staged stock exit", text: stages });
+  let lock = "Off: a winner that comes back is held until another rule sells.";
+  if (r.breakEvenLock)
+    lock = `On the entry day, once the option is up ${r.lockArmPct}%, the stock price where it would be worth what was paid (Black-Scholes at its implied volatility then, worked out again each minute it is still that far up, the tighter kept) is a stop: all is sold if the stock gets back there.`;
+  steps.push({ name: "Break-even lock", text: lock });
   let late = "Off: an entry after 15:00 meets the same exits as any other.";
   if (r.lateHold)
     late =

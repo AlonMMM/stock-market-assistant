@@ -197,6 +197,8 @@ export const ruleGroups: RuleGroup[] = [
         unit: "× S30",
       },
       { key: "lateHold", label: "Hold late winners (entry 15:00+)" },
+      { key: "breakEvenLock", label: "Break-even lock" },
+      { key: "lockArmPct", label: "Break-even lock: armed from", unit: "%" },
       { key: "stopPct", label: "Stop", unit: "%" },
       {
         key: "restStopPct",

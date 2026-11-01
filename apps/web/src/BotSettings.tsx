@@ -188,6 +188,15 @@ function groups(s: BotSettings): Group[] {
           fmt: (v) => `${v} × S30`,
         },
         {
+          key: "lockArmPct",
+          label: "Break-even lock: armed from",
+          help: "With the break-even lock on: once the option is up this much on the entry day, the bot sells all if the stock gets back to where the option would be worth what was paid.",
+          min: 20,
+          max: 200,
+          step: 10,
+          fmt: (v) => `+${v}%`,
+        },
+        {
           key: "safetyStopPct",
           label: "Broker safety stop",
           help: "A stop order at the broker, in case the bot is down. Should sit below the stop above.",
@@ -225,6 +234,11 @@ function groups(s: BotSettings): Group[] {
           "stockStages",
           "Staged stock exit",
           "On the entry day, sell half when the stock moves against the signal price by the first amount below, the rest at the second (in its usual 30-minute moves).",
+        ],
+        [
+          "breakEvenLock",
+          "Break-even lock",
+          "On the entry day, once the option is up by the amount below, sell all if the stock gets back to the price where the option would be worth what was paid (worked out from its implied volatility, again each minute it is still that far up).",
         ],
         [
           "lateHold",

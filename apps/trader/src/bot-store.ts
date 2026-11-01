@@ -90,6 +90,8 @@ export interface BotPosition {
   bonus?: boolean;
   addOf?: string;
   pyramidChecked?: boolean;
+  // The break-even lock's stock level once armed (version 2.9); missing before.
+  lockLevel?: number | null;
   status: BotStatus;
   jobId: string | null;
   dry: boolean;

@@ -841,6 +841,12 @@ function exitPlan(
         ms: newYorkToUtc(day, plan.dayExit),
         reasons: ["stage-half", "stage-full"],
       });
+    if (rules.breakEvenLock)
+      steps.push({
+        label: `Break-even lock: once up ${rules.lockArmPct}%, all out if the stock gets back to where the option is worth its cost`,
+        ms: newYorkToUtc(day, plan.dayExit),
+        reasons: ["break-even-lock"],
+      });
     if (rules.sellOnWeakness)
       steps.push({
         label: `Strength gone: all out if its edge over SPY falls to t ${rules.weaknessT}`,

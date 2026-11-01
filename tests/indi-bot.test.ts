@@ -1217,30 +1217,30 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
 
 test("versions: every entry is stamped with the version in force; changed rules star it; the owner can pick an older one", async () => {
   const h = harness("live");
-  assert.equal(h.bot.status().version, "2.8.1");
+  assert.equal(h.bot.status().version, "2.9.0");
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy");
-  assert.match(String(buy?.body.note), /· bot 2\.8\.1$/);
+  assert.match(String(buy?.body.note), /· bot 2\.9\.0$/);
   const [p] = h.store.openPositions();
-  assert.equal(p!.version, "2.8.1");
-  assert.equal(h.store.signals(DAY)[0]!.version, "2.8.1");
-  assert.equal(h.bot.status().positions[0]!.version, "2.8.1");
+  assert.equal(p!.version, "2.9.0");
+  assert.equal(h.store.signals(DAY)[0]!.version, "2.9.0");
+  assert.equal(h.bot.status().positions[0]!.version, "2.9.0");
   const texts = () =>
     h.bot
       .status()
       .activity.map((e) => e.text)
       .join("\n");
-  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.8\.1$/m);
+  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.9\.0$/m);
 
-  // The stop changed from 2.8's: the next entry is stamped "2.8.1*".
+  // The stop changed from 2.8's: the next entry is stamped "2.9.0*".
   const edited = harness("live");
   edited.bot.setSettings({ ...edited.bot.settings(), stopPct: 40 });
-  assert.equal(edited.bot.status().version, "2.8.1*");
+  assert.equal(edited.bot.status().version, "2.9.0*");
   await edited.run(DAY, 565, 600);
-  assert.equal(edited.store.openPositions()[0]!.version, "2.8.1*");
+  assert.equal(edited.store.openPositions()[0]!.version, "2.9.0*");
   assert.match(
     String(edited.calls.find((c) => c.kind === "buy")?.body.note),
-    /· bot 2\.8\.1\*$/,
+    /· bot 2\.9\.0\*$/,
   );
 
   // Version 1.0 picked: its rules (t 2, no night cap, no news filter) run, and the feed says so.
@@ -1252,6 +1252,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
     checks: true,
     stockStages: false,
     lateHold: false,
+    breakEvenLock: false,
     sizeSteps: [],
     minT: 2,
     nightCapPct: 0,
@@ -1274,7 +1275,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
       .status()
       .activity.map((e) => e.text)
       .join("\n"),
-    /Settings changed: version "2\.8\.1" → "1\.0"; sizeSteps \[\{"from":300000,"pct":2\.5\},\{"from":1000000,"pct":1\.5\},\{"from":4000000,"pct":1\}\] → \[\]; stopPct 60 → 30; restStopPct 20 → 0; checks false → true; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false; skipEarnings true → false; skipPremarket true → false; lowFloorSymbols \["IBIT"\] → \[\]; pyramid true → false; earlyEntry true → false; stockStages true → false; lateHold true → false/,
+    /Settings changed: version "2\.9\.0" → "1\.0"; sizeSteps \[\{"from":300000,"pct":2\.5\},\{"from":1000000,"pct":1\.5\},\{"from":4000000,"pct":1\}\] → \[\]; stopPct 60 → 30; restStopPct 20 → 0; checks false → true; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false; skipEarnings true → false; skipPremarket true → false; lowFloorSymbols \["IBIT"\] → \[\]; pyramid true → false; earlyEntry true → false; stockStages true → false; lateHold true → false/,
   );
 });
 
@@ -1821,7 +1822,7 @@ test("pyramid: the full signal after a D2 entry that is up buys half a size more
   assert.deepEqual(buys[0]!.options, { repeatOk: true });
   assert.match(
     String(buys[0]!.body.note),
-    /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.8\.1$/,
+    /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.9\.0$/,
   );
   const open = h.store.openPositions();
   const add = open.find((p) => p.addOf === "first");

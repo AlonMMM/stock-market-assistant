@@ -131,6 +131,12 @@ export interface BotSettings {
   // An entry at 15:00 or later is not sold on its entry day while above its
   // cost, up to the 15:50 decision (version 2.8).
   lateHold: boolean;
+  // The break-even lock (version 2.9): on the entry day, once the option is
+  // lockArmPct over its cost, sell all when the stock gets back to the price
+  // where the option would be worth its cost (worked out again each minute it
+  // is still that far up, the tighter level kept).
+  breakEvenLock: boolean;
+  lockArmPct: number;
 }
 
 export interface SizeStep {
@@ -208,6 +214,8 @@ export const defaultSettings: BotSettings = {
   stageHalfS30: 0.5,
   stageFullS30: 1,
   lateHold: true,
+  breakEvenLock: true,
+  lockArmPct: 50,
 };
 
 // Values the backtest never ran.
@@ -253,6 +261,7 @@ export const limits: Record<
   pyramidSharePct: [25, 100, 25],
   stageHalfS30: [0.25, 2, 0.25],
   stageFullS30: [0.5, 3, 0.25],
+  lockArmPct: [20, 200, 10],
 };
 
 const booleans: BooleanKey[] = [
@@ -269,6 +278,7 @@ const booleans: BooleanKey[] = [
   "earlyEntry",
   "stockStages",
   "lateHold",
+  "breakEvenLock",
 ];
 const ticker = /^[A-Z][A-Z.]{0,5}$/;
 const maxTickers = 200;
@@ -447,6 +457,7 @@ export function exitRules(s: BotSettings): ExitRules {
       ? { half: s.stageHalfS30, full: s.stageFullS30 }
       : null,
     lateHoldFrom: s.lateHold ? lateHoldMinute : null,
+    lock: s.breakEvenLock ? { arm: s.lockArmPct / 100 } : null,
     strengthOut: s.sellOnWeakness ? s.weaknessT : null,
     carryMinGain: s.holdFromPct / 100,
     carryMaxNights: s.maxNights,

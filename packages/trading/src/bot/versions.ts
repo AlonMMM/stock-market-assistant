@@ -53,7 +53,9 @@ export type RuleKey =
   | "stageHalfS30"
   | "stageFullS30"
   | "lateHold"
-  | "sizeSteps";
+  | "sizeSteps"
+  | "breakEvenLock"
+  | "lockArmPct";
 
 export type Rules = Pick<BotSettings, RuleKey>;
 
@@ -90,6 +92,8 @@ export const ruleKeys: readonly RuleKey[] = [
   "stageFullS30",
   "lateHold",
   "sizeSteps",
+  "breakEvenLock",
+  "lockArmPct",
 ];
 
 export interface BotVersion {
@@ -134,6 +138,8 @@ const v1: Rules = {
   stageFullS30: 1,
   lateHold: false,
   sizeSteps: [],
+  breakEvenLock: false,
+  lockArmPct: 50,
 };
 // 2.0: the V2 champion (t 1.8, the overnight cap, the news filter).
 const v2: Rules = {
@@ -218,6 +224,16 @@ const v281: Rules = {
     { from: 4_000_000, pct: 1 },
   ],
 };
+
+// 2.9 (the owner, 2026-11-01: "add it now in all the places needed as 2.9, do
+// not forget to use 2.8.1 (ladder)"): 2.8.1 + the break-even lock (research
+// sim.py be_lock {arm 0.5, update}): on the entry day, once the option is +50%,
+// the stock price where Black-Scholes at the option's implied volatility then
+// values it at its cost is a stop on the stock, worked out again each minute it
+// is still +50% (the tighter level kept). Real quotes, 2%, against 2.8: fair
+// list $3,129,481 / 32.2% vs $2,956,494 / 34.1% (check +6%), the Favorites 12 /
+// 6 / 24 / 36 months +4% / +3% / +11% / +17% with the drop 2-4 points less.
+const v29: Rules = { ...v281, breakEvenLock: true, lockArmPct: 50 };
 
 /** Every version, oldest first. */
 export const botVersions: readonly BotVersion[] = [
@@ -308,6 +324,14 @@ export const botVersions: readonly BotVersion[] = [
       "2.8's rules; each trade's size steps down as the account grows: your size (3%) below $300K, 2.5% from $300K, 1.5% from $1M, 1% from $4M, on the account as the day starts.",
     rules: v281,
   },
+  {
+    id: "2.9.0",
+    name: "2.8.1 + the break-even lock",
+    since: "2026-11-01",
+    notes:
+      "2.8.1's rules and size steps. On the entry day, once the option is up 50%, the bot works out the stock price where the option would be worth what was paid (Black-Scholes at its implied volatility now, again each minute it is still up 50%, the tighter level kept) and sells all if the stock gets back there.",
+    rules: v29,
+  },
 ];
 
 /** The version a new bot runs. */
@@ -351,6 +375,7 @@ export const minorKeys: ReadonlySet<RuleKey> = new Set<RuleKey>([
   "earlyEntry",
   "stockStages",
   "lateHold",
+  "breakEvenLock",
   "skipEarnings",
   "skipPremarket",
 ]);
