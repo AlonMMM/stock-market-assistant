@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import { StockTags } from "./StockTags";
 import { alertLink } from "../../../packages/contracts/src/alert-link.js";
 import {
   AlertEvidence,
@@ -248,6 +249,7 @@ export function LiveAlerts({
                                 </span>
                                 <span className="alert-symbol">
                                   <strong>{a.ticker}</strong>
+                                  <StockTags symbol={a.ticker} compact />
                                   {isNew && (
                                     <span className="tag new">New</span>
                                   )}

@@ -1,4 +1,5 @@
 import { BotChip } from "./BotPanel.js";
+import { StockTags } from "./StockTags";
 import { useEffect, useRef, useState } from "react";
 import type { ControlAccess } from "../../../packages/trading/src/control-api.js";
 import type { Decision } from "../../../packages/trading/src/explain.js";
@@ -446,6 +447,7 @@ function Row({
             )}
             {bot && <BotChip />}
           </strong>
+          <StockTags symbol={p.underlying} compact block />
           <span className="pos-sub">
             {p.option ? `${expiryLabel(p.option.expiry)} · ` : ""}
             <span aria-hidden="true">×{p.qty}</span>

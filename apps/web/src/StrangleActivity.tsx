@@ -1,4 +1,5 @@
 import { useState, type RefObject } from "react";
+import { StockTags } from "./StockTags";
 import {
   coreClose,
   newYork,
@@ -455,6 +456,7 @@ function StockFocus({
     <div className="bot-focus" aria-live="polite">
       <div className="bot-focus-head">
         <strong>{r.symbol}</strong>
+        <StockTags symbol={r.symbol} />
         <span className={`bot-lean ${up ? "up" : "down"}`}>
           {up ? "▲ moving up" : "▼ moving down"}
         </span>
@@ -625,6 +627,7 @@ function StockList({
                     {up ? "▲" : "▼"}
                   </span>
                   <strong>{r.symbol}</strong>
+                  <StockTags symbol={r.symbol} compact />
                 </span>
                 <Meter
                   value={r.volRatio}

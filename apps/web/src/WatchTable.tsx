@@ -1,4 +1,5 @@
 import type { LivePriceState } from "./live-prices.js";
+import { StockTags } from "./StockTags";
 import {
   lazy,
   Suspense,
@@ -421,6 +422,7 @@ export function WatchTable({
                 >
                   <span className="wl-cell wl-symbol">
                     <strong>{r.ticker}</strong>
+                    <StockTags symbol={r.ticker} compact />
                     {r.sector && <small>{r.sector}</small>}
                     {r.alerts > 0 && (
                       <span className="wl-dot" title="Alert today">

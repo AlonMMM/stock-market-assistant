@@ -109,6 +109,15 @@
   --gray-99: #fafbf8;
   --on-ink: #fff;
   --surface: #fff;
+  /* Stock tags: one hue each (earnings soon, earnings done, earnings this week, big news). */
+  --tag-soon-ink: #8a3b00;
+  --tag-soon-bg: #ffe2c7;
+  --tag-past-ink: #5b2a9e;
+  --tag-past-bg: #ece2fb;
+  --tag-week-ink: #1d4f91;
+  --tag-week-bg: #dde9fb;
+  --tag-news-ink: #9d1a5b;
+  --tag-news-bg: #fbdcec;
 }
 :root.dark {
   color-scheme: dark;
@@ -217,6 +226,14 @@
   --gray-99: #1f232a;
   --on-ink: #16191f;
   --surface: #1b1e24;
+  --tag-soon-ink: #ffc58f;
+  --tag-soon-bg: #3a2410;
+  --tag-past-ink: #d5bbff;
+  --tag-past-bg: #2c2240;
+  --tag-week-ink: #a9cbff;
+  --tag-week-bg: #1a2a42;
+  --tag-news-ink: #ffaed6;
+  --tag-news-bg: #3d1a2c;
 }
 :root {
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
@@ -9032,4 +9049,52 @@ i.added {
   .vbt-facts {
     padding-left: 4px;
   }
+}
+
+/* Stock tags (user 2026-11-01): earnings in the next 24h, in the last 24h, this
+   week, and big news. Shown next to a symbol everywhere. */
+.stock-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  vertical-align: middle;
+  margin-inline-start: 4px;
+}
+.stock-tags.block {
+  display: flex;
+  margin: 4px 0 0;
+}
+.stock-tag {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.stock-tag.earnings-soon {
+  color: var(--tag-soon-ink);
+  background: var(--tag-soon-bg);
+}
+.stock-tag.earnings-past {
+  color: var(--tag-past-ink);
+  background: var(--tag-past-bg);
+}
+.stock-tag.earnings-week {
+  color: var(--tag-week-ink);
+  background: var(--tag-week-bg);
+}
+.stock-tag.big-news {
+  color: var(--tag-news-ink);
+  background: var(--tag-news-bg);
+}
+.wl-symbol .stock-tags {
+  flex: none;
+  align-self: center;
+  margin: 0;
+}
+.pos-name .stock-tags.block {
+  margin-top: 2px;
 }

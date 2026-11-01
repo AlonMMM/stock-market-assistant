@@ -1,7 +1,22 @@
 # Current state
 
-Updated: 2026-10-27
+Updated: 2026-11-01
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
+
+## Stock tags: earnings and big news (2026-11-01)
+
+A coloured chip next to a symbol (user 2026-11-01: earnings in the next 24h, in the last 24h, this week, big
+news; "visible everywhere including watchlist"): orange "Earnings in 6h", purple "Earnings 14h ago", blue
+"Earnings Thu", pink "Big news" ("ER …" and "News" in tight rows). One earnings tag a stock, the most urgent;
+"this week" is the Monday–Friday week, the coming one on a weekend; big news is 3 or more Alpaca headlines in
+24 hours (the user's choice). `GET /api/tags?symbols=…` (`packages/market-data/src/tags.ts`, Fastify and the
+Worker) reads the Nasdaq earnings calendar (the bot's source; an hour's cache a date) and Alpaca news (5 minutes
+a symbol), and names a failed source (`earnings`/`news: "unavailable"`). The report moment is estimated:
+08:00 New York before the open, 16:00 after the close, 12:00 without a time; the chip's tooltip says which, in
+Israel time. Shown on the Watchlist, a stock's page, positions, live alerts, price alerts and both bots' lists
+and cards (`StockTags.tsx`, one batched read of the symbols on screen, every 5 minutes); not on backtests,
+which are about past days. Validation: unit tests for the rules and the endpoint; screenshots on synthetic
+board and tags, light and dark. Not yet seen against the live Nasdaq calendar from the Cloudflare Worker.
 
 ## Charts: pre-market, after-hours and the overnight session (2026-10-29)
 

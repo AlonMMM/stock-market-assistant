@@ -6,6 +6,7 @@ import {
   handleTicker,
   handleTickerCheck,
 } from "../../../packages/market-data/src/ticker.js";
+import { handleTags } from "../../../packages/market-data/src/tags.js";
 import {
   liveUrl,
   paperUrl,
@@ -477,6 +478,17 @@ export function buildApp(
       request.query as Record<string, unknown>,
       alpaca,
       process.env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
+      alpaca.fetcher,
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  app.get("/api/tags", async (request, reply) => {
+    const result = await handleTags(
+      request.query as Record<string, unknown>,
+      alpaca,
       alpaca.fetcher,
     );
     return reply
