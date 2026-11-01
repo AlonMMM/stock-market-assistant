@@ -2723,3 +2723,18 @@ exit loses more, the drop grows 1-3 points, and tune is lower on every list (che
   turn early small sales into -60% stops. Changed trades: median +$87 fair, -$22 to -$54 on the long Favorites; without
   their best 10 negative on every list (-$7K to -$114K). Not adopted: the Favorites gain but rest on ~10 trades, the fair check is lower and the
   win rate falls 2-3 points.
+
+### The Main bot on the Volume bot's stock list (2026-11-01, analysis)
+The user: "can you try the volume list on the main bot?". The Volume bot's 54 stocks (top 50 + SLV TQQQ SOXL SMH) vs
+the 60 Favorites, the same script for both (lists.py run, 2.9 exits + the D2 entry, minute fills +-2%, no pyramid
+add; most of the 54 have no Databento books), 2024-10-23 - 2026-10-30. 2% / 3%:
+- Volume list: 1,125 trades, won 18.8%, +$1,544 a trade at $10K; $1,500,364 (27.0%) / $4,529,340 (36.7%); without the
+  best 5 $295,857. Tune $410K, check $377K. 2024 (Nov-Dec) -, 2025 $437K, 2026 $371K (each year from $100K).
+- Favorites: 1,011 trades, won 18.9%, +$1,737; $1,766,394 (28.6%) / $6,624,515 (39.6%); without the best 5 $411,044.
+  Tune $696K, check $258K. 2025 $751K, 2026 $251K.
+- 44 of the 54 are Favorites too. The 10 Volume-only stocks (GOOG NFLX QQQ RGTI SLV SMH SMR SOXL SPCE TQQQ): 165
+  trades, +$1,102 a trade (NFLX +$279K, QQQ +$64K, GOOG -$100K, the leveraged ETFs negative). The Favorites-only
+  stocks: 71 trades, +$2,319 a trade.
+Verdict: about the same bot (most stocks shared); the Volume list is a little behind over the whole period and
+without the best 5, ahead on check and in 2026. No reason to switch the Main bot's list.
+
