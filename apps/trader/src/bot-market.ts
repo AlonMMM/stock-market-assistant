@@ -1,6 +1,7 @@
 import {
   AlpacaFeed,
   type AlpacaFeedName,
+  type AlpacaTrade,
 } from "../../../packages/market-data/src/alpaca.js";
 import {
   newYork,
@@ -82,6 +83,42 @@ export class AlpacaBotMarket implements BotMarket {
           out.set(symbol, trade.p);
     }
     return out;
+  }
+
+  /** GET /v2/stocks/trades for several symbols, page by page (10,000 trades a page). */
+  async trades(
+    symbols: string[],
+    startMs: number,
+    endMs: number,
+    onPage: (symbol: string, trades: AlpacaTrade[]) => void,
+  ): Promise<void> {
+    let pageToken: string | undefined;
+    do {
+      const url = new URL("/v2/stocks/trades", "https://data.alpaca.markets");
+      url.searchParams.set("symbols", symbols.join(","));
+      url.searchParams.set("start", new Date(startMs).toISOString());
+      url.searchParams.set("end", new Date(endMs).toISOString());
+      url.searchParams.set("feed", "sip");
+      url.searchParams.set("sort", "asc");
+      url.searchParams.set("limit", "10000");
+      if (pageToken) url.searchParams.set("page_token", pageToken);
+      const response = await this.fetcher.call(globalThis, url, {
+        headers: {
+          "APCA-API-KEY-ID": this.key,
+          "APCA-API-SECRET-KEY": this.secret,
+        },
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!response.ok)
+        throw new Error(`Alpaca trades failed (HTTP ${response.status})`);
+      const body = (await response.json()) as {
+        trades?: Record<string, AlpacaTrade[] | null> | null;
+        next_page_token?: string | null;
+      };
+      for (const [symbol, list] of Object.entries(body.trades ?? {}))
+        if (list?.length) onPage(symbol, list);
+      pageToken = body.next_page_token ?? undefined;
+    } while (pageToken);
   }
 
   async premarket(symbols: string[], dates: string[]) {

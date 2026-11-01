@@ -2,6 +2,9 @@ import { D1PriceAlerts } from "../../../packages/market-data/src/price-alerts.js
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { D1BarCache } from "../../../packages/market-data/src/bar-cache.js";
+import { D1OptionQuotes } from "../../../packages/market-data/src/option-quotes.js";
+import { D1OptionBars } from "../../../packages/market-data/src/option-bars.js";
+import { D1VolumeData } from "../../../packages/market-data/src/volume-data.js";
 import { D1StrengthStore } from "../../../packages/market-data/src/board.js";
 import { D1BaselineStore } from "../../../packages/market-data/src/volume-baseline.js";
 import { D1MarksSigmaStore } from "../../../packages/market-data/src/marks-sigma.js";
@@ -21,6 +24,9 @@ const app = buildApp(true, {
   key: process.env.ALPACA_API_KEY,
   secret: process.env.ALPACA_API_SECRET,
   cache: new D1BarCache(db),
+  quotes: new D1OptionQuotes(db),
+  optionBars: new D1OptionBars(db),
+  volume: new D1VolumeData(db),
   baselines: new D1BaselineStore(db),
   strengths: new D1StrengthStore(db),
   sigmas: new D1MarksSigmaStore(db),

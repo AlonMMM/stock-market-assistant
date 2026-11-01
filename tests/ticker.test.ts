@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   handleTicker,
+  handleTickerCheck,
   tickerStats,
 } from "../packages/market-data/src/ticker.js";
 
@@ -145,4 +146,32 @@ test("ticker: asset, quote, stats and news; a failed part is left out", async ()
     ).status,
     400,
   );
+});
+
+test("the ticker check names made-up tickers and keeps the rest when Alpaca fails", async () => {
+  const fetcher = (async (url: string) => {
+    if (url.endsWith("/NVDA"))
+      return Response.json({ class: "us_equity", symbol: "NVDA" });
+    if (url.endsWith("/DDDD")) return new Response("", { status: 404 });
+    if (url.endsWith("/BTCUSD")) return Response.json({ class: "crypto" });
+    return new Response("", { status: 500 });
+  }) as typeof fetch;
+  const r = await handleTickerCheck(
+    { symbols: "nvda,DDDD, btcusd,AMD,nvda" },
+    { key: "k", secret: "s" },
+    "https://paper",
+    fetcher,
+  );
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, {
+    known: ["NVDA", "AMD"],
+    unknown: ["DDDD", "BTCUSD"],
+  });
+  const none = await handleTickerCheck(
+    { symbols: "" },
+    { key: "k", secret: "s" },
+    "https://paper",
+    fetcher,
+  );
+  assert.equal(none.status, 400);
 });

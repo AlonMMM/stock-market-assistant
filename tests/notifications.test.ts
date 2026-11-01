@@ -663,3 +663,16 @@ test("with topics off, alerts go to the main chat", async () => {
   box.close();
   rmSync(dir, { recursive: true });
 });
+
+test("Telegram calls fetch unbound, as Cloudflare Workers require", async () => {
+  // Workers throw "Illegal invocation" when fetch runs with a foreign `this`.
+  const fetcher = function (this: unknown) {
+    if (this !== undefined && this !== globalThis)
+      throw new TypeError("Illegal invocation");
+    return Promise.resolve(
+      Response.json({ ok: true, result: { message_id: 10 } }),
+    );
+  } as unknown as typeof fetch;
+  const sender = new TelegramSender("SECRET", "42", fetcher);
+  assert.deepEqual(await sender.send("hi"), { ok: true, messageId: 10 });
+});

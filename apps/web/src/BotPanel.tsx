@@ -90,6 +90,8 @@ const reasonText: Record<string, string> = {
   "stop-30": "stop",
   "rest-stop": "stop on the rest",
   "strength-gone": "strength gone",
+  "stage-half": "staged exit, half",
+  "stage-full": "staged exit, the rest",
   "close-1550": "end-of-day close",
   "morning-gap-keep": "morning, gap our way",
   "morning-gap-against": "morning, no gap",
@@ -822,19 +824,26 @@ function exitPlan(
 ): ExitStep[] {
   const plan = sessionPlan(day, rules);
   const steps: { label: string; ms: number; reasons: string[] }[] = [];
-  if (p.nights === 0 && rules.checks) {
-    steps.push(
-      {
-        label: "10-min check: half out if the stock is against",
-        ms: p.openedAt + 600000,
-        reasons: ["check-10"],
-      },
-      {
-        label: "20-min check: the rest out if still against",
-        ms: p.openedAt + 1200000,
-        reasons: ["check-20"],
-      },
-    );
+  if (p.nights === 0) {
+    if (rules.checks)
+      steps.push(
+        {
+          label: "10-min check: half out if the stock is against",
+          ms: p.openedAt + 600000,
+          reasons: ["check-10"],
+        },
+        {
+          label: "20-min check: the rest out if still against",
+          ms: p.openedAt + 1200000,
+          reasons: ["check-20"],
+        },
+      );
+    if (rules.stockStages)
+      steps.push({
+        label: `Staged exit: half out at ${rules.stageHalfS30}, the rest at ${rules.stageFullS30} of the stock's usual 30-min move against the signal price`,
+        ms: newYorkToUtc(day, plan.dayExit),
+        reasons: ["stage-half", "stage-full"],
+      });
     if (rules.sellOnWeakness)
       steps.push({
         label: `Strength gone: all out if its edge over SPY falls to t ${rules.weaknessT}`,

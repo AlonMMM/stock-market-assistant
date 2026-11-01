@@ -4,7 +4,10 @@ import {
   D1PriceAlerts,
   handlePriceAlerts,
 } from "../../../packages/market-data/src/price-alerts.js";
-import { handleTicker } from "../../../packages/market-data/src/ticker.js";
+import {
+  handleTicker,
+  handleTickerCheck,
+} from "../../../packages/market-data/src/ticker.js";
 import {
   liveUrl,
   paperUrl,
@@ -82,6 +85,12 @@ const stranglePortfolio = new PortfolioCache();
 import { handleCandles } from "../../../packages/market-data/src/candles.js";
 import { handleChartBars } from "../../../packages/market-data/src/chart-bars.js";
 import { handleTradeChart } from "../../../packages/market-data/src/trade-chart.js";
+import { handleBotBacktest } from "../../../packages/market-data/src/bot-backtest.js";
+import { D1OptionQuotes } from "../../../packages/market-data/src/option-quotes.js";
+import { D1OptionBars } from "../../../packages/market-data/src/option-bars.js";
+import { handleVolumeBacktest } from "../../../packages/market-data/src/volume-backtest.js";
+import { D1VolumeData } from "../../../packages/market-data/src/volume-data.js";
+import { syncVolumeDay } from "../../../packages/market-data/src/volume-daily.js";
 import { handleControl } from "../../../packages/trading/src/control-api.js";
 import { changeRefusal } from "./owner-only.js";
 import { verifyAccess, type AccessIdentity } from "./access.js";
@@ -98,6 +107,9 @@ let cache:
   | {
       db: D1Like;
       cache: D1BarCache;
+      quotes: D1OptionQuotes;
+      optionBars: D1OptionBars;
+      volume: D1VolumeData;
       baselines: D1BaselineStore;
       strengths: D1StrengthStore;
       sigmas: D1MarksSigmaStore;
@@ -112,6 +124,9 @@ function stores(db: D1Like) {
     cache = {
       db,
       cache: new D1BarCache(db),
+      quotes: new D1OptionQuotes(db),
+      optionBars: new D1OptionBars(db),
+      volume: new D1VolumeData(db),
       baselines: new D1BaselineStore(db),
       strengths: new D1StrengthStore(db),
       sigmas: new D1MarksSigmaStore(db),
@@ -151,6 +166,7 @@ export default {
       COLLECTOR_TOKEN?: string;
       TRADER_URL?: string;
       TRADER_TOKEN?: string;
+      TRADER_READ_TOKEN?: string;
       // The watchlist the Indi bot also trades; else the one named "favorite".
       BOT_WATCHLIST?: string;
     },
@@ -211,6 +227,17 @@ export default {
           ).catch((error: unknown) => `failed: ${String(error)}`)
         : "no favorites list";
       console.log(`bot favorites: ${line}`);
+    }
+    // The Volume bot's backtest data for the day, once after the close: the
+    // trader's fired alerts and alert books into D1 (volume-daily.ts).
+    if (env.BARS_CACHE && ny.minute % 5 === 0) {
+      const line = await syncVolumeDay({
+        trader: { url: env.TRADER_URL, token: env.TRADER_READ_TOKEN },
+        store: stores(env.BARS_CACHE).volume,
+        now: Date.now(),
+      }).catch((error: unknown) => `failed: ${String(error)}`);
+      if (line !== "not yet" && line !== "done" && line !== "not a session")
+        console.log(`volume data: ${line}`);
     }
     // The user's price alerts (user 2026-10-18), checked every minute.
     if (env.BARS_CACHE) {
@@ -465,6 +492,22 @@ export default {
         headers: { "Cache-Control": "no-store" },
       });
     }
+    if (path === "/api/tickers/check") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const result = await handleTickerCheck(
+        Object.fromEntries(new URL(request.url).searchParams),
+        credentials,
+        env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
     if (path === "/api/ticker") {
       if (request.method !== "GET")
         return new Response("Method not allowed", {
@@ -507,6 +550,77 @@ export default {
       const result = await handleTradeChart(
         Object.fromEntries(query),
         credentials,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    // The Main bot's backtest of one stock over a range (the Backtest page).
+    if (path === "/api/bot-backtest") {
+      if (request.method !== "POST")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "POST" },
+        });
+      let body: unknown;
+      try {
+        const text = await request.text();
+        if (text.length > 65536)
+          return Response.json({ error: "Request too large" }, { status: 413 });
+        body = JSON.parse(text);
+      } catch {
+        return Response.json(
+          { error: "Expected JSON object" },
+          { status: 400 },
+        );
+      }
+      const db = env.BARS_CACHE ? stores(env.BARS_CACHE) : undefined;
+      const result = await handleBotBacktest(
+        body,
+        credentials,
+        env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
+        fetch,
+        Date.now(),
+        db?.cache,
+        db?.quotes,
+        db?.optionBars,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    // The Volume bot's backtest of one stock over a range (strangle/backtest.ts).
+    if (path === "/api/volume-backtest") {
+      if (request.method !== "POST")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "POST" },
+        });
+      let body: unknown;
+      try {
+        const text = await request.text();
+        if (text.length > 65536)
+          return Response.json({ error: "Request too large" }, { status: 413 });
+        body = JSON.parse(text);
+      } catch {
+        return Response.json(
+          { error: "Expected JSON object" },
+          { status: 400 },
+        );
+      }
+      const db = env.BARS_CACHE ? stores(env.BARS_CACHE) : undefined;
+      const result = await handleVolumeBacktest(
+        body,
+        credentials,
+        env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
+        fetch,
+        Date.now(),
+        db?.cache,
+        db?.quotes,
+        db?.optionBars,
+        db?.volume,
       );
       return Response.json(result.body, {
         status: result.status,

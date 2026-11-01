@@ -3,8 +3,18 @@ import type { AccessIdentity } from "./access.js";
 // Every change in the app is the owner's (user 2026-10-26: "all other people
 // that have permission to see the application cannot change ... All the
 // changed is read-only ... for all the bots and all the application").
-// These POSTs only compute and save nothing, so any viewer may use them.
-const computeOnly = new Set(["/api/backtest", "/api/day-chart", "/api/replay"]);
+// These POSTs only compute and change nothing of the owner's, so any viewer
+// may use them. The bot backtest (the Backtest page, user 2026-10-31: "20 parts
+// failed ... Read-only: only the owner can change this" on the phone) only
+// fills the shared option-bar cache, which is market data, not a setting.
+const computeOnly = new Set([
+  "/api/backtest",
+  "/api/bot-backtest",
+  "/api/day-chart",
+  "/api/replay",
+  // The Volume bot's backtest: also only market data kept (its stock seconds).
+  "/api/volume-backtest",
+]);
 
 /** Why a request may not change anything, or null when it may go on. */
 export function changeRefusal(

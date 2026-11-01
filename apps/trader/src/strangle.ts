@@ -3,6 +3,7 @@ import { bookOf, lastBookOf } from "./option-book.js";
 import {
   coreClose,
   newYork,
+  newYorkToUtc,
   previousSessions,
 } from "../../../packages/market-data/src/calendar.js";
 import { priorLevels } from "../../../packages/trading/src/bot/levels.js";
@@ -15,10 +16,7 @@ import {
   type NewsCalendar,
 } from "../../../packages/trading/src/bot/news.js";
 import type { OptionQuote } from "../../../packages/trading/src/options.js";
-import {
-  liquidOrder,
-  pickContract,
-} from "../../../packages/trading/src/bot/picker.js";
+import { pickContract } from "../../../packages/trading/src/bot/picker.js";
 import {
   cState,
   priorFrom,
@@ -36,17 +34,22 @@ import {
 import {
   bestOf,
   burstAgrees,
+  burstAtSecond,
   burstOf,
-  crossTooLate,
+  daysBetween,
   giveBackExit,
   legQty,
   minuteCloseExit,
-  secondsSinceAlert,
+  shockRules,
   sideOf,
   strengthAgrees,
   waitedOut,
   type Leg,
 } from "../../../packages/trading/src/strangle/decide.js";
+import {
+  legAt,
+  legDeltas,
+} from "../../../packages/trading/src/strangle/pick.js";
 import {
   clockOf,
   defaultStrangleSettings,
@@ -61,9 +64,24 @@ import type {
   StrangleScanRow,
   StrangleView,
 } from "../../../packages/trading/src/strangle/view.js";
+import {
+  carried,
+  fastBaseline,
+  FastFire,
+  fastRule,
+  fastState,
+  shockRule,
+  fastWindows,
+  paceSums,
+  type FastBaseline,
+  type FastWindows,
+} from "../../../packages/trading/src/strangle/fast.js";
 import type { BotMarket, BotTrading } from "./bot.js";
+import { FastTape, fetchFastBars, fetchFastDay } from "./strangle-fast.js";
+import { AlertBooks, type AlertBookWatch } from "./alert-books.js";
 import {
   tradeCash,
+  type FastAlertRow,
   type StrangleEventKind,
   type StrangleOrder,
   type StrangleStore,
@@ -135,6 +153,17 @@ const soldOf = (result: unknown): number => {
   return typeof r?.result?.sold === "number" ? r.result.sold : 0;
 };
 
+// The shock alert's entry: shockRules (strangle/decide.ts), shared with the backtest.
+const shockHoldChecks = shockRules.holdChecks;
+const shockHoldWithin = shockRules.holdWithin;
+const shockMaxSpread = shockRules.maxSpread;
+
+/** The alert's name at the start of a watch's detail. */
+function alertWords(fast?: { shock?: boolean }): string {
+  if (!fast) return "";
+  return fast.shock ? "shock alert; " : "60-second alert; ";
+}
+
 const outcomeWords: Record<string, string> = {
   watching: "watching for the side",
   traded: "bought the leg",
@@ -154,9 +183,16 @@ const outcomeWords: Record<string, string> = {
   strength: "skipped, the strength disagrees with the side",
   slow_cross: "no side fast enough after the alert",
   burst: "skipped, the burst before the alert is not the side's way",
+  wide_spread: "skipped, the leg's spread is over 30% of its mid",
   refused: "refused by the risk rules",
   error: "failed",
 };
+
+/** The date a week after `date` (YYYY-MM-DD). */
+const weekLater = (date: string) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + 7 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 
 export class StrangleBot {
   private readonly o: Required<Omit<StrangleOptions, "earnings">> & {
@@ -187,13 +223,33 @@ export class StrangleBot {
   // Every watched stock's alert checks at the last closed minute (the app's map).
   private scanned: StrangleScanRow[] = [];
   // Each open trade's live marks, for the status (not stored).
+  // The 60-second alert (strangle/fast.ts): today's 10-second tape, each
+  // stock's 20-session medians once its history is in, its crossing state.
+  private tape: FastTape | null = null;
+  private fastBase = new Map<string, FastBaseline>();
+  private fastFire = new Map<string, FastFire>();
+  private shockFire = new Map<string, FastFire>();
+  // A shock trade's side seen on consecutive 1-second checks: bought at 5.
+  private holds = new Map<string, { side: Leg; n: number }>();
+  private fastDone = new Map<string, number>();
+  private fastBusy = false;
   private marks = new Map<
     string,
     { leg: number | null; stock: number | null; at: number }
   >();
 
+  private readonly books: AlertBooks;
   constructor(options: StrangleOptions) {
     this.o = { now: Date.now, log: () => {}, ...options };
+    this.books = new AlertBooks({
+      chain: (u, right, from, to) => this.o.trading.chain(u, right, from, to),
+      ...(this.o.trading.quotes
+        ? { quotes: (c: string[]) => this.o.trading.quotes!(c) }
+        : {}),
+      store: this.o.store,
+      now: () => this.o.now(),
+      log: (line) => this.o.log(line),
+    });
   }
 
   // ---- settings ----
@@ -318,6 +374,7 @@ export class StrangleBot {
     if (wall >= close + 5 && this.summarized !== date) {
       this.summarized = date;
       await this.summary(date);
+      void this.keepFastBars(date);
     }
   }
 
@@ -360,7 +417,7 @@ export class StrangleBot {
     try {
       for (const t of waiting) {
         const stock = prices.get(t.symbol);
-        if (crossTooLate(this.sessionSecond(), t.alertMinute, s)) {
+        if (this.tooLate(t, s)) {
           this.slowCross(t, s);
           continue;
         }
@@ -368,6 +425,16 @@ export class StrangleBot {
         if (!stock || waitedOut(m, t.alertMinute, s) || m >= s.endMinute)
           continue;
         const side = sideOf(stock, t.stockRef, t.unit, s);
+        if (t.shock) {
+          // The shock buys once the side has held 5 checks in a row (leg_seconds.py hold5).
+          const held = this.holds.get(t.id);
+          const n = side && held?.side === side ? held.n + 1 : 1;
+          if (side) this.holds.set(t.id, { side, n });
+          else this.holds.delete(t.id);
+          if (side && n >= shockHoldChecks)
+            await this.enter(t.id, side, m, stock, s);
+          continue;
+        }
         if (side) await this.enter(t.id, side, m, stock, s);
       }
     } catch (error) {
@@ -376,6 +443,293 @@ export class StrangleBot {
         `Side watch failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  /**
+   * Called every 2 seconds: the 60-second alert (F60x2) and the shock alert
+   * (the same rule at 15x). Reads the stocks' new trades into today's
+   * 10-second bars, checks each finished slot in order, and on a fresh alert
+   * in the rule's hours watches the stock for its side, as a minute alert does.
+   */
+  async watchFast(): Promise<void> {
+    const tape = this.tape;
+    const date = this.day;
+    if (this.fastBusy || !tape || date === null) return;
+    const s = this.settings();
+    if (!s.fastAlert && !s.shockAlert) return;
+    const now = this.o.now();
+    if (newYork(now).date !== date || now < tape.openMs) return;
+    this.fastBusy = true;
+    try {
+      await tape.poll(this.o.market, now);
+      // A slot is checked 3 seconds after it ends, once its trades are in.
+      const ready = Math.min(
+        Math.floor((tape.cursor - 3_000 - tape.openMs) / 10_000) - 1,
+        fastRule.slots - 1,
+      );
+      for (const symbol of this.symbols) {
+        const base = this.fastBase.get(symbol);
+        const done = this.fastDone.get(symbol) ?? -1;
+        if (!base || ready <= done) continue;
+        const day = tape.day(symbol);
+        const cf = carried(day.c);
+        const cum = paceSums(day.v);
+        let fire = this.fastFire.get(symbol);
+        if (!fire) this.fastFire.set(symbol, (fire = new FastFire()));
+        let shock = this.shockFire.get(symbol);
+        if (!shock) this.shockFire.set(symbol, (shock = new FastFire()));
+        const rules = [
+          { rule: fastRule, fire, on: s.fastAlert, isShock: false },
+          { rule: shockRule, fire: shock, on: s.shockAlert, isShock: true },
+        ];
+        for (let t = done + 1; t <= ready; t++) {
+          for (const r of rules) {
+            if (!r.on) continue;
+            const st = fastState(day, cf, base, t, cum, r.rule);
+            if (!r.fire.step(t, st.on)) continue;
+            if (t < r.rule.firstSlot || t > r.rule.lastSlot) continue;
+            const second = (t + 1) * 10;
+            // Every fired alert is kept for the website's backtest, a late one too.
+            this.o.store.saveFastAlert({
+              day: date,
+              symbol,
+              second,
+              kind: r.isShock ? "shock" : "fast",
+              price: cf[t]!,
+              up: st.up,
+            });
+            // A slot passed while catching up (a start mid-session): no trade.
+            if (this.sessionSecond() - second > 30) continue;
+            // Every alert's option books, traded or not (alert-books.ts).
+            void this.watchBooksOf(
+              date,
+              symbol,
+              second,
+              r.isShock ? "shock" : "fast",
+              s,
+            );
+            await this.fastEntry(
+              date,
+              symbol,
+              second,
+              cf[t]!,
+              st.up,
+              s,
+              r.isShock,
+            );
+          }
+        }
+        this.fastDone.set(symbol, ready);
+      }
+    } catch (error) {
+      this.event(
+        "error",
+        `60-second alert failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      this.fastBusy = false;
+    }
+  }
+
+  /**
+   * The option books around an alert, traded or not (alert-books.ts): every
+   * 2 s for 300 s, then once a minute to the bot's last sale; the bot's
+   * expiry for the stock, else its nearest within a week.
+   */
+  private async watchBooksOf(
+    date: string,
+    symbol: string,
+    second: number,
+    kind: AlertBookWatch["kind"],
+    s: StrangleSettings,
+  ) {
+    try {
+      let expiry = await this.expiryFor(symbol, date, s).catch(() => null);
+      if (!expiry) {
+        const week = await this.o.trading.chain(
+          symbol,
+          "call",
+          date,
+          weekLater(date),
+        );
+        expiry = week.map((q) => q.expiry).sort()[0] ?? null;
+      }
+      if (!expiry) return;
+      await this.books.start({
+        day: date,
+        symbol,
+        second,
+        kind,
+        expiry,
+        // Once a minute after the first 300 s, until the bot's last sale.
+        endAt: newYorkToUtc(date, 570 + s.endMinute),
+      });
+    } catch (error) {
+      this.event(
+        "error",
+        `Alert books of ${symbol} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /** Every 2 seconds: the running alerts' option books. */
+  async watchBooks(): Promise<void> {
+    await this.books.step();
+  }
+
+  /** A day's fired 10-second alerts and alert books, for the website's backtest data (read-only). */
+  alertData(day: string): {
+    day: string;
+    alerts: FastAlertRow[];
+    books: AlertBookWatch[];
+  } {
+    return {
+      day,
+      alerts: this.o.store.fastAlerts(day),
+      books: this.o.store.alertBooks(day),
+    };
+  }
+
+  /**
+   * After the close: every watched stock's 10-second bars of the session,
+   * kept for good (user 2026-10-31, the Volume bot's backtest data). From
+   * today's tape when it ran to the close, else fetched from the trades.
+   */
+  private async keepFastBars(date: string) {
+    const close = coreClose(date);
+    if (close === null || !this.o.market.trades) return;
+    const openMs = newYorkToUtc(date, 570);
+    const endMs = newYorkToUtc(date, close);
+    // Today's tape counts only when it was read to the close.
+    const tape =
+      this.tape !== null && this.tape.cursor >= endMs ? this.tape : null;
+    const have = new Set(this.o.store.fastBarSymbols(date));
+    const queue = this.symbols.filter((sym) => !have.has(sym));
+    let kept = 0;
+    let failed = 0;
+    const worker = async () => {
+      for (let sym = queue.shift(); sym; sym = queue.shift()) {
+        try {
+          const bars = tape
+            ? tape.day(sym)
+            : await fetchFastBars(this.o.market, sym, openMs, endMs);
+          if (bars && bars.v.some((v) => v > 0)) {
+            this.o.store.saveFastBars(sym, date, bars);
+            kept++;
+          }
+        } catch {
+          failed++;
+        }
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    this.event(
+      "info",
+      `10-second bars of ${date} kept for ${kept} stocks${failed ? ` (${failed} failed)` : ""}`,
+    );
+  }
+
+  private async fastEntry(
+    date: string,
+    symbol: string,
+    second: number,
+    price: number,
+    up: boolean,
+    s: StrangleSettings,
+    shock = false,
+  ) {
+    if (!s.enabled) return;
+    if (this.o.store.openTrades().some((t) => t.symbol === symbol)) return;
+    let traded = 0;
+    for (const t of this.o.store.recentTrades(date))
+      if (t.day === date && t.symbol === symbol && t.leg && t.leg.bought > 0)
+        traded++;
+    if (traded >= s.maxPerStock) return;
+    const minute = Math.floor(second / 60);
+    const side = up ? "up" : "down";
+    // One alert a stock a minute: a minute alert of the same minute keeps it.
+    const added = this.o.store.addSignal({
+      day: date,
+      symbol,
+      minute,
+      side,
+      outcome: "",
+      detail: "",
+      at: this.o.now(),
+    });
+    if (!added) return;
+    const clock = `${clockOf(Math.floor(second / 60))}:${String(second % 60).padStart(2, "0")}`;
+    const name = shock ? "shock alert" : "60-second volume alert";
+    this.event("signal", `${symbol}: ${name} ${side} at ${clock}`);
+    try {
+      const r = await this.watch(date, symbol, minute, side, s, {
+        second,
+        price,
+        shock,
+      });
+      this.outcome(date, symbol, r.outcome, r.detail);
+    } catch (error) {
+      this.outcome(
+        date,
+        symbol,
+        "error",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  /**
+   * The 60-second alert's history: each stock's 20 prior sessions in
+   * 10-second bars, from the store or fetched once from its trades; a stock's
+   * alert starts once all 20 are in.
+   */
+  private async fillFast(date: string) {
+    const s = this.settings();
+    if (!this.o.market.trades || (!s.fastAlert && !s.shockAlert)) return;
+    const days = previousSessions(date, fastRule.days);
+    const queue = [...this.symbols];
+    let ready = 0;
+    let failed = 0;
+    const one = async (symbol: string) => {
+      const prior: FastWindows[] = [];
+      for (const d of days) {
+        if (this.day !== date) return;
+        let w = this.o.store.fastDay(symbol, d);
+        const close = coreClose(d);
+        if (!w && close !== null) {
+          const got = await fetchFastDay(
+            this.o.market,
+            symbol,
+            newYorkToUtc(d, 570),
+            newYorkToUtc(d, close),
+            fastWindows,
+          );
+          if (got) {
+            this.o.store.saveFastDay(symbol, d, got.windows);
+            this.o.store.saveFastBars(symbol, d, got.bars);
+            w = got.windows;
+          }
+        }
+        if (w) prior.push(w);
+      }
+      const base = fastBaseline(prior);
+      if (base && this.day === date) {
+        this.fastBase.set(symbol, base);
+        ready++;
+      }
+    };
+    const worker = async () => {
+      for (let symbol = queue.shift(); symbol; symbol = queue.shift())
+        await one(symbol).catch(() => {
+          failed++;
+        });
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    if (this.day === date)
+      this.event(
+        "info",
+        `60-second alert: 20 sessions of 10-second bars in for ${ready} of ${this.symbols.length} stocks${failed ? ` (${failed} failed, again at the next start)` : ""}`,
+      );
   }
 
   /** Buys the side's leg once, whichever loop saw the side first. */
@@ -451,6 +805,21 @@ export class StrangleBot {
     // In the background: one chain read a stock, so the warm-up does not wait.
     this.noExpiry = new Set();
     void this.findNoExpiry(date, s);
+    this.tape = null;
+    this.fastBase.clear();
+    this.fastFire.clear();
+    this.shockFire.clear();
+    this.holds.clear();
+    this.fastDone.clear();
+    const closeAt = coreClose(date);
+    if (this.o.market.trades && closeAt !== null) {
+      this.tape = new FastTape(
+        [...this.symbols],
+        newYorkToUtc(date, 570),
+        newYorkToUtc(date, closeAt),
+      );
+      void this.fillFast(date);
+    }
   }
 
   private async loadEarnings(date: string) {
@@ -614,8 +983,6 @@ export class StrangleBot {
       if (t.day === date && t.leg && t.leg.bought > 0)
         traded.set(t.symbol, (traded.get(t.symbol) ?? 0) + 1);
     for (const symbol of this.symbols) {
-      if (busy.has(symbol)) continue;
-      if ((traded.get(symbol) ?? 0) >= s.maxPerStock) continue;
       const hist = this.hist.get(symbol);
       if (!hist) continue;
       // A new burst at m: an alert now and none the minute before (the day's
@@ -626,6 +993,10 @@ export class StrangleBot {
       const first = firstAlert(sides, s.firstMinute, m);
       const isFirst = first !== null && first.minute === m;
       if (!isFirst && sides[m - 1]) continue;
+      // Every plan alert's option books, traded or not (alert-books.ts).
+      void this.watchBooksOf(date, symbol, (m + 1) * 60, "plan", s);
+      if (busy.has(symbol)) continue;
+      if ((traded.get(symbol) ?? 0) >= s.maxPerStock) continue;
       const added = this.o.store.addSignal({
         day: date,
         symbol,
@@ -707,6 +1078,7 @@ export class StrangleBot {
     m: number,
     side: "up" | "down",
     s: StrangleSettings,
+    fast?: { second: number; price: number; shock?: boolean },
   ): Promise<{ outcome: string; detail: string }> {
     const blocked = this.newsBlock(date, symbol, s);
     if (blocked) return blocked;
@@ -720,15 +1092,33 @@ export class StrangleBot {
     // when there is none today; none of them ends it now.
     const expiry = await this.expiryFor(symbol, date, s);
     if (!expiry) return { outcome: "no_expiry", detail: "" };
+    // The shock alert: an expiry at most 2 calendar days out (volume-bot.md
+    // 2026-10-30: its 3-4 DTE trades lost in both halves).
+    if (fast?.shock && daysBetween(date, expiry) > shockRules.maxDays)
+      return {
+        outcome: "no_expiry",
+        detail: "the shock alert trades an expiry at most 2 days out",
+      };
+    // The 60-second alert was tested on 0/1 DTE only.
+    if (fast && !fast.shock && expiry > nextSession(date))
+      return {
+        outcome: "no_expiry",
+        detail:
+          "the 60-second alert trades a same-day or next-session expiry only",
+      };
     // The side lines start at the alert minute's close, as the backtest's
     // (leg_seconds.py stock0), not at a trade read seconds later: a print a few
     // cents off moves both lines and can pick the other side (the replay of
     // 2026-10-08, CRM). The latest trade only when that bar is missing.
+    // The 60-second alert's lines start at its 10-second bar's close.
     const ref =
+      fast?.price ??
       this.barsOf(symbol).find((b) => b.m === m)?.c ??
       (await this.stockNow(symbol, m));
     if (ref === null) return { outcome: "no_prices", detail: "no stock price" };
-    const burst = burstOf(this.barsOf(symbol), m, unit);
+    const burst = fast
+      ? burstAtSecond(this.barsOf(symbol), fast.second, fast.price, unit)
+      : burstOf(this.barsOf(symbol), m, unit);
     const trade: StrangleTrade = {
       id: randomUUID(),
       day: date,
@@ -738,6 +1128,8 @@ export class StrangleBot {
       unit,
       stockRef: ref,
       burst,
+      ...(fast ? { alertSecond: fast.second, fast: true } : {}),
+      ...(fast?.shock ? { shock: true } : {}),
       side: null,
       sideMinute: null,
       best: null,
@@ -753,7 +1145,7 @@ export class StrangleBot {
     const pct = (s.confirmUnits * unit * 100).toFixed(2);
     return {
       outcome: "watching",
-      detail: `stock ${ref.toFixed(2)}; the side at ${pct}% either way${burst === null ? "" : `; burst ${burst.toFixed(2)}×`}${expiry === date ? "" : expiry === nextSession(date) ? "; 1DTE" : `; expiry ${expiry}`}`,
+      detail: `${alertWords(fast)}stock ${ref.toFixed(2)}; the side at ${pct}% either way${burst === null ? "" : `; burst ${burst.toFixed(2)}×`}${expiry === date ? "" : expiry === nextSession(date) ? "; 1DTE" : `; expiry ${expiry}`}`,
     };
   }
 
@@ -832,6 +1224,8 @@ export class StrangleBot {
           o.qty = sold;
           const price = priceOf(job.result);
           if (price !== null) o.price = price;
+          const fillBook = lastBookOf(job.result, this.o.now(), "alpaca");
+          if (fillBook) o.fillBook = fillBook;
           leg.qty = Math.max(0, Math.min(leg.qty - sold, now));
           this.event(
             "order",
@@ -960,13 +1354,28 @@ export class StrangleBot {
     return (newYork(now).minute - 570) * 60 + (Math.floor(now / 1000) % 60);
   }
 
+  /** Seconds from the alert to now: a minute alert is read at its minute's close, the 60-second one at its own second. */
+  private lateBy(t: StrangleTrade): number {
+    return this.sessionSecond() - (t.alertSecond ?? (t.alertMinute + 1) * 60);
+  }
+
+  /**
+   * With the cross filter, the side has to come within crossMaxSeconds of the
+   * alert; a shock trade's side has to hold within shockHoldWithin seconds.
+   */
+  private tooLate(t: StrangleTrade, s: StrangleSettings): boolean {
+    if (t.shock) return this.lateBy(t) > shockHoldWithin;
+    return s.crossFilter && this.lateBy(t) > s.crossMaxSeconds;
+  }
+
   /** The cross filter: no side within crossMaxSeconds of the alert ends the watch. */
   private slowCross(t: StrangleTrade, s: StrangleSettings) {
     this.close(t, "no side fast enough after the alert");
     this.o.store.updateSignal(t.day, t.symbol, "slow_cross", "");
+    const within = t.shock ? shockHoldWithin : s.crossMaxSeconds;
     this.event(
       "skip",
-      `${t.symbol}: no side within ${s.crossMaxSeconds} s of the alert, no trade`,
+      `${t.symbol}: no side within ${within} s of the alert, no trade`,
     );
   }
 
@@ -994,13 +1403,14 @@ export class StrangleBot {
           this.close(t, "no side in time");
           continue;
         }
-        if (crossTooLate(this.sessionSecond(), t.alertMinute, s)) {
+        if (this.tooLate(t, s)) {
           this.slowCross(t, s);
           continue;
         }
         const side =
           stock !== null ? sideOf(stock, t.stockRef, t.unit, s) : null;
-        if (side) {
+        // A shock trade is bought by the 1-second watch, once its side holds.
+        if (side && !t.shock) {
           await this.enter(t.id, side, m, stock!, s);
           continue;
         }
@@ -1063,30 +1473,58 @@ export class StrangleBot {
     }
   }
 
-  /** The liquid fallback: the first strike in liquidOrder's order with enough volume, or null. */
-  private async liquidLeg(
+  /** The side came: pick that leg and buy it, or end the trade with why not. */
+  /**
+   * The leg at one delta (strangle/pick.ts, shared with the backtest): the
+   * pick, the picked leg's book kept with the signal, then the volume check
+   * with the liquid fallback.
+   */
+  private async legAt(
+    t: StrangleTrade,
     quotes: OptionQuote[],
     stock: number,
     right: "call" | "put",
-    expiry: string,
-    picked: { quote: OptionQuote; delta: number },
-    rules: { otmScanMax: number; maxStrikes: number; minPrice: number },
-    day: string,
-    minute: number,
-    minVolume: number,
-  ): Promise<{ quote: OptionQuote; mid: number; delta: number } | null> {
-    for (const c of liquidOrder(quotes, stock, right, expiry, picked, rules)) {
-      const volume = await this.o.market.optionVolume30(
-        c.quote.symbol,
-        day,
-        minute,
-      );
-      if (volume >= minVolume) return c;
-    }
-    return null;
+    dte: number,
+    delta: number,
+    m: number,
+    s: StrangleSettings,
+  ): Promise<
+    | {
+        ok: true;
+        got: { quote: OptionQuote; mid: number; delta: number };
+        fallback: string;
+        book: ReturnType<typeof bookOf>;
+      }
+    | { ok: false; outcome: string; detail: string }
+  > {
+    let book: ReturnType<typeof bookOf>;
+    const got = await legAt(
+      quotes,
+      stock,
+      right,
+      t.day,
+      dte,
+      delta,
+      s,
+      (contract) => this.o.market.optionVolume30(contract, t.day, m),
+      (contract) => this.words(contract),
+      (chosen) => {
+        // The picked leg's bid / ask, kept with the signal (paper fills are not real ones).
+        book = bookOf(chosen, this.o.now(), "alpaca"); // its own Alpaca paper account
+        if (book)
+          this.o.store.setSignalBook(t.day, t.symbol, {
+            ...book,
+            contract: chosen.symbol,
+          });
+      },
+    );
+    if (!got.ok) return got;
+    let fallback = got.fallback;
+    if (delta !== s.delta)
+      fallback += ` (the ${s.delta.toFixed(2)} leg too cheap or thin: ${delta.toFixed(2)} delta)`;
+    return { ok: true, got, fallback, book };
   }
 
-  /** The side came: pick that leg and buy it, or end the trade with why not. */
   private async buyLeg(
     t: StrangleTrade,
     side: Leg,
@@ -1100,12 +1538,15 @@ export class StrangleBot {
     };
     t.side = side;
     t.sideMinute = m;
-    const late = secondsSinceAlert(this.sessionSecond(), t.alertMinute);
-    if (crossTooLate(this.sessionSecond(), t.alertMinute, s))
+    const late = this.lateBy(t);
+    if (this.tooLate(t, s))
       return fail("slow_cross", `the side ${late} s after the alert`);
     // A same-week expiry (later than the next session) asks for the stronger burst.
-    const weekly = (t.expiry ?? t.day) > nextSession(t.day);
-    const burstRule = weekly ? { ...s, burstMin: s.burstMinWeek } : s;
+    const weekly = !t.shock && (t.expiry ?? t.day) > nextSession(t.day);
+    let burstRule = s;
+    if (weekly) burstRule = { ...s, burstMin: s.burstMinWeek };
+    // The shock: any burst the side's way (>= 0), whatever the expiry.
+    if (t.shock) burstRule = { ...s, burstFilter: true, burstMin: 0 };
     if (!burstAgrees(side, t.burst, burstRule))
       return fail(
         "burst",
@@ -1132,53 +1573,24 @@ export class StrangleBot {
       (Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${t.day}T00:00:00Z`)) /
         86_400_000,
     );
-    const pick = {
-      delta: s.delta,
-      dteMin: dte,
-      dteMax: dte,
-      otmScanMax: 0.2,
-      maxStrikes: 16,
-      minPrice: s.minPrice,
-      minVolume30: s.minVolume,
-      cheapFallback: false, // the Volume bot keeps its own legs: no fallback
-    };
     const quotes = await this.o.trading.chain(t.symbol, right, expiry, expiry);
-    let got = pickContract(quotes, stock, right, t.day, pick);
-    // The picked leg's bid / ask, kept with the signal (paper fills are not real ones).
-    const chosen = got.quote;
-    const book = bookOf(chosen, this.o.now(), "alpaca"); // its own Alpaca paper account
-    if (chosen && book)
-      this.o.store.setSignalBook(t.day, t.symbol, {
-        ...book,
-        contract: chosen.symbol,
-      });
-    if (!got.ok) return fail(got.reason, right);
-    let fallback = "";
-    if (s.minVolume > 0) {
-      const first = got.quote.symbol;
-      const volume = await this.o.market.optionVolume30(first, t.day, m);
-      if (volume < s.minVolume) {
-        const liquid = s.liquidFallback
-          ? await this.liquidLeg(
-              quotes,
-              stock,
-              right,
-              expiry,
-              got,
-              pick,
-              t.day,
-              m,
-              s.minVolume,
-            )
-          : null;
-        if (!liquid)
-          return fail(
-            "thin",
-            `${this.words(first)}: ${volume} contracts in 30 minutes`,
-          );
-        got = { ok: true, ...liquid };
-        fallback = ` (liquid fallback: ${this.words(first)} traded ${volume})`;
-      }
+    // The shock steps 0.05 toward the money, up to 0.35, while the leg is too
+    // cheap or too thin (volume-bot.md 2026-10-30, "step35"); the rest pick once.
+    let leg: Awaited<ReturnType<typeof this.legAt>> | null = null;
+    for (const delta of legDeltas(s, !!t.shock)) {
+      leg = await this.legAt(t, quotes, stock, right, dte, delta, m, s);
+      if (leg.ok) break;
+    }
+    if (!leg || !leg.ok)
+      return fail(leg?.outcome ?? "no_prices", leg?.detail ?? right);
+    const { got, fallback, book } = leg;
+    if (t.shock) {
+      const spread = (got.quote.ask - got.quote.bid) / got.mid;
+      if (spread > shockMaxSpread)
+        return fail(
+          "wide_spread",
+          `${this.words(got.quote.symbol)}: bid ${got.quote.bid.toFixed(2)}, ask ${got.quote.ask.toFixed(2)} (${(spread * 100).toFixed(0)}% of the mid)`,
+        );
     }
     const contract = got.quote.symbol;
     if (await this.o.trading.held(contract))

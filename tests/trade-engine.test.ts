@@ -383,6 +383,41 @@ test("chain carries the stock price, or null when the broker has none", async ()
   assert.ok(down.quotes.length > 0);
 });
 
+test("chain: today's volume and the last 30 minutes, null before the session trades", async () => {
+  const { broker, engine } = setup();
+  let asked: { symbols: string[]; end: number } | null = null;
+  broker.optionVolume30 = async (symbols, end) => {
+    asked = { symbols, end };
+    return new Map([[near, 120]]);
+  };
+  // Before any trade today (the daily bar is Friday's): no volumes at all.
+  broker.setVolume(near, 900, "2026-10-09");
+  const before = await engine.chainFor({ underlying: "nvda", right: "call" });
+  assert.deepEqual(
+    before.quotes.map((x) => [x.volume, x.volume30]),
+    [[null, null]],
+  );
+  assert.equal(asked, null);
+  // Traded today: today's bar, and the 30 minutes up to now (11:00 New York).
+  broker.setVolume(near, 340, "2026-10-12");
+  const after = await engine.chainFor({ underlying: "nvda", right: "call" });
+  assert.equal(after.minVolume30, 200);
+  assert.deepEqual(
+    after.quotes.map((x) => [x.contract, x.volume, x.volume30]),
+    [[near, 340, 120]],
+  );
+  assert.deepEqual(asked, { symbols: [near], end: monday });
+  // Without the minute bars the chain still comes back, today's volume kept.
+  broker.optionVolume30 = async () => {
+    throw new Error("bars down");
+  };
+  const down = await engine.chainFor({ underlying: "nvda", right: "call" });
+  assert.deepEqual(
+    down.quotes.map((x) => [x.volume, x.volume30]),
+    [[340, null]],
+  );
+});
+
 // The ticket's order types and the automatic stop as a choice (user
 // 2026-10-18); option-tickets.ts.
 

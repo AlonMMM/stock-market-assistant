@@ -42,6 +42,9 @@ export interface ExitResult {
   timedOut: boolean; // not everything sold within maxMs
   // The stop on the contracts still held; null when none are.
   stop: { price: number; qty: number; error?: string } | null;
+  // The last bid / ask the sale saw before it ended (the book at the fill, for
+  // the backtest's real quotes); absent when no quote was read.
+  quote?: { bid: number; ask: number };
 }
 
 /** "all", "half" (rounded up) or a number of contracts. */
@@ -111,6 +114,7 @@ export async function sellAtBid(
   let price: number | null = null;
   let attempts = 0;
   let waited = 0;
+  let lastQuote: ExitResult["quote"];
   let failure: unknown;
   try {
     while (stopsGone && waited <= maxMs) {
@@ -118,7 +122,9 @@ export async function sellAtBid(
         order = await client.order(order.id);
         if (finished.has(order.status)) break;
       }
-      const bid = (await client.quote(symbol)).bid;
+      const q = await client.quote(symbol);
+      lastQuote = { bid: q.bid, ask: q.ask };
+      const bid = q.bid;
       if (bid > 0 && bid !== price) {
         try {
           order = order
@@ -198,5 +204,6 @@ export async function sellAtBid(
     attempts,
     timedOut: sold < asked,
     stop,
+    ...(lastQuote ? { quote: lastQuote } : {}),
   };
 }

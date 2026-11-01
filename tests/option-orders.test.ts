@@ -181,6 +181,16 @@ test("ladder: does not send when the spread is too wide", async () => {
   assert.equal(calls[0], "buy 3 @ 1");
 });
 
+test("ladder: a forced buy is not sent when the option has no bid", async () => {
+  const { client, calls } = fakeClient([[0, 0.6]], null);
+  const result = await buyWithLadder(client, symbol, 3, {
+    ...fast,
+    anySpread: true,
+  });
+  assert.equal(result.status, "rejected-spread");
+  assert.deepEqual(calls, []);
+});
+
 test("ladder: raises until filled", async () => {
   const { client, calls } = fakeClient([[1.0, 1.1]], 1.07);
   const result = await buyWithLadder(client, symbol, 3, fast);
@@ -774,6 +784,68 @@ test("alpaca chain: IV from the snapshots, open interest from the contracts", as
   assert.deepEqual(
     (await chain()).map((q) => q.openInterest),
     [null, null],
+  );
+});
+
+test("alpaca chain: today's volume from the daily bar, 30 minutes from the minute bars", async () => {
+  const urls: URL[] = [];
+  const fetcher = (async (input: URL | RequestInfo) => {
+    const url = new URL(String(input));
+    urls.push(url);
+    if (url.pathname === "/v2/options/contracts")
+      return Response.json({ option_contracts: [], next_page_token: null });
+    if (url.pathname === "/v1beta1/options/bars")
+      return Response.json({
+        bars: {
+          NVDA261016C00200000: [{ v: 30 }, { v: 12 }],
+          NVDA261016C00210000: null,
+        },
+        next_page_token: null,
+      });
+    return Response.json({
+      snapshots: {
+        NVDA261016C00200000: {
+          latestQuote: { bp: 1, ap: 1.1 },
+          dailyBar: { v: 1520, t: "2026-10-12T04:00:00Z" },
+        },
+        NVDA261016C00210000: { latestQuote: { bp: 0.4, ap: 0.5 } },
+      },
+    });
+  }) as typeof fetch;
+  const alpaca = new AlpacaTrading("k", "s", undefined, "opra", fetcher);
+  const quotes = (
+    await alpaca.chain("NVDA", "call", "2026-10-12", "2026-10-30")
+  ).sort((a, b) => a.strike - b.strike);
+  assert.deepEqual(
+    quotes.map((q) => [q.volume, q.volumeDate]),
+    [
+      [1520, "2026-10-12"],
+      [undefined, undefined],
+    ],
+  );
+  const end = Date.parse("2026-10-12T15:00:00Z");
+  const v30 = await alpaca.optionVolume30(
+    ["NVDA261016C00200000", "NVDA261016C00210000"],
+    end,
+  );
+  assert.deepEqual(
+    [...v30],
+    [
+      ["NVDA261016C00200000", 42],
+      ["NVDA261016C00210000", 0],
+    ],
+  );
+  const bars = urls.find((u) => u.pathname === "/v1beta1/options/bars")!;
+  assert.deepEqual(
+    ["symbols", "timeframe", "start", "end"].map((k) =>
+      bars.searchParams.get(k),
+    ),
+    [
+      "NVDA261016C00200000,NVDA261016C00210000",
+      "1Min",
+      "2026-10-12T14:30:00.000Z",
+      "2026-10-12T15:00:00.000Z",
+    ],
   );
 });
 

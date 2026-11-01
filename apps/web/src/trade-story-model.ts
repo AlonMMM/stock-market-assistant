@@ -288,7 +288,7 @@ export function rulesFor(
   return settings;
 }
 
-const fillMarkers = (t: ClosedTrade): Marker[] =>
+export const fillMarkers = (t: ClosedTrade): Marker[] =>
   (t.fills ?? []).map((f: TradeFill) => {
     const ms = Date.parse(f.at);
     if (f.side === "buy")
@@ -348,6 +348,14 @@ export function botExitWords(
     "strength-gone": [
       "Strength gone",
       `The stock's edge over SPY since the open fell to t ${r.weaknessT}: all sold on the entry day.`,
+    ],
+    "stage-half": [
+      "Staged exit, half",
+      `The stock was ${r.stageHalfS30} of its usual 30-minute move against the price at the signal: half sold.`,
+    ],
+    "stage-full": [
+      "Staged exit, the rest",
+      `The stock was ${r.stageFullS30} of its usual 30-minute move against the price at the signal: the rest sold.`,
     ],
     "failed-break": [
       "Failed break",

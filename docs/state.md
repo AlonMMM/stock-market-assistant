@@ -92,6 +92,27 @@ SPY/sector, Score, Rel vol, Day range and Alerts. A dark mode (IBKR's colours) f
 sun/moon button to override it; since 2026-10-27 it covers the whole app (below). Charts still stop at 20:00. See the
 [task](tasks/watchlist-night-prices.md).
 
+## Backtest section: a bot over a period (2026-10-30, `feat/bot-backtest-page`)
+
+The user's request: no Alerts tab, and the Backtest section tests a bot on stocks over a period.
+
+- **Sections:** Watchlist · Trading · Backtest. The Alerts page and its links are gone; an old `#alerts` link or a
+  Telegram alert link opens the Watchlist (the stock's page). The collector, the alerts on the Watchlist and the
+  Volume bot's use of them are unchanged.
+- **Backtest:** bot (Main bot; the Volume bot is "coming soon", its live rules need second data), version (1.0.0–2.8.0),
+  stocks (typed, the bot's core list or a watchlist, up to 40), period (presets or dates from 2024-02-01), the rules
+  (editable, starred when changed) and the money (start, size %, compounding, fee a contract, buys a day, open
+  positions, fill cost). Result: total P&L, return, win rate, worst drop, the account curve, the skipped signals,
+  and every trade; a trade opens the History trade window (chart with entry and exits, why, fills).
+- **Engine:** `packages/trading/src/bot/backtest.ts` runs the live bot's signal, news filter, picker and exits on
+  one-minute bars; fills as the research simulator (next option bar's middle ± fill cost; delta from implied vol).
+  `backtest-account.ts` applies the account on the page, so money settings need no new run. `POST /api/bot-backtest`
+  (Worker and local API) is one stock and up to 60 sessions; the page splits the rest, 4 requests at a time.
+  Not simulated: early entry inside the minute (read at the close), the daily loss limit, the drawdown pause, the
+  broker's safety stop. `scripts/bot-backtest-run.ts` runs it from the command line.
+- **Checked:** on NVDA, AMD, TSLA (Sep–Oct 2026) the trades match the Python replay's (`week.py`) where the rules
+  are the same (contract, minutes, exit prices); tests in `tests/bot-backtest.test.ts` (synthetic data).
+
 ## Indi bot on the paper account (2026-10-21, in review)
 
 The backtested Indi rules trade the owner's Alpaca paper account from the trading service.

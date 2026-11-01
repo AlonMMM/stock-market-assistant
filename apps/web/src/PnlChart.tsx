@@ -50,7 +50,8 @@ export function PnlChart({
   history,
   periodLabel,
 }: {
-  history: PortfolioHistory;
+  // The account's closed trades and its value at the start (a backtest's too).
+  history: Pick<PortfolioHistory, "trades" | "baseEquity">;
   // The period chosen above the chart, in words ("month").
   periodLabel?: string;
 }) {

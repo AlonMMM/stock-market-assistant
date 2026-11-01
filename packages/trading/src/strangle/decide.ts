@@ -101,6 +101,25 @@ export function burstOf(
   return (at / before - 1) / unit;
 }
 
+/**
+ * The burst of an alert read at `second` after 09:30 at `price` (the
+ * 60-second alert; f60_prefilter.py): against the close of the minute that
+ * ended 3 minutes before, in typical 30-minute moves. For a minute alert
+ * (second = the end of its minute) this is burstOf.
+ */
+export function burstAtSecond(
+  bars: readonly { m: number; c: number }[],
+  second: number,
+  price: number,
+  unit: number,
+): number | null {
+  const before = bars.find(
+    (b) => b.m === Math.floor((second - 180) / 60) - 1,
+  )?.c;
+  if (!(before && price > 0 && unit > 0)) return null;
+  return (price / before - 1) / unit;
+}
+
 /** With the burst filter, the side stands only when the burst points its way by burstMin. */
 export function burstAgrees(
   side: Leg,
@@ -137,3 +156,24 @@ export function legQty(equity: number, sizePct: number, price: number): number {
   if (!(price > 0) || !(equity > 0)) return 0;
   return Math.floor((equity * sizePct) / 100 / (price * 100));
 }
+
+/**
+ * The shock alert's entry (volume-bot.md 2026-10-30): the side held on 5
+ * 1-second checks in a row within 300 s of the alert; the leg stepped toward
+ * the money up to 0.35 delta; no buy over a 30% spread; an expiry at most 2
+ * calendar days out (its 3-4 DTE trades lost in both halves).
+ */
+export const shockRules = {
+  holdChecks: 5,
+  holdWithin: 300,
+  maxDelta: 0.35,
+  maxSpread: 0.3,
+  maxDays: 2,
+};
+
+/** Calendar days from `date` to `expiry` (both YYYY-MM-DD). */
+export const daysBetween = (date: string, expiry: string) =>
+  Math.round(
+    (Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) /
+      86_400_000,
+  );

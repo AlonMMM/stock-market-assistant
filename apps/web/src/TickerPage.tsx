@@ -131,7 +131,6 @@ export function TickerPage({
   night,
   alerts,
   onBack,
-  onShowAlerts,
   onTrade,
 }: {
   ticker: string;
@@ -140,7 +139,6 @@ export function TickerPage({
   night?: NightPrices;
   alerts: FeedAlert[];
   onBack: () => void;
-  onShowAlerts: () => void;
   // Absent for visitors who cannot trade.
   onTrade?: ((mode: "options" | "stock") => void) | undefined;
 }) {
@@ -278,9 +276,6 @@ export function TickerPage({
             Price alert
           </button>
         )}
-        <button type="button" className="pos-cancel" onClick={onShowAlerts}>
-          Volume alerts{today.length > 0 ? ` · ${today.length}` : ""}
-        </button>
       </div>
       {mine.length > 0 && (
         <section className="tk-card pa-mine" aria-label="Your price alerts">

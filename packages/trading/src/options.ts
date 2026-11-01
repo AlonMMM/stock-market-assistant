@@ -18,6 +18,10 @@ export interface OptionQuote {
   iv?: number | null;
   // Contracts open at the broker's last count (Alpaca: the previous close).
   openInterest?: number | null;
+  // Contracts traded on the broker's latest daily bar, and that bar's New
+  // York date (before the open it is the day before); absent when none.
+  volume?: number | null;
+  volumeDate?: string;
   // When the broker published this quote (ms); absent when it gives no time.
   quotedAt?: number;
 }

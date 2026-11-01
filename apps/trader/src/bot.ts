@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { AlpacaTrade } from "../../../packages/market-data/src/alpaca.js";
 import { bookOf, lastBookOf, type OptionBook } from "./option-book.js";
 import {
   coreClose,
@@ -92,6 +93,17 @@ export interface BotMarket {
    * minute bars. Optional: without it the checks use the last closed minute.
    */
   lastPrices?(symbols: string[]): Promise<Map<string, number>>;
+  /**
+   * Every SIP trade of the symbols from `startMs` to `endMs`, handed over a
+   * page at a time in time order (the 60-second alert's 10-second bars).
+   * Optional: without it there is no 60-second alert.
+   */
+  trades?(
+    symbols: string[],
+    startMs: number,
+    endMs: number,
+    onPage: (symbol: string, trades: AlpacaTrade[]) => void,
+  ): Promise<void>;
   /** Contracts traded in the 30 minutes up to `minute`. */
   optionVolume30(
     contract: string,
@@ -109,6 +121,8 @@ export interface BotTrading {
     to: string,
   ): Promise<OptionQuote[]>;
   quote(contract: string): Promise<OptionQuote>;
+  /** Many contracts' quotes at once (the alert books); absent: one by one. */
+  quotes?(contracts: string[]): Promise<OptionQuote[]>;
   held(
     contract: string,
   ): Promise<{ qty: number; avgEntryPrice: number } | null>;
@@ -165,6 +179,8 @@ function reasonText(reason: ExitReason, s: BotSettings): string {
     "stop-30": `Down ${s.stopPct}% with the stock against the entry`,
     "rest-stop": `The rest after the 10-min half: down ${s.restStopPct}% with the stock against the entry`,
     "strength-gone": `Strength gone: the stock's edge over SPY since the open fell to t ${s.weaknessT}`,
+    "stage-half": `Staged exit: the stock is ${s.stageHalfS30} of its usual 30-min move against the signal price, sold half`,
+    "stage-full": `Staged exit: the stock is ${s.stageFullS30} of its usual 30-min move against the signal price, sold all`,
     "close-1550": "Sold at 15:50",
     carry: `Held overnight (up ${s.holdFromPct}% or more)`,
     "morning-gap-keep": "Morning: gapped our way, sold half",
@@ -1218,6 +1234,9 @@ export class IndiBot {
         // Keep raising the price until it fills (user 2026-10-23).
         chase: true,
         chaseMs: chaseBuyMs,
+        // Any spread: the backtest has no spread cap, and the wide-spread
+        // picks hold many giants (user 2026-11-01). Every other check applies.
+        force: true,
         tag: botTag,
         note: why + at,
       },
@@ -1398,9 +1417,16 @@ export class IndiBot {
         const price = priceOf(job.result);
         const held = await this.trading(this.brokerOf(p)).held(p.contract);
         const qty = Math.max(0, Math.min(p.qty - sold, this.heldFor(p, held)));
+        const fillBook = lastBookOf(job.result, this.o.now(), this.brokerOf(p));
         const sales = p.sales.map((s) =>
           s === pending
-            ? { ...s, qty: sold, settled: true, ...(price ? { price } : {}) }
+            ? {
+                ...s,
+                qty: sold,
+                settled: true,
+                ...(price ? { price } : {}),
+                ...(fillBook ? { fillBook } : {}),
+              }
             : s,
         );
         this.event(
@@ -1511,6 +1537,7 @@ export class IndiBot {
         ...p,
         nights: p.day === date ? 0 : p.nights,
         halfSold: p.sales.some((x) => x.reason === "check-10"),
+        stageHalfSold: p.sales.some((x) => x.reason === "stage-half"),
       };
       // The signal's strength now, from the closed minutes (the scan's prior data).
       const prior = this.prior.get(p.symbol);
@@ -1526,6 +1553,9 @@ export class IndiBot {
           stock: live.get(p.symbol) ?? this.lastClose(p.symbol, m),
           option: mid,
           strength,
+          // The stock's usual 30-minute move, for the staged exit (entry day only).
+          unit:
+            p.day === date ? (this.levels.get(p.symbol)?.unit ?? null) : null,
           isExpiryDay: expiry === date,
           sessionBeforeExpiry: nextSession(date) <= expiry,
           open: first && first.m <= 5 ? first.o : null,

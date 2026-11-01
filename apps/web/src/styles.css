@@ -2040,6 +2040,356 @@ main:has(> .backtest-page) {
 .reset:disabled {
   cursor: default;
 }
+/* The Backtest section: a bot over a period (BotBacktest.tsx). */
+.bot-bt .up {
+  color: var(--green-53);
+}
+.bot-bt .down {
+  color: var(--red-51);
+}
+.setup select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--gray-87);
+  border-radius: 10px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 14px;
+  color: var(--gray-27);
+}
+.bt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.bt-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.bt-add .reset {
+  align-self: center;
+}
+.setup .bt-paper {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--lime-53);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--lime-53);
+  font-weight: 650;
+}
+.setup .bt-paper:disabled {
+  opacity: 0.6;
+}
+.setup .rule-field.switch-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.setup .rule-field.switch-row input {
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+}
+.bt-summary {
+  gap: 14px;
+}
+.bt-total {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bt-pnl {
+  font-size: 34px;
+  letter-spacing: -0.5px;
+  line-height: 1.15;
+}
+.bt-stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px 14px;
+}
+.bt-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bt-stats dt {
+  font-size: 12px;
+  color: var(--gray-49);
+}
+.bt-stats dd {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+.bt-skips summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.bt-skips ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+/* Every signal of the run, folded: a wide table that scrolls on its own. */
+.bt-signals summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.bt-signals-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0;
+}
+.bt-signals-tools select {
+  font: inherit;
+  font-size: 13px;
+}
+.bt-signals-scroll {
+  max-height: 480px;
+  overflow: auto;
+  border: 1px solid var(--gray-87);
+  border-radius: 10px;
+}
+.bt-signals-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.bt-signals-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 8px;
+  background: var(--gray-95b);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--gray-49);
+}
+.bt-signals-table td {
+  padding: 5px 8px;
+  border-top: 1px solid var(--gray-91);
+}
+.bt-signals-table tr.bought td {
+  background: var(--surface);
+  font-weight: 600;
+}
+.bt-signals-table td.thin {
+  color: var(--orange-48);
+}
+.bt-signals-table .state-chip {
+  margin-left: 4px;
+}
+.bt-trades .card-head {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.bt-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+.bt-list li + li {
+  border-top: 1px solid var(--gray-92b);
+}
+.bt-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "when what result"
+    "when exit result";
+  gap: 2px 12px;
+  align-items: center;
+  padding: 10px 4px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.bt-row:hover:not(:disabled) {
+  background: var(--gray-95b);
+}
+.bt-row:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.bt-when {
+  grid-area: when;
+  font-size: 12px;
+  color: var(--gray-49);
+}
+.bt-what {
+  grid-area: what;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+.bt-what .state-chip {
+  padding: 0 8px;
+  font-size: 11px;
+}
+.bt-exit {
+  grid-area: exit;
+  font-size: 12px;
+}
+.bt-result {
+  grid-area: result;
+  text-align: right;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.bt-empty h2 {
+  margin: 0;
+  font-size: 18px;
+}
+/* The run's loader: a clock replaying the period, pinned to the top. */
+.bt-loader {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "face track"
+    "face meta";
+  align-items: center;
+  gap: 4px 20px;
+  margin: 0 0 16px;
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--gray-92b),
+    0 8px 24px rgba(var(--shade), 0.08);
+}
+.bt-loader-face {
+  grid-area: face;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.bt-loader-label {
+  color: var(--lime-53);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.bt-loader-day {
+  color: var(--gray-41);
+  font-size: 13px;
+}
+.bt-loader-time {
+  color: var(--gray-15);
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.bt-loader-track {
+  grid-area: track;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.bt-loader-rail {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--gray-92b);
+}
+.bt-loader-est,
+.bt-loader-done {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+}
+.bt-loader-est {
+  background: var(--lime-53);
+  opacity: 0.35;
+}
+.bt-loader-done {
+  background: var(--lime-53);
+  transition: width 0.4s;
+}
+.bt-loader-head {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: var(--lime-53);
+  box-shadow: 0 0 0 4px var(--surface);
+}
+.bt-loader-meta {
+  grid-area: meta;
+  margin: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bt-loader-head {
+    animation: bt-loader-pulse 1.4s ease-out infinite;
+  }
+  @keyframes bt-loader-pulse {
+    0% {
+      box-shadow:
+        0 0 0 4px var(--surface),
+        0 0 0 4px var(--lime-53);
+    }
+    100% {
+      box-shadow:
+        0 0 0 4px var(--surface),
+        0 0 0 14px transparent;
+    }
+  }
+}
+@media (max-width: 520px) {
+  .bt-loader {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "face"
+      "track"
+      "meta";
+    padding: 10px 14px;
+  }
+  .bt-loader-face {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .bt-loader-time {
+    font-size: 24px;
+  }
+}
+@media (max-width: 520px) {
+  .bt-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "what result"
+      "when result"
+      "exit exit";
+  }
+  .bt-pnl {
+    font-size: 28px;
+  }
+}
 .run-block {
   display: flex;
   flex-direction: column;
@@ -3633,6 +3983,21 @@ dialog.why::backdrop {
 .chain td.c-oi,
 .chain td.c-iv {
   color: var(--gray-49);
+}
+/* Volume: the last 30 minutes on top, today under it, smaller. */
+.chain td.c-vol {
+  line-height: 1.15;
+}
+.chain td.c-vol span {
+  display: block;
+}
+.chain td.c-vol .v30.thin {
+  color: var(--orange-48);
+  font-weight: 600;
+}
+.chain td.c-vol .vday {
+  color: var(--gray-49);
+  font-size: 0.8em;
 }
 .chain td.side {
   cursor: pointer;
@@ -8338,6 +8703,335 @@ i.added {
   color: var(--gray-27);
   font: inherit;
   font-size: 14px;
+}
+
+/* Phones: as many stocks on one screen as IBKR's watchlist (user 2026-10-31:
+   "see how many and easily i can watch many stocks here ... I want it to be
+   like this"). SPY and QQQ shrink to one thin line without the chart, the
+   title and the tools tighten, and each stock is one short row in smaller
+   type; the columns stay IBKR's. */
+@media (max-width: 759px) {
+  .mkt-strip {
+    gap: 6px;
+  }
+  .mkt-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto;
+    align-items: baseline;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 10px;
+  }
+  .mkt-card b,
+  .mkt-card .num {
+    font-size: 13px;
+  }
+  .mkt-card .num {
+    justify-self: end;
+    white-space: nowrap;
+  }
+  .mkt-card b small,
+  .mkt-card .mkt-spark {
+    display: none;
+  }
+  .wl-title {
+    align-items: center;
+    margin: 8px 0 0;
+    font-size: 18px;
+  }
+  .wl-pa {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+  .wl {
+    gap: 6px;
+    --wl-gap: 8px;
+    --wl-pad: 8px;
+  }
+  .wl-table {
+    border-radius: 10px;
+  }
+  .wl .wl-grid,
+  .wl-num {
+    font-size: 14px;
+  }
+  .wl-row {
+    min-height: 32px;
+  }
+  .wl-symbol strong {
+    font-size: 14.5px;
+  }
+  .wl-head {
+    padding-block: 6px;
+    letter-spacing: 0.02em;
+  }
+  .wl-head > .wl-cell {
+    font-size: 10px;
+  }
+  .wl-c {
+    margin-right: 2px;
+    font-size: 9px;
+    color: var(--wl-faint);
+  }
+  .wl-help {
+    display: none;
+  }
+}
+.wl-short {
+  display: none;
+}
+@media (max-width: 759px) {
+  .live-page {
+    gap: 8px;
+  }
+  .wl-head .wl-long {
+    display: none;
+  }
+  .wl-head .wl-short {
+    display: inline;
+  }
+}
+@media (max-width: 759px) {
+  /* clip, not hidden: the column header then stays at the top while the
+     stocks scroll under it, as in IBKR. */
+  .wl-table {
+    overflow: clip;
+  }
+}
+
+/* A row's quick look (user 2026-10-31, IBKR's): bid / ask on top, the last
+   two hours on the left, today's and the 52 weeks' high and low beside it. */
+.wl-peek {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 8px;
+  padding: 6px var(--wl-pad) 10px;
+  background: var(--gray-97b);
+  font-family: var(--wl-font);
+}
+.wl-peek-book {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  font-size: 14px;
+}
+.wl-peek-bid,
+.wl-peek-ask {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+}
+.wl-peek-bid {
+  background: color-mix(in srgb, var(--wl-night) 22%, transparent);
+}
+.wl-peek-ask {
+  background: color-mix(in srgb, var(--wl-down) 22%, transparent);
+}
+.wl-peek-bid > span,
+.wl-peek-ask > span {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--wl-faint);
+}
+.wl-peek-chart {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 110px auto;
+  column-gap: 6px;
+}
+.wl-peek-chart svg {
+  width: 100%;
+  height: 110px;
+  overflow: visible;
+}
+.wl-peek-chart polyline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+.wl-peek-chart polygon {
+  fill: currentColor;
+  opacity: 0.12;
+}
+.wl-peek-chart svg.up {
+  color: var(--wl-up);
+}
+.wl-peek-chart svg.down {
+  color: var(--wl-down);
+}
+.wl-peek-tag {
+  position: absolute;
+  top: 0;
+  left: 4px;
+  font-size: 11px;
+  color: var(--wl-faint);
+}
+.wl-peek-prices {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--wl-faint);
+}
+.wl-peek-times {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--wl-faint);
+  padding-top: 2px;
+}
+.wl-peek-ranges {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  align-content: start;
+}
+.wl-peek-range {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 4px;
+  background: var(--wl-chip);
+}
+.wl-peek-range span {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--wl-faint);
+  margin-bottom: 6px;
+}
+.wl-peek-range b {
+  font-size: 14px;
+  font-weight: 400;
+}
+.wl-peek-empty {
+  margin: 0;
+  font-size: 12px;
+}
+.wl-peek-open {
+  grid-column: 1 / -1;
+  justify-self: end;
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-27);
+  cursor: pointer;
+}
+
+/* Phones: the list chips name the list, so no big title; the price alerts'
+   bell moves to the top bar (user 2026-10-31: "no need the overview 20 on
+   top"). */
+.wl-pa-head {
+  display: none;
+}
+@media (max-width: 759px) {
+  .wl-title {
+    display: none;
+  }
+  .wl-pa-head {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    height: 40px;
+    min-width: 40px;
+    padding: 0 10px;
+    box-sizing: border-box;
+    justify-content: center;
+    border: 1px solid var(--gray-87);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--gray-27);
+    cursor: pointer;
+  }
+  .wl-pa-head .pa-bell {
+    width: 18px;
+    height: 18px;
+  }
+  .wl-pa-head .num {
+    font-size: 12px;
+    font-weight: 600;
+  }
+}
+
+/* The Volume bot's backtest (the user, 2026-10-31): what priced each fill,
+   and a trade that opens its details in place. */
+.vbt-priced {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 2px;
+}
+.vbt-priced-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--gray-95b);
+  color: var(--gray-41);
+}
+.vbt-priced-chip.seconds {
+  background: var(--green-94b);
+  color: var(--green-39);
+}
+.vbt-priced-chip.bars {
+  background: var(--red-93);
+  color: var(--red-41b);
+}
+.vbt-mark {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--gray-95b);
+  color: var(--gray-41);
+}
+.vbt-mark.bars {
+  background: var(--red-93);
+  color: var(--red-41b);
+}
+.vbt-trade > summary {
+  list-style: none;
+}
+.vbt-trade > summary::-webkit-details-marker {
+  display: none;
+}
+.vbt-trade[open] > summary {
+  background: var(--gray-95b);
+}
+.vbt-facts {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 4px 4px 12px 126px;
+  font-size: 13px;
+}
+.vbt-facts div {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 8px;
+}
+.vbt-facts dt {
+  color: var(--gray-49);
+}
+.vbt-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .vbt-facts {
+    padding-left: 4px;
+  }
 }
 
 /* Earnings badge next to a ticker (EarningsBadge.tsx). */

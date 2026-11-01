@@ -1,4 +1,10 @@
 import { DatabaseSync } from "node:sqlite";
+import { gunzipSync, gzipSync } from "node:zlib";
+import type {
+  FastDay,
+  FastWindows,
+} from "../../../packages/trading/src/strangle/fast.js";
+import type { AlertBookWatch } from "./alert-books.js";
 import type { OptionBook } from "./option-book.js";
 
 // The alert leg bot's records (docs/tasks/backend-strangle-bot.md), in the
@@ -7,6 +13,16 @@ import type { OptionBook } from "./option-book.js";
 // and why, its settings and its activity feed.
 
 export type StrangleEventKind = "info" | "signal" | "skip" | "order" | "error";
+
+/** A fired 10-second alert as the backtest replays it (strangle/backtest.ts ShockAlert). */
+export interface FastAlertRow {
+  day: string;
+  symbol: string;
+  second: number; // session second its slot ended (09:30 New York = 0)
+  kind: "shock" | "fast";
+  price: number; // the slot's close: the side lines' start
+  up: boolean;
+}
 
 export interface StrangleEvent {
   at: number;
@@ -37,7 +53,8 @@ export interface StrangleOrder {
   settled: boolean;
   price?: number; // the fill (the mid in a dry run)
   book?: OptionBook; // bid / ask when the order was decided (missing before 2026-10-25)
-  // A buy's bid / ask at its last raise before the fill (missing before 2026-10-27).
+  // A buy's bid / ask at its last raise before the fill (missing before 2026-10-27);
+  // a sale's, the last it saw before it ended (missing before 2026-10-31).
   fillBook?: OptionBook;
 }
 
@@ -69,6 +86,9 @@ export interface StrangleTrade {
   best: number | null; // the stock's best since the buy, the side's way
   stockAtBuy?: number; // the stock when the leg was bought (the minute-close walk starts its best here)
   burst?: number | null; // the 3 minutes to the alert, in typical 30-minute moves, up positive; absent on older trades
+  alertSecond?: number; // the 60-second alert: seconds after 09:30 when it was read (a minute alert: the end of alertMinute)
+  fast?: boolean; // from the 60-second alert (F60x2) or the shock alert
+  shock?: boolean; // from the shock alert (15x): its own entry, burst and expiry rules
   leg: StrangleLeg | null;
   phase: StranglePhase;
   closeReason: string | null;
@@ -99,6 +119,21 @@ export class StrangleStore {
       CREATE TABLE IF NOT EXISTS strangle_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL,
         kind TEXT NOT NULL, text TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS strangle_fast_days (
+        symbol TEXT NOT NULL, day TEXT NOT NULL, data TEXT NOT NULL,
+        PRIMARY KEY (symbol, day));
+      CREATE TABLE IF NOT EXISTS fast_bars (
+        symbol TEXT NOT NULL, day TEXT NOT NULL, data BLOB NOT NULL,
+        PRIMARY KEY (symbol, day));
+      CREATE TABLE IF NOT EXISTS alert_books (
+        day TEXT NOT NULL, symbol TEXT NOT NULL, second INTEGER NOT NULL,
+        kind TEXT NOT NULL, expiry TEXT NOT NULL, data BLOB NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (day, symbol, second, kind));
+      CREATE TABLE IF NOT EXISTS strangle_fast_alerts (
+        day TEXT NOT NULL, symbol TEXT NOT NULL, second INTEGER NOT NULL,
+        kind TEXT NOT NULL, price REAL NOT NULL, up INTEGER NOT NULL,
+        PRIMARY KEY (day, symbol, second, kind));
     `);
     // Since re-entry (2026-10-26) a stock can have several alerts a day:
     // strangle_alerts replaces strangle_signals (one a day), copied once.
@@ -223,6 +258,107 @@ export class StrangleStore {
         )
         .all(since) as { data: string }[]
     ).map((r) => JSON.parse(r.data) as StrangleTrade);
+  }
+
+  /** A session's 60-second windows of a stock (strangle/fast.ts), for the 60-second alert's medians. */
+  fastDay(symbol: string, day: string): FastWindows | undefined {
+    const row = this.db
+      .prepare(
+        "SELECT data FROM strangle_fast_days WHERE symbol = ? AND day = ?",
+      )
+      .get(symbol, day) as { data: string } | undefined;
+    return row ? (JSON.parse(row.data) as FastWindows) : undefined;
+  }
+
+  /**
+   * Saves a session's windows, kept for good (user 2026-10-31: the Volume
+   * bot's alert data is saved for its backtest; before, 30 sessions a stock).
+   */
+  saveFastDay(symbol: string, day: string, w: FastWindows) {
+    this.db
+      .prepare(
+        "INSERT OR REPLACE INTO strangle_fast_days (symbol, day, data) VALUES (?, ?, ?)",
+      )
+      .run(symbol, day, JSON.stringify(w));
+  }
+
+  /** A session's 10-second bars of a stock (volume and close a slot), gzipped JSON. */
+  fastBars(symbol: string, day: string): FastDay | undefined {
+    const row = this.db
+      .prepare("SELECT data FROM fast_bars WHERE symbol = ? AND day = ?")
+      .get(symbol, day) as { data: Uint8Array } | undefined;
+    return row
+      ? (JSON.parse(gunzipSync(row.data).toString()) as FastDay)
+      : undefined;
+  }
+
+  /** The stocks whose 10-second bars of `day` are kept. */
+  fastBarSymbols(day: string): string[] {
+    return (
+      this.db
+        .prepare("SELECT symbol FROM fast_bars WHERE day = ? ORDER BY symbol")
+        .all(day) as { symbol: string }[]
+    ).map((r) => r.symbol);
+  }
+
+  /** Keeps a session's 10-second bars for good (the Volume bot's backtest). */
+  saveFastBars(symbol: string, day: string, d: FastDay) {
+    this.db
+      .prepare(
+        "INSERT OR REPLACE INTO fast_bars (symbol, day, data) VALUES (?, ?, ?)",
+      )
+      .run(symbol, day, gzipSync(JSON.stringify(d)));
+  }
+
+  /** Writes (again) an alert's option books (alert-books.ts), gzipped JSON. */
+  saveAlertBooks(w: AlertBookWatch) {
+    this.db
+      .prepare(
+        "INSERT OR REPLACE INTO alert_books (day, symbol, second, kind, expiry, data, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        w.day,
+        w.symbol,
+        w.second,
+        w.kind,
+        w.expiry,
+        gzipSync(JSON.stringify(w)),
+        Date.now(),
+      );
+  }
+
+  /** The option books of a day's alerts, oldest first. */
+  alertBooks(day: string): AlertBookWatch[] {
+    return (
+      this.db
+        .prepare(
+          "SELECT data FROM alert_books WHERE day = ? ORDER BY second, symbol",
+        )
+        .all(day) as { data: Uint8Array }[]
+    ).map((r) => JSON.parse(gunzipSync(r.data).toString()) as AlertBookWatch);
+  }
+
+  /**
+   * Keeps a fired 10-second alert (the shock, or the 60-second alert),
+   * traded or not, for the website's backtest (volume_alerts in D1).
+   */
+  saveFastAlert(a: FastAlertRow) {
+    this.db
+      .prepare(
+        "INSERT OR IGNORE INTO strangle_fast_alerts (day, symbol, second, kind, price, up) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(a.day, a.symbol, a.second, a.kind, a.price, a.up ? 1 : 0);
+  }
+
+  /** A day's fired 10-second alerts, oldest first. */
+  fastAlerts(day: string): FastAlertRow[] {
+    return (
+      this.db
+        .prepare(
+          "SELECT day, symbol, second, kind, price, up FROM strangle_fast_alerts WHERE day = ? ORDER BY second, symbol",
+        )
+        .all(day) as (Omit<FastAlertRow, "up"> & { up: number })[]
+    ).map((r) => ({ ...r, up: r.up === 1 }));
   }
 
   setting(name: string): string | undefined {

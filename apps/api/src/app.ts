@@ -2,7 +2,10 @@ import {
   D1PriceAlerts,
   handlePriceAlerts,
 } from "../../../packages/market-data/src/price-alerts.js";
-import { handleTicker } from "../../../packages/market-data/src/ticker.js";
+import {
+  handleTicker,
+  handleTickerCheck,
+} from "../../../packages/market-data/src/ticker.js";
 import {
   liveUrl,
   paperUrl,
@@ -24,7 +27,12 @@ import { handleDayChart } from "../../../packages/market-data/src/day-chart.js";
 import { handleCandles } from "../../../packages/market-data/src/candles.js";
 import { handleChartBars } from "../../../packages/market-data/src/chart-bars.js";
 import { handleTradeChart } from "../../../packages/market-data/src/trade-chart.js";
+import { handleBotBacktest } from "../../../packages/market-data/src/bot-backtest.js";
+import { handleVolumeBacktest } from "../../../packages/market-data/src/volume-backtest.js";
+import type { VolumeDataStore } from "../../../packages/market-data/src/volume-data.js";
 import type { BarCache } from "../../../packages/market-data/src/bar-cache.js";
+import type { OptionQuoteStore } from "../../../packages/market-data/src/option-quotes.js";
+import type { OptionBarStore } from "../../../packages/market-data/src/option-bars.js";
 import {
   handleBoard,
   type StrengthStore,
@@ -71,6 +79,9 @@ export function buildApp(
   alpaca: Credentials & {
     fetcher?: typeof fetch;
     cache?: BarCache;
+    quotes?: OptionQuoteStore; // real option quotes uploaded from the Mac (option-quotes.ts)
+    optionBars?: OptionBarStore; // option minute bars the backtest read, kept (option-bars.ts)
+    volume?: VolumeDataStore; // the Volume bot's backtest: shock alerts and 1-second windows (volume-data.ts)
     baselines?: BaselineStore; // stored Rel vol baselines for the board
     strengths?: StrengthStore; // stored β/σ vs SPY for the board's score
     sigmas?: MarksSigmaStore; // stored σ curves of the marked-sections score
@@ -464,6 +475,18 @@ export function buildApp(
       .header("Cache-Control", "no-store")
       .send(result.body);
   });
+  app.get("/api/tickers/check", async (request, reply) => {
+    const result = await handleTickerCheck(
+      request.query as Record<string, unknown>,
+      alpaca,
+      process.env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
+      alpaca.fetcher,
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
   app.get("/api/ticker", async (request, reply) => {
     const result = await handleTicker(
       request.query as Record<string, unknown>,
@@ -497,6 +520,35 @@ export function buildApp(
       .code(result.status)
       .header("Cache-Control", "no-store")
       .send(result.body);
+  });
+  // The Main bot's backtest of one stock over a range (the Backtest page).
+  app.post("/api/bot-backtest", async (request, reply) => {
+    const result = await handleBotBacktest(
+      request.body,
+      alpaca,
+      process.env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
+      alpaca.fetcher,
+      Date.now(),
+      alpaca.cache,
+      alpaca.quotes,
+      alpaca.optionBars,
+    );
+    return reply.code(result.status).send(result.body);
+  });
+  // The Volume bot's backtest of one stock over a range (strangle/backtest.ts).
+  app.post("/api/volume-backtest", async (request, reply) => {
+    const result = await handleVolumeBacktest(
+      request.body,
+      alpaca,
+      process.env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
+      alpaca.fetcher,
+      Date.now(),
+      alpaca.cache,
+      alpaca.quotes,
+      alpaca.optionBars,
+      alpaca.volume,
+    );
+    return reply.code(result.status).send(result.body);
   });
   app.post("/api/day-chart", async (request, reply) => {
     const result = await handleDayChart(

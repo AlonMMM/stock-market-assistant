@@ -195,7 +195,7 @@ export const tools: Tool[] = [
     name: "volume_bot_settings",
     title: "Volume bot settings",
     description:
-      "The Volume bot's saved settings (its own paper account): on/off, live or dry run, the stocks it watches (added, followFavorites, off), size, limits, the contract, the side, the filters (crossFilter, crossMaxSeconds, burstFilter, burstMin) and the exit (giveBackUnits, noStopMinutes, exitOnMinuteClose, endMinute).",
+      "The Volume bot's saved settings (its own paper account): on/off, live or dry run, the stocks it watches (added, followFavorites, off), size, limits, the contract, the side, the filters (crossFilter, crossMaxSeconds, burstFilter, burstMin) and the exit (giveBackUnits, noStopMinutes, exitOnMinuteClose, endMinute), fastAlert (the 60-second alert, F60x2) and shockAlert (the shock alert, 15x).",
     inputSchema: {
       type: "object",
       properties: {},

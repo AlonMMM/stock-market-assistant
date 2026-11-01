@@ -519,6 +519,9 @@ const strangle = (() => {
     trading: {
       chain: (u, right, from, to) => t.broker.chain(u, right, from, to),
       quote: (c) => t.broker.quote(c),
+      ...(t.broker.optionQuotes
+        ? { quotes: (c: string[]) => t.broker.optionQuotes!(c) }
+        : {}),
       held: async (c) => {
         const p = await t.broker.position(c).catch(() => null);
         return p && p.qty > 0 ? p : null;
@@ -542,9 +545,26 @@ const strangleTimer = strangle
 const sideTimer = strangle
   ? setInterval(() => void strangle.watchSides(), 1_000)
   : null;
+// The 60-second alert's 10-second bars, every 2 seconds (strangle/fast.ts).
+const fastTimer = strangle
+  ? setInterval(() => void strangle.watchFast(), 2_000)
+  : null;
+// The option books around each alert, every 2 seconds (alert-books.ts).
+const booksTimer = strangle
+  ? setInterval(() => void strangle.watchBooks(), 2_000)
+  : null;
 api.get("/v1/strangle", async () => {
   if (!strangle) throw new RequestError(strangleOff, 409);
   return strangle.status();
+});
+// A day's fired 10-second alerts and alert books, read after the close by the
+// website's scheduled step into D1 (volume-daily.ts) for the backtest.
+api.get("/v1/strangle/alert-data", async (request) => {
+  if (!strangle) throw new RequestError(strangleOff, 409);
+  const day = (request.query as { day?: unknown }).day;
+  if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day))
+    throw new RequestError("day must be a date (YYYY-MM-DD)");
+  return strangle.alertData(day);
 });
 api.get("/v1/strangle/settings", async () => {
   if (!strangle) throw new RequestError(strangleOff, 409);
@@ -724,6 +744,8 @@ async function stop() {
   if (botTimer) clearInterval(botTimer);
   if (strangleTimer) clearInterval(strangleTimer);
   if (sideTimer) clearInterval(sideTimer);
+  if (fastTimer) clearInterval(fastTimer);
+  if (booksTimer) clearInterval(booksTimer);
   if (recordTimer) clearInterval(recordTimer);
   botStore.close();
   strangleStore.close();

@@ -377,12 +377,29 @@ function PriceRow({
 
 // Columns of each side, outermost first for calls and last for puts: the
 // prices next to the strike, as in IBKR. A phone scrolls the table sideways.
-const callColumns = ["oi", "iv", "spread", "delta", "bid", "ask"] as const;
-const putColumns = ["bid", "ask", "delta", "spread", "iv", "oi"] as const;
+const callColumns = [
+  "oi",
+  "vol",
+  "iv",
+  "spread",
+  "delta",
+  "bid",
+  "ask",
+] as const;
+const putColumns = [
+  "bid",
+  "ask",
+  "delta",
+  "spread",
+  "iv",
+  "vol",
+  "oi",
+] as const;
 // A phone shows one side, next to the strike, with every column in view.
-const phoneColumns = ["bid", "ask", "delta", "iv", "oi"] as const;
+const phoneColumns = ["bid", "ask", "delta", "iv", "vol", "oi"] as const;
 const columnName = {
   oi: "OI",
+  vol: "Vol",
   iv: "IV",
   spread: "Spread",
   delta: "Delta",
@@ -391,6 +408,7 @@ const columnName = {
 };
 const columnTitle: Partial<Record<keyof typeof columnName, string>> = {
   oi: "Open interest: contracts open at the last count",
+  vol: "Contracts traded: the last 30 minutes (amber under the bot's minimum), and today below",
   iv: "Implied volatility",
 };
 
@@ -446,6 +464,18 @@ function SideCells({
     oi: (
       <td key="oi" className={`${cls} c-oi`} onClick={pick}>
         {q.openInterest == null ? "—" : contracts.format(q.openInterest)}
+      </td>
+    ),
+    vol: (
+      <td key="vol" className={`${cls} c-vol`} onClick={pick}>
+        <span
+          className={`v30${q.volume30 != null && q.volume30 < chain.minVolume30 ? " thin" : ""}`}
+        >
+          {q.volume30 == null ? "—" : contracts.format(q.volume30)}
+        </span>
+        <span className="vday">
+          {q.volume == null ? "—" : contracts.format(q.volume)}
+        </span>
       </td>
     ),
     iv: (
@@ -1181,7 +1211,10 @@ export function Trade({
                     {strategy === "single"
                       ? "Tap a call or a put to build its order."
                       : "B: the leg bought, S: the leg sold."}{" "}
-                    Shaded: in the money. OI: open interest.{" "}
+                    Shaded: in the money. OI: open interest. Vol: contracts
+                    traded in the last 30 minutes (amber under the bot&apos;s{" "}
+                    {base?.minVolume30 ?? 200}
+                    ), today below.{" "}
                     <span className="chain-dot" aria-hidden="true" /> default
                     strike for a buy without one. Amber: spread over {maxSpread}
                     % of the mid.

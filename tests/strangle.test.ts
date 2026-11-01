@@ -265,6 +265,8 @@ function harness(
     lag?: boolean;
     // the stock's last trade (the one-second side watch); none: no live prices
     last?: () => number;
+    // added to every leg's ask (a wide spread)
+    askOver?: number;
   } = {},
 ) {
   const store = new StrangleStore(
@@ -345,7 +347,9 @@ function harness(
               q("put", 98, 0.28, 0.35, e),
               q("put", 97, 0.2, 0.25, e),
             ];
-      return all.filter((x) => x.expiry >= from && x.expiry <= to);
+      return all
+        .filter((x) => x.expiry >= from && x.expiry <= to)
+        .map((x) => ({ ...x, ask: x.ask + (opts.askOver ?? 0) }));
     },
     async quote(c) {
       const mid = isCall(c) ? mids.C : mids.P;
@@ -693,19 +697,30 @@ test("store: the one-a-day signals of before re-entry are copied to the alerts t
 
 test("runner (dry): a thin leg takes the liquid fallback's strike, or no trade with it off", async () => {
   const thin = (c: string) => (c.endsWith("C00101000") ? 90 : 500);
-  const h = harness({ mode: "dry" }, { day: climbThenFall(), volume: thin });
+  const h = harness(
+    { mode: "dry", minVolume: 200 },
+    { day: climbThenFall(), volume: thin },
+  );
   await h.run(565, 612);
   const [t] = h.store.openTrades();
   // The 0.35 call traded 90: the next strike out, 0.28, trades enough.
   assert.equal(t!.leg!.contract, "NVDA261023C00102000");
   assert.ok(h.notes.some((n) => /liquid fallback/.test(n)));
   const off = harness(
-    { mode: "dry", liquidFallback: false },
+    { mode: "dry", minVolume: 200, liquidFallback: false },
     { day: climbThenFall(), volume: thin },
   );
   await off.run(565, 612);
   assert.equal(off.store.openTrades().length, 0);
   assert.equal(off.store.signal(DAY, "NVDA")!.outcome, "thin");
+});
+
+test("runner (dry): no liquidity floor by default: the thin 0.35 call is bought", async () => {
+  const thin = (c: string) => (c.endsWith("C00101000") ? 90 : 500);
+  const h = harness({ mode: "dry" }, { day: climbThenFall(), volume: thin });
+  await h.run(565, 612);
+  const [t] = h.store.openTrades();
+  assert.equal(t!.leg!.contract, "NVDA261023C00101000");
 });
 
 test("liquid order: further out first, nearest the target first, then toward the money", () => {
@@ -968,4 +983,146 @@ test("account risk merge (connector): some numbers over the current ones, checke
     typeof mergeAccountRisk(defaultAccountRisk, { buysPerDai: 5 }),
     "string",
   );
+});
+
+// The shock alert's watch, as watchFast starts it: the 10-second slot ending
+// 10:10:00 (session second 2400), its close the side lines' start.
+type ShockWatch = {
+  watch(
+    date: string,
+    symbol: string,
+    m: number,
+    side: "up" | "down",
+    s: StrangleSettings,
+    fast: { second: number; price: number; shock: boolean },
+  ): Promise<{ outcome: string; detail: string }>;
+};
+async function shockAt(
+  h: ReturnType<typeof harness>,
+  price: number,
+  side: "up" | "down" = "up",
+): Promise<{ outcome: string; detail: string }> {
+  const bot = h.bot as unknown as ShockWatch;
+  return bot.watch(DAY, "NVDA", 40, side, h.bot.settings(), {
+    second: 2400,
+    price,
+    shock: true,
+  });
+}
+// No minute alert of its own: the window ends before the burst of 10:08.
+const SHOCK: Partial<StrangleSettings> = {
+  ...WINNER,
+  shockAlert: true,
+  lastMinute: 30,
+  delta: 0.2,
+};
+
+test("shock (2026-10-30): the side must hold 5 checks in a row, within 300 s; a burst against it is no trade", async () => {
+  let last = 0;
+  const h = harness(
+    { mode: "live", ...SHOCK },
+    { day: climbThenFall(), last: () => last },
+  );
+  await h.run(565, 609);
+  assert.equal(h.store.openTrades().length, 0, "no minute alert");
+  const ref = h.store.recentTrades(DAY).length;
+  assert.equal(ref, 0);
+  const got = await shockAt(h, 101);
+  assert.equal(got.outcome, "watching");
+  const [w] = h.store.openTrades();
+  assert.ok(w!.shock && w!.burst! > 0);
+  last = w!.stockRef * 1.01;
+  for (let sec = 1; sec <= 4; sec++) await h.watch(610, sec);
+  assert.equal(
+    h.calls.filter((c) => c.kind === "buy").length,
+    0,
+    "4 checks: no buy",
+  );
+  // the side lost for a check: the count starts again
+  last = w!.stockRef;
+  await h.watch(610, 5);
+  last = w!.stockRef * 1.01;
+  for (let sec = 6; sec <= 9; sec++) await h.watch(610, sec);
+  assert.equal(h.calls.filter((c) => c.kind === "buy").length, 0);
+  await h.watch(610, 10);
+  assert.equal(
+    h.calls.filter((c) => c.kind === "buy").length,
+    1,
+    "the 5th check in a row buys",
+  );
+  // the 10-second tick does not buy a shock trade on a single look
+  const t = harness(
+    { mode: "live", ...SHOCK },
+    { day: climbThenFall(), last: () => last },
+  );
+  await t.run(565, 609);
+  await shockAt(t, 101);
+  last = t.store.openTrades()[0]!.stockRef * 1.01;
+  await t.tickAt(610, 10);
+  assert.equal(t.calls.filter((c) => c.kind === "buy").length, 0);
+  // past 300 s with no hold: the watch ends
+  last = t.store.openTrades()[0]!.stockRef;
+  await t.watch(615, 1);
+  assert.equal(t.store.openTrades().length, 0);
+  assert.equal(
+    t.store.recentTrades(DAY)[0]!.closeReason,
+    "no side fast enough after the alert",
+  );
+  // a put after the climb: the burst points the other way
+  const p = harness(
+    { mode: "live", ...SHOCK },
+    { day: climbThenFall(), last: () => last },
+  );
+  await p.run(565, 609);
+  await shockAt(p, 101);
+  last = p.store.openTrades()[0]!.stockRef * 0.99;
+  for (let sec = 1; sec <= 5; sec++) await p.watch(610, sec);
+  assert.equal(p.calls.filter((c) => c.kind === "buy").length, 0);
+  assert.match(p.store.recentTrades(DAY)[0]!.closeReason!, /burst/);
+});
+
+test("shock (2026-10-30): an expiry 3 days out is no trade; a leg under minPrice steps toward the money; a wide spread is no trade", async () => {
+  let last = 0;
+  const far = harness(
+    { mode: "live", ...SHOCK },
+    { day: climbThenFall(), last: () => last, expiry: "2026-10-26" },
+  );
+  await far.run(565, 609);
+  const got = await shockAt(far, 101);
+  assert.equal(got.outcome, "no_expiry");
+  // A put: the 0.20 leg (strike 97, mid 0.26) under 0.30; 0.25 takes the
+  // 0.28 strike (98, mid 0.36).
+  const up = harness(
+    { mode: "live", ...SHOCK, minPrice: 0.3 },
+    { day: climbThenFall(), last: () => last },
+  );
+  await up.run(565, 609);
+  await shockAt(up, 99, "down");
+  last = up.store.openTrades()[0]!.stockRef * 0.99;
+  for (let sec = 1; sec <= 5; sec++) await up.watch(610, sec);
+  const buys = up.calls.filter((c) => c.kind === "buy");
+  assert.equal(buys.length, 1);
+  assert.match(String(buys[0]!.body.contract), /P00098000$/);
+  const wide = harness(
+    { mode: "live", ...SHOCK },
+    { day: climbThenFall(), last: () => last, askOver: 0.3 },
+  );
+  await wide.run(565, 609);
+  await shockAt(wide, 101);
+  last = wide.store.openTrades()[0]!.stockRef * 1.01;
+  for (let sec = 1; sec <= 5; sec++) await wide.watch(610, sec);
+  assert.equal(wide.calls.filter((c) => c.kind === "buy").length, 0);
+  assert.match(wide.store.recentTrades(DAY)[0]!.closeReason!, /spread/);
+});
+
+test("alert books (2026-10-31): every plan alert starts its option books", async () => {
+  const h = harness({ mode: "dry" }, { day: climbThenFall() });
+  await h.run(565, 610); // the alert at 10:09 is read at 10:10
+  await new Promise((done) => setTimeout(done, 20)); // the books start in the background
+  const [b] = h.store.alertBooks(DAY);
+  assert.equal(b!.kind, "plan");
+  assert.equal(b!.second, 40 * 60, "the end of the alert minute");
+  // The harness chain: calls 0.35 / 0.28 / 0.2 and puts 0.36 / 0.28 / 0.2.
+  assert.equal(b!.contracts.length, 5);
+  assert.ok(b!.samples.length >= 1);
 });

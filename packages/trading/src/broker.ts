@@ -132,6 +132,10 @@ export interface Broker {
     to: string,
   ): Promise<OptionQuote[]>;
   quote(symbol: string): Promise<OptionQuote>;
+  /** Many contracts' quotes in few requests; a contract without one is absent. */
+  optionQuotes?(symbols: string[]): Promise<OptionQuote[]>;
+  /** Contracts traded per option over the 30 minutes up to `end` (ms). */
+  optionVolume30?(symbols: string[], end: number): Promise<Map<string, number>>;
   /** Latest trade price of a stock; null when the broker has none. */
   stockPrice?(symbol: string): Promise<number | null>;
   /** A day limit buy that opens or adds to a long position. */

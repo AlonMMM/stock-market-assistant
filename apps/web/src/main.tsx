@@ -1,31 +1,30 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { parseAlertLink } from "../../../packages/contracts/src/alert-link.js";
-import { Backtest } from "./Backtest.js";
-import { Live } from "./Live.js";
+import { BotBacktest } from "./BotBacktest.js";
 import { Portfolio } from "./Portfolio.js";
 import { ThemeButton } from "./ThemeButton.js";
 import { WatchlistPage } from "./WatchlistPage.js";
 import "./styles.css";
 
-// "live" is the alerts section; the stored value keeps its old name.
+// The Alerts section was removed (user 2026-10-30, "we are not using it"); the
+// volume alerts still run behind the Volume bot and show on the Watchlist.
 const modeNames = [
-  ["live", "Alerts"],
   ["watchlist", "Watchlist"],
   ["portfolio", "Trading"], // the stored value and #portfolio keep the old name
   ["backtest", "Backtest"],
 ] as const;
 const icons: Record<Mode, string> = {
-  live: "M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4",
   watchlist: "M4 6h16M4 12h16M4 18h10",
   portfolio: "M4 12a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 4v8l6 4",
   backtest: "M4 19V5M4 19h16M8 15l4-4 3 3 5-6",
 };
 type Mode = (typeof modeNames)[number][0];
 const modeKey = "sma.mode.v1";
-// A link may name the section: #alerts, #watchlist, #portfolio, #backtest.
+// A link may name the section: #watchlist, #portfolio, #backtest; an old
+// #alerts link opens the Watchlist.
 const hashModes: Record<string, Mode> = {
-  alerts: "live",
+  alerts: "watchlist",
   watchlist: "watchlist",
   portfolio: "portfolio",
   backtest: "backtest",
@@ -36,25 +35,27 @@ function savedMode(): Mode {
   if (named) return named;
   try {
     const saved = localStorage.getItem(modeKey);
-    return modeNames.find(([value]) => value === saved)?.[0] ?? "live";
+    return modeNames.find(([value]) => value === saved)?.[0] ?? "watchlist";
   } catch {
-    return "live";
+    return "watchlist";
   }
 }
 
-// A notification link opens the Live view on that alert.
+// A volume alert's link from Telegram opens the stock's own page.
 const link = parseAlertLink(location.search);
+if (link) {
+  history.replaceState(null, "", `/#watchlist/${link.ticker}`);
+}
 
 function App() {
-  const [mode, setModeState] = useState<Mode>(link ? "live" : savedMode);
-  // Where the watchlist sends a symbol: its alerts, or the trade ticket.
-  const [alertSymbol, setAlertSymbol] = useState<string | null>(null);
+  const [mode, setModeState] = useState<Mode>(savedMode);
+  // Where the watchlist sends a symbol: the trade ticket.
   const [tradeSymbol, setTradeSymbol] = useState<string | null>(null);
   const [tradeMode, setTradeMode] = useState<"options" | "stock">("options");
   const setMode = (m: Mode) => {
     setModeState(m);
     window.scrollTo(0, 0);
-    history.replaceState(null, "", `#${m === "live" ? "alerts" : m}`);
+    history.replaceState(null, "", `#${m}`);
     try {
       localStorage.setItem(modeKey, m);
     } catch {
@@ -64,7 +65,6 @@ function App() {
   // A stock's own page in the Watchlist section, from a bot's map (user
   // 2026-10-27); the phone's Back returns to where it was opened.
   const openTicker = (ticker: string) => {
-    setAlertSymbol(null);
     setTradeSymbol(null);
     history.pushState(null, "", `#watchlist/${ticker}`);
     setModeState("watchlist");
@@ -79,7 +79,6 @@ function App() {
     return () => removeEventListener("popstate", back);
   }, []);
   const go = (m: Mode) => {
-    setAlertSymbol(null);
     setTradeSymbol(null);
     setMode(m);
   };
@@ -104,20 +103,9 @@ function App() {
   );
   return (
     <>
-      {mode === "live" ? (
-        <Live
-          key={alertSymbol ?? ""}
-          modes={modes}
-          link={link}
-          initialSymbol={alertSymbol}
-        />
-      ) : mode === "watchlist" ? (
+      {mode === "watchlist" ? (
         <WatchlistPage
           modes={modes}
-          onShowAlerts={(ticker) => {
-            setAlertSymbol(ticker);
-            setMode("live");
-          }}
           onTrade={(ticker, how = "options") => {
             setTradeSymbol(ticker);
             setTradeMode(how);
@@ -133,7 +121,7 @@ function App() {
           onOpenTicker={openTicker}
         />
       ) : (
-        <Backtest modes={modes} />
+        <BotBacktest modes={modes} />
       )}
       {/* Phones: the sections as a bottom bar, like a trading app. */}
       <nav className="tabbar" aria-label="Sections">
