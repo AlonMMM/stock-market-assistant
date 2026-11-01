@@ -2459,3 +2459,12 @@ at +50%: lock sales median -7% (37% won), every list up (+6% / +4% / +3%), check
 drop ~2 points less, without the best 5 $617K vs $582K. Every rule that lifts wins past ~20% (an earlier arm or a
 cushion) cuts the giants (+100% trades 78 -> 47-63) and loses half or more on the fair list. Win rate and money pull
 against each other here: the giants first dip near the cost. Candidate: arm +50%, updated (a small gain).
+- **Confirmed (the user: "yes go"):** be_lock {arm 0.5, update} on the 24 / 36-month Favorites (export_fav_long.py,
+  minute fills, fl_be50u vs fl_s60l = 2.8, scratchpad score_be_long.py), 2%, whole / tune / check / without the best 5:
+  ±2% walk: 24m $1,933,757 (29.5%) -> $2,139,585 (26.3%), tune 809K -> 825K, check 249K -> 270K, w/o best 5 471K -> 521K;
+  36m $4,667,208 (29.5%) -> $5,456,653 (26.3%), tune 686K -> 721K, check 710K -> 789K, w/o best 5 961K -> 1,124K.
+  Real bid / ask: 24m $675,124 (35.7%) -> $754,198 (33.0%), check 134K -> 149K; 36m $1,164,321 (39.7%) -> $1,333,559
+  (36.1%), tune 395K -> 400K, check 307K -> 348K. Win rate +0.1 to +1 point there. The fair list and 12 / 6 months are
+  1-second runs already priced on the real book (the FILLS=real scoring is identical). Every list ahead on the whole
+  period and on check; tune ahead on the long Favorites, a tie (-0.3% to -1%) on the fair list and 12 / 6 months; the
+  worst drop 2-4 points less everywhere. **The 2.9 candidate: 2.8 + the break-even lock from +50%, updated.**
