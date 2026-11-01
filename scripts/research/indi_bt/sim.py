@@ -722,7 +722,11 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None):
             # there. {arm, update}: with update, the level is worked out again at each later bar still `arm` up and the
             # tighter one kept (theta lowers the option at the same stock price as the day goes on); target: the level is
             # where the option is worth that much over what was paid (0.1 = +10%), so a lock sale is a small win
-            if BE and k == 0 and sd.ok and not hold:
+            if BE and BE.get("on") == "option" and k == 0 and not hold:  # the plain option stop for comparison: armed at `arm`,
+                # all out when the option bar closes at what was paid x (1 + target) or under
+                if g >= BE["arm"]: st["be_opt"] = True
+                if st.get("be_opt") and g <= BE.get("target", 0.0): pending = ("all", "BE_lock"); continue
+            elif BE and k == 0 and sd.ok and not hold:
                 spx = sd.c[min(t, 389)]
                 if spx and g >= BE["arm"] and (st.get("be") is None or BE.get("update")):
                     lvl = be_level(sym, d, t, exp, bet, c, spx, basis * (1 + BE.get("target", 0.0)))

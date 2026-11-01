@@ -2468,3 +2468,13 @@ against each other here: the giants first dip near the cost. Candidate: arm +50%
   1-second runs already priced on the real book (the FILLS=real scoring is identical). Every list ahead on the whole
   period and on check; tune ahead on the long Favorites, a tie (-0.3% to -1%) on the fair list and 12 / 6 months; the
   worst drop 2-4 points less everywhere. **The 2.9 candidate: 2.8 + the break-even lock from +50%, updated.**
+- **Is the lock's exit price real, and is it just a break-even stop? (the user: "hard to calculate the price we exit
+  on, no?", "why it is different from stop at break even?")** The level only times the sale; the price is the market's:
+  all 169 fair-list BE_lock sales are at the real Databento bid when the stock hit the level (every one within 1% of
+  it, 0 without a quote; the bid a minute later the same, median), e.g. FSLR 2025-01-02 paid 0.68, sold 0.57; MSTR
+  2025-02-24 paid 2.78, sold 1.49. The plain option stop at what was paid, armed at +30 / +50 / +100% (`be_lock {on:
+  "option"}`, the option bar's close): fair $1,866,174 / $1,908,991 / $3,064,210 (check 417K / 416K / 632K vs 2.8's
+  650K), Fav 12m $220,172 / $224,700 / $207,654, Fav 6m $173,111 / $163,983 / $152,392; won 17.1% / 16.9% / 17.5%
+  (2.8 17.2%); its sales median -10% to -11%, 20-22% won (the stock lock's -7%, 37%). The option stop fires on the
+  spread and theta with the stock still on our side, so it cuts the fair list's giants (-35% at +50%) though it helps
+  the 12 / 6-month Favorites more than the stock lock; it does not raise the win rate. The stock lock stays the candidate.
