@@ -34,8 +34,27 @@ MODES = ("plain", "cheap", "liquid", "both")
 C = sim.C
 
 
+# The live leg (the user, 2026-11-01: the app and the research must make identical trades; the app's strangle/pick.ts
+# legAt + bot/picker.ts liquidOrder), on by default for "liquid": a pick under min_price is no trade, no fallback; a pick
+# under min_vol30 tries further out down to delta 0.25 (nearest the pick first), then toward the money up to HIGH, the
+# first with min_vol30. Before: further out down to LOW first (0.10 for plain20), and a too-cheap pick was rescued too.
+LIQ_OLD = os.environ.get("STR_LIQ_OLD") == "1"   # STR_LIQ_OLD=1: the rule before 2026-11-01
+LIVE_LOW = 0.25   # liquidOrder's band [0.25, 0.50]
+
+
+def choose_live(cands):
+    best = min(cands, key=lambda c: abs(abs(c[3]) - DELTA))
+    if best[4] < C["min_price"]: return None   # too cheap: no trade
+    if best[5] >= C["min_vol30"]: return best
+    ok = [c for c in cands if c is not best and c[4] >= C["min_price"]]
+    out = sorted((c for c in ok if LIVE_LOW <= abs(c[3]) < abs(best[3])), key=lambda c: -abs(c[3]))
+    up = sorted((c for c in ok if abs(best[3]) < abs(c[3]) <= HIGH), key=lambda c: abs(c[3]))
+    return next((c for c in out + up if c[5] >= C["min_vol30"]), None)
+
+
 def choose(cands, mode):
     if not cands: return None
+    if mode == "liquid" and not LIQ_OLD: return choose_live(cands)
     best = min(cands, key=lambda c: abs(abs(c[3]) - DELTA))
     if mode in ("cheap", "both") and best[4] < C["min_price"]:
         ok = [c for c in cands if c[4] >= C["min_price"] and abs(c[3]) >= abs(best[3])]

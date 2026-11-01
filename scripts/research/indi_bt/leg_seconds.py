@@ -31,6 +31,7 @@ import leg_daycap as D
 import week_count as WC
 
 C, CAL = sim.C, TW.CAL
+TO = os.environ.get("SEC_TO", "9999")   # SEC_TO=2026-10-30: the list's last day (with SEC_TO the plan days run past zero5.SPAN)
 FROM = os.environ.get("SEC_FROM", "2025-10-23")   # SEC_FROM=2024-02-01 SEC_TAG=3y: the 3 years (cmbp-1 before cbbo-1s exists)
 TAG = os.environ.get("SEC_TAG", "")
 if os.environ.get("SEC_WAIT"): TW.WAIT = int(os.environ["SEC_WAIT"])   # the side's give-up, minutes (live 10)
@@ -69,7 +70,7 @@ def sec_of(ts):
 
 def events_of(job):
     date, sym, kind = job
-    if date < FROM: return []
+    if date < FROM or date > TO: return []
     al = alerts_for(sym, date, CAL)
     if not al: return []
     x = ctx(sym, date)
@@ -79,8 +80,12 @@ def events_of(job):
     if kind == "w": nxt = WC.week_expiry(sym, date)   # the nearest expiry later this week (2-4 DTE)
     if kind == "l": nxt = WC.late_expiry(sym, date)   # a late alert: the nearest expiry 2-7 days out
     first, last = int(os.environ.get("SEC_FIRST", FIRST)), int(os.environ.get("SEC_LAST", LAST))   # SEC_FIRST=210 SEC_LAST=388: the late window
+    # The day's first alert from `first` on counts even when the minute before had one, as the live bot (strangle.ts
+    # entries, the app's backtest dayAlerts; the user 2026-11-01: identical trades). SEC_OLD_FIRST=1: before.
+    q0 = next((q for q in range(first, last + 1) if al[q]), None)
+    fresh = lambda q: not al[q - 1] or (q == q0 and os.environ.get("SEC_OLD_FIRST") != "1")
     out = [dict(date=date, sym=sym, kind=kind, nxt=nxt, m=q, u=x["sd"], stock0=sb[q][4]) for q in range(first, last + 1)
-           if al[q] and not al[q - 1] and q in sb]
+           if al[q] and fresh(q) and q in sb]
     if os.environ.get("SEC_AM_PRE"):   # keep only a burst this strong either way (before any download)
         k = float(os.environ["SEC_AM_PRE"])
         out = [e for e in out if e["m"] - 3 in sb and abs(sb[e["m"]][4] / sb[e["m"] - 3][4] - 1) / e["u"] >= k]
@@ -97,7 +102,7 @@ def fast_events():
     import leg_1dte as L1
     out = []
     for a in json.load(open(os.path.join(OUT, os.environ.get("SEC_ALERT_FILE", "fast_alerts.json")))):   # or an early_prep.py file
-        if a["date"] < FROM or a["date"] not in CAL: continue
+        if a["date"] < FROM or a["date"] > TO or a["date"] not in CAL: continue
         k = L1.kind_of(a["sym"], a["date"])
         x = ctx(a["sym"], a["date"])
         nxt = None
@@ -450,6 +455,11 @@ def main():
             if os.environ.get("SEC_SYMS"):   # SEC_SYMS=A,B,C: the alerts of these names only (P["universe"] for this list)
                 P["universe"] = os.environ["SEC_SYMS"].split(",")
             jobs = TW.days()
+            if os.environ.get("SEC_TO"):   # every 0/1 DTE day from FROM to TO (TW.days stops at zero5.SPAN)
+                import leg_1dte as L1
+                pairs = [(s, d) for s in P["universe"] for i, d in enumerate(CAL) if FROM <= d <= TO and i >= 21]
+                with mp.Pool(8) as pool: ks = pool.starmap(L1.kind_of, pairs, chunksize=16)
+                jobs = [(d, s, k) for (s, d), k in zip(pairs, ks) if k]
             if os.environ.get("SEC_LATE"):   # every day with an expiry 2-7 days out, kind "l" (with SEC_FIRST / SEC_LAST)
                 top = P["universe"] if os.environ.get("SEC_SYMS") else json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "50"))]
                 pairs = [(s, d) for s in top for i, d in enumerate(CAL) if d >= FROM and i >= 21]
@@ -457,8 +467,9 @@ def main():
                 jobs = [(d, s, "l") for (s, d), x in zip(pairs, exps) if x]
             if os.environ.get("SEC_WEEK"):   # only the days with no 0/1 DTE but an expiry later that week
                 top = P["universe"] if os.environ.get("SEC_SYMS") else json.load(open(os.path.join(HERE, "strangle_rank.json")))[:int(os.environ.get("STR_TOP", "50"))]
-                with mp.Pool(8) as pool: kinds = pool.map(WC.kind, [(s, d) for s in top for i, d in enumerate(CAL) if d >= FROM and i >= 21], chunksize=16)
-                jobs = [(d, s, "w") for (s, d), k in zip([(s, d) for s in top for i, d in enumerate(CAL) if d >= FROM and i >= 21], kinds) if k == "w"]
+                wd = [(s, d) for s in top for i, d in enumerate(CAL) if FROM <= d <= TO and i >= 21]
+                with mp.Pool(8) as pool: kinds = pool.map(WC.kind, wd, chunksize=16)
+                jobs = [(d, s, "w") for (s, d), k in zip(wd, kinds) if k == "w"]
             with mp.Pool(8) as pool: res = pool.map(events_of, jobs, chunksize=8)
             ev = [e for r in res for e in r]
         if os.environ.get("STR_TOP"):
@@ -723,7 +734,10 @@ def main():
                       fname = alab + fname1
                       keep = []
                       for k, evs in by.items():
-                          for x in TW.pick(dict(events=sorted(evs, key=lambda z: z["minute"])), "open" if no_limits and "flat" not in alab else "flat")[:int(os.environ.get("STR_PER_STOCK", "2"))]: keep.append(x["trade"])
+                          # in time order by the alert's second (a shock inside a minute before that minute's plan
+                          # alert, as the live bot and the app; the user 2026-11-01); STR_ORDER_MINUTE=1: by minute, before
+                          order = (lambda z: z["minute"]) if os.environ.get("STR_ORDER_MINUTE") == "1" else (lambda z: z["trade"]["alert_sec"])
+                          for x in TW.pick(dict(events=sorted(evs, key=order)), "open" if no_limits and "flat" not in alab else "flat")[:int(os.environ.get("STR_PER_STOCK", "2"))]: keep.append(x["trade"])
                       if no_limits: eL, dL, R, _, _ = D.account(keep, size, 2)   # no day loss, trade, open or per-stock limit
                       else: eL, dL, R, _, _ = D.account(keep, size, 2, loss=7.5, max_trades=int(os.environ.get("STR_MAX_TRADES", "15")), max_open=int(os.environ.get("STR_MAX_OPEN", "5")))
                       avg = sum((r["sell"] * 100 - 0.62) / (r["buy"] * 100 + 0.62) - 1 for r in R) / max(1, len(R))

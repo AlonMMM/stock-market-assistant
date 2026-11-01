@@ -9,6 +9,35 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### The research aligned with the app's backtest: the live rules, on by default (2026-11-01)
+
+The user, 2026-11-01: the app's Backtest page and the research must make identical trades; the app (it mirrors the live
+bot) is the yardstick. A trade-by-trade comparison (live saved settings, 54 stocks, 2026-07-31 .. 2026-10-30, 3% a trade,
+live limits) found the trades the two shared priced the same to the cent (31 of 31), but 43 app-only and 8 research-only
+trades and 2 on another strike. The research's causes, fixed here, each on by default (an env switch reproduces the old):
+
+- **The shock list's 20-second prefilter** (`f60_prefilter.py`): an alert was kept only when the stock touched a side
+  line within 20 s, though the shock rule waits 300 s for its 5 checks in a row: 21 of the app-only trades. Now
+  `PF_MAX_S` 300 by default (a superset for the 15-s cross, which leg_seconds still applies). Old: `PF_MAX_S=20`.
+- **No ETF shocks**: the prefilter kept only strangle_rank's top 50, so SLV TQQQ SOXL SMH had no shock alerts (10
+  trades). Now every stock of the alert file. Old: `PF_TOP50=1`.
+- **The lists ended early**: the 0/1 DTE plan days stopped at zero5.SPAN (2026-10-12), the shock list at 2026-10-22.
+  `leg_seconds.py list` takes `SEC_TO` (every 0/1 DTE day, or same-week day, from SEC_FROM to SEC_TO; fast lists too).
+- **The liquidity fallback's direction and the too-cheap rescue** (`leg_fallback.choose`, the "liquid" mode that
+  `plain20` / `lqN` / `step35` use): as the app's `strangle/pick.ts` legAt + `bot/picker.ts` liquidOrder: a pick under
+  $0.20 is no trade (before, a pick both too cheap and thin was rescued: SLV 2026-08-28 +$13.6K); a thin pick tries
+  further out only down to delta 0.25 (for a 0.20 pick: none), then toward the money up to 0.50 (before: further out
+  first, down to 0.10). Old: `STR_LIQ_OLD=1`. Every Volume-bot script on that mode changes (leg_export, leg_fb2,
+  leg_spread, leg_friday*).
+- **Alerts in time order**: a shock and a plan alert of a stock in the same minute now go by their second (the shock
+  inside the minute first), as the live bot. Old: `STR_ORDER_MINUTE=1`.
+- **The day's first plan alert**: the first alert minute from 09:40 counts even when 09:39 had one (strangle.ts, the app's
+  dayAlerts); before, it needed a quiet minute before it. Old: `SEC_OLD_FIRST=1`.
+
+New lists, 54 stocks (the live list), 2026-07-31 .. 2026-10-30: `v54` (0/1 DTE, 426 alerts), `v54w` (same week, 202),
+`e_shock15v54` (shock: `shock15_v54.json` 590 alerts = D1's 581 + 9 of 10-29/30 not uploaded yet, prefiltered to 537),
+all with `SEC_AM_PRE=1.1` (a burst either way, a superset of the live burst filters).
+
 ### Random side: the side carries the result, not luck on wild days (2026-10-31)
 
 The user, 2026-10-31: "do #2" (the outside audit's control test). `random_side.py` (`fetch`, `run`): the 430 trades of

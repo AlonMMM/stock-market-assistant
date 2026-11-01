@@ -3,7 +3,10 @@ from the local 10-second bars, does the stock touch a side line (0.25 x S30 from
 and is the burst (the alert price against the close that ended 3 minutes before, the side's way, in S30) >= AM_MIN?
 A 10-second bar's high / low counts as a touch, so this keeps every alert the exact 1-second cross could keep.
   python3 f60_prefilter.py <early file in sec_cache> <out file in sec_cache>   (from the app repo root)
-  env: PF_MAX_S (20), PF_AM_MIN (1.1)"""
+  env: PF_MAX_S (300), PF_AM_MIN (1.1), PF_TOP50=1 (only the top 50 of strangle_rank.json, before 2026-11-01)
+The defaults since 2026-11-01 (the user: the app and the research must make identical trades): 300 s, the live shock
+rule's hold window (the 5 checks in a row within 300 s; a superset for the 15-s cross, which leg_seconds still applies),
+and every stock of the alert file (the ETFs SLV TQQQ SOXL SMH too). PF_MAX_S=20 PF_TOP50=1 reproduce the old lists."""
 import datetime as dt, json, os, sqlite3, sys
 from zoneinfo import ZoneInfo
 os.environ.setdefault("BT_VARIANT", "v2")
@@ -16,7 +19,7 @@ from store import day
 HERE = os.path.dirname(os.path.abspath(__file__))
 NY = ZoneInfo("America/New_York")
 TEN_DB = os.environ.get("BT_10S_DB", "data/local/bars-10s.sqlite")
-MAX_S = int(os.environ.get("PF_MAX_S", "20"))
+MAX_S = int(os.environ.get("PF_MAX_S", "300"))
 AM_MIN = float(os.environ.get("PF_AM_MIN", "1.1"))
 db = sqlite3.connect(f"file:{TEN_DB}?mode=ro", uri=True)
 
@@ -36,7 +39,7 @@ def main():
     n = dict(alerts=len(alerts), no_expiry=0, no_s30=0, no_bars=0, no_cross=0, burst_low=0, kept=0)
     keep, minutes = [], {}
     for a in alerts:
-        if a["sym"] not in top or a["date"] not in TW.CAL: continue
+        if (os.environ.get("PF_TOP50") == "1" and a["sym"] not in top) or a["date"] not in TW.CAL: continue
         if not L1.kind_of(a["sym"], a["date"]) and not (os.environ.get("PF_WEEK") and WC.week_expiry(a["sym"], a["date"])):
             n["no_expiry"] += 1; continue   # PF_WEEK=1: a same-week expiry counts too
         x = ctx(a["sym"], a["date"])
