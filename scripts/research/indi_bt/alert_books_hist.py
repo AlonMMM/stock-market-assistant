@@ -375,8 +375,11 @@ def store():
     by_date = collections.defaultdict(list)   # dbx_cache rows for quotes_upload.py
     for r in rows:
         p = raw_path(r)
-        if not os.path.exists(p): continue
-        q = quotes_of(p)
+        top = p.replace(f"{DIR}/", f"{DIR}/topup/", 1)   # alert_books_topup.py: the strikes the first band missed
+        if not os.path.exists(p) and not os.path.exists(top): continue
+        q = quotes_of(p) if os.path.exists(p) else collections.defaultdict(list)
+        if os.path.exists(top):
+            for c, qs in quotes_of(top).items(): q[c] = sorted(q.get(c, []) + qs)
         cons = r["contracts"].split(";")
         if r["kind"] != "minute":
             # every 2 s from the alert second: the book in force at that moment (the last quote at or before it)
