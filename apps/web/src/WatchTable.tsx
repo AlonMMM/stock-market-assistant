@@ -44,6 +44,7 @@ import {
   scoreWeak,
   toneWords,
 } from "./vs-spy-model.js";
+import { EarningsBadge } from "./EarningsBadge.js";
 
 // An opened row shows plain candles only (user 2026-10-16).
 const CandleChart = lazy(() =>
@@ -421,6 +422,7 @@ export function WatchTable({
                 >
                   <span className="wl-cell wl-symbol">
                     <strong>{r.ticker}</strong>
+                    <EarningsBadge symbol={r.ticker} compact />
                     {r.sector && <small>{r.sector}</small>}
                     {r.alerts > 0 && (
                       <span className="wl-dot" title="Alert today">

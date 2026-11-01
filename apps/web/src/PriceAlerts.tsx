@@ -4,6 +4,7 @@ import type {
   PriceAlertKind,
 } from "../../../packages/market-data/src/price-alerts.js";
 import { readJson } from "./api.js";
+import { EarningsBadge } from "./EarningsBadge.js";
 
 // The user's own price alerts (user 2026-10-18): separate from the volume
 // alerts the system finds. A level in dollars, or a % move today, on one
@@ -393,6 +394,7 @@ export function PriceAlertList({
                   ) : (
                     <b className="pa-ticker">{a.ticker}</b>
                   ))}
+                <EarningsBadge symbol={a.ticker} compact />
                 <span className="num">{alertRule(a)}</span>
                 {a.note && <small className="muted">{a.note}</small>}
               </span>

@@ -68,6 +68,7 @@ import {
 import { handleBotPortfolioAt } from "../../../packages/trading/src/bot-api.js";
 import { newYork } from "../../../packages/market-data/src/calendar.js";
 import { handleOrderDecisions } from "../../../packages/trading/src/decisions-api.js";
+import { handleEarnings } from "../../../packages/trading/src/earnings-api.js";
 import {
   D1WatchStore,
   MemoryWatchStore,
@@ -916,6 +917,25 @@ export default {
       return Response.json(result.body, {
         status: result.status,
         headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path === "/api/earnings") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      // Earnings dates for the ticker badges (earnings.ts); no account data.
+      const result = await handleEarnings({
+        url: env.TRADER_URL,
+        token: env.TRADER_READ_TOKEN,
+      });
+      return Response.json(result.body, {
+        status: result.status,
+        headers: {
+          "Cache-Control":
+            result.status === 200 ? "private, max-age=900" : "no-store",
+        },
       });
     }
     if (path === "/api/portfolio/orders") {

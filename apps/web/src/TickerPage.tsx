@@ -21,6 +21,7 @@ import {
 } from "./PriceAlerts.js";
 import { israelClock } from "./time.js";
 import { scoreTone, toneWords } from "./vs-spy-model.js";
+import { EarningsBadge } from "./EarningsBadge.js";
 
 // One stock's own page (user 2026-10-18: "open the ticker with extra data in
 // its own page, like IBKR"): its price and today's chart as the watchlist
@@ -216,7 +217,10 @@ export function TickerPage({
       </button>
       <section className="tk-head" aria-label={`${ticker} quote`}>
         <div className="tk-name">
-          <h2>{ticker}</h2>
+          <h2>
+            {ticker}
+            <EarningsBadge symbol={ticker} />
+          </h2>
           <p className="muted">
             {info?.asset?.name ?? (error ? "" : "Loading…")}
             {info?.asset?.exchange && ` · ${info.asset.exchange}`}

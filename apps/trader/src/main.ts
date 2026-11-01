@@ -48,6 +48,7 @@ import type { OptionQuote } from "../../../packages/trading/src/options.js";
 import botUniverse from "../../../config/bot-universe.json" with { type: "json" };
 import { IndiBot } from "./bot.js";
 import { nasdaqEarnings } from "./bot-news.js";
+import { EarningsCache } from "../../../packages/market-data/src/earnings.js";
 import { AlpacaBotMarket } from "./bot-market.js";
 import { BotStore } from "./bot-store.js";
 import {
@@ -316,6 +317,10 @@ api.post("/v1/risk/volume-bot/merge", async (request) => {
   log(`risk settings of ${a.id}: ${JSON.stringify(merged.value)}`);
   return { id: a.id, settings: merged.value, changed: merged.changed };
 });
+// The earnings dates around today for the site's ticker badges (read-only;
+// no account data): the same Nasdaq calendar as the bot's news filter.
+const earnings = new EarningsCache((date) => nasdaqEarnings(date));
+api.get("/v1/earnings", async () => earnings.window());
 api.get("/v1/positions", async (request) => service(request).status());
 api.get<{ Querystring: { limit?: string } }>("/v1/decisions", async (request) =>
   service(request).decisions(Number(request.query.limit)),

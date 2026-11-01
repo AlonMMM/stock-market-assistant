@@ -72,6 +72,7 @@ import {
 } from "../../../packages/trading/src/bot-api.js";
 import { handleBotPortfolioAt } from "../../../packages/trading/src/bot-api.js";
 import { handleOrderDecisions } from "../../../packages/trading/src/decisions-api.js";
+import { handleEarnings } from "../../../packages/trading/src/earnings-api.js";
 
 export function buildApp(
   logging = false,
@@ -242,6 +243,20 @@ export function buildApp(
     return reply
       .code(result.status)
       .header("Cache-Control", "no-store")
+      .send(result.body);
+  });
+  // Earnings dates for the ticker badges (earnings.ts).
+  app.get("/api/earnings", async (_request, reply) => {
+    const result = await handleEarnings({
+      url: process.env.TRADER_URL,
+      token: process.env.TRADER_READ_TOKEN,
+    });
+    return reply
+      .code(result.status)
+      .header(
+        "Cache-Control",
+        result.status === 200 ? "private, max-age=900" : "no-store",
+      )
       .send(result.body);
   });
   app.get("/api/portfolio/orders", async (_request, reply) => {
