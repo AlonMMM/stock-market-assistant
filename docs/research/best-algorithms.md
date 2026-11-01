@@ -2478,3 +2478,9 @@ against each other here: the giants first dip near the cost. Candidate: arm +50%
   (2.8 17.2%); its sales median -10% to -11%, 20-22% won (the stock lock's -7%, 37%). The option stop fires on the
   spread and theta with the stock still on our side, so it cuts the fair list's giants (-35% at +50%) though it helps
   the 12 / 6-month Favorites more than the stock lock; it does not raise the win rate. The stock lock stays the candidate.
+- **Found while drawing the examples (https://claude.ai/artifact/9viXhT7mg5FhGbNQRZLecV):** in the 1-second runs
+  (champ-1s / x-*), sim.walk decides every exit on the minute-model buy price (`basis`, the bar's middle + 2%), and the
+  real 1-second fill replaces the prices afterwards: NVDA 2026-02-09 basis $0.78 vs the real $0.68, SMCI 2024-02-05
+  $5.71 vs $4.88. So the lock level (and every option-percent rule: the -60% stop, the +50% overnight hold) is set off
+  a price the live bot would not have paid. The sale prices are real; the timing is a little off. To fix before 2.9:
+  walk with the real fill as basis and re-run 2.8 and the lock.
