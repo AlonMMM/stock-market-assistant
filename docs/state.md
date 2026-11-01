@@ -6,8 +6,11 @@ Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting,
 ## Stock tags: earnings and big news (2026-11-01)
 
 A coloured chip next to a symbol (user 2026-11-01: earnings in the next 24h, in the last 24h, this week, big
-news; "visible everywhere including watchlist"): orange "Earnings in 6h", purple "Earnings 14h ago", blue
-"Earnings Thu", pink "Big news" ("ER …" and "News" in tight rows). One earnings tag a stock, the most urgent;
+news; "visible everywhere including watchlist"): teal "Earnings in 6h", purple "Earnings 14h ago", blue
+"Earnings Thu", pink "Big news" ("ER …" and "News" in tight rows); no orange, which is the Watchlist's
+live-alert dot. On the Watchlist they are small dots on the symbol's corner, out of the flow so no column
+moves (user 2026-11-01: the chips "are moving the data away"), with the chips in the opened row and a key
+under "How to read the columns". One earnings tag a stock, the most urgent;
 "this week" is the Monday–Friday week, the coming one on a weekend; big news is 3 or more Alpaca headlines in
 24 hours (the user's choice). `GET /api/tags?symbols=…` (`packages/market-data/src/tags.ts`, Fastify and the
 Worker) reads the Nasdaq earnings calendar (the bot's source; an hour's cache a date) and Alpaca news (5 minutes

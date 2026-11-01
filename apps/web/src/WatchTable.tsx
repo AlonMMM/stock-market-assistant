@@ -421,8 +421,10 @@ export function WatchTable({
                   }}
                 >
                   <span className="wl-cell wl-symbol">
-                    <strong>{r.ticker}</strong>
-                    <StockTags symbol={r.ticker} compact />
+                    <span className="wl-ticker">
+                      <strong>{r.ticker}</strong>
+                      <StockTags symbol={r.ticker} dots />
+                    </span>
                     {r.sector && <small>{r.sector}</small>}
                     {r.alerts > 0 && (
                       <span className="wl-dot" title="Alert today">
@@ -575,8 +577,11 @@ export function WatchTable({
           regular-session volume so far ÷ the median volume by the same New York
           minute over the previous 20 sessions; orange from {moving.relVolume}×;
           “—” before the {israelClock(board.open * 1000)} open or with too
-          little history. An orange dot: a live alert today. Times in{" "}
-          {israelLabel}.
+          little history. An orange dot: a live alert today. Small dots on a
+          symbol&apos;s corner are its tags (open the row to read them): teal,
+          earnings in the next 24 hours; purple, earnings in the last 24 hours;
+          blue, earnings later this week; pink, big news (3 or more headlines in
+          24 hours). Times in {israelLabel}.
         </p>
       </details>
     </div>
