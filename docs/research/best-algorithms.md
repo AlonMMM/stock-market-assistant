@@ -2675,3 +2675,14 @@ at about the same drop (h20 +45% / +32% over flat60), the first sizing rule to d
   $64,349; t3B (1.6 / 2.0x) tune $494,564 (26%) / $660,815 (18%), check $552,952 (26%) / $159,184 (29%). Against 2.9
   ($376,230 / $555,017; $478,021 / $143,834, drops 29 / 18 / 25 / 25%) and h20-up ($535,264 / $589,534; $548,272 /
   $172,788). t3A: check +24% / +35% with 2 points less drop, tune fair +6% with 8 points less, tune Favorites -24%.
+
+### 2.10 released (2026-11-01): 2.9 + the size by the volume at the signal (t3A), the add within 5%
+The owner: "lets go with t3A, release new version (run the review script first)", then from the review: raise the
+service's cap per buy to 5% (the 150% tier at 3% is 4.5%), "Do add, but up to 5%" (the pyramid add after a 150% leg
+keeps the position within 5% of the account: 0.5% at 3%), a refused 150% buy buys the whole size, and early entry's
+volume ratio is measured through the minute before (it read low against the backtest). App PR #233. Release twin
+t3A-c5 in size_volume.py (the cap binds only above 2%; at 2% it is t3A). At 3%, tune / check (fair, Favorites):
+2.10 $475,052 (28%) / $537,583 (28%); $654,068 (32%) / $194,770 (31%); 2.9 $404,162 (40%) / $716,915 (27%); $652,748
+(36%) / $139,523 (36%). Without the add after 150% (t3A-na): check fair $450,646 at 2% vs t3A $591,521 (the adds on
+the biggest-volume D2 trades). Gate: volume parity (bot-parity.ts, H1 2025): 3,519 / 3,534 the same tier, the rest
+rounding at a line; looks 4-5 on this idea, ~14 sizing variants: the check is weak evidence; paper trading decides.

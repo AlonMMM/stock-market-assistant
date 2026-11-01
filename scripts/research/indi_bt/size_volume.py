@@ -86,7 +86,11 @@ SIZEV = {"h175": lambda rv: 0.5 if rv < 1.75 else 1.0, "h20": lambda rv: 0.5 if 
          # running from the volume spread (A round lines, B more even groups)
          "tierA": lambda rv: tier(rv, (1.75, 2.5, 4.0)), "tierB": lambda rv: tier(rv, (1.6, 2.0, 3.0)),
          # the user, 2026-11-01: "try 0.5, 1, 1.5 sizing" (three tiers; the lines from tierA / tierB)
-         "t3A": lambda rv: tier(rv, (1.75, 2.5), (0.5, 1.0, 1.5)), "t3B": lambda rv: tier(rv, (1.6, 2.0), (0.5, 1.0, 1.5))}
+         "t3A": lambda rv: tier(rv, (1.75, 2.5), (0.5, 1.0, 1.5)), "t3B": lambda rv: tier(rv, (1.6, 2.0), (0.5, 1.0, 1.5)),
+         # the 2.10 release (the owner, 2026-11-01: "No add after a 150% trade"): t3A with no pyramid add on a 150% leg
+         "t3A-na": lambda rv: tier(rv, (1.75, 2.5), (0.5, 1.0, 1.5)),
+         # the release (the owner, 2026-11-01: "Do add, but up to 5%"): the first leg and its add within 5% of the account
+         "t3A-c5": lambda rv: tier(rv, (1.75, 2.5), (0.5, 1.0, 1.5))}
 V = ["base", *SIZEV]
 
 
@@ -251,11 +255,13 @@ def entries(R, adds, src, v, part, size, a=""):
         x, m = r["v"][v], r["at"][v]
         w = SIZEV[v](r.get("rvol", 0)) if v in SIZEV else 1.0
         E.append((r["date"], m, w, x[full], x["over"], x["h"]))
-        if not r["d2"]: continue
+        if not r["d2"] or (v.endswith("-na") and w > 1): continue
         for ad in sorted(adds.get((src, r["date"], r["sym"], r["right"]), []), key=lambda q: q["minute"]):
             if ad["minute"] <= m or v not in ad["v"]: continue
             share, up = x["held"].get(ad["minute"], (0, None))
-            if share > 0 and up is not None and up > 0: E.append((ad["date"], ad["minute"], 0.5 * w, ad["v"][v][halfk], ad["v"][v]["over"], ad["v"][v]["h"]))
+            aw = 0.5 * w
+            if v.endswith("-c5"): aw = min(aw, max(0.0, 0.05 / size - w))   # the position within 5% of the account
+            if share > 0 and up is not None and up > 0 and aw > 0: E.append((ad["date"], ad["minute"], aw, ad["v"][v][halfk], ad["v"][v]["over"], ad["v"][v]["h"]))
             break
     return E
 
