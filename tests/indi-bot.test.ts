@@ -1609,12 +1609,13 @@ test("runner (live): with the failed-break sale off the bot only notes it and ke
   );
 });
 
-test("orders: the bot's buys chase the ask and its sales wait 10 minutes at the bid", async () => {
+test("orders: the bot's buys chase the ask at any spread and its sales wait 10 minutes at the bid", async () => {
   const h = harness("live");
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy")!;
   assert.equal(buy.body.chase, true);
   assert.equal(buy.body.chaseMs, chaseBuyMs);
+  assert.equal(buy.body.force, true);
   h.setMid(0.7);
   await h.run(DAY, 601, 955);
   const sell = h.calls.find((c) => c.kind === "sell")!;
