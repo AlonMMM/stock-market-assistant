@@ -53,6 +53,8 @@ Exits      (gain g = option bar close / entry fill - 1, checked on every option 
                behind the entry price (levels.py: yesterday's / the 5-day high and low, the first 15 minutes', the day's so far)
                                                            -> sell all
   first_exit_min N: on the entry day no -X% stop and no failed-break sale in the first N minutes (the checks keep their times)
+  grace N: on the entry day no staged stock exit, t-stat exit or break-even lock in the first N minutes; the option stop
+           and the checks stay (the user, 2026-11-01)
   hold_first N: on the entry day no stop of any kind (the checks, -X%, the rest, the t-stat exit, the failed break) in the
                first N minutes after the entry; then the rules as usual, a check whose time has passed fires at once
                (user, 2026-10-25: "no stop for 30 minutes" on the pre-market D2 entries, premarket_d2.py)
@@ -410,6 +412,9 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                 continue
             early = k == 0 and t - minute < X.get("first_exit_min", 0)  # no stop / failed-break sale this soon after the entry (user, 2026-10-24)
             hold = k == 0 and t - minute < X.get("hold_first", 0)  # no stop of any kind yet (hold_first)
+            # grace N (the user, 2026-11-01: "give it a 5/10 minutes of grace (we do have the 60% stop anyway)"): on the
+            # entry day, no staged stock exit, t-stat exit or break-even lock in the first N minutes; the option stop stays
+            grace = k == 0 and t - minute < X.get("grace", 0)
             early = early or hold
             if fb is not None and X.get("failed_break") and k == 0 and t > fb and cost is not None and not early:  # the failed-break sale: all of what is left
                 steps.append((d, t, "sell", round(rem, 4), round(max(mid(b) * (1 - SH), 0.01), 4), "F_break"))
@@ -698,7 +703,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                 st["rolled"] = True; pending = (rem * R_["share"], "R_roll"); continue
             if R_ and st.get("rolled") and g >= R_["rest_take"]: pending = ("all", "R_take"); continue
             TH = X.get("thesis")  # {s30, bar, t}: the entry's thesis broken on the stock itself (user, 2026-10-24)
-            if TH and k == 0 and sd.ok and not hold:
+            if TH and k == 0 and sd.ok and not hold and not grace:
                 if "th" not in st:
                     from levels import ctx
                     cx = ctx(und, d)
@@ -730,7 +735,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                 # all out when the option bar closes at what was paid x (1 + target) or under
                 if g >= BE["arm"]: st["be_opt"] = True
                 if st.get("be_opt") and g <= BE.get("target", 0.0): pending = ("all", "BE_lock"); continue
-            elif BE and k == 0 and sd.ok and not hold:
+            elif BE and k == 0 and sd.ok and not hold and not grace:
                 spx = sd.c[min(t, 389)]
                 if spx and g >= BE["arm"] and (st.get("be") is None or BE.get("update")):
                     lvl = be_level(sym, d, t, exp, bet, c, spx, basis * (1 + BE.get("target", 0.0)))
@@ -742,7 +747,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
             # stock is `half` S30 against; all out at `full` against; with `back`, the part sold bought back once the stock
             # is `back` S30 on our side of the signal price again (before minute `until`); `repeat`: the half can fire again
             # after a buy back
-            if SS and k == 0 and sd.ok and not hold:
+            if SS and k == 0 and sd.ok and not hold and not grace:
                 if "ss" not in st:
                     from levels import ctx
                     cx = ctx(und, d); p0 = sd.c[minute]

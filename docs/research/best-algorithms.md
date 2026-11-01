@@ -2687,3 +2687,21 @@ t3A-c5 in size_volume.py (the cap binds only above 2%; at 2% it is t3A). At 3%, 
 (36%) / $139,523 (36%). Without the add after 150% (t3A-na): check fair $450,646 at 2% vs t3A $591,521 (the adds on
 the biggest-volume D2 trades). Gate: volume parity (bot-parity.ts, H1 2025): 3,519 / 3,534 the same tier, the rest
 rounding at a line; looks 4-5 on this idea, ~14 sizing variants: the check is weak evidence; paper trading decides.
+
+### A grace period after the buy, on 2.9 (2026-11-01, not better)
+The user: "today we are selling even if 1 minute after the buy we meet the rules. I suggest to give it a 5/10 minutes
+of grace (we do have the 60% stop anyway)". Tested 2026-10-24 on 2.4 (early_exits.py, the -30% stop and the failed
+break: not better); re-run because today's early exits are the staged stock exit, the t-stat exit and the lock. sim.py
+`grace N`: no staged exit / t-stat exit / lock in the first N minutes, the -60% stop stays. 2.9's overlay + grace 5 /
+10 / 15 (set before running, look 1); export_early.py (fair, Fav 12m / 6m) and export_fav_long.py (24 / 36m), real
+fill basis. 2%, whole / tune / check:
+- Fair: 2.9 $3,455,683 (32.2%) 523K / 695K; g5 $3,305,977 (32.9%) 510K / 681K; g10 $3,205,037 (34.8%) 477K / 706K;
+  g15 $2,973,835 (34.7%) 458K / 683K. Won 17.9% -> 18.2 / 18.9 / 19.9%.
+- Fav 12m: 2.9 $201,958 (30.4%); g5 $198,731; g10 $205,405 (31.6%); g15 $206,486. Fav 6m: $143,988; $139,220; $134,154;
+  $133,102. Fav 36m real: $1,270,570 (36.1%); $1,187,040; $1,237,002 (38.2%); $1,060,161 (39.2%). Fav 24m real:
+  $766,590 (32.4%); $737,398; $795,377 (35.5%); $725,413.
+- The changed trades: median -$180 / -$300 / -$360 at $10K, hurt about 2:1 over helped on every list; without their
+  best 10 -$40K to -$250K.
+Verdict: not better. The grace lifts the win rate 1-2 points (some early-sold trades recover) but the typical delayed
+exit loses more, the drop grows 1-3 points, and tune is lower on every list (check up only on g10 fair +2% and the
+24-month Favorites). The early staged exits are right more often than wrong, as on 2026-10-24.
