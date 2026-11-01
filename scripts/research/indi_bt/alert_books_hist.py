@@ -375,10 +375,12 @@ def store():
     by_date = collections.defaultdict(list)   # dbx_cache rows for quotes_upload.py
     for r in rows:
         p = raw_path(r)
-        top = p.replace(f"{DIR}/", f"{DIR}/topup/", 1)   # alert_books_topup.py: the strikes the first band missed
-        if not os.path.exists(p) and not os.path.exists(top): continue
+        # alert_books_topup.py's downloads (topup: the strikes the first band missed; topup_year: the year, 54 stocks)
+        tops = [p.replace(f"{DIR}/", f"{DIR}/{t}/", 1) for t in ("topup", "topup_year")]
+        tops = [t for t in tops if os.path.exists(t)]
+        if not os.path.exists(p) and not tops: continue
         q = quotes_of(p) if os.path.exists(p) else collections.defaultdict(list)
-        if os.path.exists(top):
+        for top in tops:
             for c, qs in quotes_of(top).items(): q[c] = sorted(q.get(c, []) + qs)
         cons = r["contracts"].split(";")
         if r["kind"] != "minute":

@@ -19,7 +19,8 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import alert_books_hist as ab
 
-OUT = f"{ab.DIR}/topup_requests.csv"
+TAG = os.environ.get("AB_TAG", "topup")   # topup: Aug-Oct, the Favorites; topup_year: the year on the bot's 54 stocks
+OUT = f"{ab.DIR}/{TAG}_requests.csv"
 RATE, NEAR, BAR_AGE, SIDE_WAIT = 0.045, 16, 10, 10
 ONLY = set(filter(None, os.environ.get("AB_SYMS", "").split(",")))   # a test on a few stocks
 DAYS = {}   # (symbol, date) -> the stock's minute bars, read in the main thread (store.py's SQLite is one thread's)
@@ -144,7 +145,7 @@ def build():
         old[key] = r["contracts"]
     by = collections.defaultdict(list)
     for kind in ("plan", "shock"):
-        for a in json.load(open(f"{ab.DIR}/alerts_{kind}.json")):
+        for a in json.load(open(f"{ab.DIR}/alerts_{kind}{'' if TAG == 'topup' else '_' + TAG}.json")):
             if ab.FROM <= a["date"] <= ab.TO and (not ONLY or a["sym"] in ONLY): by[(a["sym"], a["date"])].append((kind, a))
     rows, stats = [], []
     keys = sorted(by)
@@ -156,7 +157,7 @@ def build():
     with open(OUT + ".tmp", "w", newline="") as f:
         w = csv.DictWriter(f, COLS); w.writeheader(); w.writerows(rows)
     os.replace(OUT + ".tmp", OUT)
-    json.dump(stats, open(f"{ab.DIR}/topup_stats.json", "w"))
+    json.dump(stats, open(f"{ab.DIR}/{TAG}_stats.json", "w"))
     for kind in ("plan", "shock"):
         s = [x for x in stats if x["kind"] == kind]
         print(f"{kind}: {len(s)} alerts, {sum(x['new'] > 0 for x in s)} miss strikes of the real band; "
@@ -189,7 +190,7 @@ FIRST_RAW = ab.raw_path   # the backfill's own paths (fetch() points ab.raw_path
 
 def raw_path(r):
     """The top-up's raw Databento CSVs, beside the backfill's (alert_books_hist.store reads both)."""
-    return FIRST_RAW(r).replace(f"{ab.DIR}/", f"{ab.DIR}/topup/", 1)
+    return FIRST_RAW(r).replace(f"{ab.DIR}/", f"{ab.DIR}/{TAG}/", 1)
 
 
 def fetch():
@@ -205,7 +206,7 @@ def merge():
     rows = ab.read_list()
     key = lambda r: (r["kind"], r["symbol"], r["date"]) + (() if r["kind"] == "minute" else (r["second"],))
     by = {key(r): r for r in rows}
-    before = f"{ab.DIR}/requests_before_topup.csv"
+    before = f"{ab.DIR}/requests_before_{TAG}.csv"
     if not os.path.exists(before): os.replace(f"{ab.DIR}/requests.csv", before)
     rows = list(csv.DictReader(open(before)))
     by = {key(r): r for r in rows}
@@ -225,5 +226,22 @@ def merge():
     print(f"requests.csv: {len(rows)} windows ({added} new ones), the top-up's contracts merged in")
 
 
+def alerts_year():
+    """The year's alerts on the Volume bot's stocks (config/volume-bot-stocks.json): plan alerts as alert_books_hist
+    finds them; shock alerts as the app's backtest reads them (D1 volume_alerts, from a local copy: AB_SHOCK_DB)."""
+    from concurrent.futures import ProcessPoolExecutor
+    syms = json.load(open(os.path.expanduser("~/Desktop/Personal/sma-deploy/config/volume-bot-stocks.json")))["symbols"]
+    cal = ab.trading_days()
+    with ProcessPoolExecutor(6) as ex:
+        plan = [a for got in ex.map(ab.plan_alerts, syms, [cal] * len(syms)) for a in got]
+    json.dump(plan, open(f"{ab.DIR}/alerts_plan_{TAG}.json", "w"))
+    import sqlite3
+    db = sqlite3.connect(os.environ["AB_SHOCK_DB"])
+    q = f"SELECT symbol, date, second, price FROM volume_alerts WHERE kind = 'shock' AND date BETWEEN ? AND ? AND symbol IN ({','.join('?' * len(syms))})"
+    shock = [dict(sym=r[0], date=r[1], sec=r[2], price=r[3]) for r in db.execute(q, (ab.FROM, ab.TO, *syms))]
+    json.dump(shock, open(f"{ab.DIR}/alerts_shock_{TAG}.json", "w"))
+    print(f"{len(plan)} plan and {len(shock)} shock alerts on {len(syms)} stocks, {ab.FROM} .. {ab.TO}")
+
+
 if __name__ == "__main__":
-    {"list": build, "cost": cost, "fetch": fetch, "merge": merge}[sys.argv[1] if len(sys.argv) > 1 else ""]()
+    {"alerts_year": alerts_year, "list": build, "cost": cost, "fetch": fetch, "merge": merge}[sys.argv[1] if len(sys.argv) > 1 else ""]()
