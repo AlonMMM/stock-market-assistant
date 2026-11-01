@@ -2708,7 +2708,7 @@ exit loses more, the drop grows 1-3 points, and tune is lower on every list (che
 - **2 minutes** (the user: "try 2 minutes", look 2; g2 / flg2, same overlay). 2%, whole / tune / check: Fair $3,340,980
   (32.3%) 568K / 618K vs 2.9 $3,455,683 523K / 695K (check -11%; ladder at 3% check $1.05M vs $1.32M). Fav 12m $207,634
   vs $201,958; Fav 6m $152,338 vs $143,988; Fav 24m real $908,650 vs $766,590 (check 157K vs 144K); Fav 36m minute
-  $6.57M vs $5.46M but check 650K vs 789K. Won 17.9% -> 15.3% on the fair list (13-16% on the Favorites): the 2 minutes
+  $6.57M vs $5.46M but check 650K vs 789K. Fav 36m real $1,935,193 (32.7%) vs $1,270,570 (36.1%), check 396K vs 321K, but check w/o best 5 217K vs 239K. Won 17.9% -> 15.3% on the fair list (13-16% on the Favorites): the 2 minutes
   turn early small sales into -60% stops. Changed trades: median +$87 fair, -$22 to -$54 on the long Favorites; without
-  their best 10 negative on every list (-$7K to -$114K). Not better: the gain is ~10 trades, the fair check is lower and
-  the win rate falls 2-3 points.
+  their best 10 negative on every list (-$7K to -$114K). Not adopted: the Favorites gain but rest on ~10 trades, the fair check is lower and the
+  win rate falls 2-3 points.
