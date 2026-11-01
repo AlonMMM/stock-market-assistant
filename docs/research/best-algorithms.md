@@ -2536,3 +2536,28 @@ BE_lock 0.51 = bid 0.51 / 0.57, +2%); buys at the 1-second book (MSFT 0.83 vs th
 BA 2024-08-01 +2661%, ORCL 2026-04-13 +2322%) are overnight holds the lock never touches.
 **For §6 (live parity):** the research arms on the option bar's close (last print) and takes the IV from it, and fires
 on the stock's minute close; live reads the option's quote mid and the stock's last trade - name both in the rule map.
+
+### 2.9 released (2026-11-01): 2.8.1 + the break-even lock at +50%
+The owner: "add it now in all the places needed as 2.9, do not forget to use 2.8.1 (ladder)", then, after the audit,
+"Keep on with the 50%. I know it can be luck ... for now it is more important to reduce the drop and increase the win
+rate." App PR #231 (includes #227). Release gate (bot-release skill):
+- §1 backtest: the basis fix (exits decided on the real fill, `BT_BASIS=real` default, commit 1ff86a7); the old result
+  reproduces with `BT_BASIS=model`; 8 hand-traced trades sell at the real bid. PASS.
+- §2 overfit: every list ahead on the whole and on check, ahead without the best 5, every year positive; the strict
+  changed-trades check FAILS (165 fair-list trades changed, median +$1,105, sum +$33K, without the best 10 -$41K; negative
+  without the best 10 on 4 of 5 lists); 3 looks, 18 variants. Neighbours (2%, fair / Fav 12m / Fav 36m real):
+  +40% $2,825,402 / $180,656 / $989,833 (a cliff: worse than 2.8 on every list); **+50% $3,455,683 (32.2%) /
+  $201,958 (30.4%) / $1,270,570 (36.1%)**; +60% $3,289,630 (34.0%) / $200,855 / $1,411,681 (35.7%); +80% $3,462,994
+  (33.7%) / $194,248 / $1,234,668 (38.6%); +100% $3,368,447 (34.3%) / $201,853 / $1,165,490 (37.9%). 2.8: $3,138,672
+  (34.4%) / $199,012 (30.8%) / $1,096,100 (39.3%). +50% has the smallest drop and the most winners on every list.
+- §4 risk: worst drop 2-4 points less, worst day and worst 5 days a little better, the 36 months 117 days under water
+  vs 138 (the 6 months 45 vs 27).
+- §5 live code: a fresh reviewer; fixed from it: the ladder never raises the owner's size, an unknown account takes the
+  smallest step, own labels keep new rules off, the lock decides on the stock's minute close, the research's IV
+  solver. `npm run check`: 780 pass.
+- §6 parity: scripts/bot-lock-parity.ts on the research walk's own minute inputs (lock_inputs.py): 170 / 170 lock sales
+  at the same minute. Not run: the E2E day replay. Drifts named: live arms on the option's mid and the walk on the
+  book's mid each stock minute (the same), live checks every minute and the walk every stock minute; live still runs
+  early entry, the research yardstick does not.
+- §9: the Bot vs Indi page opens on 2.9 with the ladder at 3% ($4,399,581 / 37.2% on the fair list); 2.8 (`x-stop60`)
+  and 2.8 (minute fills) re-exported on the same basis; x-staged / x-add60 removed.

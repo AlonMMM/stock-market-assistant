@@ -11,6 +11,13 @@ check $206,879 / 25% (fav_baseline.py); the fair list is unchanged ($418,875 / $
 
 ## Production
 
+**Since 2026-10-31: 2.8.0** (PR #223, deployed): 2.7 + the staged stock exit (no 10 / 20-minute checks; half out at 0.5
+S30 against the signal price, the rest at 1.0), the option stop at -60%, late winners (entry 15:00+, up) held to 15:50.
+Research twin: the f28 overlay `{"user_stop": {"checks": [], "out": -0.6}, "stock_stages": {"half": 0.5, "full": 1.0},
+"late_hold": {"from": 330}}` on the champion's exits; fresh run with the real-fill basis (2026-11-01, `r28` / `fl28r`,
+champ-1s = no early entry): fair list $3,138,672 / 34.4% at 2%, tune / check $496,822 / $665,808. Live it also runs
+early entry (on since 2.7), which tested fairly loses (2026-10-31); the research yardstick buys at the minute's close.
+
 **Since 2026-10-27 (live from 15:05 Israel, before the open): 2.7**, the champion (PR #183, merged as ed42c3f and
 deployed): 2.5 without the cheap fallback, IBIT down to $0.10, the pyramid, early entry (checked every 5 seconds). The
 owner's limits kept: size 3%, 8 buys a day, 5 open, 5% day loss, both brokers; minimum price $0.20 (was $0.15 on 2.6*).
@@ -30,6 +37,18 @@ What the live bot runs when its settings are reset to defaults: the default vers
 - The previous production, 2.4 (t >= 1.8 only, with the failed-break sale): fair list $719,945 / 9%; benchmark `bot24`.
 
 ## Candidate
+
+**2.9, released 2026-11-01 (PR #231, includes #227 = 2.8.1; deploy on the owner's go):** 2.8.1 (the size steps: 3%,
+2.5% from $300K, 1.5% from $1M, 1% from $4M; a step never raises the owner's size) + the break-even lock (`be_lock
+{arm: 0.5, update: true}`: on the entry day, once the option is +50%, the stock price where Black-Scholes at its implied
+volatility values it at its cost is a stop on the stock, worked out again each minute it is still +50%, the tighter
+kept). Fresh runs, real-fill basis, 2%: fair $3,455,683 / 32.2% (tune / check $522,556 / $694,763); with the ladder
+$4,399,581 / 37.2% vs 2.8.1 $4,148,061 / 39.6%; Favorites 12 / 6 / 24 / 36 months ahead with the drop 0.4-4 points less.
+Benchmark slugs `x-v29` / `x-v29-m` (2.8: `x-stop60` / `x-stop60-m`). The owner shipped it knowing the strict changed-trades
+check fails (without the best 10 changed trades the sum is negative on 4 of 5 lists): "it is more important to reduce
+the drop and increase the win rate". Release audit in best-algorithms.md (2026-11-01).
+
+Earlier candidates:
 
 **Since 2026-10-27 (afternoon) the champion and candidate is the champion below + early entry**: buy at the first second
 inside the signal minute the rule already holds (sec_timing.py "early"; benchmark slug `champ-early`, yardstick
