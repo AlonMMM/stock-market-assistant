@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import { StockTags } from "./StockTags";
 import type { Board } from "../../../packages/market-data/src/board.js";
 import type { TickerInfo } from "../../../packages/market-data/src/ticker.js";
 import type { Portfolio } from "../../../packages/trading/src/portfolio.js";
@@ -217,6 +218,7 @@ export function TickerPage({
       <section className="tk-head" aria-label={`${ticker} quote`}>
         <div className="tk-name">
           <h2>{ticker}</h2>
+          <StockTags symbol={ticker} block />
           <p className="muted">
             {info?.asset?.name ?? (error ? "" : "Loading…")}
             {info?.asset?.exchange && ` · ${info.asset.exchange}`}

@@ -8,6 +8,7 @@ import {
   handleTicker,
   handleTickerCheck,
 } from "../../../packages/market-data/src/ticker.js";
+import { handleTags } from "../../../packages/market-data/src/tags.js";
 import {
   liveUrl,
   paperUrl,
@@ -517,6 +518,21 @@ export default {
         Object.fromEntries(new URL(request.url).searchParams),
         credentials,
         env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl,
+      );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (path === "/api/tags") {
+      if (request.method !== "GET")
+        return new Response("Method not allowed", {
+          status: 405,
+          headers: { Allow: "GET" },
+        });
+      const result = await handleTags(
+        Object.fromEntries(new URL(request.url).searchParams),
+        credentials,
       );
       return Response.json(result.body, {
         status: result.status,

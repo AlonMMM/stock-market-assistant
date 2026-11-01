@@ -1,3 +1,4 @@
+import { StockTags } from "./StockTags";
 import {
   createContext,
   useContext,
@@ -517,6 +518,7 @@ function StockFocus({
     <div className="bot-focus" aria-live="polite">
       <div className="bot-focus-head">
         <strong>{r.symbol}</strong>
+        <StockTags symbol={r.symbol} />
         <span className={`bot-lean ${r.side === "C" ? "up" : "down"}`}>
           {r.side === "C" ? "▲" : "▼"} {lean}
         </span>
@@ -673,6 +675,7 @@ function StockList({
                     {r.side === "C" ? "▲" : "▼"}
                   </span>
                   <strong>{r.symbol}</strong>
+                  <StockTags symbol={r.symbol} compact />
                 </span>
                 <Meter value={r.t} of={needT} label={`t ${r.t.toFixed(1)}`} />
                 <Meter
@@ -978,6 +981,7 @@ function Signals({ v }: { v: BotView }) {
               </span>
               <span className="bot-signal-what">
                 <strong>{s.symbol}</strong>
+                <StockTags symbol={s.symbol} compact />
                 <span className="muted small">
                   {" "}
                   t {s.t.toFixed(1)} · volume {s.rvol.toFixed(1)}×

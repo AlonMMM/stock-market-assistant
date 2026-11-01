@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { StockTags } from "./StockTags";
 import type {
   PriceAlert,
   PriceAlertKind,
@@ -393,6 +394,7 @@ export function PriceAlertList({
                   ) : (
                     <b className="pa-ticker">{a.ticker}</b>
                   ))}
+                <StockTags symbol={a.ticker} compact />
                 <span className="num">{alertRule(a)}</span>
                 {a.note && <small className="muted">{a.note}</small>}
               </span>

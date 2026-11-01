@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { StockTags } from "./StockTags";
 import type { Candles } from "../../../packages/market-data/src/candles.js";
 import type { TickerInfo } from "../../../packages/market-data/src/ticker.js";
 import { usePolling } from "./Live.js";
@@ -121,6 +122,7 @@ export function WatchPeek({
   const ask = info?.quote?.ask ?? null;
   return (
     <div className="wl-peek">
+      <StockTags symbol={row.ticker} block />
       <div className="wl-peek-book num">
         <span className="wl-peek-bid">
           <span>Bid</span>
