@@ -2705,3 +2705,10 @@ fill basis. 2%, whole / tune / check:
 Verdict: not better. The grace lifts the win rate 1-2 points (some early-sold trades recover) but the typical delayed
 exit loses more, the drop grows 1-3 points, and tune is lower on every list (check up only on g10 fair +2% and the
 24-month Favorites). The early staged exits are right more often than wrong, as on 2026-10-24.
+- **2 minutes** (the user: "try 2 minutes", look 2; g2 / flg2, same overlay). 2%, whole / tune / check: Fair $3,340,980
+  (32.3%) 568K / 618K vs 2.9 $3,455,683 523K / 695K (check -11%; ladder at 3% check $1.05M vs $1.32M). Fav 12m $207,634
+  vs $201,958; Fav 6m $152,338 vs $143,988; Fav 24m real $908,650 vs $766,590 (check 157K vs 144K); Fav 36m minute
+  $6.57M vs $5.46M but check 650K vs 789K. Won 17.9% -> 15.3% on the fair list (13-16% on the Favorites): the 2 minutes
+  turn early small sales into -60% stops. Changed trades: median +$87 fair, -$22 to -$54 on the long Favorites; without
+  their best 10 negative on every list (-$7K to -$114K). Not better: the gain is ~10 trades, the fair check is lower and
+  the win rate falls 2-3 points.
