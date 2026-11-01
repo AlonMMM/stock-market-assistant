@@ -2667,3 +2667,11 @@ at about the same drop (h20 +45% / +32% over flat60), the first sizing rule to d
   (36%) / $139,523 (36%); h20-up2 $999,485 (48%) / $177,905 (45%). The 1.5x boost with the half size keeps 2.9's drop
   and adds money on both halves and both lists; the 2x boost adds money with 7-9 points more drop and less without the
   best 5 (it leans on the giants).
+- **The user's tiers (third and fourth runs, tune and check together, looks 3-4 on this idea), 2% (fair / Favorites):**
+  33 / 85 / 150 / 200% ("33% on small vol 85% on regular vol, 150% on big one 200% on huge"): lines A (1.75 / 2.5 / 4.0x)
+  tune $340,389 (17%) / $327,077 (14%), check $595,729 (20%) / $205,623 (20%); lines B (1.6 / 2.0 / 3.0x) tune $461,182
+  (22%) / $564,804 (17%), check $722,124 (28%) / $187,573 (31%). 50 / 100 / 150% ("try 0.5, 1, 1.5"): t3A (1.75 / 2.5x)
+  tune $400,279 (21%) / $419,539 (15%), check $591,521 (23%) / $194,421 (23%), without the best 5 check $127,386 /
+  $64,349; t3B (1.6 / 2.0x) tune $494,564 (26%) / $660,815 (18%), check $552,952 (26%) / $159,184 (29%). Against 2.9
+  ($376,230 / $555,017; $478,021 / $143,834, drops 29 / 18 / 25 / 25%) and h20-up ($535,264 / $589,534; $548,272 /
+  $172,788). t3A: check +24% / +35% with 2 points less drop, tune fair +6% with 8 points less, tune Favorites -24%.

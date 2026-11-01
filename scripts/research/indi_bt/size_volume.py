@@ -7,6 +7,8 @@ since the open at the signal (c_rvol; the add rides on its main leg's multiplier
   h175 / h20 / h25   half size when the volume is under 1.75 / 2.0 / 2.5x its usual, full size above
   h20-up     half size under 2.0x, 1.5x size at 2.0x or more
   flat75 / flat60    the yardstick: every trade at 0.75 / 0.6 of the size (a smaller flat size, the drop to beat)
+  t3A / t3B       (fourth run, the user's 0.5 / 1 / 1.5): A under 1.75 / 2.5x, B under 1.6 / 2.0x
+  tierA / tierB   (third run, the user's 33 / 85 / 150 / 200%): A under 1.75 / 2.5 / 4.0x, B under 1.6 / 2.0 / 3.0x
   h20-up2 / up15 / up2   (second run, the user's "1.5 or 2X?") half under 2.0x and 2x above; full under and 1.5x / 2x above
 Tune = even entry weeks, check = odd (split.py), in the same run; picked on tune by min(fair, Favorites) vs 2.9.
 
@@ -63,13 +65,28 @@ PULL = {}
 # name -> (measure, level, the turn off the dip's low in S30 or "hi" = back to the move's extreme, keep the signal's trade when no pullback)
 RESUME = {}
 TREND = []
+TIER_SIZES = (0.33, 0.85, 1.5, 2.0)   # small, regular, big, huge
+
+
+def tier(rv, lines, sizes=TIER_SIZES):
+    """The size of the first tier whose line the volume ratio is under, else the last tier's."""
+    for line, size in zip(lines, sizes):
+        if rv < line: return size
+    return sizes[len(lines)]
+
+
 # name -> size multiplier from the volume ratio at the signal
 SIZEV = {"h175": lambda rv: 0.5 if rv < 1.75 else 1.0, "h20": lambda rv: 0.5 if rv < 2.0 else 1.0,
          "h25": lambda rv: 0.5 if rv < 2.5 else 1.0, "h20-up": lambda rv: 0.5 if rv < 2.0 else 1.5,
          "flat75": lambda rv: 0.75, "flat60": lambda rv: 0.6,
          # the user, 2026-11-01: "volume = 1.5 premia? or 2X?" (the boost on the >= 2x trades), added as a second run
          "h20-up2": lambda rv: 0.5 if rv < 2.0 else 2.0, "up15": lambda rv: 1.0 if rv < 2.0 else 1.5,
-         "up2": lambda rv: 1.0 if rv < 2.0 else 2.0}
+         "up2": lambda rv: 1.0 if rv < 2.0 else 2.0,
+         # the user, 2026-11-01: "33% on small vol 85% on regular vol, 150% on big one 200% on huge"; the lines set before
+         # running from the volume spread (A round lines, B more even groups)
+         "tierA": lambda rv: tier(rv, (1.75, 2.5, 4.0)), "tierB": lambda rv: tier(rv, (1.6, 2.0, 3.0)),
+         # the user, 2026-11-01: "try 0.5, 1, 1.5 sizing" (three tiers; the lines from tierA / tierB)
+         "t3A": lambda rv: tier(rv, (1.75, 2.5), (0.5, 1.0, 1.5)), "t3B": lambda rv: tier(rv, (1.6, 2.0), (0.5, 1.0, 1.5))}
 V = ["base", *SIZEV]
 
 
