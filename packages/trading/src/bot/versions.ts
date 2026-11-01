@@ -230,9 +230,12 @@ const v281: Rules = {
 // sim.py be_lock {arm 0.5, update}): on the entry day, once the option is +50%,
 // the stock price where Black-Scholes at the option's implied volatility then
 // values it at its cost is a stop on the stock, worked out again each minute it
-// is still +50% (the tighter level kept). Real quotes, 2%, against 2.8: fair
-// list $3,129,481 / 32.2% vs $2,956,494 / 34.1% (check +6%), the Favorites 12 /
-// 6 / 24 / 36 months +4% / +3% / +11% / +17% with the drop 2-4 points less.
+// is still +50% (the tighter level kept). Fresh runs on the real fill price, 2%:
+// fair list $3,455,683 / 32.2% vs 2.8's $3,138,672 / 34.4% (tune and check up);
+// with the size steps $4,399,581 / 37.2% vs 2.8.1's $4,148,061 / 39.6%; the
+// Favorites 12 / 6 / 24 / 36 months ahead with the drop 0.4-4 points less. The
+// gain rests on about 10 changed trades (the strict check fails); the owner
+// shipped it for the smaller drop and the higher win rate.
 const v29: Rules = { ...v281, breakEvenLock: true, lockArmPct: 50 };
 
 /** Every version, oldest first. */
