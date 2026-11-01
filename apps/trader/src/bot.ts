@@ -1571,7 +1571,8 @@ export class IndiBot {
           // The stock's usual 30-minute move, for the staged exit (entry day only).
           unit:
             p.day === date ? (this.levels.get(p.symbol)?.unit ?? null) : null,
-          // For the break-even lock (entry day only).
+          // For the break-even lock (entry day only): the last closed minute, as the research.
+          close: this.lastClose(p.symbol, m),
           strike: p.day === date ? strikeOf(p.contract) : null,
           years: p.day === date ? yearsToExpiry(date, m, expiry) : null,
           isExpiryDay: expiry === date,

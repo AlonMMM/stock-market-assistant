@@ -814,3 +814,76 @@ test("the break-even lock (2.9): armed at +50%, the stock back at the level sell
   assert.equal(staged.reason, "stage-half");
   assert.ok(staged.update.lockLevel! > 0);
 });
+
+test("2.9 review fixes: the ladder never raises the size; an unknown account trades small; saved settings keep the lock as they were", async () => {
+  const { sizeAt } = await import("../packages/trading/src/bot/settings.js");
+  const steps = defaultSettings.sizeSteps;
+  // From 2%, "2.5% from $300K" keeps 2%; the lower steps still apply.
+  assert.equal(sizeAt(2, steps, 500_000), 2);
+  assert.equal(sizeAt(2, steps, 2_000_000), 1.5);
+  assert.equal(sizeAt(3, steps, 500_000), 2.5);
+  // The account read failed (0): the smallest size, never the base.
+  assert.equal(sizeAt(3, steps, 0), 1);
+  assert.equal(sizeAt(0.5, steps, 0), 0.5);
+  assert.equal(sizeAt(3, [], 0), 3);
+  // Saved as 2.8.1 / 2.8.0 before the lock existed: the lock stays off.
+  const of = (version: string) => {
+    const saved: Record<string, unknown> = { ...defaultSettings, version };
+    delete saved.breakEvenLock;
+    delete saved.lockArmPct;
+    return withDefaults(saved);
+  };
+  assert.equal(of("2.8.1").breakEvenLock, false);
+  assert.equal(of("2.8.1").version, "2.8.1");
+  assert.equal(of("2.8.0").breakEvenLock, false);
+  // An own label from before: the new rules off too, not the current version's.
+  const own: Record<string, unknown> = { ...defaultSettings, version: "mine" };
+  delete own.breakEvenLock;
+  delete own.sizeSteps;
+  const mine = withDefaults(own);
+  assert.equal(mine.breakEvenLock, false);
+  assert.deepEqual(mine.sizeSteps, []);
+  assert.equal(mine.version, "mine");
+});
+
+test("2.9 review fixes: the lock arms at exactly +50% and decides on the minute close, not a live print", () => {
+  const r = exitRules(defaultSettings);
+  const position = {
+    right: "C" as const,
+    qty: 4,
+    cost: 1,
+    entryMinute: 10,
+    entryStock: 189.76,
+    nights: 0,
+    checksDone: [],
+    morningDone: false,
+  };
+  const market = {
+    minute: 15,
+    stock: 191.31,
+    option: 1.5,
+    unit: null,
+    strike: 197.5,
+    years: 2 / 365,
+    isExpiryDay: false,
+    sessionBeforeExpiry: true,
+    open: null,
+    prevClose: null,
+  };
+  // Exactly +50% arms.
+  assert.ok(nextAction(position, market, r).update.lockLevel! > 0);
+  const held = { ...position, lockLevel: 190.5 };
+  // A live print through the level with the minute closing above it: held.
+  assert.equal(
+    nextAction(held, { ...market, option: 0.9, stock: 190.2, close: 190.7 }, r)
+      .sell,
+    0,
+  );
+  // The minute closes at the level: sold.
+  const sold = nextAction(
+    held,
+    { ...market, option: 0.9, stock: 190.7, close: 190.5 },
+    r,
+  );
+  assert.deepEqual([sold.sell, sold.reason], [4, "break-even-lock"]);
+});

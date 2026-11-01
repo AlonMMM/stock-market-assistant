@@ -104,6 +104,10 @@ export interface ExitMarket {
   // The stock's usual 30-minute move as a fraction of its price (levels.ts
   // priorLevels unit), for the staged exit; null when unknown.
   unit?: number | null;
+  // The stock's last closed minute, for the break-even lock (the research
+  // decides on minute closes; one live print through the level must not sell);
+  // missing / null: `stock`.
+  close?: number | null;
   // The contract's strike and years to its expiry (16:00 New York), for the
   // break-even lock; null when unknown.
   strike?: number | null;
@@ -241,20 +245,16 @@ export function nextAction(
   // The break-even lock: (re)set the level while the option is `arm` up, sell
   // all once the stock is back at it. A new level rides on whatever is decided.
   const level0 = p.lockLevel ?? null;
+  const close = mk.close ?? mk.stock;
   let level = level0;
-  if (r.lock && mk.stock !== null && g >= r.lock.arm && mk.strike && mk.years)
+  if (r.lock && close !== null && g >= r.lock.arm && mk.strike && mk.years)
     level = tighterLevel(
       p.right,
       level0,
-      breakEvenStock(p.right, mk.strike, mk.years, mk.option, mk.stock, p.cost),
+      breakEvenStock(p.right, mk.strike, mk.years, mk.option, close, p.cost),
     );
   const lockUpdate = level !== level0 ? { lockLevel: level } : {};
-  if (
-    r.lock &&
-    level !== null &&
-    mk.stock !== null &&
-    bet * (mk.stock - level) <= 0
-  )
+  if (r.lock && level !== null && close !== null && bet * (close - level) <= 0)
     return { sell: p.qty, reason: "break-even-lock", update: lockUpdate };
   const d = entryDayRest(p, mk, r, bet, g);
   return { ...d, update: { ...d.update, ...lockUpdate } };

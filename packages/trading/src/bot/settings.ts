@@ -2,6 +2,7 @@ import { defaultExitRules, type ExitRules } from "./exits.js";
 import { defaultPickRules, type PickRules } from "./picker.js";
 import { defaultSignalParams, type SignalParams } from "./signal.js";
 import {
+  botVersions,
   currentVersion,
   matchingVersion,
   ruleKeys,
@@ -150,8 +151,14 @@ export function sizeAt(
   steps: readonly SizeStep[],
   account: number,
 ): number {
+  // An unknown account (0: the read failed) takes the smallest size the steps
+  // allow, never the largest.
+  if (!(account > 0) && steps.length)
+    return Math.min(sizePct, ...steps.map((x) => x.pct));
+  // A step only ever lowers the owner's size: from 2%, "2.5% from $300K" keeps 2%.
   let pct = sizePct;
-  for (const step of steps) if (account >= step.from) pct = step.pct;
+  for (const step of steps)
+    if (account >= step.from) pct = Math.min(sizePct, step.pct);
   return pct;
 }
 
@@ -303,6 +310,12 @@ export function withDefaults(
     for (const key of ruleKeys)
       if (!(key in record)) merged[key] = known.rules[key];
     merged.version = known.id; // "2.7" saved before MAJOR.MINOR.PATCH -> "2.7.0"
+  }
+  if (!known && typeof record.version === "string") {
+    // An own label saved before a rule existed: the rule as it was then, off
+    // (1.0's value), never the current version's.
+    const before = botVersions[0]!.rules;
+    for (const key of ruleKeys) if (!(key in record)) merged[key] = before[key];
   }
   if (!("version" in record)) {
     // A record from before versions: its missing rules are 2.6's (the rules
