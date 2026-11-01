@@ -2632,3 +2632,23 @@ cells (+4,561 vs +1,703, +3,930 vs +2,090, +4,064 vs +1,817, +1,721 vs +556), wi
 18-29%), because it trades a third as often. The trades it drops (volume 1.5-2.0x, ~70%) still add up positive
 (+$239K / +$566K tune, +$339K / +$22K check, with 7-10 giants) though they lose $490-545K a half without their giants.
 Next: size by the volume ratio (the 1.5-2.0x trades smaller) instead of skipping them.
+
+### Size by the volume at the signal, on 2.9 (2026-11-01, TUNE ONLY; the check is held back at the user's word)
+The user: "yes" to half size under 2x, then "use it only on the tune. we will check the check after" (an exception to
+the tune-and-check-together rule, for this test). size_volume.py: 2.9's trades (spike_entry.py's setup) with a size
+multiplier from c_rvol (the add rides on its main leg's); the account without score_sum's -1 cap (a 1.5x row can lose
+1.5 units). 6 versions set before running. Tune at 2% (fair / Favorites 24m):
+
+| Version | Tune fair | Tune Favorites |
+|---|---|---|
+| 2.9 | $376,230 (29%) | $555,017 (18%) |
+| 🎯 h20-up (0.5x under 2.0x, 1.5x at 2.0x+) | $535,264 (22%) | $589,534 (17%) |
+| h175 (0.5x under 1.75x) | $390,650 (20%) | $436,539 (14%) |
+| h20 (0.5x under 2.0x) | $358,139 (19%) | $414,405 (13%) |
+| h25 (0.5x under 2.5x) | $225,985 (16%) | $257,646 (11%) |
+| flat75 (all at 0.75x, the yardstick) | $292,814 (22%) | $394,217 (14%) |
+| flat60 (all at 0.6x) | $246,355 (18%) | $313,422 (11%) |
+
+On tune h20-up beats 2.9 on both lists with a smaller drop (pick 1.027 at 1%); h20 and h175 beat the flat smaller size
+at about the same drop (h20 +45% / +32% over flat60), the first sizing rule to do so. The check weeks are computed
+(data/local/x/bt/size_volume_summary.json) and not read yet.
