@@ -2561,3 +2561,30 @@ rate." App PR #231 (includes #227). Release gate (bot-release skill):
   early entry, the research yardstick does not.
 - §9: the Bot vs Indi page opens on 2.9 with the ladder at 3% ($4,399,581 / 37.2% on the fair list); 2.8 (`x-stop60`)
   and 2.8 (minute fills) re-exported on the same basis; x-staged / x-add60 removed.
+
+### No entry into a big spike, on 2.9 (2026-11-01, not better)
+The user: "can you look on enter filter? I know we didn't touch it for a while so check it carefully - I want to not
+enter into the big spike. I rather pass the trade or wait for some pull back." Re-run of runup.py (2026-10-29, lost by
+far on that day's champion) because the exits changed since (2.8's staged exit sells half 0.5 S30 against the signal
+price), the walk was fixed and exits are now decided on the real fill. spike_entry.py: the champion's entries and
+picks, 2.9's exits (f28 overlay + be_lock), the pyramid, real quotes (opt_spread bid), walked again on the real price
+paid; run = the 10-minute move before the signal, spike = the 3-minute move, both in S30, bet's way. 7 variants set
+before running, look 1. At 2% (fair / Favorites 24m):
+
+| Version | Tune | Check |
+|---|---|---|
+| 2.9 | $376,230 (29%) / $555,017 (18%) | $478,021 (25%) / $143,834 (25%) |
+| skip20 (run >= 2.0) | $82,187 / $107,538 | $278,905 / $144,245 |
+| skip25 (run >= 2.5) | $252,310 / $491,004 | $465,866 / $147,713 |
+| sk3-10 (3-min spike >= 1.0) | $272,296 (36%) / $428,988 | $540,660 (18%) / $143,057 (20%) |
+| pb15 / pb20 (wait 15 min for a 0.25 pullback, run >= 1.5 / 2.0) | $118,012 / $113,248; $139,912 / $139,048 | $271,137 / $105,196; $460,320 / $141,309 |
+| pb20d (run >= 2.0, 30 min, 0.5 pullback) | $181,667 / $187,067 | $428,810 / $138,980 |
+| 🎯 sp3-pb (3-min spike >= 1.0, wait 15 min for 0.25) | $266,748 (32%) / $401,722 (19%) | $544,751 (24%) / $148,438 (27%) |
+
+Verdict: not better. Every variant loses on tune (the pick 0.82 of 2.9 at 1%); the pick and sk3-10 are better on the
+fair check (+14% / +13%, sk3-10's drop 18% vs 25%) but tune and check disagree. The trades after a big run are where the
+giants are: the run 2.0-2.5 bucket holds 5 / 8 tune giants (+$723K / +$981K), the 2.5+ bucket 6 / 5; by run size the
+median trade is -$1.5K to -$3.1K in every bucket on both halves, so the run does not sort the trades. Waiting for a
+pullback buys the giants later and higher (pb20 keeps 12 of the 17 tune fair giants), skipping drops them. The 3-minute
+spike's trades are the one weak group (check: 118 trades, -$44K, 2 giants) but on tune they hold 3 giants (+$248K).
+The live reviews' "bought at the top of the run" losers are real, but they cannot be told from the giants at entry.
