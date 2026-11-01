@@ -2652,3 +2652,9 @@ multiplier from c_rvol (the add rides on its main leg's); the account without sc
 On tune h20-up beats 2.9 on both lists with a smaller drop (pick 1.027 at 1%); h20 and h175 beat the flat smaller size
 at about the same drop (h20 +45% / +32% over flat60), the first sizing rule to do so. The check weeks are computed
 (data/local/x/bt/size_volume_summary.json) and not read yet.
+- **The check, read after the pick (the user: "lets go with h20"), look 1, 2%:** h20 fair $379,870 (19%) vs 2.9 $478,021
+  (25%) and flat75 $347,122 (20%); Favorites $151,303 (19%) vs $143,834 (25%) and $136,620 (20%). Without the best 5:
+  fair $124,944 vs $140,330 / $134,103, Favorites $64,989 vs $54,053 / $64,304. h20 beats the smaller flat size with the
+  same drop on both lists and both halves (tune +45% / +32% over flat60, check +9% / +11% over flat75), and cuts the
+  worst drop 6 points on check; full-size 2.9 makes more on the fair list. **Chosen by the user as the next version:
+  half size when the volume since the open is under 2.0x its usual at the signal.**
