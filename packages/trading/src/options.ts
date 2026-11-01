@@ -27,7 +27,8 @@ export interface OptionQuote {
 }
 
 // Hard cap per trade; the size itself comes with each command.
-export const maxSizePct = 3;
+// Version 2.10's top volume tier buys 1.5x the owner's 3% (the owner, 2026-11-01: raise the cap to 5%).
+export const maxSizePct = 5;
 // A spread wider than this share of the mid means no trade, unless the buy
 // is forced (user 2026-10-12: 25%, was 10%).
 export const maxSpreadRatio = 0.25;

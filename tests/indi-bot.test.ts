@@ -1253,7 +1253,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
     stockStages: false,
     lateHold: false,
     breakEvenLock: false,
-    lowVolumeBelow: 0,
+    volumeTiers: [],
     sizeSteps: [],
     minT: 2,
     nightCapPct: 0,
@@ -1959,28 +1959,46 @@ test("early entry: the signal inside the minute buys before the minute closes; o
   assert.equal(late.calls.filter((c) => c.kind === "buy").length, 1);
 });
 
-test("2.10: a signal under the volume line buys half the size, with the reason in its note; at or over it, the whole size", async () => {
-  // The harness's signal runs at 2.0x volume: at the 2.0x line it buys the whole size.
+test("2.10: the size follows the signal's volume tier, with the share in the buy note; no tiers is the whole size", async () => {
+  // The harness's signal runs at 2.0x volume: 2.10's 1.75-2.5x tier, the whole size.
   const full = harness("live");
   full.setEquity(100_000);
   await full.run(DAY, 565, 600);
   assert.equal(full.calls.find((c) => c.kind === "buy")?.body.sizePct, 3);
   assert.equal(full.store.openPositions()[0]?.sizeShare, undefined);
-  // A higher line (2.5x): the same signal buys half, and the position keeps its share.
+  // Tiers that put 2.0x under the first line above 0: half the size, kept on the position.
   const half = harness("live");
   half.setEquity(100_000);
-  half.bot.setSettings({ ...half.bot.settings(), lowVolumeBelow: 2.5 });
+  half.bot.setSettings({
+    ...half.bot.settings(),
+    volumeTiers: [
+      { atLeast: 0, pct: 50 },
+      { atLeast: 2.5, pct: 150 },
+    ],
+  });
   await half.run(DAY, 565, 600);
   assert.equal(half.calls.find((c) => c.kind === "buy")?.body.sizePct, 1.5);
   assert.equal(half.store.openPositions()[0]?.sizeShare, 0.5);
   assert.match(
     String(half.calls.find((c) => c.kind === "buy")?.body.note),
-    /50% of the size \(volume under 2\.5×\)/,
+    /50% of the size \(volume 2\.00×\)/,
   );
-  // Off at 0: the whole size.
+  // A big-volume tier: one and a half times the size (4.5%, under the 5% cap per buy).
+  const big = harness("live");
+  big.setEquity(100_000);
+  big.bot.setSettings({
+    ...big.bot.settings(),
+    volumeTiers: [
+      { atLeast: 0, pct: 50 },
+      { atLeast: 1.5, pct: 150 },
+    ],
+  });
+  await big.run(DAY, 565, 600);
+  assert.equal(big.calls.find((c) => c.kind === "buy")?.body.sizePct, 4.5);
+  // No tiers: the whole size.
   const off = harness("live");
   off.setEquity(100_000);
-  off.bot.setSettings({ ...off.bot.settings(), lowVolumeBelow: 0 });
+  off.bot.setSettings({ ...off.bot.settings(), volumeTiers: [] });
   await off.run(DAY, 565, 600);
   assert.equal(off.calls.find((c) => c.kind === "buy")?.body.sizePct, 3);
 });

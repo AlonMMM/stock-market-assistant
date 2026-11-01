@@ -100,7 +100,7 @@ test("versions: distinct ids oldest first; the defaults are the current version'
   );
   // 2.10 is 2.9 with half size when the volume is under 2x.
   assert.deepEqual(ruleChanges(botVersions[12]!.rules, botVersions[11]!), [
-    "lowVolumeBelow 0 → 2",
+    "volumeTiers none → 50% from 0×, 100% from 1.75×, 150% from 2.5×",
   ]);
 });
 
@@ -933,4 +933,41 @@ test("2.9 review fixes: the lock arms at exactly +50% and decides on the minute 
     r,
   );
   assert.deepEqual([sold.sell, sold.reason], [4, "break-even-lock"]);
+});
+
+test("2.10: volume tiers set the share; parse checks them", async () => {
+  const { volumeShare } =
+    await import("../packages/trading/src/bot/settings.js");
+  assert.equal(volumeShare(defaultSettings, 1.5), 0.5);
+  assert.equal(volumeShare(defaultSettings, 1.749), 0.5);
+  assert.equal(volumeShare(defaultSettings, 1.75), 1);
+  assert.equal(volumeShare(defaultSettings, 2.49), 1);
+  assert.equal(volumeShare(defaultSettings, 2.5), 1.5);
+  assert.equal(volumeShare({ ...defaultSettings, volumeTiers: [] }, 9), 1);
+  assert.equal(
+    volumeShare(
+      { ...defaultSettings, volumeTiers: [{ atLeast: 2, pct: 150 }] },
+      1.6,
+    ),
+    1,
+  );
+  const bad = (volumeTiers: unknown) =>
+    parseSettings({ ...defaultSettings, volumeTiers }).ok;
+  assert.equal(
+    bad([
+      { atLeast: 2, pct: 50 },
+      { atLeast: 1, pct: 100 },
+    ]),
+    false,
+  );
+  assert.equal(bad([{ atLeast: 0, pct: 500 }]), false);
+  assert.equal(bad("x"), false);
+  assert.equal(bad([]), true);
+  // A record saved as 2.9 before tiers existed keeps the whole size.
+  const saved: Record<string, unknown> = {
+    ...defaultSettings,
+    version: "2.9.0",
+  };
+  delete saved.volumeTiers;
+  assert.deepEqual(withDefaults(saved).volumeTiers, []);
 });

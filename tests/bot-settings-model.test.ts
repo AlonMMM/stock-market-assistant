@@ -150,7 +150,7 @@ test("the version card: the chosen version, its changes and the entry label", ()
     "lateHold false → true",
     "sizeSteps none → 2.5% from $300,000, 1.5% from $1,000,000, 1% from $4,000,000",
     "breakEvenLock false → true",
-    "lowVolumeBelow 0 → 2",
+    "volumeTiers none → 50% from 0×, 100% from 1.75×, 150% from 2.5×",
   ]);
   const own = versionState({ ...defaultSettings, version: "mine" });
   assert.equal(own.known, undefined);

@@ -112,6 +112,8 @@ function groups(s: BotSettings): Group[] {
   let sizeSub = "How much each buy spends";
   if (steps)
     sizeSub = `How much each buy spends; as the account grows (its value as the day starts): ${steps}`;
+  if (s.volumeTiers.length)
+    sizeSub += `; by the signal's volume since the open (× its usual): ${s.volumeTiers.map((x) => `${x.pct}% from ${x.atLeast}×`).join(", ")}`;
   return [
     {
       title: "Trade size",
@@ -125,24 +127,6 @@ function groups(s: BotSettings): Group[] {
           max: 5,
           step: 0.5,
           fmt: pct,
-        },
-        {
-          key: "lowVolumeBelow",
-          label: "Smaller size below volume",
-          help: "A signal whose volume since the open is under this many times its usual buys the share below (version 2.10: half size under 2×). Off at 0.",
-          min: 0,
-          max: 5,
-          step: 0.25,
-          fmt: (v) => (v === 0 ? "off" : `${v}×`),
-        },
-        {
-          key: "lowVolumeSizePct",
-          label: "That smaller size",
-          help: "The share of the trade size a signal under the volume above buys.",
-          min: 25,
-          max: 100,
-          step: 25,
-          fmt: (v) => `${v}% of the size`,
         },
         {
           key: "maxBuysPerDay",

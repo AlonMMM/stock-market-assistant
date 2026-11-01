@@ -138,11 +138,15 @@ export interface BotSettings {
   // is still that far up, the tighter level kept).
   breakEvenLock: boolean;
   lockArmPct: number;
-  // Size by the volume at the signal (version 2.10): a signal whose volume
-  // since the open is under lowVolumeBelow x its usual buys lowVolumeSizePct of
-  // the size (its pyramid add too); 0 = off.
-  lowVolumeBelow: number;
-  lowVolumeSizePct: number;
+  // Size by the volume at the signal (version 2.10): the tier whose atLeast
+  // the signal's volume since the open (x its usual) reaches sets the share of
+  // the size it buys (its pyramid add too); none = the whole size.
+  volumeTiers: VolumeTier[];
+}
+
+export interface VolumeTier {
+  atLeast: number; // the volume since the open, x its usual for that minute
+  pct: number; // of the trade size
 }
 
 export interface SizeStep {
@@ -229,8 +233,11 @@ export const defaultSettings: BotSettings = {
   lateHold: true,
   breakEvenLock: true,
   lockArmPct: 50,
-  lowVolumeBelow: 2,
-  lowVolumeSizePct: 50,
+  volumeTiers: [
+    { atLeast: 0, pct: 50 },
+    { atLeast: 1.75, pct: 100 },
+    { atLeast: 2.5, pct: 150 },
+  ],
 };
 
 // Values the backtest never ran.
@@ -277,8 +284,6 @@ export const limits: Record<
   stageHalfS30: [0.25, 2, 0.25],
   stageFullS30: [0.5, 3, 0.25],
   lockArmPct: [20, 200, 10],
-  lowVolumeBelow: [0, 5, 0.25],
-  lowVolumeSizePct: [25, 100, 25],
 };
 
 const booleans: BooleanKey[] = [
@@ -400,6 +405,14 @@ export function parseSettings(
         "sizeSteps must be up to 6 steps of { from: dollars, rising, pct: 0.5 to 5 }",
     };
   out.sizeSteps = steps;
+  const tiers = parseVolumeTiers(body.volumeTiers);
+  if (!tiers)
+    return {
+      ok: false,
+      error:
+        "volumeTiers must be up to 6 tiers of { atLeast: 0 to 20, rising, pct: 10 to 300 }",
+    };
+  out.volumeTiers = tiers;
   return { ok: true, value: out };
 }
 
@@ -416,6 +429,22 @@ function parseSizeSteps(v: unknown): SizeStep[] | null {
     if (typeof pct !== "number" || pct < min || pct > max) return null;
     if (out.length && from <= out.at(-1)!.from) return null;
     out.push({ from, pct });
+  }
+  return out;
+}
+
+/** Up to 6 tiers, atLeast rising from 0 to 20, pct 10-300 of the size; null when not. */
+function parseVolumeTiers(v: unknown): VolumeTier[] | null {
+  if (!Array.isArray(v) || v.length > 6) return null;
+  const out: VolumeTier[] = [];
+  for (const x of v) {
+    if (!isObject(x)) return null;
+    const { atLeast, pct } = x;
+    if (typeof atLeast !== "number" || !(atLeast >= 0 && atLeast <= 20))
+      return null;
+    if (typeof pct !== "number" || !(pct >= 10 && pct <= 300)) return null;
+    if (out.length && atLeast <= out.at(-1)!.atLeast) return null;
+    out.push({ atLeast, pct });
   }
   return out;
 }
@@ -467,12 +496,13 @@ function restStop(s: BotSettings): number | null {
 
 /**
  * The share of the size a signal buys from its volume since the open (x its
- * usual): lowVolumeSizePct / 100 under lowVolumeBelow, else 1 (version 2.10).
+ * usual): the pct of the last tier it reaches, / 100; 1 with no tiers or under
+ * the first (version 2.10).
  */
 export function volumeShare(s: BotSettings, rvol: number): number {
-  if (s.lowVolumeBelow > 0 && rvol < s.lowVolumeBelow)
-    return s.lowVolumeSizePct / 100;
-  return 1;
+  let pct = 100;
+  for (const tier of s.volumeTiers) if (rvol >= tier.atLeast) pct = tier.pct;
+  return pct / 100;
 }
 
 /** 15:00 New York: an entry from here is held while above its cost (lateHold). */

@@ -56,8 +56,7 @@ export type RuleKey =
   | "sizeSteps"
   | "breakEvenLock"
   | "lockArmPct"
-  | "lowVolumeBelow"
-  | "lowVolumeSizePct";
+  | "volumeTiers";
 
 export type Rules = Pick<BotSettings, RuleKey>;
 
@@ -96,8 +95,7 @@ export const ruleKeys: readonly RuleKey[] = [
   "sizeSteps",
   "breakEvenLock",
   "lockArmPct",
-  "lowVolumeBelow",
-  "lowVolumeSizePct",
+  "volumeTiers",
 ];
 
 export interface BotVersion {
@@ -144,8 +142,7 @@ const v1: Rules = {
   sizeSteps: [],
   breakEvenLock: false,
   lockArmPct: 50,
-  lowVolumeBelow: 0,
-  lowVolumeSizePct: 50,
+  volumeTiers: [],
 };
 // 2.0: the V2 champion (t 1.8, the overnight cap, the news filter).
 const v2: Rules = {
@@ -243,15 +240,23 @@ const v281: Rules = {
 // gain rests on about 10 changed trades (the strict check fails); the owner
 // shipped it for the smaller drop and the higher win rate.
 const v29: Rules = { ...v281, breakEvenLock: true, lockArmPct: 50 };
-// 2.10 (the owner, 2026-11-01: "lets go with h20", after research/indi-v2
-// trend_entry.py found the trades entered with volume >= 2x average about twice
-// 2.9's trade on both halves and both lists): 2.9 with a signal whose volume
-// since the open is under 2.0x its usual bought at half size (its pyramid add
-// too). size_volume.py, real quotes, 2%: tune fair $358,139 / 19% and Favorites
-// $414,405 / 13% vs 2.9's $376,230 / 29% and $555,017 / 18%; check $379,870 /
-// 19% and $151,303 / 19% vs $478,021 / 25% and $143,834 / 25%; ahead of 2.9 cut
-// to the same drop (0.6-0.75 of the size) on both halves and both lists.
-const v210: Rules = { ...v29, lowVolumeBelow: 2, lowVolumeSizePct: 50 };
+// 2.10 (the owner, 2026-11-01: "lets go with t3A", after research/indi-v2
+// size_volume.py: the trades entered with more volume are better trades on both
+// halves and both lists): 2.9 with the size set by the signal's volume since
+// the open: under 1.75x its usual 50% of the size, from 1.75x 100%, from 2.5x
+// 150% (its pyramid add too). Real quotes, 2%: tune fair $400,279 / 21% and
+// Favorites $419,539 / 15% vs 2.9's $376,230 / 29% and $555,017 / 18%; check
+// $591,521 / 23% and $194,421 / 23% vs $478,021 / 25% and $143,834 / 25%. The
+// 150% tier at the owner's 3% is 4.5% of the account: the service's cap per buy
+// went to 5% with it.
+const v210: Rules = {
+  ...v29,
+  volumeTiers: [
+    { atLeast: 0, pct: 50 },
+    { atLeast: 1.75, pct: 100 },
+    { atLeast: 2.5, pct: 150 },
+  ],
+};
 
 /** Every version, oldest first. */
 export const botVersions: readonly BotVersion[] = [
@@ -352,10 +357,10 @@ export const botVersions: readonly BotVersion[] = [
   },
   {
     id: "2.10.0",
-    name: "2.9 + half size on weaker volume",
+    name: "2.9 + size by the volume at the signal",
     since: "2026-11-01",
     notes:
-      "2.9's rules. A signal whose volume since the open is under 2× its usual for that time buys half the size (its pyramid add too); at 2× or more, the full size.",
+      "2.9's rules. The size follows the signal's volume since the open (× its usual for that time): under 1.75× half the size, from 1.75× the whole size, from 2.5× one and a half (its pyramid add too).",
     rules: v210,
   },
 ];
@@ -409,7 +414,6 @@ export const minorKeys: ReadonlySet<RuleKey> = new Set<RuleKey>([
 const offAtZero: ReadonlySet<RuleKey> = new Set<RuleKey>([
   "restStopPct",
   "nightCapPct",
-  "lowVolumeBelow",
 ]);
 
 /** How big a change of one rule from `from` to `to` is, or null when it is the same. */
@@ -468,6 +472,10 @@ export function matchingVersion(s: Rules): BotVersion | undefined {
 
 const itemText = (x: unknown): string => {
   if (typeof x !== "object" || x === null) return String(x);
+  if ("atLeast" in x) {
+    const { atLeast, pct } = x as { atLeast: number; pct: number };
+    return `${pct}% from ${atLeast}×`;
+  }
   const { from, pct } = x as { from?: number; pct?: number };
   return `${pct}% from $${(from ?? 0).toLocaleString("en-US")}`;
 };
