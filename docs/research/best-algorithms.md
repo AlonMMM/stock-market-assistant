@@ -2658,3 +2658,12 @@ at about the same drop (h20 +45% / +32% over flat60), the first sizing rule to d
   same drop on both lists and both halves (tune +45% / +32% over flat60, check +9% / +11% over flat75), and cuts the
   worst drop 6 points on check; full-size 2.9 makes more on the fair list. **Chosen by the user as the next version:
   half size when the volume since the open is under 2.0x its usual at the signal.**
+- **The boost on the >= 2x trades (the user: "volume = 1.5 premia? or 2X?"), second run of size_volume.py, tune and check
+  shown together, 2% (fair / Favorites):** h20-up (0.5 / 1.5) tune $535,264 (22%) / $589,534 (17%), check $548,272 (26%)
+  / $172,788 (25%); h20-up2 (0.5 / 2.0) tune $743,119 (26%) / $783,516 (20%), check $739,101 (34%) / $189,916 (32%),
+  without the best 5 check $105,627 / $42,272 (2.9 $140,330 / $54,053); up15 (1.0 / 1.5) check $689,515 (30%) / $163,702
+  (30%); up2 (1.0 / 2.0) check $928,850 (34%) / $179,357 (34%). 2.9: tune $376,230 (29%) / $555,017 (18%), check
+  $478,021 (25%) / $143,834 (25%). At 3% (the live size) check: h20-up $755,416 (38%) / $171,861 (36%) vs 2.9 $652,748
+  (36%) / $139,523 (36%); h20-up2 $999,485 (48%) / $177,905 (45%). The 1.5x boost with the half size keeps 2.9's drop
+  and adds money on both halves and both lists; the 2x boost adds money with 7-9 points more drop and less without the
+  best 5 (it leans on the giants).

@@ -7,6 +7,7 @@ since the open at the signal (c_rvol; the add rides on its main leg's multiplier
   h175 / h20 / h25   half size when the volume is under 1.75 / 2.0 / 2.5x its usual, full size above
   h20-up     half size under 2.0x, 1.5x size at 2.0x or more
   flat75 / flat60    the yardstick: every trade at 0.75 / 0.6 of the size (a smaller flat size, the drop to beat)
+  h20-up2 / up15 / up2   (second run, the user's "1.5 or 2X?") half under 2.0x and 2x above; full under and 1.5x / 2x above
 Tune = even entry weeks, check = odd (split.py), in the same run; picked on tune by min(fair, Favorites) vs 2.9.
 
   node --env-file=.env <dir>/run.mjs size_volume.py      (from the app repo root)
@@ -65,7 +66,10 @@ TREND = []
 # name -> size multiplier from the volume ratio at the signal
 SIZEV = {"h175": lambda rv: 0.5 if rv < 1.75 else 1.0, "h20": lambda rv: 0.5 if rv < 2.0 else 1.0,
          "h25": lambda rv: 0.5 if rv < 2.5 else 1.0, "h20-up": lambda rv: 0.5 if rv < 2.0 else 1.5,
-         "flat75": lambda rv: 0.75, "flat60": lambda rv: 0.6}
+         "flat75": lambda rv: 0.75, "flat60": lambda rv: 0.6,
+         # the user, 2026-11-01: "volume = 1.5 premia? or 2X?" (the boost on the >= 2x trades), added as a second run
+         "h20-up2": lambda rv: 0.5 if rv < 2.0 else 2.0, "up15": lambda rv: 1.0 if rv < 2.0 else 1.5,
+         "up2": lambda rv: 1.0 if rv < 2.0 else 2.0}
 V = ["base", *SIZEV]
 
 
