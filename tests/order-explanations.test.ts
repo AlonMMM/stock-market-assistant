@@ -114,7 +114,7 @@ test("explanation: values from the command are marked, and a refused buy is kept
   const out = await service.buy({
     underlying: "NVDA",
     right: "call",
-    sizePct: 5,
+    sizePct: 6,
     expiry: "friday",
     delta: 0.2,
     stopPct: 30,
@@ -129,12 +129,12 @@ test("explanation: values from the command are marked, and a refused buy is kept
     [
       ["Expiry", "friday → 2026-10-16", "command"],
       ["Delta", "closest to 0.2", "command"],
-      ["Size", "5% of the account", "command"],
+      ["Size", "6% of the account", "command"],
       ["Stop", "30% of the premium", "command"],
     ],
   );
   assert.deepEqual(d.explanation.refused, [
-    "size: size 5% is outside 0–3% of the account",
+    "size: size 6% is outside 0–5% of the account",
   ]);
   assert.equal(d.result, undefined);
   // Newest first; an exact contract has no selection part.

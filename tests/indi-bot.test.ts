@@ -653,6 +653,7 @@ function harness(
   const notes: string[] = [];
   // The broker the bot asked for last; each order records it.
   let broker: BotBroker = "alpaca";
+  let refuseAbove = Infinity;
   const trading: BotTrading = {
     async chain() {
       return [q(110, 0.15, 0.59), q(115, 0.08, 0.3)];
@@ -679,6 +680,12 @@ function harness(
         broker,
         ...(options ? { options } : {}),
       });
+      // A risk limit stand-in: the service refuses a size over refuseAbove.
+      if (Number(body.sizePct) > refuseAbove)
+        return {
+          status: "refused",
+          refused: ["risk: over the limit (synthetic)"],
+        };
       // IBKR fills one contract fewer: the accounts should differ a little.
       const qty = broker === "ibkr" ? 32 : 33;
       // A buy adds to what the account holds (a pyramid add can buy more of a held contract).
@@ -745,6 +752,7 @@ function harness(
     setMid: (v: number) => (mid = v),
     setEquity: (v: number) => (equity = v),
     failEquity: (on: boolean) => (equityFails = on),
+    refuseOver: (pct: number) => (refuseAbove = pct),
     failIbkrBuy: (on: boolean) => (ibkrBuyFails = on),
   };
 }
@@ -1217,30 +1225,30 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
 
 test("versions: every entry is stamped with the version in force; changed rules star it; the owner can pick an older one", async () => {
   const h = harness("live");
-  assert.equal(h.bot.status().version, "2.9.0");
+  assert.equal(h.bot.status().version, "2.10.0");
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy");
-  assert.match(String(buy?.body.note), /· bot 2\.9\.0$/);
+  assert.match(String(buy?.body.note), /· bot 2\.10\.0$/);
   const [p] = h.store.openPositions();
-  assert.equal(p!.version, "2.9.0");
-  assert.equal(h.store.signals(DAY)[0]!.version, "2.9.0");
-  assert.equal(h.bot.status().positions[0]!.version, "2.9.0");
+  assert.equal(p!.version, "2.10.0");
+  assert.equal(h.store.signals(DAY)[0]!.version, "2.10.0");
+  assert.equal(h.bot.status().positions[0]!.version, "2.10.0");
   const texts = () =>
     h.bot
       .status()
       .activity.map((e) => e.text)
       .join("\n");
-  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.9\.0$/m);
+  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.10\.0$/m);
 
-  // The stop changed from 2.8's: the next entry is stamped "2.9.0*".
+  // The stop changed from 2.10's: the next entry is stamped "2.10.0*".
   const edited = harness("live");
   edited.bot.setSettings({ ...edited.bot.settings(), stopPct: 40 });
-  assert.equal(edited.bot.status().version, "2.9.0*");
+  assert.equal(edited.bot.status().version, "2.10.0*");
   await edited.run(DAY, 565, 600);
-  assert.equal(edited.store.openPositions()[0]!.version, "2.9.0*");
+  assert.equal(edited.store.openPositions()[0]!.version, "2.10.0*");
   assert.match(
     String(edited.calls.find((c) => c.kind === "buy")?.body.note),
-    /· bot 2\.9\.0\*$/,
+    /· bot 2\.10\.0\*$/,
   );
 
   // Version 1.0 picked: its rules (t 2, no night cap, no news filter) run, and the feed says so.
@@ -1253,6 +1261,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
     stockStages: false,
     lateHold: false,
     breakEvenLock: false,
+    volumeTiers: [],
     sizeSteps: [],
     minT: 2,
     nightCapPct: 0,
@@ -1275,7 +1284,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
       .status()
       .activity.map((e) => e.text)
       .join("\n"),
-    /Settings changed: version "2\.9\.0" → "1\.0"; sizeSteps \[\{"from":300000,"pct":2\.5\},\{"from":1000000,"pct":1\.5\},\{"from":4000000,"pct":1\}\] → \[\]; stopPct 60 → 30; restStopPct 20 → 0; checks false → true; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false; skipEarnings true → false; skipPremarket true → false; lowFloorSymbols \["IBIT"\] → \[\]; pyramid true → false; earlyEntry true → false; stockStages true → false; lateHold true → false/,
+    /Settings changed: version "2\.10\.0" → "1\.0"; sizeSteps \[\{"from":300000,"pct":2\.5\},\{"from":1000000,"pct":1\.5\},\{"from":4000000,"pct":1\}\] → \[\]; stopPct 60 → 30; restStopPct 20 → 0; checks false → true; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false; skipEarnings true → false; skipPremarket true → false; lowFloorSymbols \["IBIT"\] → \[\]; pyramid true → false; earlyEntry true → false; stockStages true → false; lateHold true → false/,
   );
 });
 
@@ -1823,7 +1832,7 @@ test("pyramid: the full signal after a D2 entry that is up buys half a size more
   assert.deepEqual(buys[0]!.options, { repeatOk: true });
   assert.match(
     String(buys[0]!.body.note),
-    /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.9\.0$/,
+    /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.10\.0$/,
   );
   const open = h.store.openPositions();
   const add = open.find((p) => p.addOf === "first");
@@ -1956,4 +1965,132 @@ test("early entry: the signal inside the minute buys before the minute closes; o
   assert.equal(late.calls.filter((c) => c.kind === "buy").length, 0);
   await late.tickAt(DAY, 570 + M + 1, 20);
   assert.equal(late.calls.filter((c) => c.kind === "buy").length, 1);
+});
+
+test("2.10: the size follows the signal's volume tier, with the share in the buy note; no tiers is the whole size", async () => {
+  // The harness's signal runs at 2.0x volume: 2.10's 1.75-2.5x tier, the whole size.
+  const full = harness("live");
+  full.setEquity(100_000);
+  await full.run(DAY, 565, 600);
+  assert.equal(full.calls.find((c) => c.kind === "buy")?.body.sizePct, 3);
+  assert.equal(full.store.openPositions()[0]?.sizeShare, undefined);
+  // Tiers that put 2.0x under the first line above 0: half the size, kept on the position.
+  const half = harness("live");
+  half.setEquity(100_000);
+  half.bot.setSettings({
+    ...half.bot.settings(),
+    volumeTiers: [
+      { atLeast: 0, pct: 50 },
+      { atLeast: 2.5, pct: 150 },
+    ],
+  });
+  await half.run(DAY, 565, 600);
+  assert.equal(half.calls.find((c) => c.kind === "buy")?.body.sizePct, 1.5);
+  assert.equal(half.store.openPositions()[0]?.sizeShare, 0.5);
+  assert.match(
+    String(half.calls.find((c) => c.kind === "buy")?.body.note),
+    /50% of the size \(volume 2\.00×\)/,
+  );
+  // A big-volume tier: one and a half times the size (4.5%, under the 5% cap per buy).
+  const big = harness("live");
+  big.setEquity(100_000);
+  big.bot.setSettings({
+    ...big.bot.settings(),
+    volumeTiers: [
+      { atLeast: 0, pct: 50 },
+      { atLeast: 1.5, pct: 150 },
+    ],
+  });
+  await big.run(DAY, 565, 600);
+  assert.equal(big.calls.find((c) => c.kind === "buy")?.body.sizePct, 4.5);
+  // No tiers: the whole size.
+  const off = harness("live");
+  off.setEquity(100_000);
+  off.bot.setSettings({ ...off.bot.settings(), volumeTiers: [] });
+  await off.run(DAY, 565, 600);
+  assert.equal(off.calls.find((c) => c.kind === "buy")?.body.sizePct, 3);
+});
+
+test("2.10: a 150% buy a risk limit refuses buys the whole size instead; no pyramid add after a 150% first leg", async () => {
+  const h = harness("live");
+  h.setEquity(100_000);
+  h.bot.setSettings({
+    ...h.bot.settings(),
+    volumeTiers: [
+      { atLeast: 0, pct: 50 },
+      { atLeast: 1.5, pct: 150 },
+    ],
+  });
+  // The service refuses anything over 4% (a stand-in for a risk limit).
+  h.refuseOver(4);
+  await h.run(DAY, 565, 600);
+  const buys = h.calls.filter((c) => c.kind === "buy");
+  assert.deepEqual(
+    buys.map((c) => c.body.sizePct),
+    [4.5, 3],
+  );
+  assert.match(
+    String(buys[1]?.body.note),
+    /150% refused \(.*\), bought the whole size/,
+  );
+  assert.equal(h.store.openPositions()[0]?.sizeShare, 1);
+});
+
+test("2.10: an early entry's volume ratio compares the minutes before the forming one", async () => {
+  const { cSignal } = await import("../packages/trading/src/bot/signal.js");
+  // 20 prior days of 100 shares a minute; today 200 a minute through minute 29, the forming minute 30 with none yet.
+  const bar = (m: number, c: number, v: number) => ({
+    m,
+    o: c,
+    h: c,
+    l: c,
+    c,
+    v,
+  });
+  const flat = (v: number, upTo = 389) =>
+    Array.from({ length: upTo + 1 }, (_, m) => bar(m, 100, v));
+  const prior = {
+    curves: Array.from({ length: 20 }, () =>
+      Array.from({ length: 390 }, (_, m) => 100 * (m + 1)),
+    ),
+    beta: 1,
+    unit: null,
+    sd: null,
+    lastClose: 100,
+  };
+  const day = flat(200, 29).map((b, m) => ({ ...b, c: 100 + m * 0.05 }));
+  const forming = [...day, bar(30, 100 + 30 * 0.05, 0)];
+  const spy = flat(100, 30);
+  const p = {
+    ...defaultSignalParams,
+    firstMinute: 10,
+    minSteps: 5,
+    strengthT: 0,
+    bonusT: null,
+  };
+  const closed = cSignal(forming, spy, prior as never, 30, p);
+  const early = cSignal(forming, spy, prior as never, 30, p, true);
+  // Through minute 29 today is 2x the usual through minute 29.
+  assert.ok(early, "the forming minute's signal");
+  assert.ok(Math.abs(early.rvol - 2) < 1e-9, String(early.rvol));
+  if (closed && closed.minute === 30) assert.ok(closed.rvol < early!.rvol);
+});
+
+test("2.10: after a 150% first leg the add keeps the position within 5% of the account (0.5% at 3%)", async () => {
+  const { h, M } = await withFirst({ sizeShare: 1.5 });
+  await h.run(DAY, 565, 570 + M + 3);
+  const buys = h.calls.filter((c) => c.kind === "buy");
+  assert.equal(buys.length, 1, "one add");
+  assert.ok(
+    Math.abs(Number(buys[0]!.body.sizePct) - 0.5) < 1e-9,
+    String(buys[0]!.body.sizePct),
+  );
+  // A 50% first leg's add is half of its 1.5%: 0.75%.
+  const small = await withFirst({ sizeShare: 0.5 });
+  await small.h.run(DAY, 565, 570 + small.M + 3);
+  const add = small.h.calls.filter((c) => c.kind === "buy");
+  assert.ok(
+    Math.abs(Number(add[0]!.body.sizePct) - 0.75) < 1e-9,
+    String(add[0]?.body.sizePct),
+  );
 });

@@ -38,6 +38,7 @@ import {
   pickRules,
   signalParams,
   sizeAt,
+  volumeShare,
   watchedStocks,
   withDefaults,
   botBrokers,
@@ -58,6 +59,7 @@ import {
 import { yearsToExpiry } from "../../../packages/trading/src/bot/backtest.js";
 import {
   contractWords,
+  maxSizePct,
   parseOccSymbol,
   type OptionQuote,
 } from "../../../packages/trading/src/options.js";
@@ -811,7 +813,7 @@ export class IndiBot {
     for (const symbol of open) {
       const bars = forming(symbol);
       if (!bars) continue;
-      const sig = cSignal(bars, spy, this.prior.get(symbol)!, m, params);
+      const sig = cSignal(bars, spy, this.prior.get(symbol)!, m, params, true);
       if (!sig || sig.minute !== m) continue;
       const added = this.o.store.addSignal({
         day: date,
@@ -990,6 +992,7 @@ export class IndiBot {
       openedAt: this.o.now(),
       closedAt: null,
       addOf: first.id,
+      ...(first.sizeShare !== undefined ? { sizeShare: first.sizeShare } : {}),
     };
     const book = bookOf(picked.quote, this.o.now(), broker);
     const result = await this.enterAt(
@@ -1099,7 +1102,13 @@ export class IndiBot {
     let fallback = "";
     if (picked.fallback === "cheap")
       fallback = ` · the 0.15-delta option was under $${pick.minPrice.toFixed(2)}, so the nearest strike at $${pick.minPrice.toFixed(2)} or more`;
-    const why = `Signal ${side} at ${clock(minute)}: strength t ${t.toFixed(1)}, volume ${rvol.toFixed(1)}× normal${fallback} · bot ${version}`;
+    // 2.10: the size follows the signal's volume (its pyramid add too).
+    const share = volumeShare(s, rvol);
+    const half =
+      share !== 1
+        ? ` · ${Math.round(share * 100)}% of the size (volume ${rvol.toFixed(2)}×)`
+        : "";
+    const why = `Signal ${side} at ${clock(minute)}: strength t ${t.toFixed(1)}, volume ${rvol.toFixed(1)}× normal${fallback}${half} · bot ${version}`;
     const base: Omit<BotPosition, "id" | "broker"> = {
       day: date,
       symbol,
@@ -1129,6 +1138,7 @@ export class IndiBot {
       openedAt: this.o.now(),
       closedAt: null,
       ...(opts.bonus ? { bonus: true } : {}),
+      ...(share !== 1 ? { sizeShare: share } : {}),
     };
     const results: { broker: BotBroker; outcome: string; detail: string }[] =
       [];
@@ -1212,8 +1222,23 @@ export class IndiBot {
     const dayStart =
       this.dayStartEquity.get(broker) ??
       (await this.equity(broker).catch(() => 0));
-    const tradePct = sizeAt(s.sizePct, s.sizeSteps, dayStart);
-    const sizePct = add ? (tradePct * add.sharePct) / 100 : tradePct;
+    // The volume tier can go over the owner's size; never over the service's cap per buy.
+    const tradePct = Math.min(
+      sizeAt(s.sizePct, s.sizeSteps, dayStart) * (base.sizeShare ?? 1),
+      maxSizePct,
+    );
+    let sizePct = add ? (tradePct * add.sharePct) / 100 : tradePct;
+    if (add) {
+      // 2.10: the first leg and its add stay within 5% of the account (the
+      // owner, 2026-11-01: "add, but up to 5%"; the account's max position):
+      // after a 150% first leg at 3% (4.5%) the add is 0.5%.
+      sizePct = Math.min(sizePct, maxSizePct - tradePct);
+      if (sizePct < 0.05)
+        return {
+          outcome: "refused",
+          detail: `no room for the add under ${maxSizePct}% of the account (the first leg is ${tradePct.toFixed(2)}%)${at}`,
+        };
+    }
     const position: BotPosition = {
       ...base,
       id: randomUUID(),
@@ -1244,30 +1269,44 @@ export class IndiBot {
         detail: `${qty} ${this.words(contract)} at ${mid.toFixed(2)}${at}`,
       };
     }
-    const answer = await this.trading(broker).buy(
-      {
-        contract,
-        sizePct,
-        stopPct: s.safetyStopPct,
-        // Keep raising the price until it fills (user 2026-10-23).
-        chase: true,
-        chaseMs: chaseBuyMs,
-        // Any spread: the backtest has no spread cap, and the wide-spread
-        // picks hold many giants (user 2026-11-01). Every other check applies.
-        force: true,
-        tag: botTag,
-        note: why + at,
-      },
-      // The pyramid's add comes about a minute after the entry: an intended
-      // second buy, so the service's 60-second repeat check lets it through.
-      add ? { repeatOk: true } : {},
-    );
+    const send = (pct: number, words: string) =>
+      this.trading(broker).buy(
+        {
+          contract,
+          sizePct: pct,
+          stopPct: s.safetyStopPct,
+          // Keep raising the price until it fills (user 2026-10-23).
+          chase: true,
+          chaseMs: chaseBuyMs,
+          // Any spread: the backtest has no spread cap, and the wide-spread
+          // picks hold many giants (user 2026-11-01). Every other check applies.
+          force: true,
+          tag: botTag,
+          note: why + words + at,
+        },
+        // The pyramid's add comes about a minute after the entry: an intended
+        // second buy, so the service's 60-second repeat check lets it through.
+        add ? { repeatOk: true } : {},
+      );
+    let answer = await send(sizePct, "");
+    let bought = position;
+    // 2.10: a buy over the whole size (the 150% volume tier) that a risk limit
+    // refuses buys the whole size instead (the owner, 2026-11-01: "buy what fits").
+    const share = base.sizeShare ?? 1;
+    if ((answer.status !== "started" || !answer.jobId) && share > 1 && !add) {
+      const refused = (answer.refused ?? []).join("; ");
+      answer = await send(
+        sizePct / share,
+        ` · ${Math.round(share * 100)}% refused (${refused}), bought the whole size`,
+      );
+      bought = { ...position, sizeShare: 1 };
+    }
     if (answer.status !== "started" || !answer.jobId)
       return {
         outcome: "refused",
         detail: `${(answer.refused ?? []).join("; ")}${at}`,
       };
-    this.o.store.savePosition({ ...position, jobId: answer.jobId });
+    this.o.store.savePosition({ ...bought, jobId: answer.jobId });
     return {
       outcome: "bought",
       detail: `${answer.qty ?? "?"} ${this.words(contract)}${at}`,

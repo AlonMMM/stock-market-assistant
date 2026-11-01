@@ -387,7 +387,7 @@ export function RiskSettingsPage({
         {canSave
           ? "A save applies to the next buy."
           : "Only the owner can change them."}{" "}
-        The 3% cap on one trade's size stays fixed.
+        The 5% cap on one trade's size stays fixed.
       </p>
       {view.accounts
         .filter((a) => !only || only.some((x) => a.id.endsWith(`-${x}`)))

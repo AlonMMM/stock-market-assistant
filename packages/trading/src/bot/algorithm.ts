@@ -58,6 +58,8 @@ export function algorithmSteps(r: Rules): AlgorithmStep[] {
   let size = "Your size on every trade.";
   if (r.sizeSteps.length)
     size = `Your size while the account is small; then ${r.sizeSteps.map((x) => `${x.pct}% from $${x.from.toLocaleString("en-US")}`).join(", ")} (the account's value as the day starts).`;
+  if (r.volumeTiers.length)
+    size += ` By the signal's volume since the open (× its usual): ${r.volumeTiers.map((x) => `${x.pct}% of that from ${x.atLeast}×`).join(", ")} (its pyramid add too).`;
   steps.push({ name: "Size", text: size });
   let checks =
     "No 10- and 20-minute checks: the position is held until a stop, a failed break or the day exit.";

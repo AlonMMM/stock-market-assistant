@@ -92,6 +92,9 @@ export interface BotPosition {
   pyramidChecked?: boolean;
   // The break-even lock's stock level once armed (version 2.9); missing before.
   lockLevel?: number | null;
+  // The share of the size it was bought at from its signal's volume (2.10's
+  // half size under 2x); missing = the whole size. An add carries its first's.
+  sizeShare?: number;
   status: BotStatus;
   jobId: string | null;
   dry: boolean;

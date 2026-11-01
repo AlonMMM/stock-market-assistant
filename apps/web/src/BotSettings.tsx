@@ -112,6 +112,8 @@ function groups(s: BotSettings): Group[] {
   let sizeSub = "How much each buy spends";
   if (steps)
     sizeSub = `How much each buy spends; as the account grows (its value as the day starts): ${steps}`;
+  if (s.volumeTiers.length)
+    sizeSub += `; by the signal's volume since the open (× its usual): ${s.volumeTiers.map((x) => `${x.pct}% from ${x.atLeast}×`).join(", ")}`;
   return [
     {
       title: "Trade size",
