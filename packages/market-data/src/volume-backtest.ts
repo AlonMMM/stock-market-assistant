@@ -271,7 +271,10 @@ export async function handleVolumeBacktest(
       settings,
       data,
       backtestCalendar,
-      { fillPct },
+      // Real books only (the user, 2026-11-01: "stop fallback as we have the
+      // data now"): a buy needs its 1-second book, a sale its minute book;
+      // without them the alert is not traded, as in the research simulator.
+      { fillPct, strictQuotes: true },
     );
     return {
       status: 200,

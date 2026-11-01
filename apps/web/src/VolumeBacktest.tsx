@@ -118,11 +118,9 @@ export function VolumeEmpty() {
         How it is simulated: the live bot&apos;s own rules on every plan alert
         (the minute volume alert) and shock alert, the side read on the
         stock&apos;s seconds after the alert, the give-back on minute closes.
-        Prices are real Databento bids and asks: 1-second books around the alert
-        where they were downloaded, else the minute book, else the option&apos;s
-        minute bars with the fill cost. Without 1-second books the result is
-        pessimistic: on the same alerts, minute books alone made $361K where
-        1-second books made $827K.
+        Prices are real Databento bids and asks only: the buy on the 1-second
+        book around the alert, the sale on the minute book. An alert without
+        those books is not traded (no guessed price), as in the research.
       </p>
     </section>
   );
@@ -156,6 +154,7 @@ export function VolumeSummary({
   const avg = (list: VolumeAccountTrade[]) =>
     list.reduce((sum, a) => sum + a.pnl, 0) / list.length;
   const notSeconds = priced.buys.minutes + priced.buys.bars;
+  const noBook = rows.filter((r) => r.signal.outcome === "no_fill").length;
   return (
     <section className="card bt-summary" aria-label="Result">
       <div className="bt-total">
@@ -225,8 +224,10 @@ export function VolumeSummary({
       )}
       <p className="muted small">
         {money.sizePct}% a trade, sized from each morning&apos;s account · fees
-        ${money.feePerContract.toFixed(2)} a contract each way · fill cost{" "}
-        {ran.fillPct}% on the bars
+        ${money.feePerContract.toFixed(2)} a contract each way · real books only
+        {noBook > 0
+          ? ` · ${noBook} alert${noBook === 1 ? "" : "s"} not traded for lack of a book`
+          : ""}
         {money.limits
           ? ` · limits: ${money.maxTradesPerDay} trades a day, ${money.maxOpen} open, ${money.dayLossPct}% day loss`
           : " · no day limits"}
