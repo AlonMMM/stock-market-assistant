@@ -375,8 +375,8 @@ def store():
     by_date = collections.defaultdict(list)   # dbx_cache rows for quotes_upload.py
     for r in rows:
         p = raw_path(r)
-        # alert_books_topup.py's downloads (topup: the strikes the first band missed; topup_year: the year, 54 stocks)
-        tops = [p.replace(f"{DIR}/", f"{DIR}/{t}/", 1) for t in ("topup", "topup_year")]
+        # alert_books_topup.py's downloads (topup: the strikes the first band missed; topup_year: the year, 54 stocks; topup_shock4: SLV TQQQ SOXL SMH since 2024)
+        tops = [p.replace(f"{DIR}/", f"{DIR}/{t}/", 1) for t in ("topup", "topup_year", "topup_shock4")]
         tops = [t for t in tops if os.path.exists(t)]
         if not os.path.exists(p) and not tops: continue
         q = quotes_of(p) if os.path.exists(p) else collections.defaultdict(list)

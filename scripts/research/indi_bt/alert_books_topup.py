@@ -13,7 +13,7 @@ stock-day to 15:30).
 Writes data/local/x/alertbooks/topup_requests.csv (alert_books_hist.py's columns); `cost` fills its cost column
 (metadata.get_cost, free) and prints the total.
 """
-import collections, csv, datetime as dt, json, math, os, sys, urllib.error, urllib.parse
+import collections, csv, datetime as dt, gzip, json, math, os, sys, urllib.error, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -200,6 +200,46 @@ def fetch():
     ab.fetch()
 
 
+SEC1 = "2025-02-20"   # Databento's first cbbo-1s day (leg_seconds.SEC1); before it OPRA has cmbp-1, every book change
+
+
+def fetch_early():
+    """The windows before SEC1 (the 1-second fetch gets a 422 there): cmbp-1 from 60 s before the window, so the book
+    standing at its start is known; the last change in each second is that second's book, written as a cbbo-1s row
+    stamped second + 1 (the book as the second ended), so store() reads both alike. Asked 2026-11-01, $0.35."""
+    import io
+    from concurrent.futures import ThreadPoolExecutor
+    rows = [r for r in csv.DictReader(open(OUT)) if r["kind"] != "minute" and r["contracts"] and r["date"] < SEC1
+            and not os.path.exists(raw_path(r))]
+    print(f"{len(rows)} windows before {SEC1} to fetch in cmbp-1", flush=True)
+    def one(r):
+        start = dt.datetime.fromisoformat(r["start"]) - dt.timedelta(seconds=60)
+        text = ab.dbx("timeseries.get_range", schema="cmbp-1", encoding="csv", pretty_px="true", pretty_ts="true",
+                      map_symbols="true", symbols=",".join(ab.pad(x) for x in r["contracts"].split(";")),
+                      start=start.strftime("%Y-%m-%dT%H:%M:%S"), end=r["end"])
+        last = {}
+        for q in csv.DictReader(io.StringIO(text)):
+            if not q.get("bid_px_00") or not q.get("ask_px_00"): continue
+            t = dt.datetime.fromisoformat(q["ts_recv"][:19])
+            last[(q["symbol"], t)] = (q["bid_px_00"], q["ask_px_00"])
+        p = raw_path(r)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with gzip.open(p + ".tmp", "wt") as f:
+            w = csv.writer(f)
+            w.writerow(["ts_recv", "symbol", "bid_px_00", "ask_px_00"])
+            for (sym, t), (b, a) in sorted(last.items(), key=lambda x: (x[0][1], x[0][0])):
+                w.writerow([(t + dt.timedelta(seconds=1)).isoformat() + "Z", sym, b, a])
+        os.replace(p + ".tmp", p)
+        return len(last)
+    failed, n = [], 0
+    with ThreadPoolExecutor(6) as ex:
+        for r, f in [(r, ex.submit(one, r)) for r in rows]:
+            try: n += f.result()
+            except Exception as e: failed.append(f"{r['kind']} {r['symbol']} {r['date']} {r['second']}: {e}")
+    print(f"fetched {len(rows) - len(failed)} windows, {n:,} second-books; {len(failed)} failed")
+    for x in failed[:10]: print("  failed:", x)
+
+
 def merge():
     """requests.csv gets the top-up's contracts on each window (the old file kept as requests_before_topup.csv), so
     alert_books_hist.py store builds every window from both downloads."""
@@ -231,6 +271,7 @@ def alerts_year():
     finds them; shock alerts as the app's backtest reads them (D1 volume_alerts, from a local copy: AB_SHOCK_DB)."""
     from concurrent.futures import ProcessPoolExecutor
     syms = json.load(open(os.path.expanduser("~/Desktop/Personal/sma-deploy/config/volume-bot-stocks.json")))["symbols"]
+    syms = [s for s in syms if not ONLY or s in ONLY]
     cal = ab.trading_days()
     with ProcessPoolExecutor(6) as ex:
         plan = [a for got in ex.map(ab.plan_alerts, syms, [cal] * len(syms)) for a in got]
@@ -244,4 +285,4 @@ def alerts_year():
 
 
 if __name__ == "__main__":
-    {"alerts_year": alerts_year, "list": build, "cost": cost, "fetch": fetch, "merge": merge}[sys.argv[1] if len(sys.argv) > 1 else ""]()
+    {"alerts_year": alerts_year, "list": build, "cost": cost, "fetch": fetch, "fetch_early": fetch_early, "merge": merge}[sys.argv[1] if len(sys.argv) > 1 else ""]()
