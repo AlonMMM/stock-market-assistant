@@ -53,7 +53,7 @@ export interface BotBacktestResponse extends StockRun {
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const dataUrl = "https://data.alpaca.markets";
-const rateRetries = 4; // tries again after a 429, waiting longer each time
+const rateRetries = 8; // tries again after a 429, waiting longer each time (1 + 2 + ... + 128 s: a full Backtest page run, 4 requests at a time, outlasted 15 s and 63 s)
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 export const backtestCalendar: BacktestCalendar = {
@@ -187,7 +187,7 @@ export class AlpacaBacktestData implements BacktestData {
         signal: AbortSignal.timeout(30000),
       });
       // Too many requests (a long replay, or other work on the same keys):
-      // wait as Alpaca asks, else 1, 2, 4, 8 s, then give up.
+      // wait as Alpaca asks, else 1, 2, 4, ... 128 s, then give up.
       if (response.status !== 429 || attempt >= rateRetries) break;
       await response.body?.cancel();
       const asked = Number(response.headers.get("retry-after"));
@@ -205,8 +205,12 @@ export class AlpacaBacktestData implements BacktestData {
   chain(symbol: string, right: "call" | "put", from: string, to: string) {
     const key = `${symbol}|${right}|${from}|${to}`;
     let list = this.chains.get(key);
-    if (!list)
-      this.chains.set(key, (list = this.readChain(symbol, right, from, to)));
+    if (!list) {
+      list = this.readChain(symbol, right, from, to);
+      // A failed read is not kept: the next signal of the run asks again.
+      list.catch(() => this.chains.delete(key));
+      this.chains.set(key, list);
+    }
     return list;
   }
 
