@@ -98,6 +98,12 @@ The user's request: no Alerts tab, and the Backtest section tests a bot on stock
   broker's safety stop. `scripts/bot-backtest-run.ts` runs it from the command line.
 - **Checked:** on NVDA, AMD, TSLA (Sep–Oct 2026) the trades match the Python replay's (`week.py`) where the rules
   are the same (contract, minutes, exit prices); tests in `tests/bot-backtest.test.ts` (synthetic data).
+- **Aligned with the research (2026-11-01):** the live 2.7.0 settings on its 75 stocks, 2026-07-31 to 10-30: 184 of 184
+  trades identical to the research twin (`app_twin.py` on research/indi-v2), same fills, $100,949 / 42.4% drop in both
+  (`scripts/bot-backtest-compare.ts`). Fixed for it: books that end early (an alert contract's books stop at 15:30) go on
+  on trade bars instead of a stale "data-end" mark; a no-book signal buys the next minute at the last trade; the
+  pyramid's "up" is the book mid; the 429 retry waits up to 128 s and a failed chain read is not kept; the Volume bot's
+  stored stock seconds take the window nearest before the alert.
 
 ## Indi bot on the paper account (2026-10-21, in review)
 

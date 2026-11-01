@@ -552,7 +552,7 @@ async function walk(
   if (!q)
     return { ...(await walkTrades(data, cal, w, s, o, days)), book: null };
   const book = { bid: q.bid, ask: q.ask };
-  return { ...(await walkQuotes(data, cal, w, s, days, quotes)), book };
+  return { ...(await walkQuotes(data, cal, w, s, o, days, quotes)), book };
 }
 
 /** A contract's real book as a session minute closed; null without one. */
@@ -596,16 +596,23 @@ export function bookAt(
  * of the spread as the signal minute closed, or the ask a minute later when
  * the bid ran past that (the live bot chases the ask); a sale gets the bid as
  * its decision minute closed, or the next minute's book when none is fresh.
- * No fill correction: the bid and ask are the market's.
+ * No fill correction: the bid and ask are the market's. Once a day's books
+ * are over (none can come later that day, or the day has none), the walk
+ * goes on on the option's trade bars as the research does (sim.py's book or
+ * trade bar each minute): the mark is the minute's trade close, a sale gets
+ * the next minute's bar middle less `fillPct` (the user 2026-11-01: "align" the app and
+ * the research; ORCL 2026-10-28 was valued at its 15:30 book as "data-end").
  */
 async function walkQuotes(
   data: BacktestData,
   cal: BacktestCalendar,
   w: WalkInput,
   s: BotSettings,
+  o: RunOptions,
   days: string[],
   quotes: Map<string, QuoteMinute[]>,
 ): Promise<Omit<Walked, "book">> {
+  const fill = o.fillPct / 100;
   const base: ExitRules = exitRules(s);
   const unit = stockUnit(data, cal, w);
   const entryDay = quotes.get(w.date) ?? [];
@@ -636,9 +643,34 @@ async function walkQuotes(
     morningDone: false,
   };
   let watch = w.watch;
-  let last: { date: string; book: QuoteMinute } | null = {
-    date: w.date,
-    book: q0,
+  // The newest mark of any kind: a book's mid, or a trade close once the books are over.
+  let lastMark = (q0.bid + q0.ask) / 2;
+  let markAt = { date: w.date, minute: w.minute };
+  let option: Map<string, MinuteBar[]> | null = null;
+  const tradeBars = async (date: string) => {
+    option ??= await data
+      .optionRange(w.contract, w.date, days.at(-1)!)
+      .catch(() => new Map<string, MinuteBar[]>());
+    return option.get(date) ?? [];
+  };
+  const sellAtBar = (
+    date: string,
+    minute: number,
+    price: number,
+    share: number,
+    reason: ExitReason,
+  ) => {
+    const q = Math.min(rem, share);
+    rem -= q;
+    steps.push({
+      date,
+      minute,
+      kind: "sell",
+      share: q,
+      price: Math.max(price * (1 - fill), 0.01),
+      reason,
+    });
+    state = { ...state, qty: Math.round(rem * nominal) };
   };
   const sell = (
     date: string,
@@ -685,12 +717,25 @@ async function walkQuotes(
     const prevClose = prevBars.at(-1)?.c ?? null;
     const nextDay = cal.nextSessions(date, 1)[0]!;
     let carried = false;
+    // The minute after which no fresh book can come this day.
+    const booksEnd = day.length ? day.at(-1)!.m + quoteAge - 1 : -1;
+    const bars = booksEnd < length - 1 ? await tradeBars(date) : [];
+    const barAt = new Map(bars.map((b) => [b.m, b]));
     for (let m = k === 0 ? w.minute + 1 : 0; m < length; m++) {
       const book = bookAt(day, m);
-      if (book) last = { date, book };
+      const over = m > booksEnd;
+      const bar = over ? barAt.get(m) : undefined;
       // The mark is the newest book of any age, as the live bot always has a
-      // price; only a sale needs a fresh one.
-      const mark = last ? (last.book.bid + last.book.ask) / 2 : null;
+      // price; only a sale needs a fresh one. Once the books are over, the
+      // minute's trade close when the option traded.
+      if (book) lastMark = (book.bid + book.ask) / 2;
+      else if (bar) lastMark = bar.c;
+      if (book || bar) markAt = { date, minute: m };
+      const mark = lastMark;
+      // A sale once the books are over fills on the next minute, as sim.py's
+      // pending sale: that minute's trade bar middle, else the last mark.
+      const next = over ? barAt.get(m + 1) : undefined;
+      const barPrice = next ? (next.h + next.l) / 2 : lastMark;
       // The failed break (entry day): all out as the minute it failed closed.
       if (k === 0 && watch && watch.state === "watching" && s.sellFailedBreak) {
         watch = advanceWatch(watch, stockBars, m, w.right);
@@ -701,6 +746,18 @@ async function walkQuotes(
         sell(
           date,
           book,
+          pending.share === "all" ? rem : pending.share,
+          pending.reason,
+        );
+        const failed = pending.reason === "failed-break";
+        pending = null;
+        if (rem <= 1e-9 || failed) return done();
+      }
+      if (pending && over) {
+        sellAtBar(
+          date,
+          m,
+          barPrice,
           pending.share === "all" ? rem : pending.share,
           pending.reason,
         );
@@ -762,27 +819,43 @@ async function walkQuotes(
           );
           pending = null;
           if (rem <= 1e-9) return done();
+        } else if (over) {
+          sellAtBar(
+            date,
+            m,
+            barPrice,
+            pending.share === "all" ? rem : pending.share,
+            pending.reason,
+          );
+          pending = null;
+          if (rem <= 1e-9) return done();
         }
       }
     }
     if (carried) continue;
     // The day ended held (no 15:50 decision, or a sale with no fresh book):
     // at the day's last book, as the bot sells everything not carried.
-    const end = day.at(-1);
-    if (!end) continue; // no quote that day: on to the next
     const reason: ExitReason =
       pending?.reason ?? (date === w.expiry ? "expiry-day" : "close-1550");
+    const lastBar = bars.at(-1);
+    const end = day.at(-1);
+    // Books over before the day's last trade: the last trade bar, as the research's day_end_forced.
+    if (lastBar && (!end || lastBar.m > booksEnd)) {
+      sellAtBar(date, lastBar.m, lastBar.c, rem, reason);
+      return done();
+    }
+    if (!end) continue; // no quote and no trade that day: on to the next
     sell(date, end, rem, reason);
     return done();
   }
-  // Held past the last session with data: valued at the last book's mid.
-  if (rem > 1e-9 && last) {
+  // Held past the last session with data: valued at the newest mark.
+  if (rem > 1e-9) {
     steps.push({
-      date: last.date,
-      minute: last.book.m,
+      date: markAt.date,
+      minute: markAt.minute,
       kind: "sell",
       share: rem,
-      price: (last.book.bid + last.book.ask) / 2,
+      price: lastMark,
       reason: "data-end",
     });
     return {
@@ -894,15 +967,25 @@ async function walkTrades(
         today = b;
       }
       if (cost === null) {
-        // The buy at the first print after the signal. A signal whose option
-        // prints late is still bought (the audit: dropping them dropped mostly
-        // losers); only a day with no print at all has no price.
-        if (!b) continue;
-        cost = mid(b) * (1 + fill);
+        // The buy the minute after the signal: at that minute's print, else at
+        // the option's last trade at the signal, as sim.py's BT_KEEP walk (the
+        // app parity run 2026-11-01: CHTR 2026-10-07 waited 35 minutes for a
+        // print here and bought at once there). A signal whose option prints
+        // late is still bought (the audit: dropping them dropped mostly losers);
+        // only no trade at all that day by then has no price.
+        let entry = b;
+        const firstMinute = k === 0 && m === w.minute + 1;
+        if (!entry && firstMinute) {
+          const before = lastBar(option.get(date) ?? [], w.minute, 390);
+          if (before) entry = { ...before, m, h: before.c, l: before.c };
+        }
+        if (!entry) continue;
+        if (!b) last = { date, bar: entry };
+        cost = mid(entry) * (1 + fill);
         state = { ...state, cost };
         steps.push({
           date,
-          minute: b.m,
+          minute: entry.m,
           kind: "buy",
           share: 1,
           price: cost,
@@ -1277,8 +1360,12 @@ async function pyramid(
     .reduce((sum, x) => sum + x.share, 0);
   if (soldOut >= 1 - 1e-9) return null;
   const cost = first.steps[0]?.price ?? null;
-  const bars = await data.optionDay([first.contract], first.date);
-  const mark = lastBar(bars.get(first.contract) ?? [], sig.minute)?.c ?? null;
+  // "Up" on the book's mid as the minute closed, as the live bot marks it and
+  // the research tests it (export_champ.py's held map): no book, no add, as
+  // there (HIMS 2026-09-22 and GOOGL 2026-09-30 were decided on a trade print
+  // the book disagreed with).
+  const book = await bookOf(data, first.contract, first.date, sig.minute);
+  const mark = book ? (book.bid + book.ask) / 2 : null;
   if (cost === null || mark === null || mark <= cost) return null;
   const spot = closeAt(day, sig.minute);
   if (spot === null) return null;
