@@ -185,6 +185,11 @@ export function cSignal(
   prior: Prior,
   upTo: number = defaultSignalParams.lastMinute,
   p: SignalParams = defaultSignalParams,
+  // The last bar (minute upTo) is the forming minute (early entry): its volume
+  // is not in yet, so its volume ratio is today's volume through the minute
+  // before over the usual through the minute before, as the backtest's close
+  // of that minute reads it (2.10's tiers, the release review of 2026-11-01).
+  forming = false,
 ): Signal | null {
   if (prior.curves.length < 10 || prior.beta === null) return null;
   const beta = prior.beta;
@@ -226,7 +231,9 @@ export function cSignal(
       continue;
     const sd = pstdev(steps);
     const t = sd ? (mean(steps) / sd) * Math.sqrt(steps.length) : 0;
-    const usual = median(prior.curves.map((curve) => curve[m]!)) * split;
+    let at = m;
+    if (forming && m === upTo && m > 0) at = m - 1;
+    const usual = median(prior.curves.map((curve) => curve[at]!)) * split;
     const rvol = usual ? cum[m]! / usual : 0;
     if (rvol < p.rvolDay) continue;
     const d2 = unit ? sumCall : null;

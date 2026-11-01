@@ -98,7 +98,7 @@ test("versions: distinct ids oldest first; the defaults are the current version'
     botVersions[11]!.rules.sizeSteps,
     botVersions[10]!.rules.sizeSteps,
   );
-  // 2.10 is 2.9 with half size when the volume is under 2x.
+  // 2.10 is 2.9 with the size set by the volume tiers (50 / 100 / 150%).
   assert.deepEqual(ruleChanges(botVersions[12]!.rules, botVersions[11]!), [
     "volumeTiers none → 50% from 0×, 100% from 1.75×, 150% from 2.5×",
   ]);

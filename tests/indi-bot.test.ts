@@ -653,6 +653,7 @@ function harness(
   const notes: string[] = [];
   // The broker the bot asked for last; each order records it.
   let broker: BotBroker = "alpaca";
+  let refuseAbove = Infinity;
   const trading: BotTrading = {
     async chain() {
       return [q(110, 0.15, 0.59), q(115, 0.08, 0.3)];
@@ -679,6 +680,12 @@ function harness(
         broker,
         ...(options ? { options } : {}),
       });
+      // A risk limit stand-in: the service refuses a size over refuseAbove.
+      if (Number(body.sizePct) > refuseAbove)
+        return {
+          status: "refused",
+          refused: ["risk: over the limit (synthetic)"],
+        };
       // IBKR fills one contract fewer: the accounts should differ a little.
       const qty = broker === "ibkr" ? 32 : 33;
       // A buy adds to what the account holds (a pyramid add can buy more of a held contract).
@@ -745,6 +752,7 @@ function harness(
     setMid: (v: number) => (mid = v),
     setEquity: (v: number) => (equity = v),
     failEquity: (on: boolean) => (equityFails = on),
+    refuseOver: (pct: number) => (refuseAbove = pct),
     failIbkrBuy: (on: boolean) => (ibkrBuyFails = on),
   };
 }
@@ -2001,4 +2009,69 @@ test("2.10: the size follows the signal's volume tier, with the share in the buy
   off.bot.setSettings({ ...off.bot.settings(), volumeTiers: [] });
   await off.run(DAY, 565, 600);
   assert.equal(off.calls.find((c) => c.kind === "buy")?.body.sizePct, 3);
+});
+
+test("2.10: a 150% buy a risk limit refuses buys the whole size instead; no pyramid add after a 150% first leg", async () => {
+  const h = harness("live");
+  h.setEquity(100_000);
+  h.bot.setSettings({
+    ...h.bot.settings(),
+    volumeTiers: [
+      { atLeast: 0, pct: 50 },
+      { atLeast: 1.5, pct: 150 },
+    ],
+  });
+  // The service refuses anything over 4% (a stand-in for a risk limit).
+  h.refuseOver(4);
+  await h.run(DAY, 565, 600);
+  const buys = h.calls.filter((c) => c.kind === "buy");
+  assert.deepEqual(
+    buys.map((c) => c.body.sizePct),
+    [4.5, 3],
+  );
+  assert.match(
+    String(buys[1]?.body.note),
+    /150% refused \(.*\), bought the whole size/,
+  );
+  assert.equal(h.store.openPositions()[0]?.sizeShare, 1);
+});
+
+test("2.10: an early entry's volume ratio compares the minutes before the forming one", async () => {
+  const { cSignal } = await import("../packages/trading/src/bot/signal.js");
+  // 20 prior days of 100 shares a minute; today 200 a minute through minute 29, the forming minute 30 with none yet.
+  const bar = (m: number, c: number, v: number) => ({
+    m,
+    o: c,
+    h: c,
+    l: c,
+    c,
+    v,
+  });
+  const flat = (v: number, upTo = 389) =>
+    Array.from({ length: upTo + 1 }, (_, m) => bar(m, 100, v));
+  const prior = {
+    curves: Array.from({ length: 20 }, () =>
+      Array.from({ length: 390 }, (_, m) => 100 * (m + 1)),
+    ),
+    beta: 1,
+    unit: null,
+    sd: null,
+    lastClose: 100,
+  };
+  const day = flat(200, 29).map((b, m) => ({ ...b, c: 100 + m * 0.05 }));
+  const forming = [...day, bar(30, 100 + 30 * 0.05, 0)];
+  const spy = flat(100, 30);
+  const p = {
+    ...defaultSignalParams,
+    firstMinute: 10,
+    minSteps: 5,
+    strengthT: 0,
+    bonusT: null,
+  };
+  const closed = cSignal(forming, spy, prior as never, 30, p);
+  const early = cSignal(forming, spy, prior as never, 30, p, true);
+  // Through minute 29 today is 2x the usual through minute 29.
+  assert.ok(early, "the forming minute's signal");
+  assert.ok(Math.abs(early.rvol - 2) < 1e-9, String(early.rvol));
+  if (closed && closed.minute === 30) assert.ok(closed.rvol < early!.rvol);
 });

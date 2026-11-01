@@ -407,6 +407,7 @@ export const minorKeys: ReadonlySet<RuleKey> = new Set<RuleKey>([
   "stockStages",
   "lateHold",
   "breakEvenLock",
+  "volumeTiers",
   "skipEarnings",
   "skipPremarket",
 ]);

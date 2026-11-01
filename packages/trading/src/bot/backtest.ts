@@ -1220,7 +1220,8 @@ export async function runStock(
       watch: watch ? { name: watch.name, level: watch.level } : null,
     };
     out.trades.push(trade);
-    if (s.pyramid && sig.bonus) {
+    // 2.10: no add on a first leg bought at more than the size (bot.ts pyramids).
+    if (s.pyramid && sig.bonus && trade.sizeShare <= 1) {
       const add = await pyramid(
         trade,
         day,
