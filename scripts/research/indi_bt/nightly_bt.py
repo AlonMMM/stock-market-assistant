@@ -23,6 +23,8 @@ so a 2024 night is ranked on a scale that includes later nights; live, a trailin
 Quotes: IC_PASS=list -> open25_dbx_list.csv, dbx_fetch.py open25.
 NB_SET=delta (the user 2026-10-31 "go and test it": the big-winner rate by the option's delta): a3r2p0 at delta 0.10 /
 0.15 / 0.20 / 0.30 -> nightly_bt_delta_trades.json, read by bigrate.py; quotes open28.
+NB_SET=mb (the user 2026-11-01, the main bot's morning rule on the 15:57 bets; see indi_close.py IC_SET=mb): a3r2p0 at
+delta 0.20 with his exit (the reference), mb and mb-no10; quotes open25 (the same contracts, the next day to the close).
 
   node --env-file=.env <dir>/run.mjs nightly_bt.py      (from the app repo root)
 """
@@ -36,6 +38,7 @@ from split import half
 
 ic.EXTRAS += [os.path.join(HERE, "dbx_cache", "open25"), os.path.join(HERE, "dbx_cache", "open28")]
 DSET = os.environ.get("NB_SET") == "delta"
+MBSET = os.environ.get("NB_SET") == "mb"   # the main bot's morning rule (indi_close.py IC_SET=mb) on a3r2p0, delta 0.20
 LISTING = ic.LISTING
 F = "data/local/x/bt/nightly_feat.csv.gz"
 B = "data/local/x/bt"
@@ -45,7 +48,12 @@ DELTAS = {v: 0.20 for v in VERSIONS}
 if DSET:
     VERSIONS = {f"a3r2p0-d{round(d * 100):02d}": (3, 2, 0) for d in (0.10, 0.15, 0.20, 0.30)}
     DELTAS = {v: int(v[-2:]) / 100 for v in VERSIONS}
-DELTAS["ref"] = 0.20
+EXITS = {v: "his" for v in VERSIONS}
+if MBSET:
+    VERSIONS = {"a3r2p0-his": (3, 2, 0), "a3r2p0-mb": (3, 2, 0), "a3r2p0-mb-no10": (3, 2, 0)}
+    DELTAS = {v: 0.20 for v in VERSIONS}
+    EXITS = {"a3r2p0-his": "his", "a3r2p0-mb": "mb", "a3r2p0-mb-no10": "mbno10"}
+DELTAS["ref"] = 0.20; EXITS["ref"] = "his"
 Q, N_NIGHT, TRY = 0.80, 2, 6
 
 
@@ -74,8 +82,8 @@ def px(job):
 
 
 def walk(job):
-    key, r, right, win, d = job
-    w = ic.walk(("fair", r, right, d, win, "his"))
+    key, r, right, win, d, ex = job
+    w = ic.walk(("fair", r, right, d, win, ex))
     return key, w
 
 
@@ -108,15 +116,15 @@ def main():
         for d, lst in P.items():
             for r in lst:
                 if not PX.get((r["sym"], d)): continue
-                key = (r["sym"], d, r["side"], WIN[v], DELTAS[v])
-                jobs[key] = (key, {"sym": r["sym"], "date": d, "px": PX[(r["sym"], d)]}, r["side"], WIN[v], DELTAS[v])
+                key = (r["sym"], d, r["side"], WIN[v], DELTAS[v], EXITS[v])
+                jobs[key] = (key, {"sym": r["sym"], "date": d, "px": PX[(r["sym"], d)]}, r["side"], WIN[v], DELTAS[v], EXITS[v])
     print(len(jobs), "trades to walk", flush=True)
     with mp.Pool(8) as pool_: W = dict(pool_.map(walk, list(jobs.values()), chunksize=4))
 
     def taken(v, d):
         out = []
         for r in picks[v].get(d, []):
-            w = W.get((r["sym"], d, r["side"], WIN[v], DELTAS[v]))
+            w = W.get((r["sym"], d, r["side"], WIN[v], DELTAS[v], EXITS[v]))
             if w: out.append((r, w))
             if v != "ref" and len(out) >= N_NIGHT: break
         return out
@@ -141,9 +149,9 @@ def main():
         s_ = rr.stats(E(v, "tune", 0.02), 0.02); res[v] = s_["acct"]
         T = trades(v, "tune")
         print(f"| {v} | ${s_['acct']:,} / {s_['dd']:.0%} | {len(T) / nights['tune'] * 200:.0f} | {desc(T)} |", flush=True)
-    best = max(VERSIONS, key=lambda v: res[v])
+    best = max([v for v in VERSIONS if not v.endswith("-his")] if MBSET else VERSIONS, key=lambda v: res[v])
     print(f"\nPicked on tune: {best} 🎯\n\n#### Check weeks\n\n| Version | 2% end / worst drop | 3% end / worst drop | Trades a year | Detail |\n|---|---|---|---|---|")
-    for v in ("ref", best):
+    for v in (("a3r2p0-his", best) if MBSET else ("ref", best)):
         a, b = rr.stats(E(v, "check", 0.02), 0.02), rr.stats(E(v, "check", 0.03), 0.03)
         T = trades(v, "check")
         print(f"| {v} | ${a['acct']:,} / {a['dd']:.0%} | ${b['acct']:,} / {b['dd']:.0%} | {len(T) / nights['check'] * 200:.0f} | {desc(T)} |", flush=True)
@@ -151,7 +159,7 @@ def main():
     print(f"\nfills on the real book: {sum(bk) / max(1, len(bk)):.0%} of {len(bk)}")
     json.dump({f"{v}|{p}": [dict(date=w["date"], sym=w["sym"], right=w["right"], contract=w["contract"], r={str(k): x for k, x in w["r"].items()})
                             for _, w in trades(v, p)] for v in ["ref"] + list(VERSIONS) for p in ("tune", "check")},
-              open(f"{B}/nightly_bt{'_delta' if DSET else ''}_trades.json", "w"))
+              open(f"{B}/nightly_bt{'_delta' if DSET else '_mb' if MBSET else ''}_trades.json", "w"))
 
 
 if __name__ == "__main__":

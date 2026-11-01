@@ -96,6 +96,17 @@ the time. but we want a big move, and if we hit 1/8 big we will win", then "go a
 rate and a cheaper / dearer option): today's pick (t >= 1.8, top 10%, volume 1.3x, top 3, next-day expiry, his exit)
 at delta 0.10 / 0.15 / 0.20 / 0.30. Read by bigrate.py on unique bets (the fair list and the Favorites as one list).
 Quotes: IC_PASS=list -> open27_dbx_list.csv, dbx_fetch.py open27.
+
+IC_SET=mb (nightly-bet, the user 2026-11-01: "What if we go with main bot overnight strategy? Half if its in our
+direction on the morning and run with the other half. Sell all otherwise unless we have less than 10% remaind - sell
+them after 30m"; answered: on the 15:57 bets, "less than 10%" = the option worth under 10% of its cost). The main bot's
+morning rule (sim.py: at 09:40, the open's gap from the entry day's close on the bet's side >= 0.5%): today's pick (t >=
+1.8, top 10%, volume 1.3x, top 3, next-day expiry, delta 0.20), set before running:
+  t18-his       his exit (the reference)
+  t18-mb        gap >= 0.5% our way: half at 09:40, the rest at 15:55; else all at 09:40, unless the option is then
+                under 10% of its cost: all at 10:10
+  t18-mb-no10   the same without the 10% clause (the main bot's rule as it is)
+Quotes: the open26 cache (the same contracts, the next day to the close).
 """
 import bisect, collections, csv, datetime as dt, glob, gzip, json, math, multiprocessing as mp, os, statistics as st, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -128,12 +139,13 @@ D2B = os.environ.get("IC_SET") == "d2b"
 D3S = os.environ.get("IC_SET") == "d3"
 DELTA = os.environ.get("IC_SET") == "delta"
 O2 = os.environ.get("IC_SET") == "o2"
+MB = os.environ.get("IC_SET") == "mb"
 SCORE = os.environ.get("IC_SET") == "score"
 FILL = os.environ.get("IC_SET") in ("fill", "score")
-MANY = os.environ.get("IC_SET") == "many" or FILL or O2 or DELTA
+MANY = os.environ.get("IC_SET") == "many" or FILL or O2 or DELTA or MB
 RS = os.environ.get("IC_SET") == "rs" or VOL or D2B or D3S or MANY
-TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs", "d3": "_d3", "many": "_many", "fill": "_fill", "score": "_score", "o2": "_o2", "delta": "_delta"}.get(os.environ.get("IC_SET"), "")
-LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv", "_d3": "open16_dbx_list.csv", "_many": "open22_dbx_list.csv", "_fill": "open23_dbx_list.csv", "_score": "open24_dbx_list.csv", "_o2": "open26_dbx_list.csv", "_delta": "open27_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
+TAG = {"vol": "_vol", "d2b": "_d2b", "rs": "_rs", "d3": "_d3", "many": "_many", "fill": "_fill", "score": "_score", "o2": "_o2", "delta": "_delta", "mb": "_mb"}.get(os.environ.get("IC_SET"), "")
+LIST_NAME = {"_vol": "open14_dbx_list.csv", "_d2b": "open15_dbx_list.csv", "_rs": "open12_dbx_list.csv", "_d3": "open16_dbx_list.csv", "_many": "open22_dbx_list.csv", "_fill": "open23_dbx_list.csv", "_score": "open24_dbx_list.csv", "_o2": "open26_dbx_list.csv", "_delta": "open27_dbx_list.csv", "_mb": "open26_dbx_list.csv"}.get(TAG, "open11_dbx_list.csv")
 BASE = dict(lo=0.02, hi=0.04, d=0.20, exit="his", ath=False, pos=0.85, vwap=True, rs="60", vol="min", fri=False)
 CORE = {"thesis": {}, "m15": dict(lo=0.015), "m3": dict(lo=0.03, hi=9.0), "d30": dict(d=0.30), "d15": dict(d=0.15),
         "at10": dict(exit="at10"), "ath": dict(ath=True)}
@@ -200,10 +212,14 @@ if O2:
                 "t18-o2close": {**R, "t": 1.8, "n": 3, "exit": "o2close"}}
 if DELTA:
     VERSIONS = {f"t18-d{round(d * 100):02d}": {**R, "t": 1.8, "n": 3, "d": d} for d in (0.10, 0.15, 0.20, 0.30)}
-REF = ("t18-his" if O2 else "t18-d20" if DELTA else "t18-top3") if MANY else None
+if MB:
+    VERSIONS = {"t18-his": {**R, "t": 1.8, "n": 3}, "t18-mb": {**R, "t": 1.8, "n": 3, "exit": "mb"},
+                "t18-mb-no10": {**R, "t": 1.8, "n": 3, "exit": "mbno10"}}
+REF = ("t18-his" if O2 or MB else "t18-d20" if DELTA else "t18-top3") if MANY else None
 PICKABLE = [v for v in VERSIONS if v != "t18-top3" and (v.startswith("r2") or FILL)] if MANY else list(VERSIONS)
 if O2: PICKABLE = ["t18-o2open", "t18-o2close"]
 if DELTA: PICKABLE = [v for v in VERSIONS if v != "t18-d20"]
+if MB: PICKABLE = ["t18-mb", "t18-mb-no10"]
 SCALE = {}   # the tune pool's sorted parts, per (pos, tmin)
 RX = None
 BASE_EXPIRY = sim.expiry_for   # restored after each pick (set at import, so every worker has it)
@@ -459,6 +475,17 @@ def walk(job):
             steps += [(nd, 2, "sell", 0.5, p2, "o2_half"), (nd, 385, "sell", 0.5, pe, "o2_eod")]
         else:
             steps.append((nd, 2, "sell", 1.0, p2, "o2_out"))
+    elif exit_ in ("mb", "mbno10"):   # the main bot's morning rule (IC_SET=mb)
+        nb = day(r["sym"], nd); close0 = day(r["sym"], r["date"])[-1][4]
+        if not nb or nb[0][0] != 0: return None
+        p10, p40, pe = oc(10), oc(40), oc(385)
+        if None in (p10, p40, pe): return None
+        if bet * (nb[0][1] / close0 - 1) >= 0.005:
+            steps += [(nd, 10, "sell", 0.5, p10, "mb_half"), (nd, 385, "sell", 0.5, pe, "mb_eod")]
+        elif exit_ == "mb" and p10 < 0.10 * cost:
+            steps.append((nd, 40, "sell", 1.0, p40, "mb_low_30m"))
+        else:
+            steps.append((nd, 10, "sell", 1.0, p10, "mb_out"))
     elif exit_ == "at10":
         p = oc(30)
         if p is None: return None
