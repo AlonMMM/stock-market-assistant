@@ -38,7 +38,7 @@ What the live bot runs when its settings are reset to defaults: the default vers
 
 ## Candidate
 
-**2.9, released 2026-11-01 (PR #231, includes #227 = 2.8.1; deploy on the owner's go):** 2.8.1 (the size steps: 3%,
+**2.9, merged and deployed 2026-11-01 11:00 Israel (PR #231 with #227 = 2.8.1, and #225: splits + broker stop -60% default; website + Railway sma-trader from main 2a8dfc3; live once the owner picks 2.9 on the settings page):** 2.8.1 (the size steps: 3%,
 2.5% from $300K, 1.5% from $1M, 1% from $4M; a step never raises the owner's size) + the break-even lock (`be_lock
 {arm: 0.5, update: true}`: on the entry day, once the option is +50%, the stock price where Black-Scholes at its implied
 volatility values it at its cost is a stop on the stock, worked out again each minute it is still +50%, the tighter
