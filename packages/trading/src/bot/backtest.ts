@@ -33,7 +33,7 @@ import {
   type MinuteBar,
   type Prior,
 } from "./signal.js";
-import { parseOccSymbol, type OptionQuote } from "../options.js";
+import { maxSizePct, parseOccSymbol, type OptionQuote } from "../options.js";
 
 // The Main bot's backtest for the app's Backtest page (the user, 2026-10-30:
 // "test bot on a period on stocks ... the results is total gain/loss, and a
@@ -1220,8 +1220,7 @@ export async function runStock(
       watch: watch ? { name: watch.name, level: watch.level } : null,
     };
     out.trades.push(trade);
-    // 2.10: no add on a first leg bought at more than the size (bot.ts pyramids).
-    if (s.pyramid && sig.bonus && trade.sizeShare <= 1) {
+    if (s.pyramid && sig.bonus) {
       const add = await pyramid(
         trade,
         day,
@@ -1327,7 +1326,11 @@ async function pyramid(
     d2: sig.d2,
     bonus: false,
     pyramid: true,
-    sizeShare: (s.pyramidSharePct / 100) * first.sizeShare,
+    // 2.10: the first leg and its add within 5% of the account (bot.ts enterAt).
+    sizeShare: Math.min(
+      (s.pyramidSharePct / 100) * first.sizeShare,
+      Math.max(0, maxSizePct / s.sizePct - first.sizeShare),
+    ),
     stock: spot,
     strike: picked.contract.strike,
     expiry: picked.contract.expiry,

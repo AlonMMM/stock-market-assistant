@@ -862,17 +862,16 @@ export class IndiBot {
     if (m > Math.min(374, closeMinute - 16)) return;
     const full = { ...signalParams(s), bonusT: null };
     const spy = this.barsOf("SPY");
-    const firsts = this.o.store.openPositions().filter(
-      (p) =>
-        p.day === date &&
-        p.bonus &&
-        !p.addOf &&
-        !p.pyramidChecked &&
-        // 2.10: no add on a first leg bought at more than the size (the
-        // 150% volume tier is already over the account's position limit).
-        (p.sizeShare ?? 1) <= 1 &&
-        p.dry === (s.mode === "dry"),
-    );
+    const firsts = this.o.store
+      .openPositions()
+      .filter(
+        (p) =>
+          p.day === date &&
+          p.bonus &&
+          !p.addOf &&
+          !p.pyramidChecked &&
+          p.dry === (s.mode === "dry"),
+      );
     for (const p of firsts) {
       const prior = this.prior.get(p.symbol);
       if (!prior) continue;
@@ -1228,7 +1227,18 @@ export class IndiBot {
       sizeAt(s.sizePct, s.sizeSteps, dayStart) * (base.sizeShare ?? 1),
       maxSizePct,
     );
-    const sizePct = add ? (tradePct * add.sharePct) / 100 : tradePct;
+    let sizePct = add ? (tradePct * add.sharePct) / 100 : tradePct;
+    if (add) {
+      // 2.10: the first leg and its add stay within 5% of the account (the
+      // owner, 2026-11-01: "add, but up to 5%"; the account's max position):
+      // after a 150% first leg at 3% (4.5%) the add is 0.5%.
+      sizePct = Math.min(sizePct, maxSizePct - tradePct);
+      if (sizePct < 0.05)
+        return {
+          outcome: "refused",
+          detail: `no room for the add under ${maxSizePct}% of the account (the first leg is ${tradePct.toFixed(2)}%)${at}`,
+        };
+    }
     const position: BotPosition = {
       ...base,
       id: randomUUID(),

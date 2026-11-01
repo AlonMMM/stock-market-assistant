@@ -2075,3 +2075,22 @@ test("2.10: an early entry's volume ratio compares the minutes before the formin
   assert.ok(Math.abs(early.rvol - 2) < 1e-9, String(early.rvol));
   if (closed && closed.minute === 30) assert.ok(closed.rvol < early!.rvol);
 });
+
+test("2.10: after a 150% first leg the add keeps the position within 5% of the account (0.5% at 3%)", async () => {
+  const { h, M } = await withFirst({ sizeShare: 1.5 });
+  await h.run(DAY, 565, 570 + M + 3);
+  const buys = h.calls.filter((c) => c.kind === "buy");
+  assert.equal(buys.length, 1, "one add");
+  assert.ok(
+    Math.abs(Number(buys[0]!.body.sizePct) - 0.5) < 1e-9,
+    String(buys[0]!.body.sizePct),
+  );
+  // A 50% first leg's add is half of its 1.5%: 0.75%.
+  const small = await withFirst({ sizeShare: 0.5 });
+  await small.h.run(DAY, 565, 570 + small.M + 3);
+  const add = small.h.calls.filter((c) => c.kind === "buy");
+  assert.ok(
+    Math.abs(Number(add[0]!.body.sizePct) - 0.75) < 1e-9,
+    String(add[0]?.body.sizePct),
+  );
+});
