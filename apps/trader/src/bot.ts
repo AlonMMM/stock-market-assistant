@@ -37,6 +37,7 @@ import {
   exitRules,
   pickRules,
   signalParams,
+  sizeAt,
   watchedStocks,
   withDefaults,
   botBrokers,
@@ -54,8 +55,10 @@ import {
   type MinuteBar,
   type Prior,
 } from "../../../packages/trading/src/bot/signal.js";
+import { yearsToExpiry } from "../../../packages/trading/src/bot/backtest.js";
 import {
   contractWords,
+  parseOccSymbol,
   type OptionQuote,
 } from "../../../packages/trading/src/options.js";
 import type { BotEventKind, BotPosition, BotStore } from "./bot-store.js";
@@ -181,6 +184,7 @@ function reasonText(reason: ExitReason, s: BotSettings): string {
     "strength-gone": `Strength gone: the stock's edge over SPY since the open fell to t ${s.weaknessT}`,
     "stage-half": `Staged exit: the stock is ${s.stageHalfS30} of its usual 30-min move against the signal price, sold half`,
     "stage-full": `Staged exit: the stock is ${s.stageFullS30} of its usual 30-min move against the signal price, sold all`,
+    "break-even-lock": `Break-even lock: the option was up ${s.lockArmPct}% and the stock came back to where it is worth its cost, sold all`,
     "close-1550": "Sold at 15:50",
     carry: `Held overnight (up ${s.holdFromPct}% or more)`,
     "morning-gap-keep": "Morning: gapped our way, sold half",
@@ -238,6 +242,15 @@ function nextSession(date: string): string {
 const newsCalendar: NewsCalendar = {
   isSession: (date) => coreClose(date) !== null,
   nextSession,
+};
+
+/** The contract's strike, or null when it is not an OCC symbol. */
+const strikeOf = (contract: string): number | null => {
+  try {
+    return parseOccSymbol(contract).strike;
+  } catch {
+    return null;
+  }
 };
 
 const expiryOf = (contract: string) => {
@@ -1195,7 +1208,12 @@ export class IndiBot {
           detail: `${this.words(contract)} is already in the account${at}`,
         };
     }
-    const sizePct = add ? (s.sizePct * add.sharePct) / 100 : s.sizePct;
+    // The size for the account as the day started (sizeSteps step it down as it grows).
+    const dayStart =
+      this.dayStartEquity.get(broker) ??
+      (await this.equity(broker).catch(() => 0));
+    const tradePct = sizeAt(s.sizePct, s.sizeSteps, dayStart);
+    const sizePct = add ? (tradePct * add.sharePct) / 100 : tradePct;
     const position: BotPosition = {
       ...base,
       id: randomUUID(),
@@ -1556,6 +1574,10 @@ export class IndiBot {
           // The stock's usual 30-minute move, for the staged exit (entry day only).
           unit:
             p.day === date ? (this.levels.get(p.symbol)?.unit ?? null) : null,
+          // For the break-even lock (entry day only): the last closed minute, as the research.
+          close: this.lastClose(p.symbol, m),
+          strike: p.day === date ? strikeOf(p.contract) : null,
+          years: p.day === date ? yearsToExpiry(date, m, expiry) : null,
           isExpiryDay: expiry === date,
           sessionBeforeExpiry: nextSession(date) <= expiry,
           open: first && first.m <= 5 ? first.o : null,

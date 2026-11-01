@@ -249,9 +249,14 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
         tickers: live.tickers,
         money: { ...setup.money, ...live.money },
       });
+      const steps = (live.rules.sizeSteps ?? [])
+        .map((x) => `${x.pct}% from $${x.from.toLocaleString("en-US")}`)
+        .join(", ");
+      let stepsNote = "";
+      if (steps) stepsNote = ` (stepping down as the account grows: ${steps})`;
       setPaper({
         state: "loaded",
-        text: `Loaded the paper bot as it is now: ${versionLabel(live.version, live.rules)}, ${live.money.sizePct}% a trade, ${live.money.maxBuysPerDay} buys a day, ${live.money.maxOpen} open, ${live.tickers.length} stocks.`,
+        text: `Loaded the paper bot as it is now: ${versionLabel(live.version, live.rules)}, ${live.money.sizePct}% a trade${stepsNote}, ${live.money.maxBuysPerDay} buys a day, ${live.money.maxOpen} open, ${live.tickers.length} stocks.`,
       });
     } catch (e) {
       setPaper({
@@ -368,6 +373,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
       ran
         ? runAccount(trades, {
             ...setup.money,
+            sizeSteps: ran.rules.sizeSteps ?? [],
             nightCapPct: ran.rules.nightCapPct,
             fillPct: ran.fillPct,
           })

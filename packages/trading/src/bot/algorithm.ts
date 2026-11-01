@@ -55,6 +55,10 @@ export function algorithmSteps(r: Rules): AlgorithmStep[] {
   if (r.pyramid)
     pyramid = `After a D2 entry, when the stock first reaches the full signal (t ${r.minT}+) that day on the same side and the first position is up, one more position of ${r.pyramidSharePct}% of the size in a fresh pick; each position then exits on its own.`;
   steps.push({ name: "Pyramid", text: pyramid });
+  let size = "Your size on every trade.";
+  if (r.sizeSteps.length)
+    size = `Your size while the account is small; then ${r.sizeSteps.map((x) => `${x.pct}% from $${x.from.toLocaleString("en-US")}`).join(", ")} (the account's value as the day starts).`;
+  steps.push({ name: "Size", text: size });
   let checks =
     "No 10- and 20-minute checks: the position is held until a stop, a failed break or the day exit.";
   if (r.checks)
@@ -66,6 +70,10 @@ export function algorithmSteps(r: Rules): AlgorithmStep[] {
   if (r.stockStages)
     stages = `On the entry day, half is sold once the stock is ${r.stageHalfS30} of its usual 30-minute move against the price at the signal, the rest at ${r.stageFullS30} against.`;
   steps.push({ name: "Staged stock exit", text: stages });
+  let lock = "Off: a winner that comes back is held until another rule sells.";
+  if (r.breakEvenLock)
+    lock = `On the entry day, once the option is up ${r.lockArmPct}%, the stock price where it would be worth what was paid (Black-Scholes at its implied volatility then, worked out again each minute it is still that far up, the tighter kept) is a stop: all is sold if the stock gets back there.`;
+  steps.push({ name: "Break-even lock", text: lock });
   let late = "Off: an entry after 15:00 meets the same exits as any other.";
   if (r.lateHold)
     late =

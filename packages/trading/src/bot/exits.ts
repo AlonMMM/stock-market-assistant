@@ -1,3 +1,5 @@
+import { breakEvenStock, tighterLevel } from "./lock.js";
+
 // The bot's exit rules (docs/tasks/backend-indi-bot.md), ported from `walk` in
 // scripts/research/indi_bt/sim.py with the backtest's winning exit: "your
 // stop" plus the overnight hold.
@@ -12,7 +14,12 @@
 //     `strengthOut` or under: sell all (the 2026-10-24 champion, exits.ts T);
 //   - the staged stock exit (`stages`, version 2.8, sim.py stock_stages): half
 //     once the stock is `half` of its usual 30-minute move (S30) against the
-//     price at the signal, all at `full` against.
+//     price at the signal, all at `full` against;
+//   - the break-even lock (`lock`, version 2.9, sim.py be_lock): once the
+//     option is `arm` over its cost, the stock price where the option would be
+//     worth its cost (lock.ts) is a stop on the stock, worked out again each
+//     minute it is still `arm` up (the tighter kept); all out when the stock
+//     gets there.
 // 15:50: hold overnight what is up >= carryMinGain (+50% since version 2.3,
 //   +100% before; a next session before expiry, at
 //   most 2 nights); sell the rest. What is held is worth at most `nightCapPct`
@@ -40,6 +47,8 @@ export interface ExitRules {
   // An entry at this session minute or later is not sold on its entry day
   // while above its cost (the 15:50 decision still runs); null is off.
   lateHoldFrom: number | null;
+  // The break-even lock: armed at this option return (0.5 = +50%); null is off.
+  lock: { arm: number } | null;
   eodMinute: number; // 15:50
   carryMinGain: number; // hold overnight from this option return
   carryMaxNights: number;
@@ -58,6 +67,7 @@ export const defaultExitRules: ExitRules = {
   strengthOut: null,
   stages: null,
   lateHoldFrom: null,
+  lock: null,
   eodMinute: 380,
   carryMinGain: 1,
   carryMaxNights: 2,
@@ -79,6 +89,9 @@ export interface BotPositionState {
   halfSold?: boolean;
   // The staged exit's half was sold (the caller reads its sales).
   stageHalfSold?: boolean;
+  // The break-even lock's stock level once armed (stored with the position, so
+  // a restart keeps it); null / missing before.
+  lockLevel?: number | null;
 }
 
 export interface ExitMarket {
@@ -91,6 +104,14 @@ export interface ExitMarket {
   // The stock's usual 30-minute move as a fraction of its price (levels.ts
   // priorLevels unit), for the staged exit; null when unknown.
   unit?: number | null;
+  // The stock's last closed minute, for the break-even lock (the research
+  // decides on minute closes; one live print through the level must not sell);
+  // missing / null: `stock`.
+  close?: number | null;
+  // The contract's strike and years to its expiry (16:00 New York), for the
+  // break-even lock; null when unknown.
+  strike?: number | null;
+  years?: number | null;
   isExpiryDay: boolean;
   // A session after today on or before the expiry date (a carry is possible).
   sessionBeforeExpiry: boolean;
@@ -107,6 +128,7 @@ export type ExitReason =
   | "strength-gone"
   | "stage-half"
   | "stage-full"
+  | "break-even-lock"
   | "close-1550"
   | "carry"
   | "morning-gap-keep"
@@ -124,7 +146,10 @@ export interface ExitDecision {
   reason: ExitReason | null;
   // Changes to the position state; the caller stores them with the sale.
   update: Partial<
-    Pick<BotPositionState, "checksDone" | "morningDone" | "nights">
+    Pick<
+      BotPositionState,
+      "checksDone" | "morningDone" | "nights" | "lockLevel"
+    >
   >;
 }
 
@@ -217,6 +242,32 @@ export function nextAction(
       : bet * mk.strength;
   if (r.strengthOut !== null && strength !== null && strength <= r.strengthOut)
     return { sell: p.qty, reason: "strength-gone", update: {} };
+  // The break-even lock: (re)set the level while the option is `arm` up, sell
+  // all once the stock is back at it. A new level rides on whatever is decided.
+  const level0 = p.lockLevel ?? null;
+  const close = mk.close ?? mk.stock;
+  let level = level0;
+  if (r.lock && close !== null && g >= r.lock.arm && mk.strike && mk.years)
+    level = tighterLevel(
+      p.right,
+      level0,
+      breakEvenStock(p.right, mk.strike, mk.years, mk.option, close, p.cost),
+    );
+  const lockUpdate = level !== level0 ? { lockLevel: level } : {};
+  if (r.lock && level !== null && close !== null && bet * (close - level) <= 0)
+    return { sell: p.qty, reason: "break-even-lock", update: lockUpdate };
+  const d = entryDayRest(p, mk, r, bet, g);
+  return { ...d, update: { ...d.update, ...lockUpdate } };
+}
+
+/** The entry day's rules after the thesis and the lock: the staged exit, the checks, the stops. */
+function entryDayRest(
+  p: BotPositionState,
+  mk: ExitMarket,
+  r: ExitRules,
+  bet: number,
+  g: number,
+): ExitDecision {
   // The staged stock exit: the stock's move from the signal price in S30.
   const unit = mk.unit ?? null;
   if (r.stages && unit && mk.stock !== null && p.entryStock > 0) {

@@ -2,6 +2,7 @@ import { defaultExitRules, type ExitRules } from "./exits.js";
 import { defaultPickRules, type PickRules } from "./picker.js";
 import { defaultSignalParams, type SignalParams } from "./signal.js";
 import {
+  botVersions,
   currentVersion,
   matchingVersion,
   ruleKeys,
@@ -59,6 +60,11 @@ export interface BotSettings {
   off: string[];
   // Trade size
   sizePct: number;
+  // The size steps down as the account grows (version 2.8.1; the owner,
+  // 2026-10-31: "3% until 300K -> 2.5 until 1M, 1.5 at 1M and 1 at 4M"): from
+  // each step's account value on (the account as the day starts), `pct`
+  // instead of sizePct. A version rule (versions.ts), not an owner limit.
+  sizeSteps: SizeStep[];
   maxBuysPerDay: number;
   maxOpen: number;
   // Losses
@@ -126,6 +132,34 @@ export interface BotSettings {
   // An entry at 15:00 or later is not sold on its entry day while above its
   // cost, up to the 15:50 decision (version 2.8).
   lateHold: boolean;
+  // The break-even lock (version 2.9): on the entry day, once the option is
+  // lockArmPct over its cost, sell all when the stock gets back to the price
+  // where the option would be worth its cost (worked out again each minute it
+  // is still that far up, the tighter level kept).
+  breakEvenLock: boolean;
+  lockArmPct: number;
+}
+
+export interface SizeStep {
+  from: number; // account value, dollars
+  pct: number; // of the account, per trade
+}
+
+/** The size of a trade for an account value: sizePct, or the last step at or under the value. */
+export function sizeAt(
+  sizePct: number,
+  steps: readonly SizeStep[],
+  account: number,
+): number {
+  // An unknown account (0: the read failed) takes the smallest size the steps
+  // allow, never the largest.
+  if (!(account > 0) && steps.length)
+    return Math.min(sizePct, ...steps.map((x) => x.pct));
+  // A step only ever lowers the owner's size: from 2%, "2.5% from $300K" keeps 2%.
+  let pct = sizePct;
+  for (const step of steps)
+    if (account >= step.from) pct = Math.min(sizePct, step.pct);
+  return pct;
 }
 
 export type NumberKey = {
@@ -144,7 +178,12 @@ export const defaultSettings: BotSettings = {
   followFavorites: true,
   added: [],
   off: ["QQQ", "SQQQ"],
-  sizePct: 2,
+  sizePct: 3,
+  sizeSteps: [
+    { from: 300_000, pct: 2.5 },
+    { from: 1_000_000, pct: 1.5 },
+    { from: 4_000_000, pct: 1 },
+  ],
   maxBuysPerDay: 5,
   maxOpen: 4,
   stopPct: 60,
@@ -182,6 +221,8 @@ export const defaultSettings: BotSettings = {
   stageHalfS30: 0.5,
   stageFullS30: 1,
   lateHold: true,
+  breakEvenLock: true,
+  lockArmPct: 50,
 };
 
 // Values the backtest never ran.
@@ -227,6 +268,7 @@ export const limits: Record<
   pyramidSharePct: [25, 100, 25],
   stageHalfS30: [0.25, 2, 0.25],
   stageFullS30: [0.5, 3, 0.25],
+  lockArmPct: [20, 200, 10],
 };
 
 const booleans: BooleanKey[] = [
@@ -243,6 +285,7 @@ const booleans: BooleanKey[] = [
   "earlyEntry",
   "stockStages",
   "lateHold",
+  "breakEvenLock",
 ];
 const ticker = /^[A-Z][A-Z.]{0,5}$/;
 const maxTickers = 200;
@@ -267,6 +310,12 @@ export function withDefaults(
     for (const key of ruleKeys)
       if (!(key in record)) merged[key] = known.rules[key];
     merged.version = known.id; // "2.7" saved before MAJOR.MINOR.PATCH -> "2.7.0"
+  }
+  if (!known && typeof record.version === "string") {
+    // An own label saved before a rule existed: the rule as it was then, off
+    // (1.0's value), never the current version's.
+    const before = botVersions[0]!.rules;
+    for (const key of ruleKeys) if (!(key in record)) merged[key] = before[key];
   }
   if (!("version" in record)) {
     // A record from before versions: its missing rules are 2.6's (the rules
@@ -333,7 +382,32 @@ export function parseSettings(
     out[key] = list;
   }
   out.added = out.added.filter((t) => !neverWatched.includes(t));
+  const steps = parseSizeSteps(body.sizeSteps);
+  if (steps === null)
+    return {
+      ok: false,
+      error:
+        "sizeSteps must be up to 6 steps of { from: dollars, rising, pct: 0.5 to 5 }",
+    };
+  out.sizeSteps = steps;
   return { ok: true, value: out };
+}
+
+/** Size steps from a request: rising account values, each size within the size's limits; null when wrong. */
+function parseSizeSteps(v: unknown): SizeStep[] | null {
+  if (!Array.isArray(v) || v.length > 6) return null;
+  const [min, max] = limits.sizePct;
+  const out: SizeStep[] = [];
+  for (const x of v) {
+    if (!isObject(x)) return null;
+    const { from, pct } = x;
+    if (typeof from !== "number" || !Number.isFinite(from) || from <= 0)
+      return null;
+    if (typeof pct !== "number" || pct < min || pct > max) return null;
+    if (out.length && from <= out.at(-1)!.from) return null;
+    out.push({ from, pct });
+  }
+  return out;
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -396,6 +470,7 @@ export function exitRules(s: BotSettings): ExitRules {
       ? { half: s.stageHalfS30, full: s.stageFullS30 }
       : null,
     lateHoldFrom: s.lateHold ? lateHoldMinute : null,
+    lock: s.breakEvenLock ? { arm: s.lockArmPct / 100 } : null,
     strengthOut: s.sellOnWeakness ? s.weaknessT : null,
     carryMinGain: s.holdFromPct / 100,
     carryMaxNights: s.maxNights,

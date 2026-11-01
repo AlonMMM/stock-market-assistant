@@ -63,7 +63,9 @@ import { BotStore } from "../apps/trader/src/bot-store.js";
 import { applyVersion } from "../packages/trading/src/bot/versions.js";
 import {
   defaultSettings,
+  parseSettings,
   pickRules,
+  sizeAt,
 } from "../packages/trading/src/bot/settings.js";
 import type { BotPosition } from "../apps/trader/src/bot-store.js";
 
@@ -753,7 +755,7 @@ test("runner (live): signal -> buy with the bot tag -> no check sale while winni
   const buy = h.calls.find((c) => c.kind === "buy");
   assert.ok(buy);
   assert.equal(buy.body.contract, "NVDA261023C00110000");
-  assert.equal(buy.body.sizePct, 2);
+  assert.equal(buy.body.sizePct, 3);
   assert.equal(buy.body.tag, "🤖 Main bot");
   const [p] = h.store.openPositions();
   assert.equal(p!.status, "open");
@@ -1209,36 +1211,36 @@ test("settings: size, safety stop and stop words reach the buy and the feed", as
     .status()
     .activity.map((e) => e.text)
     .join("\n");
-  assert.match(texts, /Settings changed: sizePct 2 → 1; safetyStopPct 65 → 70/);
+  assert.match(texts, /Settings changed: sizePct 3 → 1; safetyStopPct 65 → 70/);
   assert.equal(h.bot.status().settings.sizePct, 1);
 });
 
 test("versions: every entry is stamped with the version in force; changed rules star it; the owner can pick an older one", async () => {
   const h = harness("live");
-  assert.equal(h.bot.status().version, "2.8.0");
+  assert.equal(h.bot.status().version, "2.9.0");
   await h.run(DAY, 565, 600);
   const buy = h.calls.find((c) => c.kind === "buy");
-  assert.match(String(buy?.body.note), /· bot 2\.8\.0$/);
+  assert.match(String(buy?.body.note), /· bot 2\.9\.0$/);
   const [p] = h.store.openPositions();
-  assert.equal(p!.version, "2.8.0");
-  assert.equal(h.store.signals(DAY)[0]!.version, "2.8.0");
-  assert.equal(h.bot.status().positions[0]!.version, "2.8.0");
+  assert.equal(p!.version, "2.9.0");
+  assert.equal(h.store.signals(DAY)[0]!.version, "2.9.0");
+  assert.equal(h.bot.status().positions[0]!.version, "2.9.0");
   const texts = () =>
     h.bot
       .status()
       .activity.map((e) => e.text)
       .join("\n");
-  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.8\.0$/m);
+  assert.match(texts(), /Ready for 2026-10-21: .*; bot version 2\.9\.0$/m);
 
-  // The stop changed from 2.8's: the next entry is stamped "2.8.0*".
+  // The stop changed from 2.8's: the next entry is stamped "2.9.0*".
   const edited = harness("live");
   edited.bot.setSettings({ ...edited.bot.settings(), stopPct: 40 });
-  assert.equal(edited.bot.status().version, "2.8.0*");
+  assert.equal(edited.bot.status().version, "2.9.0*");
   await edited.run(DAY, 565, 600);
-  assert.equal(edited.store.openPositions()[0]!.version, "2.8.0*");
+  assert.equal(edited.store.openPositions()[0]!.version, "2.9.0*");
   assert.match(
     String(edited.calls.find((c) => c.kind === "buy")?.body.note),
-    /· bot 2\.8\.0\*$/,
+    /· bot 2\.9\.0\*$/,
   );
 
   // Version 1.0 picked: its rules (t 2, no night cap, no news filter) run, and the feed says so.
@@ -1250,6 +1252,8 @@ test("versions: every entry is stamped with the version in force; changed rules 
     checks: true,
     stockStages: false,
     lateHold: false,
+    breakEvenLock: false,
+    sizeSteps: [],
     minT: 2,
     nightCapPct: 0,
     skipEarnings: false,
@@ -1271,7 +1275,7 @@ test("versions: every entry is stamped with the version in force; changed rules 
       .status()
       .activity.map((e) => e.text)
       .join("\n"),
-    /Settings changed: version "2\.8\.0" → "1\.0"; stopPct 60 → 30; restStopPct 20 → 0; checks false → true; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false; skipEarnings true → false; skipPremarket true → false; lowFloorSymbols \["IBIT"\] → \[\]; pyramid true → false; earlyEntry true → false; stockStages true → false; lateHold true → false/,
+    /Settings changed: version "2\.9\.0" → "1\.0"; sizeSteps \[\{"from":300000,"pct":2\.5\},\{"from":1000000,"pct":1\.5\},\{"from":4000000,"pct":1\}\] → \[\]; stopPct 60 → 30; restStopPct 20 → 0; checks false → true; sellOnWeakness true → false; holdFromPct 50 → 100; nightCapPct 10 → 0; minT 1\.8 → 2; d2Entry true → false; skipEarnings true → false; skipPremarket true → false; lowFloorSymbols \["IBIT"\] → \[\]; pyramid true → false; earlyEntry true → false; stockStages true → false; lateHold true → false/,
   );
 });
 
@@ -1327,19 +1331,44 @@ test("settings: the most open positions and the daily loss limit hold new buys",
   assert.match(s!.detail, /down 6\.0% today/);
 });
 
+test("size steps: a buy is sized for the account as the day started (3%, 2.5% from $300K, 1.5% from $1M, 1% from $4M)", async () => {
+  assert.equal(sizeAt(3, defaultSettings.sizeSteps, 100_000), 3);
+  assert.equal(sizeAt(3, defaultSettings.sizeSteps, 300_000), 2.5);
+  assert.equal(sizeAt(3, defaultSettings.sizeSteps, 999_999), 2.5);
+  assert.equal(sizeAt(3, defaultSettings.sizeSteps, 1_000_000), 1.5);
+  assert.equal(sizeAt(3, defaultSettings.sizeSteps, 5_000_000), 1);
+  assert.equal(sizeAt(3, [], 5_000_000), 3);
+  const h = harness("live");
+  h.setEquity(1_200_000);
+  await h.run(DAY, 565, 600);
+  const buy = h.calls.find((c) => c.kind === "buy");
+  assert.equal(buy?.body.sizePct, 1.5);
+  // steps must rise and stay within the size's limits
+  const bad = parseSettings({
+    ...defaultSettings,
+    sizeSteps: [
+      { from: 1_000_000, pct: 2 },
+      { from: 500_000, pct: 1 },
+    ],
+  });
+  assert.equal(bad.ok, false);
+  const none = parseSettings({ ...defaultSettings, sizeSteps: [] });
+  assert.ok(none.ok && none.value.sizeSteps.length === 0);
+});
+
 test("settings: the drawdown pause switches the bot off and says so", async () => {
   const h = harness("dry");
   h.bot.setSettings({ ...h.bot.settings(), drawdownPausePct: 5 });
-  await h.run(DAY, 565, 600); // would buy 33 at 0.60
+  await h.run(DAY, 565, 600); // would buy 50 at 0.60 (3%)
   h.setMid(0.3);
   h.setEquity(10000);
-  await h.run(DAY, 601, 960); // sold at 15:50 at 0.30: −$990, 9.9% of 10,000
+  await h.run(DAY, 601, 960); // sold at 15:50 at 0.30: −$1,500, 15% of 10,000
   const status = h.bot.status();
   assert.equal(status.enabled, false);
   assert.ok(h.notes.some((n) => n.includes("paused")));
   assert.match(
     status.activity.map((e) => e.text).join("\n"),
-    /Paused: the bot's trades are down \$990/,
+    /Paused: the bot's trades are down \$1500/,
   );
   // Switched back on, the pause counts from then.
   h.bot.setEnabled(true);
@@ -1788,13 +1817,13 @@ test("pyramid: the full signal after a D2 entry that is up buys half a size more
   await h.run(DAY, 565, 570 + M + 3);
   const buys = h.calls.filter((c) => c.kind === "buy");
   assert.equal(buys.length, 1, "one add");
-  assert.equal(buys[0]!.body.sizePct, 1); // half of 2%
+  assert.equal(buys[0]!.body.sizePct, 1.5); // half of 3%
   assert.equal(buys[0]!.body.contract, contract);
   // The add passes the service's 60-second repeat check (user 2026-10-28).
   assert.deepEqual(buys[0]!.options, { repeatOk: true });
   assert.match(
     String(buys[0]!.body.note),
-    /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.8\.0$/,
+    /^Pyramid call at .*the full signal.*after the D2 entry.*50% of the size · bot 2\.9\.0$/,
   );
   const open = h.store.openPositions();
   const add = open.find((p) => p.addOf === "first");
