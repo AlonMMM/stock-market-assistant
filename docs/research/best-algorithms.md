@@ -2588,3 +2588,24 @@ median trade is -$1.5K to -$3.1K in every bucket on both halves, so the run does
 pullback buys the giants later and higher (pb20 keeps 12 of the 17 tune fair giants), skipping drops them. The 3-minute
 spike's trades are the one weak group (check: 118 trades, -$44K, 2 giants) but on tune they hold 3 giants (+$248K).
 The live reviews' "bought at the top of the run" losers are real, but they cannot be told from the giants at entry.
+
+### Wait for the dip, buy when it turns back up, on 2.9 (2026-11-01, not better)
+The user, after spike_entry.py: "we do not want to buy in the pull back - we need to wait for it to come back up"; the
+examples page https://claude.ai/artifact/KDSrCkQKpiDQT7YpHK9xnY (ORCL 2025-10-20 put: 2.9 +31%, the turn +94%; AVGO
+2025-11-24 call: 2.9 +343%, the turn -36%, a second dip met the staged exit at the higher reference), then "yes".
+resume_entry.py, spike_entry.py's setup (2.9's exits, real quotes, the real price paid): trigger, a 0.25 S30 pullback
+within 15 minutes, then the turn (back up 0.25 / 0.5 S30 off the dip's low, or back to the move's extreme) within 30
+minutes -> buy then; no pullback: no trade (or "-k": 2.9's own trade). 6 variants set before running, look 1. 2%:
+
+| Version | Tune fair / Favorites | Check fair / Favorites |
+|---|---|---|
+| 2.9 | $376,230 (29%) / $555,017 (18%) | $478,021 (25%) / $143,834 (25%) |
+| rs3 / rs3-k (3-min spike >= 1.0, turn 0.25) | $241,240 (43%) / $353,388 | $538,346 (26%) / $138,555 |
+| rs3-50 (turn 0.5) | $243,497 / $360,398 | $582,394 (26%) / $146,605 |
+| 🎯 rs3-hi (back to the spike's high) | $261,144 (41%) / $401,490 (26%) | $494,088 (23%) / $141,097 (23%) |
+| rr20 / rr20-k (10-min run >= 2.0) | $118,422 / $114,836; $134,994 / $131,801 | $400,315 / $147,966; $399,644 / $147,718 |
+
+Verdict: not better. Every version loses on tune by 28-70% (the pick 0.79 of 2.9); on check the 3-minute versions
+are up on the fair list (+3% to +22%) and about flat on the Favorites: tune and check disagree, as in spike_entry.py.
+The tune spike trades hold 3 giants (17 -> 14 kept on the fair list); a later, higher entry resets the staged exit's
+reference so a second dip sells it (AVGO). Win rate unchanged (16-20%).
