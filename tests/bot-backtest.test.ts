@@ -680,6 +680,39 @@ test("the option data calls fetch unbound, as Cloudflare Workers require", async
   assert.deepEqual(day.get("NVDA260904C00105000"), []);
 });
 
+test("a 429 from Alpaca is waited out and asked again; a lasting one still fails", async () => {
+  let calls = 0;
+  let limited = 2;
+  const fetcher = (() => {
+    calls++;
+    if (limited-- > 0)
+      return Promise.resolve(
+        new Response("slow down", {
+          status: 429,
+          headers: { "retry-after": "0.01" },
+        }),
+      );
+    return Promise.resolve(
+      Response.json({ option_contracts: [], next_page_token: null }),
+    );
+  }) as unknown as typeof fetch;
+  const data = new AlpacaBacktestData(
+    new Map(),
+    date,
+    { key: "key", secret: "secret" },
+    "https://paper-api.alpaca.markets",
+    fetcher,
+  );
+  // Two 429s, then the answer (active), then inactive at once.
+  assert.deepEqual(await data.chain("NVDA", "call", date, "2026-09-04"), []);
+  assert.equal(calls, 4);
+  limited = 99;
+  await assert.rejects(
+    data.chain("NVDA", "put", date, "2026-09-04"),
+    /failed \(429\)/,
+  );
+});
+
 test("option bars are kept: a finished day's bars and volume are stored, read back without Alpaca, an empty day too", async () => {
   const store = new D1OptionBars(new SqliteD1(":memory:"));
   const liquid = "NVDA260904C00105000",

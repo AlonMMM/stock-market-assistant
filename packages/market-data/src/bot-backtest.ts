@@ -53,6 +53,8 @@ export interface BotBacktestResponse extends StockRun {
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const dataUrl = "https://data.alpaca.markets";
+const rateRetries = 4; // tries again after a 429, waiting longer each time
+const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 export const backtestCalendar: BacktestCalendar = {
   sessionLength(date) {
@@ -174,14 +176,27 @@ export class AlpacaBacktestData implements BacktestData {
   }
 
   private async get(url: URL): Promise<unknown> {
-    // Workers reject fetch invoked with a foreign `this` ("Illegal invocation").
-    const response = await this.fetcher.call(globalThis, url, {
-      headers: {
-        "APCA-API-KEY-ID": this.credentials.key,
-        "APCA-API-SECRET-KEY": this.credentials.secret,
-      },
-      signal: AbortSignal.timeout(30000),
-    });
+    let response: Response;
+    for (let attempt = 0; ; attempt++) {
+      // Workers reject fetch invoked with a foreign `this` ("Illegal invocation").
+      response = await this.fetcher.call(globalThis, url, {
+        headers: {
+          "APCA-API-KEY-ID": this.credentials.key,
+          "APCA-API-SECRET-KEY": this.credentials.secret,
+        },
+        signal: AbortSignal.timeout(30000),
+      });
+      // Too many requests (a long replay, or other work on the same keys):
+      // wait as Alpaca asks, else 1, 2, 4, 8 s, then give up.
+      if (response.status !== 429 || attempt >= rateRetries) break;
+      await response.body?.cancel();
+      const asked = Number(response.headers.get("retry-after"));
+      await sleep(
+        Number.isFinite(asked) && asked > 0
+          ? asked * 1000
+          : 1000 * 2 ** attempt,
+      );
+    }
     if (!response.ok)
       throw new Error(`Alpaca ${url.pathname} failed (${response.status})`);
     return response.json();
