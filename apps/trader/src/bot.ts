@@ -1234,6 +1234,9 @@ export class IndiBot {
         // Keep raising the price until it fills (user 2026-10-23).
         chase: true,
         chaseMs: chaseBuyMs,
+        // Any spread: the backtest has no spread cap, and the wide-spread
+        // picks hold many giants (user 2026-11-01). Every other check applies.
+        force: true,
         tag: botTag,
         note: why + at,
       },
