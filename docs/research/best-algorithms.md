@@ -2609,3 +2609,24 @@ Verdict: not better. Every version loses on tune by 28-70% (the pick 0.79 of 2.9
 are up on the fair list (+3% to +22%) and about flat on the Favorites: tune and check disagree, as in spike_entry.py.
 The tune spike trades hold 3 giants (17 -> 14 kept on the fair list); a later, higher entry resets the staged exit's
 reference so a second dip sells it (AVGO). Win rate unchanged (16-20%).
+
+### Entry timing rules from the research report, on 2.9 (2026-11-01, not better; rv20 a drop candidate)
+The user: "go ahead and do a deep research for technical analysis for how to enter a trending swing and try it out".
+Report: app repo reports/Trend entry timing rules.md (pros buy the break, not the pullback; news / relative volume decide
+continuation; no measured intraday exhaustion rule). trend_entry.py, spike_entry.py's setup (2.9's exits, real quotes,
+the real price paid); 5 versions set before running, look 1. At 2% (fair / Favorites 24m):
+
+| Version | Tune | Check |
+|---|---|---|
+| 2.9 | $376,230 (29%) / $555,017 (18%) | $478,021 (25%) / $143,834 (25%) |
+| conf3 (buy-stop over the last 3 bars' high, 3 minutes) | $380,078 (28%) / $531,728 (18%) | $482,359 (34%) / $136,172 (35%) |
+| 🎯 rv20 (volume since the open >= 2.0x, the signal needs 1.5) | **$525,438 (17%) / $750,227 (16%)** | $383,728 (23%) / $170,489 (26%) |
+| rv30 (>= 3.0x) | $288,378 (27%) / $378,077 (22%) | $353,406 (21%) / $149,570 (24%) |
+| climax (defer a climax bar to a new high of day, VWAP cancels) | $370,665 / $543,261 | $345,688 (41%) / $102,909 (42%) |
+| extveto (control: skip at >= 2.5 S30 past VWAP or RSI14 >= 85) | $355,023 (32%) / $513,927 (23%) | $483,852 (22%) / $134,666 (27%) |
+
+Verdict: not better. The pick rv20 is +40% / +35% on tune with the drop 12 / 2 points less, on check the Favorites
++19% but the fair list -20%, drops 2 points less / 1 more; without the best 5 check fair $122,526 vs $140,330. The trades
+it removes (1.5-2.0x volume): tune 199 fair, -$171K with 2 giants; check 195, +$160K with 6 giants: the halves disagree.
+conf3 ties on tune and loses the drop on check; the climax defer touches 7-12 trades and costs 2 check giants; the
+extension veto drops giants as expected. rv20 is the one to watch for the drop (the live setting minRvol 2.0).
