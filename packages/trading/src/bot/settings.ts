@@ -188,8 +188,9 @@ export const defaultSettings: BotSettings = {
   maxOpen: 4,
   stopPct: 60,
   restStopPct: 20,
-  // Above the stop (-60% since version 2.8), or the broker's stop fires first.
-  safetyStopPct: 65,
+  // At the stop (-60% since version 2.8; the owner, 2026-10-31: "make the
+  // broker -60 stop by default"), not above it, or the broker's stop fires first.
+  safetyStopPct: 60,
   dayLossPct: 5,
   drawdownPausePct: 15,
   checks: false,

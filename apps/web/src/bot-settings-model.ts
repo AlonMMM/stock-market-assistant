@@ -173,9 +173,9 @@ export const sameSettings = (a: BotSettings, b: BotSettings) =>
 /** Values that work against each other, in words. */
 export function settingsWarnings(s: BotSettings): string[] {
   const out: string[] = [];
-  if (s.safetyStopPct <= s.stopPct)
+  if (s.safetyStopPct < s.stopPct)
     out.push(
-      `The broker safety stop (−${s.safetyStopPct}%) is at or above the stop (−${s.stopPct}%), so it fires first.`,
+      `The broker safety stop (−${s.safetyStopPct}%) is above the stop (−${s.stopPct}%), so it fires first.`,
     );
   if (s.sizePct > 3)
     out.push(

@@ -64,6 +64,33 @@ export interface Prior {
   // A typical 30-minute move as a fraction of the price, from the 5 sessions
   // before today (levels.ts); null when they are short. D2 needs it.
   unit: number | null;
+  // The last prior session's close, to find a split at today's open.
+  lastClose?: number | null;
+}
+
+// The bars are not adjusted for splits (they price the strikes), so a 10:1
+// split made the volume baseline ~10× too low for 20 sessions and the volume
+// rule passed on any day (the audit of 2026-10-31, B6; research store.py
+// split_ratio). A split is read from the raw prices: yesterday's close /
+// today's open within 4% of N (an N:1 split) or of 1 / N (a 1:N reverse one).
+const splitSizes = [2, 3, 4, 5, 8, 10, 15, 20, 25, 30, 40, 50];
+
+/** The split between a close and the next session's open: N, 1 / N, or 1 (none). */
+export function splitRatio(prevClose: number, open: number): number {
+  if (!(prevClose > 0 && open > 0)) return 1;
+  const r = prevClose / open;
+  for (const n of splitSizes) {
+    if (Math.abs(r / n - 1) < 0.04) return n;
+    if (Math.abs(r * n - 1) < 0.04) return 1 / n;
+  }
+  return 1;
+}
+
+/** Today's split against the prior sessions, from today's first bar (1 when none). */
+function todaySplit(prior: Prior, day: readonly MinuteBar[]): number {
+  const first = day[0];
+  if (!first || !prior.lastClose) return 1;
+  return splitRatio(prior.lastClose, first.o);
 }
 
 export interface Signal {
@@ -130,12 +157,20 @@ export function betaFrom(days: readonly PriorDay[]): number | null {
 
 /** What the signal needs from the 20 sessions before today. */
 export function priorFrom(days: readonly PriorDay[]): Prior {
+  // Each session's volume in the last session's shares: times every split after it.
+  const factor = days.map(() => 1);
+  for (let i = days.length - 2; i >= 0; i--) {
+    const close = days[i]!.stock.at(-1)?.c ?? 0;
+    const open = days[i + 1]!.stock[0]?.o ?? 0;
+    factor[i] = factor[i + 1]! * splitRatio(close, open);
+  }
   return {
     beta: betaFrom(days),
     curves: days
-      .map((d) => cumulativeVolume(d.stock))
+      .map((d, i) => cumulativeVolume(d.stock).map((v) => v * factor[i]!))
       .filter((c) => c[SESSION - 1]! > 0),
     unit: priorLevels(days.slice(-5).map((d) => d.stock))?.unit ?? null,
+    lastClose: days.at(-1)?.stock.at(-1)?.c ?? null,
   };
 }
 
@@ -156,6 +191,7 @@ export function cSignal(
   const c = closes(day);
   const s = closes(spy);
   const cum = cumulativeVolume(day);
+  const split = todaySplit(prior, day);
   const last = Math.min(upTo, p.lastMinute);
   const unit = prior.unit;
   const bonusT = unit ? p.bonusT : null;
@@ -190,7 +226,7 @@ export function cSignal(
       continue;
     const sd = pstdev(steps);
     const t = sd ? (mean(steps) / sd) * Math.sqrt(steps.length) : 0;
-    const usual = median(prior.curves.map((curve) => curve[m]!));
+    const usual = median(prior.curves.map((curve) => curve[m]!)) * split;
     const rvol = usual ? cum[m]! / usual : 0;
     if (rvol < p.rvolDay) continue;
     const d2 = unit ? sumCall : null;
@@ -281,9 +317,9 @@ export function cState(
   const unit = prior.unit;
   let d2: number | null = null;
   if (unit) d2 = (t < 0 ? d2Put : d2Call) / unit;
-  const usual = median(
-    prior.curves.map((curve) => curve[Math.min(m, SESSION - 1)]!),
-  );
+  const usual =
+    median(prior.curves.map((curve) => curve[Math.min(m, SESSION - 1)]!)) *
+    todaySplit(prior, day);
   const cum = cumulativeVolume(day)[Math.min(m, SESSION - 1)]!;
   return { t, rvol: usual ? cum / usual : 0, d2 };
 }
