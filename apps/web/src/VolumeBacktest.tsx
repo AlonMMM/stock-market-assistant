@@ -416,7 +416,13 @@ function PricedMark({ p }: { p: PricedBy }) {
 }
 
 /** The trades the account took or refused, newest first; each opens its details. */
-export function VolumeTradeList({ account }: { account: VolumeAccount }) {
+export function VolumeTradeList({
+  account,
+  onOpen,
+}: {
+  account: VolumeAccount;
+  onOpen: (a: VolumeAccountTrade) => void;
+}) {
   const [filter, setFilter] = useState<"all" | "won" | "lost" | "refused">(
     "all",
   );
@@ -464,19 +470,26 @@ export function VolumeTradeList({ account }: { account: VolumeAccount }) {
       <ul className="bt-list">
         {shown.map((a) => (
           <li key={a.signal.id}>
-            <VolumeTradeRow a={a} />
+            <VolumeTradeRow a={a} onOpen={onOpen} />
           </li>
         ))}
       </ul>
       <p className="muted small">
-        Times in {israelLabel}. Open a trade for the alert, the side, the book
-        it bought on and the exit.
+        Times in {israelLabel}. Open a trade for its window: the chart with the
+        entry and the exit, the alert, the side, the book it bought on and the
+        sale. A trade the account did not take opens its details.
       </p>
     </section>
   );
 }
 
-function VolumeTradeRow({ a }: { a: VolumeAccountTrade }) {
+function VolumeTradeRow({
+  a,
+  onOpen,
+}: {
+  a: VolumeAccountTrade;
+  onOpen: (a: VolumeAccountTrade) => void;
+}) {
   const s = a.signal;
   const t = s.trade!;
   let spread = "—";
@@ -488,7 +501,14 @@ function VolumeTradeRow({ a }: { a: VolumeAccountTrade }) {
   else if (t.exitReason === "stop") exit = "The broker's safety stop";
   return (
     <details className="vbt-trade">
-      <summary className="bt-row">
+      <summary
+        className="bt-row"
+        onClick={(e) => {
+          if (a.status !== "taken") return;
+          e.preventDefault();
+          onOpen(a);
+        }}
+      >
         <span className="bt-when num">
           {israelDateTime(stepMs(s.date, 0) + s.second * 1000)}
         </span>

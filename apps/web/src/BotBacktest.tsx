@@ -81,7 +81,10 @@ import {
   strangleWithDefaults,
   type StrangleSettings,
 } from "../../../packages/trading/src/strangle/settings.js";
-import { volumeAccount } from "../../../packages/trading/src/strangle/backtest.js";
+import {
+  volumeAccount,
+  type VolumeAccountTrade,
+} from "../../../packages/trading/src/strangle/backtest.js";
 import {
   VolumeEmpty,
   VolumeRules,
@@ -91,6 +94,7 @@ import {
 } from "./VolumeBacktest.js";
 import {
   closedVolumeTrade,
+  volumeBacktestStory,
   defaultVolumeMoney,
   sameRun,
   volumeMoney,
@@ -321,6 +325,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
     "all",
   );
   const [open, setOpen] = useState<AccountTrade | null>(null);
+  const [vOpen, setVOpen] = useState<VolumeAccountTrade | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -1100,13 +1105,28 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                     </Suspense>
                   )}
                   <VolumeSignalList rows={vRows} />
-                  <VolumeTradeList account={vAccount} />
+                  <VolumeTradeList account={vAccount} onOpen={setVOpen} />
                 </>
               )}
             </>
           )}
         </div>
       </div>
+      {vOpen && vol.ran && (
+        <Suspense fallback={null}>
+          <TradeStory
+            t={closedVolumeTrade(vOpen)}
+            bot
+            source="volume"
+            backtest={volumeBacktestStory(
+              vOpen,
+              vol.ran.settings,
+              true, // the page's runs model the broker stop
+            )}
+            onClose={() => setVOpen(null)}
+          />
+        </Suspense>
+      )}
       {open && ran && (
         <Suspense fallback={null}>
           <TradeStory
