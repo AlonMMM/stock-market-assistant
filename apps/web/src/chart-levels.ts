@@ -13,7 +13,12 @@ import type {
 export interface ChartLevel {
   title: string; // the price line's label
   price: number;
-  side: "high" | "low"; // a high is resistance, a low support
+  side: "high" | "low"; // which of the day's or days' extremes it is
+}
+
+/** A level with its role at the buy: above the stock's price resistance, below support. */
+export interface RoleLevel extends ChartLevel {
+  role: "resistance" | "support";
 }
 
 // The first 15 minutes, as the bot's levels count them (from 09:45).
@@ -76,4 +81,39 @@ export function zoomRange(
   const middle = (range.from + range.to) / 2;
   const half = Math.max(fewestBars / 2, ((range.to - range.from) / 2) * factor);
   return { from: middle - half, to: middle + half };
+}
+
+/**
+ * Each level's role against the stock's price at the buy, its label marked
+ * R or S (user 2026-11-02: "where are the resistance?"). Without a price, by
+ * its side: a high resists, a low supports.
+ */
+export function withRoles(
+  levels: readonly ChartLevel[],
+  price: number | null,
+): RoleLevel[] {
+  return levels.map((l) => {
+    let role: RoleLevel["role"] = l.side === "high" ? "resistance" : "support";
+    if (price !== null) role = l.price >= price ? "resistance" : "support";
+    const mark = role === "resistance" ? "R" : "S";
+    return { ...l, role, title: `${mark} · ${l.title}` };
+  });
+}
+
+/**
+ * The levels the price scale keeps in view: the nearest above the prices
+ * shown and the nearest below, so a resistance just over the highs is not cut
+ * off; farther ones are drawn when in view but do not squash the chart.
+ */
+export function nearestLevels(
+  low: number,
+  high: number,
+  prices: readonly number[],
+): number[] {
+  const above = prices.filter((p) => p > high);
+  const below = prices.filter((p) => p < low);
+  const out: number[] = [];
+  if (above.length > 0) out.push(Math.min(...above));
+  if (below.length > 0) out.push(Math.max(...below));
+  return out;
 }

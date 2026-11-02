@@ -5,7 +5,9 @@ import type { ChartBarsRow } from "../packages/market-data/src/chart-bars.js";
 import type { TradeChartSession } from "../packages/market-data/src/trade-chart.js";
 import {
   dayRange,
+  nearestLevels,
   tradeLevels,
+  withRoles,
   zoomRange,
 } from "../apps/web/src/chart-levels.js";
 
@@ -92,4 +94,26 @@ test("zoom: halves or doubles the bars shown around the middle, at least 10", ()
     from: 99,
     to: 109,
   });
+});
+
+test("roles: above the price at the buy resistance, below support, marked R and S", () => {
+  const levels = [
+    { title: "Yday high", price: 106, side: "high" as const },
+    { title: "15-min high", price: 104, side: "high" as const },
+    { title: "Yday low", price: 101, side: "low" as const },
+  ];
+  assert.deepEqual(
+    withRoles(levels, 105).map((l) => [l.title, l.role]),
+    [
+      ["R · Yday high", "resistance"],
+      ["S · 15-min high", "support"], // broken above: now under the price
+      ["S · Yday low", "support"],
+    ],
+  );
+  assert.equal(withRoles(levels, null)[1]!.role, "resistance");
+});
+
+test("in view: the nearest level above the prices shown and the nearest below", () => {
+  assert.deepEqual(nearestLevels(100, 104, [99, 95, 106, 110, 102]), [106, 99]);
+  assert.deepEqual(nearestLevels(100, 104, [102]), []);
 });

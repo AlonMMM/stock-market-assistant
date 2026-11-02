@@ -26,7 +26,12 @@ import {
 } from "lightweight-charts";
 import type { ChartBarsRow } from "../../../packages/market-data/src/chart-bars.js";
 import type { TradeChart as TradeChartData } from "../../../packages/market-data/src/trade-chart.js";
-import { dayRange, zoomRange, type ChartLevel } from "./chart-levels.js";
+import {
+  dayRange,
+  nearestLevels,
+  zoomRange,
+  type RoleLevel,
+} from "./chart-levels.js";
 import {
   barTime,
   levelLines,
@@ -424,6 +429,8 @@ interface Parts {
   }[];
   dayHigh: ISeriesApi<"Line">;
   dayLow: ISeriesApi<"Line">;
+  srPrices: number[]; // the levels' prices, for the scale
+  srShown: boolean;
   dayStarts: Time[];
   fills: FillMark[];
   stockLevels: number[];
@@ -506,7 +513,7 @@ function StoryChart({
   style: ChartStyle;
   onEdge: (side: "before" | "after") => void;
   onHover: (h: Hover | null) => void;
-  levels: ChartLevel[]; // support and resistance on the entry day
+  levels: RoleLevel[]; // support and resistance on the entry day
   showLevels: boolean; // the levels and the day's range drawn or not
   zoom: ChartZoom; // a zoom button press: n counts the presses
   // Under an open position (user 2026-10-27, "too much"): the stock and the
@@ -563,14 +570,29 @@ function StoryChart({
     });
     const p: Partial<Parts> = { chart: api };
     const stockPrices = () => p.stockLevels ?? [];
+    // The nearest support and resistance stay in view (user 2026-11-02:
+    // the resistance above the prices was cut off).
+    const stockScale = (original: () => AutoscaleInfo | null) => {
+      const base = withPrices(original, stockPrices);
+      const range = base?.priceRange;
+      if (!range || !p.srShown) return base;
+      const near = nearestLevels(
+        range.minValue,
+        range.maxValue,
+        p.srPrices ?? [],
+      );
+      return withPrices(
+        () => base,
+        () => near,
+      );
+    };
     const optionPrices = () => p.optionLevels ?? [];
     p.stockLine = api.addSeries(LineSeries, {
       color: palette().stock,
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
-      autoscaleInfoProvider: (original: () => AutoscaleInfo | null) =>
-        withPrices(original, stockPrices),
+      autoscaleInfoProvider: stockScale,
     });
     p.stockCandles = api.addSeries(CandlestickSeries, {
       upColor: palette().up,
@@ -581,8 +603,7 @@ function StoryChart({
       priceLineVisible: false,
       lastValueVisible: false,
       visible: false,
-      autoscaleInfoProvider: (original: () => AutoscaleInfo | null) =>
-        withPrices(original, stockPrices),
+      autoscaleInfoProvider: stockScale,
     });
     p.spy = api.addSeries(LineSeries, {
       priceScaleId: "left",
@@ -740,6 +761,8 @@ function StoryChart({
     p.lines = [];
     p.ruleLines = [];
     p.srLines = [];
+    p.srPrices = [];
+    p.srShown = false;
     p.stockLevels = [];
     p.optionLevels = [];
     p.rvol = new Map();
@@ -972,10 +995,12 @@ function StoryChart({
     p.srLines = [];
     p.dayHigh.applyOptions({ visible: showLevels });
     p.dayLow.applyOptions({ visible: showLevels });
+    p.srPrices = levels.map((l) => l.price);
+    p.srShown = showLevels;
     if (!showLevels) return;
     for (const l of levels) {
       const color =
-        l.side === "high" ? palette().resistance : palette().support;
+        l.role === "resistance" ? palette().resistance : palette().support;
       for (const series of [p.stockLine, p.stockCandles])
         p.srLines.push({
           series,
@@ -1089,7 +1114,7 @@ interface DailyProps {
   rows: ChartBarsRow[];
   entryDate: string;
   exitDate: string | null;
-  levels: ChartLevel[];
+  levels: RoleLevel[];
   showLevels: boolean;
   zoom: ChartZoom;
 }
@@ -1194,7 +1219,7 @@ function DailyChart({
     if (showLevels)
       for (const l of levels) {
         const color =
-          l.side === "high" ? palette().resistance : palette().support;
+          l.role === "resistance" ? palette().resistance : palette().support;
         candles.createPriceLine({
           price: l.price,
           color,
