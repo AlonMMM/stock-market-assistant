@@ -252,10 +252,13 @@ export function VolumeSignalList({ rows }: { rows: VolumeRow[] }) {
   const shown = rows.filter((r) => {
     if (which === "bought" && !r.bought) return false;
     if (which === "skipped" && r.bought) return false;
-    if (reason && r.signal.outcome !== reason) return false;
+    if (reason && r.reason !== reason) return false;
     return true;
   });
   const bought = rows.filter((r) => r.bought).length;
+  const refusedByAccount = reasons
+    .filter((r) => r.account)
+    .reduce((n, r) => n + r.count, 0);
   const download = () => {
     const url = URL.createObjectURL(
       new Blob([volumeCsv(shown)], { type: "text/csv" }),
@@ -276,6 +279,19 @@ export function VolumeSignalList({ rows }: { rows: VolumeRow[] }) {
       <summary>
         {rows.length} alert{rows.length === 1 ? "" : "s"} · {bought} bought ·{" "}
         {rows.length - bought} not bought
+        {refusedByAccount > 0 &&
+          ` (${refusedByAccount} by the account's limits)`}
+        {reasons.length > 0 && (
+          <span className="muted small bt-why-top">
+            {" "}
+            Why not:{" "}
+            {reasons
+              .slice(0, 4)
+              .map((r) => `${r.label} ${r.count}`)
+              .join(" · ")}
+            {reasons.length > 4 ? ` · ${reasons.length - 4} more reasons` : ""}
+          </span>
+        )}
       </summary>
       <div className="bt-signals-tools">
         <div className="segmented small" role="group" aria-label="Which alerts">
@@ -297,7 +313,8 @@ export function VolumeSignalList({ rows }: { rows: VolumeRow[] }) {
         >
           <option value="">Every reason</option>
           {reasons.map((r) => (
-            <option key={r.outcome} value={r.outcome}>
+            <option key={r.reason} value={r.reason}>
+              {r.account ? "Account: " : ""}
               {r.label} ({r.count})
             </option>
           ))}
@@ -498,7 +515,9 @@ function VolumeTradeRow({ a }: { a: VolumeAccountTrade }) {
             </span>
           </>
         ) : (
-          <span className="bt-exit muted">{refusalWords[a.status]}</span>
+          <span className="bt-exit muted">
+            Not taken: {refusalWords[a.status]}
+          </span>
         )}
       </summary>
       <dl className="vbt-facts num">
