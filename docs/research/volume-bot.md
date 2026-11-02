@@ -1627,3 +1627,23 @@ burst / day-high cuts), same scripts. Live code's year, 2%, against the flat siz
 code's year every shock variant loses the check to the flat line; the day high ties it on the year (+$0.2K), wins tune,
 loses check. On this year the doubled shocks' check weeks are the weak half (x2 every shock: tune +$17K over 1.1.0, check
 -$14K).
+
+### The option's price before the buy (2026-11-02, analysis)
+
+The user: "give me data on the option price - the size of it before the alert/bought 1-5-10-15 minutes by destribution".
+Volume 1.1.0 live-code year, the 145 trades the live account takes (`volume_taken_ids.ts`, `volume_option_before_buy.py`);
+the bought contract's Databento mid k minutes before the buy minute vs the price paid. The stored books start near the
+alert, so 5 / 10 / 15 minutes back exist for 102 / 99 / 90 trades only.
+
+| Before | n | p10 | p25 | median | p75 | p90 | median mid then -> paid |
+|---|---|---|---|---|---|---|---|
+| 1 min | 144 | +4% | +9% | +18% | +39% | +88% | $0.62 -> $0.83 |
+| 5 min | 102 | +33% | +67% | +97% | +203% | +404% | $0.33 -> $0.85 |
+| 10 min | 99 | +31% | +78% | +144% | +218% | +630% | $0.30 -> $0.85 |
+| 15 min | 90 | +25% | +78% | +156% | +278% | +874% | $0.26 -> $0.84 |
+
+Plan median rise 1 / 5 / 10 / 15 min: +14% / +111% / +152% / +174%; shock +28% / +91% / +123% / +123%. By bucket
+(the trade's result): no bucket is better on both halves. Doubled or more in the 5 minutes before (49 trades): won 27%,
+median -45% (tune -48%, check -25%), 3 of +300%; +25-50% in 5 min (10 trades): median -4%; up 100%+ in the last minute
+(9): median +6% but tune +55% / check -10%. The bot buys after the option has already doubled in most trades; the
+small groups that look better are too few and flip between halves. No rule proposed.
