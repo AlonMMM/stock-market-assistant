@@ -1565,3 +1565,30 @@ second around the alert + delta 0.1 to 0.35" ... "F60x2 is currently not in use.
   app's D1 `option_quotes` as "databento" (10,354 contract-days new or changed; the rest were already there).
 - Gaps: AVGO 2026-09-02 (Databento resolved none of that day's contracts); 10 alert windows with no quote at all and 136
   under half filled, all thin names (AMBA, LMND, SIRI, TSEM, ...).
+
+### Which trades get a double bet (2026-11-02, look 1 for the account test; the scan saw both halves)
+
+The user, 2026-11-02: "I would like to find trade to double up the bet." 3-year twin of 1.1.0 (top 50, live,
+Feb 2024 - Oct 2026; `volume_double_scan.py`, `volume_double_acct.py`). The scan: 16 features known at the buy minute
+(plan/shock, side, weekday, nth trade, minute, option price, spread, delta, the stock's move since the open and in the last
+30 min our way, position in the day's range, the last 10 minutes' volume vs the day's minute average, day range, SPY,
+RS), tertiles cut on tune, without 10 Oct 2025. All trades: tune avg +7% / median -31%, check +27% / -16%. Groups better
+on avg, median and the avg under +300% on both halves: last-10-minute volume >= 1.2x (tune +20% / -28%, check +50% /
+-3%), at the day's high (range pos >= 0.955: +2% / -18%, +34% / -2%), last 30 min >= +1.34% our way. Calls beat puts on
+both halves (+18% / +34% vs -8% / +19%). The second trade of a stock-day is worse on both (27 trades).
+
+The account (x2 on the group at 2%; 3% capped at 5% a position), against a flat size with the same worst drop:
+
+| Version | x2 trades | 2% end (drop) | Tune | Check | w/o best 5 | Flat at the same drop: end, tune, check, w/o 5 |
+|---|---|---|---|---|---|---|
+| 1.1.0 twin | 0 | $773K (21.1%) | +$73K | +$600K | +$201K | - |
+| x2 volume burst >= 1.2x | 152 | $1,741K (26.1%) | +$182K | +$1,459K | +$177K | 2.53%: $1,131K, +$106K, +$925K, +$201K |
+| same, without 10-10 | 144 | $611K (26.1%) | +$72K | +$439K | -$5K | $362K, +$31K, +$231K, -$4K |
+| x2 at the day high | 141 | $1,207K (26.3%) | +$123K | +$984K | +$247K | 2.56%: $1,152K, +$108K, +$945K, +$199K |
+| same, without 10-10 | 135 | $406K (26.3%) | +$35K | +$271K | +$19K | $366K, +$31K, +$235K, -$5K |
+| x2 last 30 min strong | 144 | $1,336K (24.0%) | +$54K | +$1,182K | +$162K | 2.30%: $966K, +$92K, +$774K, +$207K |
+
+Neighbours of the burst cut (1.0x / 1.5x) are worse than 1.2x but above 1.1.0. Caveats: the feature was picked after the
+scan showed both halves (the check is not clean); the walk scales each trade's P&L (no limits, no contract rounding);
+today's alert-burst tiers on the live code's year failed the check. Next: the burst x2 on the live code's year (pr_ parts,
+volumeAccount, the live limits).
