@@ -1947,3 +1947,41 @@ under 2 cut the best bucket with the worst one; a rule worth testing is "x0.5 on
   median of -45% / -37%, 1 / 1 of +300%. But the 1-2 band was read off the distribution of these same trades (look 2,
   in-sample), the live tune gain is small, and the 3-year score is a minute off the alert. Needs an unseen period before
   it is a candidate.
+
+**The volume score (look 3 of the score, 2026-11-03; the user: "each stock affected by the spy in different way ... call it
+volume score. and go")**: `volume_score.py` (the score), `volume_score_dist.py`, `volume_score_3y.py` (3-year twin, scaled
+walk), `volume_score_year.ts` (live code's year, volumeAccount and the live limits).
+
+- **The score, rebuilt**: the stock's volume in the alert's own window (plan: the 3 minutes ending at the alert minute;
+  shock: the 60 seconds ending at the alert second, 10-s bars) over the median of the same window in the prior 20
+  sessions, divided by what SPY's ratio predicts for this stock: e^a * r_spy^b, with a, b fitted on the stock's prior 60
+  sessions (3-minute blocks, log ratios). SPY 10-s bars built for 2024-01 to 2026-10. The median volume beta is 0.28
+  (p10 0.11, p90 0.55): a stock's volume follows SPY's only weakly. Median score 5.9 (3 years), 8.0 (live year).
+- **The earlier score was in the wrong window** (the minute before the buy; for shocks the minute before the alert
+  second), and missed the burst: BA 2026-05-07 reads 9.7, not 0.7. The U shape and the "skip 1-2" pass above came from
+  that window and **do not hold**: on the new score, skip 1-2 is $502K vs $773K on 3 years.
+- **Distribution, median trade by score** (3 years tune / check without 10-10): < 2: -37% / -31% (14 / 3 trades); 2-4:
+  -31% / -30%; 4-6: -3% / -10%; 6-10: -41% / -4%; 10-20: -29% / -20%; 20-40: -14% / -21%. No line and no U. The 13 check
+  trades under 2 with 10-10 have a median of +458%: 10-10 was a market-wide day, where SPY's volume explains the stock's.
+  On the live year 4-6 is the best band on tune (+17%), 6-10 on check (+63%).
+- **Rules, all set before the run** (cuts from the 3-year tune weeks without 10-10: quintiles 3.1 / 4.8 / 8.1 / 16.5,
+  tertiles 4.2 / 11.3): skip each quintile, x0.5 / x2 by tertile both ways, and the earlier rules on the new score. 2%:
+
+| Rule | 3y (drop) | Tune | Check | Check w/o 5 | 3y w/o 10-10 (drop) | Tune | Check | Live year (drop) | Tune | Check |
+|---|---|---|---|---|---|---|---|---|---|---|
+| none (1.1.0) | $773K (21.1%) | +$73K | +$600K | +$226K | $288K (21.1%) | +$27K | +$161K | $142.1K (13%) | $111.9K | $125.6K |
+| 🎯 skip >= 16.5 (top fifth) | $850K (18.9%) | +$164K | +$586K | +$240K | $316K (18.7%) | +$70K | +$146K | $150.3K (13%) | $117.2K | $128.0K |
+| skip 3.1-4.8 | $796K (15.2%) | +$108K | +$589K | +$234K | $296K (15.1%) | +$42K | +$154K | $141.2K (10%) | $112.9K | $126.2K |
+| skip < 3.1 | $276K (17.8%) | +$20K | +$156K | +$35K | $267K (17.8%) | +$19K | +$149K | | | |
+| x0.5 < 4.2, x2 >= 11.3 | $597K (23.7%) | +$109K | +$388K | +$89K | $321K (23.7%) | +$47K | +$174K | | | |
+| x2 < 4.2, x0.5 >= 11.3 | $1,188K (27.0%) | -$44K | +$1,131K | +$425K | $275K (27.3%) | +$10K | +$165K | | | |
+| skip 1-2 | $502K (19.7%) | +$71K | +$331K | +$99K | $316K (19.7%) | +$45K | +$171K | $145.2K (11%) | $114.6K | $125.6K |
+| skip 1-3 | $319K (17.8%) | +$23K | +$197K | +$46K | $257K (17.8%) | +$15K | +$142K | $134.1K (12%) | $108.3K | $124.4K |
+| x0.5 < 2, x2 >= 6 | $1,097K (31.5%) | +$138K | +$860K | +$132K | $503K (31.5%) | +$54K | +$350K | | | |
+
+- **Verdict: no candidate.** The tune pick, skip a score of 16.5 or more (mostly shocks), loses the 3-year check to 1.1.0
+  (+$586K vs +$600K; without 10-10 +$146K vs +$161K). It wins on the live year (check $128.0K vs $125.6K) and against a
+  flat size at the same drop (check +$586K vs +$479K), but the gate is the champion. Every rule that sends money to low
+  scores lives on 10-10 alone.
+- **What the data does say**: scores of 20 or more lose on both halves (median -14% / -21%, 23 / 15 trades, no +300%).
+  Read off this distribution, so it is a new test, not a result.
