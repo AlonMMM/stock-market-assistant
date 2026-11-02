@@ -578,18 +578,18 @@ export async function runVolumeStock(
         a.second,
         a.second + within,
       );
-      // The shock: a side line touched within shockRules.touchWithin, as the live bot.
+      // The shock: a side line touched within shockTouchSeconds, as the live bot.
       if (
         shock &&
         !seconds.some(
           ([sec, price]) =>
-            sec <= a.second + shockRules.touchWithin &&
+            sec <= a.second + s.shockTouchSeconds &&
             sideOf(price, a.price, unit, s),
         )
       ) {
         done(
           "slow_cross",
-          `no side line within ${shockRules.touchWithin} s of the alert`,
+          `no side line within ${s.shockTouchSeconds} s of the alert`,
         );
         continue;
       }

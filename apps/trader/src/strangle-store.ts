@@ -89,7 +89,9 @@ export interface StrangleTrade {
   alertSecond?: number; // the 60-second alert: seconds after 09:30 when it was read (a minute alert: the end of alertMinute)
   fast?: boolean; // from the 60-second alert (F60x2) or the shock alert
   shock?: boolean; // from the shock alert (15x): its own entry, burst and expiry rules
-  touched?: boolean; // a shock trade's stock touched a side line within shockRules.touchWithin
+  touched?: boolean; // a shock trade's stock touched a side line within touchWithin
+  touchWithin?: number; // a shock trade's touch window, seconds (shockTouchSeconds when it began)
+  version?: string; // the Volume version in force when it began (strangle/versions.ts): 1.1.0, or 1.1.0* with changed rules
   leg: StrangleLeg | null;
   phase: StranglePhase;
   closeReason: string | null;

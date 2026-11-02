@@ -9,6 +9,13 @@ import {
   type StrangleSettings,
 } from "../../../packages/trading/src/strangle/settings.js";
 import type { StrangleTradeView } from "../../../packages/trading/src/strangle/view.js";
+import {
+  applyVolumeVersion,
+  volumeRuleChanges,
+  volumeVersionById,
+  volumeVersionLabel,
+  volumeVersions,
+} from "../../../packages/trading/src/strangle/versions.js";
 import { readJson } from "./api.js";
 import { groups, switches } from "./strangle-fields.js";
 import { israelClock } from "./time.js";
@@ -181,6 +188,10 @@ export function StrangleSettingsPage({ onBack }: { onBack: () => void }) {
     setDraft({ ...s, ...patch });
     setState({ step: "ready" });
   };
+  const setDraftAll = (id: string) => {
+    setDraft(applyVolumeVersion(s, id));
+    setState({ step: "ready" });
+  };
   const dirty = saved !== null && JSON.stringify(s) !== JSON.stringify(saved);
   const save = async () => {
     setState({ step: "saving" });
@@ -266,6 +277,8 @@ export function StrangleSettingsPage({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       </div>
+
+      <VolumeVersionCard s={s} onPick={(id) => setDraftAll(id)} />
 
       <section className="bot-card bs-card">
         <div className="bs-card-head">
@@ -454,5 +467,63 @@ export function StrangleSettingsPage({ onBack }: { onBack: () => void }) {
         </button>
       </div>
     </div>
+  );
+}
+
+/** The Volume bot's version (strangle/versions.ts, apart from the Main bot's): pick one, see if the rules differ. */
+function VolumeVersionCard({
+  s,
+  onPick,
+}: {
+  s: StrangleSettings;
+  onPick: (id: string) => void;
+}) {
+  const known = volumeVersionById(s.version);
+  const label = volumeVersionLabel(s);
+  const changes = known ? volumeRuleChanges(s, known) : [];
+  const latest = volumeVersions.at(-1)!;
+  let standing = `Trades are stamped “Volume ${label}”.`;
+  if (changes.length)
+    standing = `The rules below differ from Volume ${known!.id} (${changes.join("; ")}); trades are stamped “Volume ${label}”.`;
+  return (
+    <section className="bot-card bs-card" aria-labelledby="st-version">
+      <div className="bs-card-head">
+        <div>
+          <h2 id="st-version">Volume bot version · {label}</h2>
+          <p className="muted small">
+            Which set of trading rules the Volume bot runs. Its limits (size,
+            trades a day, losses, the safety stop) and the stocks are not part
+            of a version.
+          </p>
+        </div>
+        {s.version !== latest.id && (
+          <span className="small bs-changed">
+            Not the newest version ({latest.id})
+          </span>
+        )}
+      </div>
+      <div className="bs-seg bs-versions" role="group" aria-label="Version">
+        {volumeVersions.map((v) => (
+          <button
+            type="button"
+            key={v.id}
+            aria-pressed={s.version === v.id}
+            title={v.name}
+            onClick={() => onPick(v.id)}
+          >
+            {v.id}
+          </button>
+        ))}
+      </div>
+      {known && (
+        <p className="small">
+          <b>{known.name}</b>{" "}
+          <span className="muted">since {known.since}.</span> {known.notes}
+        </p>
+      )}
+      <p className={changes.length ? "small bs-changed" : "muted small"}>
+        {standing}
+      </p>
+    </section>
   );
 }

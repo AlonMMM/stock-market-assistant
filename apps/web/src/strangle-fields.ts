@@ -143,6 +143,12 @@ export const groups: { title: string; specs: Spec[] }[] = [
         help: "Minutes after the buy; the end of the day still sells.",
         fmt: (v) => `${v} min`,
       },
+      {
+        key: "shockTouchSeconds",
+        label: "Shock: a side line touched within",
+        help: "Seconds after the shock alert; no touch by then, no trade (Volume 1.1.0: 20, the research's; 1.0.0: 300).",
+        fmt: (v) => `${v} s`,
+      },
     ],
   },
 ];
@@ -150,6 +156,7 @@ export const switches: {
   key:
     | "nextDay"
     | "liquidFallback"
+    | "cheapRescue"
     | "strengthFilter"
     | "crossFilter"
     | "burstFilter"
@@ -172,6 +179,11 @@ export const switches: {
     key: "liquidFallback",
     label: "Liquid fallback",
     help: "The leg too thin: buy the nearest strike that trades enough, further out (to delta 0.25) first, then toward the money (to 0.50).",
+  },
+  {
+    key: "cheapRescue",
+    label: "Too cheap and thin: liquid strike",
+    help: "A leg under the minimum price that also trades too little: buy the liquid fallback's strike instead of no trade (Volume 1.1.0).",
   },
   {
     key: "strengthFilter",
