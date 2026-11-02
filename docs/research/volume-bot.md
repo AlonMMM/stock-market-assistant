@@ -58,8 +58,11 @@ Year: 1.1.0 $140.5K (13%), A $143.9K (10%, 153 trades), C $138.9K (11%), A+C $14
 - **The funnel** (9,501 alerts): plan slow cross 3,568, pre-market news 3,221, burst 730, earnings 100; shock slow
   cross 588, pre-market 397, no 0-2 DTE expiry 345, burst 149; too cheap 115, thin 42, no history 54; traded 169 (145
   after the account).
-- **News days with today's filters** (first time: the 2026-10-27 study ran before the cross and burst filters): the 132
-  pre-market-news trades average -16.5%, median -36%; earnings days 4 trades. Keep both skips.
+- **News days with today's filters** (first time: the 2026-10-27 study ran before the cross and burst filters): the
+  pre-market skip alone removes 49 trades (before the account), average -40%, median -45% (tune -45% / check -45%),
+  none of +100%; every slice by plan / shock, burst, time of day and option price is negative on both halves. Both
+  skips off adds 136 trades, average -15%, median -35%, 6 of +100% (on earnings days). Keep both skips; a news-day
+  strategy needs its own alert (volume against the same day's earlier minutes, 2026-10-27), not a cut of this one.
 - Burst tiers cut the drop and the "without the best 5" loss on both halves, but the check's money sits in low-burst
   trades they size down. Runners give the move back at every level. Plan delta 0.25 loses on tune.
 - Benchmark: the card "Test of 2 Nov 2026" on the Volume Bot page (dataset `tests1102`).
