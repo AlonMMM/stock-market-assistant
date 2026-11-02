@@ -2744,3 +2744,32 @@ add; most of the 54 have no Databento books), 2024-10-23 - 2026-10-30. 2% / 3%:
 Verdict: about the same bot (most stocks shared); the Volume list is a little behind over the whole period and
 without the best 5, ahead on check and in 2026. No reason to switch the Main bot's list.
 
+
+### A busier strike instead of a thin skip, and a 150-contract floor, on 2.10 (2026-11-02, not better: every pick fails the check)
+The user, after the live WMT skip on 2026-11-02 at 15:31 ET (the 0.15-delta Call 132 6 Nov: 34 contracts in 30
+minutes; 128 had 757 and 130 had 457): "do new test." then "150 contract is enough". Tested before on the old walk
+(cheap_up.py / cheap_up2.py / hot_fit_test `adj` on 2.3-2.4, 2026-10-25; oi_strike.py on 2.5, 2026-10-27): all
+failed; re-run because the walk was fixed on 2026-10-31 (thin options' exits ran at their next print) and the bot is
+now 2.10. thin_strike.py on the champion 2.10 (size_volume.py t3A-c5: 2.9's exits, the pyramid, 0.5 / 1 / 1.5 size by
+volume), real quotes, the real price paid; set before running: f150 (the floor 150, no fallback); A200 / A150 (a thin
+pick -> the nearest strike toward the money with 200 / 150, delta up to 0.35); B200 / B150 (the next listed strike on
+either side); C150 (a round strike: $1 under a $25 stock, $5 to $200, $10 above; delta 0.10-0.35; 150). $0.20 floor
+($0.10 IBIT), no cheap fallback, the add uses the same rule. Fair list + Favorites 24 months to 2026-10-16; look 1 on
+the fixed walk.
+- Baseline: 2.10 reproduced by size_volume.py re-run today (the 11-01 release figures predate fb9347f, the quote-minute
+  fix). 2%, tune / check: fair $620,535 (15.7%) / $957,771 (23.6%); Favorites $449,178 (14.5%) / $226,846 (22.6%). 3%:
+  fair $794,867 (24.4%) / $1,082,694 (32.2%); Favorites $546,403 (27.0%) / $240,889 (32.1%).
+- Tune, 2%, vs 2.10 (fair / Favorites): f150 +24% / +20% (18% / 16% drop); A200 -14% / -10%; A150 -7% / -6%;
+  B200 -8% / +50%; B150 +25% / +51% (27% / 21% drop); C150 -4% / -5%. Picks: f150, A150, B150, C150.
+- Check, 2%: f150 $979,898 (+2%, 24%) / $195,619 (-14%, 25%); A150 $619,872 (-35%) / $119,594 (-47%); B150 $656,711
+  (-31%, 33%) / $168,488 (-26%, 32%); C150 $637,521 (-33%) / $111,709 (-51%). At 3% the same order, worse (B150
+  -45% / -38%, f150 +3% / -20%). Without the best 5 every pick is below 2.10 on the Favorites check.
+- The added trades (main legs at $10K): on tune the fallbacks add 180-480 trades a list, median -$2,200 to -$2,500,
+  non-giant sum -$330K to -$690K; B's tune gain is MU +$378K (one name), IONQ +$205K, COIN +$140K. On check they add
+  250-510 trades, median -$2,200 to -$2,600, sum -$209K to -$410K, non-giant -$460K to -$787K, 2025 negative on every
+  list. f150 adds 46-63 trades a half, all "fill unproven" (150-199 contracts), median -$2,000 to -$2,400, non-giant
+  sum about -$65K to -$106K, 0-3 giants; its tune gain is SMCI / CVNA / UBER. WMT: 1-12 added trades a half in each
+  version, all losing (-$4K to -$16K, 0-3 winners).
+Verdict: not better, as on the old walk. A thin 0.15 strike still marks a moment the options crowd is elsewhere; the
+busier strike trades it anyway and the typical added trade loses ~$2,300 at $10K. The tune gains are a few names
+(MU, SMCI, IONQ) and vanish on the odd weeks. The 200 floor stays; no candidate.
