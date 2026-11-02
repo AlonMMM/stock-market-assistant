@@ -85,6 +85,30 @@ since its last shock that day, once that move is >= X S30 (2, 3, 5, set before t
 - Since the last shock: no trade of 1.1.0 is skipped (ORCL 14:49 was already refused: the first trade still open).
 
 
+### No shock against the last hour's move, 3 years (2026-11-02, look 3) + the first 20 minutes
+
+The user: "can you run it on the whole test?" and "how many bought we had in our 3 y test that are in the first 20
+minutes? give me full report". `volume_against_hour_3y.py` on the 10-30 dashboard's trades ("Live (PR #204)" =
+1.1.0's twin, top 50, live limits, 2024-02 .. 2026-10, 431 trades, 165 shock). The alert's direction is not in the
+export: the alert price vs the close 2 minutes before (99.2% right on the 1,714 year alerts with the true direction).
+The account is re-walked from the export's dollars; a skipped trade's slot is not refilled.
+
+| Version | Trades | 2% (3%) | Drop 2% (3%) | Tune / check (2% P&L) | W/o best 5 | Skipped (flat $2K) |
+|---|---|---|---|---|---|---|
+| 1.1.0 twin | 431 | $773.1K ($1,548K) | 21.1% (30.5%) | +$73.4K / +$599.7K | +$200.7K | - |
+| last hour >= 2 S30 🎯 | 418 | $835.0K ($1,739K) | 19.5% (28.3%) | +$94.2K / +$640.7K | +$239.0K | 13, -$7.6K, median -33%, 3 won, no giants |
+| last hour >= 3 S30 | 421 | $809.3K ($1,659K) | 19.5% (28.3%) | +$83.5K / +$625.8K | +$222.1K | 10, -$4.5K |
+| since the open >= 2 S30 | 404 | $866.9K ($1,846K) | 18.5% (27.0%) | +$115.3K / +$651.6K | +$267.2K | 27, -$11.0K, 6 won (MSFT +84%, AVGO +75%) |
+
+Better on tune and check, every version, every year of the skipped trades negative (2024 1, 2025 8, 2026 4 for the
+last hour). The pick on tune would be "since the open" (look 1's rule), which also wins on check. Look 3 of the idea.
+
+First 20 minutes (bought 09:30-09:49; nothing before 09:40, the plan's first alert minute): 37 of 431 trades (34 plan,
+3 shock), 30% won, avg +6%, median -31%, no +300%; +$11.9K of the +$673.1K at 2% (-$63.3K without their best 5);
+tune +$24.3K, check -$12.4K; 2024 +$2.7K, 2025 -$16.1K, 2026 +$25.3K (INTC 2026-01-07 +240%, GOOG 2026-09-18 +227%).
+Without them: $739.0K (drop 19.0%) vs $773.1K. By buy time: 09:40 23 trades median -34%; 09:45 14, -20%; 09:50 15,
+-37%; 10:00-10:29 64, -19%; 10:30-11:29 109, median +6%, 17 of the 28 giants; after 11:30 206, -27%.
+
 ### No shock against the last hour's move (2026-11-02, look 2)
 
 The user: "check - against the last 1 hour, and only big move comparing to the movement this day". Same as look 1, but
