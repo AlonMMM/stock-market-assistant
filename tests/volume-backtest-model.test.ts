@@ -105,8 +105,20 @@ test("volume backtest page: every alert, newest first, with the account's verdic
       ["MRVL|2024-02-06|plan|2400", false, "Side too slow"],
     ],
   );
+  // Every alert not bought, the account's refusals too.
   assert.deepEqual(outcomeCounts(rows), [
-    { outcome: "slow_cross", label: "Side too slow", count: 1 },
+    {
+      reason: "account:per_stock",
+      label: "The stock's trades for the day were used",
+      count: 1,
+      account: true,
+    },
+    {
+      reason: "slow_cross",
+      label: "Side too slow",
+      count: 1,
+      account: false,
+    },
   ]);
   // Only taken trades count in the fills' sources.
   assert.deepEqual(pricedCounts(account), {

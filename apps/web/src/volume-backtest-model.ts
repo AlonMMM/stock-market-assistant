@@ -107,6 +107,9 @@ export interface VolumeRow {
   // The account's handling of a traded alert; absent for an alert not traded.
   account: VolumeAccountTrade | null;
   why: string; // the outcome or the account's refusal, in words
+  // The same as a key: the outcome, or "account:<refusal>" when the rules
+  // bought but the account refused it.
+  reason: string;
   bought: boolean; // the account took the trade
 }
 
@@ -122,12 +125,17 @@ export function volumeRows(
     for (const signal of r.signals) {
       const a = byId.get(signal.id) ?? null;
       let why = outcomeWords[signal.outcome];
-      if (a && a.status !== "taken") why = refusalWords[a.status];
+      let reason: string = signal.outcome;
+      if (a && a.status !== "taken") {
+        why = refusalWords[a.status];
+        reason = `account:${a.status}`;
+      }
       rows.push({
         key: signal.id,
         signal,
         account: a,
         why,
+        reason,
         bought: a?.status === "taken",
       });
     }
@@ -253,18 +261,25 @@ export function volumeCsv(rows: readonly VolumeRow[]): string {
 }
 
 /** The outcomes of the alerts not traded, most first. */
-export function outcomeCounts(
-  rows: readonly VolumeRow[],
-): { outcome: VolumeOutcome; label: string; count: number }[] {
-  const n = new Map<VolumeOutcome, number>();
-  for (const r of rows)
-    if (r.signal.outcome !== "traded")
-      n.set(r.signal.outcome, (n.get(r.signal.outcome) ?? 0) + 1);
+export function outcomeCounts(rows: readonly VolumeRow[]): {
+  reason: string;
+  label: string;
+  count: number;
+  account: boolean; // the rules bought, the account refused
+}[] {
+  const n = new Map<string, { label: string; count: number }>();
+  for (const r of rows) {
+    if (r.bought) continue;
+    const got = n.get(r.reason) ?? { label: r.why, count: 0 };
+    got.count++;
+    n.set(r.reason, got);
+  }
   return [...n]
-    .map(([outcome, count]) => ({
-      outcome,
-      label: outcomeWords[outcome],
+    .map(([reason, { label, count }]) => ({
+      reason,
+      label,
       count,
+      account: reason.startsWith("account:"),
     }))
     .sort((a, b) => b.count - a.count);
 }
