@@ -9,6 +9,45 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### The shock's bar: lower (10x / 12x), the day's-pace gate, a smoothed usual; every buy and sale on real books (2026-11-03)
+
+The user (2026-11-02/03): "after we tune this, we can try to add more signal that before was wrong. we can try 10X volume
+as first signal"; "its on avg of the same minute in the last 20 days right? but same minute is noisy. we need to use some
+window of couple of minutes". The shocks recomputed from the 10-second bars (scratch `.shock-recompute.ts` sets 1/2/4):
+the live rule with a lower bar (10x / 12x usual or pace), with the day's-pace gate (>= 3x / 5x the pace on the same
+60 s), and a smoothed usual (each prior day's average 60-second volume over +-2.5 / +-5 min, then the 20-day median; the
+spike stays 60 s). Every changed stock-day re-run in the app's engine (Volume 1.1.0, saved settings, 51 stocks,
+2025-11-03 .. 2026-10-30, -80% stop). New alerts that reached a buy had no stored books: bought from Databento (approved by
+the user), OPRA cbbo-1s at the buy (55 for 10x, then the others) and cbbo-1m for the sale day, ~$0.009 in all
+(`.dbx_windows.py`, `.dbx_minutes.py`, scratch `fillround.py`); after it every version's buys and sales are on real
+books (1 unpriced alert in 15x+10x and in today-only). The 15x+K rows supersede look 2 (its 4 unpriced alerts now priced).
+
+| Version | Trades (year) | Tune 2% (drop) | Tune w/o best 5 | Check 2% (drop) | Check w/o best 5 | Year 2% (drop) |
+|---|---|---|---|---|---|---|
+| Live (15x, 1.1.0) | 145 | $111.4K (10%) | -$27.9K | $125.2K (9%) | -$22.7K | $140.5K (13%) |
+| 15x + 2x pace | 143 | $112.9K (10%) | -$26.4K | $127.2K (9%) | -$21.0K | $144.2K (13%) |
+| 15x + 3x pace | 140 | $114.8K (11%) | -$25.8K | $126.6K (9%) | -$21.6K | $145.0K (13%) |
+| 15x + 5x pace | 132 | $116.8K (10%) | -$23.8K | $126.4K (8%) | -$21.6K | $149.2K (12%) |
+| 15x + 10x pace | 107 | $108.8K (10%) | -$23.1K | $133.1K (6%) | -$17.4K | $144.9K (12%) |
+| 15x the day's pace only | 93 | $104.2K (14%) | -$23.2K | $136.5K (5%) | -$14.9K | $142.3K (10%) |
+| 10x, no gate | 195 | $107.3K (23%) | -$32.7K | $149.4K (13%) | -$16.2K | $160.6K (28%) |
+| 10x + 3x pace | 171 | $117.0K (20%) | -$24.8K | $130.1K (11%) | -$19.6K | $151.4K (24%) |
+| 10x + 5x pace | 153 | $112.5K (20%) | -$19.7K | $140.4K (10%) | -$21.4K | $157.0K (22%) |
+| 12x + 3x pace | 164 | $103.3K (17%) | -$29.2K | $136.3K (12%) | -$23.4K | $141.8K (24%) |
+| 12x + 5x pace | 150 | $108.7K (14%) | -$25.3K | $134.6K (12%) | -$24.7K | $146.6K (21%) |
+| smoothed +-2.5 min + 3x | 122 | $103.4K (12%) | -$26.8K | $138.3K (7%) | -$22.1K | $145.1K (14%) |
+| smoothed +-5 min + 3x | 121 | $108.2K (14%) | -$24.4K | $142.2K (7%) | -$20.2K | $153.8K (15%) |
+| smoothed +-2.5 min, no gate | 128 | $99.8K (12%) | -$30.2K | $136.4K (8%) | -$23.7K | $134.5K (15%) |
+
+- **15x + 2x / 3x / 5x the day's pace pass**: better on tune AND check at the same drop, and without the best 5 on both.
+  3x: +$3.4K / +$1.4K. The check of this idea has now been seen several times (weaker evidence).
+- **10x + 3x / 5x**: more trades (+26 / +8 a year) and more money on both halves, but the drop doubles (tune 20% vs 10%,
+  year 22-24% vs 13%): not "better" by the rule (more money at the same or smaller drop). 10x without the gate loses tune
+  (the gate is what makes 10x work). 12x loses tune.
+- **The smoothed usual loses tune** at every width (fewer, later shocks; the check gains). Not better.
+- Candidate stays 15x + 3x the day's pace (3 years: passes, filtered). 10x + 3x/5x needs its own 3-year run (new alerts:
+  the research twin re-run with these shock lists and their books) before it can be judged on its drop.
+
 ### A shock must also stand out against the day's pace (2026-11-02, look 1)
 
 The user, 2026-11-02, on the MSTR 111 Call of 2026-08-19 (a shock trade at 11:14:00): "there is no shock - look on the

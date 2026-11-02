@@ -1,0 +1,176 @@
+// Temporary (not committed): the shock alerts recomputed with "a shock must jump against the day" (the user,
+// 2026-11-02: "shock is a sudden increase in the volume. to not compare it to today volume is weird"), the live
+// rule (fast.ts shockRule, fastAlerts: fresh crossing, 30-minute cooldown) on the Mac's 10-second bars, as
+// scripts/volume-data-upload.ts shock() made the stored list. Variants:
+//   base   the live rule (15x the 20-session median OR 15x today's pace): must equal the stored list
+//   pK     the live rule AND >= K x today's pace (K = 2, 3, 5, 10)
+//   today  15x today's pace alone (the 20-session median not used)
+//   node --import tsx scripts/.shock-recompute.ts <d1.sqlite> <settings.json> <out.json>
+import { DatabaseSync } from "node:sqlite";
+import { readFileSync, writeFileSync } from "node:fs";
+import { coreClose, newYorkToUtc, previousSessions } from "../packages/market-data/src/calendar.js";
+import {
+  carried,
+  fastBaseline,
+  fastRule,
+  fastState,
+  fastWindows,
+  FastFire,
+  paceSums,
+  shockRule,
+  type FastBaseline,
+  type FastDay,
+  type FastWindows,
+} from "../packages/trading/src/strangle/fast.js";
+
+const [d1, settingsFile, out] = process.argv.slice(2);
+const from = "2025-11-03", to = "2026-10-30";
+const symbols = JSON.parse(readFileSync(settingsFile!, "utf8")).added as string[];
+const db = new DatabaseSync("/Users/alonmo/Desktop/Personal/stock-market-assistant/data/local/bars-10s.sqlite", { readOnly: true });
+const read = db.prepare("SELECT start, volume, close FROM bars WHERE symbol = ? AND start >= ? AND start < ? ORDER BY start");
+function sessions(lo: string, hi: string): string[] {
+  const out: string[] = [];
+  for (let d = hi; d >= lo; d = previousSessions(d, 1)[0]!) if (coreClose(d) !== null) out.unshift(d);
+  return out;
+}
+const days = sessions(previousSessions(from, fastRule.days)[0]!, to);
+const W = fastRule.window;
+/** Today's pace ratio at slot t (fastState's), 0 before the pace is measured. */
+function paceAt(v: number[], cum: number[], t: number, W = fastRule.window): number {
+  let win = 0;
+  for (let k = t - W + 1; k <= t; k++) win += v[k] ?? 0;
+  const before = t - W;
+  if (before >= fastRule.paceFrom + 15 * 6 - 1 && t < fastRule.paceTo) {
+    const avg = cum[before]! / (before - fastRule.paceFrom + 1);
+    if (avg > 0) return win / (avg * W);
+  }
+  return 0;
+}
+type Alert = { second: number; price: number; up: boolean };
+/** fastAlerts with an extra gate on each slot's state. */
+/** fastWindows with a window of W slots (the live one is 6: 60 s). */
+function windowsW(day: FastDay, W: number): FastWindows {
+  const n = fastRule.slots, cf = carried(day.c);
+  const vol: (number | null)[] = new Array(n).fill(null), move: (number | null)[] = new Array(n).fill(null);
+  let sum = 0;
+  for (let t = 0; t < n; t++) {
+    sum += day.v[t] ?? 0;
+    if (t >= W) sum -= day.v[t - W] ?? 0;
+    if (t >= W - 1) vol[t] = sum;
+    const now = cf[t] ?? null, before = t >= W ? (cf[t - W] ?? null) : null;
+    if (now !== null && before !== null) move[t] = Math.abs((now / before - 1) * 100);
+  }
+  return { vol, move };
+}
+/** A day's 60-second volumes averaged over +-S slots around each moment (the windows that exist); the move as is. */
+function smoothed(w: FastWindows, S: number): FastWindows {
+  const n = w.vol.length, vol: (number | null)[] = new Array(n).fill(null);
+  for (let t = 0; t < n; t++) {
+    if (w.vol[t] === null) continue;
+    let sum = 0, k = 0;
+    for (let u = Math.max(0, t - S); u <= Math.min(n - 1, t + S); u++) if (w.vol[u] !== null) { sum += w.vol[u]!; k++; }
+    vol[t] = sum / k;
+  }
+  return { vol, move: w.move };
+}
+function alertsWith(today: FastDay, base: FastBaseline, gate: (t: number, pace: number) => boolean, volume = shockRule.volume, W = fastRule.window): Alert[] {
+  // A longer window scales the move and share floors as the live rule set them for 60 s (fast.ts: x sqrt(W/18), x W/18).
+  const rule = { ...shockRule, volume, window: W, minMovePercent: 0.5 * Math.sqrt(W / 18), minShares: (10000 * W) / 18 };
+  const cf = carried(today.c), cum = paceSums(today.v), fire = new FastFire(), out: Alert[] = [];
+  for (let t = 0; t < fastRule.slots; t++) {
+    const st = fastState(today, cf, base, t, cum, rule);
+    const on = st.on && gate(t, paceAt(today.v, cum, t, W));
+    if (!fire.step(t, on)) continue;
+    if (t < shockRule.firstSlot || t > shockRule.lastSlot) continue;
+    out.push({ second: (t + 1) * 10, price: cf[t]!, up: st.up });
+  }
+  return out;
+}
+// Set 2 (the user, 2026-11-02: "after we tune this, we can try to add more signal ... 10X volume"): a lower
+// volume bar (10x, 12x usual or the pace) with the day's-pace gate. VARIANT_SET=2 picks it.
+const SET1: Record<string, { gate: (t: number, pace: number) => boolean; todayOnly?: boolean; volume?: number }> = {
+  base: { gate: () => true },
+  p2: { gate: (_t, p) => p >= 2 },
+  p3: { gate: (_t, p) => p >= 3 },
+  p5: { gate: (_t, p) => p >= 5 },
+  p10: { gate: (_t, p) => p >= 10 },
+  today: { gate: () => true, todayOnly: true },
+};
+const SET2: typeof SET1 = {
+  base: { gate: () => true },
+  u10: { gate: () => true, volume: 10 },
+  u10p3: { gate: (_t, p) => p >= 3, volume: 10 },
+  u10p5: { gate: (_t, p) => p >= 5, volume: 10 },
+  u12p3: { gate: (_t, p) => p >= 3, volume: 12 },
+  u12p5: { gate: (_t, p) => p >= 5, volume: 12 },
+};
+// Set 3 (the user, 2026-11-02, SLV 2025-11-13: "a window of 5 minutes and do the avg"): the volume and the move over
+// 5 minutes (W 30) or 3 minutes (W 18) instead of 60 s, against the same window's 20-session median, with the
+// candidate's day's-pace gate (>= 3x, on the same window).
+const SET3: Record<string, { gate: (t: number, pace: number) => boolean; todayOnly?: boolean; volume?: number; window?: number }> = {
+  base: { gate: () => true },
+  c60p3: { gate: (_t, p) => p >= 3 },
+  w30k10p3: { gate: (_t, p) => p >= 3, volume: 10, window: 30 },
+  w30k15p3: { gate: (_t, p) => p >= 3, volume: 15, window: 30 },
+  w18k15p3: { gate: (_t, p) => p >= 3, volume: 15, window: 18 },
+};
+// Set 4 (the user, 2026-11-02: "its on avg of the same minute in the last 20 days right? but same minute is noisy. we
+// need to use some window of couple of minutes"): the spike stays the 60-second window; its usual is each prior day's
+// average 60-second volume over +-S slots around the moment (S 15: +-2.5 min, S 30: +-5 min), then the 20-day median.
+const SET4: Record<string, { gate: (t: number, pace: number) => boolean; todayOnly?: boolean; volume?: number; window?: number; smooth?: number }> = {
+  base: { gate: () => true },
+  c60p3: { gate: (_t, p) => p >= 3 },
+  s15p3: { gate: (_t, p) => p >= 3, smooth: 15 },
+  s30p3: { gate: (_t, p) => p >= 3, smooth: 30 },
+  s15: { gate: () => true, smooth: 15 },
+};
+let VARIANTS: Record<string, { gate: (t: number, pace: number) => boolean; todayOnly?: boolean; volume?: number; window?: number; smooth?: number }> = SET1;
+if (process.env.VARIANT_SET === "4") VARIANTS = SET4;
+if (process.env.VARIANT_SET === "2") VARIANTS = SET2;
+if (process.env.VARIANT_SET === "3") VARIANTS = SET3;
+const result: Record<string, Record<string, Alert[]>> = {};
+for (const k of Object.keys(VARIANTS)) result[k] = {};
+for (const symbol of symbols) {
+  const priors = new Map<string, FastWindows[]>();
+  for (const date of days) {
+    const openMs = newYorkToUtc(date, 570);
+    const rows = read.all(symbol, Math.floor(openMs / 1000), Math.floor(newYorkToUtc(date, coreClose(date)!) / 1000)) as { start: number; volume: number; close: number }[];
+    const today: FastDay = { v: new Array(fastRule.slots).fill(0), c: new Array(fastRule.slots).fill(null) };
+    for (const r of rows) {
+      const t = Math.floor((r.start * 1000 - openMs) / 10_000);
+      if (t < 0 || t >= fastRule.slots) continue;
+      today.v[t] = r.volume;
+      today.c[t] = r.close;
+    }
+    if (!rows.length) continue;
+    const sizes = [...new Set(Object.values(VARIANTS).map((v) => `${v.window ?? fastRule.window}|${v.smooth ?? 0}`))];
+    for (const size of sizes) {
+      const [W, S] = size.split("|").map(Number) as [number, number];
+      const priorW = priors.get(size) ?? [];
+      const base = date >= from ? fastBaseline(priorW) : null;
+      if (base)
+        for (const [k, v] of Object.entries(VARIANTS)) {
+          if ((v.window ?? fastRule.window) !== W || (v.smooth ?? 0) !== S) continue;
+          // Today only: the median test never passes (an infinite usual), so only the pace path can.
+          const b = v.todayOnly ? { vol: base.vol.map((x) => (x === null ? null : Infinity)), move: base.move } : base;
+          const list = alertsWith(today, b, v.gate, v.volume, W);
+          if (list.length) result[k]![`${symbol}|${date}`] = list;
+        }
+      const wins = W === fastRule.window ? fastWindows(today) : windowsW(today, W);
+      priorW.push(S ? smoothed(wins, S) : wins);
+      if (priorW.length > fastRule.days) priorW.shift();
+      priors.set(size, priorW);
+    }
+  }
+  process.stderr.write(`${symbol} `);
+}
+// Parity: base against the stored list.
+const stored = new DatabaseSync(d1!, { readOnly: true })
+  .prepare(`SELECT symbol, date, second FROM volume_alerts WHERE kind = 'shock' AND date BETWEEN ? AND ? AND symbol IN (${symbols.map(() => "?").join(",")})`)
+  .all(from, to, ...symbols) as { symbol: string; date: string; second: number }[];
+const mine = new Set(Object.entries(result.base!).flatMap(([k, l]) => l.map((a) => `${k}|${a.second}`)));
+const theirs = new Set(stored.map((r) => `${r.symbol}|${r.date}|${r.second}`));
+const onlyMine = [...mine].filter((x) => !theirs.has(x)), onlyTheirs = [...theirs].filter((x) => !mine.has(x));
+console.log(`\nparity: recomputed ${mine.size}, stored ${theirs.size}, only recomputed ${onlyMine.length}, only stored ${onlyTheirs.length}`, onlyMine.slice(0, 5), onlyTheirs.slice(0, 5));
+for (const k of Object.keys(VARIANTS)) console.log(k, Object.values(result[k]!).reduce((s, l) => s + l.length, 0), "shocks");
+writeFileSync(out!, JSON.stringify(result));
