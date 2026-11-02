@@ -13,6 +13,7 @@ import {
   defaultVolumeMoney,
   nyClock,
   outcomeCounts,
+  volumeBacktestStory,
   pricedCounts,
   sameRun,
   volumeCsv,
@@ -134,6 +135,19 @@ test("volume backtest page: every alert, newest first, with the account's verdic
   assert.equal(closed.underlying, "MRVL");
   assert.equal(closed.fills!.length, 2);
   assert.ok(Date.parse(closed.closedAt) > Date.parse(closed.openedAt));
+  // Its window (the trade story): why, the sale, the paid and stop lines, the alert.
+  const story = volumeBacktestStory(taken, settings, true);
+  assert.equal(story.entryTitle, "Why the volume bot entered");
+  assert.equal(story.entry.length, 3);
+  assert.equal(story.paid, 0.41);
+  assert.equal(
+    story.stop,
+    Number((0.41 * (1 - settings.safetyStopPct / 100)).toFixed(2)),
+  );
+  assert.equal(story.exits.length, 1);
+  assert.equal(story.exits[0]!.price, 0.82);
+  assert.ok(story.markers.some((m) => m.kind === "signal"));
+  assert.equal(volumeBacktestStory(taken, settings, false).stop, null);
 });
 
 test("volume backtest page: the size and limits need no new run; the rest does", () => {

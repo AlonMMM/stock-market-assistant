@@ -11,6 +11,7 @@ import type {
 } from "../../../packages/trading/src/strangle/backtest.js";
 import type { StrangleSettings } from "../../../packages/trading/src/strangle/settings.js";
 import { stepMs } from "./bot-backtest-model.js";
+import { fillMarkers, type ExitRow, type Story } from "./trade-story-model.js";
 
 // The Volume bot's backtest on the Backtest page (the user, 2026-10-31: "lets
 // open the volume for backtesting on the app"): every alert of the run, what
@@ -282,4 +283,77 @@ export function outcomeCounts(rows: readonly VolumeRow[]): {
       account: reason.startsWith("account:"),
     }))
     .sort((a, b) => b.count - a.count);
+}
+
+/**
+ * A backtest trade's window (the trade story, as the live Volume bot's
+ * trades open it): why it was entered, the sale, the paid and the broker stop
+ * lines, the alert on the stock pane.
+ */
+export function volumeBacktestStory(
+  a: VolumeAccountTrade,
+  s: StrangleSettings,
+  safetyStop: boolean,
+): Story {
+  const sig = a.signal;
+  const t = sig.trade!;
+  const closed = closedVolumeTrade(a);
+  const alertMs = stepMs(sig.date, 0) + sig.second * 1000;
+  const kind = sig.kind === "shock" ? "Shock alert" : "Volume alert";
+  let bookWords = "";
+  if (t.book)
+    bookWords = ` (bid / ask ${t.book.bid.toFixed(2)} / ${t.book.ask.toFixed(2)})`;
+  const entry = [
+    `${kind} ${sig.alert} at ${nyClock(sig.second)} New York${sig.burst === null ? "" : `, burst ${sig.burst.toFixed(2)}`}.`,
+    `The side: ${t.right === "C" ? "up, so a call" : "down, so a put"} at ${nyClock(t.sideSecond)}, ${t.toSide} s after the alert, stock ${t.stockIn.toFixed(2)}.`,
+    `The leg: ${t.contract}, delta ${t.delta.toFixed(2)}${t.fallback}. Bought ${t.buy.toFixed(2)} on the ${pricedWords[t.buyPriced].toLowerCase()}${bookWords}.`,
+  ];
+  let title = "The end of the day";
+  let text = `Everything out by ${nyClock(s.endMinute * 60)}.`;
+  if (t.exitReason === "giveback") {
+    title = "The stock's give-back";
+    text = `Sold when the stock gave back ${s.giveBackUnits}× its typical 30-minute move from its best, on minute closes, not in the first ${s.noStopMinutes} minutes.`;
+  } else if (t.exitReason === "stop") {
+    title = "The broker's safety stop";
+    text = `The minute's bid reached the stop at −${s.safetyStopPct}% of the price paid.`;
+  }
+  const exits: ExitRow[] = [
+    {
+      ms: Date.parse(closed.closedAt),
+      qty: a.qty,
+      price: t.sell,
+      title,
+      text: `${text} Sold at the bid on the ${pricedWords[t.sellPriced].toLowerCase()}${t.stockOut === null ? "" : `, stock ${t.stockOut.toFixed(2)}`}.`,
+    },
+  ];
+  const markers = fillMarkers(closed);
+  markers.push({
+    kind: "signal",
+    pane: "stock",
+    at: { date: sig.date, minute: sig.minute },
+    ms: alertMs,
+    price: null,
+    label: `alert ${nyClock(sig.second)}`,
+  });
+  return {
+    bot: true,
+    version: null,
+    entryTitle: "Why the volume bot entered",
+    entry,
+    exits,
+    paid: t.buy,
+    stop: safetyStop
+      ? Number((t.buy * (1 - s.safetyStopPct / 100)).toFixed(2))
+      : null,
+    stopLabel: `stop −${s.safetyStopPct}%`,
+    stockEntry: t.stockIn,
+    wall: null,
+    right: t.right,
+    rule: null,
+    markers,
+    decision: null,
+    entryQuote: t.book
+      ? { bid: t.book.bid, ask: t.book.ask, at: Date.parse(closed.openedAt) }
+      : null,
+  };
 }
