@@ -9,6 +9,30 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### A shock must also stand out against the day's pace (2026-11-02, look 1)
+
+The user, 2026-11-02, on the MSTR 111 Call of 2026-08-19 (a shock trade at 11:14:00): "there is no shock - look on the
+image the volume bar is not special at all". Its 60-second window was 351,696 shares, 15.2x the 20-session median
+(23,086) but 2.2x the day's own pace (162,237 a minute; MSTR traded ~7x usual all day). The shock passes on 15x usual OR
+15x the pace, so on a heavy day a minute only ~2x the day clears it. Thesis: a shock must also be K x today's pace
+(fast.ts fastState's pace, the same window), K = 2 / 3 / 5 set before the run; shocks before the pace exists (~10:16)
+kept. Built on Volume 1.1.0 with the saved settings, the app's backtest year of 2026-11-02 (51 stocks, 2025-11-03 ..
+2026-10-30, real books, -80% stop): each stored shock's pace from data/local/bars-10s.sqlite (27,440 shocks; 2,308 before
+the pace), the failing shocks' trades removed, the account replayed (scratch `.shock-pace.ts`, `.volreport.ts`).
+
+| Version | Trades | Tune 2% (drop) | Tune without best 5 | Check 2% (drop) | Check without best 5 |
+|---|---|---|---|---|---|
+| Champion (Volume 1.1.0) | 79 / 66 | $111.4K (10%) | -$27.9K | $125.2K (9%) | -$22.7K |
+| Shock >= 2x the pace | 79 | $111.4K (10%) | -$27.9K | | |
+| Shock >= 3x the pace | 76 | $112.0K (11%) | -$27.4K | | |
+| 🎯 Shock >= 5x the pace | 72 / 60 | $116.0K (9%) | -$24.7K | $124.2K (9%) | -$23.4K |
+
+At 3% the pick: tune $123.2K vs $116.3K, check $134.2K vs $135.8K. Year at 2%: 132 trades, $143.7K (11%) vs $140.5K
+(13%). **Not better: wins tune, loses the check** (-$1.0K, and without the best 5). No traded shock was under 2x the pace
+(2x removes nothing). The shock trades by pace (before the account, tune / check): before the pace 2 / 2 (median -73% /
+-59%), 2-3x 4 / 2 (-32% / -50%), 3-5x 5 / 6 (-33% / +7%, one +100%), >= 5x 32 / 22 (-21% / -31%, 4 / 2 of +100%). The
+under-5x shocks are 21 trades, too few to call; the check's one 3-5x giant decides it. Keep the shock as it is.
+
 ### More gain, more trades: floor, limits, burst sizing, runners, plan delta, news days (2026-11-02, look 1)
 
 The user, 2026-11-02: "analyse the volume bot and find improvments - 1. improve the gain. 2. number of trades
