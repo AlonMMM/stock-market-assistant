@@ -134,7 +134,7 @@ export interface VolumeTrade {
   spread: number | null; // (ask - bid) / mid of that book
   buyPriced: PricedBy;
   exitMinute: number;
-  exitReason: "giveback" | "end";
+  exitReason: "giveback" | "end" | "stop";
   sell: number;
   sellPriced: PricedBy;
   stockOut: number | null;
@@ -170,6 +170,12 @@ export interface VolumeRunOptions {
   fillPct: number;
   /** No book at the buy or the sale: no trade (the research simulator's way), not the bars. */
   strictQuotes?: boolean;
+  /**
+   * The broker's safety stop the live bot sends with every buy (stopPct
+   * safetyStopPct): the first minute book whose bid is at or under the buy
+   * less safetyStopPct sells at that bid, before the give-back or the end.
+   */
+  safetyStop?: boolean;
   /** The day's alerts instead of the computed ones (the parity check reads the research's). */
   alerts?: (
     symbol: string,
@@ -245,6 +251,18 @@ function bookAtSecond(
   let best: SecondBook | null = null;
   for (const r of rows) if (r.s <= s) best = r;
   return best;
+}
+
+/** The first minute after the buy, up to `last`, whose book's bid is at or under `stop`. */
+function stopHit(
+  day: readonly QuoteMinute[],
+  buyMinute: number,
+  last: number,
+  stop: number,
+): QuoteMinute | null {
+  for (const q of day)
+    if (q.m > buyMinute && q.m < last && q.bid <= stop) return q;
+  return null;
 }
 
 /** The side: the first second past a line (plan), or the 5th check in a row on one side (shock). */
@@ -684,12 +702,22 @@ export async function runVolumeStock(
         end,
         s,
       );
-      const sale = bookAt(dayQuotes, exit.minute);
+      const stopped = o.safetyStop
+        ? stopHit(
+            dayQuotes,
+            ct,
+            exit.minute,
+            bought.buy * (1 - s.safetyStopPct / 100),
+          )
+        : null;
+      const exitMinute = stopped?.m ?? exit.minute;
+      const exitReason = stopped ? "stop" : exit.reason;
+      const sale = stopped ?? bookAt(dayQuotes, exitMinute);
       let sell: number | null = null;
       let sellPriced: PricedBy = "minutes";
       if (sale) sell = sale.bid;
       else if (!o.strictQuotes) {
-        const b = lastBar(legBars, exit.minute);
+        const b = lastBar(legBars, exitMinute);
         if (b) sell = Math.max(mid(b) * (1 - o.fillPct / 100), 0.01);
         sellPriced = "bars";
       }
@@ -712,11 +740,11 @@ export async function runVolumeStock(
         book: bought.book,
         spread: bought.spread,
         buyPriced: bought.priced,
-        exitMinute: exit.minute,
-        exitReason: exit.reason,
+        exitMinute,
+        exitReason,
         sell,
         sellPriced,
-        stockOut: lastBar(bars, exit.minute, 5)?.c ?? null,
+        stockOut: lastBar(bars, exitMinute, 5)?.c ?? null,
       };
       done("traded");
     }

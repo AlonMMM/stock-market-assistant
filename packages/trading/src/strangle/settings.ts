@@ -173,7 +173,7 @@ export const strangleLimits: Record<
   maxPerStock: [1, 5, 1],
   maxOpen: [1, 50, 1],
   dayLossPct: [1, 100, 0.5],
-  safetyStopPct: [30, 70, 5],
+  safetyStopPct: [30, 80, 5],
   firstMinute: [5, 120, 5],
   lastMinute: [30, 300, 1],
   delta: [0.2, 0.5, 0.05],

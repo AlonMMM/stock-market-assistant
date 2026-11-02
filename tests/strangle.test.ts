@@ -182,7 +182,7 @@ test("settings: the backtested defaults; bad values refused; the stocks; the rul
   assert.equal(d.giveBackUnits, 0.75);
   assert.deepEqual(parseStrangleSettings(d), { ok: true, value: d });
   assert.equal(parseStrangleSettings({ ...d, sizePct: 7 }).ok, false);
-  assert.equal(parseStrangleSettings({ ...d, safetyStopPct: 80 }).ok, false);
+  assert.equal(parseStrangleSettings({ ...d, safetyStopPct: 85 }).ok, false);
   assert.equal(parseStrangleSettings({ ...d, maxTradesPerDay: 101 }).ok, false);
   assert.equal(parseStrangleSettings({ ...d, giveBackUnits: 2 }).ok, false);
   assert.equal(parseStrangleSettings({ ...d, lastMinute: 5 }).ok, false);

@@ -155,11 +155,11 @@ test("engine buy: an order that never fills is canceled, no stop, no post", asyn
   assert.equal(sent.length, 0);
 });
 
-test("engine buy: a stop above 70% is refused before any order", async () => {
+test("engine buy: a stop above 80% is refused before any order", async () => {
   const { broker, engine } = setup();
-  const out = await engine.buy({ contract: friday, sizePct: 0.5, stopPct: 80 });
+  const out = await engine.buy({ contract: friday, sizePct: 0.5, stopPct: 90 });
   assert.ok("refused" in out);
-  assert.match(out.refused.join(), /^stop: stop 80% is outside 0–70%/);
+  assert.match(out.refused.join(), /^stop: stop 90% is outside 0–80%/);
   assert.equal(broker.orders.size, 0);
 });
 

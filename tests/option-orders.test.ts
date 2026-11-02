@@ -251,7 +251,7 @@ test("ladder: never pays above the budget cap", async () => {
   assert.equal(below.status, "rejected-budget");
 });
 
-test("stop: 40% of the premium by default, never more than 70%", () => {
+test("stop: 40% of the premium by default, never more than 80%", () => {
   assert.equal(defaultStopPct, 40);
   assert.equal(stopPrice(1.0, 40), 0.6);
   assert.equal(stopPrice(0.5, 40), 0.3);
@@ -259,7 +259,7 @@ test("stop: 40% of the premium by default, never more than 70%", () => {
   assert.equal(stopPrice(1.69, 40), 1.02);
   assert.equal(stopPrice(5.2, 70), 1.56);
   assert.equal(stopPrice(10, 40), 6);
-  assert.throws(() => stopPrice(1, 71), /at most 70%/);
+  assert.throws(() => stopPrice(1, 81), /at most 80%/);
   assert.throws(() => stopPrice(1, 0));
 });
 

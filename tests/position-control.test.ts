@@ -387,10 +387,10 @@ test("move stop: one stop changes in place; several become one; bad prices are r
       e instanceof RequestError && /at or above the bid 1\.00/.test(e.message),
   );
   await assert.rejects(
-    service.moveStop({ contract: friday, price: 0.2 }),
+    service.moveStop({ contract: friday, price: 0.1 }),
     (e) =>
       e instanceof RequestError &&
-      /more than 70% below the entry/.test(e.message),
+      /more than 80% below the entry/.test(e.message),
   );
   assert.deepEqual(await stopsNow(), [[4, 0.8]]);
   // After an addition there are two stops: moving makes one for all six.

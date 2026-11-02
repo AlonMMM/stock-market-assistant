@@ -40,7 +40,7 @@ export const defaultDeltaRange = [0.1, 0.15] as const;
 // Stop loss as a share of the premium paid: 40% unless the command says
 // otherwise, never more than 70%.
 export const defaultStopPct = 40;
-export const maxStopPct = 70;
+export const maxStopPct = 80;
 
 const occ = /^([A-Z.]{1,6})(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/;
 

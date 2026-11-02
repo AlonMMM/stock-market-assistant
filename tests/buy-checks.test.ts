@@ -140,7 +140,7 @@ const cases: [string, (c: BuyContext) => void, RegExp][] = [
   ],
   ["size", (c) => (c.order.sizePct = 5.5), /size 5\.5% is outside 0–5%/],
   ["size", (c) => (c.order.qty = 0), /buys no contract at 1\.03/],
-  ["stop", (c) => (c.order.stopPct = 71), /stop 71% is outside 0–70%/],
+  ["stop", (c) => (c.order.stopPct = 81), /stop 81% is outside 0–80%/],
   [
     "stop",
     (c) => {
