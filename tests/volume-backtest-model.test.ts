@@ -146,7 +146,16 @@ test("volume backtest page: every alert, newest first, with the account's verdic
   );
   assert.equal(story.exits.length, 1);
   assert.equal(story.exits[0]!.price, 0.82);
-  assert.ok(story.markers.some((m) => m.kind === "signal"));
+  // The alert's label on the chart's clock, Israel time (not New York).
+  const alert = story.markers.find((m) => m.kind === "signal")!;
+  const israel = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jerusalem",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(alert.ms);
+  assert.equal(alert.label, `alert ${israel}`);
   assert.equal(volumeBacktestStory(taken, settings, false).stop, null);
 });
 
