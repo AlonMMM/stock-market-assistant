@@ -1,4 +1,10 @@
-import { StrictMode, useEffect, useState } from "react";
+import {
+  Component,
+  StrictMode,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { createRoot } from "react-dom/client";
 import { parseAlertLink } from "../../../packages/contracts/src/alert-link.js";
 import { BotBacktest } from "./BotBacktest.js";
@@ -6,6 +12,24 @@ import { Portfolio } from "./Portfolio.js";
 import { ThemeButton } from "./ThemeButton.js";
 import { WatchlistPage } from "./WatchlistPage.js";
 import "./styles.css";
+
+// After a deploy, a page opened before it still names the old chunks, which
+// are gone: opening a stock or a chart failed to load its code and left a
+// blank page (user 2026-11-02). Load the page again, once, to get the new
+// ones; not again within a minute, so a real outage does not loop.
+const reloadKey = "sma.chunk-reload";
+window.addEventListener("vite:preloadError", (event) => {
+  let last = 0;
+  try {
+    last = Number(sessionStorage.getItem(reloadKey) ?? 0);
+    if (Date.now() - last < 60_000) return;
+    sessionStorage.setItem(reloadKey, String(Date.now()));
+  } catch {
+    // No storage (a private window): reload anyway.
+  }
+  event.preventDefault();
+  location.reload();
+});
 
 // The Alerts section was removed (user 2026-10-30, "we are not using it"); the
 // volume alerts still run behind the Volume bot and show on the Watchlist.
@@ -143,10 +167,35 @@ function App() {
   );
 }
 
+/** A part of the page that failed (its code did not load): say so, never a blank page. */
+class Failed extends Component<{ children: ReactNode }, { error: string }> {
+  state = { error: "" };
+  static getDerivedStateFromError(error: unknown) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="notice" role="alert">
+        <p>
+          This part of the page did not load. A new version may have just been
+          published.
+        </p>
+        <button type="button" onClick={() => location.reload()}>
+          Reload the page
+        </button>
+        <p className="muted small">{this.state.error}</p>
+      </div>
+    );
+  }
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <main>
-      <App />
+      <Failed>
+        <App />
+      </Failed>
     </main>
   </StrictMode>,
 );
