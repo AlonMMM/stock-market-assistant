@@ -1122,6 +1122,25 @@ test("shock (2026-11-02): no side line within 20 s of the alert ends the watch; 
     late.store.recentTrades(DAY)[0]!.closeReason,
     "no side fast enough after the alert",
   );
+  // a touch at exactly 20 s counts
+  const edge = harness(
+    { mode: "live", ...SHOCK },
+    { day: climbThenFall(), last: () => last },
+  );
+  await edge.run(565, 609);
+  await shockAt(edge, 101);
+  const e0 = edge.store.openTrades()[0]!.stockRef;
+  last = e0;
+  for (let sec = 1; sec <= 19; sec++) await edge.watch(610, sec);
+  last = e0 * 1.01;
+  await edge.watch(610, 20);
+  last = e0;
+  await edge.watch(610, 21);
+  assert.equal(
+    edge.store.openTrades()[0]?.touched,
+    true,
+    "touched at 20 s, still watching",
+  );
   // a touch at 15 s, then the side holds 5 checks from 100 s: bought
   const ok = harness(
     { mode: "live", ...SHOCK },

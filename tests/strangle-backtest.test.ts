@@ -269,6 +269,30 @@ test("volume backtest: the shock holds 5 checks in a row, buys at the 1-second b
   assert.equal(off.signals.filter((s) => s.kind === "shock").length, 0);
 });
 
+test("volume backtest (2026-11-02): a shock needs a side line touched within 20 s of its alert; at 20 s it counts, at 21 s it does not", async () => {
+  const today = climbThenFall();
+  const price = today[39]!.c;
+  const up = price * 1.002;
+  const shocks = [{ date: DAY, second: 2340, price, up: true }];
+  const optionSeconds: SecondBook[] = [{ s: 2366, bid: 1.0, ask: 1.2 }];
+  const hold = (from: number): [number, number][] =>
+    [0, 1, 2, 3, 4].map((k) => [from + k, up]);
+  const at = async (seconds: [number, number][]) => {
+    const r = await run(
+      harness({ today, seconds, shocks, optionSeconds, books }).data,
+    );
+    return r.signals.find((s) => s.kind === "shock")!;
+  };
+  const in20 = await at(hold(2360)); // the touch 20 s after the alert
+  assert.equal(in20.outcome, "traded", in20.detail);
+  const late = await at(hold(2361)); // first touch 21 s after
+  assert.equal(late.outcome, "slow_cross");
+  assert.match(late.detail, /within 20 s/);
+  // a touch at 10 s, back inside, then the 5 checks from 60 s: traded
+  const later = await at([[2350, up], [2351, price], ...hold(2400)]);
+  assert.equal(later.outcome, "traded", later.detail);
+});
+
 test("volume backtest: the news filter, no expiry, and no book in strict mode", async () => {
   const today = climbThenFall();
   const stock0 = today[39]!.c;

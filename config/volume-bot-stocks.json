@@ -1,6 +1,6 @@
 {
   "asOf": "2026-11-02",
-  "source": "The Volume bot's production list: the top 50 of strangle_rank.json (research/indi-v2, watchlist names with 5+ alerts ranked by the median real spread of the 0.35-delta call + put at the alerts) plus SLV (added 2026-10-28; TQQQ, SOXL and SMH added then, out again 2026-11-02). The backtest headline ($782,861 research, $608,664 live code, 2024-02 to 2026-10) is on this list.",
+  "source": "The Volume bot's production list: the top 50 of strangle_rank.json (research/indi-v2, watchlist names with 5+ alerts ranked by the median real spread of the 0.35-delta call + put at the alerts) plus SLV (added 2026-10-28; TQQQ, SOXL and SMH added then, out again 2026-11-02). The backtest headlines ($782,861 research, $608,664 live code, 2024-02 to 2026-10) were on the 54-name list.",
   "symbols": [
     "QQQ",
     "TSLA",
