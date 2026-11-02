@@ -149,6 +149,44 @@ const priceOf = (result: unknown): number | null => {
   const r = result as { result?: { price?: unknown } } | null;
   return typeof r?.result?.price === "number" ? r.result.price : null;
 };
+/**
+ * Why a buy order came back with nothing filled, from its job (user
+ * 2026-11-02: USO "bought the leg", then "the buy did not fill", no reason).
+ * The ladder refuses to send at a spread over 25% or no bid, or when the
+ * price ran past the order's cap; else the broker ended the order.
+ */
+export function noFillWhy(job: { state: string; result: unknown }): string {
+  if (job.state !== "done") {
+    const error = (job.result as { error?: unknown } | null)?.error;
+    if (typeof error === "string") return `the order failed: ${error}`;
+    return `the order ended ${job.state}`;
+  }
+  const r = (
+    job.result as {
+      result?: {
+        status?: string;
+        spreadRatio?: number;
+        quote?: { bid?: number; ask?: number };
+        order?: { status?: string };
+      };
+    } | null
+  )?.result;
+  const q = r?.quote;
+  let book = "";
+  if (q && typeof q.bid === "number" && typeof q.ask === "number")
+    book = ` (bid ${q.bid.toFixed(2)}, ask ${q.ask.toFixed(2)})`;
+  if (r?.status === "rejected-spread") {
+    if (!q || !(typeof q.bid === "number" && q.bid > 0))
+      return `no bid${book}: not sent`;
+    const spread = Math.round((r.spreadRatio ?? 0) * 100);
+    return `spread ${spread}%${book}, over the 25% limit: not sent`;
+  }
+  if (r?.status === "rejected-budget")
+    return `the price ran past the order's cap${book}: not sent`;
+  if (r?.order?.status) return `the broker ended it: ${r.order.status}${book}`;
+  return `nothing filled${book}`;
+}
+
 const soldOf = (result: unknown): number => {
   const r = result as { result?: { sold?: unknown } } | null;
   return typeof r?.result?.sold === "number" ? r.result.sold : 0;
@@ -172,7 +210,9 @@ function alertWords(fast?: { shock?: boolean }): string {
 
 const outcomeWords: Record<string, string> = {
   watching: "watching for the side",
-  traded: "bought the leg",
+  // The order is sent; "Bought n at p" follows on a fill, "no_fill" if none.
+  traded: "sent the buy",
+  no_fill: "the buy did not fill",
   "would-trade": "would buy the leg (dry run)",
   no_side: "no side in time",
   no_expiry: "no expiry today, the next session or later this week",
@@ -1041,7 +1081,7 @@ export class StrangleBot {
   ) {
     this.o.store.updateSignal(date, symbol, outcome, detail);
     const kind: StrangleEventKind =
-      outcome === "traded" || outcome === "would-trade"
+      outcome === "traded" || outcome === "would-trade" || outcome === "no_fill"
         ? "order"
         : outcome === "watching"
           ? "info"
@@ -1231,12 +1271,18 @@ export class StrangleBot {
           leg.bought += filled;
           leg.qty = now;
           if (held) leg.cost = held.avgEntryPrice;
-          this.event(
-            "order",
-            filled > 0
-              ? `Bought ${filled} ${t.symbol} ${this.words(leg.contract)} at ${price.toFixed(2)}`
-              : `${t.symbol} ${this.words(leg.contract)}: the buy did not fill`,
-          );
+          if (filled > 0)
+            this.event(
+              "order",
+              `Bought ${filled} ${t.symbol} ${this.words(leg.contract)} at ${price.toFixed(2)}`,
+            );
+          else if (leg.qty === 0)
+            this.outcome(t.day, t.symbol, "no_fill", noFillWhy(job));
+          else
+            this.event(
+              "order",
+              `${t.symbol} ${this.words(leg.contract)}: the buy did not fill (${noFillWhy(job)})`,
+            );
         } else {
           const sold = soldOf(job.result);
           o.qty = sold;

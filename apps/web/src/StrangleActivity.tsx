@@ -95,6 +95,7 @@ const afterSide = new Set([
   "day_loss",
   "strength",
   "refused",
+  "no_fill",
 ]);
 const isBought = (outcome: string) =>
   outcome === "traded" || outcome === "would-trade";
