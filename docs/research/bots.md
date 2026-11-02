@@ -92,3 +92,20 @@ Close to the best; a new test can be run with each of them on or off. Each is a 
   and the fallback-added trades at half size (`dd_reduce.py`; the liquid-fallback ones only, or both fallbacks).
 - **Re-entry with D2** (proposed 2026-10-25, waiting for the user's three answers): after an entry-day stop that was
   mostly SPY's doing, re-enter when D2 since the exit >= 1.5 with t >= 1.2 and volume >= 1.5x; R0 control without D2.
+
+## The Volume bot (its own versions, apart from the Main bot)
+
+Versions live in the app repo, `packages/trading/src/strangle/versions.ts` (`volumeVersions`, PR #238), shown as
+"Volume 1.x.y"; the saved setting `version` picks one and every Volume trade is stamped with it ("1.1.0", or "1.1.0*"
+when the saved rules differ). Not part of a version: size, trades a day, open trades, day loss, the broker safety stop,
+the stock list. Research log: `volume-bot.md`. Benchmark page: Volume Bot, https://claude.ai/artifact/1dm8djqm2D4N6NRVJnzHPz.
+
+| Role | Version | Since | Rules | PR | Research twin |
+|---|---|---|---|---|---|
+| **Champion** (until 1.1.0's live check passes) | Volume 1.0.0 | 2026-10-30 | the plan alert (15-s cross, burst 1.1, same-week 2.5), the shock alert (5 checks within 300 s), the 0.20 leg with the liquid fallback, give-back on minute closes after 30 min | #193-#204, #224 | leg_seconds.py with the 11-01 alignment (PF_MAX_S=300) |
+| **Candidate, live since 2026-11-02** (stage 5 pending) | Volume 1.1.0 | 2026-11-02 | 1.0.0 + a shock only when the stock touches a side line within 20 s (`shockTouchSeconds`) + a too-cheap-and-thin leg takes the liquid strike (`cheapRescue`) | #236, #238 | leg_seconds.py PF_MAX_S=20 STR_LIQ_OLD=1 (the 10-30 dashboard's "Live (PR #204)") |
+
+Owner's limits on 2026-11-02: 51 stocks (top 50 + SLV), 3% a trade, 15 a day, 2 a stock, 5 open, 7.5% day loss, broker
+safety stop -80% (PR #237). Year 2025-11-03 .. 2026-10-30, the 1.1.0 code, 51 stocks, no stop: $100K -> $142.1K at 2%
+(13% drop), $162.1K at 3%; tune $111.9K, check $125.6K. Next: the live check (`bot-live-check`): one month of the app
+backtest vs the research twin trade by trade, and the E2E run; PASS makes 1.1.0 the champion.
