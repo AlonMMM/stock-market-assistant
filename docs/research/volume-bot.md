@@ -88,6 +88,26 @@ since its last shock that day, once that move is >= X S30 (2, 3, 5, set before t
 - Since the last shock: no trade of 1.1.0 is skipped (ORCL 14:49 was already refused: the first trade still open).
 
 
+### Roll at +400% into a 0.30 delta (2026-11-02, look 1)
+
+The user: "Can you test a rolling strategy? Say we are on 400%, sell all and buy 0.3 delta at 50% from the money. Check
+this on last 6 month first." Read: the first minute book with the bid >= 5x the buy sells all; 50% of the proceeds buys
+the 0.30-delta strike (same side and expiry; delta by Black-Scholes from each strike's mid on its real book), the rest
+stays cash; the new leg sells at the trade's own exit minute (the give-back is on the stock) at that minute's bid.
+Volume 1.1.0 live-code year (`pr_` parts, 51 stocks, limits on), `volume_roll400.py` + scratchpad `rollacct.ts`.
+
+| Version | 6 months (05-01 on) 2% (3%) / drop | Year 2% (3%) / drop | Year tune / check |
+|---|---|---|---|
+| hold (1.1.0) | $117.5K ($127.1K) / 13% | $142.1K ($162.1K) / 13% | $111.9K / $125.6K |
+| take all at +400% | $120.6K ($130.8K) / 14% | $124.4K ($136.0K) / 15% | $110.5K / $112.3K |
+| roll 50% into 0.30 | $113.8K ($120.9K) / 14% | $135.1K ($153.2K) / 14% | $105.9K / $127.9K |
+| roll 100% into 0.30 | $107.7K ($110.9K) / 14% | $144.4K ($166.5K) / 14% | $101.1K / $142.9K |
+
+7 trades in the year touched +400% (5 in the 6 months). The new 0.30 leg lost on 6 of 7 (-63% GOOGL 08-05, -21% SLV,
+-16% QCOM, -14% ORCL, -14% QQQ, +3% META 05-27 [the books held only 0.47 delta there]) and won once: META 2026-04-08
+(+299%, the trade went on to +1258%). The roll gives back part of each winner's last leg; the year's gain for the
+100% roll is that one trade. Verdict: not better (worse on 6 months and on tune at every share).
+
 ### No shock against the last hour's move, 3 years (2026-11-02, look 3) + the first 20 minutes
 
 The user: "can you run it on the whole test?" and "how many bought we had in our 3 y test that are in the first 20
