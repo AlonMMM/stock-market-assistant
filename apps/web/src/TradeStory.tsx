@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -51,7 +52,15 @@ import {
   type Story,
   type TradeStats,
 } from "./trade-story-model.js";
-import type { ChartStyle, ChartView, Hover } from "./TradeStoryChart.js";
+import type { ChartBars } from "../../../packages/market-data/src/chart-bars.js";
+import { tradeLevels } from "./chart-levels.js";
+import { barsUrl } from "./fullscreen-model.js";
+import type {
+  ChartStyle,
+  ChartView,
+  ChartZoom,
+  Hover,
+} from "./TradeStoryChart.js";
 
 // A closed trade's story (docs/tasks/frontend-trade-story.md), in a window
 // over the History list: the days around the trade on a chart that zooms and
@@ -63,20 +72,36 @@ import type { ChartStyle, ChartView, Hover } from "./TradeStoryChart.js";
 const TradeStoryChart = lazy(() =>
   import("./TradeStoryChart.js").then((m) => ({ default: m.TradeStoryChart })),
 );
+const TradeDailyChart = lazy(() =>
+  import("./TradeStoryChart.js").then((m) => ({ default: m.TradeDailyChart })),
+);
 
 const ignore = () => {};
 const refreshMs = 60000;
 const styleKey = "trade-story-style";
+const levelsKey = "trade-story-levels";
+// The daily candles read this many sessions past the exit (up to today).
+const dailyAfter = 20;
 
 const views: { id: ChartView; label: string }[] = [
   { id: "trade", label: "The trade" },
   { id: "day", label: "Trade day" },
   { id: "all", label: "All days" },
+  { id: "daily", label: "Daily" },
 ];
 const styles: { id: ChartStyle; label: string }[] = [
   { id: "line", label: "Line" },
   { id: "candles", label: "Candles" },
 ];
+
+// Support and resistance are drawn unless the viewer turned them off.
+function savedLevels(): boolean {
+  try {
+    return localStorage.getItem(levelsKey) !== "off";
+  } catch {
+    return true;
+  }
+}
 
 function savedStyle(): ChartStyle {
   try {
@@ -519,6 +544,10 @@ export function TradeStoryBody({
   const [viewKey, setViewKey] = useState(0);
   const [style, setStyle] = useState<ChartStyle>(savedStyle);
   const [hover, setHover] = useState<Hover | null>(null);
+  const [showLevels, setShowLevels] = useState(savedLevels);
+  const [zoom, setZoom] = useState<ChartZoom>({ n: 0, factor: 1 });
+  const [daily, setDaily] = useState<ChartBars | null>(null);
+  const [dailyError, setDailyError] = useState("");
   // More days are read as the viewer drags past the first or last one; each
   // side is read once at a time and no more once there is nothing before or after.
   const edges = useRef({
@@ -552,6 +581,28 @@ export function TradeStoryBody({
       active = false;
     };
   }, [symbol, opened, closedAt]);
+
+  // The stock's daily bars: the levels of the days before the entry, and the
+  // daily candles. Read once the chart names the stock.
+  const underlying = chart?.underlying ?? null;
+  useEffect(() => {
+    if (!underlying) return;
+    let active = true;
+    const exitDay = (closedAt ?? new Date().toISOString()).slice(0, 10);
+    const open = lastOpenSession(Date.now());
+    const after = nextSessions(exitDay, dailyAfter).filter((d) => d <= open);
+    fetch(barsUrl(underlying, "SPY", "1D", after.at(-1) ?? open))
+      .then((r) => readJson<ChartBars>(r))
+      .then((d) => {
+        if (active) setDaily(d);
+      })
+      .catch((e: Error) => {
+        if (active) setDailyError(e.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [underlying, closedAt]);
 
   useEffect(() => {
     if (!isLive) return;
@@ -619,6 +670,16 @@ export function TradeStoryBody({
     setView(v);
     setViewKey((k) => k + 1);
   };
+  const toggleLevels = () => {
+    const next = !showLevels;
+    setShowLevels(next);
+    try {
+      localStorage.setItem(levelsKey, next ? "on" : "off");
+    } catch {
+      // A private window: the choice lasts for this window only.
+    }
+  };
+  const zoomBy = (factor: number) => setZoom((z) => ({ n: z.n + 1, factor }));
   const chooseStyle = (s: ChartStyle) => {
     setStyle(s);
     try {
@@ -663,6 +724,21 @@ export function TradeStoryBody({
     }
     return ownerStory(t, decisionFor(t, orders?.decisions ?? []));
   }, [t, source, records, orders, backtest]);
+  // The entry and exit days, from the story's fills.
+  const fillDays = useMemo(() => {
+    const fills = (story?.markers ?? []).filter(
+      (m) => m.kind === "buy" || m.kind === "sell" || m.kind === "expired",
+    );
+    return {
+      entry: fills[0]?.at.date ?? null,
+      exit: fills.at(-1)?.at.date ?? null,
+    };
+  }, [story]);
+  const levels = useMemo(() => {
+    if (!fillDays.entry) return [];
+    const day = chart?.sessions.find((s) => s.date === fillDays.entry) ?? null;
+    return tradeLevels(daily?.rows ?? null, fillDays.entry, day);
+  }, [daily, chart, fillDays]);
   const stats = useMemo(
     () => (story && chart ? tradeStats(t, story, chart) : null),
     [t, story, chart],
@@ -671,6 +747,43 @@ export function TradeStoryBody({
   const fills = t.fills ?? [];
   const unit = t.option ? "contract" : "share";
   const plural = (n: number) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  let chartBody: ReactNode;
+  if (view === "daily")
+    chartBody = (
+      <DailyView
+        daily={daily}
+        error={dailyError}
+        entry={fillDays.entry}
+        exit={fillDays.exit}
+        levels={levels}
+        showLevels={showLevels}
+        zoom={zoom}
+      />
+    );
+  else if (chart && story)
+    chartBody = (
+      <Suspense fallback={<div className="ts-chart" />}>
+        <TradeStoryChart
+          chart={chart}
+          story={story}
+          view={view}
+          viewKey={viewKey}
+          style={style}
+          onEdge={onEdge}
+          onHover={setHover}
+          levels={levels}
+          showLevels={showLevels}
+          zoom={zoom}
+          compact={compact}
+        />
+      </Suspense>
+    );
+  else
+    chartBody = (
+      <p className="chart-status">
+        {chartError ? `No chart: ${chartError}` : "Loading the chart…"}
+      </p>
+    );
   return (
     <>
       {stats &&
@@ -708,42 +821,62 @@ export function TradeStoryBody({
               </button>
             ))}
           </div>
+          {/* The daily chart is always candles. */}
+          {view !== "daily" && (
+            <div
+              className="segmented small"
+              role="group"
+              aria-label="How prices are drawn"
+            >
+              {styles.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  aria-pressed={style === s.id}
+                  onClick={() => chooseStyle(s.id)}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div
             className="segmented small"
             role="group"
-            aria-label="How prices are drawn"
+            aria-label="Support and resistance"
           >
-            {styles.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                aria-pressed={style === s.id}
-                onClick={() => chooseStyle(s.id)}
-              >
-                {s.label}
-              </button>
-            ))}
+            <button
+              type="button"
+              aria-pressed={showLevels}
+              onClick={toggleLevels}
+              title="Support and resistance: yesterday's, the 5 days' and the first 15 minutes' high and low, and the day's high and low so far"
+            >
+              Levels
+            </button>
           </div>
-          {hover && chart && <Readout hover={hover} chart={chart} />}
+          <div className="segmented small" role="group" aria-label="Zoom">
+            <button
+              type="button"
+              aria-label="Zoom out"
+              title="Zoom out"
+              onClick={() => zoomBy(2)}
+            >
+              −
+            </button>
+            <button
+              type="button"
+              aria-label="Zoom in"
+              title="Zoom in"
+              onClick={() => zoomBy(0.5)}
+            >
+              +
+            </button>
+          </div>
+          {hover && chart && view !== "daily" && (
+            <Readout hover={hover} chart={chart} />
+          )}
         </div>
-        {chart && story ? (
-          <Suspense fallback={<div className="ts-chart" />}>
-            <TradeStoryChart
-              chart={chart}
-              story={story}
-              view={view}
-              viewKey={viewKey}
-              style={style}
-              onEdge={onEdge}
-              onHover={setHover}
-              compact={compact}
-            />
-          </Suspense>
-        ) : (
-          <p className="chart-status">
-            {chartError ? `No chart: ${chartError}` : "Loading the chart…"}
-          </p>
-        )}
+        {chartBody}
       </section>
       {compact && story && (
         <details className="ts-why-more">
@@ -860,6 +993,43 @@ export function TradeStoryBody({
         </section>
       )}
     </>
+  );
+}
+
+/** The daily candles, or why they are not drawn. */
+function DailyView({
+  daily,
+  error,
+  entry,
+  exit,
+  levels,
+  showLevels,
+  zoom,
+}: {
+  daily: ChartBars | null;
+  error: string;
+  entry: string | null;
+  exit: string | null;
+  levels: ReturnType<typeof tradeLevels>;
+  showLevels: boolean;
+  zoom: ChartZoom;
+}) {
+  if (error) return <p className="chart-status">No daily chart: {error}</p>;
+  if (!daily || !entry)
+    return <p className="chart-status">Loading the daily chart…</p>;
+  if (daily.rows.length === 0)
+    return <p className="chart-status">No daily bars for this stock.</p>;
+  return (
+    <Suspense fallback={<div className="ts-chart daily" />}>
+      <TradeDailyChart
+        rows={daily.rows}
+        entryDate={entry}
+        exitDate={exit}
+        levels={levels}
+        showLevels={showLevels}
+        zoom={zoom}
+      />
+    </Suspense>
   );
 }
 
