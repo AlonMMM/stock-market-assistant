@@ -1592,3 +1592,22 @@ Neighbours of the burst cut (1.0x / 1.5x) are worse than 1.2x but above 1.1.0. C
 scan showed both halves (the check is not clean); the walk scales each trade's P&L (no limits, no contract rounding);
 today's alert-burst tiers on the live code's year failed the check. Next: the burst x2 on the live code's year (pr_ parts,
 volumeAccount, the live limits).
+
+**On the live code's year (look 1 there; `volume_double_feat_year.py` + `volume_double_acct_year.ts`)**: Volume 1.1.0 pr_
+parts, 2025-11-03 .. 2026-10-30, the live limits (15 a day, 5 open, 7.5% day loss, 2 a stock), x2 capped at 5% a
+position; cuts fixed from the 3-year tune. Against the flat size with the same worst drop, at 2%:
+
+| Version | x2 trades | Year (drop) | Tune | Check | Year w/o best 5 | Flat at the same drop: year, tune, check, w/o 5 |
+|---|---|---|---|---|---|---|
+| 1.1.0 | 0 | $142.1K (13%) | $111.9K | $125.6K | -$23.6K | - |
+| 🎯 x2 volume burst >= 1.2x | 86 | $165.6K (23%) | $103.7K | $159.6K | -$56.6K | 3.56%: $173.0K, $119.0K, $144.1K, -$50.5K |
+| neighbour >= 1.0x | 104 | $160.9K (23%) | $105.4K | $152.0K | -$62.7K | 3.55%: $173.1K, $119.0K, $144.0K, -$50.4K |
+| neighbour >= 1.5x | 50 | $194.2K (18%) | $119.7K | $162.0K | -$39.4K | 2.82%: $158.5K, $116.1K, $137.0K, -$36.5K |
+| x2 at the day high | 58 | $145.6K (21%) | $114.7K | $126.8K | -$42.7K | 3.33%: $168.1K, $117.8K, $142.5K, -$45.7K |
+
+- **No candidate.** The pick (1.2x) loses tune to the flat line (and to 1.1.0 itself: $103.7K vs $111.9K) and the year
+  to the flat line; its gain is all in the check half. The day high loses to the flat line on every half.
+- 1.5x beats the flat line on the year and both halves, but only by a little on tune, worse without the best 5 on the
+  year and check, and it was the worse neighbour on the 3 years: choosing it now would be picking from the result.
+- Same as the alert-burst tiers this morning: on the live code's year, a bigger bet on a volume burst does not beat a
+  plain bigger bet. Doubling just adds risk.
