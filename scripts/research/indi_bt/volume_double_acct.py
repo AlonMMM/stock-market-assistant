@@ -13,7 +13,7 @@ for r in allr:
     if key in feat: continue
     m = int(r['minute']); sg = 1 if r['side'] == 'C' else -1
     b = {x[0]: x for x in day(r['sym'], r['date'])}
-    f = {'call': r['side'] == 'C', 'price': float(r['buy'])}
+    f = {'call': r['side'] == 'C', 'price': float(r['buy']), 'shock': r['alert'] == 'shock'}
     if 0 in b and m - 1 in b:
         c = b[m - 1][4]
         vols = [b[i][5] for i in range(m) if i in b]
@@ -32,6 +32,11 @@ V = {
     'x2 strong last 30 min (>= +1.34% our way)': lambda f: f.get('move_30', 0) >= 0.01335,
     'x2 option >= $0.92': lambda f: f['price'] >= 0.92,
     'x2 calls with volume burst': lambda f: f['call'] and f.get('vol10', 0) >= 1.199,
+    'x2 every shock': lambda f: f['shock'],
+    'x2 shock at burst >= 1.2x': lambda f: f['shock'] and f.get('vol10', 0) >= 1.199,
+    '  shock neighbour >= 1.0x': lambda f: f['shock'] and f.get('vol10', 0) >= 1.0,
+    '  shock neighbour >= 1.5x': lambda f: f['shock'] and f.get('vol10', 0) >= 1.5,
+    'x2 shock at the day high': lambda f: f['shock'] and f.get('range_pos', 0) >= 0.9552,
 }
 def walk(view, size, pick):
     tr = sorted([t for t in allr if t['view'] == view and t['size'] == size], key=lambda t: (t['date'], int(t['minute'])))
@@ -57,7 +62,7 @@ for view in ('all', 'wo'):
 # Fair line: the flat size (every trade x m at 2%) with the same worst drop as the x2 version.
 print('\nvs the flat line at the same worst drop (2% base)')
 for view in ('all', 'wo'):
-    for name in ['x2 volume burst (last 10 min >= 1.2x the day avg)', 'x2 at the day high (range pos >= 0.955)', 'x2 strong last 30 min (>= +1.34% our way)', 'x2 calls with volume burst']:
+    for name in ['x2 every shock', 'x2 shock at burst >= 1.2x', '  shock neighbour >= 1.0x', '  shock neighbour >= 1.5x', 'x2 shock at the day high']:
         e, d, h, w = walk(view, '2', V[name])
         lo, hi = 1.0, 2.0
         for _ in range(30):

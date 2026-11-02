@@ -1611,3 +1611,19 @@ position; cuts fixed from the 3-year tune. Against the flat size with the same w
   year and check, and it was the worse neighbour on the 3 years: choosing it now would be picking from the result.
 - Same as the alert-burst tiers this morning: on the live code's year, a bigger bet on a volume burst does not beat a
   plain bigger bet. Doubling just adds risk.
+
+**Shock alerts only (the user: "Can you test it only on shock alert?", look 1)**: x2 on shock trades (all, or with the
+burst / day-high cuts), same scripts. Live code's year, 2%, against the flat size at the same worst drop:
+
+| Version | x2 | Year (drop) | Tune | Check | w/o 5 | Flat: year, tune, check, w/o 5 |
+|---|---|---|---|---|---|---|
+| x2 every shock | 69 | $143.8K (18%) | $129.4K | $111.2K | -$51.5K | 2.82%: $158.5K, $116.1K, $137.0K, -$36.5K |
+| x2 shock at burst >= 1.2x | 43 | $136.2K (17%) | $112.6K | $119.5K | -$43.1K | 2.69%: $155.1K, $115.3K, $134.9K, -$34.7K |
+| shock >= 1.0x / >= 1.5x | 51 / 26 | $139.3K / $140.1K | $119.7K / $119.7K | $118.1K / $116.9K | | 2.69% / 2.52%: $155.2K / $153.0K |
+| x2 shock at the day high | 27 | $150.1K (16%) | $119.9K | $125.1K | -$30.6K | 2.39%: $149.9K, $114.3K, $131.4K, -$29.9K |
+
+3 years (scaled walk): shock at burst >= 1.2x $1,063K at a 19.3% drop vs 1.1.0 $773K (21.1%), better on both halves
+(without 10-10 $390K vs $288K) but worse without the best 5 (-$4K vs +$11K without 10-10). **No candidate**: on the live
+code's year every shock variant loses the check to the flat line; the day high ties it on the year (+$0.2K), wins tune,
+loses check. On this year the doubled shocks' check weeks are the weak half (x2 every shock: tune +$17K over 1.1.0, check
+-$14K).

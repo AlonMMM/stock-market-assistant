@@ -41,6 +41,11 @@ const V: [string, (s: any) => number][] = [
   ["  neighbour >= 1.0x", (s) => (f(s).vol10 >= 1.0 ? 2 : 1)],
   ["  neighbour >= 1.5x", (s) => (f(s).vol10 >= 1.5 ? 2 : 1)],
   ["x2 at the day high", (s) => (f(s).pos >= 0.955 ? 2 : 1)],
+  ["x2 every shock", (s) => (s.kind === "shock" ? 2 : 1)],
+  ["x2 shock at burst >= 1.2x", (s) => (s.kind === "shock" && f(s).vol10 >= 1.2 ? 2 : 1)],
+  ["  shock neighbour >= 1.0x", (s) => (s.kind === "shock" && f(s).vol10 >= 1.0 ? 2 : 1)],
+  ["  shock neighbour >= 1.5x", (s) => (s.kind === "shock" && f(s).vol10 >= 1.5 ? 2 : 1)],
+  ["x2 shock at the day high", (s) => (s.kind === "shock" && f(s).pos >= 0.955 ? 2 : 1)],
 ];
 const K = (n: number) => `${n < 0 ? "-" : "+"}$${Math.abs(n / 1000).toFixed(1)}K`;
 for (const [name, m] of V) {
