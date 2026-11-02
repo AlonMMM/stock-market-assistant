@@ -58,6 +58,22 @@ without the best 5 on both** (not a knife edge); 10x and the day's pace alone lo
 Small money (+$1-5K a half at 2%) on ~15 fewer shock trades. Pick on tune: 5x; 3x is the steadier pass (+$3.4K / +$3.0K).
 **Candidate.** Look 2 of this idea.
 
+**3 years (look 3), the research twin** (`shock_pace_3y.py`: the 10-30 dashboard's "Live (PR #204)" = 1.1.0's twin, top
+50, live limits, 2024-02 .. 2026-10, 431 trades, 165 shock; each shock trade's alert from eventse_shock15.json, its pace
+from the 10-second bars; under K x skipped, the account re-walked, a skipped slot not refilled; filtered, not re-run):
+
+| Version | Trades | 2% (drop) | 3% (drop) | Tune P&L | Check P&L | W/o best 5 |
+|---|---|---|---|---|---|---|
+| 1.1.0 twin | 431 | $773.1K (21.1%) | $1,548K (30.5%) | +$73.4K | +$599.7K | +$200.7K |
+| 🎯 shock + >= 3x the day's pace | 405 | $822.2K (20.8%) | $1,697K (30.1%) | +$96.3K | +$625.9K | +$228.1K |
+| shock + >= 5x | 378 | $811.0K (22.8%) | $1,659K (32.7%) | +$122.6K | +$588.4K | +$255.2K |
+
+3x skips 26 shock trades: median -17%, 7 won, none of +100% (best SMCI 2024-04-19 +94%, IONQ +72%, MSTR 2026-08-19 +50%),
+flat $2K -$5.7K, negative in 5 of the 6 year-halves; better on tune AND check, a smaller drop, better without the best 5.
+5x skips 53 including three +100% (AVGO 2024-04-19 +621% at 4.4x, QBTS +140%, SPCX +140%): loses the check and a deeper
+drop. **3x passes on the live-code year (exact) and on 3 years (filtered); 5x fails the 3-year check. The candidate is
+3x.**
+
 ### More gain, more trades: floor, limits, burst sizing, runners, plan delta, news days (2026-11-02, look 1)
 
 The user, 2026-11-02: "analyse the volume bot and find improvments - 1. improve the gain. 2. number of trades
