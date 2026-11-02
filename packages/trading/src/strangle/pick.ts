@@ -61,6 +61,33 @@ export async function legAt(
   };
   const got = pickContract(quotes, stock, right, day, rules);
   if (got.quote) onPicked?.(got.quote);
+  // Too cheap and also thin: a liquid strike instead (the research's
+  // leg_fallback "liquid" before 2026-11-01, the user 2026-11-02); too cheap
+  // but busy stays no trade.
+  if (
+    !got.ok &&
+    got.reason === "too_cheap" &&
+    got.quote &&
+    s.liquidFallback &&
+    s.minVolume > 0
+  ) {
+    const thin = got.quote;
+    if ((await volume30(thin.symbol)) < s.minVolume)
+      for (const c of liquidOrder(
+        quotes,
+        stock,
+        right,
+        thin.expiry,
+        { quote: thin, delta: Math.abs(thin.delta ?? delta) },
+        rules,
+      ))
+        if ((await volume30(c.quote.symbol)) >= s.minVolume)
+          return {
+            ok: true,
+            ...c,
+            fallback: ` (liquid fallback: ${words(thin.symbol)} under $${s.minPrice.toFixed(2)} and thin)`,
+          };
+  }
   if (!got.ok) return { ok: false, outcome: got.reason, detail: right };
   if (s.minVolume <= 0)
     return {

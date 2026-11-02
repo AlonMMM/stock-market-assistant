@@ -156,9 +156,15 @@ const soldOf = (result: unknown): number => {
 // The shock alert's entry: shockRules (strangle/decide.ts), shared with the backtest.
 const shockHoldChecks = shockRules.holdChecks;
 const shockHoldWithin = shockRules.holdWithin;
+const shockTouchWithin = shockRules.touchWithin;
 const shockMaxSpread = shockRules.maxSpread;
 
 /** The alert's name at the start of a watch's detail. */
+/** A shock trade's time left: shockTouchWithin until its stock touches a side line, then shockHoldWithin. */
+function shockWindow(t: StrangleTrade): number {
+  return t.touched ? shockHoldWithin : shockTouchWithin;
+}
+
 function alertWords(fast?: { shock?: boolean }): string {
   if (!fast) return "";
   return fast.shock ? "shock alert; " : "60-second alert; ";
@@ -425,6 +431,11 @@ export class StrangleBot {
         if (!stock || waitedOut(m, t.alertMinute, s) || m >= s.endMinute)
           continue;
         const side = sideOf(stock, t.stockRef, t.unit, s);
+        if (t.shock && side && !t.touched) {
+          // A side line touched within shockTouchWithin keeps the shock (stored: a restart keeps it).
+          t.touched = true;
+          this.o.store.saveTrade(t);
+        }
         if (t.shock) {
           // The shock buys once the side has held 5 checks in a row (leg_seconds.py hold5).
           const held = this.holds.get(t.id);
@@ -1119,6 +1130,10 @@ export class StrangleBot {
     const burst = fast
       ? burstAtSecond(this.barsOf(symbol), fast.second, fast.price, unit)
       : burstOf(this.barsOf(symbol), m, unit);
+    // The shock's watch starts a few seconds after its alert: a touch in the
+    // tape's 10-second bars since then counts (high / low, as f60_prefilter).
+    const touched =
+      !!fast?.shock && this.tapeTouch(symbol, fast.second, ref, unit, s);
     const trade: StrangleTrade = {
       id: randomUUID(),
       day: date,
@@ -1129,7 +1144,7 @@ export class StrangleBot {
       stockRef: ref,
       burst,
       ...(fast ? { alertSecond: fast.second, fast: true } : {}),
-      ...(fast?.shock ? { shock: true } : {}),
+      ...(fast?.shock ? { shock: true, touched } : {}),
       side: null,
       sideMinute: null,
       best: null,
@@ -1354,6 +1369,27 @@ export class StrangleBot {
     return (newYork(now).minute - 570) * 60 + (Math.floor(now / 1000) % 60);
   }
 
+  /** Whether the tape's 10-second bars from `second` to shockTouchWithin later reach a side line. */
+  private tapeTouch(
+    symbol: string,
+    second: number,
+    ref: number,
+    unit: number,
+    s: StrangleSettings,
+  ): boolean {
+    if (!this.tape) return false;
+    const from = this.tape.openMs / 1000 + second;
+    return this.tape
+      .bars(symbol)
+      .some(
+        (b) =>
+          b.start >= from &&
+          b.start < from + shockTouchWithin &&
+          (sideOf(b.high, ref, unit, s) !== null ||
+            sideOf(b.low, ref, unit, s) !== null),
+      );
+  }
+
   /** Seconds from the alert to now: a minute alert is read at its minute's close, the 60-second one at its own second. */
   private lateBy(t: StrangleTrade): number {
     return this.sessionSecond() - (t.alertSecond ?? (t.alertMinute + 1) * 60);
@@ -1361,18 +1397,24 @@ export class StrangleBot {
 
   /**
    * With the cross filter, the side has to come within crossMaxSeconds of the
-   * alert; a shock trade's side has to hold within shockHoldWithin seconds.
+   * alert; a shock trade's stock has to touch a side line within
+   * shockTouchWithin seconds and its side hold within shockHoldWithin.
    */
   private tooLate(t: StrangleTrade, s: StrangleSettings): boolean {
-    if (t.shock) return this.lateBy(t) > shockHoldWithin;
+    if (t.shock) return this.lateBy(t) > shockWindow(t);
     return s.crossFilter && this.lateBy(t) > s.crossMaxSeconds;
   }
 
   /** The cross filter: no side within crossMaxSeconds of the alert ends the watch. */
   private slowCross(t: StrangleTrade, s: StrangleSettings) {
     this.close(t, "no side fast enough after the alert");
-    this.o.store.updateSignal(t.day, t.symbol, "slow_cross", "");
-    const within = t.shock ? shockHoldWithin : s.crossMaxSeconds;
+    const within = t.shock ? shockWindow(t) : s.crossMaxSeconds;
+    this.o.store.updateSignal(
+      t.day,
+      t.symbol,
+      "slow_cross",
+      `no side within ${within} s of the alert`,
+    );
     this.event(
       "skip",
       `${t.symbol}: no side within ${within} s of the alert, no trade`,
@@ -1403,7 +1445,12 @@ export class StrangleBot {
           this.close(t, "no side in time");
           continue;
         }
-        if (this.tooLate(t, s)) {
+        // A shock's 20-s touch is the 1-second watch's (this copy was read
+        // before the awaits above); here only its 300 s.
+        const late = t.shock
+          ? this.lateBy(t) > shockHoldWithin
+          : this.tooLate(t, s);
+        if (late) {
           this.slowCross(t, s);
           continue;
         }
@@ -1488,6 +1535,7 @@ export class StrangleBot {
     delta: number,
     m: number,
     s: StrangleSettings,
+    volumes: Map<string, Promise<number>>,
   ): Promise<
     | {
         ok: true;
@@ -1506,7 +1554,15 @@ export class StrangleBot {
       dte,
       delta,
       s,
-      (contract) => this.o.market.optionVolume30(contract, t.day, m),
+      (contract) => {
+        let v = volumes.get(contract);
+        if (!v)
+          volumes.set(
+            contract,
+            (v = this.o.market.optionVolume30(contract, t.day, m)),
+          );
+        return v;
+      },
       (contract) => this.words(contract),
       (chosen) => {
         // The picked leg's bid / ask, kept with the signal (paper fills are not real ones).
@@ -1577,8 +1633,20 @@ export class StrangleBot {
     // The shock steps 0.05 toward the money, up to 0.35, while the leg is too
     // cheap or too thin (volume-bot.md 2026-10-30, "step35"); the rest pick once.
     let leg: Awaited<ReturnType<typeof this.legAt>> | null = null;
+    // Each contract's 30-minute volume asked once across the steps (the rescue retries the same strikes).
+    const volumes = new Map<string, Promise<number>>();
     for (const delta of legDeltas(s, !!t.shock)) {
-      leg = await this.legAt(t, quotes, stock, right, dte, delta, m, s);
+      leg = await this.legAt(
+        t,
+        quotes,
+        stock,
+        right,
+        dte,
+        delta,
+        m,
+        s,
+        volumes,
+      );
       if (leg.ok) break;
     }
     if (!leg || !leg.ok)

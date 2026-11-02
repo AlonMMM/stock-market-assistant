@@ -161,9 +161,13 @@ export function legQty(equity: number, sizePct: number, price: number): number {
  * The shock alert's entry (volume-bot.md 2026-10-30): the side held on 5
  * 1-second checks in a row within 300 s of the alert; the leg stepped toward
  * the money up to 0.35 delta; no buy over a 30% spread; an expiry at most 2
- * calendar days out (its 3-4 DTE trades lost in both halves).
+ * calendar days out (its 3-4 DTE trades lost in both halves). The stock has
+ * to touch a side line within 20 s of the alert (the research's shock list,
+ * f60_prefilter PF_MAX_S=20, the user 2026-11-02: "the 300 seconds is in
+ * there by mistake"); the 5 checks still have 300 s.
  */
 export const shockRules = {
+  touchWithin: 20,
   holdChecks: 5,
   holdWithin: 300,
   maxDelta: 0.35,

@@ -110,6 +110,11 @@ export class FastTape {
     if (drop) this.recentAt.splice(0, drop);
   }
 
+  /** Today's 10-second bars of one stock so far. */
+  bars(symbol: string): readonly TradeBar[] {
+    return this.builders.get(symbol)?.bars() ?? [];
+  }
+
   day(symbol: string): FastDay {
     return dayFromBars(this.builders.get(symbol)?.bars() ?? [], this.openMs);
   }
