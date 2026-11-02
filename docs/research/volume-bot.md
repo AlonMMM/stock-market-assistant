@@ -1824,3 +1824,22 @@ Trades by score, 3 years (tune / check median, +300%): < 2 -30% / -1%, 1 / 15 (1
 A U shape, not a line: the best group is score < 1 (the stock's volume rose less than SPY's: a market-wide move; all 25
 10-10 trades but 3 sit at 0.2-1.1), the worst 1-2 on every set, and >= 10 is good on the live year only. The score's x0.5
 under 2 cut the best bucket with the worst one; a rule worth testing is "x0.5 on 1-2 only".
+
+**Skip a score of 1-3 (look 2 of the score; the user: "skip 1-3", after the distribution)**: `volume_spy_score_skip_year.ts`
+(live code's year, volumeAccount) and `volume_spy_score_skip_3y.py` (3-year twin, scaled walk). Neighbours 1-2, 1-4,
+0.8-3 set before the run. 2%:
+
+| Skip | Live year (drop) | Tune | Check | w/o 5 | 3y (drop) | Tune | Check | w/o 5 | 3y w/o 10-10 (drop) | Tune | Check | w/o 5 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| none (1.1.0) | $142.1K (13%) | $111.9K | $125.6K | -$23.6K | $773K (21.1%) | +$73K | +$600K | +$201K | $288K (21.1%) | +$27K | +$161K | +$11K |
+| 1-3 | $153.4K (7%) | $123.2K | $125.6K | -$14.6K | $718K (16.9%) | +$89K | +$529K | +$257K | $273K (19.5%) | +$26K | +$147K | +$36K |
+| 1-2 | $154.2K (9%) | $112.8K | $136.7K | -$15.1K | $1,013K (16.5%) | +$219K | +$693K | +$344K | $384K (16.5%) | +$88K | +$196K | +$70K |
+| 1-4 | $159.8K (10%) | $123.4K | $129.6K | -$8.5K | $602K (14.5%) | +$85K | +$417K | +$201K | $228K (17.4%) | +$26K | +$103K | +$18K |
+| 0.8-3 | $152.8K (7%) | $123.2K | $125.1K | -$15.3K | $804K (15.8%) | +$138K | +$566K | +$310K | $313K (18.4%) | +$49K | +$163K | +$60K |
+
+- **1-3 fails**: a tie on the live check, and on 3 years it loses the check (+$529K vs +$600K; without 10-10 both halves).
+- **1-2 passes every gate on both sets** (live: tune +$0.9K, check +$11.1K, drop 9% vs 13%; 3 years: +$240K, drop 16.5%
+  vs 21.1%; without 10-10 +$96K, both halves; better without the best 5 everywhere): the 18 / 89 trades it skips have a
+  median of -45% / -37%, 1 / 1 of +300%. But the 1-2 band was read off the distribution of these same trades (look 2,
+  in-sample), the live tune gain is small, and the 3-year score is a minute off the alert. Needs an unseen period before
+  it is a candidate.
