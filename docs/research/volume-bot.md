@@ -9,6 +9,27 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### No shock against the move (2026-11-02, look 1)
+
+The user, on ORCL 2026-10-28 14:49 (a "down" shock 30 min after a +12% shock run): "we do not want to take against
+the huge swing.. it is not a shock". Skip a shock alert whose direction is against the stock's move, since the open or
+since its last shock that day, once that move is >= X S30 (2, 3, 5, set before the run). Volume 1.1.0 parts, 51 stocks,
+2025-11-03 .. 2026-10-30, live limits (scratchpad `againstmove.ts`; opens from D1 minute bars).
+
+| Version | Trades | $100K at 2% (3%) | Drop | Tune | Check | Without best 5 |
+|---|---|---|---|---|---|---|
+| 1.1.0 | 145 | $142.1K ($162.1K) | 13% | $111.9K | $125.6K | -$23.6K |
+| since the open >= 2 | 133 | $149.4K ($177.3K) | 12% | $115.3K | $128.5K | -$18.1K |
+| since the open >= 3 | 135 | $148.2K ($174.6K) | 12% | $114.7K | $127.9K | -$19.2K |
+| since the open >= 5 | 140 | $143.1K ($163.9K) | 13% | $111.7K | $127.1K | -$22.8K |
+| since the last shock >= 2/3/5 | 145 | $142.1K | 13% | same | same | same |
+
+- Since the open >= 2 skips 351 shock alerts and 13 of 1.1.0's trades: flat $2K -$5.9K, median -31%, no +300% trade
+  (best of them MSFT 01-21 +84%). >= 3: 11 trades, -$4.8K. Better on both halves and without the best 5, but the gain is
+  ~a dozen ordinary losers in one year; no 3-year check (the app engine has the year's data only).
+- Since the last shock: no trade of 1.1.0 is skipped (ORCL 14:49 was already refused: the first trade still open).
+
+
 ### Live gets the research's shock touch rule (20 s) and the too-cheap rescue; TQQQ SOXL SMH out (2026-11-02, PR #236)
 
 The user, 2026-11-01/02: "the volume bot was very profitable" (the 10-30 dashboard, +34% on the last 12 months) vs
