@@ -2773,3 +2773,27 @@ the fixed walk.
 Verdict: not better, as on the old walk. A thin 0.15 strike still marks a moment the options crowd is elsewhere; the
 busier strike trades it anyway and the typical added trade loses ~$2,300 at $10K. The tune gains are a few names
 (MU, SMCI, IONQ) and vanish on the odd weeks. The 200 floor stays; no candidate.
+
+### No volume floor when the spread is tight, on 2.10 (2026-11-03, not better: the pick fails the check by far)
+The user: "if the spread is lower than 30% - take the trade with no flor". Closest prior: opt_spread.py, 2026-10-26, on
+2.6, the old walk (2024-25 tune / 2026 held out): a floor of 100 / 50 with a 30% spread cap was worse ($309,269 / 15% vs
+$390,392 / 12%); "no floor when the spread is under 30%" was never tested. Re-run on the fixed walk and 2.10 with tune /
+check. spread_nofloor.py (on thin_strike.py's champion and walk): the 0.15-delta pick with under 200 contracts in 30
+minutes is bought anyway when its spread at the signal ((ask - bid) / mid, the book at the end of the signal minute, the
+bot's spreadPct) is under the line; no quote = no trade; the same contract, the $0.20 floor ($0.10 IBIT), 2.10's exits,
+size and pyramid. Set before running: S20 / S30 (the user's) / S40, and S30f50 (still 50 contracts). Every added trade
+is fill unproven. Fair list + Favorites 24 months to 2026-10-16; look 1 on the fixed walk.
+- Baseline 2.10 = thin_strike.py's, to the dollar: 2%, tune / check fair $620,535 (15.7%) / $957,771 (23.6%), Favorites
+  $449,178 (14.5%) / $226,846 (22.6%).
+- Tune, 2%, vs 2.10 (fair / Favorites): S20 +54% / -2%; S30 +15% / +21% (33% / 30% drop vs 16% / 14%); S40 +0% / -12%;
+  S30f50 +12% / -11%. Pick: S30 (1.147). At 3% S30 is -5% / -0% on tune with a 47% / 35% drop.
+- Check, 2%: S30 $493,082 (-49%, 40% drop) / $88,801 (-61%, 50% drop); 3%: $367,477 (-66%, 53%) / $52,451 (-78%, 67%).
+  Without the best 5 at 2%: $95,742 / $24,785 vs $169,718 / $74,497.
+- The added trades (main legs at $10K): tune S30 466 fair / 549 Favorites, median -$2,525 / -$2,425, non-giant sum
+  -$850K / -$917K, 13 / 11 giants; the tune gain is MU +$260K, ARM +$204K, COIN +$173K, IONQ +$168K. Check 491 / 592,
+  median -$2,499 / -$2,444, sum -$347K / -$643K, non-giant -$867K / -$1,094K, 6 / 5 giants, 2025 and 2026 negative on
+  both lists. Spread of the added S30 trades: median 13-15%; under 10% ~160, 10-20% ~210-260, 20-30% 96-172. Their
+  volume: median 43-48 contracts in 30 minutes. S30f50 (median ~100 contracts) is no better on tune. WMT: 25 added
+  S30 trades, -$45,755.
+Verdict: not better. A tight spread on a thin contract does not bring the edge back: the added trades lose ~$2,450 each
+(median) on both halves, the drop doubles, and the tune gain is four names. The 200 floor stays; no candidate.
