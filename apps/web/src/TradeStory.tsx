@@ -53,7 +53,7 @@ import {
   type TradeStats,
 } from "./trade-story-model.js";
 import type { ChartBars } from "../../../packages/market-data/src/chart-bars.js";
-import { tradeLevels } from "./chart-levels.js";
+import { tradeLevels, withRoles } from "./chart-levels.js";
 import { barsUrl } from "./fullscreen-model.js";
 import type {
   ChartStyle,
@@ -731,13 +731,22 @@ export function TradeStoryBody({
     );
     return {
       entry: fills[0]?.at.date ?? null,
+      entryMinute: fills[0]?.at.minute ?? null,
       exit: fills.at(-1)?.at.date ?? null,
     };
   }, [story]);
   const levels = useMemo(() => {
     if (!fillDays.entry) return [];
     const day = chart?.sessions.find((s) => s.date === fillDays.entry) ?? null;
-    return tradeLevels(daily?.rows ?? null, fillDays.entry, day);
+    // The stock's price at the buy: its minute's close, or the last before it.
+    const before = (day?.stock ?? []).filter(
+      ([m]) => m <= (fillDays.entryMinute ?? -1),
+    );
+    const price = before.at(-1)?.[4] ?? null;
+    return withRoles(
+      tradeLevels(daily?.rows ?? null, fillDays.entry, day),
+      price,
+    );
   }, [daily, chart, fillDays]);
   const stats = useMemo(
     () => (story && chart ? tradeStats(t, story, chart) : null),
@@ -1010,7 +1019,7 @@ function DailyView({
   error: string;
   entry: string | null;
   exit: string | null;
-  levels: ReturnType<typeof tradeLevels>;
+  levels: ReturnType<typeof withRoles>;
   showLevels: boolean;
   zoom: ChartZoom;
 }) {
