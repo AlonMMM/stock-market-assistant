@@ -20,6 +20,8 @@ set by the signal's volume since the open (x its usual at that minute): under 1.
 buy is 5% (was 3%). Research size_volume.py t3A-c5; dashboard slug x-v210 (built on the page from x-v29's rows and their
 `rvol`). The live check (`bot-live-check`: one month app vs research 1:1, the E2E run) has not run on 2.10 yet: its
 research twin for the app comparison (`app_twin.py` is 2.7.0's) is the next step.
+After the quote-minute fix (fb9347f, 2026-11-01 20:59) size_volume.py t3A-c5 at 2%, tune / check: fair $620,535 (15.7%) /
+$957,771 (23.6%), Favorites $449,178 (14.5%) / $226,846 (22.6%) (re-run 2026-11-02; the baseline for tests on 2.10).
 
 Earlier production versions:
 
