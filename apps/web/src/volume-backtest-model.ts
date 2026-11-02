@@ -193,6 +193,14 @@ export function closedVolumeTrade(a: VolumeAccountTrade): ClosedTrade {
 }
 
 /** The session clock of a session second (09:30 New York = 0), New York time. */
+const israelSeconds = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Jerusalem",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
 export function nyClock(second: number): string {
   const total = 9 * 3600 + 30 * 60 + second;
   const h = Math.floor(total / 3600);
@@ -333,7 +341,8 @@ export function volumeBacktestStory(
     at: { date: sig.date, minute: sig.minute },
     ms: alertMs,
     price: null,
-    label: `alert ${nyClock(sig.second)}`,
+    // On the chart's own clock, Israel time (user 2026-11-02: SLV read "alert 13:35:40", New York).
+    label: `alert ${israelSeconds.format(alertMs)}`,
   });
   return {
     bot: true,
