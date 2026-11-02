@@ -9,6 +9,39 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### Live gets the research's shock touch rule (20 s) and the too-cheap rescue; TQQQ SOXL SMH out (2026-11-02, PR #236)
+
+The user, 2026-11-01/02: "the volume bot was very profitable" (the 10-30 dashboard, +34% on the last 12 months) vs
+the live code's year run (+7.6% at 2%). Year 2025-11-03 .. 2026-10-30, the app engine (live code), live settings and
+limits, real books (strictQuotes; the year's books bought for $11.51 the same day), parts in the scratchpad
+(`.volyear.ts`, `.oldrules.ts`, `ladder.ts`). The difference, one step at a time (54 stocks, 2%, flat $2K a trade):
+
+| Step | Trades | $100K at 2% (3%) | Drop | Flat $2K |
+|---|---|---|---|---|
+| 1 live (with the -60% broker stop) | 242 | $107.6K ($103.9K) | 38% | +$18.3K |
+| 2 no stop | 241 | $116.9K ($118.3K) | 33% | +$27.3K |
+| 3 no ETF shock alerts | 220 | $94.7K ($89.5K) | 30% | +$2.9K |
+| 4 + shock touch within 20 s (f60_prefilter PF_MAX_S=20) | 140 | $123.6K ($134.1K) | 15% | +$28.1K |
+| 5 + too-cheap-and-thin rescue (STR_LIQ_OLD) = the research rules | 148 | $137.8K ($155.0K) | 15% | +$37.7K |
+
+Step 5 reproduces the dashboard on the same months (+$37.7K vs +$35.4K flat; 129 trades shared, +$32.2K vs +$32.8K).
+- The -60% stop cost ~$9K; the ETF shocks +$24.4K, nearly all SMH 2026-10-08 (+$27.9K).
+- The 20-s touch cut 81 slow shocks (-$17.8K) and halved the drop; side found after 60-300 s: 67 trades -$21.5K.
+- The rescue: 8 plan trades +$9.6K, mostly SLV 2026-08-28 (+$8.3K).
+- The "alignment" of 2026-11-01 had moved the research to the app's 300 s; the user: "the 300 seconds is in there by
+  mistake". The 3-year 20 vs 300 s test was waived (NOT RUN in the release gate; ~2,000 slow shocks of 2024-25 have no
+  data).
+- Shock filters tested the same night on the year (live, pause 30, 3%): news days, any burst, 3-4 DTE, 3 checks, all:
+  every one lost to live (all four together: $100K -> $17.4K). Plan only beat live on the 54 (+$4K at 2%, half the drop).
+- Stop sweep, Aug-Oct, stop 60 everywhere, shock pause 0/5/10/15/20/30: 30 (live) best ($127.2K at 2%), mostly SMH 10-08.
+
+Released (PR #236, deployed 2026-11-02 07:07 Israel, trader + website): `shockRules.touchWithin` 20 (live stores
+`touched`, also from the tape's 10-s bars at creation), the rescue in `legAt` (with liquidFallback), the saved list 51
+names (TQQQ, SOXL, SMH out; SLV, USO stay), the -60% stop kept. Parity: the PR's code on the year = the switch run,
+9,501 alerts identical (13 fallback labels reworded). PR code year, 51 stocks, no stop: 145 trades, $142.1K at 2%
+(13% drop), $162.1K at 3%; tune $111.9K, check $125.6K; -$23.6K without the best 5.
+
+
 ### The research aligned with the app's backtest: the live rules, on by default (2026-11-01)
 
 The user, 2026-11-01: the app's Backtest page and the research must make identical trades; the app (it mirrors the live
