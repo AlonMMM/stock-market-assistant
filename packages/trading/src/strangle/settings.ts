@@ -1,3 +1,5 @@
+import { currentVolumeVersion } from "./versions.js";
+
 // The alert leg's settings (docs/tasks/backend-strangle-bot.md): a second
 // bot, separate from the Indi bot, on its own Alpaca paper account (user
 // 2026-10-25: "create another test with this strategy and test it - not mix
@@ -9,6 +11,7 @@
 // name "strangle" for the module, its routes and its tables.
 
 export interface StrangleSettings {
+  version: string; // the Volume version picked (strangle/versions.ts), not the Main bot's
   enabled: boolean;
   mode: "live" | "dry";
   // Stocks: the favorites list (sent by the site before each session) and
@@ -45,6 +48,9 @@ export interface StrangleSettings {
   // 0.25) then toward the money (to 0.50), at the same minimums (user
   // 2026-10-26, "implement the liquid fallback"; picker.ts liquidOrder).
   liquidFallback: boolean;
+  // A leg under minPrice that is also thin takes the liquid fallback's strike
+  // (the research's rule; Volume 1.1.0, the user 2026-11-02).
+  cheapRescue: boolean;
   // The side: the stock moves this many typical 30-minute moves from where it
   // was at the alert; only then is the leg of that side bought.
   confirmUnits: number;
@@ -93,6 +99,9 @@ export interface StrangleSettings {
   // a stock at a time, 2%): with the plan 428 trades, $100K -> $1.07M in 3
   // years, worst drop 20.5% (the plan alone $657K, 21.5%).
   shockAlert: boolean;
+  // A shock trades only when the stock touches a side line within this many
+  // seconds of the alert (Volume 1.1.0: 20, the research's; 1.0.0: 300).
+  shockTouchSeconds: number;
   // The news filter, as the Indi bot's.
   skipEarnings: boolean;
   skipPremarket: boolean;
@@ -109,6 +118,7 @@ type BooleanKey = {
 
 // Dry run and off until the owner switches it on: a new account, a new rule.
 export const defaultStrangleSettings: StrangleSettings = {
+  version: currentVolumeVersion,
   enabled: false,
   mode: "dry",
   followFavorites: true,
@@ -136,6 +146,7 @@ export const defaultStrangleSettings: StrangleSettings = {
   // $608,664 (worst drop 19.1%) at 200, the saved live setting.
   minVolume: 0,
   liquidFallback: true,
+  cheapRescue: true,
   confirmUnits: 0.25,
   // 10, not the backtest's first 60 (user 2026-10-26, "implement the 10 minutes give up";
   // leg_entry.py: a side after 10 minutes loses on both lists).
@@ -156,6 +167,7 @@ export const defaultStrangleSettings: StrangleSettings = {
   // Off since the shock (2026-10-30): on real quotes it made the bot worse.
   fastAlert: false,
   shockAlert: true,
+  shockTouchSeconds: 20,
   skipEarnings: true,
   skipPremarket: true,
 };
@@ -187,6 +199,7 @@ export const strangleLimits: Record<
   burstMin: [0, 3, 0.1],
   burstMinWeek: [0, 4, 0.1],
   noStopMinutes: [0, 60, 5],
+  shockTouchSeconds: [10, 300, 5],
 };
 
 // Values the backtest never ran.
@@ -202,6 +215,7 @@ const booleans: BooleanKey[] = [
   "followFavorites",
   "nextDay",
   "liquidFallback",
+  "cheapRescue",
   "strengthFilter",
   "crossFilter",
   "burstFilter",
@@ -213,6 +227,7 @@ const booleans: BooleanKey[] = [
   "skipPremarket",
 ];
 const ticker = /^[A-Z][A-Z.]{0,5}$/;
+const volumeVersionId = /^\d+\.\d+\.\d+$/;
 const maxTickers = 200;
 export const strangleNeverWatched = ["SPY"];
 
@@ -232,6 +247,9 @@ export function parseStrangleSettings(
       return { ok: false, error: `${key} must be true or false` };
     out[key] = v;
   }
+  if (typeof body.version !== "string" || !volumeVersionId.test(body.version))
+    return { ok: false, error: "version must be a version id like 1.1.0" };
+  out.version = body.version;
   if (body.mode !== "live" && body.mode !== "dry")
     return { ok: false, error: "mode must be live or dry" };
   out.mode = body.mode;
@@ -338,6 +356,9 @@ export function strangleSteps(
   if (s.minVolume > 0 && s.liquidFallback)
     thinWords =
       " Too thin: the nearest strike that is not, further out to delta 0.25, then toward the money to 0.50.";
+  if (thinWords && s.cheapRescue)
+    thinWords +=
+      " Under the minimum price and also too thin: the same busier strike.";
   const news = [
     s.skipEarnings && "the stock's earnings reaction day",
     s.skipPremarket && "a pre-market volume of 4× normal or more",
@@ -345,7 +366,7 @@ export function strangleSteps(
   return [
     {
       name: "The alert",
-      text: `On a day with a same-day expiry${nextDayWords}${s.weekExpiry ? `, or else the nearest expiry later that week when the burst is at least ${s.burstMinWeek}` : ""}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.${s.fastAlert ? " Also the 60-second alert (60 seconds of volume at 2× normal or today's pace, a move of 3× normal), 09:40 to 13:00, on a same-day or next-session expiry only." : ""}${s.shockAlert ? " Also the shock alert (60 seconds of volume at 15× normal or today's pace, a move of 3× normal), 09:40 to 15:30: the stock has to touch a side line within 20 seconds, then it is bought when the side holds 5 seconds within 5 minutes, the burst at least 0 the side's way, an expiry at most 2 days out, the leg's spread at most 30% of its mid." : ""}`,
+      text: `On a day with a same-day expiry${nextDayWords}${s.weekExpiry ? `, or else the nearest expiry later that week when the burst is at least ${s.burstMinWeek}` : ""}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.${s.fastAlert ? " Also the 60-second alert (60 seconds of volume at 2× normal or today's pace, a move of 3× normal), 09:40 to 13:00, on a same-day or next-session expiry only." : ""}${s.shockAlert ? " Also the shock alert (60 seconds of volume at 15× normal or today's pace, a move of 3× normal), 09:40 to 15:30: the stock has to touch a side line within " + s.shockTouchSeconds + " seconds, then it is bought when the side holds 5 seconds within 5 minutes, the burst at least 0 the side's way, an expiry at most 2 days out, the leg's spread at most 30% of its mid." : ""}`,
     },
     {
       name: "News filter",

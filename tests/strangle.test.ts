@@ -17,6 +17,11 @@ import type { OptionQuote } from "../packages/trading/src/options.js";
 import { liquidOrder } from "../packages/trading/src/bot/picker.js";
 import { legAt } from "../packages/trading/src/strangle/pick.js";
 import {
+  applyVolumeVersion,
+  volumeVersionLabel,
+  volumeVersions,
+} from "../packages/trading/src/strangle/versions.js";
+import {
   alertCloseness,
   alertRule,
   alerts,
@@ -753,7 +758,12 @@ test("leg (2026-11-02): a pick under minPrice that is also thin takes a liquid s
     q("call", 103, 0.26, 0.29),
     q("call", 104, 0.2, 0.1), // the 0.20 pick: mid 0.11, under 0.20
   ];
-  const s = { minPrice: 0.2, minVolume: 200, liquidFallback: true };
+  const s = {
+    minPrice: 0.2,
+    minVolume: 200,
+    liquidFallback: true,
+    cheapRescue: true,
+  };
   const volume = (thin: number) => async (c: string) =>
     c.endsWith("00104000") ? thin : 500;
   const at = (v: (c: string) => Promise<number>, rules = s) =>
@@ -765,6 +775,57 @@ test("leg (2026-11-02): a pick under minPrice that is also thin takes a liquid s
   assert.equal(!busy.ok && busy.outcome, "too_cheap");
   const off = await at(volume(50), { ...s, liquidFallback: false });
   assert.equal(!off.ok && off.outcome, "too_cheap");
+  // Volume 1.0.0: no rescue
+  const v1 = await at(volume(50), { ...s, cheapRescue: false });
+  assert.equal(!v1.ok && v1.outcome, "too_cheap");
+});
+
+test("volume versions (2026-11-02): 1.1.0 by default and on old saved settings; 1.0.0 puts back 300 s and no rescue; limits stay; a changed rule gets a star; trades are stamped", async () => {
+  const d = defaultStrangleSettings;
+  assert.equal(d.version, "1.1.0");
+  // the code's defaults are not the live rules (delta 0.35, no floor): a star
+  assert.equal(volumeVersionLabel(d), "1.1.0*");
+  // the live settings saved before versions: no version, no new rules -> 1.1.0
+  const old: Record<string, unknown> = {
+    ...d,
+    delta: 0.2,
+    minVolume: 200,
+    sizePct: 3,
+    safetyStopPct: 80,
+  };
+  delete old.version;
+  delete old.shockTouchSeconds;
+  delete old.cheapRescue;
+  const loaded = strangleWithDefaults(old);
+  assert.equal(volumeVersionLabel(loaded), "1.1.0");
+  const v1 = applyVolumeVersion(loaded, "1.0.0");
+  assert.equal(v1.version, "1.0.0");
+  assert.equal(v1.shockTouchSeconds, 300);
+  assert.equal(v1.cheapRescue, false);
+  assert.equal(v1.sizePct, 3, "the owner's size stays");
+  assert.equal(v1.safetyStopPct, 80, "the owner's stop stays");
+  assert.equal(volumeVersionLabel(v1), "1.0.0");
+  assert.equal(volumeVersionLabel({ ...v1, giveBackUnits: 1 }), "1.0.0*");
+  assert.equal(
+    volumeVersionLabel({ ...v1, sizePct: 2 }),
+    "1.0.0",
+    "a limit is not a rule",
+  );
+  assert.equal(parseStrangleSettings({ ...d, version: "x" }).ok, false);
+  // the Volume list is its own: no Main bot id
+  assert.ok(volumeVersions.every((v) => v.id.startsWith("1.")));
+  // a trade begins stamped with the version in force
+  let last = 0;
+  const h = harness(
+    { mode: "live", ...SHOCK },
+    { day: climbThenFall(), last: () => last },
+  );
+  await h.run(565, 609);
+  await shockAt(h, 101);
+  const [t] = h.store.openTrades();
+  assert.equal(t!.version, volumeVersionLabel(h.bot.settings()));
+  assert.match(t!.version!, /^1\.1\.0\*?$/);
+  assert.equal(t!.touchWithin, 20);
 });
 
 test("scan: with the newest bar not in yet, the map shows the latest whole minute", async () => {

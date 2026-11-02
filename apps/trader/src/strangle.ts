@@ -58,6 +58,7 @@ import {
   strangleWithDefaults,
   type StrangleSettings,
 } from "../../../packages/trading/src/strangle/settings.js";
+import { volumeVersionLabel } from "../../../packages/trading/src/strangle/versions.js";
 import { contractWords } from "../../../packages/trading/src/options.js";
 import type {
   StrangleLiveDay,
@@ -156,13 +157,12 @@ const soldOf = (result: unknown): number => {
 // The shock alert's entry: shockRules (strangle/decide.ts), shared with the backtest.
 const shockHoldChecks = shockRules.holdChecks;
 const shockHoldWithin = shockRules.holdWithin;
-const shockTouchWithin = shockRules.touchWithin;
 const shockMaxSpread = shockRules.maxSpread;
 
 /** The alert's name at the start of a watch's detail. */
-/** A shock trade's time left: shockTouchWithin until its stock touches a side line, then shockHoldWithin. */
+/** A shock trade's time left: its touch window until its stock touches a side line, then shockHoldWithin. */
 function shockWindow(t: StrangleTrade): number {
-  return t.touched ? shockHoldWithin : shockTouchWithin;
+  return t.touched ? shockHoldWithin : (t.touchWithin ?? shockHoldWithin);
 }
 
 function alertWords(fast?: { shock?: boolean }): string {
@@ -432,7 +432,7 @@ export class StrangleBot {
           continue;
         const side = sideOf(stock, t.stockRef, t.unit, s);
         if (t.shock && side && !t.touched) {
-          // A side line touched within shockTouchWithin keeps the shock (stored: a restart keeps it).
+          // A side line touched within its touch window keeps the shock (stored: a restart keeps it).
           t.touched = true;
           this.o.store.saveTrade(t);
         }
@@ -1144,7 +1144,10 @@ export class StrangleBot {
       stockRef: ref,
       burst,
       ...(fast ? { alertSecond: fast.second, fast: true } : {}),
-      ...(fast?.shock ? { shock: true, touched } : {}),
+      ...(fast?.shock
+        ? { shock: true, touched, touchWithin: s.shockTouchSeconds }
+        : {}),
+      version: volumeVersionLabel(s),
       side: null,
       sideMinute: null,
       best: null,
@@ -1369,7 +1372,7 @@ export class StrangleBot {
     return (newYork(now).minute - 570) * 60 + (Math.floor(now / 1000) % 60);
   }
 
-  /** Whether the tape's 10-second bars from `second` to shockTouchWithin later reach a side line. */
+  /** Whether the tape's 10-second bars from `second` to shockTouchSeconds later reach a side line. */
   private tapeTouch(
     symbol: string,
     second: number,
@@ -1384,7 +1387,7 @@ export class StrangleBot {
       .some(
         (b) =>
           b.start >= from &&
-          b.start < from + shockTouchWithin &&
+          b.start < from + s.shockTouchSeconds &&
           (sideOf(b.high, ref, unit, s) !== null ||
             sideOf(b.low, ref, unit, s) !== null),
       );
@@ -1398,7 +1401,7 @@ export class StrangleBot {
   /**
    * With the cross filter, the side has to come within crossMaxSeconds of the
    * alert; a shock trade's stock has to touch a side line within
-   * shockTouchWithin seconds and its side hold within shockHoldWithin.
+   * its touch window (shockTouchSeconds) and its side hold within shockHoldWithin.
    */
   private tooLate(t: StrangleTrade, s: StrangleSettings): boolean {
     if (t.shock) return this.lateBy(t) > shockWindow(t);

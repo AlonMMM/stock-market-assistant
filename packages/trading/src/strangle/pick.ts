@@ -44,7 +44,10 @@ export async function legAt(
   day: string,
   dte: number,
   delta: number,
-  s: Pick<StrangleSettings, "minPrice" | "minVolume" | "liquidFallback">,
+  s: Pick<
+    StrangleSettings,
+    "minPrice" | "minVolume" | "liquidFallback" | "cheapRescue"
+  >,
   volume30: (contract: string) => Promise<number>,
   words: (contract: string) => string,
   onPicked?: (quote: OptionQuote) => void,
@@ -69,6 +72,7 @@ export async function legAt(
     got.reason === "too_cheap" &&
     got.quote &&
     s.liquidFallback &&
+    s.cheapRescue &&
     s.minVolume > 0
   ) {
     const thin = got.quote;

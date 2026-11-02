@@ -46,6 +46,7 @@ export interface StrangleTradeView {
   got: number;
   marks: { leg: number | null; stock: number | null; at: number } | null;
   openValue: number | null;
+  version?: string; // the Volume version it began under (strangle/versions.ts), not the Main bot's
   // Open trades only (watching to closing): the stock's minute closes from
   // the alert minute on, [session minute, close], for the app's small charts.
   path?: [number, number][];
