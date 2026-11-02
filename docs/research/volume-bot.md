@@ -1722,3 +1722,43 @@ minute closest to the price paid: 431 of 431, 7 more than 15% off) and its ask 5
 48 trades, won 26 (54%), median +13%, 11 of +300% (QCOM 2025-10-27 +1104%, NVDA / QQQ / META 2025-10-10, META 2026-05-27
 +496%, GOOGL 2026-08-05 +338%); by year 2024 6 of 10 won, 2025 14 of 22, 2026 6 of 16. The live code's year (6 of 21 won)
 was the odd one out. Every level is below the flat line; the skip levels lose the most. Close the idea.
+
+### Volume against SPY's volume, filter only (2026-11-02, look 1)
+
+The user: "do we normelized the volume in both signals to the spy volume? ... if in the single minutes the spy volume is
+huge we should not consider out signal, also the oposit - if the spy is cum we need to multiply" -> "start with A".
+Neither alert looks at SPY's volume today (alert.ts: the stock's 3-min volume >= 4x its same-window median of 20
+sessions; fast.ts: 60-s volume >= 15x). Filter only (no new alerts): the stock's and SPY's 3-minute window vs the median
+of the same window over the prior 20 sessions (`volume_spy_norm.py`, SPY minute bars from Alpaca `volume_spy_bars.mjs`);
+plan: drop when stock/SPY < 4 (3 / 5); any alert: drop when SPY's own ratio >= 2x (1.5 / 3), and per kind. At the
+alerts SPY's ratio is median 1.55, p90 6.5: the alerts come on busy market minutes.
+
+Live code's year (`volume_spy_norm_acct.ts`, volumeAccount, live limits), 2%:
+
+| Version | Trades | Year (drop) | Tune | Check | w/o 5 tune / check | Trades gone |
+|---|---|---|---|---|---|---|
+| 1.1.0 | 145 | $142.1K (13%) | $111.9K | $125.6K | -$27.4K / -$22.3K | |
+| 🎯 plan: stock/SPY >= 4 | 106 | $156.9K (9%) | $128.1K | $121.7K | -$14.8K / -$19.6K | 41, median -37%, 1 of +300% |
+| plan >= 3 / >= 5 | 116 / 100 | $145.5K / $155.7K | $123.0K / $126.0K | $119.0K / $123.2K | | 30 / 48 |
+| any alert, SPY >= 2x | 95 | $137.0K (8%) | $109.8K | $124.4K | | 52, median -29% |
+| any, SPY >= 1.5x / 3x | 70 / 113 | $139.6K / $134.1K | $115.1K / $109.8K | $120.9K / $123.0K | | |
+| shock, SPY >= 2x | 126 | $121.8K (14%) | $99.2K | $121.5K | | 22, 2 of +300% |
+| plan, SPY >= 2x | 116 | $156.2K (9%) | $120.3K | $128.7K | -$20.5K / -$19.5K | 30, median -31%, none +300% |
+
+3 years (`volume_spy_norm_3y.py`, the twin's plan trades, the window ending the minute before the buy; scaled walk), 2%:
+
+| Version | End (drop) | Tune | Check | w/o 5 | Without 10-10: end (drop), tune, check, w/o 5 |
+|---|---|---|---|---|---|
+| 1.1.0 twin | $773K (21.1%) | +$73K | +$600K | +$201K | $288K (21.1%), +$27K, +$161K, +$11K |
+| plan: stock/SPY >= 4 | $241K (10.7%) | +$25K | +$116K | +$23K | $231K (13.1%), +$23K, +$108K, +$18K |
+| plan, SPY >= 2x | $304K (18.4%) | +$44K | +$160K | +$33K | $292K (18.4%), +$42K, +$150K, +$29K |
+| plan, SPY >= 3x | $536K (16.4%) | +$75K | +$361K | +$109K | $314K (16.4%), +$43K, +$171K, +$28K |
+
+- **No candidate.** The tune pick (plan stock/SPY >= 4) wins tune (+$16.2K) and loses check (-$3.9K) on the live
+  code's year, and on 3 years it drops 207 of 266 plan trades (19 of +300%): the 3-year stock ratio at the minute before
+  the buy is lower than the live alert's (the window is not the alert's), so that row is a rough read.
+- "Plan, SPY >= 2x" wins both halves on the live code's year (+$8.4K / +$3.1K, drop 9% vs 13%, better without the best
+  5) but was not the tune pick, and on 3 years it loses $469K: the busy-market days hold the giants (10 Oct 2025: 14 of
+  +300%, all on a market-wide volume day). Without 10-10 SPY >= 3x is better on both halves ($314K vs $288K, drop 16.4%
+  vs 21.1%), so the whole verdict turns on how many 10-10-like days come.
+- The shock should not be filtered by SPY's volume (worse on both halves).
