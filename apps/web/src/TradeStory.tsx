@@ -486,7 +486,8 @@ export function TradeStory({
         <header className="why-head">
           <div>
             <h2 id="ts-title">
-              {optionName(t)} {source !== "owner" && <BotChip />}
+              {optionName(t)} {source === "main" && <BotChip />}
+              {source === "volume" && <BotChip bot="volume" />}
             </h2>
             <p className="muted">
               {t.option ? `${expiryLabel(t.option.expiry)} · ` : ""}

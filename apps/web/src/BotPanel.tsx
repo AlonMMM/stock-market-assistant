@@ -107,7 +107,14 @@ export function useBotContracts(): ReadonlySet<string> {
   return new Set((value?.positions ?? []).map((p) => p.contract));
 }
 
-export function BotChip() {
+/** Which bot opened a trade (user 2026-11-02: a Volume bot trade read "Main bot"). */
+export function BotChip({ bot = "main" }: { bot?: "main" | "volume" }) {
+  if (bot === "volume")
+    return (
+      <span className="bot-chip" title="Opened by the Volume bot">
+        🎯 Volume bot
+      </span>
+    );
   return (
     <span className="bot-chip" title="Opened by the main bot">
       🤖 Main bot
