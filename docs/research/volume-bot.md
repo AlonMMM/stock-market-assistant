@@ -1807,3 +1807,20 @@ Trades by score, 3 years (tune / check median, +300%): < 2 -30% / -1%, 1 / 15 (1
   (-$30.7K vs -$22.2K): the gain is a few big winners doubled. The medians by score do not rise with the score.
 - Next if pursued: the score at the alert's own window on 3 years (the alert minute, not the buy minute), and the entry
   side (B).
+
+**The trades by score (analysis; the user: "show destribution of the trades")**, `volume_spy_score_dist.py`. Median trade
+(won %, +300% count) by stock/SPY volume score:
+
+| Score | Live year | 3 years | 3 years w/o 10-10 |
+|---|---|---|---|
+| < 1 | 25: -1% (48%, 1) | 115: -2% (48%, 15) | 94: -10% (39%, 2) |
+| 1-2 | 18: -46% (6%, 1) | 89: -37% (31%, 1) | 85: -37% (32%, 0) |
+| 2-3 | 29: -28% (34%, 1) | 54: -31% (37%, 4) | same |
+| 3-4 | 17: -36% (18%, 1) | 54: -31% (37%, 4) | same |
+| 4-6 | 23: -29% (43%, 0) | 49: -7% (43%, 1) | same |
+| 6-10 | 17: -21% (35%, 0) | 35: -18% (37%, 1) | same |
+| >= 10 | 16: +2% (50%, 3) | 35: -14% (31%, 2) | same |
+
+A U shape, not a line: the best group is score < 1 (the stock's volume rose less than SPY's: a market-wide move; all 25
+10-10 trades but 3 sit at 0.2-1.1), the worst 1-2 on every set, and >= 10 is good on the live year only. The score's x0.5
+under 2 cut the best bucket with the worst one; a rule worth testing is "x0.5 on 1-2 only".
