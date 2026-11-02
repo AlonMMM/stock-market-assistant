@@ -1,6 +1,9 @@
-# The bots: production, candidate, features
+# The bots: champion, candidate, features
 
-The registry every new test starts from (the `new-test` skill). Update it the moment a role changes, in the same
+The registry every new test starts from (the `new-test` skill; the whole path from a thesis to live is the
+`bot-lifecycle` skill, 2026-11-02). **Champion** = the version the live bot runs; every test builds on it unless the
+user names another. **Candidate** = a version that passed a test and waits for the upgrade, the review, the deploy and
+the live check (`bot-live-check`). Update it the moment a role changes, in the same
 commit as the log entry in `best-algorithms.md`. Numbers: the fair list, Feb 2024 - Oct 2026, from $100,000, the 10%
 overnight cap at each size; Favorites = the app's Favorites watchlist (86 symbols), 2025-10-23 to 2026-10-23.
 
@@ -9,7 +12,16 @@ XYZ, ONDS, LLY, CVX, MRVL, ARM, GLD; plus USO; the app's own watchlist stays 69)
 them (FAV_ALL=1 for the old 69). The champion (retry_roll.py base) on the 60, Favorites 24 months, 2%: tune $596,437 / 20%,
 check $206,879 / 25% (fav_baseline.py); the fair list is unchanged ($418,875 / $928,510).
 
-## Production
+## Champion (Main bot)
+
+**Since 2026-11-02: 2.10** (the owner: "2.10 is the bot right now"; PR #233, deployed 2026-11-01). 2.9 with the size
+set by the signal's volume since the open (x its usual at that minute): under 1.75x 50%, from 1.75x 100%, from 2.5x
+150%; the pyramid add rides on the share, capped so the position stays within 5% of the account; the service's cap per
+buy is 5% (was 3%). Research size_volume.py t3A-c5; dashboard slug x-v210 (built on the page from x-v29's rows and their
+`rvol`). The live check (`bot-live-check`: one month app vs research 1:1, the E2E run) has not run on 2.10 yet: its
+research twin for the app comparison (`app_twin.py` is 2.7.0's) is the next step.
+
+Earlier production versions:
 
 **Since 2026-10-31: 2.8.0** (PR #223, deployed): 2.7 + the staged stock exit (no 10 / 20-minute checks; half out at 0.5
 S30 against the signal price, the rest at 1.0), the option stop at -60%, late winners (entry 15:00+, up) held to 15:50.
@@ -38,10 +50,7 @@ What the live bot runs when its settings are reset to defaults: the default vers
 
 ## Candidate
 
-**2.10, released 2026-11-01 (PR #233):** 2.9 with the size set by the signal's volume since the open (x its usual at
-that minute): under 1.75x 50%, from 1.75x 100%, from 2.5x 150%; the pyramid add rides on the share, capped so the
-position stays within 5% of the account; the service's cap per buy is 5% (was 3%). Research size_volume.py t3A-c5;
-dashboard slug x-v210 (built on the page from x-v29's rows and their `rvol`).
+No open candidate (2.10 became the champion on 2026-11-02).
 
 **2.9, merged and deployed 2026-11-01 11:00 Israel (PR #231 with #227 = 2.8.1, and #225: splits + broker stop -60% default; website + Railway sma-trader from main 2a8dfc3; live once the owner picks 2.9 on the settings page):** 2.8.1 (the size steps: 3%,
 2.5% from $300K, 1.5% from $1M, 1% from $4M; a step never raises the owner's size) + the break-even lock (`be_lock
