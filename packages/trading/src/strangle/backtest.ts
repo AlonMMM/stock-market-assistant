@@ -560,6 +560,21 @@ export async function runVolumeStock(
         a.second,
         a.second + within,
       );
+      // The shock: a side line touched within shockRules.touchWithin, as the live bot.
+      if (
+        shock &&
+        !seconds.some(
+          ([sec, price]) =>
+            sec <= a.second + shockRules.touchWithin &&
+            sideOf(price, a.price, unit, s),
+        )
+      ) {
+        done(
+          "slow_cross",
+          `no side line within ${shockRules.touchWithin} s of the alert`,
+        );
+        continue;
+      }
       const side = findSide(
         seconds.filter(([sec]) => sec <= a.second + within),
         a.price,

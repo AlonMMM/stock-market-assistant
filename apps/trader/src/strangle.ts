@@ -156,9 +156,15 @@ const soldOf = (result: unknown): number => {
 // The shock alert's entry: shockRules (strangle/decide.ts), shared with the backtest.
 const shockHoldChecks = shockRules.holdChecks;
 const shockHoldWithin = shockRules.holdWithin;
+const shockTouchWithin = shockRules.touchWithin;
 const shockMaxSpread = shockRules.maxSpread;
 
 /** The alert's name at the start of a watch's detail. */
+/** A shock trade's time left: shockTouchWithin until its stock touches a side line, then shockHoldWithin. */
+function shockWindow(t: StrangleTrade): number {
+  return t.touched ? shockHoldWithin : shockTouchWithin;
+}
+
 function alertWords(fast?: { shock?: boolean }): string {
   if (!fast) return "";
   return fast.shock ? "shock alert; " : "60-second alert; ";
@@ -425,6 +431,11 @@ export class StrangleBot {
         if (!stock || waitedOut(m, t.alertMinute, s) || m >= s.endMinute)
           continue;
         const side = sideOf(stock, t.stockRef, t.unit, s);
+        if (t.shock && side && !t.touched) {
+          // A side line touched within shockTouchWithin keeps the shock (stored: a restart keeps it).
+          t.touched = true;
+          this.o.store.saveTrade(t);
+        }
         if (t.shock) {
           // The shock buys once the side has held 5 checks in a row (leg_seconds.py hold5).
           const held = this.holds.get(t.id);
@@ -1361,10 +1372,11 @@ export class StrangleBot {
 
   /**
    * With the cross filter, the side has to come within crossMaxSeconds of the
-   * alert; a shock trade's side has to hold within shockHoldWithin seconds.
+   * alert; a shock trade's stock has to touch a side line within
+   * shockTouchWithin seconds and its side hold within shockHoldWithin.
    */
   private tooLate(t: StrangleTrade, s: StrangleSettings): boolean {
-    if (t.shock) return this.lateBy(t) > shockHoldWithin;
+    if (t.shock) return this.lateBy(t) > shockWindow(t);
     return s.crossFilter && this.lateBy(t) > s.crossMaxSeconds;
   }
 
@@ -1372,7 +1384,7 @@ export class StrangleBot {
   private slowCross(t: StrangleTrade, s: StrangleSettings) {
     this.close(t, "no side fast enough after the alert");
     this.o.store.updateSignal(t.day, t.symbol, "slow_cross", "");
-    const within = t.shock ? shockHoldWithin : s.crossMaxSeconds;
+    const within = t.shock ? shockWindow(t) : s.crossMaxSeconds;
     this.event(
       "skip",
       `${t.symbol}: no side within ${within} s of the alert, no trade`,

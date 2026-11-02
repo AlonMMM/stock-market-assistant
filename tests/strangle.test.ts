@@ -15,6 +15,7 @@ import {
 import type { MinuteBar } from "../packages/trading/src/bot/signal.js";
 import type { OptionQuote } from "../packages/trading/src/options.js";
 import { liquidOrder } from "../packages/trading/src/bot/picker.js";
+import { legAt } from "../packages/trading/src/strangle/pick.js";
 import {
   alertCloseness,
   alertRule,
@@ -746,6 +747,26 @@ test("liquid order: further out first, nearest the target first, then toward the
   );
 });
 
+test("leg (2026-11-02): a pick under minPrice that is also thin takes a liquid strike; too cheap but busy, or the fallback off, is no trade", async () => {
+  const chain = [
+    q("call", 102, 0.3, 0.41),
+    q("call", 103, 0.26, 0.29),
+    q("call", 104, 0.2, 0.1), // the 0.20 pick: mid 0.11, under 0.20
+  ];
+  const s = { minPrice: 0.2, minVolume: 200, liquidFallback: true };
+  const volume = (thin: number) => async (c: string) =>
+    c.endsWith("00104000") ? thin : 500;
+  const at = (v: (c: string) => Promise<number>, rules = s) =>
+    legAt(chain, 100, "call", DAY, 0, 0.2, rules, v, (c) => c);
+  const rescued = await at(volume(50));
+  assert.ok(rescued.ok);
+  assert.equal(rescued.ok && rescued.quote.strike, 103, "toward the money");
+  const busy = await at(volume(500));
+  assert.equal(!busy.ok && busy.outcome, "too_cheap");
+  const off = await at(volume(50), { ...s, liquidFallback: false });
+  assert.equal(!off.ok && off.outcome, "too_cheap");
+});
+
 test("scan: with the newest bar not in yet, the map shows the latest whole minute", async () => {
   const h = harness({ mode: "dry" }, { day: climbThenFall(), lag: true });
   await h.run(565, 610);
@@ -1079,6 +1100,50 @@ test("shock (2026-10-30): the side must hold 5 checks in a row, within 300 s; a 
   for (let sec = 1; sec <= 5; sec++) await p.watch(610, sec);
   assert.equal(p.calls.filter((c) => c.kind === "buy").length, 0);
   assert.match(p.store.recentTrades(DAY)[0]!.closeReason!, /burst/);
+});
+
+test("shock (2026-11-02): no side line within 20 s of the alert ends the watch; a touch by then keeps the 300 s for the 5 checks", async () => {
+  let last = 0;
+  const late = harness(
+    { mode: "live", ...SHOCK },
+    { day: climbThenFall(), last: () => last },
+  );
+  await late.run(565, 609);
+  await shockAt(late, 101);
+  const ref = late.store.openTrades()[0]!.stockRef;
+  last = ref;
+  for (let sec = 1; sec <= 20; sec++) await late.watch(610, sec);
+  assert.equal(late.store.openTrades().length, 1, "still watching at 20 s");
+  last = ref * 1.01; // the first touch, 21 s after the alert
+  await late.watch(610, 21);
+  assert.equal(late.store.openTrades().length, 0);
+  assert.equal(late.calls.filter((c) => c.kind === "buy").length, 0);
+  assert.equal(
+    late.store.recentTrades(DAY)[0]!.closeReason,
+    "no side fast enough after the alert",
+  );
+  // a touch at 15 s, then the side holds 5 checks from 100 s: bought
+  const ok = harness(
+    { mode: "live", ...SHOCK },
+    { day: climbThenFall(), last: () => last },
+  );
+  await ok.run(565, 609);
+  await shockAt(ok, 101);
+  const r = ok.store.openTrades()[0]!.stockRef;
+  last = r * 1.01;
+  await ok.watch(610, 15);
+  assert.equal(ok.store.openTrades()[0]!.touched, true, "the touch is stored");
+  last = r;
+  for (let sec = 16; sec <= 99; sec++)
+    await ok.watch(610 + Math.floor(sec / 60), sec % 60);
+  assert.equal(
+    ok.store.openTrades().length,
+    1,
+    "past 20 s, touched: still watching",
+  );
+  last = r * 1.01;
+  for (let sec = 100; sec <= 104; sec++) await ok.watch(611, sec - 60);
+  assert.equal(ok.calls.filter((c) => c.kind === "buy").length, 1);
 });
 
 test("shock (2026-10-30): an expiry 3 days out is no trade; a leg under minPrice steps toward the money; a wide spread is no trade", async () => {
