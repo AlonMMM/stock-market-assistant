@@ -1667,3 +1667,20 @@ no book then (43 of 145 at 5 min) -> size unchanged. 2%, against the flat size a
 - **Half size over +300% in 5 min** (14 trades) is the only part that helps: a smaller drop (12% vs 13%) and more money
   on the year (+$5.0K) and check (+$6.5K), better without the best 5, but tune is $2.0K below 1.1.0 (and $0.9K below the
   flat line). Fails the tune gate by a little; 14 trades, look 1. Not a candidate; a watch item.
+
+**The same on the ask, x2 at <= +50% (look 2 of the idea; the user: "what about the first rule (double) for 50%? 50% on 1
+minute? and look always on the ask")**: rise = paid vs the ask k minutes before; 1 min (144 trades with a book, median
++11%, 121 at <= +50%) and 5 min (102, median +89%, 22 at <= +50%); +25% / +100% neighbours. 2%:
+
+| Version | x2 | Year (drop) | Tune | Check | w/o 5 | Flat at the same drop: year, tune, check |
+|---|---|---|---|---|---|---|
+| 1.1.0 | 0 | $142.1K (13%) | $111.9K | $125.6K | -$23.6K | |
+| ask 1m <= +50% | 121 | $170.4K (31%) | $105.6K | $162.3K | -$52.6K | 4% (26%, the sweep's top): $181.3K, $120.8K, $149.8K |
+| ask 1m <= +25% / +100% | 104 / 136 | $147.6K (28%) / $171.1K (25%) | $96.4K / $111.7K | $152.3K / $151.4K | | 4% / 3.86%: $181.3K / $179.6K |
+| ask 5m <= +50% | 22 | $127.1K (17%) | $105.4K | $120.7K | -$33.6K | 2.62%: $153.0K, $115.6K, $132.7K |
+| ask 5m <= +25% / +100% | 11 / 56 | $133.4K / $137.4K | $107.5K / $105.9K | $124.0K / $130.3K | | 2.05% / 2.91%: $142.0K / $159.0K |
+| ask 5m half > +300% only | 12 | $143.9K (12%) | $108.7K | $132.1K | -$19.1K | 1.86%: $137.8K, $111.5K, $124.1K |
+
+**No candidate.** Every double variant is below 1.1.0 on tune (the doubled trades lose there) and below the flat line on
+the year; the 1-minute one is nearly every trade (121 of 145), so it is a bigger size with a worse tune. The half over
++300% on the ask repeats the mid result (smaller drop, better check, tune -$3.2K).
