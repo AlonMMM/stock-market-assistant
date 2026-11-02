@@ -111,10 +111,10 @@ the stock list. Research log: `volume-bot.md`. Benchmark page: Volume Bot, https
 
 | Role | Version | Since | Rules | PR | Research twin |
 |---|---|---|---|---|---|
-| **Champion** (until 1.1.0's live check passes) | Volume 1.0.0 | 2026-10-30 | the plan alert (15-s cross, burst 1.1, same-week 2.5), the shock alert (5 checks within 300 s), the 0.20 leg with the liquid fallback, give-back on minute closes after 30 min | #193-#204, #224 | leg_seconds.py with the 11-01 alignment (PF_MAX_S=300) |
-| **Candidate, live since 2026-11-02** (stage 5 pending) | Volume 1.1.0 | 2026-11-02 | 1.0.0 + a shock only when the stock touches a side line within 20 s (`shockTouchSeconds`) + a too-cheap-and-thin leg takes the liquid strike (`cheapRescue`) | #236, #238 | leg_seconds.py PF_MAX_S=20 STR_LIQ_OLD=1 (the 10-30 dashboard's "Live (PR #204)") |
+| Before (champion 2026-10-30 .. 11-01) | Volume 1.0.0 | 2026-10-30 | the plan alert (15-s cross, burst 1.1, same-week 2.5), the shock alert (5 checks within 300 s), the 0.20 leg with the liquid fallback, give-back on minute closes after 30 min | #193-#204, #224 | leg_seconds.py with the 11-01 alignment (PF_MAX_S=300) |
+| **Champion since 2026-11-02** (live; the live check not run yet) | Volume 1.1.0 | 2026-11-02 | 1.0.0 + a shock only when the stock touches a side line within 20 s (`shockTouchSeconds`) + a too-cheap-and-thin leg takes the liquid strike (`cheapRescue`) | #236, #238 | leg_seconds.py PF_MAX_S=20 STR_LIQ_OLD=1 (the 10-30 dashboard's "Live (PR #204)") |
 
 Owner's limits on 2026-11-02: 51 stocks (top 50 + SLV), 3% a trade, 15 a day, 2 a stock, 5 open, 7.5% day loss, broker
 safety stop -80% (PR #237). Year 2025-11-03 .. 2026-10-30, the 1.1.0 code, 51 stocks, no stop: $100K -> $142.1K at 2%
 (13% drop), $162.1K at 3%; tune $111.9K, check $125.6K. Next: the live check (`bot-live-check`): one month of the app
-backtest vs the research twin trade by trade, and the E2E run; PASS makes 1.1.0 the champion.
+backtest vs the research twin trade by trade, and the E2E run; PASS makes 1.1.0 confirmed as the champion.
