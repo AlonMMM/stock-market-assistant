@@ -54,7 +54,7 @@ const order = {
   stopPct: {
     type: "number",
     description:
-      "Stop loss as % of the premium. Only when the user named one; 40 by default, at most 70.",
+      "Stop loss as % of the premium. Only when the user named one; 40 by default, at most 80.",
   },
   force: {
     type: "boolean",
@@ -167,7 +167,7 @@ export const tools: Tool[] = [
     name: "set_stop",
     title: "Put a stop on a position",
     description:
-      "Places a stop loss on contracts of a held position that have none, as % of the premium paid (40 by default, at most 70). It does not move an existing stop. Call it only on the user's own command.",
+      "Places a stop loss on contracts of a held position that have none, as % of the premium paid (40 by default, at most 80). It does not move an existing stop. Call it only on the user's own command.",
     inputSchema: {
       type: "object",
       properties: { ...position, stopPct: order.stopPct },

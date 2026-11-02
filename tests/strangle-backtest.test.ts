@@ -198,6 +198,42 @@ test("volume backtest: the plan's alert, the side within 15 s, the 0.20 leg boug
   );
 });
 
+test("volume backtest (2026-11-02): the broker's safety stop sells at the first minute bid at or under the buy less safetyStopPct", async () => {
+  const today = climbThenFall();
+  const stock0 = today[39]!.c;
+  const dip = (): QuoteMinute[] => [...books(), { m: 50, bid: 0.4, ask: 0.5 }];
+  const { data } = harness({
+    today,
+    seconds: [
+      [2401, stock0 * 1.0001],
+      [2404, stock0 * 1.001],
+    ],
+    books: dip,
+  });
+  const at = async (safetyStopPct: number, safetyStop = true) => {
+    const r = await runVolumeStock(
+      SYMBOL,
+      [DAY],
+      { ...settings, safetyStopPct },
+      data,
+      backtestCalendar,
+      { fillPct: 2, safetyStop },
+    );
+    return r.signals.find((x) => x.kind === "plan")!.trade!;
+  };
+  // bought at 1.15: -60% is 0.46, the bid of 0.40 at minute 50 sells
+  const sixty = await at(60);
+  assert.equal(sixty.exitReason, "stop");
+  assert.equal(sixty.exitMinute, 50);
+  assert.equal(sixty.sell, 0.4);
+  // -80% is 0.23: not reached, the give-back sells at 71
+  const eighty = await at(80);
+  assert.equal(eighty.exitReason, "giveback");
+  assert.equal(eighty.exitMinute, 71);
+  // without the stop, the give-back
+  assert.equal((await at(60, false)).exitReason, "giveback");
+});
+
 test("volume backtest: no side within 15 s ends the watch; a side against the burst is skipped", async () => {
   const today = climbThenFall();
   const stock0 = today[39]!.c;

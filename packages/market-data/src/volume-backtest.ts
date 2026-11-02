@@ -99,7 +99,11 @@ function parseRequest(body: unknown, lastSession: string) {
       throw new InputError("fillPct must be a number from 0 to 10");
     fillPct = b.fillPct;
   }
-  return { symbol, dates, settings: parsed.value, fillPct };
+  // The live bot's broker stop at -safetyStopPct, on unless the request turns it off.
+  if (b.safetyStop !== undefined && typeof b.safetyStop !== "boolean")
+    throw new InputError("safetyStop must be true or false");
+  const safetyStop = b.safetyStop !== false;
+  return { symbol, dates, settings: parsed.value, fillPct, safetyStop };
 }
 
 /** The last trade price each second of [from, to] (session seconds) from a run of trades, by Alpaca's bar rules. */
@@ -227,7 +231,7 @@ export async function handleVolumeBacktest(
       return { status: 400, body: { error: error.message } };
     throw error;
   }
-  const { symbol, dates, settings, fillPct } = request;
+  const { symbol, dates, settings, fillPct, safetyStop } = request;
   const feed = new AlpacaFeed(
     credentials.key,
     credentials.secret,
@@ -274,7 +278,7 @@ export async function handleVolumeBacktest(
       // Real books only (the user, 2026-11-01: "stop fallback as we have the
       // data now"): a buy needs its 1-second book, a sale its minute book;
       // without them the alert is not traded, as in the research simulator.
-      { fillPct, strictQuotes: true },
+      { fillPct, strictQuotes: true, safetyStop },
     );
     return {
       status: 200,

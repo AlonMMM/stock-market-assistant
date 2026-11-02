@@ -468,6 +468,7 @@ function VolumeTradeRow({ a }: { a: VolumeAccountTrade }) {
   if (t.book) book = `${t.book.bid.toFixed(2)} / ${t.book.ask.toFixed(2)}`;
   let exit = "Out by the end time";
   if (t.exitReason === "giveback") exit = "The stock's give-back";
+  else if (t.exitReason === "stop") exit = "The broker's safety stop";
   return (
     <details className="vbt-trade">
       <summary className="bt-row">
