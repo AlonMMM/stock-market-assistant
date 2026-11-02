@@ -46,6 +46,7 @@ const phaseWords: Record<StrangleTradeView["phase"], string> = {
 export const outcomeWords: Record<string, string> = {
   watching: "watching for the side",
   traded: "bought the leg",
+  no_fill: "the buy did not fill",
   "would-trade": "would buy (dry run)",
   no_side: "no side in time",
   no_expiry: "no expiry today or next session",
