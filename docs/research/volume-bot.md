@@ -88,6 +88,31 @@ since its last shock that day, once that move is >= X S30 (2, 3, 5, set before t
 - Since the last shock: no trade of 1.1.0 is skipped (ORCL 14:49 was already refused: the first trade still open).
 
 
+### Buy from the open; on the open only "good vs SPY in the pre-market" (2026-11-02, look 1)
+
+The user: "Regarding the first 20 minutes: that is because we are allow only on 1540. I would like to buy from the
+opening if possible. Lets try." then "On the open - go only with those with was good vs spy in the pre market". The
+live code (origin/main cf1c57f), live saved settings (1.1.0), 51 stocks, 2026-05-01 .. 10-30, limits on. The plan
+alert's 3-minute window vs the same minutes of 20 days makes 09:33 the earliest (firstMinute 3; the stored shock list
+starts at 09:40, so only the plan moves). Pre-market vs SPY: the last pre-market price vs the prior close, less SPY's
+(SPY minute bars from Alpaca). Scratchpad `open_driver.ts`, `openacct.ts`, `openp.ts`, `premkt.py`.
+
+- **From 09:33: no new trade** (80 trades, $117.4K, = 09:40). Of the 269 plan alerts 09:33-09:39: 178 on pre-market
+  skip days (pre-market volume >= 4x), 14 earnings, 33 no 15-s cross, 29 burst, 15 no book / too cheap / thin.
+- **The pre-market skip off for the early alerts** (the user's filter needs those days): still no alert before 09:40
+  trades (of 311 early alerts on those days: 129 earnings, 64 no cross, 68 burst, 17 no book); the early buys are
+  09:41-09:50.
+
+| Version (6 months, 2%) | Trades | $100K -> (3%) | Drop | Tune / check | News-day trades |
+|---|---|---|---|---|---|
+| 1.1.0 | 80 | $117.4K ($127.2K) | 13% | $105.5K / $112.1K | - |
+| + news-day alerts before 09:50 that agree with pre-market vs SPY | 86 | $115.5K ($123.5K) | 15% | $104.9K / $110.9K | 6, 2 won, median -28%, -$1.7K |
+| + those against it | 85 | $113.1K ($118.8K) | 14% | $104.7K / $108.6K | 5, 1 won, median -25%, -$3.9K |
+| pre-market skip off all day | 103 | $100.4K ($98.9K) | 19% | $99.5K / $101.0K | 23, 3 won, median -39%, -$15.0K |
+
+Verdict: not better. The pre-market skip earns its keep; on news days the SPY-agreeing side loses less than the other
+side but still loses (worse on tune and check).
+
 ### Roll at +400% into a 0.30 delta (2026-11-02, look 1)
 
 The user: "Can you test a rolling strategy? Say we are on 400%, sell all and buy 0.3 delta at 50% from the money. Check
