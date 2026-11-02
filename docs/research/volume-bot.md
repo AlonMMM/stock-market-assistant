@@ -31,7 +31,32 @@ At 3% the pick: tune $123.2K vs $116.3K, check $134.2K vs $135.8K. Year at 2%: 1
 (13%). **Not better: wins tune, loses the check** (-$1.0K, and without the best 5). No traded shock was under 2x the pace
 (2x removes nothing). The shock trades by pace (before the account, tune / check): before the pace 2 / 2 (median -73% /
 -59%), 2-3x 4 / 2 (-32% / -50%), 3-5x 5 / 6 (-33% / +7%, one +100%), >= 5x 32 / 22 (-21% / -31%, 4 / 2 of +100%). The
-under-5x shocks are 21 trades, too few to call; the check's one 3-5x giant decides it. Keep the shock as it is.
+under-5x shocks are 21 trades, too few to call; the check's one 3-5x giant decides it.
+
+**Look 2, exact (supersedes the filter above).** The user: "it's not about candidate - it's about that shock means. this is
+a real bug. shock is a sadden increase in the volume. to not compare it to today volume is weird. try also 10X from today.
+run it on all". Removing stored alerts was not exact: a removed alert no longer starts the 30-minute cooldown, so the day's
+real shock can fire minutes later. The shocks recomputed for the 51 stocks from the 10-second bars with the live rule
+(fastAlerts: fresh crossing, cooldown) plus the gate (scratch `.shock-recompute.ts`); the live rule recomputed matches the
+stored list 1,707 / 1,716 (the rest SPCE and USO, newer data) and is the base. Every stock-day whose shocks change re-run
+in the app's engine (`.volimp.ts` SHOCKS / SHOCK_VARIANT, one-day runs; the engine used exactly the recomputed shocks on
+all of them), the other days as the champion. Every version on both halves:
+
+| Version | Shocks | Trades | Tune 2% (drop) | Tune w/o best 5 | Check 2% (drop) | Check w/o best 5 | Year 2% |
+|---|---|---|---|---|---|---|---|
+| Live rule (recomputed = champion) | 1,707 | 79 / 66 | $111.4K (10%) | -$27.9K | $125.2K (9%) | -$22.7K | $140.5K |
+| + >= 2x the day's pace | 1,474 | 78 / 65 | $112.9K (10%) | -$26.4K | $127.2K (9%) | -$21.0K | $144.2K |
+| + >= 3x | 1,293 | 75 / 63 | $114.8K (11%) | -$25.8K | $128.2K (8%) | -$20.0K | $148.9K |
+| 🎯 + >= 5x | 982 | 72 / 59 | $116.7K (10%) | -$23.9K | $126.4K (8%) | -$21.6K | $149.1K |
+| + >= 10x | 472 | 56 / 51 | $108.8K (10%) | -$23.1K | $133.1K (6%) | -$17.4K | $144.9K |
+| 15x the day's pace only | 258 | 51 / 42 | $104.2K (14%) | -$23.2K | $136.5K (5%) | -$14.9K | $142.3K |
+
+At 3%: 5x tune $124.7K vs $116.3K, check $139.2K vs $135.8K. **2x, 3x and 5x beat the champion on tune AND check, and
+without the best 5 on both** (not a knife edge); 10x and the day's pace alone lose tune. The shock trades themselves
+(before the account, tune / check): live 43 / 32, median -28% / -31%, +100% 4 / 3; 3x 38 / 28, median -26% / -18%, 4 / 3;
+5x 34 / 24, median -25% / -24%, 4 / 2. The medians move up on both halves; the giants stay (5x loses one check giant).
+Small money (+$1-5K a half at 2%) on ~15 fewer shock trades. Pick on tune: 5x; 3x is the steadier pass (+$3.4K / +$3.0K).
+**Candidate.** Look 2 of this idea.
 
 ### More gain, more trades: floor, limits, burst sizing, runners, plan delta, news days (2026-11-02, look 1)
 
