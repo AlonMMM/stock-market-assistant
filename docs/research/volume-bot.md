@@ -1684,3 +1684,21 @@ minute? and look always on the ask")**: rise = paid vs the ask k minutes before;
 **No candidate.** Every double variant is below 1.1.0 on tune (the doubled trades lose there) and below the flat line on
 the year; the 1-minute one is nearly every trade (121 of 145), so it is a bigger size with a worse tune. The half over
 +300% on the ask repeats the mid result (smaller drop, better check, tune -$3.2K).
+
+**Half / skip by a big rise, on the ask, 5 min (look 3 of the idea; the user: "check the 300% with others. 200, 400.
+also - check do not enter at all if more than 500-600%")**: `volume_option_rise_cut.ts`. 2%, against the flat line:
+
+| Version | Changed | Year (drop) | Tune | Check | w/o 5 | Flat at the same drop: year, tune, check |
+|---|---|---|---|---|---|---|
+| 1.1.0 | 0 | $142.1K (13%) | $111.9K | $125.6K | -$23.6K | |
+| half > +200% | 21 | $132.2K (10%) | $111.7K | $118.9K | -$16.1K | 1.58%: $132.4K, $109.1K, $120.0K |
+| half > +300% | 12 | $143.9K (12%) | $108.7K | $132.1K | -$19.1K | 1.86%: $137.8K, $111.5K, $124.1K |
+| half > +400% | 10 | $143.1K (12%) | $108.7K | $131.0K | -$19.8K | 1.86%: $137.7K, $111.5K, $124.1K |
+| skip > +500% | 7 | $138.1K (12%) | $102.2K | $133.6K | -$23.6K | 1.77%: $136.3K, $110.8K, $123.8K |
+| skip > +600% | 6 | $136.9K (11%) | $102.2K | $131.9K | -$24.7K | 1.75%: $136.3K, $110.6K, $122.1K |
+| half > +300% + skip > +600% | 12 | $142.6K (11%) | $105.2K | $135.0K | -$19.8K | 1.75%: $136.3K, $110.6K, $122.1K |
+
+The trades over +500%: AVGO 04-24 -68%, META 07-17 -21%, QQQ 01-21 **+505%** (tune), ORCL 2025-12-12 -68%, GOOGL 04-24
+-73% (exactly +600%), NVDA 2025-11-21 -91%, AMZN 06-05 -73%: 6 of 7 lose, but the one QQQ shock decides tune (-$9.7K).
+Over +200% (21 trades): 3 won (META 04-08 +1251%, ORCL 10-08 +148%, QQQ). **No candidate**: every level is below 1.1.0
+on tune; on the check and the drop every level helps. Too few trades (6-21) to tell a pattern from QQQ's one winner.
