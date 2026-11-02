@@ -1702,3 +1702,23 @@ The trades over +500%: AVGO 04-24 -68%, META 07-17 -21%, QQQ 01-21 **+505%** (tu
 -73% (exactly +600%), NVDA 2025-11-21 -91%, AMZN 06-05 -73%: 6 of 7 lose, but the one QQQ shock decides tune (-$9.7K).
 Over +200% (21 trades): 3 won (META 04-08 +1251%, ORCL 10-08 +148%, QQQ). **No candidate**: every level is below 1.1.0
 on tune; on the check and the drop every level helps. Too few trades (6-21) to tell a pattern from QQQ's one winner.
+
+**The 3 years (look 4 of the idea; the user: "can you ran Half if > 200% for all 3 years?")**: `volume_option_rise_3y.py`
+finds each twin trade's contract in the research's Databento minute books (same stock and side, the book at the buy
+minute closest to the price paid: 431 of 431, 7 more than 15% off) and its ask 5 minutes before (326 trades);
+`volume_option_rise_3y_acct.py` re-walks the account (scaled P&L). 2%:
+
+| Version | Changed | End (drop) | Tune | Check | w/o 5 | Flat at the same drop: end, tune, check |
+|---|---|---|---|---|---|---|
+| 1.1.0 twin | 0 | $773K (21.1%) | +$73K | +$600K | +$201K | |
+| half > +200% | 48 | $565K (18.5%) | -$17K | +$482K | +$153K | 1.73%: $624K, +$58K, +$466K |
+| half > +300% | 31 | $603K (18.8%) | -$17K | +$520K | +$167K | 1.76%: $638K, +$60K, +$479K |
+| half > +400% | 24 | $579K (20.5%) | -$23K | +$503K | +$152K | 1.93%: $734K |
+| skip > +500% | 18 | $514K (21.1%) | -$56K | +$471K | +$117K | 2%: $773K |
+| skip > +600% | 11 | $658K (21.1%) | +$26K | +$531K | +$135K | 2%: $773K |
+| without 10-10: half > +200% | 38 | $243K (20.2%) | -$5K | +$148K | +$7K | 1.90%: $275K, +$26K, +$149K |
+
+**Fails, clearly.** Over 3 years the trades whose option rose more than +200% in the 5 minutes before are the good ones:
+48 trades, won 26 (54%), median +13%, 11 of +300% (QCOM 2025-10-27 +1104%, NVDA / QQQ / META 2025-10-10, META 2026-05-27
++496%, GOOGL 2026-08-05 +338%); by year 2024 6 of 10 won, 2025 14 of 22, 2026 6 of 16. The live code's year (6 of 21 won)
+was the odd one out. Every level is below the flat line; the skip levels lose the most. Close the idea.
