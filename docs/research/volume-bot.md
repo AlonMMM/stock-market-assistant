@@ -85,6 +85,30 @@ since its last shock that day, once that move is >= X S30 (2, 3, 5, set before t
 - Since the last shock: no trade of 1.1.0 is skipped (ORCL 14:49 was already refused: the first trade still open).
 
 
+### No shock against the last hour's move (2026-11-02, look 2)
+
+The user: "check - against the last 1 hour, and only big move comparing to the movement this day". Same as look 1, but
+the move is the last 60 minutes (H, the last closed minute an hour before the alert), at least x S30, and at least a
+share of the day's high-low range so far (R). Volume 1.1.0 parts (`pr_`), 51 stocks, 2025-11..2026-10, limits on,
+2% (3%). Scripts: scratchpad `hourctx.py` + `againsthour.ts`.
+
+| Version | Year 2% (3%) / drop | Tune 2% | Check 2% / drop | Check w/o best 5 | Trades skipped (flat $2K) |
+|---|---|---|---|---|---|
+| 1.1.0 | $142.1K ($162.1K) / 13% | $111.9K | $125.6K / 9% | -$22.3K | - |
+| look 1: since the open >= 2 S30 | $149.4K ($177.3K) / 12% | $115.3K | $128.5K / 9% | -$19.7K | 13, -$5.9K, median -31% |
+| last hour >= 2 S30 🎯 | $149.0K ($175.7K) / 12% | $116.4K | $127.5K / 8% | -$20.7K | 6, -$5.4K, median -36% |
+| last hour >= 3 S30 | $143.9K ($168.2K) / 12% | $113.2K | $126.3K / 9% | -$21.8K | 3, -$2.1K |
+| last hour >= 50% of R | $144.6K / 13% | $113.9K | $125.6K / 9% | -$22.3K | 2, -$2.3K |
+| last hour >= 2 S30 and >= 50% of R | $144.6K / 13% | $113.9K | $125.6K / 9% | -$22.3K | 2 |
+| last hour >= 3 S30 and >= 50% of R | $143.6K / 13% | $113.2K | $125.6K / 9% | -$22.3K | 1 |
+| ... >= 75% of R (any x) | = 1.1.0 | | | | 0 (12 alerts) |
+
+Pick on tune: last hour >= 2 S30 (no range share). Check: +$1.9K vs 1.1.0, drop 8% vs 9%, better without the best 5.
+The "big against the day's range" condition removes almost every skipped trade: the losing counter-moves came after
+an hour that was a modest part of a wide day; only ORCL 14:49 (+19 S30, 83% of R) and BABA 11-14 13:30 are both. The
+six skipped trades: USO 10-20 +8%, HIMS 07-29 -33%, IREN 10-28 -36%, GOOGL 05-19 -47%, NBIS 11-13 -81%, BABA 11-14 -82%;
+no giants. One year, 6 trades: weak evidence; same verdict as look 1 (helps a little, needs the 3-year check).
+
 ### Live gets the research's shock touch rule (20 s) and the too-cheap rescue; TQQQ SOXL SMH out (2026-11-02, PR #236)
 
 The user, 2026-11-01/02: "the volume bot was very profitable" (the 10-30 dashboard, +34% on the last 12 months) vs
