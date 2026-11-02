@@ -9,6 +9,61 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### More gain, more trades: floor, limits, burst sizing, runners, plan delta, news days (2026-11-02, look 1)
+
+The user, 2026-11-02: "analyse the volume bot and find improvments - 1. improve the gain. 2. number of trades
+(increasing)". On Volume 1.1.0 with the owner's saved settings (51 stocks, 3%, 15 a day, 5 open, 7.5% day loss, floor
+200, delta 0.20, the -80% broker stop), the app's backtest (the live code, main 9c7767f), 2025-11-03 .. 2026-10-30, real
+books only (the D1 snapshot of 2026-11-01). Temporary scripts in the app worktree: `scripts/.volimp.ts` (one run per
+version, settings overrides) and `.volreport.ts` (the accounts: volumeAccount's steps with the limits as a knob and a
+burst size multiple capped at the service's 5% a position; tune = even ISO entry weeks, check = odd). The runner rule is a
+research-only switch in walkExit (`VOL_RUNNER`: no give-back while the option's minute bid is >= that multiple of the
+buy; still out at 15:30; no overnight: 0/1 DTE cannot carry). Levels set before the run. Champion reproduced: 145
+trades, $140.5K at 2% with the -80% stop (the 1.1.0 row's $142.1K is with no stop).
+
+Tune (even weeks), from $100K:
+
+| Version | Trades | Won | 2% (drop) | 3% (drop) | 2% without best 5 | Flat $2K sum |
+|---|---|---|---|---|---|---|
+| 1.1.0 (champion here) | 79 | 25 | $111.4K (10%) | $116.3K (15%) | -$27.9K | +$13.0K |
+| 🎯 A no liquidity floor | 86 | 31 | $122.2K (9%) | $132.8K (13%) | -$22.5K | +$22.9K |
+| B limits 30 / 10 / 15% | 80 | 25 | $110.0K (10%) | $113.3K (15%) | -$28.7K | +$11.9K |
+| B no limits | 80 | 25 | $110.0K (10%) | $113.3K (15%) | -$28.7K | +$11.9K |
+| C x1.5 at burst >= 2 | 79 | 25 | $116.6K (10%) | $124.3K (15%) | -$29.6K | +$13.0K |
+| 🎯 C tiers x0.75 / x1 / x1.5 (burst < 1.5 / 1.5-2.5 / >= 2.5) | 79 | 25 | $121.5K (8%) | $132.2K (12%) | -$22.4K | +$13.0K |
+| C x2 at burst >= 2 | 79 | 25 | $122.3K (11%) | $127.3K (16%) | -$31.8K | +$13.0K |
+| D runner, no give-back at >= 1.5x | 79 | 25 | $90.1K (16%) | $84.4K (24%) | -$34.6K | -$8.7K |
+| D runner at >= 2x | 79 | 25 | $97.5K (11%) | $94.8K (17%) | -$30.3K | -$0.8K |
+| D runner at >= 3x | 79 | 25 | $101.5K (12%) | $101.1K (18%) | -$27.2K | +$3.4K |
+| E plan delta 0.25 | 85 | 26 | $105.6K (9%) | $107.6K (14%) | -$27.8K | +$7.7K |
+| 🎯 A+C | 86 | 31 | $128.8K (7%) | $142.9K (11%) | -$18.3K | +$22.9K |
+| F pre-market news skip off | 103 | 28 | $94.1K (17%) | $89.8K (26%) | -$40.6K | -$3.2K |
+| F both news skips off | 130 | 37 | $91.4K (18%) | $88.1K (24%) | -$45.3K | -$5.7K |
+
+Check (odd weeks), the picks only:
+
+| Version | Trades | Won | 2% (drop) | 3% (drop) | 2% without best 5 | Flat $2K sum |
+|---|---|---|---|---|---|---|
+| 1.1.0 | 66 | 25 | $125.2K (9%) | $135.8K (13%) | -$22.7K | +$26.4K |
+| A no liquidity floor | 67 | 25 | $117.8K (9%) | $124.6K (13%) | -$26.5K | +$20.5K |
+| C tiers | 66 | 25 | $113.7K (8%) | $120.4K (12%) | -$20.7K | +$26.4K |
+| A+C | 67 | 25 | $108.8K (9%) | $112.2K (13%) | -$23.3K | +$20.5K |
+
+Year: 1.1.0 $140.5K (13%), A $143.9K (10%, 153 trades), C $138.9K (11%), A+C $140.8K (9%); median trade -28% in all.
+
+- **No candidate.** Every pick wins tune and loses check (A -$7.4K, C -$11.5K, A+C -$16.4K at 2%). No floor won the
+  3-year research of 2026-10-30; on the live code's year it is a tie (all its gain in the tune half), and 9 more of its
+  alerts have no book at the sale (11 vs 2): fill unproven.
+- **The limits do not bind this year**: looser or none adds one trade. More trades must come from alerts, not caps.
+- **The funnel** (9,501 alerts): plan slow cross 3,568, pre-market news 3,221, burst 730, earnings 100; shock slow
+  cross 588, pre-market 397, no 0-2 DTE expiry 345, burst 149; too cheap 115, thin 42, no history 54; traded 169 (145
+  after the account).
+- **News days with today's filters** (first time: the 2026-10-27 study ran before the cross and burst filters): the 132
+  pre-market-news trades average -16.5%, median -36%; earnings days 4 trades. Keep both skips.
+- Burst tiers cut the drop and the "without the best 5" loss on both halves, but the check's money sits in low-burst
+  trades they size down. Runners give the move back at every level. Plan delta 0.25 loses on tune.
+- Benchmark: the card "Test of 2 Nov 2026" on the Volume Bot page (dataset `tests1102`).
+
 ### No shock against the move (2026-11-02, look 1)
 
 The user, on ORCL 2026-10-28 14:49 (a "down" shock 30 min after a +12% shock run): "we do not want to take against
