@@ -1647,3 +1647,23 @@ Plan median rise 1 / 5 / 10 / 15 min: +14% / +111% / +152% / +174%; shock +28% /
 median -45% (tune -48%, check -25%), 3 of +300%; +25-50% in 5 min (10 trades): median -4%; up 100%+ in the last minute
 (9): median +6% but tune +55% / check -10%. The bot buys after the option has already doubled in most trades; the
 small groups that look better are too few and flip between halves. No rule proposed.
+
+**Size by the option's rise before the buy (look 1; the user: "double only if the option did not raise more than 100%?
+and half if it did more than 300%")**: `volume_option_rise.py` + `volume_option_rise_acct.ts`, live code's year, live
+limits, rise = paid vs the mid k minutes before (5 min the main window, 1 / 10 / 15 as neighbours, set before the run);
+no book then (43 of 145 at 5 min) -> size unchanged. 2%, against the flat size at the same worst drop:
+
+| Version | Changed | Year (drop) | Tune | Check | w/o 5 | Flat: year, tune, check |
+|---|---|---|---|---|---|---|
+| 1.1.0 | 0 | $142.1K (13%) | $111.9K | $125.6K | -$23.6K | |
+| 5m: x2 <= +100%, half > +300% | 67 | $143.6K (17%) | $104.5K | $137.3K | -$27.6K | 2.58%: $152.6K, $114.8K, $133.2K |
+| 5m: x2 <= +100% only | 53 | $137.6K (19%) | $106.0K | $130.5K | -$32.8K | 2.91%: $158.8K, $116.2K, $136.5K |
+| 5m: half > +300% only | 14 | $147.1K (12%) | $109.9K | $132.1K | -$18.4K | 1.77%: $136.2K, $110.8K, $123.8K |
+| 10m both | 55 | $134.5K (14%) | $107.2K | $124.4K | -$26.8K | 2.14%: $144.4K, $112.5K, $127.5K |
+| 15m both | 53 | $130.0K (15%) | $102.4K | $125.5K | -$30.0K | 2.30%: $147.3K, $113.4K, $129.8K |
+| 1m both | 138 | $167.4K (26%) | $109.7K | $151.3K | -$63.4K | 4.00%: $181.3K, $120.8K, $149.8K |
+
+- **The double part fails** on every window: tune below 1.1.0 and below the flat line.
+- **Half size over +300% in 5 min** (14 trades) is the only part that helps: a smaller drop (12% vs 13%) and more money
+  on the year (+$5.0K) and check (+$6.5K), better without the best 5, but tune is $2.0K below 1.1.0 (and $0.9K below the
+  flat line). Fails the tune gate by a little; 14 trades, look 1. Not a candidate; a watch item.
