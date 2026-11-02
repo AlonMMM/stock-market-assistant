@@ -6695,6 +6695,10 @@ dialog.trade-story .why-head h2 {
   overflow: hidden;
   background: var(--gray-99);
 }
+/* The daily candles: two panes, the stock and its volume. */
+.ts-chart.daily {
+  height: 480px;
+}
 .ts-why {
   margin: 6px 0 0;
   padding-left: 18px;
@@ -6752,6 +6756,9 @@ dialog.trade-story .why-head h2 {
   .ts-chart {
     height: 560px;
     margin: 0 -4px;
+  }
+  .ts-chart.daily {
+    height: 400px;
   }
   .ts-bar .segmented.small button {
     min-height: 36px;

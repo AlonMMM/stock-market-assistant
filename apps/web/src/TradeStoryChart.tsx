@@ -8,6 +8,7 @@ import {
   HistogramSeries,
   LineSeries,
   LineStyle,
+  LineType,
   type AutoscaleInfo,
   type IChartApi,
   type IPanePrimitive,
@@ -23,7 +24,9 @@ import {
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
+import type { ChartBarsRow } from "../../../packages/market-data/src/chart-bars.js";
 import type { TradeChart as TradeChartData } from "../../../packages/market-data/src/trade-chart.js";
+import { dayRange, zoomRange, type ChartLevel } from "./chart-levels.js";
 import {
   barTime,
   levelLines,
@@ -38,9 +41,11 @@ import { isDarkNow, useDark } from "./theme.js";
 // SPY beside it, the volume, the bot's strength against SPY, the option and
 // its volume, each in a pane; the levels as price lines, the entry and the
 // exits as markers. The viewer dragging past the first or last day asks the
-// window for more days.
+// window for more days. Support and resistance (user 2026-11-02): the bot's
+// levels as price lines and the day's high and low so far as steps; the zoom
+// buttons; and the daily candles, a chart of their own (TradeDailyChart).
 
-export type ChartView = "trade" | "day" | "all";
+export type ChartView = "trade" | "day" | "all" | "daily";
 export type ChartStyle = "line" | "candles";
 
 const lightColors = {
@@ -70,6 +75,10 @@ const lightColors = {
   signal: "#2f4b8f",
   touch: "#b5651d",
   held: "rgba(47, 75, 143, 0.07)",
+  resistance: "#c0322b",
+  support: "#0e7a43",
+  dayHigh: "rgba(192, 50, 43, 0.8)",
+  dayLow: "rgba(14, 122, 67, 0.8)",
   tagText: "#fff", // on the coloured fill labels
   dot: "#fff", // inside a fill's dot on the option
 };
@@ -101,6 +110,10 @@ const darkColors: typeof lightColors = {
   signal: "#8ea8f0",
   touch: "#e0a060",
   held: "rgba(142, 168, 240, 0.1)",
+  resistance: "#ff5c5c",
+  support: "#3fcf7f",
+  dayHigh: "rgba(255, 92, 92, 0.8)",
+  dayLow: "rgba(63, 207, 127, 0.8)",
   tagText: "#16191f",
   dot: "#1f232a",
 };
@@ -404,6 +417,13 @@ interface Parts {
     line: IPriceLine;
   }[];
   ruleLines: IPriceLine[];
+  // Support and resistance: the levels' price lines and the day's range so far.
+  srLines: {
+    series: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
+    line: IPriceLine;
+  }[];
+  dayHigh: ISeriesApi<"Line">;
+  dayLow: ISeriesApi<"Line">;
   dayStarts: Time[];
   fills: FillMark[];
   stockLevels: number[];
@@ -440,6 +460,24 @@ export interface Hover {
   volume: number | null;
 }
 
+/** A zoom button press: `factor` below 1 zooms in; `n` counts the presses. */
+export interface ChartZoom {
+  n: number;
+  factor: number;
+}
+
+/** One zoom step on a chart's time scale. */
+function applyZoom(chart: IChartApi, factor: number) {
+  const scale = chart.timeScale();
+  const range = scale.getVisibleLogicalRange();
+  if (!range) return;
+  const next = zoomRange(range, factor);
+  scale.setVisibleLogicalRange({
+    from: next.from as Logical,
+    to: next.to as Logical,
+  });
+}
+
 type ChartProps = Parameters<typeof StoryChart>[0];
 
 /** The chart in the page's theme; a theme change draws it again. */
@@ -456,6 +494,9 @@ function StoryChart({
   style,
   onEdge,
   onHover,
+  levels,
+  showLevels,
+  zoom,
   compact = false,
 }: {
   chart: TradeChartData;
@@ -465,6 +506,9 @@ function StoryChart({
   style: ChartStyle;
   onEdge: (side: "before" | "after") => void;
   onHover: (h: Hover | null) => void;
+  levels: ChartLevel[]; // support and resistance on the entry day
+  showLevels: boolean; // the levels and the day's range drawn or not
+  zoom: ChartZoom; // a zoom button press: n counts the presses
   // Under an open position (user 2026-10-27, "too much"): the stock and the
   // option only; the volume and strength panes are folded away.
   compact?: boolean;
@@ -472,6 +516,7 @@ function StoryChart({
   const host = useRef<HTMLDivElement>(null);
   const parts = useRef<Parts | null>(null);
   const moved = useRef(false);
+  const zoomed = useRef(zoom.n); // presses already applied: a new chart applies none
   const [ready, setReady] = useState(0);
   const onEdgeRef = useRef(onEdge);
   onEdgeRef.current = onEdge;
@@ -547,6 +592,25 @@ function StoryChart({
       lastValueVisible: true,
       crosshairMarkerVisible: false,
       title: "SPY",
+    });
+    // The day's high and low so far: steps that only move when a new one is made.
+    const range = {
+      lineWidth: 2 as const,
+      lineType: LineType.WithSteps,
+      lineStyle: LineStyle.Dotted,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    };
+    p.dayHigh = api.addSeries(LineSeries, {
+      ...range,
+      color: palette().dayHigh,
+      title: "High so far",
+    });
+    p.dayLow = api.addSeries(LineSeries, {
+      ...range,
+      color: palette().dayLow,
+      title: "Low so far",
     });
     p.volume = api.addSeries(
       HistogramSeries,
@@ -675,6 +739,7 @@ function StoryChart({
         : [];
     p.lines = [];
     p.ruleLines = [];
+    p.srLines = [];
     p.stockLevels = [];
     p.optionLevels = [];
     p.rvol = new Map();
@@ -748,6 +813,8 @@ function StoryChart({
     }[] = [];
     const volume: { time: UTCTimestamp; value: number; color: string }[] = [];
     const spy: { time: UTCTimestamp; value: number }[] = [];
+    const dayHigh: { time: UTCTimestamp; value: number }[] = [];
+    const dayLow: { time: UTCTimestamp; value: number }[] = [];
     const strength: { time: UTCTimestamp; value: number }[] = [];
     const optionLines: { time: UTCTimestamp; value: number }[] = [];
     const optionCandles: typeof candles = [];
@@ -766,6 +833,11 @@ function StoryChart({
           color: c >= o ? palette().upVolume : palette().downVolume,
         });
       }
+      // Each day's range starts again at its first minute.
+      for (const [m, high, low] of dayRange(s.stock)) {
+        dayHigh.push({ time: time(s.date, m), value: high });
+        dayLow.push({ time: time(s.date, m), value: low });
+      }
       for (const [m, c] of s.spy) spy.push({ time: time(s.date, m), value: c });
       for (const [m, t, rvol] of s.strength) {
         const at = time(s.date, m);
@@ -783,6 +855,8 @@ function StoryChart({
     p.stockCandles.setData(candles);
     p.volume.setData(volume);
     p.spy.setData(spy);
+    p.dayHigh.setData(dayHigh);
+    p.dayLow.setData(dayLow);
     p.strength.setData(strength);
     p.optionLine?.setData(optionLines);
     p.optionAt = optionLines;
@@ -889,6 +963,44 @@ function StoryChart({
     p.optionCandles?.applyOptions({ visible: candles });
   }, [style, ready]);
 
+  // Support and resistance: the entry day's levels as price lines on the
+  // stock (they do not stretch its scale), and the day's range, when shown.
+  useEffect(() => {
+    const p = parts.current;
+    if (!p) return;
+    for (const { series, line } of p.srLines) series.removePriceLine(line);
+    p.srLines = [];
+    p.dayHigh.applyOptions({ visible: showLevels });
+    p.dayLow.applyOptions({ visible: showLevels });
+    if (!showLevels) return;
+    for (const l of levels) {
+      const color =
+        l.side === "high" ? palette().resistance : palette().support;
+      for (const series of [p.stockLine, p.stockCandles])
+        p.srLines.push({
+          series,
+          line: series.createPriceLine({
+            price: l.price,
+            color,
+            lineWidth: 1,
+            lineStyle: LineStyle.LargeDashed,
+            axisLabelVisible: true,
+            title: l.title,
+          }),
+        });
+    }
+  }, [levels, showLevels, ready]);
+
+  // A zoom button: half or twice the bars, around the middle of the view.
+  useEffect(() => {
+    const p = parts.current;
+    if (!p || zoom.n === zoomed.current) return;
+    zoomed.current = zoom.n;
+    // Like a pinch: zooming out past the first or last day reads more days.
+    moved.current = true;
+    applyZoom(p.chart, zoom.factor);
+  }, [zoom]);
+
   // The view: the trade's own minutes, its days, or every day drawn.
   useEffect(() => {
     const p = parts.current;
@@ -958,4 +1070,158 @@ function StoryChart({
   return (
     <div className={compact ? "ts-chart compact" : "ts-chart"} ref={host} />
   );
+}
+
+// The daily candles (user 2026-11-02, "days candles"): the stock's sessions
+// around the trade, regular hours, with its volume, the entry and exit days
+// marked and the entry day's support and resistance.
+const dailyBefore = 60; // sessions shown before the entry day when it opens
+
+const dayTime = (date: string) =>
+  (Date.parse(`${date}T00:00:00Z`) / 1000) as UTCTimestamp;
+
+export function TradeDailyChart(props: DailyProps) {
+  const dark = useDark();
+  return <DailyChart key={dark ? "dark" : "light"} {...props} />;
+}
+
+interface DailyProps {
+  rows: ChartBarsRow[];
+  entryDate: string;
+  exitDate: string | null;
+  levels: ChartLevel[];
+  showLevels: boolean;
+  zoom: ChartZoom;
+}
+
+function DailyChart({
+  rows,
+  entryDate,
+  exitDate,
+  levels,
+  showLevels,
+  zoom,
+}: DailyProps) {
+  const host = useRef<HTMLDivElement>(null);
+  const api = useRef<IChartApi | null>(null);
+  const zoomed = useRef(zoom.n);
+
+  useEffect(() => {
+    const el = host.current;
+    if (!el) return;
+    const chart = createChart(el, {
+      autoSize: true,
+      layout: {
+        background: { type: ColorType.Solid, color: palette().surface },
+        textColor: palette().text,
+        fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+        fontSize: 11,
+        attributionLogo: false,
+        panes: { separatorColor: palette().divider, enableResize: false },
+      },
+      grid: {
+        vertLines: { color: palette().grid },
+        horzLines: { color: palette().grid },
+      },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderVisible: false },
+      timeScale: { borderVisible: false, rightOffset: 3 },
+      handleScroll: { vertTouchDrag: false },
+      localization: {
+        locale: "en-GB",
+        timeFormatter: (t: Time) => crosshairDay.format((t as number) * 1000),
+      },
+    });
+    api.current = chart;
+    const candles = chart.addSeries(CandlestickSeries, {
+      upColor: palette().up,
+      downColor: palette().down,
+      wickUpColor: palette().up,
+      wickDownColor: palette().down,
+      borderVisible: false,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    const volume = chart.addSeries(
+      HistogramSeries,
+      {
+        priceFormat: { type: "volume" },
+        priceLineVisible: false,
+        lastValueVisible: false,
+      },
+      1,
+    );
+    chart.panes().forEach((pane, i) => pane.setStretchFactor(i === 0 ? 5 : 1));
+    candles.setData(
+      rows.map((r) => ({
+        time: dayTime(r.date),
+        open: r.stock.open,
+        high: r.stock.high,
+        low: r.stock.low,
+        close: r.stock.close,
+      })),
+    );
+    volume.setData(
+      rows.map((r) => {
+        const up = r.stock.close >= r.stock.open;
+        return {
+          time: dayTime(r.date),
+          value: r.stock.volume,
+          color: up ? palette().upVolume : palette().downVolume,
+        };
+      }),
+    );
+    const marks: SeriesMarker<Time>[] = [
+      {
+        time: dayTime(entryDate),
+        position: "belowBar",
+        shape: "arrowUp",
+        color: palette().buy,
+        text: "Buy",
+        size: 1.4,
+      },
+    ];
+    if (exitDate && exitDate !== entryDate)
+      marks.push({
+        time: dayTime(exitDate),
+        position: "aboveBar",
+        shape: "arrowDown",
+        color: palette().sell,
+        text: "Sell",
+        size: 1.4,
+      });
+    createSeriesMarkers(candles, marks);
+    if (showLevels)
+      for (const l of levels) {
+        const color =
+          l.side === "high" ? palette().resistance : palette().support;
+        candles.createPriceLine({
+          price: l.price,
+          color,
+          lineWidth: 1,
+          lineStyle: LineStyle.LargeDashed,
+          axisLabelVisible: true,
+          title: l.title,
+        });
+      }
+    // The months before the entry day, up to the last day read.
+    const entry = rows.findIndex((r) => r.date >= entryDate);
+    if (entry >= 0)
+      chart.timeScale().setVisibleLogicalRange({
+        from: Math.max(0, entry - dailyBefore) as Logical,
+        to: (rows.length - 1 + 3) as Logical,
+      });
+    return () => {
+      api.current = null;
+      chart.remove();
+    };
+  }, [rows, entryDate, exitDate, levels, showLevels]);
+
+  useEffect(() => {
+    if (!api.current || zoom.n === zoomed.current) return;
+    zoomed.current = zoom.n;
+    applyZoom(api.current, zoom.factor);
+  }, [zoom]);
+
+  return <div className="ts-chart daily" ref={host} />;
 }
