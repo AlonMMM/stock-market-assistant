@@ -1,14 +1,11 @@
-import { useState, type RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { StockTags } from "./StockTags";
 import {
   coreClose,
   newYork,
   newYorkToUtc,
 } from "../../../packages/market-data/src/calendar.js";
-import {
-  alertCloseness,
-  alertRule,
-} from "../../../packages/trading/src/strangle/alert.js";
+import { alertRule } from "../../../packages/trading/src/strangle/alert.js";
 import type { StrangleSettings } from "../../../packages/trading/src/strangle/settings.js";
 import type {
   StrangleScanRow,
@@ -18,7 +15,6 @@ import type {
 import type { Portfolio as PortfolioData } from "../../../packages/trading/src/portfolio.js";
 import { EntryBanners, InTradeSign, type HeldTrade } from "./BotEntries.js";
 import { BotMap, useMapPick, type MapPoint } from "./BotMap.js";
-import { byCorner, cornerGap } from "./bot-map-model.js";
 import {
   FindStock,
   Meter,
@@ -28,6 +24,17 @@ import {
   withPicked,
 } from "./BotPanel.js";
 import { usePolling } from "./Live.js";
+import {
+  addReading,
+  alertChecks,
+  byReadiness,
+  missingText,
+  readiness,
+  trendMinutes,
+  trendWay,
+  type Readiness,
+  type Trend,
+} from "./volume-map-model.js";
 import {
   TradeRow,
   legWords,
@@ -47,7 +54,7 @@ import { israelClock, israelLabel, israelShortDate } from "./time.js";
 const ignore = () => {};
 type Signal = StrangleView["signals"][number];
 
-// From this share of both ratio checks, a stock counts as close to an alert.
+// From this readiness (the weakest of the four checks), a stock counts as close to an alert.
 const closeShare = 0.6;
 const needVolume = alertRule.threshold;
 const needMove = alertRule.priceMultiple;
@@ -292,8 +299,14 @@ function SessionStrip({
 // ---------------------------------------------------------------------------
 // The funnel
 
+/** How long an alert has to find its side: the cross filter's seconds, or the wait. */
+function sideWithin(s: StrangleSettings): string {
+  if (s.crossFilter) return `within ${s.crossMaxSeconds} seconds`;
+  return `within ${s.waitMinutes} minutes`;
+}
+
 function Funnel({ v }: { v: StrangleView }) {
-  const close = v.scan.filter((r) => alertCloseness(r) >= closeShare).length;
+  const close = v.scan.filter((r) => readiness(r).share >= closeShare).length;
   const sided = v.signals.filter((a) => afterSide.has(a.outcome)).length;
   const bought = v.signals.filter((a) => isBought(a.outcome)).length;
   const added = v.settings.added.length;
@@ -305,7 +318,7 @@ function Funnel({ v }: { v: StrangleView }) {
     {
       n: close,
       label: "Close to an alert",
-      sub: `${Math.round(closeShare * 100)}%+ of both checks now`,
+      sub: `${Math.round(closeShare * 100)}%+ ready on all four checks`,
     },
     {
       n: v.signals.length,
@@ -315,7 +328,7 @@ function Funnel({ v }: { v: StrangleView }) {
     {
       n: sided,
       label: "Found a side",
-      sub: `within ${v.settings.waitMinutes} minutes`,
+      sub: sideWithin(v.settings),
     },
     {
       n: bought,
@@ -345,37 +358,6 @@ function Funnel({ v }: { v: StrangleView }) {
 const signedMove = (r: StrangleScanRow) =>
   r.side === "up" ? r.moveRatio : -r.moveRatio;
 
-/** What a stock still lacks for an alert, in words. */
-function lacking(r: StrangleScanRow): string {
-  const needs: string[] = [];
-  if (r.volRatio < needVolume)
-    needs.push(`volume ${r.volRatio.toFixed(1)}× of ${needVolume}×`);
-  if (r.moveRatio < needMove)
-    needs.push(`move ${r.moveRatio.toFixed(1)}× of ${needMove}×`);
-  if (r.shares < alertRule.minVolume)
-    needs.push(
-      `${r.shares.toLocaleString("en-US")} of ${alertRule.minVolume.toLocaleString("en-US")} shares`,
-    );
-  if (r.movePct < alertRule.minMovePercent)
-    needs.push(
-      `a ${pctText(r.movePct, 2)} move of ${alertRule.minMovePercent}%`,
-    );
-  if (needs.length === 0)
-    return "All four checks met: it alerts when its last 1-minute bar also closes the same way (up: above its open and the minute before)";
-  return `Needs ${needs.join(", ")}`;
-}
-
-/** The stocks in the order of the map: the nearest its corner first (user 2026-10-28). */
-function nearestFirst(scan: StrangleScanRow[]): StrangleScanRow[] {
-  const { maxVol, maxMove } = alertRange(scan);
-  return byCorner(
-    scan,
-    (r) =>
-      cornerGap(r.volRatio, r.moveRatio, needVolume, needMove, maxVol, maxMove),
-    (r) => Math.min(r.volRatio / needVolume, r.moveRatio / needMove),
-  );
-}
-
 /** The map's axes' ends, from the stocks on it. */
 function alertRange(scan: StrangleScanRow[]) {
   return {
@@ -398,15 +380,25 @@ function AlertMap({
   onSelect: (symbol: string) => void;
 }) {
   const { maxVol, maxMove } = alertRange(scan);
-  const points: MapPoint[] = scan.map((r) => ({
-    symbol: r.symbol,
-    x: r.volRatio,
-    y: signedMove(r),
-    tone: r.side === "up" ? "up" : "down",
-    ring: waiting.has(r.symbol),
-    trade: trades.get(r.symbol) ?? null,
-    title: `${r.symbol}: volume ${r.volRatio.toFixed(1)}×, move ${r.moveRatio.toFixed(1)}× (${pctText(r.movePct, 2)}). ${lacking(r)}`,
-  }));
+  const points: MapPoint[] = scan.map((r) => {
+    // Grey when a check the map does not draw (shares, the price move) is
+    // not met: by the corner on the map, but no alert yet.
+    const hidden = readiness(r).missing.some(
+      (c) => c.key === "shares" || c.key === "price",
+    );
+    let tone: MapPoint["tone"] = r.side === "up" ? "up" : "down";
+    if (hidden) tone = "blocked";
+    const ready = Math.round(readiness(r).share * 100);
+    return {
+      symbol: r.symbol,
+      x: r.volRatio,
+      y: signedMove(r),
+      tone,
+      ring: waiting.has(r.symbol),
+      trade: trades.get(r.symbol) ?? null,
+      title: `${r.symbol}: ${ready}% ready, ${missingText(readiness(r))}`,
+    };
+  });
   return (
     <BotMap
       points={points}
@@ -426,9 +418,77 @@ function AlertMap({
         xTitle: "Volume, last 3 minutes vs usual →",
         yTitle: "↓ down · move vs its usual 3 minutes · up ↑",
         label:
-          "Each watched stock by its last 3 minutes' volume and move against its usual. A stock in a shaded corner alerts.",
+          "Each watched stock by its last 3 minutes' volume and move against its usual. A stock in a shaded corner alerts when its shares and price move also pass; grey when they do not.",
       }}
     />
+  );
+}
+
+/** The readiness bar: the weakest check's share, with 100% (the alert) marked. */
+function ReadyBar({ x }: { x: Readiness }) {
+  const pctReady = Math.round(x.share * 100);
+  let cls = "vb-ready-fill";
+  if (x.share >= 1) cls += " full";
+  else if (x.share >= closeShare) cls += " near";
+  return (
+    <span className="vb-ready" title={`${pctReady}% ready: ${missingText(x)}`}>
+      <span className="vb-ready-bar">
+        <span className={cls} style={{ width: `${pctReady}%` }} />
+      </span>
+      <span className="num">{pctReady}%</span>
+    </span>
+  );
+}
+
+/** The four checks as pips, each filled to its share; full when met. */
+function CheckPips({ r }: { r: StrangleScanRow }) {
+  return (
+    <span className="vb-pips" aria-label={missingText(readiness(r))}>
+      {alertChecks(r).map((c) => (
+        <span
+          key={c.key}
+          className={c.met ? "vb-pip met" : "vb-pip"}
+          title={c.text}
+        >
+          <span style={{ height: `${Math.round(c.share * 100)}%` }} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** The readiness over the last minutes the page was open, with 100% dashed. */
+function TrendLine({ trend }: { trend: Trend | undefined }) {
+  const w = 64;
+  const h = 20;
+  const minutes = [...(trend?.keys() ?? [])].sort((a, b) => a - b);
+  if (!trend || minutes.length < 2)
+    return <span className="vb-trend muted small">—</span>;
+  const last = minutes.at(-1)!;
+  const x = (m: number) => w - ((last - m) / (trendMinutes - 1)) * w;
+  const y = (s: number) => h - 2 - s * (h - 4);
+  const path = minutes
+    .map(
+      (m, i) =>
+        `${i ? "L" : "M"}${x(m).toFixed(1)},${y(trend.get(m)!).toFixed(1)}`,
+    )
+    .join(" ");
+  const way = trendWay(trend);
+  let words = "about the same";
+  if (way === "up") words = "rising";
+  if (way === "down") words = "falling";
+  return (
+    <svg
+      className={`vb-trend ${way}`}
+      width={w}
+      height={h}
+      viewBox={`0 0 ${w} ${h}`}
+      role="img"
+      aria-label={`Readiness ${words} over the last ${trendMinutes} minutes`}
+    >
+      <line x1={0} x2={w} y1={y(1)} y2={y(1)} className="vb-trend-goal" />
+      <path d={path} />
+    </svg>
   );
 }
 
@@ -444,14 +504,11 @@ function StockFocus({
   onOpen?: (symbol: string) => void;
 }) {
   const up = r.side === "up";
-  // Less text (user 2026-10-27): the meters say what is missing; words only
-  // for what they cannot show.
+  const x = readiness(r);
   let today = "";
   if (traded > 0) today = `Traded ${traded} today.`;
   if (traded >= maxPerStock)
     today = `Traded ${traded} today: no more today (most ${maxPerStock}).`;
-  const fewShares = r.shares < alertRule.minVolume;
-  const smallMove = r.movePct < alertRule.minMovePercent;
   return (
     <div className="bot-focus" aria-live="polite">
       <div className="bot-focus-head">
@@ -470,47 +527,23 @@ function StockFocus({
           </button>
         )}
       </div>
+      <div className="vb-focus-ready">
+        <ReadyBar x={x} />
+        <span className="small">
+          <strong>{x.met} of 4 checks met</strong> · {missingText(x)}
+        </span>
+      </div>
       <div className="bot-focus-meters">
-        <span>
-          <span className="muted small">Volume (need {needVolume}×)</span>
-          <Meter
-            value={r.volRatio}
-            of={needVolume}
-            label={`${r.volRatio.toFixed(1)}×`}
-          />
-        </span>
-        <span>
-          <span className="muted small">Move (need {needMove}×)</span>
-          <Meter
-            value={r.moveRatio}
-            of={needMove}
-            label={`${r.moveRatio.toFixed(1)}×`}
-          />
-        </span>
-        {fewShares && (
-          <span>
-            <span className="muted small">
-              Shares (need {alertRule.minVolume.toLocaleString("en-US")})
-            </span>
+        {alertChecks(r).map((c) => (
+          <span key={c.key}>
+            <span className="muted small">{c.text}</span>
             <Meter
-              value={r.shares}
-              of={alertRule.minVolume}
-              label={r.shares.toLocaleString("en-US")}
+              value={c.value}
+              of={c.need}
+              label={c.met ? "met" : `${Math.round(c.share * 100)}%`}
             />
           </span>
-        )}
-        {smallMove && (
-          <span>
-            <span className="muted small">
-              Price move (need {alertRule.minMovePercent}%)
-            </span>
-            <Meter
-              value={r.movePct}
-              of={alertRule.minMovePercent}
-              label={pctText(r.movePct, 2)}
-            />
-          </span>
-        )}
+        ))}
       </div>
       {today && <p className="small muted">{today}</p>}
     </div>
@@ -567,6 +600,7 @@ function StockList({
   out,
   waiting,
   notes,
+  trends,
   selected,
   onSelect,
   listRef,
@@ -578,6 +612,7 @@ function StockList({
   waiting: ReadonlySet<string>;
   // why a stock is out today, or its last alert found no side
   notes: ReadonlyMap<string, string>;
+  trends: ReadonlyMap<string, Trend>;
   selected: string | null;
   onSelect: (symbol: string) => void;
   listRef: RefObject<HTMLDivElement | null>;
@@ -585,7 +620,7 @@ function StockList({
   const [all, setAll] = useState(false);
   const [find, setFind] = useState("");
   const query = find.trim().toUpperCase();
-  const ordered = nearestFirst(scan);
+  const ordered = byReadiness(scan);
   const live = query
     ? ordered.filter((r) => r.symbol.startsWith(query))
     : ordered.filter((r) => !out.has(r.symbol));
@@ -595,25 +630,30 @@ function StockList({
     selected,
   );
   return (
-    <div className="bot-stocks" ref={listRef}>
+    <div className="bot-stocks vb-stocks" ref={listRef}>
       <FindStock value={find} onChange={setFind} />
-      <div className="bot-stocks-head muted small" aria-hidden="true">
+      <div
+        className="bot-stocks-head vb-ready-row muted small"
+        aria-hidden="true"
+      >
         <span>Stock</span>
-        <span>Volume</span>
-        <span>Move</span>
+        <span>Ready for an alert</span>
+        <span title="Volume · move · shares · price move">Checks</span>
+        <span>Last {trendMinutes} min</span>
       </div>
       <ul>
         {rows.map((r) => {
           const up = r.side === "up";
-          // Words only for what the bars cannot show (user 2026-10-27).
-          let state = notes.get(r.symbol) ?? "";
+          const x = readiness(r);
+          // The note says why a stock is out or waiting; else what it lacks.
+          let state = notes.get(r.symbol) ?? missingText(x);
           if (waiting.has(r.symbol)) state = "Alerted · waiting for the side";
           return (
             <li key={r.symbol} data-symbol={r.symbol}>
               <div
                 role="button"
                 tabIndex={0}
-                className="bot-stock-row"
+                className="bot-stock-row vb-ready-row"
                 aria-pressed={selected === r.symbol}
                 aria-label={`Find ${r.symbol} on the map`}
                 onClick={() => onSelect(r.symbol)}
@@ -629,17 +669,10 @@ function StockList({
                   <strong>{r.symbol}</strong>
                   <StockTags symbol={r.symbol} compact />
                 </span>
-                <Meter
-                  value={r.volRatio}
-                  of={needVolume}
-                  label={`${r.volRatio.toFixed(1)}×`}
-                />
-                <Meter
-                  value={r.moveRatio}
-                  of={needMove}
-                  label={`${r.moveRatio.toFixed(1)}×`}
-                />
-                {state && <span className="bot-stock-state">{state}</span>}
+                <ReadyBar x={x} />
+                <CheckPips r={r} />
+                <TrendLine trend={trends.get(r.symbol)} />
+                <span className="bot-stock-state">{state}</span>
               </div>
             </li>
           );
@@ -657,6 +690,28 @@ function StockList({
   );
 }
 
+/** Each stock's readiness by minute while the page is open, the last 20 minutes. */
+function useTrends(scan: StrangleScanRow[]): Map<string, Trend> {
+  const [trends, setTrends] = useState<Map<string, Trend>>(new Map());
+  useEffect(() => {
+    if (scan.length === 0) return;
+    setTrends((old) => {
+      const next = new Map<string, Trend>();
+      for (const r of scan)
+        next.set(
+          r.symbol,
+          addReading(
+            old.get(r.symbol) ?? new Map(),
+            r.minute,
+            readiness(r).share,
+          ),
+        );
+      return next;
+    });
+  }, [scan]);
+  return trends;
+}
+
 function WhatItSees({
   v,
   day,
@@ -670,12 +725,13 @@ function WhatItSees({
 }) {
   const { picked, fromMap, fromList, mapRef, listRef } = useMapPick();
   const [showOut, setShowOut] = useState(false);
+  const trends = useTrends(v.scan);
   const out = outToday(v, day);
   const notes = new Map([...noSides(v, day), ...out]);
   const scan = showOut ? v.scan : v.scan.filter((r) => !out.has(r.symbol));
   const selected =
     picked ??
-    nearestFirst(v.scan).find((r) => !out.has(r.symbol))?.symbol ??
+    byReadiness(v.scan).find((r) => !out.has(r.symbol))?.symbol ??
     null;
   const row = v.scan.find((r) => r.symbol === selected);
   const waiting = new Set(
@@ -699,8 +755,10 @@ function WhatItSees({
         )}
       </div>
       <p className="muted small bot-explain">
-        Last 3 minutes against usual. A shaded corner alerts · ○ waiting for its
-        side · ◆ held · tap a stock to pick it on the map and in the list.
+        An alert needs four checks over the last 3 minutes: volume 4× usual,
+        move 3× usual, 10,000 shares and a 0.5% price move. Ready is the weakest
+        check: 100% alerts. On the map, grey: by the corner but short on shares
+        or price move · ○ waiting for its side · ◆ held.
       </p>
       {out.size > 0 && (
         <button
@@ -741,6 +799,7 @@ function WhatItSees({
             out={out}
             waiting={waiting}
             notes={notes}
+            trends={trends}
             selected={selected}
             onSelect={fromList}
             listRef={listRef}
@@ -829,7 +888,7 @@ function Waiting({ v, now }: { v: StrangleView; now: number }) {
         <h3 id="vb-wait-title">Waiting for the side</h3>
         <span className="muted small">
           The leg of the side the stock moves {v.settings.confirmUnits}× its
-          typical 30-minute move, within {v.settings.waitMinutes} minutes
+          typical 30-minute move, {sideWithin(v.settings)}
         </span>
       </div>
       {watching.length === 0 ? (
