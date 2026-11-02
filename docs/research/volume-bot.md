@@ -88,6 +88,23 @@ since its last shock that day, once that move is >= X S30 (2, 3, 5, set before t
 - Since the last shock: no trade of 1.1.0 is skipped (ORCL 14:49 was already refused: the first trade still open).
 
 
+### Start at 10:00, not 09:40 (2026-11-02, look 1)
+
+The user: "starting from half hour after opening?" Every alert (or plan alert) before 10:00 (09:50) dropped; the live
+code's year (`pr_` parts, 51 stocks, limits on) and the 3-year research twin (re-walked from its dollars). Filtered,
+not re-run (a burst running into 10:00 would make a fresh first alert there: not counted). Scratchpad `from10.ts`.
+
+| Version, 2% (3%) | Year: $100K -> / drop | Year tune / check | 3 years: $100K -> / drop | 3y tune / check P&L | 3y w/o best 5 |
+|---|---|---|---|---|---|
+| 1.1.0 (09:40) | $142.1K ($162.1K) / 13% | $111.9K / $125.6K | $773K ($1,548K) / 21.1% | +$73.4K / +$599.7K | +$200.7K |
+| from 09:50 | $132.9K ($146.7K) / 14% | $103.7K / $126.9K | $739K ($1,454K) / 19.0% | +$46.6K / +$592.4K | +$184.4K |
+| from 10:00 (plan + shock) | $134.8K ($153.6K) / 13% | $107.0K / $126.8K | $679K ($1,285K) / 17.3% | +$28.8K / +$550.0K | +$163.2K |
+| from 10:00 (plan only) | $133.1K ($147.0K) / 14% | $104.9K / $125.6K | | | |
+
+Verdict: not better. 09:40-09:59 is a median loser (3y: 52 trades, median about -35%), but it holds a few +200-290%
+trades (HIMS 2025-02-13, INTC 2026-01-07, GOOG 2026-09-18) that pay for it; a later start gives up more than it saves
+(a smaller drop only).
+
 ### Buy from the open; on the open only "good vs SPY in the pre-market" (2026-11-02, look 1)
 
 The user: "Regarding the first 20 minutes: that is because we are allow only on 1540. I would like to buy from the
