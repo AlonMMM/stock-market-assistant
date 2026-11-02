@@ -1777,3 +1777,33 @@ Live code's year (`volume_spy_norm_acct.ts`, volumeAccount, live limits), 2%:
 the 3-year check. With 10-10 kept, 3x ends $536K vs $773K: a 10-10-like day (market-wide volume, every stock moving) is
 exactly what it skips. By-year splits of the scaled walk are not valid (the P&L is in the whole run's account dollars),
 so none are logged. Several variants and 2 looks: weak evidence; not a candidate until the user weighs the 10-10 risk.
+
+### Size by the volume score against SPY (2026-11-02, look 1)
+
+The user: "we can use it as a score ... if intl got 10X and spy 3X intel might be good bet ... double the premia".
+Score = the stock's 3-min volume ratio / SPY's (each vs its same-window median of 20 sessions). Sizes set before the run:
+x0.5 under 2, x1 2-6, x2 at >= 6 (capped at 5% a position); neighbours x2 at >= 4 / >= 10, and each part alone. The entry
+(alert on the score) and the exit (sell when the score fades) need the alert engine and are not run. Score at the buy:
+live year median 3.2 (43 / 69 / 33 trades in the tiers), 3-year twin median 2.2 (204 / 157 / 70; the window ending the
+minute before the buy, not the alert's own).
+
+| At 2% | Live year (drop) | Tune | Check | w/o 5 | 3y (drop) | Tune | Check | w/o 5 | 3y w/o 10-10 | Tune | Check | w/o 5 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1.1.0 | $142.1K (13%) | $111.9K | $125.6K | -$23.6K | $773K (21.1%) | +$73K | +$600K | +$201K | $288K (21.1%) | +$27K | +$161K | +$11K |
+| 🎯 x0.5 < 2, x2 >= 6 | $208.9K (13%) | $123.0K | $170.8K | -$21.8K | $734K (20.0%) | +$145K | +$489K | +$72K | $397K (20.0%) | +$77K | +$220K | -$5K |
+| flat at the same drop | $142.0K (2.01%) | $111.7K | $126.0K | -$23.9K | $703K (1.88%) | +$66K | +$537K | +$195K | $272K | +$26K | +$146K | +$13K |
+| x2 >= 4 | $201.7K (14%) | $123.7K | $160.7K | -$28.2K | $812K (23.0%) | +$184K | +$528K | +$87K | $440K | +$93K | +$247K | +$4K |
+| x2 >= 10 | $195.9K (11%) | $114.4K | $171.7K | -$27.2K | $581K (18.2%) | +$124K | +$357K | +$74K | $315K | +$68K | +$147K | -$4K |
+| x2 >= 6 only | $210.4K (15%) | $127.8K | $163.4K | -$22.5K | $1,067K (24.8%) | +$143K | +$824K | +$113K | $397K | +$49K | +$247K | -$18K |
+| x0.5 < 2 only | $139.3K (10%) | $107.4K | $129.9K | -$21.1K | $532K (16.0%) | +$87K | +$345K | +$122K | $289K | +$49K | +$140K | +$22K |
+
+Trades by score, 3 years (tune / check median, +300%): < 2 -30% / -1%, 1 / 15 (14 of them 10-10); 2-4 -34% / -28%, 4 / 4;
+4-6 -27% / -4%; 6-10 -32% / +1%; >= 10 -12% / -24%.
+
+- **Not a candidate yet.** The pick beats the flat line on both halves on the live code's year (+$11.1K tune, +$45.2K
+  check at the same 13% drop) and on 3 years without 10-10 (+$51K / +$74K), but: (1) with 10-10 it loses the check
+  (+$489K vs +$600K): 10-10's giants scored under 2 (the whole market was busy), so the half size cut them; (2) without
+  the best 5 it is below the flat line on 3 years (+$72K vs +$195K; -$5K vs +$13K without 10-10) and on the live check
+  (-$30.7K vs -$22.2K): the gain is a few big winners doubled. The medians by score do not rise with the score.
+- Next if pursued: the score at the alert's own window on 3 years (the alert minute, not the buy minute), and the entry
+  side (B).
