@@ -19,6 +19,8 @@ const V: [string, ((s: any) => boolean) | null][] = [
   ["  skip all when SPY >= 3x", (s) => n(s).rspy >= 3],
   ["skip shock when SPY >= 2x", (s) => s.kind === "shock" && n(s).rspy >= 2],
   ["skip plan when SPY >= 2x", (s) => s.kind === "plan" && n(s).rspy >= 2],
+  ["  skip plan when SPY >= 1.5x", (s) => s.kind === "plan" && n(s).rspy >= 1.5],
+  ["  skip plan when SPY >= 3x", (s) => s.kind === "plan" && n(s).rspy >= 3],
 ];
 const base = new Map<string, number>();
 for (const [name, drop] of V) {

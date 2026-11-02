@@ -1762,3 +1762,18 @@ Live code's year (`volume_spy_norm_acct.ts`, volumeAccount, live limits), 2%:
   +300%, all on a market-wide volume day). Without 10-10 SPY >= 3x is better on both halves ($314K vs $288K, drop 16.4%
   vs 21.1%), so the whole verdict turns on how many 10-10-like days come.
 - The shock should not be filtered by SPY's volume (worse on both halves).
+
+**Without 10 Oct 2025 (the user: "I need you to filter out 10-10-2025")**, "skip a plan alert when SPY's 3-min volume is
+>= X its usual" (look 2; plan-only 1.5x / 3x added on the live code's year). 2%:
+
+| SPY >= | Live year (drop) | Tune | Check | 3y w/o 10-10 (drop) | Tune | Check | w/o 5 |
+|---|---|---|---|---|---|---|---|
+| 1.1.0 | $142.1K (13%) | $111.9K | $125.6K | $288K (21.1%) | +$27K | +$161K | +$11K |
+| 1.5x | $149.4K (9%) | $123.5K | $120.8K | $301K (17.0%) | +$48K | +$153K | +$33K |
+| 2x | $156.2K (9%) | $120.3K | $128.7K | $292K (18.4%) | +$42K | +$150K | +$29K |
+| 3x | $148.5K (9%) | $116.8K | $126.3K | $314K (16.4%) | +$43K | +$171K | +$28K |
+
+3x is better on both halves on both data sets once 10-10 is out (live check only +$0.7K), with a smaller drop; 2x loses
+the 3-year check. With 10-10 kept, 3x ends $536K vs $773K: a 10-10-like day (market-wide volume, every stock moving) is
+exactly what it skips. By-year splits of the scaled walk are not valid (the P&L is in the whole run's account dollars),
+so none are logged. Several variants and 2 looks: weak evidence; not a candidate until the user weighs the 10-10 risk.
