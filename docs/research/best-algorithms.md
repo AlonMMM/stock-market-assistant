@@ -2822,3 +2822,25 @@ decides for every stock; 200 when there is no ratio). The usual comes from signa
   3.2-4.3%: no trend.
 Verdict: not better. A thin pick that is busy for its stock still loses like the other thin picks (median ~-$3K, worse
 than the champion's -$1.5K), and the ratio does not sort giants. The absolute 200 floor stays; no candidate.
+
+### No volume floor for the strongest signals only (stock volume, t, D2), on 2.10 (2026-11-03, not better: the pick fails the check)
+The user: "what about if we trade without flow or with smaller flow, only the top percent of the alerts, for example,
+high volume and high T and D2, something that we double most of the time". Tested before as "D2 under 200"
+(d2_liquid.py, 2026-10-25, 2.5, the old walk and bar fills: $2.7M vs $1.1M on the fair list, lost on the unseen); strong
+signals by volume or t never. strong_nofloor.py (vol_ratio.py's walk): a pick under 200 contracts bought only when the
+signal is strong; levels set before running from the signal distributions: c_rvol >= 2.5 (2.10's top tier, ~top 7%),
+c_t >= 2.3 (top 20%), D2 = an entry through the bonus (t < 1.8, so high t and D2 never both hold). Versions: RV, T, D2,
+RVT, RVD2, RVT50 (RVT + 50 contracts). Look 1 on the fixed walk.
+- Baseline 2.10 to the dollar (tune / check, 2%): fair $620,535 / $957,771, Favorites $449,178 / $226,846.
+- Tune, 2%, vs 2.10 (fair / Favorites): RV -55% / -43%; T -35% / -47%; D2 +29% / +12% (22% / 27% drop vs 16% / 14%);
+  RVT -18% / -23%; RVD2 -26% / +6%; RVT50 -10% / -10%. Pick: D2 (1.124).
+- Check, 2%: D2 $895,582 (-6%, 32% drop) / $121,011 (-47%, 40%); 3%: -17% / -66%. Without the best 5 at 2%: $174,083 /
+  $34,526 vs $169,718 / $74,497.
+- Added trades (main at $10K): the strong-signal thin picks lose more, not less: tune median RV -$2,934 / -$3,024, T
+  -$2,855 / -$3,142, RVT -$3,277 / -$3,767 (25-28 trades, 0 giants); D2 -$2,705 / -$2,766 with 12 / 9 giants (ARM,
+  COIN, CVNA, SMCI, IONQ), non-giant -$554K / -$691K. Check D2 246 / 306 added, median -$2,647 / -$2,654, sum +$7K /
+  -$358K, non-giant -$508K / -$768K, 2026 negative on both. Their option volume against the stock's usual: median
+  0.4-0.7x on every strong version - the stock bursts, its options at 0.15 don't.
+Verdict: not better. A strong stock signal does not make a thin contract work; the D2 gain is the same names that
+made the old "D2 under 200" look big (ARM, COIN, SMCI) and it does not repeat on the odd weeks. The 200 floor stays;
+no candidate.
