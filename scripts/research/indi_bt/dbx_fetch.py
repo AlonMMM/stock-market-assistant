@@ -51,6 +51,7 @@ if "open32" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "o
 if "open33" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open33"), "open33_dbx_list.csv", 391   # indi_choice_late.py
 if "open34" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open34"), "open34_dbx_list.csv", 391   # news_burst_calm.py
 if "open35" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open35"), "open35_dbx_list.csv", 391   # retry_skip.py
+if "open36" in sys.argv[1:]: OUT, LIST, END = os.path.join(HERE, "dbx_cache", "open36"), "open36_dbx_list.csv", 391   # rel_volume.py add15
 NY = ZoneInfo("America/New_York")
 AUTH = "Basic " + base64.b64encode((os.environ["DATABENTO_API_KEY"] + ":").encode()).decode()
 HEAD = ["contract", "minute", "bid", "ask", "bid_sz", "ask_sz"]

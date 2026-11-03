@@ -39,6 +39,15 @@ FAV_END = FR.Z
 GATES = {"add15": "ra15", "rel125": "rr125", "rel150": "rr150", "rel200": "rr200"}
 VERSIONS = ["2.10", *GATES, "size-rel"]
 FAMILIES = {"gate-add": ("add15",), "gate-replace": ("rel125", "rel150", "rel200"), "size": ("size-rel",)}
+# RV_GATES=add15 (the rerun after its missing books were bought, dbx_fetch.py open36): only 2.10 and those gates, to
+# rel_volume_<gates>_summary.json / _added.csv
+ONLY = os.environ.get("RV_GATES", "")
+TAG = ""
+if ONLY:
+    GATES = {k: v for k, v in GATES.items() if k in ONLY.split(",")}
+    VERSIONS = ["2.10", *GATES]
+    FAMILIES = {f: tuple(v for v in vs if v in GATES) for f, vs in FAMILIES.items() if any(v in GATES for v in vs)}
+    TAG = "_" + ONLY.replace(",", "_")
 SIZES = TS.SIZES
 t3A = lambda x: SV.tier(x, (1.75, 2.5), (0.5, 1.0, 1.5))
 SKIPDAY = "2025-10-10"
@@ -204,9 +213,9 @@ def main():
     if rels:
         q = sorted(rels)
         print(f"\n2.10 main signals' rel: median {st.median(q):.2f}, p10 {q[len(q) // 10]:.2f}, p90 {q[9 * len(q) // 10]:.2f}; under 1.5: {sum(x < 1.5 for x in q)} of {len(q)}")
-    json.dump(out, open(f"{B}/rel_volume_summary.json", "w"), indent=1)
+    json.dump(out, open(f"{B}/rel_volume{TAG}_summary.json", "w"), indent=1)
     if changes:
-        with open(f"{B}/rel_volume_added.csv", "w") as f:
+        with open(f"{B}/rel_volume{TAG}_added.csv", "w") as f:
             w = csv.DictWriter(f, fieldnames=list(changes[0])); w.writeheader(); w.writerows(changes)
 
 

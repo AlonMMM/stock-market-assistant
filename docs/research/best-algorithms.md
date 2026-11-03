@@ -2917,6 +2917,19 @@ instead of rv). A gate's trade keeps 2.10's size (on rv). Look 1 on rel. 2.10's 
   +300%, sum -$63K / +$72K. About half of them have no real book at the buy (114 / 96 tune, 149 / 118 check) and are
   priced on the bar model: fill unproven (Databento quote, not bought: 298 contract-days, $0.01; every gate's 722, $0.03). More giants come in (1 in ~35-45), but not enough to pay for the
   -$2.5K median of the rest on the check half.
+- **add15 on real books (look 2 on add15's check; the owner approved the purchase):** its missing books bought
+  (`dbx_fetch.py open36`, 191 days, 298 contract-days, $0.0194; research cache only, not the app's D1) and rerun
+  (`RV_GATES=add15`, 2.10 to the dollar again); every added trade now has a real book at the buy. 2% (3%):
+
+| add15, real books | Tune fair | Tune Favorites | Check fair | Check Favorites | w/o best 5, check fair / Fav | Trades, check fair / Fav |
+|---|---|---|---|---|---|---|
+| 2.10 | $620,535 / 16% ($794,867) | $449,178 / 14% ($546,403) | $957,771 / 24% ($1,082,694) | $226,846 / 23% ($240,889) | $169,718 / $74,497 | 556 / 538 |
+| add15 | $808,554 +30% / 18% ($1,152,214 +45%) | $533,461 +19% / 16% ($685,192 +25%) | $721,918 -25% / 28% ($731,650 -32% / 40%) | $220,150 -3% / 28% ($232,884 -3%) | $128,828 / $71,368 | 761 / 726 |
+
+  The added main legs on real books (at $10K): tune 222 / 185, median -$2,596 / -$2,655, 8 / 5 of +300%, sum +$268K /
+  +$189K; check 265 / 239, median -$2,651 / -$2,586, 5 / 6 of +300%, sum -$101K / +$44K. The real books make them worse
+  than the bar model did (check -25% vs -22% on the fair list, -3% vs -1% on the Favorites). Without 10 Oct 2025: the
+  same (check $711,588 / $218,080 vs $946,946 / $224,683). Verdict unchanged: fails the check on both lists.
 - **Replace (rel instead of rv): not better.** Every level loses tune on at least one list (rel125 -8% Favorites,
   rel150 -2% / -14%, rel200 -35% / -33%).
 - **size-rel: near, one gate short.** Better than 2.10 on tune and check, on both lists, at 2% and 3%. The check without
