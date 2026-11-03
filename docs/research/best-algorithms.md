@@ -2798,3 +2798,27 @@ is fill unproven. Fair list + Favorites 24 months to 2026-10-16; look 1 on the f
   S30 trades, -$45,755.
 Verdict: not better. A tight spread on a thin contract does not bring the edge back: the added trades lose ~$2,450 each
 (median) on both halves, the drop doubles, and the tune gain is four names. The 200 floor stays; no candidate.
+
+### The pick's volume against the stock's usual, instead of the 200 floor, on 2.10 (2026-11-03, not better: the pick fails the check on the Favorites)
+The user, after the volume diagnostic below: "compare the volume for a stock ... against this regular volume, and take it
+as a parameter for entering without the filter of 200 contracts". Never tested (2.10's t3A tiers size by the stock's
+volume, not the option's). vol_ratio.py (thin_strike.py's champion and walk): usual = the median 30-minute volume of the
+0.15-delta pick on the stock's last 30 main signals on earlier days (lists pooled, 5 needed); ratio = today's pick / usual.
+Set before running: R2 / R3 (under 200, buy at 2x / 3x the usual), R2f50 (R2 + 50 contracts), RO2 (no 200 floor: 2x
+decides for every stock; 200 when there is no ratio). The usual comes from signal days only, so it reads high. Look 1.
+- Diagnostic first (why_thin, scratchpad): main picks by vol30, both lists: the median trade is -25% at every level; the
+  giant rate (+300%) is 1-1.7% under 100 contracts, ~2.5% at 100-200, 3-6% at 200-1,000 (zigzag = luck), ~2.3% at
+  1,000+ (mostly AAPL, TSLA, NVDA, AMD, AMZN). Reaching +50% climbs 35% -> 47% with volume (permutation p < 0.0002).
+- Baseline 2.10 to the dollar (tune / check, 2%): fair $620,535 / $957,771, Favorites $449,178 / $226,846.
+- Tune, 2%, vs 2.10 (fair / Favorites): R2 -24% / -34%; R3 -18% / -16%; R2f50 -24% / -20%; RO2 -38% / -33%.
+  Pick: R3 (0.818, below the champion on both lists).
+- Check, 2%: R3 $1,029,246 (+7%, 26% drop) / $198,108 (-13%, 27%); 3%: +7% / -19%. Without the best 5 at 2%:
+  $213,925 / $58,581 vs $169,718 / $74,497. The fair-list gain is FSLR, MRNA, ROKU in 2024.
+- Added trades (main at $10K): tune R2 100 / 168, median -$3,269 / -$3,117, non-giant -$302K / -$359K; R3 60 / 106,
+  median -$3,471 / -$2,860; check R3 59 / 106, median -$2,618 / -$2,602, non-giant -$147K / -$230K. Median ratio of
+  the added: 3.4-5.5x, volume 76-121 contracts. RO2 drops 217 / 194 champion trades with ratio under 2 on tune
+  (AAPL-type), sum +$112K / +$90K and 6 giants each: the "normal for this stock" trades were not the bad ones.
+- Giant rate by ratio (walked picks): 0-0.5x 3.2-3.7%, 0.5-1x 3.5-4.4%, 1-2x 1.7%, 2-3x 3.6-4.3%, 3-5x 1.4-2.7%, 5x+
+  3.2-4.3%: no trend.
+Verdict: not better. A thin pick that is busy for its stock still loses like the other thin picks (median ~-$3K, worse
+than the champion's -$1.5K), and the ratio does not sort giants. The absolute 200 floor stays; no candidate.
