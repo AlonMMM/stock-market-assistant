@@ -94,6 +94,45 @@ def quote(c, date, minute):
     return v[i][1], v[i][2]
 
 
+SZ = {}
+
+
+def book_sz(date):
+    """book() with the sizes: {contract: sorted [(minute, bid, ask, bid_sz, ask_sz)]}, the same files and precedence
+    (size_fill.py, 2026-11-03); a size that is blank reads 0."""
+    if date not in SZ:
+        if len(SZ) > 7: SZ.clear()
+        by = {}
+        path = os.path.join(DBX, f"{date}.csv.gz")
+        paths = [path] if os.path.exists(path) else []
+        keep = lambda bid, ask: ask > 0 and bid > 0
+        if BOOKS == "all":
+            root = os.path.join(HERE, "dbx_cache")
+            paths = sorted(p for p in glob.glob(os.path.join(root, "**", f"{date}.csv.gz"), recursive=True)
+                           if f"{os.sep}oi{os.sep}" not in p and os.path.abspath(p) != os.path.abspath(path)) + paths
+            keep = lambda bid, ask: ask > 0 and 0 <= bid <= ask
+        for p in paths:
+            rd = csv.DictReader(gzip.open(p, "rt"))
+            if not {"contract", "minute", "bid", "ask"} <= set(rd.fieldnames or []): continue
+            for r in rd:
+                if not r["bid"] or not r["ask"]: continue
+                bid, ask = float(r["bid"]), float(r["ask"])
+                if not keep(bid, ask): continue
+                size = lambda k: int(float(r.get(k) or 0))
+                by.setdefault(r["contract"], {})[int(r["minute"])] = (int(r["minute"]), bid, ask, size("bid_sz"), size("ask_sz"))
+        SZ[date] = {c: sorted(v.values()) for c, v in by.items()}
+    return SZ[date]
+
+
+def quote_sz(c, date, minute):
+    """quote() with the sizes: (bid, ask, bid_sz, ask_sz) or None, the same row."""
+    v = book_sz(date).get(c)
+    if not v: return None
+    i = bisect.bisect(v, (minute + (2 if QUOTE_LATE else 1), 1e9, 1e9, 1e9, 1e9)) - 1
+    if i < 0 or v[i][0] < minute - 3: return None
+    return v[i][1:]
+
+
 def one(job):
     slug, t = job
     _, _, exits, fb = eb.VERSIONS[slug]

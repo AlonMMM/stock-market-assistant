@@ -2963,3 +2963,37 @@ instead of rv). A gate's trade keeps 2.10's size (on rv). Look 1 on rel. 2.10's 
 - Verdict: no candidate. The extra trades lose on the check (the user's thesis). size-rel fails one gate (tune fair
   without the best 5) and its gain is all giants. Next if pursued: size-rel against a flat size at the same drop, and the
   2022-23 last feature test.
+
+### Fills bigger than the book shows, on 2.10 (2026-11-03, analysis of the fill model, not a rule)
+The user: "Why are we looking on volume and not ask bid size?", "Does the test use ask and bid size when filling?",
+"Yes". The walk (opt_spread.price on real_bench.quote) fills the whole order at one price and never reads the size.
+size_fill.py (thin_strike.py's champ, its walk, 2.10's entries and account): each buy and sale keeps the book it was
+priced on with its sizes (real_bench.quote_sz, the same row); the order's contracts come from the account that day (pct x
+the day's account x the tier weight / the price paid; the adds already half size); the contracts above the shown size
+(ask size on a buy, bid size on a sale) pay more, set before running: T1 one tick ($0.01 under $3, $0.05 from $3), SP
+the full spread, SP2 one more spread per further multiple of the shown size (at most 3). The exits stay on the walk's
+price. cbbo-1m is the top of the book only, so the true cost is a range: T1 is the low end, SP / SP2 the high end.
+Flat 2% / 3% as the benchmark (the live bot's sizeSteps cut the size from $300K, so its real orders are smaller there).
+- base reproduces 2.10 to the dollar in all 8 cells (tune / check, 2% / 3%, both lists). No book at the fill: 1-3
+  fills a cell; size 0: 1.
+
+| 2% (3%) | Tune fair | Tune Favorites | Check fair | Check Favorites | w/o best 5, check fair / Fav |
+|---|---|---|---|---|---|
+| base | $620,535 / 16% ($794,867) | $449,178 / 14% ($546,403) | $957,771 / 24% ($1,082,694) | $226,846 / 23% ($240,889) | $169,718 / $74,497 |
+| T1 | $570,243 -8% / 16% (-15%) | $412,281 -8% / 15% (-16%) | $830,054 -13% / 25% (-22%) | $211,000 -7% / 23% (-13%) | $156,867 / $70,536 |
+| SP | $453,164 -27% / 19% (-44%) | $319,698 -29% / 18% (-47%) | $552,317 -42% / 31% (-61%) | $167,061 -26% / 26% (-42%) | $124,457 / $58,507 |
+| SP2 | $341,992 -45% / 23% (-65%) | $223,621 -50% / 23% (-70%) | $325,813 -66% / 46% (-82%) | $119,538 -47% / 32% (-66%) | $89,029 / $45,028 |
+
+- The order against the shown size (all weeks, 2%): buys above it 56% fair / 42% Favorites, sales 35% / 22%; median
+  order / shown on buys 1.26 / 0.70, the 90th percentile 22x / 12x. It grows with the account: under $300K 42% / 40% of
+  buys above (median 0.71 / 0.63), $300K-1M 71% / 66% (2.22 / 1.54). At 3%: 63% / 50% of buys above. And with the
+  years on the fair list (2024 46%, 2025 58%, 2026 62%).
+- The giants: their buys are bigger against the book (median 2.2x the shown size vs 1.25x) but they are ~20 trades: the
+  extra cost is mostly the rest (check 2% SP fair: giants $38.6K of $286K at $10K, 13%). Every model stays positive on
+  both halves and lists; 2025 on the check fair list turns negative under SP / SP2.
+Verdict: the fill model is optimistic. Even one tick on the contracts above the shown size takes 7-13% at 2% (13-22% at
+3%); a full spread on them takes 26-42% (42-61%). The cost rises with the account, so the big end figures (and 3% more
+than 2%) are the least sure. The truth sits between T1 and SP: the book refills and the contracts above the top are not
+all a spread away, while cbbo's size may be one venue's. Every past comparison used the same model, so the rankings
+hold; the dollar figures read high. Next if pursued: a limit that never takes more than the shown size per minute
+(split the order), on the live bot's sizeSteps.
