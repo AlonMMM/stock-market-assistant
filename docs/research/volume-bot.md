@@ -9,6 +9,286 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### The analyst trade review (11 single trades): three tests, no candidate (2026-11-03)
+
+The user reviewed 11 single trades from screenshots on the Trade Reviews board (https://claude.ai/artifact/NNUk163ipCjYuzounGtQyT) and asked to test them all: "go over all of them and search for candidate. buy data up to 2$". Three groups ran in parallel on Volume 1.2.0 (the live code's year, real books): A entries near support / resistance, B buying the spike itself, C exits. None is a candidate. One lead to re-check on 3 years: C's B5 (a faded shock: under 3x usual for 5 min, sell at +5 min if the bid is at or under the price paid; 6 trades, level picked after seeing the counts). Data bought: about $0.002 (test B), A and C none.
+
+#### Entries near support / resistance: skip, wait for the break, and no plan against the day's move (2026-11-03, look 1)
+
+The user's single-trade review (group A): NBIS put 2025-11-13 on the day low, bounced at once: "classic - bounce from
+the support. maybe we should make it more difficult to trade if we are close to the support (wait more time?)"; MSFT
+call under the day's high, SLV 49C 10-28 at the 15-min high: "in volume alert (not shock) when we're closing to the
+resistance/support need to prove breakout"; CRM put 2026-10-08 just past yesterday's / the 5-day low, back above in
+~15 min: "broke support alert, on the volume alert (not shock) maybe consider waiting for confirmation"; QCOM 180 put
+2025-10-27 after a $172 -> $205 run: "just a pullback after huge run, we should not put in this case".
+
+Log first: no level rule was ever tested on the Volume bot. Neighbours: the 3-year double-bet scan (2026-11-02) found the
+trades AT the day's high the better group (median -18% / -2% vs -31% / -16%); the Main bot's `levels.py` (2026-10-23):
+a signal right at a level is its best group; `strangle_break.py` (10-25): a break fails about as often as it holds;
+"Fewer trades" (10-27): the fast cross is the edge, a slow side (60-300 s) loses; "against the move" was tested on the
+SHOCK only (looks 1-3, now 1.2.0's rule); the plan alert was never filtered against the day's move.
+
+Built on **Volume 1.2.0** (live since 2026-11-03, stage 5 pending): the live-code year (`v12_` parts of the release,
+51 stocks incl. USO, 2025-11-03 .. 2026-10-30, real books, no broker stop, the live limits, `volumeAccount` of the 1.2.0
+code); reproduced to the dollar ($149.4K, 133 trades, tune $115.3K / check $128.5K, 3% $177.3K). Levels as the app's
+trade chart (`chart-levels.ts` / `bot/levels.ts`): the day's high / low so far, the first 15 minutes', yesterday's, the
+5 sessions'; for a call the highs, a put the lows; distance x in S30 at the buy's stock price. Set before the run:
+UNDER = a level still ahead within 0.5 S30; JUST BROKE = a prior level (not the day so far) passed by <= 1.1 S30 (the
+plan's minimum burst); NEAR = either. Plan alerts only unless named. B = a delayed buy of the same contract on a minute
+close, priced as the engine's minute fallback (mid + a quarter spread, the next ask on a chase), the engine's exit walk
+(re-walked on all 155 original trades: 155 / 155 identical), sale at the real minute bid; B0 = the same minute pricing
+with no wait, the fair control for B. Scripts: scratch `testA/levels_year.py`, `acct.ts`, `report_year.py`,
+`levels_3y.py`.
+
+Tune (even weeks), 2% (3%):
+
+| Version | Trades | 2% (drop) | 3% (drop) | Median | Giants | Non-giant sum | W/o best 5 |
+|---|---|---|---|---|---|---|---|
+| 1.1.0 (reference) | 79 | $111.9K (9.5%) | $117.2K (14.4%) | -31% | 4 | -$22.9K | -$27.4K |
+| 1.2.0 (base) | 71 | $115.3K (9.3%) | $123.2K (13.8%) | -31% | 4 | -$19.7K | -$24.4K |
+| 🎯 A1 skip under a level | 69 | $116.2K (8.6%) | $124.8K (12.7%) | -31% | 4 | -$19.4K | -$24.2K |
+| A2 skip just broke | 65 | $109.0K (9.2%) | $113.1K (13.6%) | -33% | 4 | -$24.3K | -$28.8K |
+| A3 skip near (both) | 63 | $111.1K (10.7%) | $114.8K (15.6%) | -32% | 4 | -$23.4K | -$28.0K |
+| A4 = A3 + shock | 50 | $104.4K (10.8%) | $106.1K (16.0%) | -32% | 3 | -$17.7K | -$23.7K |
+| A5 = A3 half bands | 66 | $108.5K (9.8%) | $112.4K (14.3%) | -33% | 4 | -$24.8K | -$29.3K |
+| B0 control (minute price, no wait) | 71 | $112.9K (9.4%) | $118.6K (14.0%) | -31% | 4 | -$22.4K | -$26.9K |
+| B1 first close 0.25 past, <= 5 min | 70 | $106.9K (10.7%) | $109.2K (15.9%) | -33% | 4 | -$26.4K | -$30.8K |
+| 🎯 B2 wait 5 min, still 0.25 past | 66 | $109.1K (9.3%) | $113.3K (13.6%) | -33% | 4 | -$24.2K | -$28.7K |
+| B3 wait 10 min | 67 | $106.8K (10.8%) | $108.4K (15.8%) | -34% | 4 | -$26.5K | -$30.8K |
+| B4 = B1 + shock | 66 | $98.3K (13.7%) | $96.0K (20.4%) | -32% | 3 | -$23.4K | -$29.9K |
+| 🎯 C1 no plan against the open >= 2 S30 | 65 | $121.0K (9.2%) | $132.0K (13.9%) | -29% | 4 | -$15.7K | -$20.5K |
+| C2 same >= 3 | 67 | $118.3K (9.3%) | $127.1K (13.9%) | -31% | 4 | -$18.4K | -$23.1K |
+| C3 against the last hour >= 2 | 67 | $119.5K (9.3%) | $128.9K (13.8%) | -31% | 4 | -$17.0K | -$21.9K |
+
+Check (odd weeks), the base and the picks:
+
+| Version | Trades | 2% (drop) | 3% (drop) | Median | Giants | Non-giant sum | W/o best 5 |
+|---|---|---|---|---|---|---|---|
+| 1.2.0 (base) | 62 | $128.5K (8.6%) | $143.7K (12.9%) | -17% | 3 | -$11.9K | -$19.7K |
+| 🎯 A1 | 57 | $129.0K (8.6%) | $143.8K (12.8%) | -17% | 3 | -$11.4K | -$19.2K |
+| B0 control | 62 | $124.4K (8.6%) | $136.6K (12.8%) | -20% | 3 | -$15.8K | -$22.9K |
+| 🎯 B2 | 57 | $123.9K (9.4%) | $135.9K (14.2%) | -21% | 3 | -$16.5K | -$23.6K |
+| 🎯 C1 | 58 | $127.7K (8.7%) | $141.9K (12.9%) | -20% | 3 | -$12.7K | -$20.6K |
+
+Year 2% (3%): base $149.4K (12.5%) ($177.3K); A1 $150.9K (11.4%) ($180.0K); B2 $135.4K ($152.3K); C1 $155.7K (13.0%)
+($188.9K). By year (2025 Nov-Dec / 2026): base -$6.0K / +$55.4K; A1 -$4.8K / +$55.7K; C1 -$6.0K / +$61.7K.
+
+- **A1** removes 8 plan trades (flat $2K -$1.5K, median -64%, 3 won, no giant: ORCL 12-12 -68%, USO 01-30 +111%, SLV
+  03-23 -68%, MSFT 03-31 +53%, USO 06-09 -63%, USO 09-23 -64%, MSFT 09-25 -81%, USO 09-25 +103%; 4 are USO, off the list
+  since today) and frees QQQ 03-31 (-57%). Better on tune and check, by +$0.9K / +$0.5K: a gain of a trade or two.
+- **B** (wait for the break) loses on both halves at every wait, also against its own minute-priced control (the control
+  itself costs -$2.4K / -$4.1K: the minute book is dearer than the seconds book at the cross). The 11 re-priced trades go
+  from +$5.4K flat (median +5%) to -$7.8K (median -42%): waiting pays a dearer option after the move and cuts the winners.
+- **C1** wins tune (+$5.7K) and loses the check (-$0.8K, median -20% vs -17%, worse without the best 5).
+
+**3 years, the research twin as a filter** (`levels_3y.py`; the 1.1.0 twin with 1.2.0's shock rule as a filter =
+404 trades, $866.9K, reproduced; the twin's price = the alert minute's close + 0.25 S30; re-walked, slots not refilled):
+
+| Version | Trades | 2% (drop) | 3% (drop) | Tune / check P&L | Median tune / check | Giants | Non-giant tune / check | 2024 / 2025 / 2026 | W/o best 5 | 10-10 P&L |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.2.0 twin | 404 | $866.9K (18.5%) | $1,846K (27.0%) | +$115.3K / +$651.6K | -31% / -4% | 6 / 22 | -$210.4K / -$25.6K | +$21.0K / +$434.7K / +$311.1K | +$269.6K | +$322.9K |
+| A1 | 371 | $695.4K (14.5%) | $1,484K (21.2%) | +$115.9K / +$479.4K | -30% / -4% | 6 / 16 | -$152.8K / -$8.0K | +$25.2K / +$331.2K / +$239.0K | +$201.0K | +$196.1K |
+| C1 | 371 | $798.9K (17.1%) | $1,630K (25.0%) | +$100.9K / +$598.0K | -32% / -2% | 6 / 22 | -$194.9K / -$8.0K | +$17.8K / +$370.4K / +$310.8K | +$245.1K | +$285.4K |
+
+- A1 skips 33 plan trades, flat +$64.6K, 6 of them +300%, all on **2025-10-10** (SOXL +1253%, BABA +740%, QQQ +640%,
+  SMH +518%, AAPL +336%, IWM +318%): the crash day's winners were bought under the day's low. Without 10-10 the 27 others
+  are -$11.5K flat (median -39%), so the skip helps a little on ordinary days and costs the crash day.
+- C1 skips 33 (flat +$7.2K, median -13%, no giant; COIN / AVGO 2025-04-04, PLTR 05-30, SMH 07-25 among the winners);
+  it does skip the user's QCOM 2025-10-27 put (+12% in the twin). Loses both halves.
+
+Missing data: none dropped. Year: every traded alert had its levels; 53 traded alerts' day open came from the minute
+bars (not in opens.json); every delayed buy and sale had a real minute book (no purchase). 3 years: every plan trade had
+its levels. Databento: nothing bought ($0).
+
+**Verdict: no candidate.** A1 passes the year by one or two trades (and half its skips are USO) and fails the 3-year
+check (the 10-10 giants sit under a level); waiting for the break (B) loses everywhere; no plan against the day's move (C1)
+wins tune and loses the check, on the year and on 3 years. Being near a level does not sort the Volume bot's trades: the
+median does not move. Look 1 for levels on the Volume bot; look 1 for the plan against the move (the shock version's
+check has been seen 3+ times). Process note: the run printed every version's check (the runner's default); the picks
+were chosen mechanically on tune (best tune 2% end per idea) before the check was read.
+
+#### Buying the spike itself: wait 1-2 minutes, a huge alert minute, an SPY-driven move (2026-11-03, look 1)
+
+The user's trade review: GOOGL 287.5 C 2025-11-05 bought at the top of a one-bar spike (-47%): "in the volume alert we
+might try to wait hold 1 minute to see we are not in the spike"; NVDA C 2025-11-21 (shock 13:48:50 NY, the option
+~0.05 -> 0.49 in a minute, -91%): "buying in a HUGE 1 minute move - think about it"; AMZN C, SPY +0.3% in the alert minute
+(and SLV 2026-10-28): "tune with the spy movement - spy affecting the stock and it's not the stock real move".
+Built on **Volume 1.2.0** (live since 2026-11-03, stage 5 pending; 1.1.0 + no shock against the day's move), the app's
+engine over its year (2025-11-03 .. 2026-10-30, the saved 51 stocks and limits, real books only, no broker stop). The
+1.2.0 code frozen with a test switch: `TB_DELAY` (buy W s after the side if the move holds, the same contract, on the
+real 1-second book then; the give-back starts from the stock at the later buy), `TB_NEWS` (the 1.2.0 parity run's
+news verdicts: the Nasdaq calendar answered 403). B and C are filters on the champion's trades at the buy second t
+(the side + 2 s; 10-second bars): B the price paid vs the option's mid a minute earlier (Databento minute row
+buyMinute - 1) and the stock's 60-s move vs its usual (median |60-s move|, prior 5 sessions); C SPY's 60-s move the
+trade's way and beta (60-s returns, prior 10 sessions) x SPY's move as a share of the stock's. Levels set before the
+run; the pick per idea = the most money on tune at 2% with a drop at most 2 points over the champion.
+Scripts (testB frozen copy): `tb_spike_features.py`, `tb_spike_report.py`, `tb_spike_3y.py`, `tb_gaps.py`; app copy
+`scripts/.tb_run.ts` + the `TB_DELAY` / `TB_NEWS` switches in `strangle/backtest.ts` / `volume-backtest.ts`.
+
+Champion reproduced to the dollar ($149.4K, 133 trades, tune $115.3K, check $128.5K, 3% $177.3K). The delayed buys
+needed 25 one-second windows and one sale day not in the store: bought from Databento (OPRA cbbo-1s / cbbo-1m, $0.0020
+in all); that includes the champion's one unpriced alert (SLV 2026-10-08 shock, -37%), so every row below is on real
+books with no alert left unpriced, and the champion is $148.4K / 134 trades.
+
+Tune (even ISO entry weeks), 2%:
+
+| Version | Trades | Median | 2% (drop) | 3% (drop) | W/o best 5 | Non-giant | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|
+| Volume 1.2.0 | 71 | -31% | $115.3K (9%) | $123.2K (14%) | -$24.4K | -$19.7K | 4 | -$2.4K / +$17.7K |
+| A wait 60 s, past the side line | 41 | -29% | $94.2K (13%) | $90.8K (19%) | -$21.5K | -$13.9K | 1 | -$1.1K / -$4.8K |
+| A wait 120 s, past the line | 43 | -32% | $103.5K (12%) | $104.2K (18%) | -$22.6K | -$13.9K | 1 | -$0.8K / +$4.3K |
+| A wait 60 s, past the alert price | 54 | -30% | $93.7K (14%) | $89.7K (21%) | -$26.7K | -$19.3K | 2 | -$1.2K / -$5.1K |
+| 🎯 A wait 60 s past the line, plan alerts only | 53 | -28% | $111.8K (6%) | $116.7K (10%) | -$24.7K | -$22.7K | 4 | -$0.8K / +$12.6K |
+| B option >= 3x a minute earlier | 69 | -31% | $116.0K (9%) | $124.3K (13%) | -$24.2K | -$19.4K | 4 | |
+| B option >= 2x | 67 | -32% | $103.7K (10%) | $104.1K (15%) | -$27.7K | -$19.4K | 3 | |
+| 🎯 B option >= 5x | 70 | -31% | $116.3K (9%) | $124.7K (13%) | -$23.9K | -$19.1K | 4 | |
+| B option >= 3x, plan only | 71 | (removes none) | $115.3K | | | | | |
+| B stock 60-s move >= 10x usual | 45 | -36% | $92.3K (17%) | $87.9K (25%) | -$27.4K | -$17.5K | 1 | |
+| B stock >= 6x / >= 15x | 27 / 57 | | $94.8K / $106.4K | | | | | |
+| C SPY 60-s our way >= 0.15% | 62 | -32% | $107.2K (9%) | $109.5K (14%) | -$24.8K | -$16.4K | 3 | |
+| C SPY >= 0.10% / >= 0.25% | 57 / 66 | | $109.6K / $118.7K | | | | | |
+| 🎯 C SPY >= 0.15%, plan alerts only | 66 | -32% | $119.1K (8%) | $127.2K (11%) | -$22.5K | -$17.6K | 4 | -$1.1K / +$20.1K |
+| C beta x SPY >= 50% of the move | 59 | -31% | $108.3K (11%) | $112.3K (16%) | -$23.0K | -$14.7K | 3 | |
+| C share >= 33% / >= 67% | 55 / 60 | | $112.0K / $106.8K | | | | | |
+
+(After the run, tune only, not in the pick: C plan-only 0.10% $120.4K, 0.25% $120.1K: no knife edge on the year.)
+
+Check (odd weeks), the champion and the picks:
+
+| Version | Trades | Median | 2% (drop) | 3% (drop) | W/o best 5 | Non-giant | Giants | Year 2% (drop) |
+|---|---|---|---|---|---|---|---|---|
+| Volume 1.2.0 | 63 | -18% | $127.5K (9%) | $142.1K (13%) | -$20.7K | -$12.9K | 3 | $148.4K (12%) |
+| A wait 60 s, plan only | 50 | -22% | $101.4K (9%) | $101.1K (13%) | -$21.6K | -$11.8K | 2 | $113.1K (11%) |
+| B option >= 5x | 62 | -20% | $127.4K (9%) | $141.6K (13%) | -$20.9K | -$13.0K | 3 | $149.2K (12%) |
+| C SPY >= 0.15%, plan only | 62 | -17% | $129.8K (8%) | $145.3K (11%) | -$18.8K | -$10.8K | 3 | $153.2K (11%) |
+
+3 years, the 1.1.0 twin (top 50, live limits, 2024-02 .. 2026-10; filtered, scaled walk; plan buy second taken as
+m*60 + 10; B on the ask a minute earlier, rougher), 2%:
+
+| | Twin | C SPY >= 0.15%, plan only | B option >= 5x (ask) |
+|---|---|---|---|
+| All days (drop) | $773K (21.1%) | $243K (19.9%) | $515K (20.7%) |
+| Tune / check | +$73K / +$600K | +$11K / +$132K | -$25K / +$440K |
+| Without 10 Oct 2025 | $288K, +$27K / +$161K | $253K, +$12K / +$141K | $250K (27.2%), -$9K / +$159K |
+
+- **A, waiting, fails.** About 40% of the traded alerts turn back within 60 s (d60: 63, median -36% as bought at once,
+  2 of +300%), so waiting does skip the GOOGL / NVDA / SLV spikes of the review; but the ones that hold cost +14% more
+  (median, the same contract a minute later) and their flat $2K sum falls from +$72.4K to +$12.0K. Every all-alerts
+  version loses tune by $12-22K; the plan-only pick loses tune (-$3.5K) and the check (-$26.1K). The 2026-10-29 shock
+  study ("Waiting for the spread to come down") said the same on the old setup.
+- **B, the huge minute, no edge.** Paid >= 3x the option's mid a minute earlier is 3 of 157 traded alerts (the 1-min
+  rise median is +16%; NVDA 2025-11-21 was only 1.35x a minute before: its jump came earlier). 5x (the pick) removes 2
+  trades (QQQ 06-11 -34%, PLTR 04-10 +6%): +$1.0K tune, -$0.1K check, a tie. The stock's 60-s move vs usual removes the
+  giants with the losers (median of the removed = the kept) and loses $9-23K on tune.
+- **C, SPY-driven, no candidate.** The pick (plan alerts, SPY's 60-s move our way >= 0.15%) removes 9 trades on the
+  year (median -61%, none of +300%; IWM x4, QQQ, ORCL, SLV, MSFT +53%, NVDA +27%): +$3.8K tune, +$2.3K check, a
+  smaller drop, better without the best 5 and non-giant on both halves; but 8 of the 9 are tune trades (the check gain
+  is one trade, IWM 2026-05-20 -75%) and the median does not move (tune -32% vs -31%). On 3 years it skips 18 trades of
+  2025-10-10 (SOXL +1253%, AMZN +849%, NVDA +799%, BABA, QQQ, META ...): $243K vs $773K; without 10-10 it still loses
+  both halves ($253K vs $288K). A market-wide move is where the giants are (the same lesson as the volume score).
+- What is new here: SPY's own price move at the buy as a skip (the volume score / SPY volume work was volume, the
+  2026-10-27 "strength at the entry" was the t-stat), the wait on the live code with plan alerts and real 1-second
+  books, and the 1-minute option rise as a skip (the 5-minute rise was closed 2026-11-02).
+- Data gaps: none at the buy or sale after the purchase. Listed: 53 alerts "fewer than 5 sessions of history"
+  (SPCX, SPCE) and 1 call with no prices, in every version; the delayed versions 1-2 USO alerts with no stock trade at
+  the delayed second; the filters' features missing on 17 trades (USO 16 and GOOG at 09:44 have no 10-second bars) and 1
+  with no option book a minute earlier: kept, never dropped. 2025-10-10 is outside the live code's year (3-year view
+  above). Looks: 1 (19 versions on tune, 3 picks on check).
+
+#### Exits from the trade review: the grace end and the -80% stop, a fading shock, a 0DTE trail, a roll on a new alert (2026-11-03, look 1; roll look 2)
+
+The user's analyst review of single trades: Task 3 (a call sold at 0.11 on the -80% stop just as the 30-minute grace
+ended, the stock back near the entry, no option points during the hold): "its about 30 minutes grace, maybe we can
+found better way"; Task 11 (AVGO 2026-10-30 put, one big bar, then normal volume, bled 53 min to -68%): "if the shock
+enter and it's a single bar and than volume fade - consider decrease the window time frame"; Task 6 (GOOGL 367.5 put
+0DTE 2026-08-05, 1.10 -> ~10.5 -> sold 4.85): "try (once again) smart exit in 0dte"; Task 2: "for alerts of ticker with
+the same direction of already open position - if we have a big gain we can use it as a trigger to rolling".
+
+Built on **Volume 1.2.0** (live since 2026-11-03, stage 5 pending): the app engine's own parts (`v12_*`, origin/main
+backtest.ts, 51 stocks, 2025-11-03 .. 2026-10-30, saved settings, live limits, real minute books for every sale) with
+the broker's -80% safety stop as the engine models it. Every exit is re-walked on the same D1 snapshot (stock minute
+bars, option minute books and bars); the plain re-walk reproduces all 155 engine trades (exit minute and sale, to the
+cent), the stop reproduces all 83 trades of the engine's 60%-stop parts, and the account port reproduces 1.2.0 to the
+dollar ($149,393, 133 trades, tune $115,271, check $128,472 with no stop). Levels set before the run except B4/B5.
+Scripts: `exitlab.py`, `run_exits.py`, `acct.py` (scratch testC). No data bought.
+
+Variants: **A** (grace end / stop) A1 the stop only on a two-sided book (spread <= 50% of the mid); A2 A1 + only while the
+stock is against the entry; A3 the give-back waits up to 15 more minutes after the grace while the stock is not 0.25 S30
+against the entry; A4 the same up to 30. **B** (shock trades whose 5 minutes after the alert minute average < 2x the
+usual volume: the median of 20 sessions, same minute +-2) B1 grace 10 (the give-back sells in 10-30 only while the bid
+<= the price paid); B2 grace 15; B3 sell at +5 min if the bid <= the price paid; B4/B5 = B1/B3 at < 3x (added after
+seeing < 2x catch 2 of 61 shock trades: not pre-set). **C** (0DTE, on the minute bid of two-sided books) C1 once the bid
+>= 3x the buy, sell 40% off its high; C2 3x / 25%; C3 5x / 40%; C4 half at 3x; C5 C1 on <= 1 DTE. **D** a same-side
+alert's trade while the stock's open trade has a bid >= Kx its buy: sell the open leg at that minute's bid and take the
+new alert's own trade; D1 K = 3, D2 K = 2.
+
+Tune (even ISO entry weeks), 2% (3%):
+
+| Version | Trades | Won | Median | 2% (drop) | 3% (drop) | W/o best 5 | Non-giant (flat $2K) | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|
+| 1.2.0 + -80% stop | 71 | 23 | -31% | $114.6K (10%) | $122.6K (14%) | -$25.1K | -$18.2K | 4 | -$2.7K / +$17.3K |
+| A1 stop on a two-sided book | 71 | 23 | -31% | $114.6K (10%) | $122.6K (14%) | -$25.1K | -$18.2K | 4 | = |
+| A2 A1 + stock against | 71 | 23 | -31% | $114.6K (10%) | $122.6K (14%) | -$25.1K | -$18.2K | 4 | = |
+| A3 grace +15 while not 0.25 S30 against 🎯 | 71 | 23 | -28% | $115.5K (9%) | $123.4K (14%) | -$23.6K | -$17.2K | 4 | -$2.9K / +$18.3K |
+| A4 grace +30 | 71 | 20 | -32% | $106.2K (11%) | $108.0K (17%) | -$29.8K | -$16.8K | 2 | -$3.1K / +$9.3K |
+| B1 faded shock: grace 10 | 71 | 23 | -31% | $115.0K (10%) | $123.2K (14%) | -$24.7K | -$17.8K | 4 | -$2.7K / +$17.6K |
+| B2 faded shock: grace 15 | 71 | 23 | -31% | $114.9K (10%) | $123.1K (14%) | -$24.8K | -$17.9K | 4 | -$2.7K / +$17.6K |
+| B3 faded shock: cut at +5 min 🎯 | 71 | 23 | -31% | $115.7K (10%) | $124.2K (14%) | -$24.0K | -$17.1K | 4 | -$2.7K / +$18.4K |
+| B4 (post-hoc) B1 at < 3x | 71 | 23 | -31% | $115.2K (10%) | $123.4K (14%) | -$24.5K | -$17.7K | 4 | -$2.7K / +$17.8K |
+| B5 (post-hoc) B3 at < 3x | 71 | 22 | -30% | $115.8K (10%) | $124.4K (14%) | -$23.9K | -$17.1K | 4 | -$2.7K / +$18.5K |
+| C1 0DTE trail 40% once 3x | 71 | 23 | -31% | $114.1K (10%) | $121.7K (15%) | -$26.2K | -$19.4K | 4 | -$2.7K / +$16.7K |
+| C2 0DTE trail 25% once 3x | 72 | 23 | -31% | $111.5K (12%) | $116.9K (17%) | -$25.5K | -$14.9K | 3 | -$2.7K / +$14.2K |
+| C3 0DTE trail 40% once 5x 🎯 | 71 | 23 | -31% | $115.2K (10%) | $123.4K (14%) | -$25.1K | -$18.2K | 4 | -$2.7K / +$17.9K |
+| C4 0DTE half at 3x | 71 | 23 | -31% | $113.0K (8%) | $118.7K (13%) | -$22.1K | -$15.3K | 4 | -$2.7K / +$15.6K |
+| C5 <= 1 DTE trail 40% once 3x | 71 | 23 | -31% | $114.1K (10%) | $121.7K (15%) | -$26.2K | -$19.4K | 4 | -$2.7K / +$16.7K |
+| D1 roll at >= 3x | 73 | 23 | -32% | $117.1K (10%) | $127.1K (14%) | -$27.6K | -$20.5K | 4 | -$2.7K / +$19.8K |
+| D2 roll at >= 2x 🎯 | 74 | 23 | -32% | $118.1K (10%) | $127.6K (14%) | -$27.2K | -$19.9K | 4 | -$2.7K / +$20.8K |
+
+Check (odd weeks), the base and the picks (B5 for the record):
+
+| Version | Trades | Won | Median | 2% (drop) | 3% (drop) | W/o best 5 | Non-giant | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|
+| 1.2.0 + -80% stop | 62 | 24 | -17% | $127.8K (8%) | $141.7K (13%) | -$20.4K | -$11.7K | 3 | -$3.7K / +$31.5K |
+| A3 🎯 | 62 | 24 | -18% | $130.7K (10%) | $147.2K (15%) | -$17.8K | -$2.4K | 2 | -$3.7K / +$34.4K |
+| B3 🎯 | 62 | 24 | -11% | $127.9K (8%) | $142.0K (13%) | -$20.2K | -$11.6K | 3 | -$3.7K / +$31.6K |
+| C3 🎯 | 62 | 24 | -17% | $127.8K (8%) | $141.7K (13%) | -$20.4K | -$11.7K | 3 | = |
+| D2 🎯 | 67 | 26 | -17% | $126.9K (8%) | $139.9K (13%) | -$14.8K | -$1.9K | 3 | -$3.7K / +$30.6K |
+| B5 (post-hoc) | 62 | 24 | -10% | $129.8K (8%) | $145.1K (12%) | -$18.6K | -$10.2K | 3 | -$3.7K / +$33.4K |
+
+Year (one account): base $146.9K (13%) / 3% $174.3K (19%); A3 $151.2K (**17%**) / $181.6K (**25%**); B3 $149.4K (13%);
+C3 $148.2K (13%); D2 $150.4K (12%); B5 $151.3K (13%). (1.2.0 with no stop: $149.4K; the -80% stop sold 13 taken trades,
+costing flat $1.4K vs the engine's own later exits.)
+
+- **A, the grace end / the stop: no candidate.** The year's 15 -80% stops (13 taken) all fired 11-30 min into the grace
+  with the stock 0.9-4.7 S30 against the entry; 14 on a clean two-sided book (spread a few cents), **1 on a stale/wide
+  book: USO 2026-01-29 0.04/0.26, exactly at +30 min** (A1 sells it at 0.18 later: +$0.8K flat). No stop followed a gap
+  of more than 3 minutes in the books. So the backtest has no Task-3 case beyond USO; Task 3 looks like a live quote
+  problem (check the live stop's book), not a rule. A2 = A1 (every stop had the stock against). A3 (wait up to 15 more
+  minutes while the stock is not 0.25 S30 against) gains +$0.9K tune / +$2.9K check but the flat change of its ~28
+  changed trades (27 / 29) is +$0.4K / +$2.1K with a -2..-3 pt median, it cuts a giant on each half (META 05-27 +496% -> +349%,
+  QCOM 05-07 +369% -> +99%) and the worst drop rises (year 13% -> 17%, 3% 19% -> 25%): not better. A4 loses (-$8.4K tune).
+- **B, the fading shock: no candidate, too rare.** After a shock the volume stays 3-10x usual for the next 5 minutes in
+  59 of 61 shock trades (< 2x: 2 trades, AMZN 2026-09-28 and SOFI 2026-01-28; < 3x: 6). B3 helps both (-63% -> -11%,
+  -18% -> -10%): +$1.1K tune, +$0.1K check. Task 11's AVGO 2026-10-30 is not caught (the spike is minute 196 at 13x; the
+  next five are 2-4x usual; it fades only from +6 min). The post-hoc 3x level (B5) is better on both halves (+$1.2K /
+  +$2.0K, 5 of 6 trades better, no giant touched, same drop) but it is 6 trades and a level chosen after the look: a
+  lead to log and re-test when more shock trades exist, not a version.
+- **C, 0DTE smart exit (look 2 of a take/trail on this bot; the shock scale-outs 2026-10-30 and the Main bot's trails
+  failed): no candidate.** On minute books the GOOGL 08-05 put's best bid was ~8.7 (the ~10.5 was inside a minute);
+  C1/C3 sell it at 5.20 (+370%) vs 4.85 (+338%). C3 touches only that trade (check unchanged); C1 also cuts USO 02-04 and
+  IWM 06-11 (tune -$0.6K flat) and helps IWM 06-17 and NVDA 07-17 (check +$2.8K flat); C2 and C4 cut the META 04-08 giants
+  (+1251% -> +757%, +627% -> +273%): worse. One trade is not a rule.
+- **D, roll on a same-side alert (look 2 of rolling; the +400% roll into 0.30 delta failed 2026-11-02): no candidate.**
+  6 events at 3x, 8 at 2x in the year. D2 +$3.5K tune, -$0.9K check: it rolls META 04-08's +1251% plan leg at 3.05
+  into the shock leg (+627%). Without the best 5 / non-giant improve on check only because that giant is cut. The new
+  legs lost on 6 of 8 (GOOGL 08-05 1.44 -> 0.25, INTC x2, ORCL, SLV, UBER).
+- Missing data: 2 alerts with no book at the buy (SLV 2026-08-28 shock, SLV 2026-10-08 shock; the 08-28 book was bought
+  2026-11-03 for the shock-bar test but these parts predate it), 53 alerts with fewer than 5 sessions of history
+  (SPCX), 1 no-prices; none bought (same for every version). No exit in any version lacked a book. The 2025-10-10 crash
+  day is outside this year (no effect). 3-year twin not run (its export holds dollars, not paths).
+- Looks: A, B, C (as these rules) look 1 on 1.2.0; rolling look 2; the 0DTE take/trail family look 3+ counting the shock
+  scale-outs and the Main bot's trails.
+
 ### The shock's bar: lower (10x / 12x), the day's-pace gate, a smoothed usual; every buy and sale on real books (2026-11-03)
 
 The user (2026-11-02/03): "after we tune this, we can try to add more signal that before was wrong. we can try 10X volume
