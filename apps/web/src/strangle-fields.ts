@@ -149,6 +149,12 @@ export const groups: { title: string; specs: Spec[] }[] = [
         help: "Seconds after the shock alert; no touch by then, no trade (Volume 1.1.0: 20, the research's; 1.0.0: 300).",
         fmt: (v) => `${v} s`,
       },
+      {
+        key: "shockAgainstUnits",
+        label: "Shock: not against the day's move of",
+        help: "Typical 30-minute moves since the open; a shock alert against a move this big is skipped. 0 = off (Volume 1.2.0: 2; 1.1.0: off).",
+        fmt: (v) => (v > 0 ? `${v.toFixed(1)}×` : "off"),
+      },
     ],
   },
 ];

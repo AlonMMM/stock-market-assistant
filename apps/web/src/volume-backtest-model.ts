@@ -33,6 +33,7 @@ export const outcomeWords: Record<VolumeOutcome, string> = {
   thin: "Contract too thin",
   wide_spread: "Spread too wide",
   no_fill: "No fill",
+  against_move: "Shock against the day's move",
 };
 
 /** Why the account did not take a traded alert. */

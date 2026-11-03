@@ -40,6 +40,7 @@ export type VolumeRuleKey =
   | "fastAlert"
   | "shockAlert"
   | "shockTouchSeconds"
+  | "shockAgainstUnits"
   | "skipEarnings"
   | "skipPremarket";
 
@@ -71,6 +72,7 @@ export const volumeRuleKeys: readonly VolumeRuleKey[] = [
   "fastAlert",
   "shockAlert",
   "shockTouchSeconds",
+  "shockAgainstUnits",
   "skipEarnings",
   "skipPremarket",
 ];
@@ -111,6 +113,7 @@ const v1: VolumeRules = {
   fastAlert: false,
   shockAlert: true,
   shockTouchSeconds: 300,
+  shockAgainstUnits: 0,
   skipEarnings: true,
   skipPremarket: true,
 };
@@ -131,6 +134,19 @@ export const volumeVersions: readonly VolumeVersion[] = [
     notes:
       "The research's rules (PR #236): a shock trades only when the stock touches a side line within 20 s of the alert; a leg under the minimum price that is also thin takes a liquid strike. Year 2025-11 .. 2026-10, 51 stocks, 2%, no stop: $100K -> $142.1K, worst drop 13%.",
     rules: { ...v1, shockTouchSeconds: 20, cheapRescue: true },
+  },
+  {
+    id: "1.2.0",
+    name: "Volume 1.2.0",
+    since: "2026-11-03",
+    notes:
+      "1.1.0 + no shock against the day's move: a shock alert against the stock's move since the open, once that move is 2 typical 30-minute moves or more, is skipped (the user, ORCL 2026-10-28). Year 2025-11 .. 2026-10, 51 stocks, 2%: $142.1K -> $149.4K, drop 13% -> 12%; 3-year twin $773K -> $867K, drop 21.1% -> 18.5%, better on tune and check.",
+    rules: {
+      ...v1,
+      shockTouchSeconds: 20,
+      cheapRescue: true,
+      shockAgainstUnits: 2,
+    },
   },
 ];
 

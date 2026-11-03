@@ -1,4 +1,8 @@
-import { currentVolumeVersion } from "./versions.js";
+import {
+  currentVolumeVersion,
+  volumeRuleKeys,
+  volumeVersionById,
+} from "./versions.js";
 
 // The alert leg's settings (docs/tasks/backend-strangle-bot.md): a second
 // bot, separate from the Indi bot, on its own Alpaca paper account (user
@@ -102,6 +106,13 @@ export interface StrangleSettings {
   // A shock trades only when the stock touches a side line within this many
   // seconds of the alert (Volume 1.1.0: 20, the research's; 1.0.0: 300).
   shockTouchSeconds: number;
+  // No shock against the day's move (Volume 1.2.0, the user 2026-11-02: "we do
+  // not want to take against the huge swing.. it is not a shock"): a shock
+  // alert whose direction is against the stock's move since the open, once
+  // that move is at least this many typical 30-minute moves, is skipped. 0 =
+  // off (1.0.0, 1.1.0). volume-bot.md 2026-11-02: 2 is better on tune and
+  // check, on the year and on 3 years ($773K -> $867K at 2%, drop 18.5%).
+  shockAgainstUnits: number;
   // The news filter, as the Indi bot's.
   skipEarnings: boolean;
   skipPremarket: boolean;
@@ -168,6 +179,7 @@ export const defaultStrangleSettings: StrangleSettings = {
   fastAlert: false,
   shockAlert: true,
   shockTouchSeconds: 20,
+  shockAgainstUnits: 2,
   skipEarnings: true,
   skipPremarket: true,
 };
@@ -200,6 +212,7 @@ export const strangleLimits: Record<
   burstMinWeek: [0, 4, 0.1],
   noStopMinutes: [0, 60, 5],
   shockTouchSeconds: [10, 300, 5],
+  shockAgainstUnits: [0, 10, 0.5],
 };
 
 // Values the backtest never ran.
@@ -315,11 +328,27 @@ export function mergeStrangleSettings(
   return { ok: true, value: checked.value, changed };
 }
 
+// The rules saved settings ran before they carried a version (PR #238).
+const preVersionsId = "1.1.0";
+
 export function strangleWithDefaults(
   saved: unknown,
   base: StrangleSettings = defaultStrangleSettings,
 ): StrangleSettings {
-  const merged = { ...base, ...(isObject(saved) ? saved : {}) };
+  const own = isObject(saved) ? saved : {};
+  // A rule saved before it existed takes its saved version's value (a 1.1.0
+  // save has no shockAgainstUnits: 0, its rule), not today's default. A save
+  // from before versions ran 1.1.0's rules.
+  let savedId = preVersionsId;
+  if (typeof own.version === "string") savedId = own.version;
+  const version = isObject(saved) ? volumeVersionById(savedId) : undefined;
+  const missing: Partial<StrangleSettings> = {};
+  if (version) {
+    missing.version = version.id;
+    for (const k of volumeRuleKeys)
+      if (!(k in own)) Object.assign(missing, { [k]: version.rules[k] });
+  }
+  const merged = { ...base, ...missing, ...own };
   const checked = parseStrangleSettings(merged);
   return checked.ok ? checked.value : base;
 }
@@ -359,6 +388,10 @@ export function strangleSteps(
   if (thinWords && s.cheapRescue)
     thinWords +=
       " Under the minimum price and also too thin: the same busier strike.";
+  // No shock against the day's move (Volume 1.2.0).
+  let againstWords = "";
+  if (s.shockAgainstUnits > 0)
+    againstWords = `, and not against the stock's move since the open once that move is ${s.shockAgainstUnits} typical 30-minute moves or more`;
   const news = [
     s.skipEarnings && "the stock's earnings reaction day",
     s.skipPremarket && "a pre-market volume of 4× normal or more",
@@ -366,7 +399,7 @@ export function strangleSteps(
   return [
     {
       name: "The alert",
-      text: `On a day with a same-day expiry${nextDayWords}${s.weekExpiry ? `, or else the nearest expiry later that week when the burst is at least ${s.burstMinWeek}` : ""}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.${s.fastAlert ? " Also the 60-second alert (60 seconds of volume at 2× normal or today's pace, a move of 3× normal), 09:40 to 13:00, on a same-day or next-session expiry only." : ""}${s.shockAlert ? " Also the shock alert (60 seconds of volume at 15× normal or today's pace, a move of 3× normal), 09:40 to 15:30: the stock has to touch a side line within " + s.shockTouchSeconds + " seconds, then it is bought when the side holds 5 seconds within 5 minutes, the burst at least 0 the side's way, an expiry at most 2 days out, the leg's spread at most 30% of its mid." : ""}`,
+      text: `On a day with a same-day expiry${nextDayWords}${s.weekExpiry ? `, or else the nearest expiry later that week when the burst is at least ${s.burstMinWeek}` : ""}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.${s.fastAlert ? " Also the 60-second alert (60 seconds of volume at 2× normal or today's pace, a move of 3× normal), 09:40 to 13:00, on a same-day or next-session expiry only." : ""}${s.shockAlert ? " Also the shock alert (60 seconds of volume at 15× normal or today's pace, a move of 3× normal), 09:40 to 15:30: the stock has to touch a side line within " + s.shockTouchSeconds + " seconds" + againstWords + ", then it is bought when the side holds 5 seconds within 5 minutes, the burst at least 0 the side's way, an expiry at most 2 days out, the leg's spread at most 30% of its mid." : ""}`,
     },
     {
       name: "News filter",

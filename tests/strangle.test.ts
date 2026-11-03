@@ -780,11 +780,11 @@ test("leg (2026-11-02): a pick under minPrice that is also thin takes a liquid s
   assert.equal(!v1.ok && v1.outcome, "too_cheap");
 });
 
-test("volume versions (2026-11-02): 1.1.0 by default and on old saved settings; 1.0.0 puts back 300 s and no rescue; limits stay; a changed rule gets a star; trades are stamped", async () => {
+test("volume versions (2026-11-02, 1.2.0 on 11-03): 1.2.0 by default, 1.1.0 on old saved settings; 1.0.0 puts back 300 s and no rescue; limits stay; a changed rule gets a star; trades are stamped", async () => {
   const d = defaultStrangleSettings;
-  assert.equal(d.version, "1.1.0");
+  assert.equal(d.version, "1.2.0");
   // the code's defaults are not the live rules (delta 0.35, no floor): a star
-  assert.equal(volumeVersionLabel(d), "1.1.0*");
+  assert.equal(volumeVersionLabel(d), "1.2.0*");
   // the live settings saved before versions: no version, no new rules -> 1.1.0
   const old: Record<string, unknown> = {
     ...d,
@@ -796,8 +796,33 @@ test("volume versions (2026-11-02): 1.1.0 by default and on old saved settings; 
   delete old.version;
   delete old.shockTouchSeconds;
   delete old.cheapRescue;
+  delete old.shockAgainstUnits;
   const loaded = strangleWithDefaults(old);
   assert.equal(volumeVersionLabel(loaded), "1.1.0");
+  assert.equal(
+    loaded.shockAgainstUnits,
+    0,
+    "a save before 1.2.0 keeps its rule",
+  );
+  // a 1.1.0 save (no shockAgainstUnits yet) stays 1.1.0, unstarred
+  const saved11 = strangleWithDefaults({
+    ...old,
+    version: "1.1.0",
+    shockTouchSeconds: 20,
+    cheapRescue: true,
+  });
+  assert.equal(saved11.shockAgainstUnits, 0);
+  assert.equal(volumeVersionLabel(saved11), "1.1.0");
+  // switched to 1.2.0 on purpose: the rule on, the owner's limits kept
+  const v12 = applyVolumeVersion(saved11, "1.2.0");
+  assert.equal(v12.shockAgainstUnits, 2);
+  assert.equal(v12.sizePct, 3);
+  assert.equal(volumeVersionLabel(v12), "1.2.0");
+  assert.equal(
+    volumeVersionLabel(strangleWithDefaults(v12)),
+    "1.2.0",
+    "a 1.2.0 save reads back",
+  );
   const v1 = applyVolumeVersion(loaded, "1.0.0");
   assert.equal(v1.version, "1.0.0");
   assert.equal(v1.shockTouchSeconds, 300);
@@ -824,7 +849,7 @@ test("volume versions (2026-11-02): 1.1.0 by default and on old saved settings; 
   await shockAt(h, 101);
   const [t] = h.store.openTrades();
   assert.equal(t!.version, volumeVersionLabel(h.bot.settings()));
-  assert.match(t!.version!, /^1\.1\.0\*?$/);
+  assert.match(t!.version!, /^1\.2\.0\*?$/);
   assert.equal(t!.touchWithin, 20);
 });
 
@@ -1270,4 +1295,47 @@ test("alert books (2026-10-31): every plan alert starts its option books", async
   // The harness chain: calls 0.35 / 0.28 / 0.2 and puts 0.36 / 0.28 / 0.2.
   assert.equal(b!.contracts.length, 5);
   assert.ok(b!.samples.length >= 1);
+});
+
+test("shock (2026-11-03, Volume 1.2.0): a shock against the day's move of 2 typical moves or more is skipped; with the move it watches; 1.1.0 does not skip", async () => {
+  const h = harness(
+    { mode: "live", ...SHOCK, shockAgainstUnits: 2 },
+    { day: climbThenFall() },
+  );
+  await h.run(565, 609);
+  const bot = h.bot as unknown as {
+    unit: Map<string, number>;
+    barsOf(s: string): { m: number; o: number }[];
+  };
+  const unit = bot.unit.get("NVDA")!;
+  const open = bot.barsOf("NVDA").find((b) => b.m === 0)!.o;
+  const up3 = open * (1 + 3 * unit); // 3 typical moves above the open
+  const down = await shockAt(h, up3, "down");
+  assert.equal(down.outcome, "against_move");
+  assert.match(down.detail, /\+3\.0 typical 30-minute moves since the open/);
+  assert.equal(h.store.openTrades().length, 0);
+  // 1.9 typical moves up: under the level, it watches
+  const g = harness(
+    { mode: "live", ...SHOCK, shockAgainstUnits: 2 },
+    { day: climbThenFall() },
+  );
+  await g.run(565, 609);
+  assert.equal(
+    (await shockAt(g, open * (1 + 1.9 * unit), "down")).outcome,
+    "watching",
+  );
+  // with the move: watches
+  const w = harness(
+    { mode: "live", ...SHOCK, shockAgainstUnits: 2 },
+    { day: climbThenFall() },
+  );
+  await w.run(565, 609);
+  assert.equal((await shockAt(w, up3, "up")).outcome, "watching");
+  // 1.1.0's rule (off): the same alert watches
+  const off = harness(
+    { mode: "live", ...SHOCK, shockAgainstUnits: 0 },
+    { day: climbThenFall() },
+  );
+  await off.run(565, 609);
+  assert.equal((await shockAt(off, up3, "down")).outcome, "watching");
 });
