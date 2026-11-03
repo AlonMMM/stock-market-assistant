@@ -417,6 +417,45 @@ books (1 unpriced alert in 15x+10x and in today-only). The 15x+K rows supersede 
 - Candidate stays 15x + 3x the day's pace (3 years: passes, filtered). 10x + 3x/5x needs its own 3-year run (new alerts:
   the research twin re-run with these shock lists and their books) before it can be judged on its drop.
 
+**3 years, exact (2026-11-03, look 4 of the gate, look 2 of 10x and the smoothed usual).** The user: "check on 3 year";
+on the smoothed usual: "regardless the results - don't you think that this is the right way to look at this? ... we
+can't look on a specific minute". The shocks recomputed for 3 years (`f60_variants.py`: the live rule reproduces all
+2,635 alerts of `eventse_shock15.json`, +22 from newer bars), the 20-s prefilter (`f60_prefilter.py PF_WEEK=1 PF_MAX_S=20
+PF_TOP50=1 PF_AM_MIN=-999`, exactly the old list), every list through `leg_seconds.py list/stock/pick/option` and run in
+the live twin (top 50, live limits, 2024-02 .. 2026-10) with the list as the shock tag. Added: two **count-matched**
+smoothed versions (narrowed near 09:40 / 15:30, the bar set before the run so they fire as many 3-year shocks as 15x + 3x:
+11.5x +-2.5 min 9,971, 11x +-5 min 9,882 vs 10,131), since at 15x the smoothed usual is a higher bar (29% fewer shocks:
+the within-day average sits above the skewed slot's median). Data bought (approved, <= $1): stock seconds $0.13, buy
+books $0.11, sale-day minute books $0.04. The picks were redone for every list (153 of the stored 2,635 shock picks had a
+lower-delta contract from older settings), so the baseline is the live rule recomputed through the same steps.
+
+| Version (2%, from $100K) | Trades (shock) | 2% (drop) | 3% (drop) | Tune P&L | Check P&L | W/o best 5 |
+|---|---|---|---|---|---|---|
+| Live rule (15x), same pipeline | 427 (178) | $779.4K (21.1%) | $1,577K (30.4%) | +$71.1K | +$608.3K | +$201.2K |
+| **15x + 3x pace (candidate)** | 403 (151) | **$874.0K (20.1%)** | $1,864K (28.9%) | **+$112.9K** | **+$661.0K** | +$256.6K |
+| 10x + 3x pace | 513 (261) | $661.4K (27.9%) | $1,201K (39.2%) | +$45.8K | +$515.6K | +$105.7K |
+| 10x + 5x pace | 447 (193) | $648.5K (27.8%) | $1,181K (39.0%) | +$25.8K | +$522.7K | +$105.9K |
+| smoothed +-2.5 min 15x + 3x | 373 (122) | $935.4K (21.7%) | $2,075K (31.1%) | +$77.8K | +$757.6K | +$296.7K |
+| smoothed +-5 min 15x + 3x | 369 (117) | $925.0K (21.6%) | $2,044K (30.9%) | +$95.5K | +$729.5K | +$257.2K |
+| count-matched +-2.5 min 11.5x + 3x | 447 (193) | $909.2K (22.6%) | $1,971K (32.2%) | +$32.3K | +$776.9K | +$165.2K |
+| count-matched +-5 min 11x + 3x | 452 (196) | $870.5K (24.1%) | $1,831K (34.2%) | +$89.4K | +$681.1K | +$190.3K |
+
+Non-giant sums (trades under +300%, tune / check): live -$245.9K / -$51.2K; 15x + 3x -$224.2K / -$38.3K (better on both:
+an edge, not giants); smoothed +-2.5 -$240.6K / -$10.0K, +-5 -$233.3K / +$1.8K (worse than 15x + 3x on tune, better on
+check). The count-matched versions on the live-code year (app engine, real books, $0.0006 bought): tune $93.7K / $98.4K
+(drop 23%) vs $111.4K, check $135.9K / $120.0K; on that year they fire 26-30% more shocks than 15x + 3x (the 3-year match
+does not hold there).
+
+- **15x + 3x the day's pace passes exactly on 3 years**: better on tune and check, a smaller drop, better without the
+  best 5, the non-giant sum better on both halves. The candidate.
+- **10x + 3x / 5x fail**: less money on both halves, the drop 21% -> 28%. A lower bar adds losing shocks.
+- **The smoothed usual (15x)** beats 15x + 3x on the check and on 3 years in all (+$51-61K) but loses its tune half on
+  3 years and on the year (both looks), at a 1.5-point deeper drop. Not better by the rule; the same split twice.
+  Count-matched it is worse (a deeper drop, the tune lost). Kept as a feature: the measure is sounder (one 60-s slot of
+  20 days is noisy), the money does not show it.
+- Built on Volume 1.1.0; 1.2.0 (PR #249, no shock against the day's move) went live since: 15x + 3x needs a re-check on
+  top of 1.2.0 before its release.
+
 ### A shock must also stand out against the day's pace (2026-11-02, look 1)
 
 The user, 2026-11-02, on the MSTR 111 Call of 2026-08-19 (a shock trade at 11:14:00): "there is no shock - look on the
