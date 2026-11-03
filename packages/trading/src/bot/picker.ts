@@ -16,6 +16,8 @@ export interface PickRules {
   maxStrikes: number;
   minPrice: number; // the contract's mid
   minVolume30: number; // contracts traded in the last 30 minutes
+  // under minVolume30, still bought when a listed neighbour strike has this many; 0 = off
+  neighborGate30?: number;
   // Under minPrice, take the cheapest strike toward the money at minPrice or more.
   cheapFallback: boolean;
 }
@@ -28,6 +30,7 @@ export const defaultPickRules: PickRules = {
   maxStrikes: 16,
   minPrice: 0.2,
   minVolume30: 200,
+  neighborGate30: 0,
   cheapFallback: false,
 };
 
@@ -109,6 +112,23 @@ export function pickContract(
     : null;
   if (cheapest) return { ok: true, ...cheapest, fallback: "cheap" };
   return { ok: false, reason: "too_cheap", quote: best.quote };
+}
+
+/**
+ * The listed strikes next to `strike` (the one just below and the one just
+ * above, any step) in the chain's strikes; the neighbour gate's strikes.
+ */
+export function neighbourStrikes(
+  strikes: readonly number[],
+  strike: number,
+): number[] {
+  let below: number | null = null;
+  let above: number | null = null;
+  for (const k of strikes) {
+    if (k < strike - 1e-9 && (below === null || k > below)) below = k;
+    if (k > strike + 1e-9 && (above === null || k < above)) above = k;
+  }
+  return [below, above].filter((k): k is number => k !== null);
 }
 
 /**

@@ -54,10 +54,12 @@ async function run() {
         let text = "";
         for (let i = 0; i < 4; i++) {
           try {
+            // WRANGLER: a wrangler binary to use instead of npx (no install step).
+            const wrangler = process.env.WRANGLER;
             text = execFileSync(
-              "npx",
+              wrangler ?? "npx",
               [
-                "wrangler@4",
+                ...(wrangler ? [] : ["wrangler@4"]),
                 "d1",
                 "execute",
                 "sma-bars-cache",

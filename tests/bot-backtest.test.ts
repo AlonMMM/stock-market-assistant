@@ -25,6 +25,7 @@ import {
   type SimStep,
   type SimTrade,
 } from "../packages/trading/src/bot/backtest.js";
+import { neighbourStrikes } from "../packages/trading/src/bot/picker.js";
 import {
   defaultMoney,
   runAccount,
@@ -595,6 +596,39 @@ test("the real book at the signal is kept on a trade and on a skip's contract", 
     )
   ).trades[0]!;
   assert.equal(bare.book, undefined);
+});
+
+test("the neighbour gate: a thin pick is bought when a listed strike next to it is busy; off by default", async () => {
+  const { data } = fakeData(1000);
+  // SYNTHETIC: every option trades 50 a minute, so the pick and its
+  // neighbours each have 550 by the signal, under a 5,000 floor.
+  const run = (neighborGateVolume: number) =>
+    runStock(
+      "NVDA",
+      [date],
+      {
+        ...defaultSettings,
+        pyramid: false,
+        minVolume: 5000,
+        neighborGateVolume,
+      },
+      data,
+      backtestCalendar,
+    );
+  assert.equal((await run(0)).trades.length, 0);
+  assert.equal((await run(600)).skips[0]?.reason, "illiquid");
+  const gated = await run(500);
+  assert.equal(gated.trades.length, 1);
+  assert.equal(gated.trades[0]!.volume30, 550); // the pick's own volume is kept
+});
+
+test("neighbourStrikes: the listed strike just below and just above, any step", () => {
+  assert.deepEqual(
+    neighbourStrikes([130, 132.5, 134, 135, 140], 134),
+    [132.5, 135],
+  );
+  assert.deepEqual(neighbourStrikes([130, 135, 140], 130), [135]);
+  assert.deepEqual(neighbourStrikes([], 130), []);
 });
 
 test("a thin contract's skip keeps its volume; with no expiry the what-if models a strike from the stock's volatility", async () => {

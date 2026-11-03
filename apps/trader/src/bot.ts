@@ -35,6 +35,7 @@ import {
 } from "../../../packages/trading/src/bot/news.js";
 import {
   expiryWindow,
+  neighbourStrikes,
   pickContract,
   type Picked,
 } from "../../../packages/trading/src/bot/picker.js";
@@ -962,13 +963,13 @@ export class IndiBot {
       return this.event("skip", `${first.symbol} pyramid: no stock price`);
     const side = first.right === "C" ? "call" : "put";
     const [from, to] = expiryWindow(date, pick);
-    const picked = pickContract(
-      await this.trading(broker).chain(first.symbol, side, from, to),
-      spot,
+    const chain = await this.trading(broker).chain(
+      first.symbol,
       side,
-      date,
-      pick,
+      from,
+      to,
     );
+    const picked = pickContract(chain, spot, side, date, pick);
     if (!picked.ok)
       return this.event(
         "skip",
@@ -976,7 +977,10 @@ export class IndiBot {
       );
     const contract = picked.quote.symbol;
     const { volume } = await this.volume30(broker, contract, date, minute);
-    if (volume < pick.minVolume30)
+    const gated =
+      volume < pick.minVolume30 &&
+      (await this.neighbourGate(broker, chain, picked.quote, date, minute));
+    if (volume < pick.minVolume30 && !gated)
       return this.event(
         "skip",
         `${first.symbol} pyramid: ${this.words(contract)} ${volume} contracts in 30 minutes`,
@@ -1233,14 +1237,10 @@ export class IndiBot {
     const message = (error: unknown) =>
       error instanceof Error ? error.message : String(error);
     let picked: Picked;
+    let chain: OptionQuote[] = [];
     try {
-      picked = pickContract(
-        await this.trading(broker).chain(symbol, at.side, at.from, at.to),
-        at.spot,
-        at.side,
-        at.date,
-        pick,
-      );
+      chain = await this.trading(broker).chain(symbol, at.side, at.from, at.to);
+      picked = pickContract(chain, at.spot, at.side, at.date, pick);
     } catch (error) {
       return stop("error", `the chain failed: ${message(error)}`);
     }
@@ -1267,7 +1267,24 @@ export class IndiBot {
       return stop("error", `the 30-minute volume failed: ${message(error)}`);
     }
     const fallback = picked.fallback ? { fallback: picked.fallback } : {};
-    if (leg.volume30 < pick.minVolume30)
+    let gated = false;
+    if (leg.volume30 < pick.minVolume30) {
+      try {
+        gated = await this.neighbourGate(
+          broker,
+          chain,
+          picked.quote,
+          at.date,
+          at.minute,
+        );
+      } catch (error) {
+        return stop(
+          "error",
+          `the neighbour's volume failed: ${message(error)}`,
+        );
+      }
+    }
+    if (leg.volume30 < pick.minVolume30 && !gated)
       return {
         ...stop(
           "thin",
@@ -1280,6 +1297,36 @@ export class IndiBot {
       picked,
       ...fallback,
     };
+  }
+
+  /**
+   * The neighbour gate (off at 0): a thin pick is still bought when the listed
+   * strike one up or one down in the chain read (same expiry and side) has
+   * `neighborGateVolume` contracts in 30 minutes, from the same volume source.
+   */
+  private async neighbourGate(
+    broker: BotBroker,
+    chain: readonly OptionQuote[],
+    quote: OptionQuote,
+    date: string,
+    minute: number,
+  ): Promise<boolean> {
+    const need =
+      pickRules(this.settings(), quote.underlying).neighborGate30 ?? 0;
+    if (!(need > 0)) return false;
+    const listed = chain.filter(
+      (q) => q.expiry === quote.expiry && q.right === quote.right,
+    );
+    const near = neighbourStrikes(
+      listed.map((q) => q.strike),
+      quote.strike,
+    );
+    for (const q of listed) {
+      if (!near.includes(q.strike)) continue;
+      const { volume } = await this.volume30(broker, q.symbol, date, minute);
+      if (volume >= need) return true;
+    }
+    return false;
   }
 
   /**

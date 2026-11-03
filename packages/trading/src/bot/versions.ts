@@ -35,6 +35,7 @@ export type RuleKey =
   | "maxDte"
   | "minPrice"
   | "minVolume"
+  | "neighborGateVolume"
   | "cheapFallback"
   | "minT"
   | "d2Entry"
@@ -74,6 +75,7 @@ export const ruleKeys: readonly RuleKey[] = [
   "maxDte",
   "minPrice",
   "minVolume",
+  "neighborGateVolume",
   "cheapFallback",
   "minT",
   "d2Entry",
@@ -121,6 +123,7 @@ const v1: Rules = {
   maxDte: 7,
   minPrice: 0.2,
   minVolume: 200,
+  neighborGateVolume: 0,
   cheapFallback: false,
   minT: 2,
   d2Entry: false,

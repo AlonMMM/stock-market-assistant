@@ -18,7 +18,7 @@ import {
   reportDates,
   type EarningsReport,
 } from "./news.js";
-import { expiryWindow, pickContract } from "./picker.js";
+import { expiryWindow, neighbourStrikes, pickContract } from "./picker.js";
 import {
   exitRules,
   pickRules,
@@ -477,7 +477,12 @@ async function pick(
   }
   const contract = near.find((c) => c.symbol === picked.quote.symbol)!;
   const volume30 = volume30Of(contract.symbol);
-  if (volume30 < rules.minVolume30)
+  const gated =
+    volume30 < rules.minVolume30 &&
+    (rules.neighborGate30 ?? 0) > 0 &&
+    (await neighbourVolume30(data, chain, contract, date, minute)) >=
+      (rules.neighborGate30 ?? 0);
+  if (volume30 < rules.minVolume30 && !gated)
     return {
       ok: false,
       reason: "illiquid",
@@ -493,6 +498,38 @@ async function pick(
     volume30,
     fallback: picked.fallback === "cheap",
   };
+}
+
+/**
+ * The busier of the two listed strikes next to the pick (same expiry and
+ * side), its contracts in the 30 minutes up to the signal minute, read from
+ * its own bars even when it is outside the scanned strikes.
+ */
+async function neighbourVolume30(
+  data: BacktestData,
+  chain: readonly ChainContract[],
+  contract: ChainContract,
+  date: string,
+  minute: number,
+): Promise<number> {
+  const listed = chain.filter((c) => c.expiry === contract.expiry);
+  const near = neighbourStrikes(
+    listed.map((c) => c.strike),
+    contract.strike,
+  );
+  const symbols = listed
+    .filter((c) => near.includes(c.strike))
+    .map((c) => c.symbol);
+  if (!symbols.length) return 0;
+  const bars = await data.optionDay(symbols, date);
+  let most = 0;
+  for (const symbol of symbols) {
+    const v = (bars.get(symbol) ?? [])
+      .filter((b) => minute - 30 < b.m && b.m <= minute)
+      .reduce((sum, b) => sum + b.v, 0);
+    most = Math.max(most, v);
+  }
+  return most;
 }
 
 // ---- the walk: one contract from the signal to its last sale ----

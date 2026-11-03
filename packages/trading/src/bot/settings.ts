@@ -95,6 +95,10 @@ export interface BotSettings {
   maxDte: number;
   minPrice: number;
   minVolume: number;
+  // Under minVolume, the same contract is still bought when the listed strike
+  // one up or one down has this many contracts in 30 minutes; 0 = off
+  // (research neighbor_gate.py, not a version rule yet).
+  neighborGateVolume: number;
   // Under minPrice, the cheapest strike toward the money at minPrice or more
   // (version 2.6; picker.ts).
   cheapFallback: boolean;
@@ -213,6 +217,7 @@ export const defaultSettings: BotSettings = {
   maxDte: 7,
   minPrice: 0.2,
   minVolume: 200,
+  neighborGateVolume: 0,
   cheapFallback: false,
   minT: 1.8,
   d2Entry: true,
@@ -274,6 +279,7 @@ export const limits: Record<
   maxDte: [1, 14, 1],
   minPrice: [0.05, 1, 0.05],
   minVolume: [0, 1000, 50],
+  neighborGateVolume: [0, 5000, 50],
   minT: [1, 4, 0.1],
   d2T: [1, 1.8, 0.1],
   minD2: [0.5, 3, 0.1],
@@ -485,6 +491,7 @@ export const pickRules = (s: BotSettings, symbol?: string): PickRules => ({
   dteMax: s.maxDte,
   minPrice: symbol === undefined ? s.minPrice : minPriceFor(s, symbol),
   minVolume30: s.minVolume,
+  neighborGate30: s.neighborGateVolume,
   cheapFallback: s.cheapFallback,
 });
 
