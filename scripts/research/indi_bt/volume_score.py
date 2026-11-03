@@ -62,7 +62,7 @@ def blocks(sym, d):
     v = minutes(sym, d)
     return [sum(v[i:i + 3]) for i in range(0, 390, 3)] if v else None
 def beta(sym, d):
-    """a, b of log r_stock = a + b log r_spy over the stock's 60 sessions before d (3-minute blocks)."""
+    """a, b, sd (the fit's residual spread) of log r_stock = a + b log r_spy over the stock's 60 sessions before d (3-minute blocks)."""
     if (sym, d) in BETA: return BETA[(sym, d)]
     days = sessions_before(sym, d, 80)
     xs, ys = [], []
@@ -80,12 +80,14 @@ def beta(sym, d):
     if len(xs) < 500: BETA[(sym, d)] = None; return None
     mx, my = st.mean(xs), st.mean(ys)
     b = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sum((x - mx) ** 2 for x in xs)
-    BETA[(sym, d)] = (my - b * mx, b)
+    a = my - b * mx
+    sd = math.sqrt(sum((y - a - b * x) ** 2 for x, y in zip(xs, ys)) / (len(xs) - 2))
+    BETA[(sym, d)] = (a, b, sd)
     return BETA[(sym, d)]
 def score(sym, d, kind, m, sec):
     rs, rp, ab = ratio_window(sym, d, kind, m, sec), ratio_window('SPY', d, kind, m, sec), beta(sym, d)
-    if not rs or not rp or not ab: return {'rs': rs, 'rspy': rp, 'a': ab and ab[0], 'b': ab and ab[1], 'score': None}
-    return {'rs': rs, 'rspy': rp, 'a': ab[0], 'b': ab[1], 'score': rs / (math.exp(ab[0]) * rp ** ab[1])}
+    if not rs or not rp or not ab: return {'rs': rs, 'rspy': rp, 'a': ab and ab[0], 'b': ab and ab[1], 'sd': ab and ab[2], 'score': None}
+    return {'rs': rs, 'rspy': rp, 'a': ab[0], 'b': ab[1], 'sd': ab[2], 'score': rs / (math.exp(ab[0]) * rp ** ab[1])}
 out = {}
 if mode == 'live':
     taken = set(json.load(open(f'{S}/volyear/taken_ids.json')))

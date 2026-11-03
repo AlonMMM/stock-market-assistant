@@ -2266,6 +2266,43 @@ walk), `volume_score_year.ts` (live code's year, volumeAccount and the live limi
 - **What the data does say**: scores of 20 or more lose on both halves (median -14% / -21%, 23 / 15 trades, no +300%).
   Read off this distribution, so it is a new test, not a result.
 
+**The volume score on a log scale (look 4 of the score, 2026-11-03; the user: "if the volume is go to double, 2x is
+scoring the same as zero for the other side ... We need to think about calculation equation")**: `volume_score_log.py`
+(3-year twin, distributions, the 2-D table) and `volume_score_log_year.ts` (live code's year, volumeAccount, the live
+limits); `volume_score.py` now also keeps each fit's residual spread (sd). Base 1.1.0 (the champion). Bands set before
+the run (after seeing only how the measures spread, not the trades):
+
+- **A** = log2(stock ratio) - log2(SPY ratio), the stock vs SPY one for one: < 1, 1-2, 2-3, 3-4, >= 4.
+- **B** = log2(look 3's score): the same order as look 3, so read only (a cut on it = a cut on the score).
+- **C** = (ln stock ratio - a - b ln SPY ratio) / sd, the score in the stock's own noise: < 2, 2-3, 3-4, 4-5, >= 5.
+- **D** = stock ratio (< 8x / 8-16x / >= 16x) x SPY ratio (< 1x / 1-2x / 2-4x / >= 4x), analysis.
+
+A skip rule can only remove trades (fewer, never more); an entry on the score would need the alert engine.
+
+| At 2% | 3y (drop) | Tune | Check | Check w/o 5 | 3y w/o 10-10 | Tune | Check | Live year (drop) | Tune | Check | Live trades |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1.1.0 | $773K (21.1%) | +$73K | +$600K | +$226K | $288K | +$27K | +$161K | $142.1K (13%) | $111.9K | $125.6K | 145 |
+| 🎯 A: skip 1-2 (stock 2-4x over SPY) | $867K (17.7%) | +$163K | +$603K | +$237K | $323K | +$62K | +$161K | $156.7K (10%) | $127.1K | $122.1K | 118 |
+| A: skip < 1 | $203K (20.4%) | +$24K | +$79K | -$13K | $203K | +$24K | +$79K | $131.2K (12%) | $106.1K | $124.2K | 122 |
+| A: skip 2-3 / 3-4 / >= 4 | $532K / $609K / $631K | | +$453K / +$441K / +$514K | | | | | $114.6K / $124.7K / $146.7K | | $128.3K / $114.9K / $124.3K | |
+| 🎯 C: skip 3-4 | $438K (27.8%) | +$79K | +$259K | +$95K | $166K | +$35K | +$31K | $118.8K (13%) | $112.9K | $104.5K | 118 |
+| C: skip 2-3 | $737K (13.2%) | +$72K | +$564K | +$234K | $278K | +$17K | +$161K | $151.2K (11%) | $112.4K | $132.7K | 123 |
+| C: skip < 2 / 4-5 / >= 5 | $286K / $595K / $713K | | +$155K / +$461K / +$624K | | | | | $126.6K / $125.3K / $145.8K | | $117.0K / $127.8K / $132.6K | |
+
+- **Verdict: no candidate.** A's tune pick (skip a stock that rose 2-4x more than SPY) wins tune everywhere but only
+  ties the 3-year check (+$603K vs +$600K; without 10-10 +$161K both) and loses the live check ($122.1K vs $125.6K). C's
+  pick fails the check outright. The 28 live trades A skips have a median of -37% (6 won, 1 of +300%), a real but small
+  cut of ordinary losers, like look 2's "skip 1-2" on the old window.
+- **Distributions (median trade by band)**: no band is good on both halves in any measure. A on 3 years tune / check:
+  < 1 -31% / +122% (10-10; +34% without), 1-2 -34% / -31%, 2-3 -8% / -39%, 3-4 -39% / -6%, >= 4 -22% / -17%. C: the
+  same picture. Fixing the scale did not reveal a line.
+- **D, the 2-D table**: every cell's median loses except stock < 8x with SPY >= 4x on 3 years (+26%, 12 of +300%), and
+  that cell is 10-10 alone (without it -31%). Without 10-10, "the stock is busy and SPY is not" (stock >= 16x, SPY < 1x:
+  -18%) is no better than "both are busy" (-22%). On the live year the best cell is stock < 8x with SPY < 1x (+30%,
+  n 10), too small to act on.
+- So the equation was not what hid an edge: on any scale, the stock's volume against SPY's at the alert does not
+  separate the winners. The one market-wide day (10-10) is the whole SPY effect.
+
 ### Volume 1.2.0 release review (2026-11-03): GO
 
 The user: "lets go with since open, and release the candidate." 1.2.0 = 1.1.0 + no shock against the day's move since
