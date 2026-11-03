@@ -30,6 +30,31 @@ export interface BotSignal {
   volume30?: number;
   // Set when the cheap fallback chose the contract (version 2.6).
   fallback?: "cheap";
+  // Each account's own pick and outcome (user 2026-11-03: each broker reads
+  // its own chain, volume and book, so Alpaca and IBKR can be compared as two
+  // bots). Missing on signals before 2026-11-03; `book`, `volume30` and
+  // `fallback` above are the first account's.
+  legs?: BotLeg[];
+}
+
+/** One account's side of a signal: what it read, what it picked, what came of it. */
+export interface BotLeg {
+  broker: BotBroker;
+  // bought, would-buy, or why not (the signal's outcome words)
+  outcome: string;
+  detail: string;
+  startedAt: number; // ms, when the leg began reading its chain
+  pickMs?: number; // the chain, the pick and the volume read, in ms
+  contract?: string; // missing when nothing was picked
+  delta?: number;
+  // The picked contract's book at the pick, with its mid and spread (% of the mid).
+  book?: OptionBook & { mid: number; spreadPct: number | null };
+  volume30?: number;
+  volumeSource?: BotBroker; // whose bars the 30 minutes were counted on
+  positionId?: string; // the position the leg opened
+  // This account's quote of the other account's contract when the two
+  // picked different ones, read right after the orders were sent.
+  cross?: { contract: string; book: OptionBook };
 }
 
 export interface BotSale {
@@ -83,6 +108,10 @@ export interface BotPosition {
   entryBook?: OptionBook;
   // Bid / ask at the buy's last raise before the fill; missing before 2026-10-27.
   entryFillBook?: OptionBook;
+  // The buy's last limit price and when its job ended (ms, the fill time to a
+  // tick); missing before 2026-11-03 and in a dry run.
+  entryLimit?: number;
+  filledAt?: number;
   // The pyramid (version 2.7): `bonus` marks an entry on the D2 bonus (t under
   // the full strength); `addOf` is the first position's id on the half-size
   // add bought for it; `pyramidChecked` is set once the add was decided (bought
@@ -194,6 +223,24 @@ export class BotStore {
     this.db
       .prepare("UPDATE bot_signals SET data = ? WHERE day = ? AND symbol = ?")
       .run(JSON.stringify({ ...s, ...pick }), day, symbol);
+  }
+
+  /** Each account's leg on the day's signal of `symbol`. */
+  setSignalLegs(day: string, symbol: string, legs: BotLeg[]) {
+    const s = this.signal(day, symbol);
+    if (!s) return;
+    this.db
+      .prepare("UPDATE bot_signals SET data = ? WHERE day = ? AND symbol = ?")
+      .run(JSON.stringify({ ...s, legs }), day, symbol);
+  }
+
+  /** Every signal on or after `since` (a date), oldest first. */
+  signalsSince(since: string): BotSignal[] {
+    return (
+      this.db
+        .prepare("SELECT data FROM bot_signals WHERE day >= ? ORDER BY id")
+        .all(since) as { data: string }[]
+    ).map((r) => JSON.parse(r.data) as BotSignal);
   }
 
   signal(day: string, symbol: string): BotSignal | undefined {

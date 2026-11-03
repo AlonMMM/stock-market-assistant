@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { AlpacaTrade } from "../../../packages/market-data/src/alpaca.js";
-import { bookOf, lastBookOf, type OptionBook } from "./option-book.js";
+import {
+  bookOf,
+  lastBookOf,
+  midAndSpread,
+  plainBook,
+  type OptionBook,
+} from "./option-book.js";
 import {
   coreClose,
   newYork,
@@ -30,6 +36,7 @@ import {
 import {
   expiryWindow,
   pickContract,
+  type Picked,
 } from "../../../packages/trading/src/bot/picker.js";
 import {
   defaultSettings,
@@ -63,7 +70,13 @@ import {
   parseOccSymbol,
   type OptionQuote,
 } from "../../../packages/trading/src/options.js";
-import type { BotEventKind, BotPosition, BotStore } from "./bot-store.js";
+import type {
+  BotEventKind,
+  BotLeg,
+  BotPosition,
+  BotStore,
+} from "./bot-store.js";
+import { compareLegs } from "../../../packages/trading/src/bot/compare.js";
 
 // The Indi bot (docs/tasks/backend-indi-bot.md): the backtested C signal on
 // the stocks Indi traded in the past year, a 0.15-delta contract 1–7 days out,
@@ -146,7 +159,14 @@ export interface BotTrading {
   sell(
     body: Record<string, unknown>,
   ): Promise<{ status: string; jobId?: string }>;
-  job(id: string): { state: string; result: unknown };
+  // `updatedAt`: when the job last changed (ISO), so when a finished buy filled.
+  job(id: string): { state: string; result: unknown; updatedAt?: string };
+  /**
+   * Contracts of `contract` traded in the 30 minutes up to `minute`, from
+   * this broker's own data (IBKR's bars). Absent: the market's (Alpaca's
+   * bars, as the backtest counts them).
+   */
+  volume30?(contract: string, date: string, minute: number): Promise<number>;
 }
 
 export interface BotOptions {
@@ -955,7 +975,7 @@ export class IndiBot {
         `${first.symbol} pyramid: ${outcomeText(picked.reason, s)}`,
       );
     const contract = picked.quote.symbol;
-    const volume = await this.o.market.optionVolume30(contract, date, minute);
+    const { volume } = await this.volume30(broker, contract, date, minute);
     if (volume < pick.minVolume30)
       return this.event(
         "skip",
@@ -1041,149 +1061,267 @@ export class IndiBot {
         "refused",
         `no ${s.broker} account connected`,
       );
-    // Each account has its own limits; one at its limit sits this signal out.
+    // Each account has its own limits; one at its limit, or whose account
+    // cannot be read, sits this signal out.
     const legs: BotBroker[] = [];
-    let limited: { outcome: string; detail: string } | null = null;
+    const sitOut: BotLeg[] = [];
     for (const broker of brokers) {
-      const why = await this.limit(date, s, broker);
-      if (why) limited = why;
+      const startedAt = this.o.now();
+      const why = await this.limit(date, s, broker).catch((error: unknown) => ({
+        outcome: "error",
+        detail: `the account could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      }));
+      if (why) sitOut.push({ broker, startedAt, ...why });
       else legs.push(broker);
     }
-    if (legs.length === 0 && limited)
-      return this.outcome(date, symbol, limited.outcome, limited.detail);
+    if (legs.length === 0) {
+      if (brokers.length > 1) this.o.store.setSignalLegs(date, symbol, sitOut);
+      const last = sitOut.at(-1)!;
+      return this.outcome(date, symbol, last.outcome, last.detail);
+    }
     const pick = pickRules(s, symbol);
     const spot = opts.spotNow ?? this.lastClose(symbol, minute);
     if (spot === null)
       return this.outcome(date, symbol, "no_prices", "no stock price");
     const side = right === "C" ? "call" : "put";
     const [from, to] = expiryWindow(date, pick);
-    // One contract for every leg, picked from the first account's chain, so
-    // two accounts can be compared fill for fill (user 2026-10-24).
-    const picked = pickContract(
-      await this.trading(legs[0]!).chain(symbol, side, from, to),
-      spot,
-      side,
-      date,
-      pick,
+    // Each account picks from its own chain, with its own book and 30-minute
+    // volume, at the same time (the owner, 2026-11-03: "I need ibkr to be
+    // autonomous, read by its own"; it replaces 2026-10-24's one contract for
+    // every leg): the two may buy different strikes, and each leg's pick is
+    // kept so the two can be compared as two bots.
+    const picks = await Promise.all(
+      legs.map((broker) =>
+        this.pickLeg(broker, symbol, { side, from, to, spot, date, minute }),
+      ),
     );
-    // The picked contract's bid / ask, kept with the signal (paper fills are not real ones).
-    const chosen = picked.quote;
-    const pickedBook = bookOf(chosen, this.o.now(), legs[0]!);
-    if (chosen && pickedBook)
+    // The first account's pick, kept with the signal as before the legs.
+    const lead = picks[0]!;
+    if (lead.leg.contract && lead.leg.book)
       this.o.store.setSignalBook(date, symbol, {
-        ...pickedBook,
-        contract: chosen.symbol,
+        ...plainBook(lead.leg.book),
+        contract: lead.leg.contract,
       });
-    if (!picked.ok)
-      return this.outcome(
-        date,
-        symbol,
-        picked.reason,
-        picked.reason === "too_cheap" && pick.minPrice !== s.minPrice
-          ? `${symbol}'s floor is $${pick.minPrice.toFixed(2)}`
-          : "",
-      );
-    const contract = picked.quote.symbol;
-    const volume = await this.o.market.optionVolume30(contract, date, minute);
-    // Kept with the signal: the floor is judged against real fills later.
-    this.o.store.setSignalPick(date, symbol, {
-      volume30: volume,
-      ...(picked.fallback ? { fallback: picked.fallback } : {}),
-    });
-    if (volume < pick.minVolume30)
-      return this.outcome(
-        date,
-        symbol,
-        "thin",
-        `${this.words(contract)}: ${volume} contracts in 30 minutes`,
-      );
+    if (lead.leg.volume30 !== undefined)
+      this.o.store.setSignalPick(date, symbol, {
+        volume30: lead.leg.volume30,
+        ...(lead.fallback ? { fallback: lead.fallback } : {}),
+      });
     // The entry's note carries the version, so the trade's record has it too.
     const version = versionLabel(s);
-    let fallback = "";
-    if (picked.fallback === "cheap")
-      fallback = ` · the 0.15-delta option was under $${pick.minPrice.toFixed(2)}, so the nearest strike at $${pick.minPrice.toFixed(2)} or more`;
     // 2.10: the size follows the signal's volume (its pyramid add too).
     const share = volumeShare(s, rvol);
     const half =
       share !== 1
         ? ` · ${Math.round(share * 100)}% of the size (volume ${rvol.toFixed(2)}×)`
         : "";
-    const why = `Signal ${side} at ${clock(minute)}: strength t ${t.toFixed(1)}, volume ${rvol.toFixed(1)}× normal${fallback}${half} · bot ${version}`;
-    const base: Omit<BotPosition, "id" | "broker"> = {
-      day: date,
-      symbol,
-      contract,
-      right,
-      qty: 0,
-      bought: 0,
-      cost: picked.mid,
-      entryMinute: minute,
-      entryStock: spot,
-      nights: 0,
-      checksDone: [],
-      morningDone: false,
-      breakWatch: watchFor(
-        this.levels.get(symbol),
-        this.barsOf(symbol),
-        minute,
-        spot,
+    const done = new Map<BotBroker, BotLeg>(sitOut.map((l) => [l.broker, l]));
+    for (const { leg, picked, fallback: fell } of picks) {
+      if (!picked) {
+        done.set(leg.broker, leg);
+        continue;
+      }
+      let fallback = "";
+      if (fell === "cheap")
+        fallback = ` · the 0.15-delta option was under $${pick.minPrice.toFixed(2)}, so the nearest strike at $${pick.minPrice.toFixed(2)} or more`;
+      const why = `Signal ${side} at ${clock(minute)}: strength t ${t.toFixed(1)}, volume ${rvol.toFixed(1)}× normal${fallback}${half} · bot ${version}`;
+      const base: Omit<BotPosition, "id" | "broker"> = {
+        day: date,
+        symbol,
+        contract: picked.quote.symbol,
         right,
-      ),
-      decidedOn: null,
-      version,
-      status: "buying",
-      jobId: null,
-      dry: s.mode === "dry",
-      sales: [],
-      openedAt: this.o.now(),
-      closedAt: null,
-      ...(opts.bonus ? { bonus: true } : {}),
-      ...(share !== 1 ? { sizeShare: share } : {}),
-    };
-    const results: { broker: BotBroker; outcome: string; detail: string }[] =
-      [];
-    for (const [i, broker] of legs.entries()) {
-      // The first account's book is the chain's at the pick; another account's is its own quote.
-      const book =
-        i === 0
-          ? pickedBook
-          : bookOf(
-              await this.trading(broker)
-                .quote(contract)
-                .catch(() => null),
-              this.o.now(),
-              broker,
-            );
+        qty: 0,
+        bought: 0,
+        cost: picked.mid,
+        entryMinute: minute,
+        entryStock: spot,
+        nights: 0,
+        checksDone: [],
+        morningDone: false,
+        breakWatch: watchFor(
+          this.levels.get(symbol),
+          this.barsOf(symbol),
+          minute,
+          spot,
+          right,
+        ),
+        decidedOn: null,
+        version,
+        status: "buying",
+        jobId: null,
+        dry: s.mode === "dry",
+        sales: [],
+        openedAt: this.o.now(),
+        closedAt: null,
+        ...(opts.bonus ? { bonus: true } : {}),
+        ...(share !== 1 ? { sizeShare: share } : {}),
+      };
       // A leg that throws (IBKR refusing the contract's market data, user
       // 2026-10-26) is that account's miss; the other account's entry stands.
-      const result = await this.enterAt(
-        broker,
-        base,
-        picked.mid,
-        s,
-        why,
-        legs.length > 1,
-        book,
-      ).catch((error: unknown) => ({
-        outcome: "error",
-        detail: error instanceof Error ? error.message : String(error),
-      }));
-      results.push({ broker, ...result });
+      const result: { outcome: string; detail: string; positionId?: string } =
+        await this.enterAt(
+          leg.broker,
+          base,
+          picked.mid,
+          s,
+          why,
+          legs.length > 1,
+          leg.book && plainBook(leg.book),
+        ).catch((error: unknown) => ({
+          outcome: "error",
+          detail: error instanceof Error ? error.message : String(error),
+        }));
+      done.set(leg.broker, {
+        ...leg,
+        outcome: result.outcome,
+        detail: result.detail,
+        ...(result.positionId ? { positionId: result.positionId } : {}),
+      });
     }
-    // The signal's one outcome: an entry if any leg entered, else the first miss.
+    const results = brokers.map((b) => done.get(b)!);
+    await this.crossQuotes(results);
+    this.o.store.setSignalLegs(date, symbol, results);
+    // The signal's one outcome: an entry if any leg entered, else the first
+    // miss of a leg that read its chain (one at its limit only when all were).
     const entered = results.filter(
       (r) => r.outcome === "bought" || r.outcome === "would-buy",
     );
-    const first = entered[0] ?? results[0]!;
+    const first =
+      entered[0] ?? results.find((r) => legs.includes(r.broker)) ?? results[0]!;
     let detail = first.detail;
     if (legs.length > 1)
       detail = results
+        .filter((r) => legs.includes(r.broker))
         .map(
           (r) =>
             `${brokerNames[r.broker]}: ${r.detail || outcomeText(r.outcome, s)}`,
         )
         .join("; ");
     this.outcome(date, symbol, first.outcome, detail);
+  }
+
+  /**
+   * One account's pick for a signal: its own chain, the contract, its book
+   * and its 30-minute volume (from that broker's data when it has them), and
+   * how long that took. `picked` is null when the leg stops there, with why
+   * in `leg.outcome` and `leg.detail`.
+   */
+  private async pickLeg(
+    broker: BotBroker,
+    symbol: string,
+    at: {
+      side: "call" | "put";
+      from: string;
+      to: string;
+      spot: number;
+      date: string;
+      minute: number;
+    },
+  ): Promise<{
+    leg: BotLeg;
+    picked: Extract<Picked, { ok: true }> | null;
+    fallback?: "cheap";
+  }> {
+    const s = this.settings();
+    const pick = pickRules(s, symbol);
+    const startedAt = this.o.now();
+    const leg: BotLeg = { broker, outcome: "new", detail: "", startedAt };
+    const stop = (outcome: string, detail: string) => ({
+      leg: { ...leg, outcome, detail, pickMs: this.o.now() - startedAt },
+      picked: null,
+    });
+    const message = (error: unknown) =>
+      error instanceof Error ? error.message : String(error);
+    let picked: Picked;
+    try {
+      picked = pickContract(
+        await this.trading(broker).chain(symbol, at.side, at.from, at.to),
+        at.spot,
+        at.side,
+        at.date,
+        pick,
+      );
+    } catch (error) {
+      return stop("error", `the chain failed: ${message(error)}`);
+    }
+    // The picked contract's bid / ask (paper fills are not real ones).
+    const chosen = picked.quote;
+    if (chosen) {
+      leg.contract = chosen.symbol;
+      if (chosen.delta !== null) leg.delta = Math.abs(chosen.delta);
+      const book = bookOf(chosen, this.o.now(), broker);
+      if (book) leg.book = { ...book, ...midAndSpread(book) };
+    }
+    if (!picked.ok) {
+      let detail = "";
+      if (picked.reason === "too_cheap" && pick.minPrice !== s.minPrice)
+        detail = `${symbol}'s floor is $${pick.minPrice.toFixed(2)}`;
+      return stop(picked.reason, detail);
+    }
+    const contract = picked.quote.symbol;
+    try {
+      const v = await this.volume30(broker, contract, at.date, at.minute);
+      leg.volume30 = v.volume;
+      leg.volumeSource = v.source;
+    } catch (error) {
+      return stop("error", `the 30-minute volume failed: ${message(error)}`);
+    }
+    const fallback = picked.fallback ? { fallback: picked.fallback } : {};
+    if (leg.volume30 < pick.minVolume30)
+      return {
+        ...stop(
+          "thin",
+          `${this.words(contract)}: ${leg.volume30} contracts in 30 minutes`,
+        ),
+        ...fallback,
+      };
+    return {
+      leg: { ...leg, pickMs: this.o.now() - startedAt },
+      picked,
+      ...fallback,
+    };
+  }
+
+  /**
+   * The contract's 30-minute volume from the leg's own broker when it gives
+   * one (IBKR's bars), else from the market (Alpaca's bars, as the backtest).
+   */
+  private async volume30(
+    broker: BotBroker,
+    contract: string,
+    date: string,
+    minute: number,
+  ): Promise<{ volume: number; source: BotBroker }> {
+    const t = this.trading(broker);
+    if (t.volume30)
+      return {
+        volume: await t.volume30(contract, date, minute),
+        source: broker,
+      };
+    return {
+      volume: await this.o.market.optionVolume30(contract, date, minute),
+      source: "alpaca",
+    };
+  }
+
+  /**
+   * When two legs picked different contracts, each account's quote of the
+   * other's contract, so a price gap can be told apart from a pick gap.
+   */
+  private async crossQuotes(legs: BotLeg[]) {
+    const picked = legs.filter((l) => l.contract);
+    if (picked.length !== 2 || picked[0]!.contract === picked[1]!.contract)
+      return;
+    await Promise.all(
+      picked.map(async (leg, i) => {
+        const other = picked[1 - i]!.contract!;
+        const quote = await this.trading(leg.broker)
+          .quote(other)
+          .catch(() => null);
+        const book = bookOf(quote, this.o.now(), leg.broker);
+        if (book) leg.cross = { contract: other, book };
+      }),
+    );
   }
 
   /**
@@ -1202,7 +1340,7 @@ export class IndiBot {
     // A pyramid add (2.7): this share of the size; it may buy more of a
     // contract the bot itself holds (never one the user holds).
     add?: { sharePct: number },
-  ): Promise<{ outcome: string; detail: string }> {
+  ): Promise<{ outcome: string; detail: string; positionId?: string }> {
     const { symbol, contract } = base;
     const at = named ? ` · ${brokerNames[broker]}` : "";
     // A contract the account already holds is the user's; the bot leaves it
@@ -1258,6 +1396,7 @@ export class IndiBot {
         qty,
         bought: qty,
         status: "open",
+        filledAt: this.o.now(),
       });
       await this.o.notify(`${botTag} (dry run): would buy`, [
         `$${symbol} ${contractLabel(contract)}${at}`,
@@ -1267,6 +1406,7 @@ export class IndiBot {
       return {
         outcome: "would-buy",
         detail: `${qty} ${this.words(contract)} at ${mid.toFixed(2)}${at}`,
+        positionId: position.id,
       };
     }
     const send = (pct: number, words: string) =>
@@ -1310,6 +1450,7 @@ export class IndiBot {
     return {
       outcome: "bought",
       detail: `${answer.qty ?? "?"} ${this.words(contract)}${at}`,
+      positionId: bought.id,
     };
   }
 
@@ -1451,6 +1592,8 @@ export class IndiBot {
           ? (buyPriceOf(job.result) ?? held!.avgEntryPrice)
           : held!.avgEntryPrice;
         const fillBook = lastBookOf(job.result, this.o.now(), this.brokerOf(p));
+        const limit = lastLimitOf(job.result);
+        const ended = job.updatedAt ? Date.parse(job.updatedAt) : NaN;
         this.o.store.savePosition({
           ...p,
           status: "open",
@@ -1459,6 +1602,8 @@ export class IndiBot {
           cost,
           jobId: null,
           ...(fillBook ? { entryFillBook: fillBook } : {}),
+          ...(limit !== null ? { entryLimit: limit } : {}),
+          filledAt: Number.isFinite(ended) ? ended : this.o.now(),
         });
         this.event(
           "order",
@@ -1917,7 +2062,23 @@ export class IndiBot {
       entries: this.o.store.entries(since),
       positions: this.o.store.recentPositions(since),
       activity: this.o.store.events(150),
+      compare: this.compare(5),
     };
+  }
+
+  /**
+   * Alpaca against IBKR over the last `sessions` sessions: the signals that
+   * went to both accounts, each account's pick, fill and result
+   * (GET /v1/bot/compare, and the Main bot page).
+   */
+  compare(sessions: number) {
+    const day = newYork(this.o.now()).date;
+    const since = previousSessions(day, sessions)[0]!;
+    const dry = this.settings().mode === "dry";
+    return compareLegs(
+      this.o.store.signalsSince(since),
+      this.o.store.recentPositions(since).filter((p) => p.dry === dry),
+    );
   }
 }
 
@@ -1956,6 +2117,15 @@ function buyPriceOf(result: unknown): number | null {
   const r = result as { result?: { avgPrice?: unknown } } | null;
   const v = r?.result?.avgPrice;
   return typeof v === "number" && v > 0 ? v : null;
+}
+
+/** A buy job's last limit price (engine.ts: result.result.prices), when it sent one. */
+function lastLimitOf(result: unknown): number | null {
+  const r = result as { result?: { prices?: unknown } } | null;
+  const prices = r?.result?.prices;
+  if (!Array.isArray(prices)) return null;
+  const last: unknown = prices.at(-1);
+  return typeof last === "number" && last > 0 ? last : null;
 }
 
 function soldOf(result: unknown): number {

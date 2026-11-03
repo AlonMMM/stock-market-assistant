@@ -36,9 +36,24 @@ Setup:
   against what is held and already offered, and the trading service checks the IBKR
   account for short risk every minute (alerts repeat every 15 minutes).
 - Real-time market data only (`reqMarketDataType(1)`); no delayed or frozen quotes.
+- Quotes are a short stream, not a TWS snapshot (2026-11-03): `reqMktData` with
+  snapshot off, answered once the bid, ask (and an option's model delta) arrive, at
+  most 3 s later with what came, then `cancelMktData`. A snapshot waits ~11 s for its
+  end, which made a chain take 9-22 s. A chain asks only the nearest expiry in the
+  window and its 18 strikes nearest the stock price (the picker reads 16), all at once;
+  the expirations and each expiry's listed contracts (one `reqContractDetails` without
+  a strike) are read once a New York day.
+- The 30-minute volume of an IBKR pick comes from IBKR's own 1-minute TRADES bars
+  (`reqHistoricalData`, 1800 S), one request per picked contract. IBKR paces
+  historical requests (about 60 in 10 minutes; identical ones within 15 s), so only
+  the bot's picks ask for them, never a whole chain.
 - The Indi bot buys at this account when the owner picks Interactive Brokers on the Bot
   settings page (docs/tasks/backend-bot-ibkr.md); `BOT_BROKER=ibkr` makes that the default
-  before any save. A position is sold at the broker it was bought at.
+  before any save. A position is sold at the broker it was bought at. With "both", each
+  account is its own bot on the shared signals (2026-11-03): it picks from its own
+  chain, with its own book and 30-minute volume, so the two may buy different strikes;
+  every signal keeps each leg (`legs`), and `GET /v1/bot/compare?sessions=N` (and the
+  "Alpaca vs IBKR" card on the Main bot page) sets them side by side.
 - TWS has no daily account history: the trading service records the IBKR account's value
   every minute of a trading day (`equity_days` in its SQLite), and the risk manager's
   drawdown brake reads that series. It starts on the first connected day.

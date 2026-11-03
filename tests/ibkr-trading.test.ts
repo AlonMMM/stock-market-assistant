@@ -40,13 +40,35 @@ class FakeTws implements TwsClient {
       ...quote,
     });
   }
+  paramReads = 0;
+  // Contracts traded per minute, by OCC symbol (minuteVolumes).
+  volumes = new Map<string, number[]>();
+  history: { symbol: string; end: number; minutes: number }[] = [];
   async contracts(c: IbContract) {
     this.lookups++;
+    // An option without a strike: every listed strike of that expiry and right.
+    if (c.secType === "OPT" && c.strike === undefined)
+      return [...this.listed]
+        .filter(([k]) => {
+          if (k.startsWith("STK:")) return false;
+          const o = optionContract(k);
+          return (
+            o.symbol === c.symbol &&
+            o.lastTradeDateOrContractMonth === c.lastTradeDateOrContractMonth &&
+            o.right === c.right
+          );
+        })
+        .map(([k, conId]) => ({ ...optionContract(k), conId }));
     const conId = this.listed.get(key(c));
     return conId === undefined ? [] : [{ ...c, conId }];
   }
   async optionParams() {
+    this.paramReads++;
     return this.params;
+  }
+  async minuteVolumes(c: IbContract, end: number, minutes: number) {
+    this.history.push({ symbol: key(c), end, minutes });
+    return this.volumes.get(key(c)) ?? [];
   }
   async snapshot(c: IbContract) {
     const q = this.quotes.get(key(c));
@@ -225,8 +247,8 @@ test("ibkr: the chain asks out-of-the-money strikes of expiries in range", async
       at: monday,
     });
   const quotes = await broker.chain("NVDA", "call", "2026-10-12", "2026-10-30");
-  // 300 is past the reach and 150/190 are on the wrong side; the 23rd's
-  // contracts are not listed and are left out.
+  // 300 is past the reach and 150/190 are on the wrong side; the nearest
+  // expiry with listed contracts (the 16th) is the one the picker reads.
   assert.deepEqual(quotes.map((q) => q.symbol).sort(), [
     "NVDA261016C00200000",
     "NVDA261016C00220000",
@@ -242,6 +264,68 @@ test("ibkr: the chain asks out-of-the-money strikes of expiries in range", async
     ],
     ["2026-10-16", "call", 0.2, 0.38, null],
   );
+});
+
+test("ibkr: the chain asks only the strikes nearest the stock, one expiry, and reads its listing once a day", async () => {
+  let now = monday;
+  const tws = new FakeTws();
+  const broker = new IbkrTrading(tws, {
+    paper: true,
+    now: () => now,
+    chainStrikes: 3,
+  });
+  tws.list("STK:NVDA", { bid: 199.9, ask: 200.1 });
+  tws.params = {
+    expirations: ["20261016", "20261023"],
+    strikes: [195, 200, 205, 210, 215, 220, 225],
+  };
+  // Every strike of both expiries is listed and quoted.
+  for (const expiry of ["20261016", "20261023"])
+    for (const strike of tws.params.strikes)
+      tws.list(
+        occSymbol({
+          ...optionContract(nvdaCall),
+          strike,
+          lastTradeDateOrContractMonth: expiry,
+        }),
+        { bid: 1, ask: 1.1, delta: 0.2, at: monday },
+      );
+  const asked: string[] = [];
+  const snapshot = tws.snapshot.bind(tws);
+  tws.snapshot = async (c) => {
+    asked.push(key(c));
+    return snapshot(c);
+  };
+  const first = await broker.chain("NVDA", "call", "2026-10-13", "2026-10-30");
+  // The 3 nearest out-of-the-money strikes (and up to 2% in), the 16th only.
+  assert.deepEqual(first.map((q) => q.strike).sort(), [200, 205, 210]);
+  assert.ok(first.every((q) => q.expiry === "2026-10-16"));
+  assert.equal(asked.filter((k) => !k.startsWith("STK")).length, 3);
+  const lookups = tws.lookups;
+  await broker.chain("NVDA", "call", "2026-10-13", "2026-10-30");
+  // Same day: no new listing or expirations read, no contract looked up.
+  assert.equal(tws.paramReads, 1);
+  assert.equal(tws.lookups, lookups);
+  // The next day reads them again.
+  now = monday + 86_400_000;
+  await broker.chain("NVDA", "call", "2026-10-14", "2026-10-30");
+  assert.equal(tws.paramReads, 2);
+  assert.ok(tws.lookups > lookups);
+});
+
+test("ibkr: the 30-minute volume adds IBKR's own minute bars up to the end", async () => {
+  const { tws, broker } = setup();
+  tws.volumes.set(nvdaCall, [10, 0, 25, 7]);
+  const end = monday + 60_000;
+  const got = await broker.optionVolume30([nvdaCall], end);
+  assert.equal(got.get(nvdaCall), 42);
+  assert.deepEqual(tws.history, [{ symbol: nvdaCall, end, minutes: 30 }]);
+  // A client without historical bars cannot count them.
+  const bare = new FakeTws();
+  bare.list(nvdaCall, {});
+  (bare as { minuteVolumes?: unknown }).minuteVolumes = undefined;
+  const none = new IbkrTrading(bare, { paper: true, now: () => monday });
+  await assert.rejects(none.optionVolume30([nvdaCall], end), /historical/);
 });
 
 test("ibkr: the market is open in core hours of trading days only", async () => {

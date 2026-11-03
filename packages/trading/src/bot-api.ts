@@ -2,6 +2,7 @@
 // trading service answers at GET /v1/bot, read with the read-only token.
 
 import type { BotBroker, BotSettings } from "./bot/settings.js";
+import type { BotCompare, CompareLeg } from "./bot/compare.js";
 import type { Portfolio, PortfolioHistory } from "./portfolio.js";
 import {
   controlAccess,
@@ -61,7 +62,18 @@ export interface BotView {
     detail: string;
     at: number;
     version?: string; // the bot version in force; absent before versions
+    // Each account's own pick and outcome (absent before 2026-11-03).
+    legs?: (CompareLeg & {
+      startedAt: number;
+      delta?: number;
+      book?: { spreadPct: number | null; at: number };
+      volume30?: number;
+      volumeSource?: BotBroker;
+    })[];
   }[];
+  // Alpaca against IBKR on the signals that went to both, the last sessions
+  // (absent from an older service).
+  compare?: BotCompare;
   // The signals that entered a position in the last sessions (the same window
   // as `positions`), for a closed trade's story. Absent from an older service.
   entries?: BotView["signals"];

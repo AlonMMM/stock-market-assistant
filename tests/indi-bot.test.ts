@@ -568,7 +568,11 @@ function harness(
   mode: "dry" | "live",
   news: NewsFakes = {},
   nvdaDay?: (beta: number) => MinuteBar[],
-  opts: { brokers?: BotBroker[] } = {},
+  opts: {
+    brokers?: BotBroker[];
+    // One account's own chain, quotes or volume over the shared fakes.
+    legs?: Partial<Record<BotBroker, Partial<BotTrading>>>;
+  } = {},
 ) {
   const store = new BotStore(
     join(mkdtempSync(join(tmpdir(), "bot-")), "t.sqlite"),
@@ -718,7 +722,8 @@ function harness(
     market,
     trading: (b) => {
       broker = b;
-      return trading;
+      const own = opts.legs?.[b];
+      return own ? { ...trading, ...own } : trading;
     },
     brokers: opts.brokers ?? ["alpaca", "ibkr"],
     broker: "alpaca",
@@ -1717,6 +1722,126 @@ test("broker setting 'both': an account that throws does not undo the other's en
     signal.detail ?? "",
     /Alpaca: 33 .*; Interactive Brokers: market data requires additional subscription/,
   );
+});
+
+test("broker setting 'both': each account picks from its own chain, with its own volume, and every leg is kept", async () => {
+  const volumes: string[] = [];
+  const h = harness("live", {}, undefined, {
+    legs: {
+      // IBKR's chain puts 0.15 delta on the 115 strike, and IBKR counts its own bars.
+      ibkr: {
+        async chain() {
+          return [q(110, 0.25, 0.59), q(115, 0.15, 0.4)];
+        },
+        async volume30(contract) {
+          volumes.push(contract);
+          return 350;
+        },
+      },
+    },
+  });
+  h.bot.setSettings({ ...h.bot.settings(), broker: "both" });
+  await h.run(DAY, 565, 600);
+  const buys = h.calls.filter((c) => c.kind === "buy");
+  assert.deepEqual(
+    buys.map((b) => [b.broker, b.body.contract]),
+    [
+      ["alpaca", "NVDA261023C00110000"],
+      ["ibkr", "NVDA261023C00115000"],
+    ],
+  );
+  assert.deepEqual(volumes, ["NVDA261023C00115000"]);
+  const signal = h.store.signals(DAY)[0]!;
+  // The signal's own pick stays the first account's.
+  assert.equal(signal.book?.contract, "NVDA261023C00110000");
+  assert.equal(signal.volume30, 500);
+  const [alpaca, ibkr] = signal.legs!;
+  assert.deepEqual(
+    [alpaca!.broker, alpaca!.contract, alpaca!.volume30, alpaca!.volumeSource],
+    ["alpaca", "NVDA261023C00110000", 500, "alpaca"],
+  );
+  assert.deepEqual(
+    [ibkr!.broker, ibkr!.contract, ibkr!.volume30, ibkr!.volumeSource],
+    ["ibkr", "NVDA261023C00115000", 350, "ibkr"],
+  );
+  assert.equal(ibkr!.delta, 0.15);
+  assert.ok(Math.abs(ibkr!.book!.mid - 0.41) < 1e-9);
+  assert.ok(ibkr!.book!.spreadPct! > 4 && ibkr!.book!.spreadPct! < 5);
+  for (const leg of signal.legs!) {
+    assert.equal(leg.outcome, "bought");
+    assert.equal(typeof leg.pickMs, "number");
+    assert.ok(h.store.position(leg.positionId!), `${leg.broker} position`);
+    // Different contracts: each account's quote of the other's.
+    assert.equal(leg.cross?.book.broker, leg.broker);
+  }
+  assert.equal(alpaca!.cross!.contract, "NVDA261023C00115000");
+  assert.equal(ibkr!.cross!.contract, "NVDA261023C00110000");
+  // The fill is kept with each position, and the comparison reads the legs.
+  await h.run(DAY, 601, 602);
+  const compare = h.bot.compare(5);
+  assert.equal(compare.total.signals, 1);
+  assert.equal(compare.total.different, 1);
+  assert.equal(compare.total.alpaca.taken, 1);
+  assert.equal(compare.total.ibkr.taken, 1);
+  assert.equal(compare.total.ibkr.open, 1);
+  assert.ok(compare.total.alpaca.fillMs !== null);
+  assert.ok(compare.total.quoteGapPct !== null);
+});
+
+test("broker setting 'both': with Alpaca's chain down, IBKR still enters on its own", async () => {
+  const h = harness("live", {}, undefined, {
+    legs: {
+      alpaca: {
+        async chain() {
+          throw new Error("Alpaca unreachable (synthetic)");
+        },
+      },
+      ibkr: {
+        async volume30() {
+          return 300;
+        },
+      },
+    },
+  });
+  h.bot.setSettings({ ...h.bot.settings(), broker: "both" });
+  await h.run(DAY, 565, 600);
+  assert.deepEqual(
+    h.store.openPositions().map((p) => p.broker),
+    ["ibkr"],
+  );
+  const signal = h.store.signals(DAY)[0]!;
+  assert.equal(signal.outcome, "bought");
+  assert.match(signal.detail, /Alpaca: the chain failed: Alpaca unreachable/);
+  const compare = h.bot.compare(5);
+  assert.deepEqual(
+    compare.oneSided.map((o) => [o.took, o.missed, o.outcome]),
+    [["ibkr", "alpaca", "error"]],
+  );
+});
+
+test("broker setting 'both': a leg too thin on its own volume sits out; the other buys", async () => {
+  const h = harness("live", {}, undefined, {
+    legs: {
+      ibkr: {
+        async volume30() {
+          return 40;
+        },
+      },
+    },
+  });
+  h.bot.setSettings({ ...h.bot.settings(), broker: "both" });
+  await h.run(DAY, 565, 600);
+  assert.deepEqual(
+    h.store.openPositions().map((p) => p.broker),
+    ["alpaca"],
+  );
+  const [, ibkr] = h.store.signals(DAY)[0]!.legs!;
+  assert.deepEqual([ibkr!.outcome, ibkr!.volume30], ["thin", 40]);
+  // The same contract on both: no cross quote is read.
+  assert.equal(ibkr!.cross, undefined);
+  const compare = h.bot.compare(5);
+  assert.equal(compare.total.same, 1);
+  assert.equal(compare.oneSided[0]!.outcome, "thin");
 });
 
 // ---- version 2.7: IBIT's floor, the pyramid, early entry (docs/tasks/backend-bot-champion.md) ----
