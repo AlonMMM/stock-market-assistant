@@ -5,6 +5,13 @@ import type { Rules } from "../../../packages/trading/src/bot/versions.js";
 import type { StrangleSettings } from "../../../packages/trading/src/strangle/settings.js";
 import { readJson } from "./api.js";
 import { parallel, periodParts } from "./bot-backtest-model.js";
+import {
+  isTransient,
+  retryDelaysMs,
+  TransientHttpError,
+  transientStatus,
+  withRetries,
+} from "./retry.js";
 
 // The Backtest page's runs, kept outside the page (the user, 2026-10-30): a run
 // goes on while another section is open, and its result is there on the way
@@ -145,16 +152,31 @@ function backtestRun<R extends RanBase, B>(o: {
       while (next < jobs.length && live()) {
         const job = jobs[next++]!;
         try {
-          const response = await fetch(o.endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...job, ...o.body(ran) }),
-            signal: AbortSignal.any([
-              abort.signal,
-              AbortSignal.timeout(180000),
-            ]),
-          });
-          const body = await readJson<B>(response);
+          // A dropped connection or a busy gateway is asked again (retry.ts);
+          // the server's own answer about the part is not.
+          const body = await withRetries(
+            async () => {
+              const response = await fetch(o.endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ...job, ...o.body(ran) }),
+                signal: AbortSignal.any([
+                  abort.signal,
+                  AbortSignal.timeout(180000),
+                ]),
+              });
+              try {
+                return await readJson<B>(response);
+              } catch (e) {
+                if (!transientStatus(response.status)) throw e;
+                throw new TransientHttpError(
+                  e instanceof Error ? e.message : String(e),
+                  response.status,
+                );
+              }
+            },
+            { signal: abort.signal },
+          );
           if (!live()) return;
           got.push(body);
           set({ runs: [...got] });
@@ -162,7 +184,7 @@ function backtestRun<R extends RanBase, B>(o: {
           // A stopped run's cancelled requests are not failures.
           if (!live()) return;
           failed.push(
-            `${job.symbol} ${job.from} → ${job.to}: ${e instanceof Error ? e.message : String(e)}`,
+            `${job.symbol} ${job.from} → ${job.to}: ${e instanceof Error ? e.message : String(e)}${isTransient(e) ? ` (tried ${retryDelaysMs.length + 1} times)` : ""}`,
           );
           set({ errors: [...failed] });
         }
