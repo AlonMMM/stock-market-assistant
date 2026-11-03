@@ -2084,10 +2084,84 @@ main:has(> .backtest-page) {
   font-size: 14px;
   color: var(--gray-27);
 }
-.bt-chips {
+.bt-stock-preview {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.setup .bt-edit-stocks,
+.stocks-done button {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--gray-82);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.setup .bt-edit-stocks:hover,
+.stocks-done button:hover {
+  background: var(--gray-95b);
+}
+dialog.stocks-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+.stocks-find {
+  margin-top: 16px;
+}
+.stocks-head {
   display: flex;
-  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.stocks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
   gap: 6px;
+  max-height: min(320px, 40vh);
+  margin: 8px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.stocks-grid li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--gray-87);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 600;
+}
+.stocks-grid button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gray-49);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.stocks-grid button:hover {
+  background: var(--gray-92b);
+  color: var(--red-51);
+}
+.stocks-done {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 .bt-add {
   display: grid;
