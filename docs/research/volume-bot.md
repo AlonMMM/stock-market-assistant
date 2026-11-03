@@ -455,6 +455,11 @@ does not hold there).
   20 days is noisy), the money does not show it.
 - Built on Volume 1.1.0; 1.2.0 (PR #249, no shock against the day's move) went live since: 15x + 3x needs a re-check on
   top of 1.2.0 before its release.
+- **10x, the 3-minute average, 3x the pace** (the user: "what about 10X, 3 minutes avg, 3X?"; usual smoothed +-1.5 min,
+  narrowed at the ends; 12,248 3-year shocks vs 10,131): 3 years 500 trades (247 shock), $752.3K (drop 25.2%), tune
+  +$68.4K, check +$583.9K, w/o best 5 +$180.1K, all under 15x + 3x and under the live rule. The year: tune $104.3K (22%)
+  vs $111.4K, check $132.0K (11%) vs $126.6K for 15x + 3x. Fails: the lower bar again adds losing shocks and doubles the
+  drop. Data $0.04 (all of this test: $0.31).
 
 ### A shock must also stand out against the day's pace (2026-11-02, look 1)
 
