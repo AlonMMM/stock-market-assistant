@@ -2,11 +2,17 @@
 bars: per minute, 'up' / 'down' when the alert condition holds, else None. Shared by alert_gate.py, alert_add.py, zero5.py
 and sim.py (the alert-silence exit). Deviations from the live engine: regular hours only, >= 10 prior sessions instead of
 exactly 20, no cooldown or fresh-crossing (the bot reads evaluations)."""
+import os
 from store import day
 
 # The alert's rule (rvol-v6 defaults).
 WIN, THRESHOLD, PACE, MIN_VOL, PRICE_MULT, MIN_MOVE = 3, 4.0, 4.0, 10000, 3.0, 0.5
 PACE_SKIP_OPEN, PACE_SKIP_CLOSE, PACE_MIN_MINUTES = 30, 30, 15
+# The stock's volume against SPY's (the user, 2026-11-03: "add more trade we can catch more gaint"): one more way to pass
+# the volume test, the stock's ratio >= REL_FLOOR and the stock's ratio / SPY's ratio >= REL_K (each ratio = the 3-minute
+# window over its median at that minute over the prior sessions). Off unless RV_REL_K is set.
+REL_K = float(os.environ["RV_REL_K"]) if os.environ.get("RV_REL_K") else None
+REL_FLOOR = float(os.environ.get("RV_REL_FLOOR", "2"))
 
 
 def med(v):
@@ -27,8 +33,20 @@ def windows(bars):
     return out, by
 
 
-def alerts(bars, hist):
-    """The alert's direction ('up' / 'down') or None at each minute of a day; hist: prior days' windows()."""
+def ratios(w, hist):
+    """Per minute: the window's volume over its median in the prior sessions (None: under 10 samples)."""
+    out = [None] * 390
+    for m in range(390):
+        samples = [h[m][0] for h in hist if h[m] is not None]
+        if w[m] is None or len(samples) < 10: continue
+        e = med(samples)
+        if e > 0: out[m] = w[m][0] / e
+    return out
+
+
+def alerts(bars, hist, spy=None):
+    """The alert's direction ('up' / 'down') or None at each minute of a day; hist: prior days' windows(); spy: SPY's
+    ratios() that day (the stock-against-SPY rule, with REL_K)."""
     w, by = windows(bars)
     out = [None] * 390
     pace_vol, pace_n = 0, 0            # today's pace zone before the window
@@ -47,6 +65,7 @@ def alerts(bars, hist):
         in_pace = all(pace(k) for k in range(m - WIN + 1, m + 1))
         pace_ratio = actual / (pace_vol / pace_n * WIN) if in_pace and pace_n >= PACE_MIN_MINUTES and pace_vol > 0 else None
         volume_ok = (ratio is not None and ratio >= THRESHOLD) or (pace_ratio is not None and pace_ratio >= PACE)
+        if REL_K is not None and spy and spy[m] and ratio is not None and ratio >= REL_FLOOR and ratio / spy[m] >= REL_K: volume_ok = True
         move_ok = move >= PRICE_MULT * expected_move and move >= MIN_MOVE
         if not (volume_ok and move_ok and actual >= MIN_VOL): continue
         prev = by[m - 1][4]
@@ -65,7 +84,8 @@ def alerts_for(sym, date, cal):
     if k not in _cache:
         if len(_cache) > 5000: _cache.clear()
         i = cal.index(date)
-        _cache[k] = alerts(day(sym, date), [_windows(sym, d) for d in cal[i - 20:i]])
+        spy = ratios(_windows("SPY", date), [_windows("SPY", d) for d in cal[i - 20:i]]) if REL_K is not None else None
+        _cache[k] = alerts(day(sym, date), [_windows(sym, d) for d in cal[i - 20:i]], spy)
     return _cache[k]
 
 
