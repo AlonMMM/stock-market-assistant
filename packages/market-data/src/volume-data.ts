@@ -182,9 +182,14 @@ export class D1VolumeData implements VolumeDataStore {
 
   async stock(symbol: string, date: string, from: number, to: number) {
     await this.init();
+    // Several stored windows can cover one range (the research's Databento
+    // window, which starts at its alert's second, and one the backtest built
+    // from Alpaca trades for an earlier alert): the one starting nearest
+    // before the range, the alert's own when there is one, so every run reads
+    // the same prices (USO 2026-10-08 read the earlier shock's, unordered).
     const { results } = await this.db
       .prepare(
-        "SELECT rows FROM stock_seconds WHERE symbol = ? AND date = ? AND start <= ? AND end >= ? LIMIT 1",
+        "SELECT rows FROM stock_seconds WHERE symbol = ? AND date = ? AND start <= ? AND end >= ? ORDER BY start DESC LIMIT 1",
       )
       .bind(symbol, date, from, to)
       .all<{ rows: string }>();

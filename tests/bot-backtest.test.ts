@@ -18,6 +18,7 @@ import { previousSessions } from "../packages/market-data/src/calendar.js";
 import {
   impliedDelta,
   runStock,
+  defaultFillPct,
   bookAt,
   type BacktestData,
   type ChainContract,
@@ -433,7 +434,7 @@ test("with real quotes: the bid running past the price makes the buy pay the ask
   assert.ok(Math.abs(t.steps[0]!.price - (p + 0.21)) < 1e-9);
 });
 
-test("with only the bots' saved books (a few minutes): the trade is marked on the last one and sold at a fresh bid", async () => {
+test("with only the bots' saved books (a few minutes): once the books are over, the 15:50 sale is on the trade bars, as the research", async () => {
   const { data } = fakeData(1000);
   const signal = defaultSettings.firstEntryMin;
   const sparse: BacktestData = {
@@ -461,11 +462,15 @@ test("with only the bots' saved books (a few minutes): the trade is marked on th
   const t = run.trades[0]!;
   assert.equal(t.priced, "quotes");
   const p = 3 * Math.exp(-(t.strike - 100) / 3);
-  // The 15:50 sale waits for the next fresh book (15:45 is too old by then)
-  // and gets the bid of the day's last one.
+  // No fresh book can come after 15:49 (the last is 15:45): the 15:50 sale
+  // fills on the next minute's trade bar middle less the fill cost, as sim.py does.
   const last = t.steps.at(-1)!;
-  assert.equal(last.minute, 375);
-  assert.ok(Math.abs(last.price - (p - 0.05)) < 1e-9, String(last.price));
+  assert.equal(last.minute, 380);
+  const bars = await data.optionRange(t.contract, date, date);
+  const bar = bars.get(date)!.find((b) => b.m === 381)!;
+  const want = ((bar.h + bar.l) / 2) * (1 - defaultFillPct / 100);
+  assert.ok(Math.abs(last.price - want) < 1e-9, String(last.price));
+  assert.ok(p > 0);
 });
 
 test("the book as a minute closed: the newest at or before it, at most 5 minutes old", () => {
