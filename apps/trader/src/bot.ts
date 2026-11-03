@@ -74,6 +74,7 @@ import type {
   BotEventKind,
   BotLeg,
   BotPosition,
+  BotSignal,
   BotStore,
 } from "./bot-store.js";
 import { compareLegs } from "../../../packages/trading/src/bot/compare.js";
@@ -267,6 +268,27 @@ const newsCalendar: NewsCalendar = {
 };
 
 /** The contract's strike, or null when it is not an OCC symbol. */
+// Tries a stock gets a day when its signal fails on a broker or data error
+// (the owner, 2026-11-03: keep the stock, try again at the next alert); a cap
+// so a broken feed does not hammer the broker all day.
+const maxErrorTries = 3;
+
+// The answers that leave nothing to buy at that account today: a limit.
+const limitOutcomes = new Set(["max_buys", "max_open", "day_loss"]);
+
+/**
+ * Whether the day's signal failed only on errors and may be tried again at a
+ * later alert: no account bought or gave a real answer (thin, too cheap,
+ * held, refused ... stay one a stock a day), and tries are left.
+ */
+function retryable(s: BotSignal): boolean {
+  if (s.outcome !== "error") return false;
+  if ((s.errors?.length ?? 0) + 1 >= maxErrorTries) return false;
+  return (s.legs ?? []).every(
+    (l) => l.outcome === "error" || limitOutcomes.has(l.outcome),
+  );
+}
+
 const strikeOf = (contract: string): number | null => {
   try {
     return parseOccSymbol(contract).strike;
@@ -748,11 +770,21 @@ export class IndiBot {
           d2: now.d2,
           minute: m,
         });
-      if (this.o.store.signal(date, symbol)) continue;
-      const sig = cSignal(this.barsOf(symbol), spy, prior, m, params);
+      const day = this.o.store.signal(date, symbol);
+      if (day && !retryable(day)) continue;
+      // A try after an error reads the first alert after the minute that failed.
+      const sig = cSignal(
+        this.barsOf(symbol),
+        spy,
+        prior,
+        m,
+        params,
+        false,
+        day?.minute ?? 0,
+      );
       // Only a signal of this minute (or one missed by a slow minute) trades.
       if (!sig || sig.minute < m - 2) continue;
-      const added = this.o.store.addSignal({
+      const added = this.newSignal(day, {
         day: date,
         symbol,
         right: sig.right,
@@ -771,7 +803,7 @@ export class IndiBot {
       if (added)
         this.event(
           "signal",
-          `${symbol} ${sig.right === "C" ? "call" : "put"} signal at ${clock(sig.minute)}: strength t ${sig.t.toFixed(1)}${held}, volume ${sig.rvol.toFixed(1)}× normal`,
+          `${symbol} ${sig.right === "C" ? "call" : "put"} signal at ${clock(sig.minute)}${retryWords(day)}: strength t ${sig.t.toFixed(1)}${held}, volume ${sig.rvol.toFixed(1)}× normal`,
         );
       if (added)
         await this.enter(date, symbol, sig.right, sig.minute, sig.t, sig.rvol, {
@@ -781,6 +813,12 @@ export class IndiBot {
           this.outcome(date, symbol, "error", why);
         });
     }
+  }
+
+  /** The day's first signal of a stock, or its next try after an error. */
+  private newSignal(day: BotSignal | undefined, s: BotSignal): boolean {
+    if (!day) return this.o.store.addSignal(s);
+    return this.o.store.retrySignal(s);
   }
 
   // ---- early entry (version 2.7) ----
@@ -796,9 +834,11 @@ export class IndiBot {
     if (!s.earlyEntry || !this.o.market.lastPrices) return;
     const params = signalParams(s);
     if (m < params.firstMinute || m > Math.min(374, closeMinute - 16)) return;
-    const open = this.symbols.filter(
-      (x) => this.prior.has(x) && !this.o.store.signal(date, x),
-    );
+    const open = this.symbols.filter((x) => {
+      if (!this.prior.has(x)) return false;
+      const day = this.o.store.signal(date, x);
+      return !day || retryable(day);
+    });
     if (!open.length) return;
     let live: Map<string, number>;
     try {
@@ -833,9 +873,18 @@ export class IndiBot {
     for (const symbol of open) {
       const bars = forming(symbol);
       if (!bars) continue;
-      const sig = cSignal(bars, spy, this.prior.get(symbol)!, m, params, true);
+      const day = this.o.store.signal(date, symbol);
+      const sig = cSignal(
+        bars,
+        spy,
+        this.prior.get(symbol)!,
+        m,
+        params,
+        true,
+        day?.minute ?? 0,
+      );
       if (!sig || sig.minute !== m) continue;
-      const added = this.o.store.addSignal({
+      const added = this.newSignal(day, {
         day: date,
         symbol,
         right: sig.right,
@@ -854,7 +903,7 @@ export class IndiBot {
       const sec = Math.floor((this.o.now() % 60_000) / 1000);
       this.event(
         "signal",
-        `${symbol} ${sig.right === "C" ? "call" : "put"} signal at ${clock(m)}:${String(sec).padStart(2, "0")}, inside the minute: strength t ${sig.t.toFixed(1)}${held}, volume ${sig.rvol.toFixed(1)}× normal`,
+        `${symbol} ${sig.right === "C" ? "call" : "put"} signal at ${clock(m)}:${String(sec).padStart(2, "0")}, inside the minute${retryWords(day)}: strength t ${sig.t.toFixed(1)}${held}, volume ${sig.rvol.toFixed(1)}× normal`,
       );
       await this.enter(date, symbol, sig.right, m, sig.t, sig.rvol, {
         bonus: sig.bonus,
@@ -2013,7 +2062,9 @@ export class IndiBot {
       .filter((p) => p.day === date || p.status !== "closed");
     if (signals.length === 0 && positions.length === 0) return;
     const count = (o: string) => signals.filter((s) => s.outcome === o).length;
-    const head = `${signals.length} signals: ${count("bought") + count("would-buy")} entered, ${signals.length - count("bought") - count("would-buy")} skipped`;
+    const retried = signals.filter((s) => s.errors?.length).length;
+    let head = `${signals.length} signals: ${count("bought") + count("would-buy")} entered, ${signals.length - count("bought") - count("would-buy")} skipped`;
+    if (retried) head += `, ${retried} tried again after an error`;
     const lines = [
       head,
       ...positions.map(
@@ -2131,6 +2182,13 @@ function lastLimitOf(result: unknown): number | null {
 function soldOf(result: unknown): number {
   const r = result as { result?: { sold?: unknown } } | null;
   return typeof r?.result?.sold === "number" ? r.result.sold : 0;
+}
+
+/** ", try 2 after an error (…)" on a signal that tries again; "" on a first signal. */
+function retryWords(day: BotSignal | undefined): string {
+  if (!day) return "";
+  const tries = (day.errors?.length ?? 0) + 2;
+  return `, try ${tries} after an error (${day.detail || "failed"})`;
 }
 
 function clock(minute: number): string {
