@@ -175,9 +175,9 @@ export function priorFrom(days: readonly PriorDay[]): Prior {
 }
 
 /**
- * The first minute up to `upTo` where the C condition holds, in the direction
- * that reaches it first, or null. Called again each minute with more bars, it
- * keeps answering the same first minute.
+ * The first minute up to `upTo` (after `after`) where the C condition holds,
+ * in the direction that reaches it first, or null. Called again each minute
+ * with more bars, it keeps answering the same first minute.
  */
 export function cSignal(
   day: readonly MinuteBar[],
@@ -190,6 +190,9 @@ export function cSignal(
   // before over the usual through the minute before, as the backtest's close
   // of that minute reads it (2.10's tiers, the release review of 2026-11-01).
   forming = false,
+  // Only a minute after this one answers (a try after the minute that failed
+  // on an error, 2026-11-03); 0 = the day's first minute, as the backtest reads it.
+  after = 0,
 ): Signal | null {
   if (prior.curves.length < 10 || prior.beta === null) return null;
   const beta = prior.beta;
@@ -227,6 +230,7 @@ export function cSignal(
       sumCall -= d2Call[gone]!;
       sumPut -= d2Put[gone]!;
     }
+    if (m <= after) continue;
     if (m < p.firstMinute || steps.length < p.minSteps || c[m] === null)
       continue;
     const sd = pstdev(steps);

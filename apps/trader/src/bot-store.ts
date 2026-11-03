@@ -35,6 +35,10 @@ export interface BotSignal {
   // bots). Missing on signals before 2026-11-03; `book`, `volume30` and
   // `fallback` above are the first account's.
   legs?: BotLeg[];
+  // Earlier tries of the day's signal that failed on a broker or data error,
+  // oldest first; the row then holds the latest try (the owner, 2026-11-03: an
+  // error does not end the stock's day, the next alert tries again).
+  errors?: { minute: number; right: "C" | "P"; detail: string; at: number }[];
 }
 
 /** One account's side of a signal: what it read, what it picked, what came of it. */
@@ -189,6 +193,29 @@ export class BotStore {
       )
       .run(s.day, s.symbol, JSON.stringify(s));
     return r.changes > 0;
+  }
+
+  /**
+   * A new try of a stock's signal after the day's signal failed on an error:
+   * the row becomes the new try, the failed one kept in `errors`.
+   */
+  retrySignal(s: BotSignal) {
+    const old = this.signal(s.day, s.symbol);
+    if (!old) return this.addSignal(s);
+    const failed = {
+      minute: old.minute,
+      right: old.right,
+      detail: old.detail,
+      at: old.at,
+    };
+    this.db
+      .prepare("UPDATE bot_signals SET data = ? WHERE day = ? AND symbol = ?")
+      .run(
+        JSON.stringify({ ...s, errors: [...(old.errors ?? []), failed] }),
+        s.day,
+        s.symbol,
+      );
+    return true;
   }
 
   updateSignal(day: string, symbol: string, outcome: string, detail: string) {

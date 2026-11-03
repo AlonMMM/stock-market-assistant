@@ -1844,6 +1844,102 @@ test("broker setting 'both': a leg too thin on its own volume sits out; the othe
   assert.equal(compare.oneSided[0]!.outcome, "thin");
 });
 
+// ---- a signal that fails on an error tries again at the next alert (2026-11-03) ----
+
+test("retry after an error: the next alert of the stock tries again and enters; the failed try is kept", async () => {
+  let chains = 0;
+  const h = harness("live", {}, undefined, {
+    legs: {
+      alpaca: {
+        async chain() {
+          chains++;
+          if (chains === 1) throw new Error("data feed down (synthetic)");
+          return [q(110, 0.15, 0.59), q(115, 0.08, 0.3)];
+        },
+      },
+    },
+  });
+  await h.run(DAY, 565, 600);
+  assert.equal(chains, 2);
+  assert.equal(h.store.openPositions().length, 1);
+  const signal = h.store.signals(DAY)[0]!;
+  assert.equal(signal.outcome, "bought");
+  assert.equal(signal.errors?.length, 1);
+  assert.match(signal.errors![0]!.detail, /data feed down/);
+  assert.ok(signal.minute > signal.errors![0]!.minute);
+  assert.ok(
+    h.store
+      .events(50)
+      .some((e) => /signal at .*, try 2 after an error/.test(e.text)),
+  );
+});
+
+test("retry after an error: three failed tries end the stock's day", async () => {
+  let chains = 0;
+  const h = harness("live", {}, undefined, {
+    legs: {
+      alpaca: {
+        async chain() {
+          chains++;
+          throw new Error("data feed down (synthetic)");
+        },
+      },
+    },
+  });
+  await h.run(DAY, 565, 640);
+  assert.equal(chains, 3);
+  assert.equal(h.calls.filter((c) => c.kind === "buy").length, 0);
+  const signal = h.store.signals(DAY)[0]!;
+  assert.equal(signal.outcome, "error");
+  assert.equal(signal.errors?.length, 2);
+});
+
+test("retry after an error: one account bought, the other's error is not tried again", async () => {
+  let ibkrChains = 0;
+  const h = harness("live", {}, undefined, {
+    legs: {
+      ibkr: {
+        async chain() {
+          ibkrChains++;
+          throw new Error("IBKR 10197 (synthetic)");
+        },
+      },
+    },
+  });
+  h.bot.setSettings({ ...h.bot.settings(), broker: "both" });
+  await h.run(DAY, 565, 620);
+  assert.equal(ibkrChains, 1);
+  assert.deepEqual(
+    h.store.openPositions().map((p) => p.broker),
+    ["alpaca"],
+  );
+  const signal = h.store.signals(DAY)[0]!;
+  assert.equal(signal.outcome, "bought");
+  assert.equal(signal.errors, undefined);
+});
+
+test("retry after an error: a thin skip stays one a stock a day", async () => {
+  let chains = 0;
+  const h = harness("live", {}, undefined, {
+    legs: {
+      alpaca: {
+        async chain() {
+          chains++;
+          return [q(110, 0.15, 0.59), q(115, 0.08, 0.3)];
+        },
+        async volume30() {
+          return 40;
+        },
+      },
+    },
+  });
+  await h.run(DAY, 565, 620);
+  assert.equal(chains, 1);
+  const signal = h.store.signals(DAY)[0]!;
+  assert.equal(signal.outcome, "thin");
+  assert.equal(signal.errors, undefined);
+});
+
 // ---- version 2.7: IBIT's floor, the pyramid, early entry (docs/tasks/backend-bot-champion.md) ----
 
 test("picker 2.7: IBIT is bought down to $0.10, every other stock keeps the floor; no cheap fallback", () => {
