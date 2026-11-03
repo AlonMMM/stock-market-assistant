@@ -2908,6 +2908,24 @@ minute bars (209 of the gates). Look 1.
 Verdict: not better. A busy neighbour does not make a thin pick's signal a good one: on check the added trades have no
 giant at all and lose ~$2,800 each. The tune gain was the same three names. The 200 floor stays; no candidate.
 
+### The 200 floor scaled by the stock's usual volume, on 2.10 (2026-11-03, not better: the pick fails the check)
+The user: "what about relative volume? 200 contract should not signal on appl but should on coin". Prior: vol_ratio.py
+(today) R2 / R3 / R2f50 / RO2 (a thin pick at 2x / 3x its usual; 2x for every stock), all fail. rel_floor.py on
+vol_ratio.py's two passes (the usual = the median 30-minute volume of the 0.15 pick on the stock's last 30 main signals
+on earlier days, both lists pooled, 5 needed, else the 200 floor; signal days, so it reads high): K0.5 / K1 (0.5x / 1x
+the usual, no 200), UP1 (max(200, 1x usual): raise only), DN0.5 (min(200, 0.5x usual): lower only). Look 1 on these.
+The usual: AAPL 4,169, NVDA 3,201, TSLA 2,259, AMZN 1,875, AMD 1,271 ... COIN 114 ... LMND 8, LITE 6, SOXX 4, TSEM 3.
+- Baseline 2.10 to the dollar (tune / check, 2%): fair $620,535 / $957,771, Favorites $449,178 / $226,846.
+- Tune, 2%, vs 2.10 (fair / Favorites): K0.5 -8% / -39%; K1 -17% / -28%; UP1 +13% / +6% (13% / 13% drop); DN0.5 -21% /
+  -47%. Pick: UP1 (1.063, better on both).
+- Check, 2%: UP1 $291,145 (-70%, 22% drop) / $165,691 (-27%, 26%); 3%: -74% / -37%. Without the best 5 at 2%: $78,283 /
+  $61,728 vs $169,718 / $74,497.
+- UP1 only drops trades (busy stocks under their usual): tune 130 / 108 dropped, sum -$18K / +$37K, 3 giants each; check
+  133 / 117 dropped, sum +$629K / +$179K, 7 / 5 giants. K0.5 and DN0.5 add the same thin trades (quiet stocks at 0.5x):
+  tune 286 / 428, median -$2,897 / -$2,796, non-giant -$677K / -$940K, the sum is COIN, SMCI, CVNA, DELL.
+Verdict: not better. Raising the floor on busy stocks (AAPL, NVDA) cut losers on tune by luck and cut 7 giants on check;
+lowering it on quiet stocks adds the usual thin losers (median ~-$2,900). A fixed 200 stays; no candidate.
+
 ### The volume against SPY's, on 2.10 (2026-11-03, not better: the extra trades fail the check; size-rel near, one gate short)
 The user: "can we also check the thesis in the main bot? if today the main bot does not normelized the spy volume I think
 it might be a good candidate", after the Volume bot's volume score, and "if we will add more trade we can catch more gaint
