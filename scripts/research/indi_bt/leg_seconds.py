@@ -654,6 +654,25 @@ def main():
             nxt = {(e["date"], e["sym"], e.get("sec0", (e["m"] + 1) * 60)): e["nxt"] for e in ev if e.get("src") == tag}
             dte = lambda t: (datetime.fromisoformat(nxt[(t["date"], t["sym"], t["alert_sec"])]) - datetime.fromisoformat(t["date"])).days
             T = [t for t in T if t["src"] != tag or dte(t) <= int(mx)]
+        if os.environ.get("STR_SHOCK_AGAINST"):   # Volume 1.2.0 (decide.ts shockAgainstMove, PR #249): skip a shock whose
+            # 60-second move is against the day's move since the 09:30 open once that move is >= N S30 (the direction from
+            # the 10-second bars, the slot ending at the alert against 60 s before; no open or no bars: not skipped)
+            import sqlite3
+            N = float(os.environ["STR_SHOCK_AGAINST"])
+            tdb = sqlite3.connect(f"file:{os.environ.get('BT_10S_DB', 'data/local/bars-10s.sqlite')}?mode=ro", uri=True)
+            evk = {(e["date"], e["sym"], e.get("sec0")): e for e in ev if e.get("src") == SHOCK_TAG}
+            def against(t):
+                e = evk.get((t["date"], t["sym"], t["alert_sec"]))
+                bars = day(t["sym"], t["date"])
+                if not e or not bars or bars[0][0] != 0 or not e["u"]: return False
+                t0 = int(datetime.fromisoformat(t["date"] + "T09:30").replace(tzinfo=NY).timestamp())
+                c = lambda s: next(iter(tdb.execute("SELECT close FROM bars WHERE symbol=? AND start>=? AND start<? ORDER BY start DESC LIMIT 1", (t["sym"], t0, t0 + s))), (None,))[0]
+                now, before = c(e["sec0"]), c(e["sec0"] - 60)
+                if not now or not before: return False
+                move = (e["stock0"] / bars[0][1] - 1) / e["u"]
+                return abs(move) >= N and (move > 0) != (now > before)
+            n0 = len(T); T = [t for t in T if t["src"] != SHOCK_TAG or not against(t)]
+            print(f"shock against the day's move: {n0 - len(T)} skipped", flush=True)
         if os.environ.get("STR_SRC_SCALE"):   # "e_shock15=1:0.25,3:0.25,4:0.10" (the user 2026-10-30): that tag's trades
             # sell 25% once the option's bid at a minute close is +100% over the buy, 25% more at +300%, 10% at +400%;
             # the rest on the usual exit. The trade's sale becomes the weighted price of its parts.

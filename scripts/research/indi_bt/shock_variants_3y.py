@@ -12,7 +12,7 @@ def stats(T):
     for r in T:
         eq += r['pnl']; peak = max(peak, eq); dd = max(dd, 1 - eq / peak); h[half(r['date'])] += r['pnl']
     return eq, dd, h
-NAMES = dict(k10s9='10x, 3-min avg, 3x', live='1.1.0 twin (stored list, old picks)', base15='Live rule recomputed (15x)', u15p3='15x + 3x pace (candidate, exact)',
+NAMES = dict(a12base15='1.2.0 (live rule + against-move)', a12u15p3='1.2.0 + 15x + 3x pace', a12s15p3='1.2.0 + 5-min avg 15x + 3x', k10s9='10x, 3-min avg, 3x', live='1.1.0 twin (stored list, old picks)', base15='Live rule recomputed (15x)', u15p3='15x + 3x pace (candidate, exact)',
              u10p3='10x + 3x pace', u10p5='10x + 5x pace', s15p3='5-min avg 15x + 3x', s30p3='10-min avg 15x + 3x',
              m15='5-min avg 11.5x + 3x (count-matched)', m30='10-min avg 11x + 3x (count-matched)')
 print('| Version | Trades (shock) | 2% (drop) | 3% (drop) | Tune 2% | Check 2% | 2% w/o best 5 | Shock median |')

@@ -461,6 +461,29 @@ does not hold there).
   vs $111.4K, check $132.0K (11%) vs $126.6K for 15x + 3x. Fails: the lower bar again adds losing shocks and doubles the
   drop. Data $0.04 (all of this test: $0.31).
 
+**Re-check on Volume 1.2.0 (2026-11-03, the user: "do recheck").** 1.2.0 (PR #249) skips a shock against the day's move
+(>= 2 S30 since the open); both rules bite on heavy days. The year: the app engine of origin/main (82e4ee8, the 1.2.0 code,
+`shockAgainstUnits` 2, the saved settings, the -80% stop, real books; 1 SLV buy window has no two-sided book in both),
+1.2.0 alone and with the 15x + 3x shock list (`.shock-recompute.ts` set 1 p3). 3 years: the twin with the rule added
+(`leg_seconds.py STR_SHOCK_AGAINST=2`: the 60-s move's direction from the 10-second bars, the 09:30 open, S30).
+
+| Version, 2% (3%) | Year (drop) | Tune (drop) | Tune w/o best 5 | Check (drop) | Check w/o best 5 |
+|---|---|---|---|---|---|
+| 1.2.0 | $153.1K ($184.2K) 12% | $114.6K ($122.6K) 10% | -$25.1K | $133.2K ($150.5K) 8% | -$17.1K |
+| 1.2.0 + 15x + 3x pace | $154.4K ($189.0K) 13% | $115.3K ($121.9K) 10% | -$25.3K | $134.4K ($153.2K) 8% | -$16.0K |
+
+| 3 years, 2% (3%) | Trades (shock) | $100K -> (drop) | Tune P&L | Check P&L | W/o best 5 | Non-giant tune / check |
+|---|---|---|---|---|---|---|
+| 1.2.0 | 396 (146) | $896.0K ($1,940K) 18.7% | +$128.8K | +$667.2K | +$282.5K | -$206.5K / -$27.5K |
+| 1.2.0 + 15x + 3x pace | 379 (127) | $937.4K ($2,054K) 18.0% | +$139.9K | +$697.5K | +$305.0K | -$205.5K / -$15.6K |
+| 1.2.0 + smoothed +-2.5 15x + 3x | 353 (102) | $917.7K ($2,038K) 19.8% | +$107.6K | +$710.1K | +$279.7K | -$211.8K / +$6.5K |
+
+- On top of 1.2.0 most of the gate's gain is gone: 1.2.0 already removes the heavy-day shocks (the year: 256 shocks
+  skipped against the move, 212 with the gate). **The year is a tie** (+$0.7K tune / +$1.2K check at 2%; at 3% tune
+  -$0.7K; tune without the best 5 -$0.2K; the drop 12% -> 13%). **3 years pass** (+$11.1K tune / +$30.3K check, a smaller
+  drop, better without the best 5; the non-giant check +$11.9K, tune flat). Small; not a clear pass on the year.
+- The smoothed usual on 1.2.0: loses tune again (third time), wins check.
+
 ### A shock must also stand out against the day's pace (2026-11-02, look 1)
 
 The user, 2026-11-02, on the MSTR 111 Call of 2026-08-19 (a shock trade at 11:14:00): "there is no shock - look on the
