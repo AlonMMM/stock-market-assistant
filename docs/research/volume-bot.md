@@ -1985,3 +1985,18 @@ walk), `volume_score_year.ts` (live code's year, volumeAccount and the live limi
   scores lives on 10-10 alone.
 - **What the data does say**: scores of 20 or more lose on both halves (median -14% / -21%, 23 / 15 trades, no +300%).
   Read off this distribution, so it is a new test, not a result.
+
+### Volume 1.2.0 release review (2026-11-03): GO
+
+The user: "lets go with since open, and release the candidate." 1.2.0 = 1.1.0 + no shock against the day's move since
+the open at >= 2 S30 (`shockAgainstUnits`), PR #249.
+- Parity: the PR's own backtest over the year (51 stocks, real books, no broker stop), alert by alert vs 1.1.0's parts:
+  9,247 identical, 254 skipped against the move (all the research's rule), nothing else changed; $149.4K, 133 trades,
+  tune $115.3K / check $128.5K, 2% (3%: $177.3K, drop 18.6%), as the research to the dollar. A first run with the broker
+  stop at the old file's 60% moved 44 exits; not the rule.
+- Neighbours on the year (2%): 1 $142.5K (skips ORCL 10-28 +390%, loses tune), 1.5 $149.6K, 2 $149.4K, 2.5 / 3 $148.2K:
+  a plateau, 2 inside it.
+- Risk at 3%: worst day -$12.7K, worst 5 days -$16.0K, drop 18.6% (1.1.0: 19.5%). 2.6 trades a week, 35% won, median -28%.
+- Code review (fresh agent): no must-fix; its should-fix items (unknown saved version keeps the rule off, nothing saved
+  = the defaults, boundary tests) in the PR. Live settings read 2026-11-03: version 1.1.0, no `shockAgainstUnits` field
+  (loads as off).
