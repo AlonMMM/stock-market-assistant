@@ -2926,6 +2926,37 @@ The usual: AAPL 4,169, NVDA 3,201, TSLA 2,259, AMZN 1,875, AMD 1,271 ... COIN 11
 Verdict: not better. Raising the floor on busy stocks (AAPL, NVDA) cut losers on tune by luck and cut 7 giants on check;
 lowering it on quiet stocks adds the usual thin losers (median ~-$2,900). A fixed 200 stays; no candidate.
 
+### A thin pick waits a few minutes for its 200 contracts (the same contract), on 2.10 (2026-11-03, not better: the pick fails the check)
+The user: "in 16:40 somtimes we skip very good trade, like coin today, just because the specific delta option have no
+200 volume. 2 minute later it wasn't the case. I wonder how many case there is like this. and we're not try again stock
+that skipped" (COIN Call 157.5 6 Nov: 34 contracts at 09:40, 201 at 09:44, $1.02 then, $2.75 at 11:00; after the data's
+end, 2026-10-16, so not in the run). Prior: "the wait" (tiers.py BT_RETRY_ILLIQUID, 2026-10-24, the old champion and
+walk: every minute until 200, failed the unseen list; 1-5 minute waits the only positive bucket, +412 a trade, 112);
+open_window.py (2026-10-30: a floor scaled by the minutes since the open, bought at the signal minute, failed the check);
+retry_skip.py (today, at the next alert ~11-12 min, failed). short_wait.py (thin_strike.py's 2.10 walk): a thin pick
+(the price floor passed) is checked again every minute on the same contract, bought at the first minute with 200 in its
+30 minutes (the price there over the floor), the walk and the book from that minute; one trade a stock a day (no wait
+on a stock-day the champion trades; the earliest wait kept); adds the same. W2 / W5 / W10 (cap 2 / 5 / 10 minutes),
+W5open (W5, signals before 10:00 only). Look 1 on a capped wait on the fixed walk.
+- How many: of the main thin skips (all weeks) the same contract reaches 200 within 1 / 2 / 5 / 10 / 30 minutes: fair
+  1,342 -> 2% / 5% / 10% / 16% / 26%; Favorites 1,853 -> 2% / 3% / 8% / 13% / 23%. Before 10:00 (819 / 1,164 of them)
+  6% / 4% within 2 minutes, 10% / 9% within 5. 74-77% never reach 200 within 30 minutes.
+- Their result (main at $10K): reached within 5 minutes, bought then: tune 62 / 67, median -$2,746 / -$2,815, 1 / 3
+  giants; check 69 / 72, median -$2,775 / -$2,863, 0 / 1 giants, non-giant -$128K / -$155K. Never in 30 minutes (bought
+  at the signal, fill unproven): median ~-$2,900, 4-10 giants on ~500-740 trades a half. Reached in 6-30 minutes: median
+  -$2,256 to -$2,474, the sums positive on giants (3-7 a half), non-giant -$140K to -$252K.
+- Baseline 2.10 to the dollar (tune / check, 2%): fair $620,535 / $957,771, Favorites $449,178 / $226,846.
+- Tune, 2%, vs 2.10 (fair / Favorites): W2 +6% / +12%; W5 -5% / +15%; W10 +5% / -3%; W5open -19% / +0%. Pick: W2 (1.058,
+  better on both).
+- Check, 2%: W2 $878,073 (-8%, 24% drop) / $202,231 (-11%, 24%); 3%: -12% / -16%. Without the best 5 at 2%: $155,595 /
+  $66,413 vs $169,718 / $74,497.
+- W2's waited trades: tune 32 / 29, median -$2,794 / -$2,943, the sum is SMCI +$106K (and DELL +$64K on the Favorites);
+  check 32 / 33, 0 giants, median -$3,086 / -$3,064, sum -$54K / -$71K, every year negative. Median wait 1-1.5 minutes,
+  about 3 in 4 before 10:00.
+Verdict: not better. Few thin skips turn busy within minutes (5% / 3% within 2), and those that do lose like any thin
+pick (median ~-$2,800, almost no giants on check); the tune gain was one SMCI trade. The 1-5 minute bucket of 2026-10-24
+does not hold on the fixed walk. One try at the signal stays; no candidate.
+
 ### The volume against SPY's, on 2.10 (2026-11-03, not better: the extra trades fail the check; size-rel near, one gate short)
 The user: "can we also check the thesis in the main bot? if today the main bot does not normelized the spy volume I think
 it might be a good candidate", after the Volume bot's volume score, and "if we will add more trade we can catch more gaint
