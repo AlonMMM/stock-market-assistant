@@ -35,6 +35,7 @@ import {
 } from "../../../packages/trading/src/bot/versions.js";
 import coreList from "../../../config/bot-universe.json";
 import volumeList from "../../../config/volume-bot-stocks.json";
+import { createPortal } from "react-dom";
 import { readJson } from "./api.js";
 import type { BotView } from "../../../packages/trading/src/bot-api.js";
 import {
@@ -81,6 +82,13 @@ import {
   strangleWithDefaults,
   type StrangleSettings,
 } from "../../../packages/trading/src/strangle/settings.js";
+import {
+  applyVolumeVersion,
+  currentVolumeVersion,
+  volumeVersionById,
+  volumeVersionLabel,
+  volumeVersions,
+} from "../../../packages/trading/src/strangle/versions.js";
 import {
   volumeAccount,
   type VolumeAccountTrade,
@@ -220,8 +228,8 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
     }
   };
   const patch = (p: Partial<Setup>) => setSetup({ ...setup, ...p });
-  const [typed, setTyped] = useState("");
   const [lists, setLists] = useState<Watchlist[]>([]);
+  const [stocksOpen, setStocksOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [paper, setPaper] = useState<
     | { state: "idle" }
@@ -428,6 +436,11 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
           JSON.stringify(setup.volume.settings[k]),
       ).length
     : 0;
+  // The Volume bot's version (strangle/versions.ts): the one picked, its
+  // label (starred when the rules differ) and the one the live bot runs.
+  const vVersion = volumeVersionById(setup.volume.settings.version);
+  const vLabel = volumeVersionLabel(setup.volume.settings);
+  const vLive = setup.volume.base?.version ?? currentVolumeVersion;
 
   const stale =
     ran !== null &&
@@ -437,24 +450,18 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
       ran.to !== setup.to ||
       ran.tickers.join() !== setup.tickers.join());
 
-  const addTickers = (more: string[]) =>
-    patch({
-      tickers: [...new Set([...setup.tickers, ...more])].slice(0, maxStocks),
-    });
-  // Typed tickers are checked against Alpaca's stock list first; a made-up
-  // one is named and not added (the quick picks are known lists).
-  const [checking, setChecking] = useState(false);
-  const [unknown, setUnknown] = useState<string[]>([]);
-  const addTyped = async () => {
-    const wanted = parseTickers(typed);
-    if (!wanted.length || checking) return;
-    setChecking(true);
-    const known = await checkTickers(wanted);
-    setChecking(false);
-    setUnknown(wanted.filter((t) => !known.includes(t)));
-    addTickers(known);
-    setTyped("");
-  };
+  // The quick picks: the bots' lists and the user's own watchlists.
+  const picks: StockPick[] = [
+    { label: "Bot's core list", tickers: coreList.symbols },
+    ...(isVolume
+      ? [{ label: "Volume bot top 50", tickers: volumeList.symbols }]
+      : []),
+    ...lists.map((l) => ({
+      label: l.name,
+      tickers: parseTickers(l.tickers.join(" ")),
+    })),
+  ];
+  const previewCount = 12;
 
   return (
     <div className="backtest-page bot-bt">
@@ -536,11 +543,46 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                 </>
               )}
               {isVolume && (
-                <p className="muted small">
-                  The live Volume bot&apos;s settings, changed below under
-                  Rules: plan and shock alerts, the side, the leg and the
-                  give-back.
-                </p>
+                <>
+                  <label>
+                    Version
+                    <select
+                      value={vVersion?.id ?? ""}
+                      onChange={(e) =>
+                        patch({
+                          volume: {
+                            ...setup.volume,
+                            settings: applyVolumeVersion(
+                              setup.volume.settings,
+                              e.target.value,
+                            ),
+                          },
+                        })
+                      }
+                    >
+                      {!vVersion && (
+                        <option value="" disabled>
+                          {setup.volume.settings.version || "Unknown"}
+                        </option>
+                      )}
+                      {[...volumeVersions].reverse().map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.name}
+                          {v.id === vLive ? " (live)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="muted small">
+                    {vVersion?.notes} Its rules can be changed below under
+                    Rules; the limits and stocks stay.
+                  </p>
+                  {vVersion && vLabel !== vVersion.id && (
+                    <p className="small bs-changed">
+                      The rules differ from {vVersion.name}: runs as {vLabel}.
+                    </p>
+                  )}
+                </>
               )}
               <button
                 type="button"
@@ -568,105 +610,35 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                 </span>
               }
             >
-              <div className="bt-chips">
-                {setup.tickers.map((t) => (
-                  <span key={t} className="chip removable">
-                    {t}
-                    <button
-                      type="button"
-                      aria-label={`Remove ${t}`}
-                      onClick={() =>
-                        patch({ tickers: setup.tickers.filter((x) => x !== t) })
-                      }
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-                {setup.tickers.length === 0 && (
-                  <span className="muted small">No stocks yet.</span>
-                )}
-              </div>
-              <div className="bt-add">
-                <input
-                  type="text"
-                  value={typed}
-                  placeholder="Add tickers: NVDA, AMD…"
-                  aria-label="Add tickers"
-                  autoCapitalize="characters"
-                  onChange={(e) => setTyped(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
-                    e.preventDefault();
-                    void addTyped();
-                  }}
-                />
-                <button
-                  type="button"
-                  className="reset"
-                  disabled={!parseTickers(typed).length || checking}
-                  onClick={() => void addTyped()}
-                >
-                  {checking ? "Checking…" : "Add"}
-                </button>
-              </div>
-              {unknown.length > 0 && (
-                <p className="stale" role="status">
-                  Not added, no such US stock: {unknown.join(", ")}
+              {setup.tickers.length > 0 && (
+                <p className="bt-stock-preview">
+                  {setup.tickers.slice(0, previewCount).join(" · ")}
+                  {setup.tickers.length > previewCount && (
+                    <span className="muted">
+                      {" "}
+                      +{setup.tickers.length - previewCount} more
+                    </span>
+                  )}
                 </p>
               )}
-              <div
-                className="preset-chips"
-                role="group"
-                aria-label="Quick picks"
+              {setup.tickers.length === 0 && (
+                <p className="muted small">No stocks yet.</p>
+              )}
+              <button
+                type="button"
+                className="bt-edit-stocks"
+                onClick={() => setStocksOpen(true)}
               >
-                <button
-                  type="button"
-                  className="chip"
-                  onClick={() =>
-                    patch({ tickers: coreList.symbols.slice(0, maxStocks) })
-                  }
-                >
-                  Bot&apos;s core list ({coreList.symbols.length})
-                </button>
-                {isVolume && (
-                  <button
-                    type="button"
-                    className="chip"
-                    onClick={() =>
-                      patch({ tickers: volumeList.symbols.slice(0, maxStocks) })
-                    }
-                  >
-                    Volume bot top 50 ({volumeList.symbols.length})
-                  </button>
-                )}
-                {lists.map((l) => (
-                  <button
-                    type="button"
-                    key={l.id}
-                    className="chip"
-                    onClick={() =>
-                      patch({
-                        tickers: parseTickers(l.tickers.join(" ")).slice(
-                          0,
-                          maxStocks,
-                        ),
-                      })
-                    }
-                  >
-                    {l.name} ({l.tickers.length})
-                  </button>
-                ))}
-                {setup.tickers.length > 0 && (
-                  <button
-                    type="button"
-                    className="chip"
-                    onClick={() => patch({ tickers: [] })}
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
+                Edit stocks
+              </button>
+              {stocksOpen && (
+                <StocksDialog
+                  tickers={setup.tickers}
+                  picks={picks}
+                  onChange={(tickers) => patch({ tickers })}
+                  onClose={() => setStocksOpen(false)}
+                />
+              )}
             </Card>
 
             <Card
@@ -1386,6 +1358,187 @@ function Summary({
         . Simulated, not a promise.
       </p>
     </section>
+  );
+}
+
+interface StockPick {
+  label: string;
+  tickers: readonly string[];
+}
+
+/** The run's stocks in a window over the page: find, add, remove, or start from a list. */
+function StocksDialog({
+  tickers,
+  picks,
+  onChange,
+  onClose,
+}: {
+  tickers: string[];
+  picks: StockPick[];
+  onChange: (tickers: string[]) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }, []);
+  const [typed, setTyped] = useState("");
+  // Typed tickers are checked against Alpaca's stock list first; a made-up
+  // one is named and not added (the quick picks are known lists).
+  const [checking, setChecking] = useState(false);
+  const [unknown, setUnknown] = useState<string[]>([]);
+  const wanted = parseTickers(typed);
+  // One partial ticker filters the list; anything else is added as typed.
+  const filter = wanted.length === 1 ? wanted[0]! : "";
+  const shown = tickers.filter((t) => t.includes(filter));
+  const newOnes = wanted.filter((t) => !tickers.includes(t));
+  const full = tickers.length >= maxStocks;
+
+  const addTyped = async () => {
+    if (!newOnes.length || checking) return;
+    setChecking(true);
+    const known = await checkTickers(newOnes);
+    setChecking(false);
+    setUnknown(newOnes.filter((t) => !known.includes(t)));
+    onChange([...new Set([...tickers, ...known])].slice(0, maxStocks));
+    setTyped("");
+  };
+
+  let addText = "Add";
+  if (checking) addText = "Checking…";
+  else if (newOnes.length > 1) addText = `Add ${newOnes.length}`;
+
+  return createPortal(
+    <dialog
+      ref={ref}
+      className="why stocks-dialog"
+      aria-labelledby="stocks-title"
+      onClose={onClose}
+      onClick={(event) => {
+        // A click on the backdrop lands on the dialog element itself.
+        if (event.target === ref.current) ref.current?.close();
+      }}
+    >
+      <div className="why-body">
+        <header className="why-head">
+          <div>
+            <h2 id="stocks-title">Stocks</h2>
+            <p className="muted">
+              {tickers.length} of max {maxStocks}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="why-close"
+            aria-label="Close"
+            onClick={() => ref.current?.close()}
+          >
+            ×
+          </button>
+        </header>
+
+        <div className="bt-add stocks-find">
+          <input
+            type="text"
+            value={typed}
+            placeholder="Find or add: NVDA, AMD…"
+            aria-label="Find or add tickers"
+            autoCapitalize="characters"
+            autoFocus
+            onChange={(e) => {
+              setTyped(e.target.value);
+              setUnknown([]);
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              void addTyped();
+            }}
+          />
+          <button
+            type="button"
+            className="reset"
+            disabled={!newOnes.length || checking || full}
+            onClick={() => void addTyped()}
+          >
+            {addText}
+          </button>
+        </div>
+        {unknown.length > 0 && (
+          <p className="stale" role="status">
+            Not added, no such US stock: {unknown.join(", ")}
+          </p>
+        )}
+
+        <section>
+          <h3>Start from a list</h3>
+          <div className="preset-chips" role="group" aria-label="Quick picks">
+            {picks.map((p) => (
+              <button
+                type="button"
+                key={p.label}
+                className="chip"
+                onClick={() => onChange(p.tickers.slice(0, maxStocks))}
+              >
+                {p.label} ({p.tickers.length})
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <div className="stocks-head">
+            <h3>
+              In the run{" "}
+              {filter && (
+                <span className="muted">
+                  · {shown.length} match {filter}
+                </span>
+              )}
+            </h3>
+            {tickers.length > 0 && (
+              <button
+                type="button"
+                className="link"
+                onClick={() => onChange([])}
+              >
+                Remove all
+              </button>
+            )}
+          </div>
+          <ul className="stocks-grid">
+            {shown.map((t) => (
+              <li key={t}>
+                <span>{t}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${t}`}
+                  onClick={() => onChange(tickers.filter((x) => x !== t))}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+          {tickers.length === 0 && (
+            <p className="muted small">
+              No stocks yet: add some or pick a list.
+            </p>
+          )}
+          {tickers.length > 0 && shown.length === 0 && (
+            <p className="muted small">None in the run; Enter adds {filter}.</p>
+          )}
+        </section>
+
+        <div className="stocks-done">
+          <button type="button" onClick={() => ref.current?.close()}>
+            Done
+          </button>
+        </div>
+      </div>
+    </dialog>,
+    document.body,
   );
 }
 
