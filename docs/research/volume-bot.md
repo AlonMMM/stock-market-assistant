@@ -2467,6 +2467,38 @@ windows, 12 minute days) into the local db, rerun. 2% (3% in brackets):
   relative alert in `rvol_alert.py` / `leg_seconds.py` and the new alerts' books). Next: the 3-year twin at K 4 and
   K 6, with 10-10 and April 2026 shown apart.
 
+**The 3-year twin (look 2, 2026-11-03; the user: "START")**: `rvol_alert.py` takes the rule as a switch (`RV_REL_K`,
+`RV_REL_FLOOR` 2; off by default); `volume_rel_spy_3y.py` rebuilds the six 1.1.0 plan lists (3y50, 3y50w, 3ycand,
+3ycandw, 3ycand5, 3ycand5w) with it and writes only the new alerts as tags `<tag>r4` / `<tag>r6` (with the switch off
+every list comes back exactly, 12,155 alerts on 3y50; `SEC_OLD_FIRST=1` as the lists were built). New alerts: 4,334 at
+K 4, 1,025 at K 6; 1,013 of them can trade (a burst of >= 1.1 S30, 2.5 same-week, and the next minute reaching a side
+line; `<tag>f`); 99 cross within 15 s. Bought: stock 1-second bars $0.13, option books and minute books about $0.02.
+`leg_seconds.py run` as the 10-30 "Live" run with `STR_LIQ_OLD=1 STR_ORDER_MINUTE=1`, the new tags added
+(`SEC_ADD_TAG`), flat account; scored by `volume_rel_spy_3y_acct.py`. 1.1.0 re-walked on today's code: 421 trades,
+$790.3K (the 10-30 log: 431, $773.1K, before the 11-01 fixes); the versions are judged against today's run.
+
+| At 2% | Trades | 3y (drop) | Tune | Check | W/o best 5 | 2024 / 2025 / 2026 | Without 10-10: end, tune, check | 3% (drop) |
+|---|---|---|---|---|---|---|---|---|
+| 1.1.0 (today's code) | 421 | $790.3K (21.2%) | +$86.2K | +$604.1K | +$211.5K | +$17K / +$418K / +$256K | $294.8K, +$31.1K, +$163.8K | $1,612K (30.5%) |
+| + stock/SPY >= 4 | 451 | $1,058.2K (22.2%) | +$108.4K | +$849.8K | +$390.6K | +$16K / +$394K / +$549K | $395.4K, +$39.7K, +$255.7K | $2,473K (31.8%) |
+| 🎯 + stock/SPY >= 6 | 430 | $852.4K (21.2%) | +$142.4K | +$610.0K | +$247.7K | +$15K / +$397K / +$341K | $318.2K, +$50.7K, +$167.5K | $1,803K (30.4%) |
+
+Added trades (not in 1.1.0's account), returns at a flat $2K:
+
+| | 2024 | 2025 | 2026 without April | April 2026 |
+|---|---|---|---|---|
+| K 4 (33 added) | 8, median -53%, 3 won, -$2.1K | 10, median -25%, 3 won, -$3.8K | 9, median -46%, 1 of +300% (TSLA 08-14), +$10.4K | 6, median +213%, 2 of +300%, +$26.8K |
+| K 6 (11 added) | 2, median -53%, 0 won, -$2.5K | 4, median -37%, 0 won, -$2.9K | 1, -49%, -$1.0K | 4, median +122%, 1 of +300% (MSTR 04-17), +$14.8K |
+
+- **Verdict: no candidate.** The tune pick (K 6) only ties the check (+$610.0K vs +$604.1K, +1%; without 10-10
+  +$167.5K vs +$163.8K) on 11 added trades, median -41%, and every dollar of it is April 2026. K 4's large total is the
+  same April (MSTR, NVDA 04-24, AMZN 04-09, IREN) plus TSLA 2026-08-14, all inside the live year the levels came from;
+  the dollars compound, so a 2026 giant moves the end most. In 2024-25, the years the levels did not see, the added
+  trades lose at both levels (K 4: 18 trades, 6 won, none +300%; K 6: 6 trades, none won).
+- **Why**: the bot's own gates (the 15-s cross, the burst) keep about 1 in 40 of the new alerts, and what is left looks
+  like the ordinary plan trade. April 2026 was one cluster of single-stock runs, not a pattern the rule finds again.
+- Close the idea for the Volume bot.
+
 ### Volume 1.2.0 release review (2026-11-03): GO
 
 The user: "lets go with since open, and release the candidate." 1.2.0 = 1.1.0 + no shock against the day's move since
