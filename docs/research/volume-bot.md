@@ -2392,6 +2392,37 @@ A skip rule can only remove trades (fewer, never more); an entry on the score wo
 - So the equation was not what hid an edge: on any scale, the stock's volume against SPY's at the alert does not
   separate the winners. The one market-wide day (10-10) is the whole SPY effect.
 
+**More trades: a plan alert on the stock's volume against SPY's (look 1 of the entry, 2026-11-03; the user: "if we will
+add more trade we can catch more gaint that can cover these looses")**: `volume_rel_spy_run.ts` (the live code's
+backtest through its alerts hook), `volume_rel_spy_acct.ts`, `volume_rel_spy_added.ts`, `volume_rel_spy_books.py`. The
+site's plan alert (strangle/alert.ts) with one more way to pass the volume test: the stock's 3-minute volume ratio >= 2
+and stock ratio / SPY ratio >= K (each over its 20-session median at that minute); the move, 10,000 shares and the
+candle's side unchanged. Every regular alert and shock kept (the rule only adds). K 3 / 4 / 6 set before the run. Base
+1.1.0, live code's year, 51 stocks, real books, the live limits; 1.1.0 reproduced to the dollar. The first pass found
+56 new alerts with no book at the buy (they had passed every gate): bought from Databento ($0.005: 56 one-second
+windows, 12 minute days) into the local db, rerun. 2% (3% in brackets):
+
+| Version | Trades (+300%) | Year (drop) | Tune | Check | Tune w/o 5 | Check w/o 5 | Added: n, median, won, +300% | Year w/o April 2026 |
+|---|---|---|---|---|---|---|---|---|
+| 1.1.0 | 145 (7) | $142.1K, 13.1% ($162.1K, 19.5%) | $111.9K | $125.6K | -$27.4K | -$22.3K | - | $116.9K |
+| K 3 | 195 (10) | $179.4K, 14.5% ($229.1K, 21.2%) | $110.8K | $160.1K | -$36.1K | -$13.6K | 52, -27%, 19, 3 | $121.8K |
+| K 4 | 166 (10) | $194.2K, 14.8% ($257.9K, 21.7%) | $121.8K | $159.4K | -$27.1K | -$14.6K | 22, +8%, 11, 3 | $127.3K |
+| 🎯 K 6 | 148 (8) | $160.5K, 13.1% ($195.1K, 19.5%) | $122.9K | $130.1K | -$26.1K | -$18.5K | 4, +122%, 3, 1 | $115.6K |
+
+- The rule fires often (K 3: 5,945 new plan alerts; K 4: 3,048; K 6: 783), but the bot's own gates stop almost all:
+  no side line in time 63%, pre-market news 24%, the burst 8%. K 3 trades 58 of them, K 4 24, K 6 5.
+- **The tune pick K 6 passes the gates on the live year** (tune, check, both without the best 5, same drop) **but its
+  gain is 3 April 2026 trades** (MSTR 04-17 +564%, IREN 04-23 +122%, NVDA 04-24 +104%): without April it is below
+  1.1.0. Not an edge.
+- **K 4 is the robust level**: better on tune and check, about even on tune without the best 5 (+$0.3K), better on
+  check without them (+$7.7K), and still +$10.4K without April; its 22 added trades have a median of +8% (11 won, 3 of
+  +300%: TSLA 08-14 +693%, MSTR, NVDA 04-24 +484%). Cost: the drop 14.8% vs 13.1% (3%: 21.7% vs 19.5%). It was not
+  the tune pick (by $1.1K), so choosing it reads the check.
+- **K 3 fails tune** ($110.8K vs $111.9K): the extra alerts are ordinary losers (median -27%).
+- **Not a candidate yet**: one year, look 1, the gain is ~3 giants, and the 3-year twin has not run (it needs the
+  relative alert in `rvol_alert.py` / `leg_seconds.py` and the new alerts' books). Next: the 3-year twin at K 4 and
+  K 6, with 10-10 and April 2026 shown apart.
+
 ### Volume 1.2.0 release review (2026-11-03): GO
 
 The user: "lets go with since open, and release the candidate." 1.2.0 = 1.1.0 + no shock against the day's move since
