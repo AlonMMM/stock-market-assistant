@@ -97,6 +97,40 @@ SHOCKS = collections.defaultdict(list)   # (sym, date) -> [(first minute, side)]
 if os.environ.get("BT_SHOCKS"):
     for a in json.load(open(os.environ["BT_SHOCKS"])):
         SHOCKS[(a["sym"], a["date"])].append(((a["sec"] - 1) // 60, "C" if a.get("move", 0) > 0 else "P"))
+# The volume against SPY's (rel_volume.py; the user, 2026-11-03: "if today the main bot does not normelized the spy volume
+# I think it might be a good candidate"): BT_REL=1 adds c_rel to every row (the day volume ratio over SPY's own ratio at
+# that minute, each vs its 20 sessions before) and the rules <rule>_ra15 (the volume test passes on rv >= 1.5 OR rel >=
+# 1.5) and <rule>_rrXXX (on rel >= XXX/100 instead of rv), for the champion's entry c12_15 and the add's base.
+REL = bool(os.environ.get("BT_REL"))
+BASE_RULES = dict(RULES)
+if REL:
+    for inner in ("c12_15", "base"):
+        RULES[f"{inner}_ra15"] = ("relv", inner, "add", 1.5)
+        for lv in (125, 150, 200):
+            RULES[f"{inner}_rr{lv}"] = ("relv", inner, "rel", lv / 100)
+SPYCUM = {}
+
+
+def spy_ratio(date, i, cal):
+    """SPY's volume since the open through each minute over the median of the same span in the 20 sessions before, or None."""
+    if date in SPYCUM: return SPYCUM[date]
+    def cum(d):
+        v = [0] * 390
+        for x in day("SPY", d): v[x[0]] = x[5]
+        acc, out = 0, []
+        for x in v: acc += x; out.append(acc)
+        return out
+    hist = [h for h in (cum(d) for d in cal[i - 20:i]) if h[-1] > 0]
+    today = cum(date)
+    out = None
+    if len(hist) >= 10 and today[-1] > 0:
+        out = []
+        for m in range(390):
+            med = sorted(h[m] for h in hist); k = len(med) // 2
+            usual = med[k] if len(med) % 2 else (med[k - 1] + med[k]) / 2
+            out.append(today[m] / usual if usual else None)
+    SPYCUM[date] = out
+    return out
 if os.environ.get("BT_RULES"): RULES = {k: RULES[k] for k in os.environ["BT_RULES"].split(",")}
 
 
@@ -107,8 +141,15 @@ def shock_low(rule, t, rv, e):
     return t >= T_MIN * k or (t >= 1.2 * k and e >= 1.5 * k)
 
 
-def passes(rule, t, rv, d, e, sm=0.0):
-    """sm: SPY's move from the day before's close to this minute, on the bet's side (the "mkt" rules)."""
+def passes(rule, t, rv, d, e, sm=0.0, rel=None):
+    """sm: SPY's move from the day before's close to this minute, on the bet's side (the "mkt" rules); rel: the volume
+    ratio over SPY's (the "relv" rules)."""
+    if rule[0] == "relv":
+        rel_ok = rel is not None and rel >= rule[3]
+        eff = 0.0
+        if rule[2] == "add": eff = rv
+        if rel_ok: eff = max(eff, RV_MIN)
+        return passes(RULES[rule[1]] if rule[1] in RULES else BASE_RULES[rule[1]], t, eff, d, e, sm)
     if rule[0] == "shock": return passes(RULES.get("c12_15", (T_MIN, 1.5, "e", 1.2)), t, rv, d, e)
     if rule[0] == "sum": return t >= rule[2] and t + e + rv > rule[1]
     if rule[0] == "mkt": return passes(RULES[rule[3]], t, rv, d, e) or (sm >= rule[1] and t >= rule[2] and rv >= RV_MIN)
@@ -150,6 +191,7 @@ def stock(sym):
             if cum[-1] > 0: hist.append(cum)
         if len(hist) < 10: continue
         c = series(bars)[0]; spy = series(day("SPY", date))[0]
+        sr = spy_ratio(date, i, cal) if REL else None
         spy_prev = (day("SPY", cal[i - 1]) or [[0, 0, 0, 0, None]])[-1][4]
         umin = [0.0] * 390   # the usual volume of each minute (the median over the 20 sessions before)
         if VWEIGHT:
@@ -211,11 +253,13 @@ def stock(sym):
             med = sorted(h[m] for h in hist); k = len(med) // 2
             usual = med[k] if len(med) % 2 else (med[k - 1] + med[k]) / 2
             rv = cum[m] / usual if usual else 0.0
+            rel = None
+            if REL and sr and sr[m]: rel = rv / sr[m]
             sm = (spy[m] / spy_prev - 1) if spy_prev and spy[m] else 0.0   # SPY since the day before's close (the "mkt" rules)
             if ALL:
                 for name in RULES:
-                    if passes(RULES[name], t, rv, dsum[0], e_c, sm): every[name][(date, "C")].append((m, round(t, 2)))
-                    if passes(RULES[name], -t, rv, dsum[1], e_p, -sm): every[name][(date, "P")].append((m, round(-t, 2)))
+                    if passes(RULES[name], t, rv, dsum[0], e_c, sm, rel): every[name][(date, "C")].append((m, round(t, 2)))
+                    if passes(RULES[name], -t, rv, dsum[1], e_p, -sm, rel): every[name][(date, "P")].append((m, round(-t, 2)))
                 continue
             full = (passes(FULL, t, rv, dsum[0], e_c), passes(FULL, -t, rv, dsum[1], e_p))   # the champion's rule, call / put
             for name, (j, sd) in list(pending.items()):   # lowered entries waiting for the full rule
@@ -235,13 +279,15 @@ def stock(sym):
                                           c_d=round(d_, 2), c_e=round(e_, 2), sector="", lowered=int(low), confirm=m if not low else ""))
                     if low: pending[name] = (len(out[name]) - 1, side)
                     continue
-                if passes(RULES[name], t, rv, dsum[0], e_c, sm): side, d_, e_, t_ = "C", dsum[0], e_c, t
-                elif passes(RULES[name], -t, rv, dsum[1], e_p, -sm): side, d_, e_, t_ = "P", dsum[1], e_p, -t
+                if passes(RULES[name], t, rv, dsum[0], e_c, sm, rel): side, d_, e_, t_ = "C", dsum[0], e_c, t
+                elif passes(RULES[name], -t, rv, dsum[1], e_p, -sm, rel): side, d_, e_, t_ = "P", dsum[1], e_p, -t
                 else: continue
                 left.discard(name)
-                out[name].append(dict(date=date, sym=sym, right=side, minute=m, time=f"{(570 + m) // 60:02d}:{(570 + m) % 60:02d}",
-                                      price=c[m], b_minute="", a_minute="", c_t=round(t_, 2), c_rvol=round(rv, 2),
-                                      c_d=round(d_, 2), c_e=round(e_, 2), sector=""))
+                row = dict(date=date, sym=sym, right=side, minute=m, time=f"{(570 + m) // 60:02d}:{(570 + m) % 60:02d}",
+                           price=c[m], b_minute="", a_minute="", c_t=round(t_, 2), c_rvol=round(rv, 2),
+                           c_d=round(d_, 2), c_e=round(e_, 2), sector="")
+                if REL: row["c_rel"] = "" if rel is None else round(rel, 3)
+                out[name].append(row)
             if not left and not pending: break
     if ALL:
         return {k: [dict(date=d, sym=sym, right=r, minutes=" ".join(str(x[0]) for x in v), ts=" ".join(str(x[1]) for x in v))

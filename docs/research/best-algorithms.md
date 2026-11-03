@@ -2888,3 +2888,46 @@ $0.0005); 100% of the 1,448 retried legs on the real book.
 Verdict: not better. A too-cheap pick that later costs over $0.20 is still a losing trade (median ~-$3K, almost no
 winners); the thin retry repeats thin_retry.py's result on the fixed walk (a few giants on tune, the usual -$2.5K median).
 One signal a stock a day stays; no candidate.
+
+### The volume against SPY's, on 2.10 (2026-11-03, not better: the extra trades fail the check; size-rel near, one gate short)
+The user: "can we also check the thesis in the main bot? if today the main bot does not normelized the spy volume I think
+it might be a good candidate", after the Volume bot's volume score, and "if we will add more trade we can catch more gaint
+that can cover these looses". Prior: the volume-weighted t / D2 (2026-10-27) and the burst that frees a stock from SPY
+(2026-10-27), both not better; 2.10's own tiers (size_volume.py, the stock's volume alone). Never measured against SPY's
+volume. rel = c_rvol (volume since the open over its 20-session usual at that minute) / SPY's same ratio
+(defence_signals.py BT_REL=1, spy_ratio). rel_volume.py on thin_strike.py's 2.10 walk; levels set before the run:
+add15 (the volume test passes on rv >= 1.5 OR rel >= 1.5: every signal kept, more added, a signal can fire earlier),
+rel125 / rel150 / rel200 (rel instead of rv), size-rel (2.10's signals, the 0.5 / 1 / 1.5 tiers at 1.75 / 2.5 on rel
+instead of rv). A gate's trade keeps 2.10's size (on rv). Look 1 on rel. 2.10's signals median rel 1.71 (p10 1.04, p90
+2.97); 2,290 of 6,119 under 1.5.
+- Baseline 2.10 to the dollar (tune / check, 2%): fair $620,535 / $957,771, Favorites $449,178 / $226,846. The generator
+  reproduces 2.10's entries: 2,767 of 2,778 fair / 3,331 of 3,341 Favorites identical.
+
+| 2% (3%) | Tune fair | Tune Favorites | Check fair | Check Favorites | w/o best 5, check fair / Fav | Trades, check fair / Fav |
+|---|---|---|---|---|---|---|
+| 2.10 | $620,535 / 16% ($794,867 / 24%) | $449,178 / 14% ($546,403 / 27%) | $957,771 / 24% ($1,082,694 / 32%) | $226,846 / 23% ($240,889 / 32%) | $169,718 / $74,497 | 556 / 538 |
+| 🎯 add15 | $835,463 +35% / 17% ($1,208,734) | $546,577 +22% / 15% ($709,997) | $743,997 -22% / 28% ($766,722 -29%) | $224,248 -1% / 28% ($239,798) | $132,770 / $72,711 | 749 / 717 |
+| 🎯 rel125 (best replace on tune) | $755,125 +22% | $414,665 -8% | $509,228 -47% / 35% | $198,484 -13% | $91,162 / $64,923 | 843 / 807 |
+| rel150 / rel200 | -2% / -35% | -14% / -33% | -13% / -3% | +34% / +31% | | 621 / 315 |
+| 🎯 size-rel | $742,025 +20% / 18% ($972,966 +22%) | $665,910 +48% / 16% ($894,292 +64%) | $1,121,654 +17% / 22% ($1,414,558 +31%) | $269,942 +19% / 24% ($316,919 +32%) | $199,684 / $77,611 | 556 / 538 |
+
+- **add15, the more-trades thesis: not better.** About 35% more trades. It wins tune on both lists but loses the check
+  on the fair list (-22%, drop 28% vs 24%) and ties the Favorites (-1%). The added main legs (at $10K): tune 222 / 185,
+  median -$2,473 / -$2,582, 8 / 5 of +300%, sum +$305K / +$218K; check 265 / 239, median -$2,514 / -$2,237, 5 / 6 of
+  +300%, sum -$63K / +$72K. About half of them have no real book at the buy (114 / 96 tune, 149 / 118 check) and are
+  priced on the bar model: fill unproven (Databento quote, not bought: 298 contract-days, $0.01; every gate's 722, $0.03). More giants come in (1 in ~35-45), but not enough to pay for the
+  -$2.5K median of the rest on the check half.
+- **Replace (rel instead of rv): not better.** Every level loses tune on at least one list (rel125 -8% Favorites,
+  rel150 -2% / -14%, rel200 -35% / -33%).
+- **size-rel: near, one gate short.** Better than 2.10 on tune and check, on both lists, at 2% and 3%. The check without
+  the best 5 is better on both lists ($199,684 vs $169,718; $77,611 vs $74,497). But tune fair without the best 5 is worse
+  ($126,966 vs $138,044), and the non-giant sum is worse on every half and list (tune -$729K vs -$700K, -$705K vs -$699K;
+  check -$799K vs -$770K, -$690K vs -$667K). So the gain is the giants sized up (high rel = the stock busy while SPY is
+  not), not better ordinary trades. The average size is 0-8% bigger (tune 0.836 / 0.802 vs 0.802 / 0.802, check 0.841 /
+  0.836 vs 0.781 / 0.787 of a full unit). The drop is about the same (tune +2 pts, check -2 / +1). Mechanism, if it holds:
+  a stock's own news shows as volume beyond the market's, and that is where the giants are.
+- Without 10 Oct 2025 (the market-wide day): it moves only 2 check trades; every verdict above stands (size-rel check
+  $1,108,977 / $267,369 vs $946,946 / $224,683).
+- Verdict: no candidate. The extra trades lose on the check (the user's thesis). size-rel fails one gate (tune fair
+  without the best 5) and its gain is all giants. Next if pursued: size-rel against a flat size at the same drop, and the
+  2022-23 last feature test.
