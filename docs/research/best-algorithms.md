@@ -2889,6 +2889,25 @@ Verdict: not better. A too-cheap pick that later costs over $0.20 is still a los
 winners); the thin retry repeats thin_retry.py's result on the fixed walk (a few giants on tune, the usual -$2.5K median).
 One signal a stock a day stays; no candidate.
 
+### A busy neighbour lets the thin pick trade (the same contract), on 2.10 (2026-11-03, not better: the pick fails the check)
+The user: "Another test - I would like to check if there is a big volume neiber- trade with the original option". The
+neighbour is only a gate: a thin 0.15 pick (under 200) is bought as it is when a strike next to it is busy. Prior:
+round_neighbor.py and thin_strike.py B / C150 bought the neighbour; oi_strike.py chose by OI; never a gate. neighbor_gate.py
+(thin_strike.py's 2.10 walk): A200 / A500 (the listed strike one up or one down has 200+ / 500+ in 30 minutes), R200 (the
+round strike one up or one down, 200+), A200f50 (A200 and the pick 50+). A neighbour outside the scan reads its own
+minute bars (209 of the gates). Look 1.
+- Baseline 2.10 to the dollar (tune / check, 2%): fair $620,535 / $957,771, Favorites $449,178 / $226,846.
+- Tune, 2%, vs 2.10 (fair / Favorites): A200 -14% / +28% (26% / 24% drop); A500 +27% / +68% (22% / 17%); R200 +2% / -7%
+  (31% / 25%); A200f50 -14% / -5%. Pick: A500 (1.27, better on both).
+- Check, 2%: A500 $669,320 (-30%, 26% drop) / $148,922 (-34%, 31%); 3%: -39% / -45%. Without the best 5 at 2%: $117,820 /
+  $48,189 vs $169,718 / $74,497.
+- Added trades (main at $10K): A500 tune 93 / 101, median -$2,586 / -$2,576, 4 giants each, non-giant -$145K / -$187K, the
+  sum is MU +$275K, COIN +$186-190K, IONQ +$180K (the same names as round_neighbor and retry_skip); check 102 / 126,
+  median -$2,777 / -$2,843, 0 giants, sum -$220K / -$259K, every year negative. The pick's own volume median 67-86, the
+  neighbour's 794-1,121.
+Verdict: not better. A busy neighbour does not make a thin pick's signal a good one: on check the added trades have no
+giant at all and lose ~$2,800 each. The tune gain was the same three names. The 200 floor stays; no candidate.
+
 ### The volume against SPY's, on 2.10 (2026-11-03, not better: the extra trades fail the check; size-rel near, one gate short)
 The user: "can we also check the thesis in the main bot? if today the main bot does not normelized the spy volume I think
 it might be a good candidate", after the Volume bot's volume score, and "if we will add more trade we can catch more gaint
