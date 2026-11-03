@@ -2862,3 +2862,29 @@ delta cap. N200 (200 for the neighbour), N150 (150 for the pick and the neighbou
   -$2,351 / -$2,309, non-giant -$632K / -$743K, 2025 and 2026 negative on both lists.
 Verdict: not better. Even on a busy round strike (N200, real volume) the signals whose 0.15 strike was thin lose
 ~$2,300 a trade: the contract is not the problem, the signal is. The 200 floor stays; no candidate.
+
+### A skipped signal tried again at the next alert (too cheap / thin), on 2.10 (2026-11-03, not better: the pick fails the check)
+The user: "if we skip trade because of #4 or #5 - do not remove it from the list. do try to buy it again on the next
+alert". #4 = the contract pick (thin, too cheap, no contract); #5 (held, too small, refused, a broker error) never
+happens in the backtest, not tested. Prior: thin_retry.py (2026-10-30, 2.5 + IBIT + the pyramid, the old walk), retry
+after a thin skip within 10 / 20 / 30 min or back30, not better; a retry after a too-cheap skip never. retry_skip.py
+(thin_strike.py's 2.10 walk; the rule minutes of defence_signals.py BT_ALL=1 c12_15): at each later rule minute the same
+day to 15:44 pick again, the first pick over the price floor with 200 contracts trades. RC (after too cheap), RT (after
+thin), RB (either, same side), RBa (either, either side). One trade a stock a day; size by the first signal's c_rvol
+(the rule-minute rows carry no rvol), D2 by the retry minute's t; the pyramid as 2.10. Look 1 on too cheap, look 2 on
+the thin retry (1st on the fixed walk). Real books: 10 retried legs had none at entry, fetched (dbx_fetch.py open35,
+$0.0005); 100% of the 1,448 retried legs on the real book.
+- Pass 1 (main signals): fair 1,007 champion / 429 too cheap / 1,342 thin; Favorites 1,000 / 488 / 1,853 (no "no
+  contract" in these lists). Retried legs found: RC 157, RT 1,288, RB 1,445, RBa 1,448 (both lists, all weeks).
+- Baseline 2.10 to the dollar (tune / check, 2%): fair $620,535 / $957,771, Favorites $449,178 / $226,846.
+- Tune, 2%, vs 2.10 (fair / Favorites): RC -12% / -12%; RT -16% / +27% (36% / 27% drop vs 16% / 14%); RB -26% / +11%;
+  RBa -26% / +11%. Pick: RC (0.88; every version below the champion on the fair list).
+- Check, 2%: RC $855,613 (-11%, 25%) / $192,448 (-15%, 27%); 3%: -13% / -21%. Without the best 5 at 2%: $150,760 /
+  $63,106 vs $169,718 / $74,497.
+- The retried trades (main at $10K): after too cheap, tune 29 / 45, median -$2,917 / -$3,286, 1 / 3 winners; check
+  30 / 53, median -$2,949 / -$3,433; the contract went $0.15-0.16 -> $0.21 after a median 12-25 minutes. After thin, tune
+  297 / 335, median -$2,576 / -$2,480, non-giant -$573K / -$652K; the sum is MU +$259K, ARM +$171K, COIN +$167-182K,
+  IONQ +$182K (volume 43-47 -> ~293 after a median 11-12 minutes).
+Verdict: not better. A too-cheap pick that later costs over $0.20 is still a losing trade (median ~-$3K, almost no
+winners); the thin retry repeats thin_retry.py's result on the fixed walk (a few giants on tune, the usual -$2.5K median).
+One signal a stock a day stays; no candidate.
