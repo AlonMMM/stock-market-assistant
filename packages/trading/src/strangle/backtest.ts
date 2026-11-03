@@ -18,7 +18,9 @@ import {
   burstAgrees,
   burstAtSecond,
   burstOf,
+  againstWords,
   daysBetween,
+  shockAgainstMove,
   shockRules,
   sideOf,
   type Leg,
@@ -115,7 +117,8 @@ export type VolumeOutcome =
   | "too_cheap"
   | "thin"
   | "wide_spread"
-  | "no_fill";
+  | "no_fill"
+  | "against_move";
 
 /** One trade: the leg bought at the side and sold on the give-back or the end. */
 export interface VolumeTrade {
@@ -548,6 +551,20 @@ export async function runVolumeStock(
       }
       if (!unit) {
         done("no_prices", "fewer than 5 sessions of history");
+        continue;
+      }
+      // No shock against the day's move (Volume 1.2.0), from the 09:30 bar's open.
+      const against = shock
+        ? shockAgainstMove(
+            a.price,
+            bars.find((b) => b.m === 0)?.o,
+            unit,
+            a.up,
+            s,
+          )
+        : null;
+      if (against !== null) {
+        done("against_move", againstWords(against));
         continue;
       }
       if (expiry === undefined)

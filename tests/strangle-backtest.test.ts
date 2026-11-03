@@ -566,3 +566,35 @@ test("backtest handlers: a range in early 2024 is read back from its end, not 40
     body: { error: "At most 60 sessions a request" },
   });
 });
+
+test("volume backtest (2026-11-03, Volume 1.2.0): a shock against the day's move of shockAgainstUnits or more is skipped; with the move, or under the level, it is not", async () => {
+  const today = climbThenFall();
+  const price = today[39]!.c;
+  const shocks = [{ date: DAY, second: 2380, price, up: false }];
+  const { data } = harness({ today, shocks, books });
+  const first = (
+    await run(data, { ...settings, shockAgainstUnits: 0 })
+  ).signals.find((s) => s.kind === "shock")!;
+  assert.notEqual(first.outcome, "against_move", "0 is off");
+  // the move since the 09:30 bar's open, in typical 30-minute moves
+  const move = (price / today[0]!.o - 1) / first.unit!;
+  assert.ok(move > 0.5, `the climb: ${move}`);
+  const at = async (units: number, up = false) => {
+    const d = harness({ today, shocks: [{ ...shocks[0]!, up }], books }).data;
+    const r = await run(d, { ...settings, shockAgainstUnits: units });
+    return r.signals.find((s) => s.kind === "shock")!;
+  };
+  const skipped = await at(Math.floor(move * 2) / 2);
+  assert.equal(skipped.outcome, "against_move");
+  assert.match(skipped.detail, /against the day's move \(\+\d/);
+  assert.notEqual(
+    (await at(Math.ceil(move * 2) / 2 + 0.5)).outcome,
+    "against_move",
+    "under the level",
+  );
+  assert.notEqual(
+    (await at(0.5, true)).outcome,
+    "against_move",
+    "with the move",
+  );
+});

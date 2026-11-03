@@ -32,6 +32,7 @@ import {
   type Windows,
 } from "../../../packages/trading/src/strangle/alert.js";
 import {
+  againstWords,
   bestOf,
   burstAgrees,
   burstAtSecond,
@@ -40,6 +41,7 @@ import {
   giveBackExit,
   legQty,
   minuteCloseExit,
+  shockAgainstMove,
   shockRules,
   sideOf,
   strengthAgrees,
@@ -228,6 +230,7 @@ const outcomeWords: Record<string, string> = {
   premarket: "skipped, pre-market volume 4× normal or more",
   strength: "skipped, the strength disagrees with the side",
   slow_cross: "no side fast enough after the alert",
+  against_move: "skipped, a shock against the day's move",
   burst: "skipped, the burst before the alert is not the side's way",
   wide_spread: "skipped, the leg's spread is over 30% of its mid",
   refused: "refused by the risk rules",
@@ -1139,6 +1142,15 @@ export class StrangleBot {
         outcome: "no_prices",
         detail: "fewer than 5 sessions of history",
       };
+    // No shock against the day's move (Volume 1.2.0), from the 09:30 bar's
+    // open, as the backtest (strangle/backtest.ts).
+    if (fast?.shock) {
+      const open = this.barsOf(symbol).find((b) => b.m === 0)?.o;
+      const up = side === "up";
+      const against = shockAgainstMove(fast.price, open, unit, up, s);
+      if (against !== null)
+        return { outcome: "against_move", detail: againstWords(against) };
+    }
     // An expiry today, or (1DTE, when the setting allows) the next session's
     // when there is none today; none of them ends it now.
     const expiry = await this.expiryFor(symbol, date, s);

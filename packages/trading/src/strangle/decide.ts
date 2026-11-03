@@ -173,6 +173,31 @@ export const shockRules = {
   maxDays: 2,
 };
 
+/**
+ * No shock against the day's move (Volume 1.2.0): the stock's move from the
+ * session's open to the alert price, in typical 30-minute moves (`unit`), when
+ * the alert points the other way and the move is at least shockAgainstUnits;
+ * null when the shock may trade (off, no open, or with the move).
+ */
+export function shockAgainstMove(
+  price: number,
+  open: number | undefined,
+  unit: number,
+  up: boolean,
+  s: Pick<StrangleSettings, "shockAgainstUnits">,
+): number | null {
+  if (!(s.shockAgainstUnits > 0) || open === undefined) return null;
+  if (!(open > 0) || !(unit > 0)) return null;
+  const move = (price / open - 1) / unit;
+  if (Math.abs(move) < s.shockAgainstUnits) return null;
+  if (move > 0 === up) return null;
+  return move;
+}
+
+/** The skip's detail: "against the day's move (+2.4 typical 30-minute moves since the open)". */
+export const againstWords = (move: number) =>
+  `against the day's move (${move > 0 ? "+" : ""}${move.toFixed(1)} typical 30-minute moves since the open)`;
+
 /** Calendar days from `date` to `expiry` (both YYYY-MM-DD). */
 export const daysBetween = (date: string, expiry: string) =>
   Math.round(
