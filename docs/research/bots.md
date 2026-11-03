@@ -115,9 +115,9 @@ the stock list. Research log: `volume-bot.md`. Benchmark page: Volume Bot, https
 |---|---|---|---|---|---|
 | Before (champion 2026-10-30 .. 11-01) | Volume 1.0.0 | 2026-10-30 | the plan alert (15-s cross, burst 1.1, same-week 2.5), the shock alert (5 checks within 300 s), the 0.20 leg with the liquid fallback, give-back on minute closes after 30 min | #193-#204, #224 | leg_seconds.py with the 11-01 alignment (PF_MAX_S=300) |
 | **Champion since 2026-11-02** (live; the live check not run yet) | Volume 1.1.0 | 2026-11-02 | 1.0.0 + a shock only when the stock touches a side line within 20 s (`shockTouchSeconds`) + a too-cheap-and-thin leg takes the liquid strike (`cheapRescue`) | #236, #238 | leg_seconds.py PF_MAX_S=20 STR_LIQ_OLD=1 (the 10-30 dashboard's "Live (PR #204)") |
-| **Candidate** (stage 3 GO 2026-11-03; waiting for the merge and deploy) | Volume 1.2.0 | - | 1.1.0 + no shock against the day's move: a shock alert against the stock's move since the open, once it is 2 S30 or more, is skipped (`shockAgainstUnits` 2) | #249 | `againstmove.ts` (year) / `volume_against_hour_3y.py` (3 years); app parity: the PR's backtest = the research on every alert, $149.4K, 133 trades |
+| **Candidate, live since 2026-11-03** (stage 5 pending; switched on 06:1x Israel, deploy a046979) | Volume 1.2.0 | 2026-11-03 | 1.1.0 + no shock against the day's move: a shock alert against the stock's move since the open, once it is 2 S30 or more, is skipped (`shockAgainstUnits` 2) | #249 | `againstmove.ts` (year) / `volume_against_hour_3y.py` (3 years); app parity: the PR's backtest = the research on every alert, $149.4K, 133 trades |
 
-Owner's limits on 2026-11-02: 51 stocks (top 50 + SLV), 3% a trade, 15 a day, 2 a stock, 5 open, 7.5% day loss, broker
+Owner's limits on 2026-11-03: 50 stocks (top 50 + SLV, USO out 2026-11-03 by the owner), 3% a trade, 15 a day, 2 a stock, 5 open, 7.5% day loss, broker
 safety stop -80% (PR #237). Year 2025-11-03 .. 2026-10-30, the 1.1.0 code, 51 stocks, no stop: $100K -> $142.1K at 2%
 (13% drop), $162.1K at 3%; tune $111.9K, check $125.6K. Next: the live check (`bot-live-check`): one month of the app
 backtest vs the research twin trade by trade, and the E2E run; PASS makes 1.1.0 confirmed as the champion.
