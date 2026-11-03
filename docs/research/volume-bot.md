@@ -9,6 +9,95 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### Exit when the stock goes flat after the buy (2026-11-03, look 1)
+
+The user, on the task-11 lead (AVGO 2026-10-30 put, bled 53 min to -68%): "go with the stock - if it start to be flat we
+can exit." Judge the fade by the stock, not by volume or the option bid.
+
+Built on **Volume 1.2.0** + the broker's -80% stop: the app engine's `v12_*` parts (51 stocks, 2025-11-03 .. 2026-10-30,
+real minute books, saved settings, live limits), re-walked by `exitlab.py` (reproduces all 155 engine trades to the cent).
+Levels set before the run (`run_flat.py` docstring): flat = at the close of buy minute + W, the stock's move from the
+side price the trade's way is < X S30 -> sell at that minute's bid. W 3 / 5 / 10, X 0.25 / 0.5; shock trades only (the
+thesis) and all trades (neighbour); with and without "only if the bid is also <= the price paid": 24 versions, one pick
+per scope on tune. Reference: B5 (post-hoc, group C run: shock, volume < 3x usual for 5 min, sell at +5 min if bid <= paid).
+
+Tune (even ISO entry weeks), 2% (3%):
+
+| Version | Trades | Won | Median | 2% (drop) | 3% (drop) | W/o best 5 | Non-giant (flat $2K) | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|
+| 1.2.0 + -80% stop | 71 | 23 | -31% | $114.6K (10%) | $122.6K (14%) | -$25.1K | -$18.2K | 4 | -$2.7K / +$17.3K |
+| shock W3 X0.25 (= X0.5) | 72 | 20 | -29% | $105.9K (15%) | $106.9K (23%) | -$26.5K | -$17.5K | 3 | -$2.6K / +$8.5K |
+| shock W5 X0.25 | 72 | 19 | -30% | $103.3K (17%) | $104.2K (26%) | -$28.5K | -$19.7K | 3 | -$2.7K / +$6.0K |
+| shock W5 X0.5 | 72 | 21 | -29% | $105.8K (15%) | $107.4K (23%) | -$26.6K | -$17.6K | 3 | -$2.7K / +$8.5K |
+| shock W10 X0.25 | 71 | 21 | -31% | $105.8K (16%) | $106.5K (24%) | -$26.6K | -$17.6K | 3 | -$2.8K / +$8.6K |
+| shock W10 X0.5 | 72 | 21 | -29% | $105.1K (16%) | $105.4K (24%) | -$27.3K | -$18.4K | 3 | -$2.8K / +$7.9K |
+| shock W3 +bid (X 0.25 = 0.5) | 72 | 18 | -30% | $103.5K (16%) | $104.0K (24%) | -$28.3K | -$19.5K | 3 | -$2.6K / +$6.1K |
+| shock W5 X0.25 +bid | 72 | 19 | -30% | $103.3K (17%) | $104.2K (26%) | -$28.5K | -$19.7K | 3 | -$2.7K / +$6.0K |
+| shock W5 X0.5 +bid | 72 | 19 | -30% | $103.6K (17%) | $104.5K (25%) | -$28.2K | -$19.4K | 3 | -$2.7K / +$6.3K |
+| shock W10 X0.25 +bid 🎯 | 71 | 21 | -31% | $105.9K (16%) | $106.5K (24%) | -$26.5K | -$17.5K | 3 | -$2.8K / +$8.7K |
+| shock W10 X0.5 +bid | 72 | 21 | -29% | $105.2K (16%) | $105.5K (24%) | -$27.2K | -$18.3K | 3 | -$2.8K / +$8.0K |
+| all W3 X0.25 | 75 | 16 | -23% | $104.7K (14%) | $105.5K (20%) | -$25.8K | -$19.0K | 3 | -$2.4K / +$7.0K |
+| all W3 X0.5 | 75 | 17 | -21% | $103.1K (14%) | $104.5K (21%) | -$25.8K | -$19.9K | 3 | -$1.9K / +$5.1K |
+| all W5 X0.25 | 74 | 16 | -27% | $101.8K (16%) | $102.3K (23%) | -$28.0K | -$21.5K | 3 | -$2.0K / +$3.8K |
+| all W5 X0.5 🎯 | 74 | 18 | -22% | $107.0K (14%) | $109.2K (20%) | -$24.0K | -$16.9K | 3 | -$2.0K / +$9.0K |
+| all W10 X0.25 | 73 | 18 | -28% | $100.0K (16%) | $99.0K (24%) | -$29.5K | -$23.3K | 3 | -$2.6K / +$2.6K |
+| all W10 X0.5 | 74 | 18 | -27% | $99.9K (16%) | $98.7K (24%) | -$29.5K | -$23.4K | 3 | -$2.6K / +$2.5K |
+| all W3 X0.25 +bid | 75 | 14 | -24% | $102.9K (14%) | $104.3K (20%) | -$27.0K | -$20.0K | 3 | -$2.4K / +$5.3K |
+| all W3 X0.5 +bid | 75 | 13 | -23% | $100.7K (14%) | $100.1K (20%) | -$28.3K | -$22.6K | 3 | -$2.4K / +$3.0K |
+| all W5 X0.25 +bid | 74 | 16 | -27% | $102.7K (15%) | $103.3K (22%) | -$27.1K | -$20.5K | 3 | -$2.0K / +$4.7K |
+| all W5 X0.5 +bid | 74 | 16 | -26% | $105.2K (14%) | $106.3K (21%) | -$25.6K | -$18.3K | 3 | -$2.0K / +$7.2K |
+| all W10 +bid (X 0.25 = 0.5) | 73-74 | 18 | -28/-27% | $100.8K (16%) | $100.7K (23%) | -$28.6K | -$22.3K | 3 | -$2.6K / +$3.4K |
+| B5 (post-hoc reference) | 71 | 22 | -30% | $115.8K (10%) | $124.4K (14%) | -$23.9K | -$17.1K | 4 | -$2.7K / +$18.5K |
+
+Check (odd weeks), the base and the picks:
+
+| Version | Trades | Won | Median | 2% (drop) | 3% (drop) | W/o best 5 | Non-giant | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|
+| 1.2.0 + -80% stop | 62 | 24 | -17% | $127.8K (8%) | $141.7K (13%) | -$20.4K | -$11.7K | 3 | -$3.7K / +$31.5K |
+| shock W10 X0.25 +bid 🎯 | 62 | 20 | -17% | $124.2K (8%) | $136.5K (13%) | -$23.5K | -$14.5K | 3 | -$3.0K / +$27.3K |
+| all W5 X0.5 🎯 | 62 | 20 | -19% | $129.5K (7%) | $143.6K (10%) | -$14.3K | -$3.7K | 2 | -$3.3K / +$32.8K |
+| B5 (post-hoc) | 62 | 24 | -10% | $129.8K (8%) | $145.1K (12%) | -$18.6K | -$10.2K | 3 | -$3.7K / +$33.4K |
+
+Year (one account): base $146.9K (13%) / 3% $174.3K (19%); shock pick $131.8K (20%) / $146.6K (28%); all pick $136.7K
+(13%) / $155.7K (19%); B5 $151.3K (13%) / $180.4K (19%).
+
+- **Every one of the 24 versions loses tune** (-$7.6K to -$14.7K at 2%) with a bigger drop. The flat exit wins most of the
+  trades it touches (the picks: 13 of 19 and 37 of 54 better on tune) but it sells the giants that start slowly:
+  **META 2026-05-27 shock +496% -> -68% / -75%** (tune), SLV 2026-08-28 plan +414% -> -31% (check, the all-trades pick).
+  Shock pick, tune: flat -$9.2K of which META -$11.3K; check -$2.7K with no giant touched (it loses on ordinary trades
+  too). All-trades pick, check: +$1.7K at 2% and a lower drop, but flat -$0.3K: the account gain is ordering, not edge.
+- "+bid <= paid" (the neighbour) does not protect the giants: META 05-27's bid was under the price paid at +10 min.
+- Task 11's AVGO 2026-10-30 put is helped by both picks (-69% -> -27% all W5; -> -44% shock W10), but META 05-27 looked
+  the same at the check (the stock 0.7 S30 against at +5 min, the option at -70%) and went to +496% later: the rule
+  cannot tell them apart.
+
+**3 years (the picks, `flat3y.py`).** No new simulator run: the 3-year research twin of **Volume 1.1.0** ("Live (PR #204)"
+on the 10-30 dashboard, top 50, live limits, 2024-02-07 .. 2026-10-16, 431 trades; `volume_trades.csv`), each trade's
+exit re-walked on the real minute books already in dbx_cache (no purchase). Differences from 1.2.0: no "against the
+day's move" skip (13 more shock trades), the twin's own alerts and list; the export has no contract or side price, so the
+contract is the strike whose real minute bid at the exit is the export's sale (431 of 431 resolved, ties by the book at
+the buy), the side price is the buy minute's close (on the year this proxy moves the picks by <= $0.7K), S30 = levels.ctx;
+base = the twin + the -80% stop on the minute books; the account is re-walked from the export's dollars (freed slots not
+refilled). 2% (3%):
+
+| Version | Trades | Won | Median | 2% (drop) | 3% (drop) | Tune / check P&L | W/o best 5 | Non-giant | Giants | 2024 / 2025 / 2026 | 2025-10-10 | W/o 10-10 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| twin + -80% stop | 431 | 166 | -24% | $713.5K (23.6%) | $1,371.9K (33.7%) | +$61.5K / +$552.0K | +$175.8K | -$27.7K | 28 | +$15.5K / +$374.8K / +$223.1K | +$295.7K | +$317.7K |
+| shock W10 X0.25 +bid | 431 | 148 | -27% | $514.8K (29.4%) | $852.7K (41.1%) | +$1.9K / +$412.9K | +$73.0K | -$48.3K | 26 | +$2.1K / +$303.9K / +$108.8K | +$237.2K | +$177.7K |
+| all W5 X0.5 | 431 | 130 | -21% | $399.0K (27.8%) | $606.5K (39.0%) | +$17.9K / +$281.1K | +$42.7K | -$48.4K | 21 | -$7.8K / +$257.5K / +$49.3K | +$191.9K | +$107.1K |
+
+- Shock pick: 89 trades cut (48 tune / 41 check), 47 better, flat -$15.3K / -$21.6K; giants cut META 2026-05-27, IWM
+  2025-07-30 (+317% -> -28%). All pick: 240 cut, 153 better, flat -$13.2K / -$65.4K, median +11 / +7 pts; giants cut 7
+  (META 05-27, COIN 2025-06-18, IWM 2025-07-30, HOOD and IREN on 2025-10-10, QCOM 2026-05-07 +689% -> -26%, SLV 08-28).
+- **2025-10-10**: the base makes +$295.7K that day at 2%; the picks +$237.2K / +$191.9K (HOOD and IREN, both +316-317%,
+  were flat at +5 min). Without that day the picks still lose: +$177.7K / +$107.1K vs +$317.7K.
+- The median trade improves with the all-trades rule (it saves many small losers), but the giants start flat as often as
+  the losers do; the non-giant sum gets worse (-$48K vs -$28K) because the cut giants land in it.
+
+**Verdict: not a candidate.** Worse on tune on the year (all 24 versions), worse on tune and check on 3 years, bigger
+drop, giants cut on both halves. B5 (volume) stays a post-hoc lead only. No data bought ($0). Scripts (scratch testC):
+`exitlab.py` (the `flat` rule), `run_flat.py`, `flat3y.py`; outputs `out/flat.txt`, `out/flat3y.txt`.
+
 ### The analyst trade review (11 single trades): three tests, no candidate (2026-11-03)
 
 The user reviewed 11 single trades from screenshots on the Trade Reviews board (https://claude.ai/artifact/NNUk163ipCjYuzounGtQyT) and asked to test them all: "go over all of them and search for candidate. buy data up to 2$". Three groups ran in parallel on Volume 1.2.0 (the live code's year, real books): A entries near support / resistance, B buying the spike itself, C exits. None is a candidate. One lead to re-check on 3 years: C's B5 (a faded shock: under 3x usual for 5 min, sell at +5 min if the bid is at or under the price paid; 6 trades, level picked after seeing the counts). Data bought: about $0.002 (test B), A and C none.

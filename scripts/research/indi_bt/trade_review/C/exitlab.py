@@ -181,6 +181,16 @@ def walk(sig, v, info=None):
             if is_faded and fade == 'cut' and tm == max(sig['minute'] + 5, b0 + 1):
                 q = book_at(rows, tm)
                 if q and q[1] <= buy: return done(tm, q[1], 'fadecut')
+        # FLAT (follow-up 2026-11-03): W minutes after the buy, the stock has not moved X S30 the trade's way
+        fl = v.get('flat')       # (W, X, scope, needBid)
+        if fl and tm == ct + fl[0] and (fl[2] == 'all' or sig['kind'] == 'shock') and spot:
+            ref = s_in
+            if v.get('flat_ref') == 'close_ct' and ct in sb: ref = sb[ct][4]   # the 3-year proxy: the buy minute's close
+            mv = ((spot / ref - 1) if side == 'C' else (1 - spot / ref)) / unit
+            if info is not None: info['flat_mv'] = mv
+            if mv < fl[1]:
+                q = book_at(rows, tm)
+                if q and (not fl[3] or q[1] <= buy): return done(tm, q[1], 'flat')
         # the broker's -80% stop: a minute book at this minute with the bid at or under 20% of the buy
         q = rowm.get(tm)
         if stop_px is not None and q and q[1] <= stop_px:
