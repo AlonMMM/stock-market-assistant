@@ -41,6 +41,7 @@ import {
   crossTooLate,
   minuteCloseExit,
   secondsSinceAlert,
+  shockAgainstMove,
 } from "../packages/trading/src/strangle/decide.js";
 import {
   defaultStrangleSettings,
@@ -1338,4 +1339,36 @@ test("shock (2026-11-03, Volume 1.2.0): a shock against the day's move of 2 typi
   );
   await off.run(565, 609);
   assert.equal((await shockAt(off, up3, "down")).outcome, "watching");
+});
+
+test("shockAgainstMove (Volume 1.2.0): the >= boundary, both directions, and no open or unit is off", () => {
+  const on = { shockAgainstUnits: 2 };
+  const unit = 0.01;
+  // exactly 2 typical moves up from the open, a down shock: skipped
+  assert.ok(Math.abs(shockAgainstMove(102, 100, unit, false, on)! - 2) < 1e-9);
+  assert.equal(
+    shockAgainstMove(101.99, 100, unit, false, on),
+    null,
+    "1.99: under the level",
+  );
+  // a down day, an up shock: skipped; a down shock: with the move
+  assert.ok(shockAgainstMove(97, 100, unit, true, on)! < -2.9);
+  assert.equal(shockAgainstMove(97, 100, unit, false, on), null);
+  assert.equal(
+    shockAgainstMove(102, 100, unit, true, on),
+    null,
+    "with the move",
+  );
+  assert.equal(
+    shockAgainstMove(103, undefined, unit, false, on),
+    null,
+    "no open",
+  );
+  assert.equal(shockAgainstMove(103, 0, unit, false, on), null);
+  assert.equal(shockAgainstMove(103, 100, 0, false, on), null, "no unit");
+  assert.equal(
+    shockAgainstMove(103, 100, unit, false, { shockAgainstUnits: 0 }),
+    null,
+    "off",
+  );
 });

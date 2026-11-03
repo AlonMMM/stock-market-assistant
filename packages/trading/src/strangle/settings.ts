@@ -338,15 +338,17 @@ export function strangleWithDefaults(
   const own = isObject(saved) ? saved : {};
   // A rule saved before it existed takes its saved version's value (a 1.1.0
   // save has no shockAgainstUnits: 0, its rule), not today's default. A save
-  // from before versions ran 1.1.0's rules.
-  let savedId = preVersionsId;
-  if (typeof own.version === "string") savedId = own.version;
-  const version = isObject(saved) ? volumeVersionById(savedId) : undefined;
+  // from before versions ran 1.1.0's rules; so does a version this code does
+  // not know (a new rule stays off rather than switching on unasked). Nothing
+  // saved: the defaults.
   const missing: Partial<StrangleSettings> = {};
-  if (version) {
-    missing.version = version.id;
+  if (Object.keys(own).length) {
+    let version = volumeVersionById(preVersionsId)!;
+    if (typeof own.version === "string")
+      version = volumeVersionById(own.version) ?? version;
     for (const k of volumeRuleKeys)
       if (!(k in own)) Object.assign(missing, { [k]: version.rules[k] });
+    if (!("version" in own)) missing.version = version.id;
   }
   const merged = { ...base, ...missing, ...own };
   const checked = parseStrangleSettings(merged);
