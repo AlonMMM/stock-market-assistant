@@ -31,6 +31,7 @@ import {
 import { BotMap, useMapPick, type MapPoint } from "./BotMap.js";
 import { byCorner, cornerGap } from "./bot-map-model.js";
 import { EntryBanners, InTradeSign, type HeldTrade } from "./BotEntries.js";
+import { BotCompare } from "./BotCompare.js";
 import { usePolling } from "./Live.js";
 import { israelClock, israelLabel, israelShortDate } from "./time.js";
 
@@ -1235,6 +1236,7 @@ export function BotPanel({
           <Holdings open={open} day={value.day} now={now} />
           <Signals v={value} />
         </div>
+        <BotCompare compare={value.compare} />
         <Activity items={value.activity} />
         <Closed closed={closed} />
         <Rules v={value} />

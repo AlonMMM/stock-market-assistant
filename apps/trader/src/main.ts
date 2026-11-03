@@ -12,7 +12,10 @@ import {
   withDefaults,
 } from "../../../packages/trading/src/account-risk.js";
 import { timingSafeEqual } from "node:crypto";
-import { newYork } from "../../../packages/market-data/src/calendar.js";
+import {
+  newYork,
+  newYorkToUtc,
+} from "../../../packages/market-data/src/calendar.js";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Fastify, { type FastifyRequest } from "fastify";
@@ -393,6 +396,20 @@ const bot = (() => {
         buy: (b, o) => t.service.buy(b, o),
         sell: (b) => t.service.sell(b),
         job: (id) => t.service.job(id),
+        // IBKR counts the 30 minutes on its own bars (the owner, 2026-11-03:
+        // IBKR reads by its own); Alpaca keeps the market's, as the backtest.
+        ...(broker === "ibkr" && t.broker.optionVolume30
+          ? {
+              volume30: async (c: string, date: string, minute: number) => {
+                const end = Math.min(
+                  Date.now(),
+                  newYorkToUtc(date, 570 + minute + 1),
+                );
+                const got = await t.broker.optionVolume30!([c], end);
+                return got.get(c) ?? 0;
+              },
+            }
+          : {}),
       };
     },
     store: botStore,
@@ -414,6 +431,17 @@ api.get("/v1/bot", async () => {
   if (!bot) throw new RequestError(botOff, 409);
   return bot.status();
 });
+// Alpaca against IBKR as two bots, over the last `sessions` sessions (1-60).
+api.get<{ Querystring: { sessions?: string } }>(
+  "/v1/bot/compare",
+  async (request) => {
+    if (!bot) throw new RequestError(botOff, 409);
+    const n = Number(request.query.sessions ?? 20);
+    if (!Number.isInteger(n) || n < 1 || n > 60)
+      throw new RequestError("sessions must be 1 to 60");
+    return bot.compare(n);
+  },
+);
 // The site sends the user's favorites list before each session.
 // The strangle bot follows the same favorites list (docs/tasks/backend-strangle-bot.md).
 api.post("/v1/bot/watchlist", async (request) => {

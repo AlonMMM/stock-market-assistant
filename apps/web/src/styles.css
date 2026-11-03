@@ -6987,6 +6987,16 @@ dialog.trade-story .why-head h2 {
   border-radius: 12px;
   background: var(--bot-card);
 }
+/* Alpaca vs IBKR on the Main bot page: the signals table's look. */
+.bot-compare .up {
+  color: var(--green-53);
+}
+.bot-compare .down {
+  color: var(--red-51);
+}
+.bot-compare-sub {
+  margin: 12px 0 4px;
+}
 .bot-card-head {
   display: flex;
   flex-wrap: wrap;

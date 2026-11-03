@@ -23,6 +23,24 @@ export function bookOf(
   return { bid: quote.bid, ask: quote.ask, at, broker };
 }
 
+/** A book's mid and its spread as a share of the mid, in % (null without a mid). */
+export function midAndSpread(book: { bid: number; ask: number }): {
+  mid: number;
+  spreadPct: number | null;
+} {
+  const mid = (book.bid + book.ask) / 2;
+  if (!(mid > 0)) return { mid, spreadPct: null };
+  return {
+    mid,
+    spreadPct: Math.round(((book.ask - book.bid) / mid) * 1000) / 10,
+  };
+}
+
+/** The bid / ask / time / broker of a book that carries more. */
+export function plainBook(book: OptionBook): OptionBook {
+  return { bid: book.bid, ask: book.ask, at: book.at, broker: book.broker };
+}
+
 /**
  * The book at a buy's last raise, from its job's result (the engine's
  * BuyDone: `result.quote`, read just before the last raise or the fill). The

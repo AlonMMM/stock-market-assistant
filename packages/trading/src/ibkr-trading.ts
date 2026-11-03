@@ -83,7 +83,14 @@ export interface TwsClient {
     symbol: string,
     conId: number,
   ): Promise<{ expirations: string[]; strikes: number[] }>;
+  /** The contract's bid / ask (and an option's model delta) now, real time only. */
   snapshot(contract: IbContract): Promise<IbSnapshot>;
+  /** Contracts traded in each 1-minute bar of the `minutes` up to `end` (ms). */
+  minuteVolumes?(
+    contract: IbContract,
+    end: number,
+    minutes: number,
+  ): Promise<number[]>;
   /** Sends an order; with `id`, changes that order in place. Returns its id. */
   placeOrder(
     contract: IbContract,
@@ -102,8 +109,17 @@ export interface IbkrOptions {
   now?: () => number;
   // Daily closing equity, kept by the service; TWS has no such history.
   history?: () => Promise<{ date: string; equity: number }[]>;
-  // Option snapshots asked at once while building a chain.
+  // Option quotes streamed at once while building a chain (IBKR's market-data
+  // lines: 100 by default for the account).
   concurrency?: number;
+  // The chain's strikes: out of the money within this share of the stock
+  // price (and 2% in the money), the nearest `chainStrikes`, of the nearest
+  // `chainExpiries` expiries in the window. The defaults cover what the bot's
+  // picker reads (bot/picker.ts: the nearest expiry, the 16 nearest strikes
+  // within 20%).
+  chainReach?: number;
+  chainStrikes?: number;
+  chainExpiries?: number;
 }
 
 const usd = { exchange: "SMART", currency: "USD" };
@@ -193,15 +209,30 @@ async function inBatches<T, R>(
   return out;
 }
 
-// Strikes asked for a chain, as a share of the stock price on the side the
-// trade flow buys (out of the money): delta 0.10–0.15 sits well inside it.
-const chainReach = 0.3;
-const chainStrikes = 30;
+// The chain's defaults (IbkrOptions): the picker's 16 strikes and a few more,
+// since a strike the expirations list has may not be listed for that expiry.
+const chainReach = 0.2;
+const chainStrikes = 18;
+const chainExpiries = 1;
+const chainLines = 40;
+
+/** A value kept for one New York day. */
+interface Daily<T> {
+  day: string;
+  value: Promise<T>;
+}
 
 export class IbkrTrading implements Broker {
   readonly name = "ibkr";
   private readonly conIds = new Map<string, number>();
   private readonly now: () => number;
+  // Expiries and strikes per underlying, and each expiry's listed contracts
+  // per underlying, expiry and right, read once a day.
+  private readonly params = new Map<
+    string,
+    Daily<{ expirations: string[]; strikes: number[] }>
+  >();
+  private readonly listed = new Map<string, Daily<IbContract[]>>();
 
   constructor(
     private readonly client: TwsClient,
@@ -258,6 +289,60 @@ export class IbkrTrading implements Broker {
     return this.options.history ? this.options.history() : [];
   }
 
+  /** `read` once per New York day per key; a failed read is tried again. */
+  private daily<T>(
+    cache: Map<string, Daily<T>>,
+    key: string,
+    read: () => Promise<T>,
+  ): Promise<T> {
+    const day = newYork(this.now()).date;
+    const kept = cache.get(key);
+    if (kept && kept.day === day) return kept.value;
+    const value = read();
+    cache.set(key, { day, value });
+    value.catch(() => {
+      if (cache.get(key)?.value === value) cache.delete(key);
+    });
+    return value;
+  }
+
+  /** The contracts listed for one expiry and right, each with its conId, looked up in one request. */
+  private async listedOn(
+    underlying: string,
+    expiry: string, // YYYYMMDD
+    right: "C" | "P",
+  ): Promise<IbContract[]> {
+    const found = await this.daily(
+      this.listed,
+      `${underlying}|${expiry}|${right}`,
+      () =>
+        this.client.contracts({
+          symbol: underlying,
+          secType: "OPT",
+          lastTradeDateOrContractMonth: expiry,
+          right,
+          multiplier: "100",
+          ...usd,
+        }),
+    );
+    const out = new Map<string, IbContract>();
+    for (const c of found) {
+      if (c.strike === undefined || !c.conId) continue;
+      const key = occSymbol({ ...c, lastTradeDateOrContractMonth: expiry });
+      this.conIds.set(key, c.conId);
+      out.set(key, { ...optionContract(key), conId: c.conId });
+    }
+    return [...out.values()];
+  }
+
+  /**
+   * Quotes and deltas for one side of the chain: the nearest expiries in
+   * [from, to] that list contracts, and per expiry the strikes nearest the
+   * stock price on the side bought (out of the money), streamed all at once.
+   * The expiries and each expiry's listed contracts are read once a day, so
+   * a chain after the first is one stock quote and the option quotes, in
+   * about a second.
+   */
   async chain(
     underlying: string,
     right: Right,
@@ -265,45 +350,97 @@ export class IbkrTrading implements Broker {
     to: string,
   ): Promise<OptionQuote[]> {
     const stock = await this.resolve(stockContract(underlying));
-    const tick = await this.client.snapshot(stock);
+    const [tick, params] = await Promise.all([
+      this.client.snapshot(stock),
+      this.daily(this.params, underlying, () =>
+        this.client.optionParams(underlying, stock.conId!),
+      ),
+    ]);
     const spot =
       positive(tick.last) ??
       (positive(tick.bid) && positive(tick.ask)
         ? (tick.bid! + tick.ask!) / 2
         : null);
     if (spot === null) throw new Error(`No price for ${underlying}`);
-    const params = await this.client.optionParams(underlying, stock.conId!);
+    const reach = this.options.chainReach ?? chainReach;
+    const count = this.options.chainStrikes ?? chainStrikes;
+    const side = right === "call" ? "C" : "P";
+    const onSide = (s: number) =>
+      right === "call"
+        ? s >= spot * 0.98 && s <= spot * (1 + reach)
+        : s <= spot * 1.02 && s >= spot * (1 - reach);
+    const nearest = (a: number, b: number) =>
+      Math.abs(a - spot) - Math.abs(b - spot);
     const expiries = params.expirations
       .map(ymd)
       .filter((d) => d >= from && d <= to)
       .sort();
-    const strikes = params.strikes
-      .filter((s) =>
-        right === "call"
-          ? s >= spot * 0.98 && s <= spot * (1 + chainReach)
-          : s <= spot * 1.02 && s >= spot * (1 - chainReach),
-      )
-      .sort((a, b) => Math.abs(a - spot) - Math.abs(b - spot))
-      .slice(0, chainStrikes);
-    const wanted = expiries.flatMap((expiry) =>
-      strikes.map((strike) =>
-        optionContract(
-          occSymbol({
-            symbol: underlying,
-            secType: "OPT",
-            lastTradeDateOrContractMonth: expiry.replaceAll("-", ""),
-            strike,
-            right: right === "call" ? "C" : "P",
-            ...usd,
-          }),
-        ),
-      ),
-    );
-    // A strike listed for some expiries only is missing from the others.
-    const quotes = await inBatches(wanted, this.options.concurrency ?? 8, (c) =>
-      this.optionQuote(c).catch(() => null),
+    const wanted: IbContract[] = [];
+    let used = 0;
+    for (const expiry of expiries) {
+      if (used >= (this.options.chainExpiries ?? chainExpiries)) break;
+      const listed = await this.listedOn(
+        underlying,
+        expiry.replaceAll("-", ""),
+        side,
+      ).catch(() => []);
+      let picked = listed
+        .filter((c) => onSide(c.strike!))
+        .sort((a, b) => nearest(a.strike!, b.strike!))
+        .slice(0, count);
+      // Without a listing, the expirations' strikes (some may not exist for
+      // this expiry; their quotes fail and are left out).
+      if (listed.length === 0)
+        picked = params.strikes
+          .filter(onSide)
+          .sort(nearest)
+          .slice(0, count)
+          .map((strike) =>
+            optionContract(
+              occSymbol({
+                symbol: underlying,
+                secType: "OPT",
+                lastTradeDateOrContractMonth: expiry.replaceAll("-", ""),
+                strike,
+                right: side,
+                ...usd,
+              }),
+            ),
+          );
+      if (picked.length === 0) continue;
+      wanted.push(...picked);
+      used++;
+    }
+    const quotes = await inBatches(
+      wanted,
+      this.options.concurrency ?? chainLines,
+      (c) => this.optionQuote(c).catch(() => null),
     );
     return quotes.filter((q): q is OptionQuote => q !== null);
+  }
+
+  /**
+   * Contracts traded per option over the 30 minutes up to `end` (ms), from
+   * IBKR's own 1-minute TRADES bars: one historical request per contract
+   * (IBKR paces them: about 60 in 10 minutes), so ask only the contracts
+   * that need it.
+   */
+  async optionVolume30(
+    symbols: string[],
+    end: number,
+  ): Promise<Map<string, number>> {
+    const bars = this.client.minuteVolumes?.bind(this.client);
+    if (!bars) throw new Error("This IBKR client has no historical bars");
+    const out = new Map<string, number>();
+    for (const symbol of symbols) {
+      const contract = await this.resolve(optionContract(symbol));
+      const volumes = await bars(contract, end, 30);
+      out.set(
+        symbol,
+        volumes.reduce((sum, v) => sum + v, 0),
+      );
+    }
+    return out;
   }
 
   private async optionQuote(contract: IbContract): Promise<OptionQuote> {

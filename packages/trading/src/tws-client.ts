@@ -1,4 +1,5 @@
 import {
+  BarSizeSetting,
   EventName,
   IBApi,
   OptionType,
@@ -30,6 +31,9 @@ export interface TwsOptions {
   clientId: number;
   log?: (line: string) => void;
   timeoutMs?: number;
+  // How long a quote waits for its bid, ask (and an option's model delta)
+  // before it answers with what came.
+  quoteMs?: number;
 }
 
 // TWS tick types (TickType in the TWS API).
@@ -37,6 +41,15 @@ const tick = { bid: 1, ask: 2, last: 4, modelOption: 13 } as const;
 // TWS error codes that only report, such as market-data farm messages.
 const informational = new Set([2104, 2106, 2107, 2108, 2158, 2119, 10167]);
 const noContract = 200;
+// "Historical Market Data Service error message": no data in the window (or
+// a pacing violation, told apart by its words).
+const noHistory = 162;
+
+/** A time as TWS's UTC form for historical requests: 20261103-14:30:00. */
+function twsUtc(ms: number): string {
+  const iso = new Date(ms).toISOString();
+  return `${iso.slice(0, 10).replaceAll("-", "")}-${iso.slice(11, 19)}`;
+}
 
 const ibSymbol = (s: string) => s.replace(".", " ");
 const ourSymbol = (s: string) => s.replace(" ", ".");
@@ -85,6 +98,7 @@ export class StoqeyTws implements TwsClient {
   private readonly ib: IBApi;
   private readonly log: (line: string) => void;
   private readonly timeoutMs: number;
+  private readonly quoteMs: number;
   private ready: Promise<void> | null = null;
   private nextOrderId = 0;
   private nextReqId = 1000;
@@ -96,6 +110,7 @@ export class StoqeyTws implements TwsClient {
   constructor(private readonly options: TwsOptions) {
     this.log = options.log ?? (() => {});
     this.timeoutMs = options.timeoutMs ?? 15_000;
+    this.quoteMs = options.quoteMs ?? 3_000;
     this.ib = new IBApi({
       host: options.host,
       port: options.port,
@@ -292,6 +307,14 @@ export class StoqeyTws implements TwsClient {
     );
   }
 
+  /**
+   * The contract's bid, ask and last (an option's model delta and IV too)
+   * from a short real-time stream: it answers as soon as the bid and ask (and
+   * an option's delta) have come, at most `quoteMs` later with what came, and
+   * the stream is then cancelled. A TWS snapshot (snapshot=true) waits up to
+   * about 11 seconds for its end, which made an IBKR chain take 9-22 seconds
+   * (2026-11-02); a stream's first ticks come in well under a second.
+   */
   snapshot(contract: IbContract): Promise<IbSnapshot> {
     const snap: IbSnapshot = {
       bid: null,
@@ -300,15 +323,26 @@ export class StoqeyTws implements TwsClient {
       delta: null,
       at: null,
     };
+    const option = contract.secType === "OPT";
+    // A side with no market arrives as -1 or 0: known, but no price.
+    const seen = new Set<number>();
+    const complete = () =>
+      seen.has(tick.bid) &&
+      seen.has(tick.ask) &&
+      (!option || snap.delta !== null);
     return this.request<IbSnapshot>(
-      (reqId) => this.ib.reqMktData(reqId, toIb(contract), "", true, false),
+      (reqId) => this.ib.reqMktData(reqId, toIb(contract), "", false, false),
       (reqId, finish) => {
+        const enough = setTimeout(() => finish(snap), this.quoteMs);
         const onPrice = (id: number, field: number, value: number) => {
-          if (id !== reqId || !(value > 0)) return;
+          if (id !== reqId) return;
+          seen.add(field);
+          if (!(value > 0)) return;
           if (field === tick.bid) snap.bid = value;
           else if (field === tick.ask) snap.ask = value;
           else if (field === tick.last) snap.last = value;
           snap.at = Date.now();
+          if (complete()) finish(snap);
         };
         const onGreeks = (
           id: number,
@@ -322,18 +356,66 @@ export class StoqeyTws implements TwsClient {
             snap.delta = delta;
           // TWS sends a huge sentinel when it has no value.
           if (typeof iv === "number" && iv > 0 && iv < 100) snap.iv = iv;
+          if (complete()) finish(snap);
         };
-        const onEnd = (id: number) => id === reqId && finish(snap);
         this.ib.on(EventName.tickPrice, onPrice);
         this.ib.on(EventName.tickOptionComputation, onGreeks);
-        this.ib.on(EventName.tickSnapshotEnd, onEnd);
         return () => {
+          clearTimeout(enough);
           this.ib.off(EventName.tickPrice, onPrice);
           this.ib.off(EventName.tickOptionComputation, onGreeks);
-          this.ib.off(EventName.tickSnapshotEnd, onEnd);
         };
       },
+      (reqId) => this.ib.cancelMktData(reqId),
     );
+  }
+
+  /** Contracts traded in each 1-minute bar (TRADES) of the `minutes` up to `end` (ms). */
+  minuteVolumes(
+    contract: IbContract,
+    end: number,
+    minutes: number,
+  ): Promise<number[]> {
+    const volumes: number[] = [];
+    type WhatToShow = Parameters<IBApi["reqHistoricalData"]>[5];
+    return this.request<number[]>(
+      (reqId) =>
+        this.ib.reqHistoricalData(
+          reqId,
+          toIb(contract),
+          twsUtc(end),
+          `${minutes * 60} S`,
+          BarSizeSetting.MINUTES_ONE,
+          "TRADES" as WhatToShow,
+          1,
+          2,
+          false,
+        ),
+      (reqId, finish) => {
+        const onBar = (
+          id: number,
+          time: string,
+          _open: number,
+          _high: number,
+          _low: number,
+          _close: number,
+          volume: number,
+        ) => {
+          if (id !== reqId) return;
+          // The last row is the end marker ("finished-...").
+          if (time.startsWith("finished")) return finish(volumes);
+          volumes.push(volume > 0 ? volume : 0);
+        };
+        this.ib.on(EventName.historicalData, onBar);
+        return () => this.ib.off(EventName.historicalData, onBar);
+      },
+    ).catch((error: { code?: number; message?: string }) => {
+      // No trade in the window: nothing traded. The same code also reports a
+      // pacing violation, which stays an error.
+      if (error.code === noHistory && /no data/i.test(error.message ?? ""))
+        return [];
+      throw error;
+    });
   }
 
   async placeOrder(
