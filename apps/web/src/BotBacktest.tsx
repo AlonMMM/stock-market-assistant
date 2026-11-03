@@ -278,26 +278,31 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
     }
   }
   // The Volume bot's settings start from the live bot's (the user,
-  // 2026-10-31): read once, and again with "Same as paper".
-  async function loadVolumePaper(next: Setup = setup) {
+  // 2026-10-31): read each time the Volume bot is picked or the page opens
+  // on it unchanged, and again with "Same as paper".
+  async function loadVolumePaper(next: Setup = setup, keepStocks = false) {
     setPaper({ state: "loading" });
     try {
-      const [saved, body] = await Promise.all([
-        fetch("/api/strangle/settings", {
-          signal: AbortSignal.timeout(15000),
-        }).then((r) => readJson<StrangleSettings>(r)),
-        fetch("/api/watchlists").then((r) =>
-          readJson<{ lists: Watchlist[] }>(r),
-        ),
-      ]);
+      const saved = await fetch("/api/strangle/settings", {
+        signal: AbortSignal.timeout(15000),
+      }).then((r) => readJson<StrangleSettings>(r));
       const live = strangleWithDefaults(saved);
-      const favorites =
-        body.lists.find((l) => /favou?rite/i.test(l.name))?.tickers ?? [];
+      // The Favorites count only when the live bot follows them.
+      let favorites: string[] = [];
+      if (live.followFavorites)
+        favorites = await fetch("/api/watchlists", {
+          signal: AbortSignal.timeout(15000),
+        })
+          .then((r) => readJson<{ lists: Watchlist[] }>(r))
+          .then(
+            (body) =>
+              body.lists.find((l) => /favou?rite/i.test(l.name))?.tickers ?? [],
+          );
       const tickers = strangleStocks(live, favorites).slice(0, maxStocks);
       setSetup({
         ...next,
         bot: "volume",
-        ...(tickers.length ? { tickers } : {}),
+        ...(tickers.length && !keepStocks ? { tickers } : {}),
         volume: { ...next.volume, settings: live, base: live },
       });
       setPaper({
@@ -305,11 +310,8 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
         text: `Loaded the Volume bot as it is now: delta ${live.delta}, ${live.sizePct}% a trade, ${live.shockAlert ? "plan + shock alerts" : "plan alerts"}, ${tickers.length} stocks.`,
       });
     } catch (e) {
-      setSetup({
-        ...next,
-        bot: "volume",
-        tickers: volumeList.symbols.slice(0, maxStocks),
-      });
+      const fallback = { tickers: volumeList.symbols.slice(0, maxStocks) };
+      setSetup({ ...next, bot: "volume", ...(keepStocks ? {} : fallback) });
       setPaper({
         state: "failed",
         text: `The Volume bot's settings could not be read (${e instanceof Error ? e.message : "failed"}); its defaults are used.`,
@@ -319,9 +321,19 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
   function pickBot(bot: BotId) {
     const next = { ...setup, bot };
     setPaper({ state: "idle" });
-    if (bot === "volume" && !setup.volume.base) void loadVolumePaper(next);
+    if (bot === "volume") void loadVolumePaper(next);
     else setSetup(next);
   }
+  // Opened on the Volume bot as it was left: the live bot may have changed
+  // since (its version, its stocks). Unless the rules were changed here,
+  // start again from the live bot; stocks picked here stay.
+  useEffect(() => {
+    const v = setup.volume;
+    if (setup.bot !== "volume") return;
+    if (v.base && JSON.stringify(v.base) !== JSON.stringify(v.settings)) return;
+    const liveStocks = v.base ? strangleStocks(v.base, []).join() : "";
+    void loadVolumePaper(setup, setup.tickers.join() !== liveStocks);
+  }, []);
   const isVolume = setup.bot === "volume";
 
   // The runs live outside the page: they go on, and stay, across sections.
@@ -337,7 +349,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/watchlists")
+    fetch("/api/watchlists", { signal: AbortSignal.timeout(15000) })
       .then((r) => readJson<{ lists: Watchlist[] }>(r))
       .then((body) => {
         if (active)
