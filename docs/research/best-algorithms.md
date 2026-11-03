@@ -2844,3 +2844,21 @@ RVT, RVD2, RVT50 (RVT + 50 contracts). Look 1 on the fixed walk.
 Verdict: not better. A strong stock signal does not make a thin contract work; the D2 gain is the same names that
 made the old "D2 under 200" look big (ARM, COIN, SMCI) and it does not repeat on the odd weeks. The 200 floor stays;
 no candidate.
+
+### The round strike one up or one down instead of a thin skip, on 2.10 (2026-11-03, not better: the pick fails the check)
+The user: "Did we test fallback to the closest round? For example instead of 134 -> go to 135, instead of 247.5 go to
+250" and "I dont want the nearest busy. Only one up and one down". Closest prior: thin_strike.py C150 (2026-11-02: any
+round strike with delta 0.10-0.35 and 150 contracts, check -33% / -51%) and B (the next listed strike). round_neighbor.py
+(thin_strike.py's walk): a thin 0.15 pick -> only the nearest round strike below and above it ($1 under $25, $5 to
+$200, $10 above; a round pick looks one round step each way), the one with the floor's contracts nearer 0.15 delta, no
+delta cap. N200 (200 for the neighbour), N150 (150 for the pick and the neighbour). Look 1.
+- Baseline 2.10 to the dollar (tune / check, 2%): fair $620,535 / $957,771, Favorites $449,178 / $226,846.
+- Tune, 2%, vs 2.10 (fair / Favorites): N200 -16% / -5% (30% / 26% drop); N150 +2% / -2% (31% / 30%). Pick: N150 (0.982,
+  below the champion).
+- Check, 2%: N150 $743,152 (-22%, 32% drop) / $103,476 (-54%, 33%); 3%: -36% / -69%. Without the best 5 at 2%:
+  $132,172 / $33,296 vs $169,718 / $74,497.
+- Added trades (main at $10K): N200 adds 340 / 373 on tune, every one with 200+ contracts (no fill question), median
+  -$2,371 / -$2,226, non-giant -$561K / -$544K; the tune sum is MU +$369K and COIN +$156K. N150 check 376 / 466, median
+  -$2,351 / -$2,309, non-giant -$632K / -$743K, 2025 and 2026 negative on both lists.
+Verdict: not better. Even on a busy round strike (N200, real volume) the signals whose 0.15 strike was thin lose
+~$2,300 a trade: the contract is not the problem, the signal is. The 200 floor stays; no candidate.
