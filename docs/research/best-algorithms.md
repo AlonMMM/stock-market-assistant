@@ -291,6 +291,31 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### A Friday 0DTE leg with the Volume bot's exits, on 2.10 (2026-11-04, not better: the added legs lose on both halves)
+
+The user: "On friday we can try to add 0dte. But this should be with different strategy - aomthing similar to the volume
+exits", then "Go". Tested before: 0DTE inside the champion (worse), zero4 / zero5 (separate 0DTE strategies, stops,
+trails, an alert-silence exit: none an edge), fri-0dte-15/25 in `expiry_rules.py` (0DTE instead of next week: -35-45%).
+New here: an ADDED leg next to 2.10's own Friday trade, sold on Volume 1.2.0's stock give-back. `fri_0dte.py` on 2.10
+(sale_limit bid-c5, reproduces the 2.10 tune figures to the dollar), real quotes (56 missing contracts bought, open37,
+~$0.00): every Friday main signal before 13:00 New York also buys today's 0.20-delta option ($0.20, 200 contracts, the
+liquid fallback to 0.35), sized at 2.10's step x tier within 5% with the main leg and its add; the -80% broker stop,
+out by 15:50. z-vol (grace 30, give-back 0.75 S30 on minute closes), z-g15 (grace 15), z-trail (z-vol + 30% trail once
+3x). Look 1.
+
+| Version | Tune fair / fav, 2% | Check fair / fav, 2% | 0DTE legs alone, tune (fair): legs, winners, median, giants, sum at $10K | Check (fair) |
+|---|---|---|---|---|
+| 2.10 | $620,535 / 16%; $449,178 / 14% | $957,771 / 24%; $226,846 / 23% | - | - |
+| z-vol 🎯 | $492,714 / 19%; $352,300 / 19% (0.794 / 0.784) | $720,020 / 30%; $173,596 / 29% (0.752 / 0.765) | 66, 17%, -$4,313, 1, -$172K | 66, 18%, -$5,835, 1, -$190K |
+| z-g15 | $461,997; $343,739 | - | 66, 23%, -$4,652, 0, -$202K | - |
+| z-trail | $449,698; $327,024 | - | 66, 17%, -$4,313, 0, -$221K | - |
+
+No: the 0DTE legs lose about -$4.3K to -$5.8K each at $10K (median), 1 giant in ~135 legs, almost all sold on the
+give-back (58 of 66), the rest on the -80% stop; every version costs 2.10 20-28% and adds 3-7 points of drop, on both
+lists and both halves. A 0DTE option bought on the bot's (morning) signal loses its time value before the stock's move
+pays; the Volume exit cuts it on the first 0.75 S30 pullback. Of 749 Friday legs picked, ~135 a half could be walked
+(a book at the buy and the sale). Fridays keep next week's expiry (2026-10-27).
+
 ### Lock a gain: 15 lock ladders on 2.10 (2026-11-04, not better: every lock lifts the win rate 1-12 points, none lowers the drop; the pick fails the check by far)
 
 The user: "test another strategy of exit of lock gain ... If the stock go up more than 300%, then we're locking a 100% or
