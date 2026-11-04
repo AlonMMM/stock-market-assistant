@@ -2275,6 +2275,18 @@ dialog.stocks-dialog {
   text-align: left;
   color: var(--gray-49);
 }
+.bt-signals-table .th-sort {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bt-signals-table .th-sort.on {
+  color: var(--gray-27);
+}
 .bt-signals-table td {
   padding: 5px 8px;
   border-top: 1px solid var(--gray-91);

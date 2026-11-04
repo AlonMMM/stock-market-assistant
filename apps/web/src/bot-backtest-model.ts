@@ -277,6 +277,7 @@ export interface SignalRow {
   iv: number | null; // the what-if's volatility
   ivFrom: "option" | "stock" | null;
   trade: AccountTrade | null;
+  skip: SimSkip | null; // a signal not bought: what the bot saw, and its what-if
 }
 
 /** Sessions a position was held after its entry day: 0 when it was sold the same day. */
@@ -330,6 +331,7 @@ function skipRow(k: SimSkip, i: number): SignalRow {
     iv: w?.iv ?? null,
     ivFrom: w?.ivFrom ?? null,
     trade: null,
+    skip: k,
   };
 }
 
@@ -377,6 +379,7 @@ export function signalRows(
         iv: null,
         ivFrom: null,
         trade: a,
+        skip: null,
       });
     }
     run.skips.forEach((k, i) => rows.push(skipRow(k, i)));
@@ -392,6 +395,103 @@ export function spreadPct(r: Pick<SignalRow, "bid" | "ask">): number | null {
   const mid = (r.bid + r.ask) / 2;
   if (!(mid > 0)) return null;
   return (r.ask - r.bid) / mid;
+}
+
+export type SignalSortKey =
+  | "when"
+  | "symbol"
+  | "outcome"
+  | "ret"
+  | "nights"
+  | "boughtAt"
+  | "spread"
+  | "volume30"
+  | "t"
+  | "rvol"
+  | "d2"
+  | "strike"
+  | "price"
+  | "delta";
+export type SortDir = "asc" | "desc";
+
+/** A signal's value in a column, for sorting; null when it has none. */
+export function signalSortValue(
+  r: SignalRow,
+  key: SignalSortKey,
+): number | string | null {
+  if (key === "when") return stepMs(r.date, r.minute);
+  if (key === "symbol") return r.symbol;
+  if (key === "outcome") return r.outcome;
+  if (key === "spread") return spreadPct(r);
+  return r[key];
+}
+
+/**
+ * The signals in a column's order (the user, 2026-11-04: "make both this list,
+ * and the bought list be sortable"); the ones without a value last either
+ * way, ties newest first.
+ */
+export function sortSignals(
+  rows: readonly SignalRow[],
+  key: SignalSortKey,
+  dir: SortDir,
+): SignalRow[] {
+  const sign = dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const x = signalSortValue(a, key);
+    const y = signalSortValue(b, key);
+    if (x === null && y !== null) return 1;
+    if (y === null && x !== null) return -1;
+    if (x !== null && y !== null && x !== y) {
+      if (typeof x === "string" || typeof y === "string")
+        return sign * String(x).localeCompare(String(y));
+      return sign * (x - y);
+    }
+    return stepMs(b.date, b.minute) - stepMs(a.date, a.minute);
+  });
+}
+
+export type TradeSort =
+  | "newest"
+  | "oldest"
+  | "pnl-desc"
+  | "pnl-asc"
+  | "ret-desc"
+  | "ret-asc"
+  | "symbol";
+
+export const tradeSorts: readonly [TradeSort, string][] = [
+  ["newest", "Newest first"],
+  ["oldest", "Oldest first"],
+  ["pnl-desc", "Biggest gain"],
+  ["pnl-asc", "Biggest loss"],
+  ["ret-desc", "Best return %"],
+  ["ret-asc", "Worst return %"],
+  ["symbol", "Stock A-Z"],
+];
+
+/** The trades in the chosen order; by money or return, the buys the limits refused go last. */
+export function sortTrades(
+  trades: readonly AccountTrade[],
+  by: TradeSort,
+): AccountTrade[] {
+  const when = (a: AccountTrade) => stepMs(a.trade.date, a.trade.minute);
+  const newest = (a: AccountTrade, b: AccountTrade) => when(b) - when(a);
+  const value = (a: AccountTrade) => {
+    if (by === "pnl-desc" || by === "pnl-asc") return a.pnl;
+    return a.retPct;
+  };
+  return [...trades].sort((a, b) => {
+    if (by === "oldest") return when(a) - when(b);
+    if (by === "symbol")
+      return a.trade.symbol.localeCompare(b.trade.symbol) || newest(a, b);
+    if (by === "newest") return newest(a, b);
+    const takenA = a.status === "taken";
+    const takenB = b.status === "taken";
+    if (takenA !== takenB) return takenA ? -1 : 1;
+    const sign = by.endsWith("-asc") ? 1 : -1;
+    return sign * (value(a) - value(b)) || newest(a, b);
+  });
 }
 
 const csvCell = (v: string | number | boolean | null) => {
@@ -697,6 +797,119 @@ function entryQuoteOf(a: AccountTrade, signalMs: number): Story["entryQuote"] {
     ...(chased
       ? { fill: { bid: filled.bid, ask: filled.ask, at: signalMs + 60_000 } }
       : {}),
+  };
+}
+
+/**
+ * A signal the bot did not buy, as the trade window shows a bought one (the
+ * user, 2026-11-04: "add the info modal also for the signal list that we did
+ * not bought"): why it was skipped, what the bot saw, and the what-if trade
+ * (one contract, Black-Scholes prices). Null without a what-if.
+ */
+export function skipStory(
+  r: SignalRow,
+  rules: Rules,
+  version: string,
+): { closed: ClosedTrade; story: Story } | null {
+  const k = r.skip;
+  const w = k?.whatIf;
+  if (!k || !w || !w.steps.length) return null;
+  const fills: TradeFill[] = w.steps
+    .filter((x) => x.kind !== "carry")
+    .map((x) => ({
+      side: x.kind === "buy" ? "buy" : "sell",
+      at: new Date(stepMs(x.date, x.minute)).toISOString(),
+      qty: x.share,
+      price: x.price,
+    }));
+  const sales = fills.filter((f) => f.side === "sell");
+  const sold = sales.reduce((n, f) => n + f.qty, 0);
+  const back = sales.reduce((n, f) => n + f.qty * f.price, 0);
+  const entry = w.steps[0]!.price;
+  const closed: ClosedTrade = {
+    symbol: w.contract,
+    underlying: k.symbol,
+    option: {
+      right: k.right === "C" ? "call" : "put",
+      strike: w.strike,
+      expiry: w.expiry,
+    },
+    openedAt: fills[0]!.at,
+    closedAt: (sales.at(-1) ?? fills[0]!).at,
+    qty: 1,
+    entry,
+    exit: sold ? back / sold : 0,
+    pnl: w.ret * entry * 100,
+    pnlPct: w.ret * 100,
+    expired: false,
+    fills,
+  };
+  const signalMs = stepMs(k.date, k.minute);
+  const strength = k.right === "C" ? "strength" : "weakness";
+  const entryLines = [
+    `Not bought: ${r.outcome}.${k.detail ? ` ${k.detail}` : ""}`,
+  ];
+  let bonus = "";
+  if (k.bonus) {
+    const d2 = typeof k.d2 === "number" ? k.d2.toFixed(1) : "—";
+    bonus = `, a D2 bonus signal (D2 ${d2})`;
+  }
+  if (k.t !== undefined && k.rvol !== undefined)
+    entryLines.push(
+      `Signal: ${k.symbol} showed ${strength} against SPY with t ${k.t.toFixed(1)} (rule ${rules.minT}+) on volume ${k.rvol.toFixed(1)}× normal${bonus}.`,
+    );
+  const c = k.contract;
+  if (c)
+    entryLines.push(
+      `The contract it looked at: ${k.symbol} ${c.strike} ${sideWord(k.right)}, expiry ${c.expiry}, delta ${c.delta.toFixed(2)} (target ${rules.delta}), last price $${c.price.toFixed(2)}, ${c.volume30} contracts in the 30 minutes before.`,
+    );
+  const ivWords =
+    w.ivFrom === "option" ? "the option's price" : "the stock's 20-day moves";
+  const contractWords = w.modelled
+    ? "a modelled contract at the target delta and the first expiry (not in the chain)"
+    : "this contract";
+  const sign = w.ret >= 0 ? "+" : "";
+  entryLines.push(
+    `If it had bought (a model, not a trade): ${contractWords}, priced by Black-Scholes from the stock's minutes at ${Math.round(w.iv * 100)}% volatility (from ${ivWords}), sold by the bot's own exits: ${sign}${(w.ret * 100).toFixed(0)}% on one contract. The option line on the chart is its real prints; the fills are the model's.`,
+  );
+  const exits: ExitRow[] = w.steps
+    .filter((x) => x.kind !== "buy")
+    .map((x) => ({
+      ms: stepMs(x.date, x.minute),
+      qty: x.share,
+      price: x.kind === "carry" ? null : x.price,
+      ...exitWords(x.kind === "carry" ? "carry" : x.reason, rules, null),
+    }));
+  const markers = fillMarkers(closed);
+  markers.push({
+    kind: "signal",
+    pane: "stock",
+    at: { date: k.date, minute: k.minute },
+    ms: signalMs,
+    price: null,
+    label: "signal",
+  });
+  return {
+    closed,
+    story: {
+      bot: true,
+      version,
+      entryTitle: "Why the bot did not buy",
+      entry: entryLines,
+      exits,
+      paid: entry,
+      stop: Number((entry * (1 - rules.stopPct / 100)).toFixed(2)),
+      stopLabel: `stop −${rules.stopPct}%`,
+      stockEntry: k.stock ?? null,
+      wall: null,
+      right: k.right,
+      rule: rules.minT,
+      markers,
+      decision: null,
+      entryQuote: c?.book
+        ? { bid: c.book.bid, ask: c.book.ask, at: signalMs }
+        : null,
+    },
   };
 }
 
