@@ -1733,14 +1733,12 @@ test("broker setting 'both': an account that throws does not undo the other's en
   );
 });
 
-test("broker setting 'both': a slow IBKR pick does not hold up Alpaca's buy; the stock price is passed to the chain", async () => {
-  const spots: (number | undefined)[] = [];
+test("broker setting 'both': a slow IBKR pick does not hold up Alpaca's buy", async () => {
   let boughtWhileIbkrPicked: BotBroker[] = [];
   const h = harness("live", {}, undefined, {
     legs: {
       ibkr: {
-        async chain(_u, _right, _from, _to, spot) {
-          spots.push(spot);
+        async chain() {
           // IBKR's chain takes seconds in production (2026-11-04).
           await new Promise((r) => setTimeout(r, 30));
           boughtWhileIbkrPicked = h.calls
@@ -1754,8 +1752,6 @@ test("broker setting 'both': a slow IBKR pick does not hold up Alpaca's buy; the
   h.bot.setSettings({ ...h.bot.settings(), broker: "both" });
   await h.run(DAY, 565, 600);
   assert.deepEqual(boughtWhileIbkrPicked, ["alpaca"]);
-  assert.equal(spots.length, 1);
-  assert.ok(spots[0]! > 0);
   assert.deepEqual(
     h.store
       .openPositions()

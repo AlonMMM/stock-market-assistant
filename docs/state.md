@@ -191,7 +191,7 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
   the trading service's SQLite (`apps/trader/src/option-book.ts`). Records before this date have none.
 - **IBKR entry speed (2026-11-04, `fix/ibkr-entry-speed`):** with broker "Both", each account now runs its
   limits, its pick and its buy on its own, at the same time, so IBKR's slow pick (5-11 s in production) no longer
-  holds up the Alpaca buy; IBKR's chain takes the bot's stock price instead of quoting the stock again (up to 3 s).
+  holds up the Alpaca buy. IBKR keeps reading everything from its own data (chain, stock price, 30-minute volume).
   The contract rules are unchanged. IBKR's paper fills (slow chases, "too late to replace") are not addressed.
 - **IBKR (2026-10-24, #140 and #142 deployed):** the Bot settings page gets a Broker
   switch (Alpaca | Interactive Brokers | Both) for new entries; a position is sold where it was bought. "Both"

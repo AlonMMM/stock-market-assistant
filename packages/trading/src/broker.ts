@@ -124,17 +124,12 @@ export interface Broker {
   marketOpen(): Promise<boolean>;
   /** Daily closing equity of the past year, oldest first. */
   equityHistory(): Promise<{ date: string; equity: number }[]>;
-  /**
-   * Quotes and deltas for one side of the chain, expiries in [from, to].
-   * `spot`: the stock's price when the caller has it, so a broker that
-   * would ask for it first (IBKR) can skip that request.
-   */
+  /** Quotes and deltas for one side of the chain, expiries in [from, to]. */
   chain(
     underlying: string,
     right: Right,
     from: string,
     to: string,
-    spot?: number,
   ): Promise<OptionQuote[]>;
   quote(symbol: string): Promise<OptionQuote>;
   /** Many contracts' quotes in few requests; a contract without one is absent. */

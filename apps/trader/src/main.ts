@@ -386,8 +386,7 @@ const bot = (() => {
     trading: (broker) => {
       const t = traderFor(broker);
       return {
-        chain: (u, right, from, to, spot) =>
-          t.broker.chain(u, right, from, to, spot),
+        chain: (u, right, from, to) => t.broker.chain(u, right, from, to),
         quote: (c) => t.broker.quote(c),
         held: async (c) => {
           const p = await t.broker.position(c).catch(() => null);

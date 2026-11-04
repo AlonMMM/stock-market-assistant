@@ -348,17 +348,19 @@ export class IbkrTrading implements Broker {
     right: Right,
     from: string,
     to: string,
-    known?: number,
   ): Promise<OptionQuote[]> {
     const stock = await this.resolve(stockContract(underlying));
-    // The caller's price saves the stock quote: up to 3 s, the whole wait
-    // when IBKR has no price for the stock (the owner, 2026-11-04).
-    const [spot, params] = await Promise.all([
-      positive(known ?? null) ?? this.stockSpot(stock),
+    const [tick, params] = await Promise.all([
+      this.client.snapshot(stock),
       this.daily(this.params, underlying, () =>
         this.client.optionParams(underlying, stock.conId!),
       ),
     ]);
+    const spot =
+      positive(tick.last) ??
+      (positive(tick.bid) && positive(tick.ask)
+        ? (tick.bid! + tick.ask!) / 2
+        : null);
     if (spot === null) throw new Error(`No price for ${underlying}`);
     const reach = this.options.chainReach ?? chainReach;
     const count = this.options.chainStrikes ?? chainStrikes;
@@ -415,17 +417,6 @@ export class IbkrTrading implements Broker {
       (c) => this.optionQuote(c).catch(() => null),
     );
     return quotes.filter((q): q is OptionQuote => q !== null);
-  }
-
-  /** The stock's last trade, else its bid / ask mid; null without either. */
-  private async stockSpot(stock: IbContract): Promise<number | null> {
-    const tick = await this.client.snapshot(stock);
-    return (
-      positive(tick.last) ??
-      (positive(tick.bid) && positive(tick.ask)
-        ? (tick.bid! + tick.ask!) / 2
-        : null)
-    );
   }
 
   /**

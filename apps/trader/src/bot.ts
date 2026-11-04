@@ -132,13 +132,11 @@ export interface BotMarket {
 
 /** What the bot needs from the owner's trading service and broker. */
 export interface BotTrading {
-  /** `spot`: the stock's price the bot has, so IBKR need not quote it again. */
   chain(
     underlying: string,
     right: "call" | "put",
     from: string,
     to: string,
-    spot?: number,
   ): Promise<OptionQuote[]>;
   quote(contract: string): Promise<OptionQuote>;
   /** Many contracts' quotes at once (the alert books); absent: one by one. */
@@ -965,7 +963,7 @@ export class IndiBot {
     const side = first.right === "C" ? "call" : "put";
     const [from, to] = expiryWindow(date, pick);
     const picked = pickContract(
-      await this.trading(broker).chain(first.symbol, side, from, to, spot),
+      await this.trading(broker).chain(first.symbol, side, from, to),
       spot,
       side,
       date,
@@ -1246,13 +1244,7 @@ export class IndiBot {
     let picked: Picked;
     try {
       picked = pickContract(
-        await this.trading(broker).chain(
-          symbol,
-          at.side,
-          at.from,
-          at.to,
-          at.spot,
-        ),
+        await this.trading(broker).chain(symbol, at.side, at.from, at.to),
         at.spot,
         at.side,
         at.date,
