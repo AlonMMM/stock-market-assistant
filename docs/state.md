@@ -3,18 +3,6 @@
 Updated: 2026-11-04
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
 
-## Backtest: the last run is kept in IndexedDB (2026-11-04)
-
-The last result of each bot's backtest is kept in IndexedDB (`sma.backtest`, `bot-backtest-run.ts`; user
-2026-11-04: the old run "come back but not always"). It was in localStorage, whose 5 million characters both
-bots and the rest of the app share: a long run's result was refused there, silently, and the older result left
-in its place came back after a reload. A run in flight is now saved every 5 seconds as its parts come back, so
-a phone that drops the tab reopens on those parts ("Stopped after 13 of 50 parts"); while the result is read
-back the page says "Loading the last run…" instead of the empty page. A result left in localStorage by the
-earlier version is moved over once and removed. If IndexedDB refuses a save, the older saved result is deleted
-so it cannot come back as the latest. Validation: headless Chromium on synthetic results: 12,000 trades
-(8.8 million characters) back after three reloads, the move from localStorage, a reload mid-run.
-
 ## Backtest trades: the size and its reason, the bid / ask at each fill (2026-11-04)
 
 The Main bot's backtest trade rows carry a size chip with the buy's share of the account it was sized from
