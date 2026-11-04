@@ -291,6 +291,37 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### Lock a gain: 15 lock ladders on 2.10 (2026-11-04, not better: every lock lifts the win rate 1-12 points, none lowers the drop; the pick fails the check by far)
+
+The user: "test another strategy of exit of lock gain ... If the stock go up more than 300%, then we're locking a 100% or
+50%. If it go 100%, let locks 35%, and so on. Try like 10 or 15 rules ... It's not had to beat the gain, but I would like
+it to reduce the drop and increase the win rate. Increasing the win rate is very important for me." Tested before on
+V2 (2026-10-21/23, the old minute model): give-back locks 200 -> 50, 300 -> 100, trails, the ladder: worse. `lock_gain.py`
+on 2.10 (reproduced to the dollar), real quotes, sim.py `locks` (the option's real mid every stock minute, any day held;
+sold at the next bid). 15 ladders set before running; the pick rule set before running: worst drop at or under 2.10 on
+both lists, then the highest win rate. Look 1.
+
+| Tune, 2% (fair / Favorites) | Winners | End / worst drop | vs 2.10 |
+| --- | --- | --- | --- |
+| 2.10 | 15.7% / 16.5% | $620,535 / 15.7%; $449,178 / 14.5% | 1 / 1 |
+| L04 100->25, 200->75, 300->100, 500->200, 1000->400 | 20.6% / 21.3% | $664,186 / 16.0%; $466,439 / 15.7% | 1.070 / 1.038 |
+| L09 a quarter of the best from +100% | 20.4% / 21.1% | $666,775 / 14.7%; $435,704 / 15.7% | 1.075 / 0.970 |
+| L13 300->100, 500->200, 1000->400 | 16.2% / 17.1% | $692,629 / 16.0%; $473,648 / 14.6% | 1.116 / 1.054 |
+| L01 (the user's) 100->35, 300->100 | 21.0% / 21.5% | $388,601 / 16.0%; $271,111 / 19.0% | 0.626 / 0.604 |
+| L03 50->10 ... 500->200 | 24.5% / 25.0% | $407,912 / 16.7%; $269,982 / 21.4% | 0.657 / 0.601 |
+| L10 30->5, 50->15, 100->35, 300->100 | 23.1% / 23.2% | $407,767 / 15.4%; $290,609 / 19.8% | 0.657 / 0.647 |
+| 🎯 L12 50->20, 100->50, 200->100, 300->150, 500->250 | 27.3% / 27.4% | $365,257 / 15.9%; $257,052 / 21.3% | 0.589 / 0.572 |
+
+All 15 (the others in the run's log): winners 16.2-27.4%, money 0.55-1.12 of 2.10; no version had a worst drop at or under
+2.10's on both lists, so the pick fell to the highest win rate (L12). Check, L12 at 2%: winners 26.1% / 27.6% (2.10
+14.6% / 15.6%) but **$200,665 / 36.6% vs $957,771 / 23.6% (0.21) and $117,179 / 27.5% vs $226,846 / 22.6% (0.52)**;
+2025 negative on the fair list. Why: a lock only touches trades that were up first; it turns about half of them into
+small winners (L12 tune fair: 131 changed, winners 49 -> 104, their sum $690,581 -> $382,774, giants 10 -> 1). The drop
+comes from the runs of losers that never went up, which no lock reaches, and the giants that pay for those runs are what
+the lock sells. Small locks (+20 -> +3) are read on the mid but sold at the bid, so they often end as losses (L11: the
+changed trades' sum turns negative). Win rate is cheap to buy and the giants pay for it. L04 / L09 / L13 (more money
+on tune, +0.5-5 points of win rate) were not the pick and were not checked.
+
 ### Bigger size on a small account: 5% under $50K, 4% to $100K, 3% above (2026-11-04, a risk choice, not better: more money only through the giants, a much bigger drop)
 
 The user: "when 10K account sise you can use 5%, on 50K use 4%", then "more than 100K stay with 3%". `size_steps_small.py`
