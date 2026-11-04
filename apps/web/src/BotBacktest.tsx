@@ -77,6 +77,7 @@ import {
   type Busy,
   type Ran,
   type RanBase,
+  type RecentList,
   type RecentRun,
   type VolumeRan,
 } from "./bot-backtest-run.js";
@@ -1022,7 +1023,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
           {isVolume ? (
             <RecentRuns
               key="volume"
-              runs={volumeRun.useRecent()}
+              store={volumeRun}
               shown={vol.id ?? null}
               busy={busy}
               onOpen={(id, meta) => {
@@ -1043,7 +1044,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
           ) : (
             <RecentRuns
               key="main"
-              runs={mainRun.useRecent()}
+              store={mainRun}
               shown={main.id ?? null}
               busy={busy}
               onOpen={(id, meta) => {
@@ -1347,19 +1348,38 @@ function RuleInput({
  * runs; while a run is going the others wait.
  */
 function RecentRuns({
-  runs,
+  store,
   shown,
   busy,
   onOpen,
   label,
 }: {
-  runs: RecentRun<RanBase>[] | null;
+  // The bot's run store: its list is read again each time this mounts.
+  store: { useRecent(): RecentList<RanBase>; loadRecent(): Promise<void> };
   shown: string | null;
   busy: Busy | null;
   onOpen: (id: string, meta: RanBase) => void;
   label: (meta: RanBase) => string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const list = store.useRecent();
+  const onRetry = () => void store.loadRecent();
+  const runs = list.runs;
+  // A failed read with nothing to show says so, instead of hiding the list.
+  if (list.failed && (!runs || runs.length === 0))
+    return (
+      <section className="card bt-recent" aria-label="Recent runs">
+        <div className="card-head">
+          <h2>Recent runs</h2>
+          <button type="button" className="reset" onClick={onRetry}>
+            Try again
+          </button>
+        </div>
+        <p className="muted small">
+          The list of your runs could not be read. It tries again on its own.
+        </p>
+      </section>
+    );
   if (!runs || runs.length === 0) return null;
   const rows = expanded ? runs : runs.slice(0, 3);
   return (

@@ -3,6 +3,17 @@
 Updated: 2026-11-04
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
 
+## Backtest: the Recent runs list is read each time it is shown (2026-11-04)
+
+The Recent runs list (user 2026-11-04: it "come back but not always", "only after a couple of clicks") was read
+once a page load: coming back to the Backtest tab showed the list as first read, and a read that failed (a
+dropped phone connection, a stale Cloudflare sign-in) emptied and hid it until a run started or ended. Now
+(`bot-backtest-run.ts`) it is read each time the list mounts (the tab, the other bot) and when the phone shows the
+page again; a failed read keeps the last list, retries after 3, 9 and 27 seconds while on screen, and with
+nothing to show says so with "Try again"; a read asked for while one is in flight (a run just started) runs
+after it. Validation: headless Chromium on a synthetic list whose first read fails: before, hidden for good;
+after, shown 3 s later and read once on every return to the tab.
+
 ## Backtest trades: the size and its reason, the bid / ask at each fill (2026-11-04)
 
 The Main bot's backtest trade rows carry a size chip with the buy's share of the account it was sized from
