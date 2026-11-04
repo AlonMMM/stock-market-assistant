@@ -1,7 +1,20 @@
 # Current state
 
-Updated: 2026-11-01
+Updated: 2026-11-04
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
+
+## Backtest trades: the size and its reason, the bid / ask at each fill (2026-11-04)
+
+The Main bot's backtest trade rows carry a size chip with the buy's share of the account it was sized from
+(user 2026-11-04: "a % of the account and a badge for why"): "Pyramid" (blue), "Big size ×1.5" (amber),
+"Half size" or "Regular size" (grey), its tooltip the reason (`tradeSize` in `bot-backtest-model.ts`: the
+volume tier the signal's volume since the open reached, or the pyramid's add; what the size meant and what
+whole contracts cost). The trade window repeats it under "Why the bot entered" and now shows the backtest's
+quotes: the entry's bid / mid / ask bar (the next minute's book too when the buy chased the ask) and each
+exit's bid / ask. Each quote-priced step keeps the book it was priced on (`SimStep.book`, `Fill.book`);
+`AccountTrade` adds `basis` and `targetPct`. No pricing or timing changed. Trades priced from trade bars have
+no book. The Volume bot's backtest is unchanged (flat size; its window already shows its book). Validation:
+unit tests; screenshots on synthetic backtest data, light and dark.
 
 ## Stock tags: earnings and big news (2026-11-01)
 

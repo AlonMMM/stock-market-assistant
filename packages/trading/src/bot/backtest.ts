@@ -129,6 +129,8 @@ export interface SimStep {
   share: number;
   price: number; // the fill (a carry: the option's 15:50 close)
   reason: ExitReason | "entry" | "data-end";
+  // The real bid / ask the fill was priced on (quote-priced trades only).
+  book?: Book;
 }
 
 export interface SimTrade {
@@ -611,8 +613,12 @@ async function walkQuotes(
   const entryDay = quotes.get(w.date) ?? [];
   const q0 = bookAt(entryDay, w.minute)!;
   let cost = (q0.bid + 3 * q0.ask) / 4;
+  let filledOn = q0;
   const q1 = bookAt(entryDay, w.minute + 1);
-  if (q1 && q1.bid > cost) cost = q1.ask;
+  if (q1 && q1.bid > cost) {
+    cost = q1.ask;
+    filledOn = q1;
+  }
   const steps: SimStep[] = [
     {
       date: w.date,
@@ -621,6 +627,7 @@ async function walkQuotes(
       share: 1,
       price: cost,
       reason: "entry",
+      book: { bid: filledOn.bid, ask: filledOn.ask },
     },
   ];
   let rem = 1;
@@ -655,6 +662,7 @@ async function walkQuotes(
       share: q,
       price: book.bid,
       reason,
+      book: { bid: book.bid, ask: book.ask },
     });
     state = { ...state, qty: Math.round(rem * nominal) };
   };
@@ -784,6 +792,7 @@ async function walkQuotes(
       share: rem,
       price: (last.book.bid + last.book.ask) / 2,
       reason: "data-end",
+      book: { bid: last.book.bid, ask: last.book.ask },
     });
     return {
       steps,

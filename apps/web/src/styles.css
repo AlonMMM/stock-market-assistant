@@ -2344,6 +2344,15 @@ dialog.stocks-dialog {
   padding: 0 8px;
   font-size: 11px;
 }
+/* The trade's size: the pyramid's add blue, a bigger size amber, the rest grey. */
+.bt-what .state-chip.bt-size.pyramid {
+  background: var(--blue-94);
+  color: var(--blue-42);
+}
+.bt-what .state-chip.bt-size.big {
+  background: var(--amber-95);
+  color: var(--amber-43);
+}
 .bt-exit {
   grid-area: exit;
   font-size: 12px;

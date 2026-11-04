@@ -47,6 +47,7 @@ import {
   bots,
   clockText,
   closedTradeOf,
+  tradeSize,
   exitTitle,
   firstDate,
   maxStocks,
@@ -1841,7 +1842,7 @@ function TradeList({
                 <strong>{a.trade.symbol}</strong> {a.trade.strike}{" "}
                 {a.trade.right === "C" ? "Call" : "Put"}
                 {a.trade.bonus && <span className="state-chip">D2</span>}
-                {a.trade.pyramid && <span className="state-chip">Pyramid</span>}
+                <SizeChip a={a} rules={rules} />
                 {a.open && <span className="state-chip">Open</span>}
                 {a.trade.priced !== "quotes" && (
                   <span
@@ -1875,5 +1876,17 @@ function TradeList({
         each exit.
       </p>
     </section>
+  );
+}
+
+/** The trade's size in the row: why it was this size, and its % of the account. */
+function SizeChip({ a, rules }: { a: AccountTrade; rules: Rules }) {
+  const size = tradeSize(a, rules);
+  const taken = a.status === "taken";
+  return (
+    <span className={`state-chip bt-size ${size.kind}`} title={size.why}>
+      {size.label}
+      {taken && <span className="num"> · {Number(size.pct.toFixed(2))}%</span>}
+    </span>
   );
 }
