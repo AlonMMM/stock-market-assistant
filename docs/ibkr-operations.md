@@ -36,15 +36,31 @@ Setup:
   against what is held and already offered, and the trading service checks the IBKR
   account for short risk every minute (alerts repeat every 15 minutes).
 - Real-time market data only (`reqMarketDataType(1)`); no delayed or frozen quotes.
-- Quotes are a short stream, not a TWS snapshot (2026-11-03): `reqMktData` with
-  snapshot off, answered once the bid, ask (and an option's model delta) arrive, at
-  most 3 s later with what came, then `cancelMktData`. A snapshot waits ~11 s for its
-  end, which made a chain take 9-22 s. A chain asks only the nearest expiry in the
+- Quotes are live streams (2026-11-05; a short stream per read before, a TWS snapshot
+  before 2026-11-03): the first read of a contract opens `reqMktData` with snapshot off
+  and answers once the bid, ask (and an option's model delta) arrive, at most 3 s later
+  with what came; the stream stays open and every later read answers at once with its
+  current values. An error on a stream (10197 after a login elsewhere) ends it and fails
+  that read; the next read opens it again. A Gateway drop ends them all; the kept ones
+  open again on reconnect.
+- Lines: `IBKR_STREAM_LINES` on `sma-trader` (default 90; a whole number, 30 or more) is
+  how many streams may be open: set it to the account's market-data lines (100, plus
+  100 per Quote Booster pack) less 10. All but 25 of them go to kept streams: the Main
+  bot's watched stocks first, then its warm strikes; past the limit the least recently
+  read stream that is not kept closes, and option streams unread for 10 minutes close.
+  The log says "streaming N of M kept contracts" when the lines do not cover them all.
+- Warm strikes (2026-11-05): every 15 minutes of the entry window, when IBKR takes
+  entries, the bot reads each watched stock's IBKR chain on both sides and keeps the
+  strike its rules would pick, with one strike either side, streaming (about 6 lines a
+  stock). A chain asks only the nearest expiry in the
   window and its 18 strikes nearest the stock price (the picker reads 16), all at once;
   the expirations and each expiry's listed contracts (one `reqContractDetails` without
   a strike) are read once a New York day.
-- The 30-minute volume of an IBKR pick comes from IBKR's own 1-minute TRADES bars
-  (`reqHistoricalData`, 1800 S), one request per picked contract. IBKR paces
+- The 30-minute volume of an IBKR pick comes from the contract's stream when the stream
+  has watched the whole 30 minutes (its day volume, tick 8, now less 30 minutes ago,
+  within one New York day), at once; the bars are then asked in the background and the
+  log compares them ("stream N, bars M (differs)"). Otherwise it comes from IBKR's own
+  1-minute TRADES bars (`reqHistoricalData`, 1800 S), one request per picked contract. IBKR paces
   historical requests (about 60 in 10 minutes; identical ones within 15 s), so only
   the bot's picks ask for them, never a whole chain.
 - The Indi bot buys at this account when the owner picks Interactive Brokers on the Bot

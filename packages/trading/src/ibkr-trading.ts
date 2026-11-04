@@ -85,8 +85,18 @@ export interface TwsClient {
   ): Promise<{ expirations: string[]; strikes: number[] }>;
   /** The contract's bid / ask (and an option's model delta) now, real time only. */
   snapshot(contract: IbContract): Promise<IbSnapshot>;
-  /** Keeps these contracts' quotes streaming, so reading one never waits. */
-  watch?(contracts: IbContract[]): Promise<void>;
+  /**
+   * Keeps these contracts' quotes streaming, so reading one never waits:
+   * `stocks` (the default) first, then `options`; a group's list replaces it.
+   */
+  watch?(contracts: IbContract[], group?: "stocks" | "options"): Promise<void>;
+  /** Contracts traded in the `minutes` up to `end` (ms) from the contract's
+   * stream; null when no stream watched the whole window. */
+  streamVolume?(
+    contract: IbContract,
+    end: number,
+    minutes: number,
+  ): number | null;
   /** Contracts traded in each 1-minute bar of the `minutes` up to `end` (ms). */
   minuteVolumes?(
     contract: IbContract,
@@ -122,6 +132,7 @@ export interface IbkrOptions {
   chainReach?: number;
   chainStrikes?: number;
   chainExpiries?: number;
+  log?: (line: string) => void;
 }
 
 const usd = { exchange: "SMART", currency: "USD" };
@@ -435,10 +446,28 @@ export class IbkrTrading implements Broker {
   }
 
   /**
-   * Contracts traded per option over the 30 minutes up to `end` (ms), from
-   * IBKR's own 1-minute TRADES bars: one historical request per contract
-   * (IBKR paces them: about 60 in 10 minutes), so ask only the contracts
-   * that need it.
+   * Keeps these options streaming (OCC symbols; the strikes the bot keeps
+   * warm), so their quotes and 30-minute volume are there at once.
+   */
+  async keepStreaming(symbols: string[]): Promise<void> {
+    const watch = this.client.watch?.bind(this.client);
+    if (!watch) return;
+    const options = await inBatches(symbols, 10, (s) =>
+      this.resolve(optionContract(s)).catch(() => null),
+    );
+    await watch(
+      options.filter((c): c is IbContract => c !== null),
+      "options",
+    );
+  }
+
+  /**
+   * Contracts traded per option over the 30 minutes up to `end` (ms): from
+   * the option's stream when it has watched the whole window (at once; the
+   * owner, 2026-11-05: "stream the volume"), else from IBKR's own 1-minute
+   * TRADES bars, one historical request per contract (IBKR paces them:
+   * about 60 in 10 minutes). A streamed count is checked against the bars
+   * afterwards, in the log, without waiting for them.
    */
   async optionVolume30(
     symbols: string[],
@@ -446,14 +475,25 @@ export class IbkrTrading implements Broker {
   ): Promise<Map<string, number>> {
     const bars = this.client.minuteVolumes?.bind(this.client);
     if (!bars) throw new Error("This IBKR client has no historical bars");
+    const fromBars = async (contract: IbContract) =>
+      (await bars(contract, end, 30)).reduce((sum, v) => sum + v, 0);
     const out = new Map<string, number>();
     for (const symbol of symbols) {
       const contract = await this.resolve(optionContract(symbol));
-      const volumes = await bars(contract, end, 30);
-      out.set(
-        symbol,
-        volumes.reduce((sum, v) => sum + v, 0),
-      );
+      const streamed = this.client.streamVolume?.(contract, end, 30) ?? null;
+      if (streamed === null) {
+        out.set(symbol, await fromBars(contract));
+        continue;
+      }
+      out.set(symbol, streamed);
+      void fromBars(contract)
+        .then((counted) => {
+          const same = counted === streamed;
+          this.options.log?.(
+            `ibkr: 30-minute volume of ${symbol}: stream ${streamed}, bars ${counted}${same ? "" : " (differs)"}`,
+          );
+        })
+        .catch(() => {});
     }
     return out;
   }

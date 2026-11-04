@@ -37,6 +37,7 @@ import {
   expiryWindow,
   pickContract,
   type Picked,
+  type PickRules,
 } from "../../../packages/trading/src/bot/picker.js";
 import {
   defaultSettings,
@@ -143,6 +144,8 @@ export interface BotTrading {
   quotes?(contracts: string[]): Promise<OptionQuote[]>;
   /** Keeps the watched stocks' quotes streaming (IBKR); absent: nothing to keep. */
   watch?(symbols: string[]): Promise<void>;
+  /** Keeps these options streaming (IBKR; the list replaces the last one). */
+  keepStreaming?(contracts: string[]): Promise<void>;
   held(
     contract: string,
   ): Promise<{ qty: number; avgEntryPrice: number } | null>;
@@ -282,6 +285,31 @@ const expiryOf = (contract: string) => {
   return m ? `20${m[1]}-${m[2]}-${m[3]}` : "";
 };
 
+// How often the strikes kept warm are chosen again (they follow the price).
+const warmEveryMinutes = 15;
+
+/**
+ * The contract the picker would take from this chain side (a too-cheap one
+ * too) and one strike either side of it in its expiry: the strikes worth
+ * keeping warm for a signal.
+ */
+function nearPick(
+  quotes: OptionQuote[],
+  spot: number,
+  side: "call" | "put",
+  date: string,
+  pick: PickRules,
+): string[] {
+  const chosen = pickContract(quotes, spot, side, date, pick).quote;
+  if (!chosen) return [];
+  const strikes = quotes
+    .filter((q) => q.expiry === chosen.expiry && q.right === chosen.right)
+    .sort((a, b) => a.strike - b.strike);
+  const at = strikes.findIndex((q) => q.symbol === chosen.symbol);
+  if (at < 0) return [chosen.symbol];
+  return strikes.slice(Math.max(0, at - 1), at + 2).map((q) => q.symbol);
+}
+
 export class IndiBot {
   private readonly o: Required<Omit<BotOptions, "now" | "log" | "earnings">> & {
     earnings?: BotOptions["earnings"];
@@ -297,6 +325,9 @@ export class IndiBot {
   private done = -1; // the last session minute processed today
   private summarized: string | null = null;
   private busy = false;
+  // The strikes kept warm (keepWarm): the session minute of the last pass.
+  private warmAt = -Infinity;
+  private warming = false;
   // Today's stocks: the configured list and the user's favorites list.
   private symbols: string[] = [];
   // Where each stock stands at the last minute, for the live scan.
@@ -534,6 +565,7 @@ export class IndiBot {
     if (current >= 0 && this.enabled && current === this.done + 1)
       await this.earlyEntries(date, current, closeMinute);
     if (current >= 0) await this.exits(date, current, closeMinute);
+    if (current >= 0 && this.enabled) this.keepWarm(date, current, closeMinute);
     if (wall >= close + 5 && this.summarized !== date) {
       this.summarized = date;
       await this.summary(date);
@@ -735,6 +767,54 @@ export class IndiBot {
     return [...(this.today.get(symbol)?.values() ?? [])].sort(
       (a, b) => a.m - b.m,
     );
+  }
+
+  /**
+   * Every 15 minutes of the entry window, in the background, for each account
+   * that can stream (IBKR): each watched stock's chain on both sides, and the
+   * strike its rules would pick, with one strike either side, kept
+   * streaming. A signal's pick then reads their quotes and 30-minute volume
+   * at once; the volume needs a stream 30 minutes old (the owner,
+   * 2026-11-05: "stream the volume").
+   */
+  private keepWarm(date: string, current: number, closeMinute: number) {
+    if (this.warming || current - this.warmAt < warmEveryMinutes) return;
+    if (current > Math.min(374, closeMinute - 16)) return;
+    const brokers = this.entryBrokers(this.settings()).filter(
+      (b) => this.trading(b).keepStreaming,
+    );
+    if (brokers.length === 0) return;
+    this.warming = true;
+    this.warmAt = current;
+    void this.warmPass(date, current, brokers)
+      .catch((error: unknown) =>
+        this.o.log(
+          `bot: keeping strikes warm failed: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      )
+      .finally(() => (this.warming = false));
+  }
+
+  private async warmPass(date: string, minute: number, brokers: BotBroker[]) {
+    const s = this.settings();
+    for (const broker of brokers) {
+      const kept: string[] = [];
+      for (const symbol of this.symbols) {
+        // At the open no minute has closed yet: yesterday's close.
+        const spot =
+          this.lastClose(symbol, minute) ?? this.priorClose.get(symbol);
+        if (spot === undefined) continue;
+        const pick = pickRules(s, symbol);
+        const [from, to] = expiryWindow(date, pick);
+        for (const side of ["call", "put"] as const) {
+          const quotes = await this.trading(broker)
+            .chain(symbol, side, from, to)
+            .catch(() => []);
+          kept.push(...nearPick(quotes, spot, side, date, pick));
+        }
+      }
+      await this.trading(broker).keepStreaming?.(kept);
+    }
   }
 
   private lastClose(symbol: string, m: number): number | null {

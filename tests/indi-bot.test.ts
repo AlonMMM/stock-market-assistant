@@ -1767,6 +1767,50 @@ test("broker setting 'both': a slow IBKR pick does not hold up Alpaca's buy", as
   );
 });
 
+test("IBKR keeps the strikes near the pick warm: every 15 minutes of the entry window, the pick and a strike either side", async () => {
+  const kept: { minute: number; contracts: string[] }[] = [];
+  let minute = 0;
+  const h = harness("live", {}, undefined, {
+    legs: {
+      ibkr: {
+        async chain(_u, right) {
+          // Out of the money on each side of a stock near 100.
+          const strikes =
+            right === "call" ? [105, 110, 115, 120] : [95, 90, 85, 80];
+          return [0.3, 0.15, 0.08, 0.04].map((delta, i) =>
+            q(strikes[i]!, delta, 0.6 - i * 0.1, "2026-10-23", right),
+          );
+        },
+        async keepStreaming(contracts) {
+          kept.push({ minute, contracts });
+        },
+      },
+    },
+  });
+  h.bot.setSettings({ ...h.bot.settings(), broker: "both" });
+  for (let wall = 565; wall <= 602; wall++) {
+    minute = wall - 570;
+    await h.run(DAY, wall, wall);
+    await new Promise((r) => setImmediate(r));
+  }
+  assert.deepEqual(
+    kept.map((k) => k.minute),
+    [0, 15, 30],
+  );
+  assert.deepEqual(kept[0]!.contracts, [
+    "NVDA261023C00105000",
+    "NVDA261023C00110000",
+    "NVDA261023C00115000",
+    "NVDA261023P00085000",
+    "NVDA261023P00090000",
+    "NVDA261023P00095000",
+  ]);
+  // Alpaca keeps nothing warm: it has no streams to keep.
+  const alpacaOnly = harness("live");
+  await alpacaOnly.run(DAY, 565, 600);
+  assert.equal(kept.length, 3);
+});
+
 test("broker setting 'both': each account picks from its own chain, with its own volume, and every leg is kept", async () => {
   const volumes: string[] = [];
   const h = harness("live", {}, undefined, {

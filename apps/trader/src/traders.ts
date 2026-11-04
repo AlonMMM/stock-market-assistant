@@ -104,6 +104,7 @@ export class Traders {
         paper: true,
         // The service's own record of the account's closes (equity-log.ts).
         history: async () => store.equityDays(account.id),
+        log: this.options.log,
       });
     }
     throw new Error(

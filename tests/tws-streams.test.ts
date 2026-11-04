@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import test from "node:test";
+import test, { mock } from "node:test";
 import { EventName, type IBApi } from "@stoqey/ib";
 import type { IbContract } from "../packages/trading/src/ibkr-trading.js";
 import { StoqeyTws } from "../packages/trading/src/tws-client.js";
@@ -55,7 +55,13 @@ const option: IbContract = {
 };
 const tick = () => new Promise((r) => setImmediate(r));
 
-function client(options: { streamLines?: number; quoteMs?: number } = {}) {
+function client(
+  options: {
+    streamLines?: number;
+    pinnedLines?: number;
+    quoteMs?: number;
+  } = {},
+) {
   const gateway = new FakeGateway();
   const tws = new StoqeyTws({
     host: "gateway",
@@ -63,6 +69,9 @@ function client(options: { streamLines?: number; quoteMs?: number } = {}) {
     clientId: 1,
     quoteMs: options.quoteMs ?? 200,
     ...(options.streamLines ? { streamLines: options.streamLines } : {}),
+    ...(options.pinnedLines !== undefined
+      ? { pinnedLines: options.pinnedLines }
+      : {}),
     api: gateway as unknown as IBApi,
   });
   return { gateway, tws };
@@ -121,7 +130,7 @@ test("tws streams: a side with no market clears its old price", async () => {
 });
 
 test("tws streams: the watched stocks stay; past the line allowance the least recently read stream closes", async () => {
-  const { gateway, tws } = client({ streamLines: 3 });
+  const { gateway, tws } = client({ streamLines: 3, pinnedLines: 2 });
   await tws.watch([stock("AAPL", 1), stock("MSFT", 2)]);
   assert.deepEqual(
     gateway.opened.map((o) => o.symbol),
@@ -177,4 +186,69 @@ test("tws streams: after a drop the watched stocks stream again on reconnect", a
   );
   gateway.quote("NVDA", 1, 1.1);
   await read;
+});
+
+// 2026-11-05 15:00 UTC = 10:00 in New York.
+const tenAm = Date.parse("2026-11-05T15:00:00Z");
+const minutes = (n: number) => n * 60_000;
+
+test("tws streams: the 30-minute volume is the day volume now less 30 minutes ago, once a stream has watched the whole window", async () => {
+  mock.timers.enable({ apis: ["Date"], now: tenAm });
+  try {
+    const { gateway, tws } = client();
+    await tws.watch([option], "options");
+    const req = gateway.reqOf("NVDA200");
+    const volume = (v: number) => gateway.emit(EventName.tickSize, req, 8, v);
+    volume(1000);
+    mock.timers.setTime(tenAm + minutes(10));
+    volume(1200);
+    // 20 minutes of watching: not a whole window yet.
+    mock.timers.setTime(tenAm + minutes(20));
+    assert.equal(tws.streamVolume(option, Date.now(), 30), null);
+    mock.timers.setTime(tenAm + minutes(35));
+    volume(1500);
+    // From 10:05 (1000 then) to 10:35: 500.
+    assert.equal(tws.streamVolume(option, Date.now(), 30), 500);
+    // Another field (the bid's size) is not the volume.
+    gateway.emit(EventName.tickSize, req, 0, 7);
+    assert.equal(tws.streamVolume(option, Date.now(), 30), 500);
+    // A contract with no stream: ask the history.
+    assert.equal(
+      tws.streamVolume({ ...option, conId: 901 }, Date.now(), 30),
+      null,
+    );
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("tws streams: a new session's count never spans the reset or the day before", async () => {
+  mock.timers.enable({ apis: ["Date"], now: tenAm });
+  try {
+    const { gateway, tws } = client();
+    await tws.watch([option], "options");
+    const req = gateway.reqOf("NVDA200");
+    gateway.emit(EventName.tickSize, req, 8, 5000);
+    // The next morning the count starts again.
+    const next = tenAm + minutes(24 * 60);
+    mock.timers.setTime(next);
+    gateway.emit(EventName.tickSize, req, 8, 40);
+    mock.timers.setTime(next + minutes(10));
+    assert.equal(tws.streamVolume(option, Date.now(), 30), null);
+    mock.timers.setTime(next + minutes(31));
+    gateway.emit(EventName.tickSize, req, 8, 300);
+    assert.equal(tws.streamVolume(option, Date.now(), 30), 260);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("tws streams: the kept options get the lines the watched stocks leave", async () => {
+  const { gateway, tws } = client({ streamLines: 10, pinnedLines: 3 });
+  await tws.watch([stock("AAPL", 1), stock("MSFT", 2)]);
+  await tws.watch([option, { ...option, conId: 901, strike: 205 }], "options");
+  assert.deepEqual(
+    gateway.opened.map((o) => o.symbol),
+    ["AAPL", "MSFT", "NVDA200"],
+  );
 });

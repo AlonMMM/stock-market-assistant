@@ -34,9 +34,12 @@ export interface TwsOptions {
   // How long a quote waits for its bid, ask (and an option's model delta)
   // before it answers with what came.
   quoteMs?: number;
-  // Market-data lines the streams may hold (IBKR's default allowance is 100).
+  // Market-data lines the streams may hold (IBKR's default allowance is 100;
+  // more with Quote Booster packs).
   streamLines?: number;
-  // Of those, how many the watched stocks may keep.
+  // Of those, how many the kept contracts (the watched stocks, then the
+  // options kept warm) may hold; the rest is room for chain reads. Default:
+  // all but 25.
   pinnedLines?: number;
   // An option stream nobody read for this long is closed.
   idleMs?: number;
@@ -61,10 +64,19 @@ interface QuoteStream {
   // never comes): later reads answer at once with what the stream has.
   waited: boolean;
   wake: Set<(error?: Error) => void>;
+  // The contract's day volume as it changed: [ms, contracts traded today].
+  volumes: { at: number; day: string; volume: number }[];
 }
 
 // TWS tick types (TickType in the TWS API).
-const tick = { bid: 1, ask: 2, last: 4, modelOption: 13 } as const;
+const tick = { bid: 1, ask: 2, last: 4, volume: 8, modelOption: 13 } as const;
+// How far back a stream keeps its day-volume samples (the 30-minute volume
+// and a little more).
+const volumeKeepMs = 40 * 60_000;
+// The New York date of a time: a day's volume counts that day only.
+const nyDate = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York",
+});
 // TWS error codes that only report, such as market-data farm messages.
 const informational = new Set([2104, 2106, 2107, 2108, 2158, 2119, 10167]);
 const noContract = 200;
@@ -121,6 +133,10 @@ function fromIb(c: Contract): IbContract | null {
   };
 }
 
+/** Kept contracts' groups, in the order they get lines. */
+type PinGroup = "stocks" | "options";
+const pinOrder: PinGroup[] = ["stocks", "options"];
+
 /** A contract's stream key: its conId, else its description. */
 const streamKey = (c: IbContract) =>
   c.conId ? `#${c.conId}` : JSON.stringify(toIb(c));
@@ -143,7 +159,9 @@ export class StoqeyTws implements TwsClient {
   // Live quote streams by contract, and by their request id.
   private readonly streams = new Map<string, QuoteStream>();
   private readonly byReq = new Map<number, QuoteStream>();
-  // Contracts kept streaming whatever their use (the watched stocks).
+  // Contracts kept streaming whatever their use, by group, in the order
+  // they get lines: the watched stocks, then the options kept warm.
+  private readonly groups = new Map<PinGroup, IbContract[]>();
   private pins = new Map<string, IbContract>();
 
   constructor(private readonly options: TwsOptions) {
@@ -151,7 +169,8 @@ export class StoqeyTws implements TwsClient {
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.quoteMs = options.quoteMs ?? 3_000;
     this.streamLines = options.streamLines ?? 90;
-    this.pinnedLines = options.pinnedLines ?? 50;
+    this.pinnedLines =
+      options.pinnedLines ?? Math.max(0, this.streamLines - 25);
     this.idleMs = options.idleMs ?? 10 * 60_000;
     this.ib =
       options.api ??
@@ -185,6 +204,25 @@ export class StoqeyTws implements TwsClient {
       else if (field === tick.last && price !== null) stream.snap.last = price;
       if (price !== null) stream.snap.at = Date.now();
       for (const wake of stream.wake) wake();
+    });
+    this.ib.on(EventName.tickSize, (reqId, field, value) => {
+      const stream = this.byReq.get(reqId);
+      if (!stream || field !== tick.volume) return;
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+        return;
+      const now = Date.now();
+      const day = nyDate.format(now);
+      const kept = stream.volumes;
+      const last = kept.at(-1);
+      if (last?.volume === value && last.day === day) return;
+      // A new session's count starts again: no window spans the reset.
+      if (last && value < last.volume) kept.length = 0;
+      kept.push({ at: now, day, volume: value });
+      // Keeps the newest sample older than the window: a window's start.
+      let old = 0;
+      while (old + 1 < kept.length && kept[old + 1]!.at <= now - volumeKeepMs)
+        old++;
+      if (old > 0) kept.splice(0, old);
     });
     this.ib.on(
       EventName.tickOptionComputation,
@@ -421,18 +459,43 @@ export class StoqeyTws implements TwsClient {
   }
 
   /**
-   * Keeps these contracts streaming (the watched stocks), up to
-   * `pinnedLines`; the ones no longer watched become like any other stream.
+   * Keeps these contracts streaming: `stocks` (the watched stocks) first,
+   * then `options` (the strikes kept warm), together up to `pinnedLines`.
+   * A group's new list replaces its old one; contracts no longer kept become
+   * like any other stream.
    */
-  async watch(contracts: IbContract[]): Promise<void> {
-    const keep = contracts.slice(0, this.pinnedLines);
-    if (contracts.length > keep.length)
+  async watch(
+    contracts: IbContract[],
+    group: PinGroup = "stocks",
+  ): Promise<void> {
+    this.groups.set(group, contracts);
+    const all = pinOrder.flatMap((g) => this.groups.get(g) ?? []);
+    const unique = [...new Map(all.map((c) => [streamKey(c), c])).values()];
+    const keep = unique.slice(0, this.pinnedLines);
+    if (unique.length > keep.length)
       this.log(
-        `ibkr: streaming ${keep.length} of ${contracts.length} watched stocks (the line allowance)`,
+        `ibkr: streaming ${keep.length} of ${unique.length} kept contracts (the line allowance)`,
       );
     this.pins = new Map(keep.map((c) => [streamKey(c), c]));
     await this.connect();
     for (const contract of keep) this.open(contract);
+  }
+
+  /**
+   * Contracts traded in the `minutes` up to `end` (ms), from the contract's
+   * stream: its day volume at `end` less the one at the window's start.
+   * Null when no stream has watched the whole window (then ask the history).
+   */
+  streamVolume(contract: IbContract, end: number, minutes: number) {
+    const stream = this.streams.get(streamKey(contract));
+    if (!stream) return null;
+    const at = (t: number) => stream.volumes.findLast((v) => v.at <= t);
+    const start = at(end - minutes * 60_000);
+    const last = at(end);
+    // Both from the same New York day: a count never spans two sessions.
+    if (!start || !last || start.day !== last.day) return null;
+    if (last.day !== nyDate.format(end)) return null;
+    return Math.max(0, last.volume - start.volume);
   }
 
   private complete(stream: QuoteStream): boolean {
@@ -459,6 +522,7 @@ export class StoqeyTws implements TwsClient {
       usedAt: Date.now(),
       waited: false,
       wake: new Set(),
+      volumes: [],
     };
     this.streams.set(key, stream);
     this.byReq.set(stream.reqId, stream);

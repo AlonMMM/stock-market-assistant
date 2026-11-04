@@ -69,6 +69,16 @@ if (token.length < 32)
 if (process.env.ALPACA_TRADING_LIVE === "true")
   throw new Error("This service trades the paper account only");
 
+// IBKR's market-data lines the quote streams may use (tws-client.ts).
+const streamLines = env("IBKR_STREAM_LINES")
+  ? Number(env("IBKR_STREAM_LINES"))
+  : null;
+if (
+  streamLines !== null &&
+  !(Number.isInteger(streamLines) && streamLines >= 30)
+)
+  throw new Error("IBKR_STREAM_LINES must be a whole number of 30 or more");
+
 const dbPath = process.env.TRADER_DB ?? "data/local/trader.sqlite";
 mkdirSync(dirname(dbPath), { recursive: true });
 const store = new TradeStore(dbPath);
@@ -118,6 +128,9 @@ const traders = new Traders({
       host,
       port,
       clientId: Number(process.env.IBKR_CLIENT_ID ?? 11),
+      // The account's market-data lines (100, more with Quote Booster packs),
+      // less a few to spare.
+      ...(streamLines ? { streamLines } : {}),
       log,
     }),
   log,
@@ -398,6 +411,12 @@ const bot = (() => {
         job: (id) => t.service.job(id),
         ...(t.broker.watchStocks
           ? { watch: (symbols: string[]) => t.broker.watchStocks!(symbols) }
+          : {}),
+        ...(t.broker.keepStreaming
+          ? {
+              keepStreaming: (contracts: string[]) =>
+                t.broker.keepStreaming!(contracts),
+            }
           : {}),
         // IBKR counts the 30 minutes on its own bars (the owner, 2026-11-03:
         // IBKR reads by its own); Alpaca keeps the market's, as the backtest.
