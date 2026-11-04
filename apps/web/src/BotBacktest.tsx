@@ -61,8 +61,15 @@ import {
   signalRows,
   signalsCsv,
   skipCounts,
+  skipStory,
+  sortSignals,
+  sortTrades,
   spreadPct,
+  tradeSorts,
   type SignalRow,
+  type SignalSortKey,
+  type SortDir,
+  type TradeSort,
   statusWords,
   stepMs,
   type BotId,
@@ -351,6 +358,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
     "all",
   );
   const [open, setOpen] = useState<AccountTrade | null>(null);
+  const [openSkip, setOpenSkip] = useState<SignalRow | null>(null);
   const [vOpen, setVOpen] = useState<VolumeAccountTrade | null>(null);
 
   useEffect(() => {
@@ -1116,6 +1124,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                     rows={signals}
                     skipsCount={skips.length}
                     onOpen={setOpen}
+                    onOpenSkip={setOpenSkip}
                   />
                   <TradeList
                     trades={shown}
@@ -1197,6 +1206,9 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
             onClose={() => setOpen(null)}
           />
         </Suspense>
+      )}
+      {openSkip && ran && (
+        <SkipStory r={openSkip} ran={ran} onClose={() => setOpenSkip(null)} />
       )}
     </div>
   );
@@ -1744,27 +1756,98 @@ async function checkTickers(symbols: string[]): Promise<string[]> {
 }
 
 /** Every signal of the run in one folded table: bought or not, what the bot saw, what came of it. */
+/** A signal not bought, in the trade window: why, what the bot saw, and its what-if trade. */
+function SkipStory({
+  r,
+  ran,
+  onClose,
+}: {
+  r: SignalRow;
+  ran: Ran;
+  onClose: () => void;
+}) {
+  const s = skipStory(r, ran.rules, ran.version);
+  if (!s) return null;
+  return (
+    <Suspense fallback={null}>
+      <TradeStory t={s.closed} bot backtest={s.story} onClose={onClose} />
+    </Suspense>
+  );
+}
+
+/** A column header that sorts the signals: a click sorts by it, again flips the order. */
+function SortTh({
+  id,
+  label,
+  title,
+  sort,
+  onSort,
+}: {
+  id: SignalSortKey;
+  label: string;
+  title?: string;
+  sort: { key: SignalSortKey; dir: SortDir };
+  onSort: (key: SignalSortKey) => void;
+}) {
+  const on = sort.key === id;
+  let aria: "ascending" | "descending" | "none" = "none";
+  if (on) aria = sort.dir === "asc" ? "ascending" : "descending";
+  let arrow = "";
+  if (on) arrow = sort.dir === "asc" ? " ▲" : " ▼";
+  return (
+    <th title={title} aria-sort={aria}>
+      <button
+        type="button"
+        className={`th-sort${on ? " on" : ""}`}
+        onClick={() => onSort(id)}
+      >
+        {label}
+        {arrow}
+      </button>
+    </th>
+  );
+}
+
 function SignalList({
   rows,
   skipsCount,
   onOpen,
+  onOpenSkip,
 }: {
   rows: SignalRow[];
   skipsCount: number;
   onOpen: (a: AccountTrade) => void;
+  onOpenSkip: (r: SignalRow) => void;
 }) {
   const [which, setWhich] = useState<"all" | "bought" | "skipped">("all");
   const [reason, setReason] = useState<string>("");
+  const [sort, setSort] = useState<{ key: SignalSortKey; dir: SortDir }>({
+    key: "when",
+    dir: "desc",
+  });
+  // A new column starts high to low (the newest, the biggest); text A to Z.
+  const onSort = (key: SignalSortKey) => {
+    if (sort.key === key) {
+      setSort({ key, dir: sort.dir === "asc" ? "desc" : "asc" });
+      return;
+    }
+    const text = key === "symbol" || key === "outcome";
+    setSort({ key, dir: text ? "asc" : "desc" });
+  };
   if (!rows.length) return null;
   const reasons = skipCounts(
     rows.flatMap((r) => (r.reason === "bought" ? [] : [{ reason: r.reason }])),
   );
-  const shown = rows.filter((r) => {
+  const filtered = rows.filter((r) => {
     if (which === "bought" && !r.bought) return false;
     if (which === "skipped" && r.bought) return false;
     if (reason && r.reason !== reason) return false;
     return true;
   });
+  const shown = sortSignals(filtered, sort.key, sort.dir);
+  const th = (id: SignalSortKey, label: string, title?: string) => (
+    <SortTh id={id} label={label} title={title} sort={sort} onSort={onSort} />
+  );
   const modelled = rows.filter((r) => r.model);
   const modelWon = modelled.filter((r) => (r.ret ?? 0) > 0).length;
   const download = () => {
@@ -1827,48 +1910,66 @@ function SignalList({
         <table className="bt-signals-table">
           <thead>
             <tr>
-              <th>When</th>
-              <th>Stock</th>
-              <th>Outcome</th>
-              <th title="The option's return on what was paid. Not bought: the trade it would have made on Black-Scholes prices">
-                Return
-              </th>
-              <th title="How long it was held: sold the same day, or the nights held over (the what-if too)">
-                Held
-              </th>
-              <th title="The backtest's buy price. Not bought: the what-if's buy (a model)">
-                Bought at
-              </th>
-              <th title="The real bid / ask as the signal minute closed, and the spread as a share of its middle (Databento; — without one)">
-                Bid / ask
-              </th>
-              <th title="Contracts of this option traded in the 30 minutes before the signal (the bot's liquidity check)">
-                Vol 30 min
-              </th>
-              <th title="Strength against SPY (t-stat)">t</th>
-              <th title="The stock's day volume against normal">Vol ×</th>
-              <th>D2</th>
-              <th>Contract</th>
-              <th title="The option's last trade price at the signal, as the bot's pick read it">
-                Price
-              </th>
-              <th>Δ</th>
+              {th("when", "When")}
+              {th("symbol", "Stock")}
+              {th("outcome", "Outcome")}
+              {th(
+                "ret",
+                "Return",
+                "The option's return on what was paid. Not bought: the trade it would have made on Black-Scholes prices",
+              )}
+              {th(
+                "nights",
+                "Held",
+                "How long it was held: sold the same day, or the nights held over (the what-if too)",
+              )}
+              {th(
+                "boughtAt",
+                "Bought at",
+                "The backtest's buy price. Not bought: the what-if's buy (a model)",
+              )}
+              {th(
+                "spread",
+                "Bid / ask",
+                "The real bid / ask as the signal minute closed, and the spread as a share of its middle (Databento; — without one). Sorts by the spread",
+              )}
+              {th(
+                "volume30",
+                "Vol 30 min",
+                "Contracts of this option traded in the 30 minutes before the signal (the bot's liquidity check)",
+              )}
+              {th("t", "t", "Strength against SPY (t-stat)")}
+              {th("rvol", "Vol ×", "The stock's day volume against normal")}
+              {th("d2", "D2")}
+              {th("strike", "Contract", "Sorts by the strike")}
+              {th(
+                "price",
+                "Price",
+                "The option's last trade price at the signal, as the bot's pick read it",
+              )}
+              {th("delta", "Δ")}
             </tr>
           </thead>
           <tbody>
             {shown.map((r) => (
-              <SignalLine key={r.key} r={r} onOpen={onOpen} />
+              <SignalLine
+                key={r.key}
+                r={r}
+                onOpen={onOpen}
+                onOpenSkip={onOpenSkip}
+              />
             ))}
           </tbody>
         </table>
       </div>
       <p className="muted small">
-        Times in {israelLabel}. Not bought: the return is a model, the
-        bot&apos;s own exits on Black-Scholes prices from the stock&apos;s
-        minutes, at the volatility of the option&apos;s price at the signal (or
-        the stock&apos;s 20-day volatility when it had none). A{" "}
-        <span className="state-chip">Model</span> contract was not in the chain:
-        the target delta at the first expiry in range.
+        Times in {israelLabel}. Tap a stock to open it (not bought: why, what
+        the bot saw and the trade it would have made); tap a column to sort. Not
+        bought: the return is a model, the bot&apos;s own exits on Black-Scholes
+        prices from the stock&apos;s minutes, at the volatility of the
+        option&apos;s price at the signal (or the stock&apos;s 20-day volatility
+        when it had none). A <span className="state-chip">Model</span> contract
+        was not in the chain: the target delta at the first expiry in range.
       </p>
     </details>
   );
@@ -1884,9 +1985,11 @@ function heldWords(nights: number | null): string {
 function SignalLine({
   r,
   onOpen,
+  onOpenSkip,
 }: {
   r: SignalRow;
   onOpen: (a: AccountTrade) => void;
+  onOpenSkip: (r: SignalRow) => void;
 }) {
   const fixed = (v: number | null, digits: number, unit = "") =>
     v === null ? "—" : `${v.toFixed(digits)}${unit}`;
@@ -1905,17 +2008,12 @@ function SignalLine({
     <tr className={r.bought ? "bought" : ""}>
       <td className="num">{israelDateTime(stepMs(r.date, r.minute))}</td>
       <td>
-        {taken && r.trade ? (
-          <button
-            type="button"
-            className="link"
-            onClick={() => onOpen(r.trade!)}
-          >
-            <strong>{r.symbol}</strong>
-          </button>
-        ) : (
-          <strong>{r.symbol}</strong>
-        )}{" "}
+        <SignalOpen
+          r={r}
+          taken={taken}
+          onOpen={onOpen}
+          onOpenSkip={onOpenSkip}
+        />{" "}
         {r.right === "C" ? "Call" : "Put"}
         {r.bonus && <span className="state-chip">D2</span>}
         {r.pyramid && <span className="state-chip">Pyramid</span>}
@@ -1949,6 +2047,41 @@ function SignalLine({
   );
 }
 
+/** The stock's name in a signal row: opens the trade, or a skip's what-if, when there is one. */
+function SignalOpen({
+  r,
+  taken,
+  onOpen,
+  onOpenSkip,
+}: {
+  r: SignalRow;
+  taken: boolean;
+  onOpen: (a: AccountTrade) => void;
+  onOpenSkip: (r: SignalRow) => void;
+}) {
+  const name = <strong>{r.symbol}</strong>;
+  if (taken && r.trade) {
+    const trade = r.trade;
+    return (
+      <button type="button" className="link" onClick={() => onOpen(trade)}>
+        {name}
+      </button>
+    );
+  }
+  if (r.skip?.whatIf?.steps.length)
+    return (
+      <button
+        type="button"
+        className="link"
+        title="Why it was not bought, and the trade it would have made (a model)"
+        onClick={() => onOpenSkip(r)}
+      >
+        {name}
+      </button>
+    );
+  return name;
+}
+
 function TradeList({
   trades,
   filter,
@@ -1964,6 +2097,8 @@ function TradeList({
   onOpen: (a: AccountTrade) => void;
   total: number;
 }) {
+  const [by, setBy] = useState<TradeSort>("newest");
+  const sorted = sortTrades(trades, by);
   const filters = [
     ["all", "All"],
     ["won", "Won"],
@@ -1974,6 +2109,17 @@ function TradeList({
     <section className="card bt-trades" aria-label="Trades">
       <div className="card-head">
         <h2>Trades</h2>
+        <select
+          aria-label="Sort the trades"
+          value={by}
+          onChange={(e) => setBy(e.target.value as TradeSort)}
+        >
+          {tradeSorts.map(([id, label]) => (
+            <option key={id} value={id}>
+              {label}
+            </option>
+          ))}
+        </select>
         <div className="segmented small" role="group" aria-label="Which trades">
           {filters.map(([id, label]) => (
             <button
@@ -2001,7 +2147,7 @@ function TradeList({
         </p>
       )}
       <ul className="bt-list">
-        {trades.map((a) => (
+        {sorted.map((a) => (
           <li key={a.trade.id}>
             <button
               type="button"

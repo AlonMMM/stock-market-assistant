@@ -35,6 +35,10 @@ import type { MinuteBar } from "../packages/trading/src/bot/signal.js";
 import {
   clockText,
   nightsHeld,
+  signalRows,
+  skipStory,
+  sortSignals,
+  sortTrades,
   paperSetup,
   parseTickers,
   periodParts,
@@ -1106,4 +1110,126 @@ test("held: the nights a position was held after its entry day", () => {
     1,
   );
   assert.equal(nightsHeld([]), null);
+});
+
+test("a skipped signal opens like a trade: why it was skipped, what the bot saw, the what-if's fills", async () => {
+  const { data } = fakeData(5000);
+  const run = await runStock(
+    "NVDA",
+    [date],
+    { ...defaultSettings, pyramid: false },
+    data,
+    backtestCalendar,
+  );
+  const row = signalRows([run], []).find((r) => !r.bought)!;
+  assert.equal(row.skip?.reason, "premarket");
+  const s = skipStory(row, defaultSettings, "2.10.0")!;
+  const w = row.skip!.whatIf!;
+  assert.equal(s.closed.symbol, w.contract);
+  assert.equal(s.closed.entry, w.steps[0]!.price);
+  assert.equal(s.closed.fills?.[0]?.side, "buy");
+  assert.ok(Math.abs((s.closed.pnlPct ?? 0) - w.ret * 100) < 1e-9);
+  assert.equal(s.story.entryTitle, "Why the bot did not buy");
+  assert.match(s.story.entry[0]!, /^Not bought: /);
+  assert.ok(s.story.entry.some((x) => /a model, not a trade/.test(x)));
+  assert.ok(s.story.markers.some((m) => m.kind === "signal"));
+  // A bought row has no skip story; a skip without a what-if neither.
+  const bought = { ...row, skip: null };
+  assert.equal(skipStory(bought, defaultSettings, "2.10.0"), null);
+  const bare = { ...row, skip: { ...row.skip!, whatIf: undefined } };
+  assert.equal(skipStory(bare, defaultSettings, "2.10.0"), null);
+});
+
+test("signals sort by any column, the ones without a value last; trades by money, return or time", () => {
+  const base = signalRows([], [])[0];
+  assert.equal(base, undefined);
+  const row = (
+    key: string,
+    minute: number,
+    ret: number | null,
+    symbol: string,
+  ) =>
+    ({
+      key,
+      symbol,
+      date: "2026-10-01",
+      minute,
+      right: "C",
+      t: null,
+      rvol: null,
+      d2: null,
+      bonus: false,
+      pyramid: false,
+      stock: null,
+      bought: false,
+      outcome: "x",
+      reason: "premarket",
+      detail: "",
+      contract: null,
+      strike: null,
+      expiry: null,
+      price: null,
+      boughtAt: null,
+      bid: null,
+      ask: null,
+      delta: null,
+      volume30: null,
+      ret,
+      nights: null,
+      model: true,
+      modelled: false,
+      iv: null,
+      ivFrom: null,
+      trade: null,
+      skip: null,
+    }) as Parameters<typeof sortSignals>[0][number];
+  const rows = [
+    row("a", 10, 0.5, "MSFT"),
+    row("b", 20, null, "AAPL"),
+    row("c", 30, -0.2, "NVDA"),
+  ];
+  assert.deepEqual(
+    sortSignals(rows, "ret", "desc").map((r) => r.key),
+    ["a", "c", "b"],
+  );
+  assert.deepEqual(
+    sortSignals(rows, "ret", "asc").map((r) => r.key),
+    ["c", "a", "b"],
+  );
+  assert.deepEqual(
+    sortSignals(rows, "when", "desc").map((r) => r.key),
+    ["c", "b", "a"],
+  );
+  assert.deepEqual(
+    sortSignals(rows, "symbol", "asc").map((r) => r.key),
+    ["b", "a", "c"],
+  );
+  const trade = (id: string, minute: number, pnl: number, status: string) =>
+    ({
+      trade: { id, date: "2026-10-01", minute, symbol: id },
+      status,
+      pnl,
+      retPct: pnl / 10,
+    }) as unknown as Parameters<typeof sortTrades>[0][number];
+  const trades = [
+    trade("A", 10, 500, "taken"),
+    trade("B", 20, 0, "day-limit"),
+    trade("C", 30, -300, "taken"),
+  ];
+  assert.deepEqual(
+    sortTrades(trades, "pnl-desc").map((a) => a.trade.id),
+    ["A", "C", "B"],
+  );
+  assert.deepEqual(
+    sortTrades(trades, "pnl-asc").map((a) => a.trade.id),
+    ["C", "A", "B"],
+  );
+  assert.deepEqual(
+    sortTrades(trades, "newest").map((a) => a.trade.id),
+    ["C", "B", "A"],
+  );
+  assert.deepEqual(
+    sortTrades(trades, "oldest").map((a) => a.trade.id),
+    ["A", "B", "C"],
+  );
 });
