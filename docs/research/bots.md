@@ -52,11 +52,11 @@ What the live bot runs when its settings are reset to defaults: the default vers
 
 ## Candidate
 
-**2.11 (2026-11-04, fill unproven): 2.10 + the sale above the bid** (`sale_limit.py` bs30s-c5): a sale posts a limit at
-BS - 30% of (BS - bid) (BS = Black-Scholes at the stock's price with the entry IV; whole cents, at most the ask - 1 cent,
-at least the bid), steps it to 2/3 and 1/3 of the way above the bid a minute apart, then sells at the bid. 2%: tune fair
-$656,278 / 15%, Favorites $485,615 / 13%; check $1,024,491 / 22%, $243,603 / 22% (2.10: $620,535 / $449,178 /
-$957,771 / $226,846). Fill proven only by option prints; a live trial settles it.
+**2.11 (2026-11-04, fill unproven): 2.10 + the sale stepped down from the mid** (`sale_limit.py` M5-c5, look 2): a
+sale posts a limit at the mid (whole cents, at most the ask - 1 cent), lowers it evenly toward the first bid each minute
+for 5 minutes (mid, then 4/5, 3/5, 2/5, 1/5 of the way above the bid), then sells at the bid. 2%: tune fair $711,585 /
+15%, Favorites $545,898 / 13%; check $1,126,476 / 21%, $272,542 / 22% (2.10: $620,535 / $449,178 / $957,771 /
+$226,846). Fill proven only by option prints; a live trial settles it.
 
 **2.9, merged and deployed 2026-11-01 11:00 Israel (PR #231 with #227 = 2.8.1, and #225: splits + broker stop -60% default; website + Railway sma-trader from main 2a8dfc3; live once the owner picks 2.9 on the settings page):** 2.8.1 (the size steps: 3%,
 2.5% from $300K, 1.5% from $1M, 1% from $4M; a step never raises the owner's size) + the break-even lock (`be_lock

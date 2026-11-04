@@ -16,6 +16,12 @@ limit at or under the bid is the bid. Set before running:
               one third, then the bid (minute bars cannot show seconds, so a step a minute)
   bs30sp-c5   bs30s on the planned exits only (end of day, a gap our way); the adverse exits (stock stages, t, the
               option stop, the break-even lock, a gap against) sell at the bid at once
+Second run (the user, 2026-11-04: "you can move up to 5 minutes try to sold it. find the best."), N = 1..5 minutes:
+  S<N>-c5     from BS - 30%, stepped down evenly over N minutes (minute k at the bid + (1 - k/N) of the gap), then the
+              bid (S1 = bs30, S3 = bs30s)
+  F<N>-c5     BS - 30% held flat for N minutes, then the bid
+  M<N>-c5     from the mid, stepped down the same way over N minutes, then the bid
+One pick over all 15 on tune; only it runs on check (look 2).
 Tune = even weeks, check = odd (split.py), the same run; one pick on tune by min(fair, Favorites) vs 2.10 at 2%; only
 the pick is priced on check. Fill proof caveat: a print at our price does not prove our order was first in line, and
 a market maker can fill a resting order with no earlier print, so this can err both ways.
@@ -40,7 +46,7 @@ from split import half
 from store import bs, day, iv_delta
 
 B = "data/local/x/bt"
-MODES = ("bid-c5", "mid1-c5", "bs30-c5", "bs30s-c5", "bs30sp-c5")
+MODES = ("bid-c5",) + tuple(f"{k}{n}-c5" for k in "SFM" for n in range(1, 6))
 ADVERSE = {"T_half", "T_full", "T_tstat", "U_out", "U_rest", "U_check10", "U_check20", "BE_lock", "morning_gap_against",
            "F_break"}
 for v in MODES: SV.SIZEV[v] = SV.SIZEV["t3A-c5"]
@@ -68,15 +74,16 @@ def sell(mode, c, und, right, d, m, rule, iv0):
     bid, ask = k
     mid = (bid + ask) / 2
     info = dict(bid=bid, ask=ask, mid=round(mid, 4), bs=None, limit=None, filled_min=None)
-    if mode == "bid-c5" or (mode == "bs30sp-c5" and rule in ADVERSE): return bid, info
-    if mode == "mid1-c5":
-        steps = [mid]
+    if mode == "bid-c5": return bid, info
+    kind, n = mode[0], int(mode[1:-3])
+    if kind == "M":
+        top = mid
     else:
         f = fair(c, und, right, d, at, iv0)
         info["bs"] = None if f is None else round(f, 4)
         if f is None: return bid, info
         top = f - 0.3 * (f - bid)
-        steps = [top] if mode == "bs30-c5" else [top, bid + (top - bid) * 2 / 3, bid + (top - bid) / 3]
+    steps = [top] * n if kind == "F" else [bid + (top - bid) * (1 - k / n) for k in range(n)]
     cap = ask - 0.01
     steps = [math.floor(min(x, cap) * 100 + 1e-6) / 100 for x in steps]   # a sale limit in whole cents, rounded down
     info["limit"] = round(steps[0], 4)
@@ -195,7 +202,7 @@ def fills(L, part, modes, out):
                 out[key] = dict(n=len(xs), above=len(above), hit=len(hit), avg=st.mean(rel) if rel else 0,
                                 avg_hit=st.mean(g) if g else 0, miss=st.mean(miss) if miss else 0)
                 print(f"| {v} | {src} | {kind} | {len(xs)} | {len(above)} | {len(hit)} ({len(hit) / max(1, len(above)):.0%}) | {out[key]['avg']:+.1%} | {out[key]['avg_hit']:+.1%} | {out[key]['miss']:+.1%} |", flush=True)
-    bsx = [x for x in L if x["mode"] == "bs30-c5" and x["part"] == part and x["bs"] and x["ask"] > x["bid"]]
+    bsx = [x for x in L if x["mode"] == "S1-c5" and x["part"] == part and x["bs"] and x["ask"] > x["bid"]]
     if bsx:
         pos = [(x["bs"] - x["mid"]) / ((x["ask"] - x["bid"]) / 2) for x in bsx]
         print(f"\nWhere BS sat ({part}): median {st.median(pos):+.2f} half-spreads from the mid; above the ask {sum(p > 1 for p in pos) / len(pos):.0%}, under the bid {sum(p < -1 for p in pos) / len(pos):.0%}", flush=True)
@@ -215,10 +222,10 @@ def main():
         w = csv.DictWriter(f, fieldnames=list(L[0].keys())); w.writeheader(); w.writerows(L)
     out = {}
     table(R, adds, "tune", MODES, out, "Tune weeks (even)")
-    fills(L, "tune", MODES, out)
     score = lambda v: min(out[f"tune|{v}|{s}|0.02"]["acct"] / out[f"tune|bid-c5|{s}|0.02"]["acct"] for s in ("fair", "fav"))
     best = max(MODES[1:], key=score)
     out["best"] = best
+    fills(L, "tune", tuple(dict.fromkeys(("bid-c5", "S3-c5", best))), out)
     print(f"\n🎯 Picked on tune (min of fair and Favorites vs 2.10, 2%): {best} ({score(best):.3f}); better on both: {score(best) > 1}", flush=True)
     table(R, adds, "check", ("bid-c5", best), out, "Check weeks (odd), the same run")
     fills(L, "check", ("bid-c5", best), out)

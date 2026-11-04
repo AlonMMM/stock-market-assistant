@@ -291,7 +291,21 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
-### Sell above the bid: Black-Scholes - 30% to the bid, stepped down a minute at a time (2026-11-04, BETTER on tune and check; fill unproven) -> candidate 2.11
+### Sell above the bid: from the mid, stepped down to the bid over 5 minutes (2026-11-04, BETTER on tune and check; fill unproven) -> candidate 2.11 (look 2)
+
+**Second run, look 2 (the user: "you can move up to 5 minutes try to sold it. find the best.")**: 15 versions set before
+running, N = 1..5 minutes: S<N> from BS - 30% stepped down evenly over N minutes, F<N> BS - 30% held flat, M<N> from
+the mid stepped down; one pick on tune. Tune at 2%, vs 2.10 (fair / Favorites): S1-S5 1.025-1.077 / 1.039-1.106; F1-F5
+1.025-1.067 / 1.039-1.097; M1 1.010 / 1.094, M2 1.099 / 1.167, M3 1.127 / 1.193, M4 1.135 / 1.203, **🎯 M5 1.147 /
+1.215** ($711,585 / 15%, $545,898 / 13%). Longer is better in every family, the mid start beats BS from 2 minutes on
+(BS with the entry IV is under the bid half the time, so it offers above the bid less often). M5 on check: **fair
+$1,024,491 -> $1,126,476 / 21% (1.176 vs 2.10's $957,771 / 24%), Favorites $272,542 / 22% (1.201 vs $226,846 / 23%)**;
+without the best 5 $203,667 / $88,882 vs $169,718 / $74,497; median -1,478 vs -1,622, non-giant sum -722,425 vs
+-769,611; every year better; at 3% check 1.268 / 1.297. Fills (check): a limit above the bid on 85% of sales, filled
+78-85% of those (most in minute 1: 782 of 1,177 on tune; minute 2 103, 3 48, 4 29, 5 12) at +3.4-5.5% over the bid;
+unfilled ones sell 2-4% under the first bid (ARM 2024-09-19 T_tstat: start 0.37, bid 0.31, got 0.16). M5 is at the
+grid's edge (5 minutes, the user's cap); longer may be better still. Fill unproven, as above. M5 replaces the stepped
+BS version as candidate 2.11.
 
 The user: "We are not optimized the selling and always sell at the bid in the main bot.. Cant we do better exit?"; then
 "In real market we have market maker. And we can exit even in the mid price. Wdyt about black sholts calculation, than
