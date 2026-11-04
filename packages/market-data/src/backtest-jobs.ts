@@ -165,14 +165,17 @@ export interface PartTask {
 
 /** The runs, in D1. */
 export class BacktestJobs {
-  private ready?: Promise<unknown>;
+  // True once the table exists. Never the promise itself: on Workers a D1
+  // call started by one request hangs forever when another awaits it.
+  private ready = false;
   readonly results: D1Blobs;
   constructor(private readonly db: D1Like) {
     this.results = new D1Blobs(db, "backtest_job_results", ["job"]);
   }
 
-  private init() {
-    return (this.ready ??= this.db.batch([
+  private async init() {
+    if (this.ready) return;
+    await this.db.batch([
       this.db.prepare(
         "CREATE TABLE IF NOT EXISTS backtest_jobs (id TEXT PRIMARY KEY, owner TEXT NOT NULL, " +
           "bot TEXT NOT NULL, status TEXT NOT NULL, total INTEGER NOT NULL, body TEXT NOT NULL, " +
@@ -188,7 +191,8 @@ export class BacktestJobs {
           "state TEXT NOT NULL, error TEXT, claimed_at INTEGER, done_at INTEGER, " +
           "PRIMARY KEY (job_id, idx))",
       ),
-    ]));
+    ]);
+    this.ready = true;
   }
 
   /** Stores a new run; returns its id. Beyond the latest 10, finished runs go. */

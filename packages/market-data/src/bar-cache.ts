@@ -193,14 +193,18 @@ const daysPerInsert = 4;
 
 /** D1-backed cache for the Worker. */
 export class D1BarCache implements BarCache {
-  private ready?: Promise<unknown>;
+  // True once the table exists. Never the promise itself: on Workers a D1
+  // call started by one request hangs forever when another awaits it.
+  private ready = false;
   constructor(private db: D1Like) {}
-  private init() {
-    return (this.ready ??= this.db
+  private async init() {
+    if (this.ready) return;
+    await this.db
       .prepare(
         "CREATE TABLE IF NOT EXISTS minute_bars (key TEXT NOT NULL, date TEXT NOT NULL, bars TEXT NOT NULL, stored_at INTEGER NOT NULL, PRIMARY KEY (key, date))",
       )
-      .run());
+      .run();
+    this.ready = true;
   }
   async get(key: string, dates: string[]) {
     const result = new Map<string, RawBar[]>();

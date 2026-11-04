@@ -306,3 +306,21 @@ test("a run's summary counts its finished and failed parts", async () => {
     { status: "running", total: 3, done: 2, failed: 1 },
   );
 });
+
+test("a failed table setup is tried again, not kept: the next request reads the runs", async () => {
+  // The store is kept across a Worker's requests; it once kept the setup's
+  // promise, so one failed or lost setup hung or failed every later request.
+  class FlakyD1 extends SqliteD1 {
+    failNext = true;
+    override async batch(statements: Parameters<SqliteD1["batch"]>[0]) {
+      if (this.failNext) {
+        this.failNext = false;
+        throw new Error("D1 overloaded");
+      }
+      return super.batch(statements);
+    }
+  }
+  const jobs = new BacktestJobs(new FlakyD1(":memory:"));
+  await assert.rejects(jobs.list("me@example.com", "main"), /overloaded/);
+  assert.deepEqual(await jobs.list("me@example.com", "main"), []);
+});

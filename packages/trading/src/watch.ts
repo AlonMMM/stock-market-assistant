@@ -29,15 +29,19 @@ export class MemoryWatchStore implements WatchStore {
 }
 
 export class D1WatchStore implements WatchStore {
-  private ready?: Promise<unknown>;
+  // True once the table exists. Never the promise itself: on Workers a D1
+  // call started by one request hangs forever when another awaits it.
+  private ready = false;
   constructor(private readonly db: D1Like) {}
 
-  private init() {
-    return (this.ready ??= this.db
+  private async init() {
+    if (this.ready) return;
+    await this.db
       .prepare(
         "CREATE TABLE IF NOT EXISTS short_watch (id INTEGER PRIMARY KEY, problems TEXT NOT NULL, at INTEGER NOT NULL, failures INTEGER NOT NULL)",
       )
-      .run());
+      .run();
+    this.ready = true;
   }
 
   async load(): Promise<WatchState> {

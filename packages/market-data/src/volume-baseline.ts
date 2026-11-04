@@ -107,7 +107,9 @@ const defaultRowsPerInsert = 20;
  * query per board poll. Older dates are dropped on write.
  */
 export class D1DailyStore<T> implements DailyStore<T> {
-  private ready?: Promise<unknown>;
+  // True once the table exists. Never the promise itself: on Workers a D1
+  // call started by one request hangs forever when another awaits it.
+  private ready = false;
   constructor(
     private db: D1Like,
     private table: string,
@@ -115,12 +117,14 @@ export class D1DailyStore<T> implements DailyStore<T> {
     // Fewer for large values: a D1 statement is limited to 100 KB.
     private rowsPerInsert = defaultRowsPerInsert,
   ) {}
-  private init() {
-    return (this.ready ??= this.db
+  private async init() {
+    if (this.ready) return;
+    await this.db
       .prepare(
         `CREATE TABLE IF NOT EXISTS ${this.table} (date TEXT NOT NULL, ticker TEXT NOT NULL, ${this.column} TEXT NOT NULL, stored_at INTEGER NOT NULL, PRIMARY KEY (date, ticker))`,
       )
-      .run());
+      .run();
+    this.ready = true;
   }
   async get(date: string, tickers: string[]) {
     const result = new Map<string, T>();
