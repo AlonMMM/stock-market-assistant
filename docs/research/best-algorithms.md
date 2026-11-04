@@ -2957,6 +2957,24 @@ Verdict: not better. Few thin skips turn busy within minutes (5% / 3% within 2),
 pick (median ~-$2,800, almost no giants on check); the tune gain was one SMCI trade. The 1-5 minute bucket of 2026-10-24
 does not hold on the fixed walk. One try at the signal stays; no candidate.
 
+### Giants by group on 2.10: the floor skips, D2 and the pyramid (2026-11-04, analysis, not a rule)
+The user: "what is the percentage of winners and the giants now?", then the same "in the filtered out by chips and by
+floor" and "how many giants we have that relates the double up or the pyramid?". skip_giants.py (every main signal
+2.10 skips for a floor walked anyway on its 0.15 pick, 2.10's exits, real quotes; thin = fill unproven) and
+pyramid_giants.py (2.10's walk). Main legs at $10K, giants = +300% at the 1% basis; fair tune / check, Favorites tune /
+check:
+- 2.10's trades: 504 / 503 / 507 / 493, winners 14-17%, giants 4.2% / 3.4% / 3.9% / 2.6%, median -$2,500 to -$2,600.
+- Thin (under 200): 664 / 678 / 911 / 942 signals (more than the trades), winners 12-16%, giants 2.6% / 1.3% / 1.9% /
+  1.1% (17 / 9 / 17 / 10), median -$2,740 to -$2,830, sum -$12K / -$708K / -$387K / -$1,129K.
+- Too cheap (under $0.20): 89 / 76 / 81 / 75, giants 2.2% / 1.3% / 1.2% / 1.3%, median -$3,240 to -$4,190, every half
+  negative. Too cheap and thin: 125-183, giants 0.8-1.6%, median about -$3,900 to -$4,240.
+- D2 main legs 167 / 179 / 167 / 171, giants 5.4% / 3.9% / 3.6% / 2.9% (the rest 3.6% / 3.1% / 4.1% / 2.5%). D2 legs that
+  got the add 39 / 53 / 37 / 45: giants 13% / 11% / 11% / 9%, median about -$1,200 to -$1,600 (the add needs the leg up).
+  The adds themselves: giants 1 / 4 / 1 / 2 (2.6-7.5%), median -$2,600 to -$2,800, sum +$37K / +$458K / +$24K / +$93K;
+  an add was a giant with its main leg 1 / 4 / 1 / 2 times.
+- So the floors halve the giant rate of what they skip (1-2.6% vs 3-4%), and too cheap also loses more a trade. More
+  trades pay only at about 4% giants; the D2 legs that reach the add are the one group well above it.
+
 ### The busiest delta, on 2.10 (2026-11-04, not better: every version loses tune on the fair list and the check by far)
 The user: "I would like to choose the best delta. rule - you choose the most volume delta from 0.1 (up to 0.09) to 0.2
 (up to 0.22). if the chosen delta is <=0.15 - you can go with chip option up to 0.1. try also with 0.2 as usual. let me
