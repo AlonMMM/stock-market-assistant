@@ -92,7 +92,7 @@ def counts(R, part, out):
             q = lambda p: ds[min(len(ds) - 1, int(p * len(ds)))]
             print(f"| {v} | {src} | {len(hit)} | {same} | {new} | {lost} | {low} | {cheap} | {q(0.1):.2f} / {q(0.5):.2f} / {q(0.9):.2f} | {nobook} |", flush=True)
     whys = collections.Counter((v, r["why"].get(v)) for r in R if r["kind"] == "main" and half(r["date"]) == part for v in MODES)
-    print("  no-trade reasons (both lists): " + "; ".join(f"{v}: " + ", ".join(f"{w} {n}" for (vv, w), n in sorted(whys.items()) if vv == v and w != "ok") for v in MODES))
+    print("  no-trade reasons (both lists): " + "; ".join(f"{v}: " + ", ".join(f"{w} {n}" for (vv, w), n in sorted(whys.items(), key=str) if vv == v and w not in ("ok", None)) for v in MODES))
 
 
 def main():

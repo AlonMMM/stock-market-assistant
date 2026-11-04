@@ -2988,6 +2988,17 @@ paid); every signal: among 2.10's expiry's strikes in the band, the most contrac
 - Verdict: not better. No version beats 2.10 on tune on both lists; the check loses 38-71%, with drops of 32-46% vs 24%.
   The busiest strike in the band is often a different strike than the 0.15 (60% of trades) and it trades the thin-skip
   signals 2.10 drops, which lose as in every earlier liquidity fallback. 0.15 and the 200 floor stay; no candidate.
+- **Only on 2.10's own trades (2026-11-04, look 2; delta_volume_gated.py):** the user, "only when the origin have more
+  then 2 floor do the trade (expect no extra trade)". A signal trades only when 2.10's 0.15 pick passes both floors (200,
+  $0.20); then the busiest strike in the band is bought (under its floor: 2.10's strike). The trades are 2.10's one for
+  one (main legs 504 / 507 tune, 503 / 493 check; the busiest strike is another contract on 35-50% of them). 2%, vs 2.10
+  (tune fair / Fav, check fair / Fav): G10 -9% / -6%, -24% / -9%; G10n (0.10-0.20, 🎯) -2% / -1%, -3% / -3%; G10w -14% /
+  -9%, -28% / -13%; G20 the same as G10 within $1K (the $0.10 floor almost never decides once 2.10's pick passed $0.20).
+  3% check: G10 -34% / -15%, G10n -5% / -5%. Drops the same (16% / 25%).
+- Why: on the same signals the 0.15 strike earns more than the busiest one. The moved trades sum +$325K (check fair, G10)
+  at the busiest strike, about $200K less than 2.10's 0.15 strike made on them; the best 5 shrink ($1.05M vs $1.19M):
+  the busiest strike is mostly a higher delta (median 0.16, p90 0.21), dearer, and a giant move multiplies it less.
+  Verdict: not better; the busiest delta closed.
 
 ### The volume against SPY's, on 2.10 (2026-11-03, not better: the extra trades fail the check; size-rel near, one gate short)
 The user: "can we also check the thesis in the main bot? if today the main bot does not normelized the spy volume I think
