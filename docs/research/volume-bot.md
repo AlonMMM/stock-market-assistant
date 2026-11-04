@@ -484,6 +484,21 @@ does not hold there).
   drop, better without the best 5; the non-giant check +$11.9K, tune flat). Small; not a clear pass on the year.
 - The smoothed usual on 1.2.0: loses tune again (third time), wins check.
 
+**Released as Volume 1.3.0 (2026-11-04, the user: "release it").** PR #256 (`shockPaceMin` 3, `fast.ts shockRuleFor`),
+deployed 3ae02a9 07:3x Israel, live settings switched (the owner's limits kept; rollback: version 1.2.0 in the
+settings, which puts `shockPaceMin` back to 0). The trader checks both shock lists from the open (`shock` kept for the
+1.2.0 backtest, `shock_p3` trades); D1 `volume_alerts` holds 30,580 `shock_p3` alerts, 2024-02-01 .. 2026-10-30, 235
+stocks (`volume-data-upload.ts shock --pace 3`; = the research list on the year, 1,293 / 1,293). Gap: 2026-11-02 / 11-03
+have no `shock_p3` rows (no 10-second bars on the Mac for them; the trader keeps them from 11-04). The release re-walk
+on the 1.3.0 code (`.volimp.ts` w12 / w13, the same saved settings): year $151.4K (12%) vs $152.4K (13%), tune $113.4K
+vs $113.2K, check $133.2K vs $134.4K at 2%: a tie, as logged; both moved by the same 14 signals vs the 11-03 run (the
+earnings fetch flagged 5 fewer earnings days today; SLV 10-08 now fills), not by the change. The code review (fresh
+agent): no new order path, one entry per slot; fixed before the merge: the gate switched on mid-session started its
+list cold (now both lists step from the open), the parity script ignored the list (`volume-backtest-check.ts --pace`).
+First week bar: the year's backtest has ~2.6 trades a week, 35% winners, median -28%; 1.3.0 removes ~1 shock in 10
+vs 1.2.0. Stop criteria: a shock trade with the window under 3x the day's pace, a shock before ~10:16, or a trade the
+replay does not explain -> back to 1.2.0.
+
 ### A shock must also stand out against the day's pace (2026-11-02, look 1)
 
 The user, 2026-11-02, on the MSTR 111 Call of 2026-08-19 (a shock trade at 11:14:00): "there is no shock - look on the
