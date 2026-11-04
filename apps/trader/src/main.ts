@@ -396,6 +396,9 @@ const bot = (() => {
         buy: (b, o) => t.service.buy(b, o),
         sell: (b) => t.service.sell(b),
         job: (id) => t.service.job(id),
+        ...(t.broker.watchStocks
+          ? { watch: (symbols: string[]) => t.broker.watchStocks!(symbols) }
+          : {}),
         // IBKR counts the 30 minutes on its own bars (the owner, 2026-11-03:
         // IBKR reads by its own); Alpaca keeps the market's, as the backtest.
         ...(broker === "ibkr" && t.broker.optionVolume30

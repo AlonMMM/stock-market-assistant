@@ -85,6 +85,8 @@ export interface TwsClient {
   ): Promise<{ expirations: string[]; strikes: number[] }>;
   /** The contract's bid / ask (and an option's model delta) now, real time only. */
   snapshot(contract: IbContract): Promise<IbSnapshot>;
+  /** Keeps these contracts' quotes streaming, so reading one never waits. */
+  watch?(contracts: IbContract[]): Promise<void>;
   /** Contracts traded in each 1-minute bar of the `minutes` up to `end` (ms). */
   minuteVolumes?(
     contract: IbContract,
@@ -417,6 +419,19 @@ export class IbkrTrading implements Broker {
       (c) => this.optionQuote(c).catch(() => null),
     );
     return quotes.filter((q): q is OptionQuote => q !== null);
+  }
+
+  /**
+   * Keeps the stocks' IBKR quotes streaming, so a chain starts from IBKR's
+   * own price at once instead of waiting for it (the owner, 2026-11-04).
+   */
+  async watchStocks(symbols: string[]): Promise<void> {
+    const watch = this.client.watch?.bind(this.client);
+    if (!watch) return;
+    const stocks = await inBatches(symbols, 10, (s) =>
+      this.resolve(stockContract(s)).catch(() => null),
+    );
+    await watch(stocks.filter((c): c is IbContract => c !== null));
   }
 
   /**

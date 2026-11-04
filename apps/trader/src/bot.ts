@@ -141,6 +141,8 @@ export interface BotTrading {
   quote(contract: string): Promise<OptionQuote>;
   /** Many contracts' quotes at once (the alert books); absent: one by one. */
   quotes?(contracts: string[]): Promise<OptionQuote[]>;
+  /** Keeps the watched stocks' quotes streaming (IBKR); absent: nothing to keep. */
+  watch?(symbols: string[]): Promise<void>;
   held(
     contract: string,
   ): Promise<{ qty: number; avgEntryPrice: number } | null>;
@@ -540,6 +542,16 @@ export class IndiBot {
 
   private async warmUp(date: string) {
     this.symbols = this.universe();
+    // Each account that can keeps the watched stocks streaming, so a signal's
+    // pick starts from a price already there.
+    for (const broker of this.o.brokers)
+      void this.trading(broker)
+        .watch?.(this.symbols)
+        ?.catch((error: unknown) =>
+          this.o.log(
+            `bot: ${broker} could not stream the watched stocks: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        );
     const symbols = [...this.symbols, "SPY"];
     const days = previousSessions(date, 20);
     const bars = await this.o.market.sessions(symbols, days);
