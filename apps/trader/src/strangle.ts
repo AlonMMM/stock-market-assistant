@@ -73,7 +73,7 @@ import {
   FastFire,
   fastRule,
   fastState,
-  shockRule,
+  liveFastRules,
   fastWindows,
   paceSums,
   type FastBaseline,
@@ -276,8 +276,8 @@ export class StrangleBot {
   // stock's 20-session medians once its history is in, its crossing state.
   private tape: FastTape | null = null;
   private fastBase = new Map<string, FastBaseline>();
-  private fastFire = new Map<string, FastFire>();
-  private shockFire = new Map<string, FastFire>();
+  // A stock's fire state per 10-second rule (fast.ts liveFastRules keys).
+  private fastFires = new Map<string, Map<string, FastFire>>();
   // A shock trade's side seen on consecutive 1-second checks: bought at 5.
   private holds = new Map<string, { side: Leg; n: number }>();
   private fastDone = new Map<string, number>();
@@ -528,17 +528,15 @@ export class StrangleBot {
         const day = tape.day(symbol);
         const cf = carried(day.c);
         const cum = paceSums(day.v);
-        let fire = this.fastFire.get(symbol);
-        if (!fire) this.fastFire.set(symbol, (fire = new FastFire()));
-        let shock = this.shockFire.get(symbol);
-        if (!shock) this.shockFire.set(symbol, (shock = new FastFire()));
-        const rules = [
-          { rule: fastRule, fire, on: s.fastAlert, isShock: false },
-          { rule: shockRule, fire: shock, on: s.shockAlert, isShock: true },
-        ];
+        const fires = this.fastFires.get(symbol) ?? new Map<string, FastFire>();
+        this.fastFires.set(symbol, fires);
+        const rules = liveFastRules(s).map((r) => {
+          let fire = fires.get(r.key);
+          if (!fire) fires.set(r.key, (fire = new FastFire()));
+          return { ...r, fire };
+        });
         for (let t = done + 1; t <= ready; t++) {
           for (const r of rules) {
-            if (!r.on) continue;
             const st = fastState(day, cf, base, t, cum, r.rule);
             if (!r.fire.step(t, st.on)) continue;
             if (t < r.rule.firstSlot || t > r.rule.lastSlot) continue;
@@ -548,13 +546,14 @@ export class StrangleBot {
               day: date,
               symbol,
               second,
-              kind: r.isShock ? "shock" : "fast",
+              kind: r.kind,
               price: cf[t]!,
               up: st.up,
             });
             // A slot passed while catching up (a start mid-session): no trade.
             if (this.sessionSecond() - second > 30) continue;
-            // Every alert's option books, traded or not (alert-books.ts).
+            // Every alert's option books, traded or not (alert-books.ts); a
+            // gated shock on an ungated one's second shares its books.
             void this.watchBooksOf(
               date,
               symbol,
@@ -562,6 +561,7 @@ export class StrangleBot {
               r.isShock ? "shock" : "fast",
               s,
             );
+            if (!r.trades) continue;
             await this.fastEntry(
               date,
               symbol,
@@ -861,8 +861,7 @@ export class StrangleBot {
     void this.findNoExpiry(date, s);
     this.tape = null;
     this.fastBase.clear();
-    this.fastFire.clear();
-    this.shockFire.clear();
+    this.fastFires.clear();
     this.holds.clear();
     this.fastDone.clear();
     const closeAt = coreClose(date);

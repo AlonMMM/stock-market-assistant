@@ -15,7 +15,7 @@ export interface TraderAlert {
   day: string;
   symbol: string;
   second: number;
-  kind: "shock" | "fast";
+  kind: string; // "shock", "shock_p3" (fast.ts shockKind) or "fast"
   price: number;
   up: boolean;
 }

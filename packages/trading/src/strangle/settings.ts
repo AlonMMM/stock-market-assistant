@@ -113,6 +113,14 @@ export interface StrangleSettings {
   // off (1.0.0, 1.1.0). volume-bot.md 2026-11-02: 2 is better on tune and
   // check, on the year and on 3 years ($773K -> $867K at 2%, drop 18.5%).
   shockAgainstUnits: number;
+  // The shock against today's own volume (Volume 1.3.0, the user 2026-11-03:
+  // "shock is a sadden increase in the volume. to not compare it to today
+  // volume is weird"): the 60-second window also at least this many times
+  // today's pace; 0 = off (1.0.0 - 1.2.0). Only 0 and 3 have stored alert
+  // lists (volume_alerts kinds shock, shock_p3). volume-bot.md 2026-11-03, on
+  // 1.2.0: a tie on the year ($153.1K -> $154.4K), 3-year twin $896K -> $937K,
+  // drop 18.7% -> 18.0%, better on tune and check.
+  shockPaceMin: number;
   // The news filter, as the Indi bot's.
   skipEarnings: boolean;
   skipPremarket: boolean;
@@ -180,6 +188,7 @@ export const defaultStrangleSettings: StrangleSettings = {
   shockAlert: true,
   shockTouchSeconds: 20,
   shockAgainstUnits: 2,
+  shockPaceMin: 3,
   skipEarnings: true,
   skipPremarket: true,
 };
@@ -213,6 +222,7 @@ export const strangleLimits: Record<
   noStopMinutes: [0, 60, 5],
   shockTouchSeconds: [10, 300, 5],
   shockAgainstUnits: [0, 10, 0.5],
+  shockPaceMin: [0, 3, 3],
 };
 
 // Values the backtest never ran.
@@ -394,6 +404,10 @@ export function strangleSteps(
   let againstWords = "";
   if (s.shockAgainstUnits > 0)
     againstWords = `, and not against the stock's move since the open once that move is ${s.shockAgainstUnits} typical 30-minute moves or more`;
+  // The shock against today's own volume (Volume 1.3.0).
+  let paceWords = "";
+  if (s.shockPaceMin > 0)
+    paceWords = ` and at least ${s.shockPaceMin}× today's pace (none before the pace starts, about 10:16)`;
   const news = [
     s.skipEarnings && "the stock's earnings reaction day",
     s.skipPremarket && "a pre-market volume of 4× normal or more",
@@ -401,7 +415,7 @@ export function strangleSteps(
   return [
     {
       name: "The alert",
-      text: `On a day with a same-day expiry${nextDayWords}${s.weekExpiry ? `, or else the nearest expiry later that week when the burst is at least ${s.burstMinWeek}` : ""}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.${s.fastAlert ? " Also the 60-second alert (60 seconds of volume at 2× normal or today's pace, a move of 3× normal), 09:40 to 13:00, on a same-day or next-session expiry only." : ""}${s.shockAlert ? " Also the shock alert (60 seconds of volume at 15× normal or today's pace, a move of 3× normal), 09:40 to 15:30: the stock has to touch a side line within " + s.shockTouchSeconds + " seconds" + againstWords + ", then it is bought when the side holds 5 seconds within 5 minutes, the burst at least 0 the side's way, an expiry at most 2 days out, the leg's spread at most 30% of its mid." : ""}`,
+      text: `On a day with a same-day expiry${nextDayWords}${s.weekExpiry ? `, or else the nearest expiry later that week when the burst is at least ${s.burstMinWeek}` : ""}, from ${clockOf(s.firstMinute)} to ${clockOf(s.lastMinute)} New York, when a volume alert fires on a stock, in either direction${perStockWords}.${s.fastAlert ? " Also the 60-second alert (60 seconds of volume at 2× normal or today's pace, a move of 3× normal), 09:40 to 13:00, on a same-day or next-session expiry only." : ""}${s.shockAlert ? " Also the shock alert (60 seconds of volume at 15× normal or today's pace" + paceWords + ", a move of 3× normal), 09:40 to 15:30: the stock has to touch a side line within " + s.shockTouchSeconds + " seconds" + againstWords + ", then it is bought when the side holds 5 seconds within 5 minutes, the burst at least 0 the side's way, an expiry at most 2 days out, the leg's spread at most 30% of its mid." : ""}`,
     },
     {
       name: "News filter",

@@ -7,6 +7,10 @@ import {
   FastFire,
   fastRule,
   fastWindows,
+  liveFastRules,
+  shockKind,
+  shockRule,
+  shockRuleFor,
   type FastDay,
 } from "../packages/trading/src/strangle/fast.js";
 import {
@@ -50,6 +54,63 @@ test("60-second alert: fires on a volume and price burst, once, then waits out t
   );
   assert.equal(got[0]!.up, true);
   assert.equal(got[0]!.second, 1820);
+});
+
+test("shock (Volume 1.3.0): at 3x today's pace a burst before the pace exists, or on a day already busy, does not fire; on a quiet day it does", () => {
+  const base = fastBaseline(
+    Array.from({ length: 20 }, () => fastWindows(quiet())),
+  )!;
+  // 6 slots of 2,000 shares climbing 1.2%: 12,000 in 60 s, 20x the usual 600.
+  const burst = (day: FastDay, from: number) => {
+    for (let k = 0; k < 6; k++) {
+      day.v[from + k] = 2000;
+      day.c[from + k] = 100 * (1 + 0.002 * (k + 1));
+    }
+    for (let t = from + 6; t < from + 30; t++) day.c[t] = 101.2;
+  };
+  const slots = (day: FastDay, paceMin: number) =>
+    fastAlerts(day, base, shockRuleFor(paceMin)).map((a) => a.slot);
+  // 10:00 (slot 180): no pace yet (it starts 15 minutes into the 10:00 zone).
+  const early = quiet();
+  burst(early, 180);
+  assert.deepEqual(slots(early, 0), [184]); // 15x once 5 of the 6 slots are in
+  assert.deepEqual(slots(early, 3), []);
+  // 11:10 on a quiet day: 20x today's pace too.
+  const quietDay = quiet();
+  burst(quietDay, 600);
+  assert.deepEqual(slots(quietDay, 3), [604]);
+  // 11:10 on a day trading 800 a slot: 20x the usual but 2.5x today's pace.
+  const busy = quiet();
+  busy.v.fill(800);
+  burst(busy, 600);
+  assert.deepEqual(slots(busy, 0), [603]);
+  assert.deepEqual(slots(busy, 3), []);
+  // 0 is the ungated rule, unchanged
+  assert.deepEqual(shockRuleFor(0), shockRule);
+  assert.equal(shockKind(0), "shock");
+  assert.equal(shockKind(3), "shock_p3");
+});
+
+test("liveFastRules (Volume 1.3.0): the ungated shock is always kept, the gated one trades at shockPaceMin; off, none", () => {
+  const of = (s: Parameters<typeof liveFastRules>[0]) =>
+    liveFastRules(s).map((r) => `${r.key}:${r.kind}:${r.trades}`);
+  assert.deepEqual(
+    of({ fastAlert: false, shockAlert: true, shockPaceMin: 0 }),
+    ["shock:shock:true"],
+  );
+  assert.deepEqual(
+    of({ fastAlert: false, shockAlert: true, shockPaceMin: 3 }),
+    ["shock:shock:false", "paced:shock_p3:true"],
+  );
+  assert.deepEqual(
+    of({ fastAlert: true, shockAlert: false, shockPaceMin: 3 }),
+    ["fast:fast:true"],
+  );
+  assert.equal(
+    liveFastRules({ fastAlert: false, shockAlert: true, shockPaceMin: 3 })[1]!
+      .rule.paceMin,
+    3,
+  );
 });
 
 test("60-second alert: no alert before 09:40 or without 20 sessions", () => {

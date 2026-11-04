@@ -116,6 +116,7 @@ function harness(o: {
           })),
         );
       }
+  const asked: string[] = [];
   const data: VolumeBacktestData = {
     lastSession: DAY,
     bars: (s, d) => {
@@ -140,12 +141,13 @@ function harness(o: {
     async stockSeconds(_s, _d, from, to) {
       return (o.seconds ?? []).filter(([s]) => s >= from && s <= to);
     },
-    async shockAlerts() {
+    async shockAlerts(_s, _from, _to, kind) {
+      asked.push(kind);
       return o.shocks ?? [];
     },
   };
   if (o.optionSeconds) data.optionSeconds = async () => o.optionSeconds!;
-  return { data, today, spot };
+  return { data, today, spot, asked };
 }
 
 const run = (data: VolumeBacktestData, s: StrangleSettings = settings) =>
@@ -597,4 +599,17 @@ test("volume backtest (2026-11-03, Volume 1.2.0): a shock against the day's move
     "against_move",
     "with the move",
   );
+});
+
+test("volume backtest (2026-11-04, Volume 1.3.0): the shock list is the one of shockPaceMin, shock_p3 at 3 and shock at 0", async () => {
+  const today = climbThenFall();
+  const shocks = [{ date: DAY, second: 2380, price: today[39]!.c, up: true }];
+  for (const [paceMin, kind] of [
+    [3, "shock_p3"],
+    [0, "shock"],
+  ] as const) {
+    const h = harness({ today, shocks, books });
+    await run(h.data, { ...settings, shockPaceMin: paceMin });
+    assert.deepEqual(h.asked, [kind]);
+  }
 });
