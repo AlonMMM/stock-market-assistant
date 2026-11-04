@@ -21,6 +21,7 @@ import {
 } from "../../../packages/trading/src/bot/backtest-account.js";
 import { defaultFillPct } from "../../../packages/trading/src/bot/backtest.js";
 import {
+  backtestLimits,
   limits,
   type NumberKey,
 } from "../../../packages/trading/src/bot/settings.js";
@@ -1479,7 +1480,9 @@ function RuleInput({
         />
       </label>
     );
-  const [min, max, step] = limits[key as NumberKey];
+  // The backtest's own range where it allows more than the live bot.
+  const [min, max, step] =
+    backtestLimits[key as NumberKey] ?? limits[key as NumberKey];
   return (
     <NumberRow
       label={field.label}

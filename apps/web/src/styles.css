@@ -2043,6 +2043,15 @@ main:has(> .backtest-page) {
 .rule-field.changed input {
   border: 2px solid var(--orange-67);
 }
+.rule-field.bad input {
+  border: 2px solid var(--bot-down);
+}
+.rule-field .rule-error {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bot-down);
+}
 .rule-field .hint {
   font-size: 12px;
   color: var(--gray-49);

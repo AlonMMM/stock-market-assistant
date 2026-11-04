@@ -25,6 +25,7 @@ import {
 import { nasdaqEarnings } from "../../trading/src/bot/nasdaq.js";
 import type { EarningsReport } from "../../trading/src/bot/news.js";
 import {
+  backtestLimits,
   defaultSettings,
   parseSettings,
 } from "../../trading/src/bot/settings.js";
@@ -113,6 +114,17 @@ function parseRequest(body: unknown, lastSession: string) {
       : {};
   const merged: Record<string, unknown> = { ...defaultSettings };
   for (const key of ruleKeys) if (key in rules) merged[key] = rules[key];
+  // Ranges only the backtest allows (settings.ts backtestLimits): their values
+  // are the page's account's, so they are checked here, not against the live
+  // bot's limits, and the walk gets the default.
+  for (const [key, range] of Object.entries(backtestLimits)) {
+    if (!(key in rules)) continue;
+    const v = rules[key];
+    const [min, max] = range;
+    if (typeof v !== "number" || !(v >= min && v <= max))
+      throw new InputError(`${key} must be a number from ${min} to ${max}`);
+    merged[key] = defaultSettings[key as keyof typeof defaultSettings];
+  }
   const parsed = parseSettings(merged);
   if (!parsed.ok) throw new InputError(parsed.error);
   let fillPct = defaultFillPct;

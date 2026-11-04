@@ -45,11 +45,25 @@ export function NumberRow({
 }) {
   const [text, setText] = useState(String(value));
   useEffect(() => setText(String(value)), [value]);
+  // A value outside the range is not used: say so, never keep the old one
+  // silently (the user, 2026-11-04: "I saved with 30 ... The 30 didn't save").
+  const typed = Number(text);
+  const usable = text !== "" && Number.isFinite(typed);
+  const bad = !usable || typed < min || typed > max;
+  let className = "rule-field";
+  if (changed) className += " changed";
+  if (bad) className += " bad";
   return (
-    <label className={changed ? "rule-field changed" : "rule-field"}>
+    <label className={className}>
       <span>
         {label}
         {unit && <span className="hint"> {unit}</span>}
+        {bad && (
+          <span className="rule-error" role="alert">
+            {" "}
+            {min} to {max} only: {value} is used
+          </span>
+        )}
       </span>
       <input
         type="number"
@@ -58,6 +72,7 @@ export function NumberRow({
         min={min}
         max={max}
         step={step}
+        aria-invalid={bad}
         onChange={(e) => {
           setText(e.target.value);
           const v = Number(e.target.value);
