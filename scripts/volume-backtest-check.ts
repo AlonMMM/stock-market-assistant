@@ -15,6 +15,8 @@
 //   --books seconds|minutes     the 1-second books the research read (default), or the minute books only (the app)
 //   --floor N                   the liquidity floor (default 0, the research's production row; 200 = live)
 //   --from / --to               the dates (default the research's 2024-02-01 .. 2026-10-22)
+//   --pace N                    the shock's pace gate (shockPaceMin, default 0); research.json's shocks must be that
+//                               rule's (Volume 1.3.0: 3, the research's f60_variants.py GATE=3 list)
 //   --compare FILE              the research's kept trades (STR_DUMP_DIR), trade by trade
 //   --out FILE                  the engine's signals, as JSON
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -36,6 +38,7 @@ import {
   type VolumeSignal,
   type VolumeStockRun,
 } from "../packages/trading/src/strangle/backtest.js";
+import { shockKind } from "../packages/trading/src/strangle/fast.js";
 import { defaultStrangleSettings } from "../packages/trading/src/strangle/settings.js";
 
 const MAIN = "/Users/alonmo/Desktop/Personal/stock-market-assistant";
@@ -55,6 +58,7 @@ const from = opt("from", "2024-02-01");
 const to = opt("to", "2026-10-22");
 const compareFile = opt("compare", "");
 const outFile = opt("out", "");
+const paceMin = Number(opt("pace", "0"));
 
 interface ResearchAlert {
   tag: string;
@@ -218,7 +222,12 @@ const data: VolumeBacktestData = {
       .filter(([s]) => s >= lo && s <= hi);
   },
   // The engine's own alerts (--alerts computed) still take the research's shock list.
-  async shockAlerts(symbol, lo, hi) {
+  async shockAlerts(symbol, lo, hi, kind) {
+    // research.json holds one shock list: the one of --pace.
+    if (kind !== shockKind(paceMin))
+      throw new Error(
+        `asked for ${kind}, research.json has ${shockKind(paceMin)}`,
+      );
     return research.alerts
       .filter(
         (a) =>
@@ -255,6 +264,7 @@ const settings = {
   delta: 0.2,
   minVolume: floor,
   shockAlert: true,
+  shockPaceMin: paceMin,
   fastAlert: false,
 };
 const sessions: string[] = [];

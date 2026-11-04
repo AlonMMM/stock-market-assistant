@@ -536,6 +536,7 @@ export class StrangleBot {
           return { ...r, fire };
         });
         for (let t = done + 1; t <= ready; t++) {
+          let shockBooks = false; // a shock's books already watched at t
           for (const r of rules) {
             const st = fastState(day, cf, base, t, cum, r.rule);
             if (!r.fire.step(t, st.on)) continue;
@@ -552,15 +553,17 @@ export class StrangleBot {
             });
             // A slot passed while catching up (a start mid-session): no trade.
             if (this.sessionSecond() - second > 30) continue;
-            // Every alert's option books, traded or not (alert-books.ts); a
-            // gated shock on an ungated one's second shares its books.
-            void this.watchBooksOf(
-              date,
-              symbol,
-              second,
-              r.isShock ? "shock" : "fast",
-              s,
-            );
+            // Every alert's option books, traded or not (alert-books.ts);
+            // both shock lists firing on one slot share the books.
+            if (!(r.isShock && shockBooks))
+              void this.watchBooksOf(
+                date,
+                symbol,
+                second,
+                r.isShock ? "shock" : "fast",
+                s,
+              );
+            if (r.isShock) shockBooks = true;
             if (!r.trades) continue;
             await this.fastEntry(
               date,

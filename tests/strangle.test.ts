@@ -841,9 +841,14 @@ test("volume versions (2026-11-02, 1.2.0 on 11-03, 1.3.0 on 11-04): 1.3.0 by def
   assert.equal(volumeVersionLabel(v13), "1.3.0");
   assert.equal(volumeVersionLabel({ ...v13, shockPaceMin: 0 }), "1.3.0*");
   assert.equal(volumeVersionLabel(strangleWithDefaults(v13)), "1.3.0");
-  // only the stored lists: 0 or 3
-  const p2 = parseStrangleSettings({ ...v13, shockPaceMin: 2 });
-  assert.ok(!p2.ok || [0, 3].includes(p2.value.shockPaceMin));
+  // only the stored lists: 0 or 3 (a value between rounds to one of them)
+  const paceOf = (v: number) => {
+    const r = parseStrangleSettings({ ...v13, shockPaceMin: v });
+    return r.ok ? r.value.shockPaceMin : r.error;
+  };
+  assert.equal(paceOf(1.4), 0);
+  assert.equal(paceOf(2), 3);
+  assert.match(String(paceOf(4)), /from 0 to 3/);
   const v1 = applyVolumeVersion(loaded, "1.0.0");
   assert.equal(v1.version, "1.0.0");
   assert.equal(v1.shockTouchSeconds, 300);

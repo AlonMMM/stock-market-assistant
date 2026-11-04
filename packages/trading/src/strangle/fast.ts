@@ -49,11 +49,15 @@ export interface LiveFastRule {
   trades: boolean;
 }
 
+// The one gated list stored (settings.ts strangleLimits: shockPaceMin is 0 or 3).
+export const storedPaceMin = 3;
+
 /**
- * The 10-second rules the trader checks for these settings. The ungated shock
- * is always kept (its list and books stay whole for the backtest of 1.2.0 and
- * before); with shockPaceMin (Volume 1.3.0) the gated one trades instead, kept
- * in a list of its own (shock_p3).
+ * The 10-second rules the trader checks for these settings. With the shock
+ * on, both shock lists are checked from the open and kept whatever the gate
+ * (each list stays whole for the backtest, and switching the gate mid-session
+ * trades from a list already in step); shockPaceMin (Volume 1.3.0) picks the
+ * one that trades.
  */
 export function liveFastRules(s: {
   fastAlert: boolean;
@@ -78,14 +82,13 @@ export function liveFastRules(s: {
     isShock: true,
     trades: !gated,
   });
-  if (gated)
-    out.push({
-      key: "paced",
-      rule: shockRuleFor(s.shockPaceMin),
-      kind: shockKind(s.shockPaceMin),
-      isShock: true,
-      trades: true,
-    });
+  out.push({
+    key: "paced",
+    rule: shockRuleFor(storedPaceMin),
+    kind: shockKind(storedPaceMin),
+    isShock: true,
+    trades: gated,
+  });
   return out;
 }
 

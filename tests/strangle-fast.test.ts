@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   carried,
   fastAlerts,
+  fastState,
+  paceSums,
   fastBaseline,
   FastFire,
   fastRule,
@@ -91,12 +93,12 @@ test("shock (Volume 1.3.0): at 3x today's pace a burst before the pace exists, o
   assert.equal(shockKind(3), "shock_p3");
 });
 
-test("liveFastRules (Volume 1.3.0): the ungated shock is always kept, the gated one trades at shockPaceMin; off, none", () => {
+test("liveFastRules (Volume 1.3.0): both shock lists are kept from the open whatever the gate; shockPaceMin picks the one that trades; off, none", () => {
   const of = (s: Parameters<typeof liveFastRules>[0]) =>
     liveFastRules(s).map((r) => `${r.key}:${r.kind}:${r.trades}`);
   assert.deepEqual(
     of({ fastAlert: false, shockAlert: true, shockPaceMin: 0 }),
-    ["shock:shock:true"],
+    ["shock:shock:true", "paced:shock_p3:false"],
   );
   assert.deepEqual(
     of({ fastAlert: false, shockAlert: true, shockPaceMin: 3 }),
@@ -106,11 +108,47 @@ test("liveFastRules (Volume 1.3.0): the ungated shock is always kept, the gated 
     of({ fastAlert: true, shockAlert: false, shockPaceMin: 3 }),
     ["fast:fast:true"],
   );
+  // exactly one shock list trades, so one alert slot is one entry at most
+  for (const shockPaceMin of [0, 3])
+    assert.equal(
+      liveFastRules({
+        fastAlert: false,
+        shockAlert: true,
+        shockPaceMin,
+      }).filter((r) => r.isShock && r.trades).length,
+      1,
+    );
   assert.equal(
-    liveFastRules({ fastAlert: false, shockAlert: true, shockPaceMin: 3 })[1]!
+    liveFastRules({ fastAlert: false, shockAlert: true, shockPaceMin: 0 })[1]!
       .rule.paceMin,
     3,
   );
+});
+
+test("shock (Volume 1.3.0): the gate is >= paceMin, from the first slot the pace exists", () => {
+  const base = fastBaseline(
+    Array.from({ length: 20 }, () => fastWindows(quiet())),
+  )!;
+  // Today 1,000 a slot (the usual is 100): any burst is 15x the usual, so
+  // the only bar left is the gate; exactly 3x the pace is 18,000 in 60 s.
+  const at = (shares: number, t: number, paceMin: number) => {
+    const day = quiet();
+    day.v.fill(1000);
+    for (let k = t - 5; k <= t; k++) {
+      day.v[k] = shares / 6;
+      day.c[k] = 100 * (1 + 0.002 * (k - t + 6));
+    }
+    const cf = carried(day.c);
+    return fastState(day, cf, base, t, paceSums(day.v), shockRuleFor(paceMin))
+      .on;
+  };
+  assert.equal(at(18000, 700, 3), true, "exactly 3x");
+  assert.equal(at(17940, 700, 3), false, "just under");
+  // the pace exists once the slot before the window is paceFrom + 89
+  const first = fastRule.paceFrom + 89 + fastRule.window;
+  assert.equal(at(60000, first, 3), true);
+  assert.equal(at(60000, first - 1, 3), false, "no pace yet");
+  assert.equal(at(60000, first - 1, 0), true, "ungated");
 });
 
 test("60-second alert: no alert before 09:40 or without 20 sessions", () => {
