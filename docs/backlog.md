@@ -1,6 +1,6 @@
 # Backlog
 
-Updated: 2026-10-28
+Updated: 2026-11-04
 
 What is next for the Stock Market Assistant. This file is the source of truth; the board at
 https://claude.ai/artifact/VzgHGHzP5SYWhVefpvTmRH shows the same items with lanes, filters and search. How every
@@ -104,6 +104,19 @@ The bot is merged and starts off and in dry run. Add the paper account's keys, r
 its decisions with the backtest (parity was 497 of 499), then switch to paper.
 
 ## Next
+
+### Backtest runs go on when the phone leaves the page
+
+- id: backtest-server-runs
+- area: App
+- tags: Backtest, Deploy
+- waiting: A deploy from your Mac, after `npx wrangler queues create sma-backtest-parts`
+- source: Session of Nov 4
+
+On the phone, leaving the Backtest page cut the run off. The server now runs the whole run, and the page reads its
+progress and trades during the run and catches up when it comes back
+([docs/tasks/backend-backtest-jobs.md](tasks/backend-backtest-jobs.md)). Left: create the queue, deploy from
+`main`, then try it on the phone.
 
 ### Build the bots' Review page
 

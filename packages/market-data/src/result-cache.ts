@@ -162,6 +162,21 @@ export class D1Blobs {
     }
     await this.db.batch(statements);
   }
+  /** Removes every value whose `column` is one of `values` (a meta column). */
+  async remove(where: Record<string, string[]>) {
+    const [column, values] = Object.entries(where)[0] ?? [];
+    if (!column || !values?.length || !this.meta.includes(column)) return;
+    await this.init();
+    for (let i = 0; i < values.length; i += keysPerQuery) {
+      const group = values.slice(i, i + keysPerQuery);
+      await this.db
+        .prepare(
+          `DELETE FROM ${this.table} WHERE ${column} IN (${group.map(() => "?").join(", ")})`,
+        )
+        .bind(...group)
+        .run();
+    }
+  }
 }
 
 /** Computed backtest results in D1 for evaluation code `code`. */

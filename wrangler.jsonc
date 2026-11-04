@@ -27,6 +27,25 @@
       "database_id": "c3eec64d-d164-4632-8049-5f7b6e74b75a",
     },
   ],
+  // The Backtest page's runs (packages/market-data/src/backtest-jobs.ts): each
+  // part of a run is a message, consumed by this Worker one at a time, 4 at
+  // once (as the page ran them), so a run goes on when the phone leaves the
+  // page. Create the queue once before the first deploy:
+  //   npx wrangler queues create sma-backtest-parts
+  "queues": {
+    "producers": [
+      { "binding": "BACKTEST_QUEUE", "queue": "sma-backtest-parts" },
+    ],
+    "consumers": [
+      {
+        "queue": "sma-backtest-parts",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_concurrency": 4,
+        "max_retries": 3,
+      },
+    ],
+  },
   // Every minute: check that the trading account is not short an option and
   // tell the trades channel if it is (packages/trading/src/watch.ts); then
   // send the user's price alerts that are met (price-alerts.ts), to

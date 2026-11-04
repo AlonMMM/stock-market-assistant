@@ -11,6 +11,7 @@ import { D1MarksSigmaStore } from "../../../packages/market-data/src/marks-sigma
 import { SqliteD1 } from "./sqlite-d1.js";
 import { codeVersion } from "../../../packages/market-data/src/code-version.js";
 import { ResultCache } from "../../../packages/market-data/src/result-cache.js";
+import { BacktestJobs } from "../../../packages/market-data/src/backtest-jobs.js";
 import { D1SymbolList } from "../../../packages/market-data/src/backtest-symbols.js";
 import { D1Watchlists } from "../../../packages/market-data/src/watchlists.js";
 import { buildApp } from "./app.js";
@@ -32,6 +33,7 @@ const app = buildApp(true, {
   sigmas: new D1MarksSigmaStore(db),
   // Run from the repository root, like the cache path above.
   results: new ResultCache(db, codeVersion(`${process.cwd()}/`)),
+  jobs: new BacktestJobs(db),
   symbols: new D1SymbolList(db),
   watchlists: new D1Watchlists(db),
   priceAlerts: new D1PriceAlerts(db),
