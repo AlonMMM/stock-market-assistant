@@ -461,6 +461,12 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
             if carry_day and k == 1 and "morning" not in st:
                 st["morning"] = True
                 gap = bet * (sd.open / sd.prev_close - 1) * 100 if sd.ok and sd.open and sd.prev_close else None
+                # gap_ref (morning_ref.py, the user 2026-11-04: "we need it to be up from yesterdat close"): "now" = the
+                # stock's close at the decision minute vs yesterday's close; "either" = the open or that, the larger
+                ref = X.get("gap_ref", "open")
+                if ref != "open" and sd.ok and sd.prev_close and sd.c[min(t, 389)]:
+                    now = bet * (sd.c[min(t, 389)] / sd.prev_close - 1) * 100
+                    gap = now if ref == "now" or gap is None else max(gap, now)
                 pending = (rem * X["gap_sell_share"], "morning_gap_keep") if gap is not None and gap >= X["gap_keep"] else ("all", "morning_gap_against")
                 continue
             NT = X.get("night_trail")  # carried days, after the morning sale: the rest out `NT` under the option's high since then

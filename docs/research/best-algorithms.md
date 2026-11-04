@@ -291,6 +291,26 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### The morning rule from yesterday's close at 09:40, not the open (2026-11-04, not better: wins tune, loses check; ~10 trades a half)
+
+The user, on AAPL 2024-06-12 (opened +0.1% over the close, so 2.10 sold all at 09:40, then ran ~+6%): "So only if the
+gap is in our way from the openning we are sold 50%? This is weird ... we need it to be up from yesterdat close".
+Not tested before (2026-10 tests: sell all at the gap, trails after the morning sale). `morning_ref.py` on 2.10
+(reproduced to the dollar), sim.py `gap_ref`; keep half at 09:40 when the stock is our way: open-05 the open vs the
+16:00 close >= 0.5% (2.10), now-05 the 09:40 price vs the close >= 0.5% (the user's), now-0 >= 0%, either-05 the open
+or 09:40 >= 0.5%. Look 1.
+
+| Version | Tune fair / fav, 2% | Check fair / fav, 2% | Trades changed (fair, main legs) |
+|---|---|---|---|
+| 2.10 (open-05) | $620,535 / $449,178 | $957,771 / $226,846 | - |
+| now-05 🎯 | $685,468 / $457,883 (1.105 / 1.019) | $933,664 / $215,718 (0.975 / 0.951) | tune 13 (8 better, 5 worse, median +$2.1K at $10K); check 10 (2 better, 8 worse, median -$3.3K) |
+| now-0 | $655,622 / $455,750 | - | tune 14 (6 / 8) |
+| either-05 | $658,323 / $452,516 | - | tune 9 (4 / 5) |
+
+No: the 09:40 reference changes only ~10-14 carried trades a half; on tune they come out ahead (AAPL-type mornings),
+on check 8 of 10 are worse (a stock up at 09:40 that had not gapped tends to give it back). Too few trades either way;
+2.10's open rule stays.
+
 ### A Friday 0DTE leg with the Volume bot's exits, on 2.10 (2026-11-04, not better: the added legs lose on both halves)
 
 The user: "On friday we can try to add 0dte. But this should be with different strategy - aomthing similar to the volume
