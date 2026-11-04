@@ -2957,6 +2957,38 @@ Verdict: not better. Few thin skips turn busy within minutes (5% / 3% within 2),
 pick (median ~-$2,800, almost no giants on check); the tune gain was one SMCI trade. The 1-5 minute bucket of 2026-10-24
 does not hold on the fixed walk. One try at the signal stays; no candidate.
 
+### The busiest delta, on 2.10 (2026-11-04, not better: every version loses tune on the fair list and the check by far)
+The user: "I would like to choose the best delta. rule - you choose the most volume delta from 0.1 (up to 0.09) to 0.2
+(up to 0.22). if the chosen delta is <=0.15 - you can go with chip option up to 0.1. try also with 0.2 as usual. let me
+k now number of trades." Prior: OI as the strike choice (oi_strike.py, 2026-10-27, fails), a busier strike only on a thin
+skip (thin_strike.py, 2026-11-02, fails), delta 0.20 / 0.25 / 0.30 fixed (2026-10-26, worse). New here: every signal
+re-picked by volume, and the $0.10 floor. delta_volume.py on 2.10 (thin_strike.py's walk, real quotes, the real price
+paid); every signal: among 2.10's expiry's strikes in the band, the most contracts in the last 30 minutes (tie: nearer
+0.15); still 200 in 30 minutes; the floor checked on the pick (under it: no trade). Set before running: V10 (band 0.09 -
+0.22, $0.10 floor when the pick's delta <= 0.15, else $0.20), V20 ($0.20), neighbours n (0.10 - 0.20) and w (0.08 -
+0.25); IBIT $0.10 everywhere; 2.10's exits, size and pyramid (the add re-picks by the same rule). Look 1.
+- 2.10 reproduced to the dollar (2%, tune / check): fair $620,535 / $957,771, Favorites $449,178 / $226,846.
+- Trades (all legs; tune / check, fair / Favorites): 2.10 543 / 556, 544 / 538; V10 811 / 823, 835 / 856 (+50-60%);
+  V20 779 / 796, 795 / 824. Main legs: V10 picks the same contract as 2.10 on ~40% of them (296 of 739 tune fair), adds
+  ~250-300 a half that 2.10 skips as thin, drops 10-20; pick delta p10 / median / p90 0.11 / 0.16 / 0.21; under $0.20:
+  42-49 a half (V20 14-16). Almost every pick has a real book at the buy (0-4 missing a half): nothing bought.
+
+| 2% (3%) | Tune fair | Tune Favorites | Check fair | Check Favorites | w/o best 5, check fair / Fav |
+|---|---|---|---|---|---|
+| 2.10 | $620,535 / 16% ($794,867) | $449,178 / 14% ($546,403) | $957,771 / 24% ($1,082,694) | $226,846 / 23% ($240,889) | $169,718 / $74,497 |
+| V10 (the user's rule) | $408,440 -34% / 30% | $374,310 -17% / 26% | $342,802 -64% / 43% ($236,065 -78%) | $98,282 -57% / 36% ($66,367 -72%) | $71,239 / $32,533 |
+| V20 | $383,116 -38% / 25% | $402,819 -10% / 24% | $395,782 -59% / 36% ($292,231 -73%) | $109,424 -52% / 33% ($78,865 -67%) | $82,249 / $36,297 |
+| 🎯 V10w (best V10 on tune) | $474,745 -23% / 34% | $470,590 +5% / 26% | $278,124 -71% / 46% | $90,289 -60% / 41% | $60,751 / $30,771 |
+| 🎯 V20w (best V20 on tune) | $577,460 -7% / 32% | $586,310 +31% / 22% | $311,226 -68% / 42% ($219,431 -80%) | $109,457 -52% / 37% ($80,446 -67%) | $67,981 / $37,306 |
+| V10n / V20n | -24% / -21% | -20% / -3% | -45% / -38% | -45% / -49% | |
+
+- The changed main legs (at $10K): tune +$87K / +$219K (V10), all of it a few names (SMCI, ORCL, MSTR, IONQ; MU in w),
+  median -$2,490, non-giant sum -$812K / -$858K; check -$136K / -$163K, median -$2,490, 8 / 10 giants, 2025 negative.
+  The $0.10 floor (V10 vs V20) is worse on the check on both lists.
+- Verdict: not better. No version beats 2.10 on tune on both lists; the check loses 38-71%, with drops of 32-46% vs 24%.
+  The busiest strike in the band is often a different strike than the 0.15 (60% of trades) and it trades the thin-skip
+  signals 2.10 drops, which lose as in every earlier liquidity fallback. 0.15 and the 200 floor stay; no candidate.
+
 ### The volume against SPY's, on 2.10 (2026-11-03, not better: the extra trades fail the check; size-rel near, one gate short)
 The user: "can we also check the thesis in the main bot? if today the main bot does not normelized the spy volume I think
 it might be a good candidate", after the Volume bot's volume score, and "if we will add more trade we can catch more gaint
