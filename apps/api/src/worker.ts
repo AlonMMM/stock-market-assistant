@@ -94,6 +94,14 @@ import { syncVolumeDay } from "../../../packages/market-data/src/volume-daily.js
 import { handleControl } from "../../../packages/trading/src/control-api.js";
 import { changeRefusal } from "./owner-only.js";
 import { verifyAccess, type AccessIdentity } from "./access.js";
+import {
+  BacktestJobs,
+  handleBacktestJobs,
+  runPart,
+  runParts,
+  type PartCompute,
+  type PartTask,
+} from "../../../packages/market-data/src/backtest-jobs.js";
 
 declare const __STATIC_ASSETS__: Record<
   string,
@@ -144,9 +152,108 @@ function stores(db: D1Like) {
   return cache;
 }
 
+// The Backtest page's runs, run here and not by the page (backtest-jobs.ts):
+// each part is a message on the BACKTEST_QUEUE queue, which this Worker
+// consumes (queue() below), so a phone leaving the page no longer stops it.
+interface JobQueue {
+  sendBatch(messages: { body: PartTask }[]): Promise<unknown>;
+}
+interface JobsEnv {
+  ALPACA_API_KEY?: string;
+  ALPACA_API_SECRET?: string;
+  ALPACA_SIP_DELAY_MINUTES?: string;
+  ALPACA_TRADING_LIVE?: string;
+  BARS_CACHE?: D1Like;
+  BACKTEST_QUEUE?: JobQueue;
+}
+interface WaitUntil {
+  waitUntil(promise: Promise<unknown>): void;
+}
+let jobStore: { db: D1Like; jobs: BacktestJobs } | undefined;
+function backtestJobs(db: D1Like) {
+  if (jobStore?.db !== db) jobStore = { db, jobs: new BacktestJobs(db) };
+  return jobStore.jobs;
+}
+
+/** A part of a run, computed as /api/bot-backtest or /api/volume-backtest. */
+function partCompute(env: JobsEnv): PartCompute {
+  return async (bot, request) => {
+    const credentials = {
+      key: env.ALPACA_API_KEY,
+      secret: env.ALPACA_API_SECRET,
+      sipDelayMinutes: parseSipDelay(env.ALPACA_SIP_DELAY_MINUTES),
+    };
+    const tradingUrl = env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl;
+    const db = env.BARS_CACHE ? stores(env.BARS_CACHE) : undefined;
+    return bot === "main"
+      ? handleBotBacktest(
+          request,
+          credentials,
+          tradingUrl,
+          fetch,
+          Date.now(),
+          db?.cache,
+          db?.quotes,
+          db?.optionBars,
+        )
+      : handleVolumeBacktest(
+          request,
+          credentials,
+          tradingUrl,
+          fetch,
+          Date.now(),
+          db?.cache,
+          db?.quotes,
+          db?.optionBars,
+          db?.volume,
+        );
+  };
+}
+
+/** Hands parts to the queue (100 messages a send), else runs them here. */
+async function startParts(
+  env: JobsEnv,
+  tasks: PartTask[],
+  ctx: WaitUntil | undefined,
+) {
+  if (!tasks.length) return;
+  if (env.BACKTEST_QUEUE) {
+    for (let i = 0; i < tasks.length; i += 100)
+      await env.BACKTEST_QUEUE.sendBatch(
+        tasks.slice(i, i + 100).map((body) => ({ body })),
+      );
+    return;
+  }
+  // No queue (local wrangler dev, tests): best effort after the response.
+  const run = runParts(backtestJobs(env.BARS_CACHE!), tasks, partCompute(env));
+  if (ctx) ctx.waitUntil(run);
+  else await run;
+}
+
 let watchStore: WatchStore | undefined;
 
 export default {
+  // The Backtest page's run parts (wrangler.jsonc: one message an invocation,
+  // so every part has its own time and subrequest budget).
+  async queue(
+    batch: { messages: { body: unknown; ack(): void }[] },
+    env: JobsEnv,
+  ): Promise<void> {
+    if (!env.BARS_CACHE) return;
+    const jobs = backtestJobs(env.BARS_CACHE);
+    const compute = partCompute(env);
+    for (const message of batch.messages) {
+      const task = message.body as PartTask;
+      if (typeof task?.job === "string" && Number.isInteger(task.index)) {
+        const outcome = await runPart(jobs, task, compute);
+        if (outcome !== "skipped")
+          console.log(
+            `backtest job ${task.job} part ${task.index}: ${outcome}`,
+          );
+      }
+      message.ack();
+    }
+  },
   // Cron (wrangler.jsonc), every minute: the account must never be short an
   // option, and the trades channel is told if it is. Read-only at Alpaca.
   async scheduled(
@@ -169,8 +276,25 @@ export default {
       TRADER_READ_TOKEN?: string;
       // The watchlist the Indi bot also trades; else the one named "favorite".
       BOT_WATCHLIST?: string;
+      ALPACA_SIP_DELAY_MINUTES?: string;
+      BACKTEST_QUEUE?: JobQueue;
     },
   ): Promise<void> {
+    // Backtest run parts whose worker was lost go on the queue again.
+    if (env.BARS_CACHE && env.BACKTEST_QUEUE) {
+      const stalled = await backtestJobs(env.BARS_CACHE)
+        .stalled()
+        .catch((error: unknown) => {
+          console.error(`backtest jobs: ${String(error)}`);
+          return [];
+        });
+      if (stalled.length) {
+        await startParts(env, stalled, undefined).catch((error: unknown) =>
+          console.error(`backtest jobs: requeue: ${String(error)}`),
+        );
+        console.log(`backtest jobs: ${stalled.length} lost parts sent again`);
+      }
+    }
     const token = env.TRADES_TELEGRAM_BOT_TOKEN;
     const chat = env.TRADES_TELEGRAM_CHAT_ID;
     const sender = token && chat ? new TelegramSender(token, chat) : undefined;
@@ -299,7 +423,10 @@ export default {
       TRADER_TOKEN?: string;
       // The watchlist the Indi bot also trades; else the one named "favorite".
       BOT_WATCHLIST?: string;
+      // The Backtest page's run parts (backtest-jobs.ts); unset: run in place.
+      BACKTEST_QUEUE?: JobQueue;
     } = {},
+    ctx?: WaitUntil,
   ): Promise<Response> {
     // Access protection is enabled by configuration; without both values the
     // Worker stays open (local tests, the owner-private Sites publication).
@@ -566,6 +693,44 @@ export default {
         Object.fromEntries(query),
         credentials,
       );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    // The Backtest page's runs, kept and run here (backtest-jobs.ts).
+    if (
+      path === "/api/backtest-jobs" ||
+      path.startsWith("/api/backtest-jobs/")
+    ) {
+      if (!env.BARS_CACHE)
+        return Response.json(
+          { error: "The run store is not configured" },
+          { status: 503 },
+        );
+      let body: unknown;
+      if (request.method === "POST") {
+        const text = await request.text();
+        if (text.length > 262144)
+          return Response.json({ error: "Request too large" }, { status: 413 });
+        try {
+          body = text ? JSON.parse(text) : {};
+        } catch {
+          return Response.json(
+            { error: "Expected JSON object" },
+            { status: 400 },
+          );
+        }
+      }
+      const result = await handleBacktestJobs({
+        method: request.method,
+        path,
+        query: Object.fromEntries(new URL(request.url).searchParams),
+        body,
+        owner: identity?.email.toLowerCase() ?? "",
+        jobs: backtestJobs(env.BARS_CACHE),
+        start: (tasks) => startParts(env, tasks, ctx),
+      });
       return Response.json(result.body, {
         status: result.status,
         headers: { "Cache-Control": "no-store" },
