@@ -291,6 +291,35 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### Sell above the bid: Black-Scholes - 30% to the bid, stepped down a minute at a time (2026-11-04, BETTER on tune and check; fill unproven) -> candidate 2.11
+
+The user: "We are not optimized the selling and always sell at the bid in the main bot.. Cant we do better exit?"; then
+"In real market we have market maker. And we can exit even in the mid price. Wdyt about black sholts calculation, than
+try to exit on it, plus 30% more between in and the bid ... Option price calc as 1.0, Bid is 0.6, Exit on 0.87".
+Tested before: the mid-limit sale on 2.6 (2026-10-26, `opt_spread.py`, 2024-25 / 2026 split): +7.5% / +6%, fill
+unproven (it counted a fill unless the next ask fell under the limit). `sale_limit.py` on **2.10** (size_volume t3A-c5,
+reproduced to the dollar), real quotes, only the sale price changes. A limit counts as filled only when the option's
+minute bar trades at or above it, or the bid comes up to it; whole cents, never above the ask - 1 cent; unfilled = the
+bid at the window's end. BS = Black-Scholes at the stock's price that minute with the entry book's IV. Look 1 on
+tune / check (the 10-26 run used the old split).
+
+| 2%, End / worst drop (vs 2.10) | Tune fair | Tune Favorites | Check fair | Check Favorites |
+| --- | --- | --- | --- | --- |
+| 2.10 (the bid at once) | $620,535 / 16% | $449,178 / 14% | $957,771 / 24% | $226,846 / 23% |
+| mid, 1 min, then the bid | $626,641 (1.010) | $491,238 (1.094) | - | - |
+| BS - 30%, 1 min, then the bid | $635,990 (1.025) | $466,625 (1.039) | - | - |
+| 🎯 **BS - 30%, stepped down over 3 minutes (2/3, 1/3 of the way above the bid), then the bid** | **$656,278 / 15% (1.058)** | **$485,615 / 13% (1.081)** | **$1,024,491 / 22% (1.070)** | **$243,603 / 22% (1.074)** |
+| the stepped one on planned exits only (stops at the bid) | $634,066 (1.022) | $455,248 (1.014) | - | - |
+
+Without the best 5: tune $145,963 / $118,806 vs $138,044 / $110,057; check $182,569 / $79,958 vs $169,718 / $74,497.
+Not a giants effect: the median trade (-1,498 vs -1,504; check -1,588 vs -1,622) and the non-giant sum (check fair
+-752,784 vs -769,611) move on both halves; every year better. At 3% +8.5% / +12.1% tune, +11.3% / +11.7% check.
+Fills: BS with the entry IV sits under the bid on half the sales (IV falls after the entry) -> the bid at once; above
+the ask 30% -> capped. A limit above the bid fills 70-83% of the time at +5-7% over the bid; an unfilled one sells
+later at a bid 2-8% lower (MRNA 2026-10-06 T_full: limit 1.18, bid 1.14, got 0.67 three minutes later). Stops gain too
+(the planned-only version is the weakest). Fill unproven: a print at our price does not prove our order was first, and a
+market maker can fill with no print; a live trial on real sales is the test. Data: `sale_limit_sales.csv`.
+
 ### The tests of 2026-10-28 / 29 (all not better; the champion stays)
 
 The champion of retry_roll.py (2.5 + IBIT down to $0.10 + the pyramid, real quotes) unless said; tune AND check
