@@ -1194,6 +1194,11 @@ function RunLoader({
         <button type="button" className="reset" onClick={onStop}>
           Stop
         </button>
+        <span className="bt-loader-note" aria-live="polite">
+          {busy.reconnecting
+            ? "Reconnecting… the run goes on on the server."
+            : "Runs on the server: you can leave this page and come back."}
+        </span>
       </p>
     </section>
   );

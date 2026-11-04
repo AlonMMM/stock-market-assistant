@@ -2442,6 +2442,10 @@ dialog.stocks-dialog {
   grid-area: meta;
   margin: 0;
 }
+.bt-loader-note {
+  display: block;
+  margin-top: 2px;
+}
 @media (prefers-reduced-motion: no-preference) {
   .bt-loader-head {
     animation: bt-loader-pulse 1.4s ease-out infinite;

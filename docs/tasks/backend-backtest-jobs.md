@@ -1,6 +1,6 @@
-# Backend: backtest runs that go on when the phone leaves the page
+# Backtest runs that go on when the phone leaves the page
 
-Status: backend done on `claude/backtest-mobile-connection-issue-anf75r`; the page does not use it yet (Frontend).
+Status: backend and page done on `claude/backtest-mobile-connection-issue-anf75r`; not deployed (needs the queue).
 Requested: 2026-11-04, user: "when I run [the backtest] from my phone I can't exit the page because it cancels the
 connection with the results"; "but I do want to see progress and trades during the run".
 
@@ -65,14 +65,20 @@ The server keeps and runs the whole run (`packages/market-data/src/backtest-jobs
 `POST /api/backtest-jobs/:id/stop` answers with the run, `status: "stopped"`. No new part starts; the finished
 parts stay.
 
-### Suggested page change (`bot-backtest-run.ts`)
+### The page (`apps/web/src/bot-backtest-run.ts`)
 
-- `start`: POST the run, keep its `id` in `localStorage`, then poll every 2–3 s while `status === "running"`.
-- On `visibilitychange` to visible, poll right away.
-- On load, read `latest` for each bot, so a run started before a reload, or still running, is shown.
-- `stop`: POST stop.
-- Keep `RunState` as it is: `busy` comes from `done`, `total`, `createdAt` and `lastDoneAt`; `runs` comes from the
-  results in index order; `errors` reads as "SYM from → to: error".
+- `start` sends the run with POST and keeps its `id` in `localStorage` (`sma.botBacktest.result.v1.job`, and the
+  same key for the Volume bot's result). It then reads the run every 2.5 s while it runs, with `since`.
+- The progress and trades still come in during the run, as before: `busy`, `runs` and `errors` keep their shape,
+  so the page did not change.
+- When the page shows again (`visibilitychange`), it reads at once.
+- On load, the first page that shows a run looks up the browser's own run, else `latest` (one started on another
+  device), and reads it unless it is a finished run already kept.
+- A failed read is retried with backoff (up to 30 s). After 2 failures in a row the bar says
+  "Reconnecting… the run goes on on the server."; otherwise it says
+  "Runs on the server: you can leave this page and come back."
+- `stop` stops the run on the server, then reads the parts finished by then.
+- A run that could not start shows "The run did not start: …".
 
 ## Deploy step (once)
 
@@ -84,11 +90,19 @@ parts stay.
 - `tests/backtest-jobs.test.ts` covers the input checks, parts finishing one by one and read with `since`, stop,
   a lost claim sent again, owner isolation, `latest`, the in-process runner, and the Worker's queue producer and
   consumer (synthetic parts; no market data).
+- `tests/bot-backtest.test.ts`: the page hands the run over, reads progress, parts (in order) and errors
+  during the run, and stops it on the server (the real handler, in-memory database).
 - `npm run check` passes.
+- Headless Chromium, iPhone 13 size, light and dark, against synthetic `/api/backtest-jobs` answers (Playwright
+  routes, 10 stocks, 20 parts): progress during the run; the page hidden with no network while parts finish
+  ("Reconnecting…" shown); back in view it caught up at once (7 → 10 of 20); a reload mid-run found the run
+  again; the finished result showed the failed part.
+- The local API (Fastify, in-process runner) without Alpaca keys: a run of 2 parts finished with both parts'
+  credential errors; `latest` found it.
 - Not run on Cloudflare: the queue has not been created, the code has not been deployed, and it has not been tried
   on a phone.
 
 ## Next
 
-1. Frontend: switch `bot-backtest-run.ts` to these routes. Until then the page still runs parts itself.
-2. Create the queue, then deploy from `main`.
+1. Create the queue, then deploy from `main`.
+2. On the phone: start a run, lock the phone or switch apps for a minute, come back. It should have moved on.

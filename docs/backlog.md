@@ -110,13 +110,13 @@ its decisions with the backtest (parity was 497 of 499), then switch to paper.
 - id: backtest-server-runs
 - area: App
 - tags: Backtest, Deploy
-- waiting: Frontend: the Backtest page must use the new /api/backtest-jobs routes; then the queue and a deploy
+- waiting: A deploy from your Mac, after `npx wrangler queues create sma-backtest-parts`
 - source: Session of Nov 4
 
-On the phone, leaving the Backtest page cut the run off. The server can now keep and run a whole run itself,
-with progress and trades readable during the run
-([docs/tasks/backend-backtest-jobs.md](tasks/backend-backtest-jobs.md)). Left: the page change (Frontend), then
-`npx wrangler queues create sma-backtest-parts` and a deploy from `main`.
+On the phone, leaving the Backtest page cut the run off. The server now runs the whole run, and the page reads its
+progress and trades during the run and catches up when it comes back
+([docs/tasks/backend-backtest-jobs.md](tasks/backend-backtest-jobs.md)). Left: create the queue, deploy from
+`main`, then try it on the phone.
 
 ### Build the bots' Review page
 
