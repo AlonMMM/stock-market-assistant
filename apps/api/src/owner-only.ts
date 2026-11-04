@@ -29,6 +29,8 @@ export function changeRefusal(
   // under the viewer's own email; nobody else sees or stops them.
   if (path === "/api/backtest-jobs" || path.startsWith("/api/backtest-jobs/"))
     return null;
+  // The Backtest page's setup: each viewer's own (backtest-setup.ts).
+  if (path === "/api/backtest-setup") return null;
   // No sign-in configured (local runs and tests); the site always has it.
   if (!identity) return null;
   const isOwner =

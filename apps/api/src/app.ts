@@ -1,4 +1,8 @@
 import {
+  handleBacktestSetup,
+  type D1BacktestSetups,
+} from "../../../packages/market-data/src/backtest-setup.js";
+import {
   D1PriceAlerts,
   handlePriceAlerts,
 } from "../../../packages/market-data/src/price-alerts.js";
@@ -93,6 +97,7 @@ export function buildApp(
     sigmas?: MarksSigmaStore; // stored σ curves of the marked-sections score
     results?: ResultCache; // computed backtest parts
     jobs?: BacktestJobs; // the Backtest page's runs, run here (backtest-jobs.ts)
+    setups?: D1BacktestSetups; // the Backtest page's saved setup (backtest-setup.ts)
     symbols?: D1SymbolList; // the Backtest page's symbol list
     watchlists?: D1Watchlists; // the user's named watchlists
     priceAlerts?: D1PriceAlerts; // the user's own price alerts
@@ -572,6 +577,23 @@ export function buildApp(
       .header("Cache-Control", "no-store")
       .send(result.body);
   };
+  const backtestSetup = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
+    const result = await handleBacktestSetup({
+      method: request.method,
+      body: request.body,
+      owner: "",
+      store: alpaca.setups,
+    });
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  };
+  app.get("/api/backtest-setup", backtestSetup);
+  app.put("/api/backtest-setup", backtestSetup);
   app.post("/api/backtest-jobs", backtestJobs);
   app.get("/api/backtest-jobs", backtestJobs);
   app.get("/api/backtest-jobs/latest", backtestJobs);
