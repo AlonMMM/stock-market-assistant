@@ -78,9 +78,16 @@ export interface BacktestRun<R extends RanBase, B> {
   resume(): Promise<void>;
   /** Shows one of the latest runs (not while a run is going). */
   open(id: string): Promise<void>;
-  /** The latest 10 runs, newest first; null until read. */
-  useRecent(): RecentRun<R>[] | null;
+  /** The latest 10 runs, newest first (null until read), and whether the last read failed. */
+  useRecent(): RecentList<R>;
   loadRecent(): Promise<void>;
+  /** Reads the list again when it is shown and was not read in the last few seconds. */
+  refreshRecent(): void;
+}
+
+export interface RecentList<R> {
+  runs: RecentRun<R>[] | null; // the last list read; null before the first
+  failed: boolean; // the newest read failed: the list may be old or missing
 }
 
 /** The run as the server tells it (backtest-jobs.ts, JobView). */
@@ -414,28 +421,74 @@ function backtestRun<R extends RanBase, B>(o: {
     await read(id);
   }
 
-  // The latest runs, for the list (read on first use, after a start and
-  // when a run ends).
-  let recent: RecentRun<R>[] | null = null;
+  // The latest runs, for the list (the user, 2026-11-04: it "come back but
+  // not always"). Read each time the list is shown, when the phone shows the
+  // page again, after a start and when a run ends. A failed read keeps the
+  // last list and tries again a few times; it used to empty and hide the list
+  // until the next run, and the list was read only once a page load.
+  let recent: RecentList<R> = { runs: null, failed: false };
   const recentListeners = new Set<() => void>();
-  let recentRead = false;
-  async function loadRecent() {
-    recentRead = true;
+  let reading: Promise<void> | null = null;
+  let readAgain = false;
+  let lastRead = 0;
+  let retries = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  const notifyRecent = () => {
+    for (const l of recentListeners) l();
+  };
+  async function readRecent() {
     try {
       const response = await fetch(`${jobsUrl}?bot=${o.bot}`, {
         signal: AbortSignal.timeout(20000),
         cache: "no-store",
       });
-      recent = (await readJson<{ runs: RecentRun<R>[] }>(response)).runs;
+      const runs = (await readJson<{ runs: RecentRun<R>[] }>(response)).runs;
+      recent = { runs, failed: false };
+      retries = 0;
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = null;
     } catch {
-      // The list is a convenience: the shown run does not depend on it.
-      recent ??= [];
+      recent = { runs: recent.runs, failed: true };
+      // While the list is on screen: again in 3, 9 and 27 seconds.
+      if (recentListeners.size > 0 && retries < 3 && !retryTimer) {
+        retryTimer = setTimeout(
+          () => {
+            retryTimer = null;
+            void loadRecent();
+          },
+          3000 * 3 ** retries++,
+        );
+      }
     }
-    for (const l of recentListeners) l();
+    lastRead = Date.now();
+    notifyRecent();
+  }
+  function loadRecent(): Promise<void> {
+    // A read asked for during one in flight (a run just started) runs after it,
+    // so the list it gets is not the older one.
+    if (reading) {
+      readAgain = true;
+      return reading;
+    }
+    reading = (async () => {
+      do {
+        readAgain = false;
+        await readRecent();
+      } while (readAgain);
+      reading = null;
+    })();
+    return reading;
+  }
+  function refreshRecent() {
+    if (recentListeners.size === 0) return; // not on screen
+    // A read in flight is fresh enough; so is one a moment ago.
+    if (reading || Date.now() - lastRead < 2000) return;
+    void loadRecent();
   }
   const subscribeRecent = (l: () => void) => {
     recentListeners.add(l);
-    if (!recentRead) void loadRecent();
+    // Shown again (the Backtest tab, or the other bot picked): read it anew.
+    if (recentListeners.size === 1) refreshRecent();
     return () => recentListeners.delete(l);
   };
 
@@ -445,6 +498,7 @@ function backtestRun<R extends RanBase, B>(o: {
     resume,
     open,
     loadRecent,
+    refreshRecent,
     useRecent: () => useSyncExternalStore(subscribeRecent, () => recent),
     state: current,
     use: () => useSyncExternalStore(subscribe, current),
@@ -482,4 +536,6 @@ if (typeof document !== "undefined")
     if (document.visibilityState !== "visible") return;
     void mainRun.resume();
     void volumeRun.resume();
+    mainRun.refreshRecent();
+    volumeRun.refreshRecent();
   });
