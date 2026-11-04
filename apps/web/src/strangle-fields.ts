@@ -155,6 +155,12 @@ export const groups: { title: string; specs: Spec[] }[] = [
         help: "Typical 30-minute moves since the open; a shock alert against a move this big is skipped. 0 = off (Volume 1.2.0: 2; 1.1.0: off).",
         fmt: (v) => (v > 0 ? `${v.toFixed(1)}×` : "off"),
       },
+      {
+        key: "shockPaceMin",
+        label: "Shock: also over today's pace by",
+        help: "The shock's 60 seconds of volume must also be this many times today's own pace; none fires before the pace starts (about 10:16). 0 = off (Volume 1.3.0: 3; 1.2.0: off). Only 0 and 3 were backtested.",
+        fmt: (v) => (v > 0 ? `${v}×` : "off"),
+      },
     ],
   },
 ];

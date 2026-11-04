@@ -198,8 +198,9 @@ export class AlpacaVolumeData
     symbol: string,
     from: string,
     to: string,
+    kind: string,
   ): Promise<ShockAlert[]> {
-    return this.store ? this.store.shocks(symbol, from, to) : [];
+    return this.store ? this.store.shocks(symbol, from, to, kind) : [];
   }
 }
 

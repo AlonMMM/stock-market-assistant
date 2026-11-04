@@ -29,8 +29,13 @@ export const volumeDaysTable =
 const perBatch = 50;
 
 export interface VolumeDataStore {
-  /** A stock's shock alerts over [from, to]. */
-  shocks(symbol: string, from: string, to: string): Promise<ShockAlert[]>;
+  /** A stock's shock alerts over [from, to], of one list ("shock", "shock_p3"). */
+  shocks(
+    symbol: string,
+    from: string,
+    to: string,
+    kind: string,
+  ): Promise<ShockAlert[]>;
   /** A stored stock window covering [from, to], as [second, price] rows; null when none does. */
   stock(
     symbol: string,
@@ -54,7 +59,7 @@ export interface VolumeDataStore {
   ): Promise<SecondBook[]>;
   /** Stores fired 10-second alerts. */
   putAlerts(
-    alerts: { symbol: string; kind: "shock" | "fast"; alert: ShockAlert }[],
+    alerts: { symbol: string; kind: string; alert: ShockAlert }[],
   ): Promise<void>;
   /** Stores option windows ([second, bid, ask] rows). */
   putOptionWindows(
@@ -109,7 +114,7 @@ export class D1VolumeData implements VolumeDataStore {
   }
 
   async putAlerts(
-    alerts: { symbol: string; kind: "shock" | "fast"; alert: ShockAlert }[],
+    alerts: { symbol: string; kind: string; alert: ShockAlert }[],
   ) {
     await this.init();
     await this.write(
@@ -164,13 +169,13 @@ export class D1VolumeData implements VolumeDataStore {
       .run();
   }
 
-  async shocks(symbol: string, from: string, to: string) {
+  async shocks(symbol: string, from: string, to: string, kind: string) {
     await this.init();
     const { results } = await this.db
       .prepare(
-        "SELECT date, second, price, up FROM volume_alerts WHERE symbol = ? AND kind = 'shock' AND date BETWEEN ? AND ? ORDER BY date, second",
+        "SELECT date, second, price, up FROM volume_alerts WHERE symbol = ? AND kind = ? AND date BETWEEN ? AND ? ORDER BY date, second",
       )
-      .bind(symbol, from, to)
+      .bind(symbol, kind, from, to)
       .all<{ date: string; second: number; price: number; up: number }>();
     return results.map((r) => ({
       date: r.date,
