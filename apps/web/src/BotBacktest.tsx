@@ -1030,7 +1030,8 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
           )}
           {!isVolume && (
             <>
-              {!ran && <Empty />}
+              {!ran && main.restoring && <Restoring />}
+              {!ran && !main.restoring && <Empty />}
               {ran && account && (
                 <>
                   {stale && !busy && (
@@ -1082,7 +1083,8 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
           )}
           {isVolume && (
             <>
-              {!vol.ran && <VolumeEmpty />}
+              {!vol.ran && vol.restoring && <Restoring />}
+              {!vol.ran && !vol.restoring && <VolumeEmpty />}
               {vol.ran && vAccount && (
                 <>
                   {vStale && !busy && (
@@ -1284,6 +1286,15 @@ function RuleInput({
       changed={changed}
       onChange={(v) => onChange({ ...rules, [key]: v })}
     />
+  );
+}
+
+/** The last run is being read back from the browser. */
+function Restoring() {
+  return (
+    <section className="card bt-empty" aria-live="polite">
+      <p className="muted">Loading the last run…</p>
+    </section>
   );
 }
 
