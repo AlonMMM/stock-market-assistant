@@ -19,7 +19,7 @@ export interface FastAlertRow {
   day: string;
   symbol: string;
   second: number; // session second its slot ended (09:30 New York = 0)
-  kind: "shock" | "fast";
+  kind: string; // "shock", "shock_p3" (fast.ts shockKind) or "fast"
   price: number; // the slot's close: the side lines' start
   up: boolean;
 }

@@ -114,11 +114,11 @@ test("volume daily: after the close the day's alerts and books go to D1 once; th
     "done",
   );
   assert.equal(asked.length, 1);
-  assert.deepEqual(await store.shocks("NVDA", DAY, DAY), [
+  assert.deepEqual(await store.shocks("NVDA", DAY, DAY, "shock"), [
     { date: DAY, second: 2400, price: 201.5, up: true },
   ]);
   // The 60-second alert is kept under its own kind, not as a shock.
-  assert.deepEqual(await store.shocks("AMD", DAY, DAY), []);
+  assert.deepEqual(await store.shocks("AMD", DAY, DAY, "shock"), []);
   assert.deepEqual(await store.option("NVDA261029P00195000", DAY, 2398, 2414), [
     { s: 2401, bid: 0.5, ask: 0.6 },
     { s: 2403, bid: 0.55, ask: 0.65 },

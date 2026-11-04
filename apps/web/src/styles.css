@@ -2451,6 +2451,86 @@ dialog.stocks-dialog {
   grid-area: meta;
   margin: 0;
 }
+.bt-recent .card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bt-recent h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.bt-recent-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bt-recent-list li + li {
+  border-top: 1px solid var(--gray-92b);
+}
+.bt-recent-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: baseline;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.bt-recent-row:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.bt-recent-row[aria-current="true"] {
+  box-shadow: inset 3px 0 0 var(--lime-53);
+}
+.bt-recent-row:focus-visible {
+  outline: 2px solid var(--lime-53);
+  outline-offset: 1px;
+}
+.bt-recent-when {
+  color: var(--gray-50);
+  white-space: nowrap;
+}
+.bt-recent-what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bt-recent-status {
+  color: var(--gray-50);
+  white-space: nowrap;
+}
+.bt-recent-status.running {
+  color: var(--lime-53);
+  font-weight: 600;
+}
+.bt-recent-more {
+  align-self: flex-start;
+  font-size: 13px;
+}
+@media (max-width: 640px) {
+  .bt-recent-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .bt-recent-what {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    white-space: normal;
+  }
+}
+.bt-loader-note {
+  display: block;
+  margin-top: 2px;
+}
 @media (prefers-reduced-motion: no-preference) {
   .bt-loader-head {
     animation: bt-loader-pulse 1.4s ease-out infinite;

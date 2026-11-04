@@ -781,11 +781,12 @@ test("leg (2026-11-02): a pick under minPrice that is also thin takes a liquid s
   assert.equal(!v1.ok && v1.outcome, "too_cheap");
 });
 
-test("volume versions (2026-11-02, 1.2.0 on 11-03): 1.2.0 by default, 1.1.0 on old saved settings; 1.0.0 puts back 300 s and no rescue; limits stay; a changed rule gets a star; trades are stamped", async () => {
+test("volume versions (2026-11-02, 1.2.0 on 11-03, 1.3.0 on 11-04): 1.3.0 by default, 1.1.0 on old saved settings; 1.0.0 puts back 300 s and no rescue; limits stay; a changed rule gets a star; trades are stamped", async () => {
   const d = defaultStrangleSettings;
-  assert.equal(d.version, "1.2.0");
+  assert.equal(d.version, "1.3.0");
+  assert.equal(d.shockPaceMin, 3);
   // the code's defaults are not the live rules (delta 0.35, no floor): a star
-  assert.equal(volumeVersionLabel(d), "1.2.0*");
+  assert.equal(volumeVersionLabel(d), "1.3.0*");
   // the live settings saved before versions: no version, no new rules -> 1.1.0
   const old: Record<string, unknown> = {
     ...d,
@@ -798,6 +799,7 @@ test("volume versions (2026-11-02, 1.2.0 on 11-03): 1.2.0 by default, 1.1.0 on o
   delete old.shockTouchSeconds;
   delete old.cheapRescue;
   delete old.shockAgainstUnits;
+  delete old.shockPaceMin;
   const loaded = strangleWithDefaults(old);
   assert.equal(volumeVersionLabel(loaded), "1.1.0");
   assert.equal(
@@ -824,6 +826,29 @@ test("volume versions (2026-11-02, 1.2.0 on 11-03): 1.2.0 by default, 1.1.0 on o
     "1.2.0",
     "a 1.2.0 save reads back",
   );
+  // the live save today: 1.2.0 with no shockPaceMin yet stays 1.2.0, ungated
+  const saved12: Record<string, unknown> = { ...v12 };
+  delete saved12.shockPaceMin;
+  const live12 = strangleWithDefaults(saved12);
+  assert.equal(live12.shockPaceMin, 0, "a save before 1.3.0 keeps its rule");
+  assert.equal(volumeVersionLabel(live12), "1.2.0");
+  // switched to 1.3.0 on purpose: the gate on, the owner's limits kept
+  const v13 = applyVolumeVersion(live12, "1.3.0");
+  assert.equal(v13.shockPaceMin, 3);
+  assert.equal(v13.shockAgainstUnits, 2);
+  assert.equal(v13.sizePct, 3);
+  assert.equal(v13.safetyStopPct, 80);
+  assert.equal(volumeVersionLabel(v13), "1.3.0");
+  assert.equal(volumeVersionLabel({ ...v13, shockPaceMin: 0 }), "1.3.0*");
+  assert.equal(volumeVersionLabel(strangleWithDefaults(v13)), "1.3.0");
+  // only the stored lists: 0 or 3 (a value between rounds to one of them)
+  const paceOf = (v: number) => {
+    const r = parseStrangleSettings({ ...v13, shockPaceMin: v });
+    return r.ok ? r.value.shockPaceMin : r.error;
+  };
+  assert.equal(paceOf(1.4), 0);
+  assert.equal(paceOf(2), 3);
+  assert.match(String(paceOf(4)), /from 0 to 3/);
   const v1 = applyVolumeVersion(loaded, "1.0.0");
   assert.equal(v1.version, "1.0.0");
   assert.equal(v1.shockTouchSeconds, 300);
@@ -850,7 +875,7 @@ test("volume versions (2026-11-02, 1.2.0 on 11-03): 1.2.0 by default, 1.1.0 on o
   await shockAt(h, 101);
   const [t] = h.store.openTrades();
   assert.equal(t!.version, volumeVersionLabel(h.bot.settings()));
-  assert.match(t!.version!, /^1\.2\.0\*?$/);
+  assert.match(t!.version!, /^1\.3\.0\*?$/);
   assert.equal(t!.touchWithin, 20);
 });
 

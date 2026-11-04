@@ -18,6 +18,7 @@ import { previousSessions } from "../packages/market-data/src/calendar.js";
 import {
   impliedDelta,
   runStock,
+  defaultFillPct,
   bookAt,
   type BacktestData,
   type ChainContract,
@@ -43,10 +44,17 @@ import {
   tradeSize,
 } from "../apps/web/src/bot-backtest-model.js";
 import {
+  mainRun,
   runState,
   startRun,
   stopRun,
 } from "../apps/web/src/bot-backtest-run.js";
+import {
+  BacktestJobs,
+  handleBacktestJobs,
+  runPart,
+  type PartTask,
+} from "../packages/market-data/src/backtest-jobs.js";
 
 const step = (
   date: string,
@@ -506,7 +514,7 @@ test("with real quotes: the bid running past the price makes the buy pay the ask
   assert.ok(Math.abs(t.book!.ask - (p + 0.01)) < 1e-9);
 });
 
-test("with only the bots' saved books (a few minutes): the trade is marked on the last one and sold at a fresh bid", async () => {
+test("with only the bots' saved books (a few minutes): once the books are over, the 15:50 sale is on the trade bars, as the research", async () => {
   const { data } = fakeData(1000);
   const signal = defaultSettings.firstEntryMin;
   const sparse: BacktestData = {
@@ -534,11 +542,15 @@ test("with only the bots' saved books (a few minutes): the trade is marked on th
   const t = run.trades[0]!;
   assert.equal(t.priced, "quotes");
   const p = 3 * Math.exp(-(t.strike - 100) / 3);
-  // The 15:50 sale waits for the next fresh book (15:45 is too old by then)
-  // and gets the bid of the day's last one.
+  // No fresh book can come after 15:49 (the last is 15:45): the 15:50 sale
+  // fills on the next minute's trade bar middle less the fill cost, as sim.py does.
   const last = t.steps.at(-1)!;
-  assert.equal(last.minute, 375);
-  assert.ok(Math.abs(last.price - (p - 0.05)) < 1e-9, String(last.price));
+  assert.equal(last.minute, 380);
+  const bars = await data.optionRange(t.contract, date, date);
+  const bar = bars.get(date)!.find((b) => b.m === 381)!;
+  const want = ((bar.h + bar.l) / 2) * (1 - defaultFillPct / 100);
+  assert.ok(Math.abs(last.price - want) < 1e-9, String(last.price));
+  assert.ok(p > 0);
 });
 
 test("the book as a minute closed: the newest at or before it, at most 5 minutes old", () => {
@@ -938,59 +950,135 @@ test("Same as paper takes the live version, rules, size, limits and watched stoc
   assert.deepEqual(live.tickers, ["NVDA", "TSLA"]);
 });
 
-test("Stop ends the run at once: the requests in flight are cancelled, the parts back stay, no new part starts", async () => {
-  const realFetch = globalThis.fetch;
-  const signals: AbortSignal[] = [];
-  let calls = 0;
-  globalThis.fetch = ((_url: string, init: RequestInit) => {
-    calls++;
-    const signal = init.signal!;
-    signals.push(signal);
-    // The first part comes back; the others hang until cancelled.
-    if (calls === 1)
-      return Promise.resolve(
-        Response.json({
-          symbol: "NVDA",
-          sessions: 1,
-          noData: 0,
-          trades: [],
-          skips: [],
-        }),
-      );
-    return new Promise((_, reject) =>
-      signal.addEventListener("abort", () =>
-        reject(new DOMException("aborted", "AbortError")),
-      ),
-    );
+// A stand-in for the server's /api/backtest-jobs (the real handler and store
+// on an in-memory database); the test decides when each part finishes.
+function fakeJobServer() {
+  const jobs = new BacktestJobs(new SqliteD1(":memory:"));
+  const tasks: PartTask[] = [];
+  const fetcher = (async (url: string, init?: RequestInit) => {
+    const u = new URL(url, "https://app.test");
+    const result = await handleBacktestJobs({
+      method: init?.method ?? "GET",
+      path: u.pathname,
+      query: Object.fromEntries(u.searchParams),
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      owner: "",
+      jobs,
+      start: async (t) => void tasks.push(...t),
+    });
+    return Response.json(result.body, { status: result.status });
   }) as typeof fetch;
+  // Synthetic part results: no trades, a failure for MU.
+  const finish = (index: number) =>
+    runPart(jobs, tasks[index]!, async (_bot, request) =>
+      request.symbol === "MU"
+        ? { status: 502, body: { error: "Alpaca said no" } }
+        : {
+            status: 200,
+            body: {
+              symbol: request.symbol,
+              sessions: 1,
+              noData: 0,
+              trades: [],
+              skips: [],
+            },
+          },
+    );
+  return { fetcher, tasks, finish };
+}
+
+const sixStocks = {
+  version: "2.7",
+  rules: {} as never,
+  fillPct: 2,
+  tickers: ["NVDA", "AMD", "TSLA", "MU", "META", "AAPL"],
+  from: "2026-10-01",
+  to: "2026-10-29",
+};
+
+test("a run is handed to the server; its progress and parts are read while it runs", async () => {
+  const realFetch = globalThis.fetch;
+  const server = fakeJobServer();
+  globalThis.fetch = server.fetcher;
   try {
-    const ran = {
-      version: "2.7",
-      rules: {} as never,
-      fillPct: 2,
-      tickers: ["NVDA", "AMD", "TSLA", "MU", "META", "AAPL"],
-      from: "2026-10-01",
-      to: "2026-10-29",
-    };
-    const running = startRun(ran);
-    await new Promise((r) => setTimeout(r, 20));
-    const before = calls;
+    await startRun(sixStocks);
+    assert.equal(server.tasks.length, 6, "the whole run is sent at once");
+    assert.deepEqual(
+      { done: runState().busy?.done, total: runState().busy?.total },
+      { done: 0, total: 6 },
+    );
+    await server.finish(0);
+    await server.finish(3); // MU fails
+    await mainRun.resume(); // the page shows again: read now
+    assert.equal(runState().busy?.done, 2);
+    assert.equal(runState().runs.length, 1);
+    assert.deepEqual(runState().errors, [
+      "MU 2026-10-01 → 2026-10-29: Alpaca said no",
+    ]);
+    for (const i of [1, 2, 4, 5]) await server.finish(i);
+    await mainRun.resume();
+    assert.equal(runState().busy, null, "done");
+    assert.deepEqual(
+      runState().runs.map((r) => r.symbol),
+      ["NVDA", "AMD", "TSLA", "META", "AAPL"],
+      "in part order, each once",
+    );
+    assert.deepEqual(runState().ran, sixStocks);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("Stop ends the run at once and on the server: the parts back stay, no new part starts", async () => {
+  const realFetch = globalThis.fetch;
+  const server = fakeJobServer();
+  globalThis.fetch = server.fetcher;
+  try {
+    await startRun(sixStocks);
+    await server.finish(0);
+    await mainRun.resume();
     stopRun();
     // At once: not busy, the stop and the part already back are kept.
     assert.equal(runState().busy, null);
     assert.deepEqual(runState().stopped, { done: 1, total: 6 });
     assert.equal(runState().runs.length, 1);
-    await running;
-    assert.equal(
-      runState().errors.length,
-      0,
-      "cancelled parts are not failures",
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(await server.finish(1), "skipped", "no new part starts");
+    assert.deepEqual(runState().stopped, { done: 1, total: 6 });
+    assert.equal(runState().runs.length, 1);
+    assert.equal(runState().errors.length, 0);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("a past run opens with its own result; a new run cannot start while one runs", async () => {
+  const realFetch = globalThis.fetch;
+  const server = fakeJobServer();
+  globalThis.fetch = server.fetcher;
+  try {
+    await startRun({ ...sixStocks, tickers: ["NVDA"] });
+    await server.finish(0);
+    await mainRun.resume();
+    const first = runState().id!;
+    assert.equal(runState().busy, null);
+    await startRun({ ...sixStocks, tickers: ["AMD", "TSLA"] });
+    const second = runState().id!;
+    assert.notEqual(first, second);
+    // While the second runs, another run is not opened.
+    await mainRun.open(first);
+    assert.equal(runState().id, second);
+    await server.finish(1);
+    await server.finish(2);
+    await mainRun.resume();
+    assert.equal(runState().busy, null);
+    await mainRun.open(first);
+    assert.equal(runState().id, first);
+    assert.deepEqual(
+      runState().runs.map((r) => r.symbol),
+      ["NVDA"],
     );
-    assert.ok(
-      signals.slice(1).every((x) => x.aborted),
-      "the hanging requests are cancelled",
-    );
-    assert.equal(calls, before, "no new part starts after Stop");
+    assert.deepEqual(runState().ran?.tickers, ["NVDA"]);
   } finally {
     globalThis.fetch = realFetch;
   }

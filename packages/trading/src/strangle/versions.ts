@@ -41,6 +41,7 @@ export type VolumeRuleKey =
   | "shockAlert"
   | "shockTouchSeconds"
   | "shockAgainstUnits"
+  | "shockPaceMin"
   | "skipEarnings"
   | "skipPremarket";
 
@@ -73,6 +74,7 @@ export const volumeRuleKeys: readonly VolumeRuleKey[] = [
   "shockAlert",
   "shockTouchSeconds",
   "shockAgainstUnits",
+  "shockPaceMin",
   "skipEarnings",
   "skipPremarket",
 ];
@@ -114,6 +116,7 @@ const v1: VolumeRules = {
   shockAlert: true,
   shockTouchSeconds: 300,
   shockAgainstUnits: 0,
+  shockPaceMin: 0,
   skipEarnings: true,
   skipPremarket: true,
 };
@@ -146,6 +149,20 @@ export const volumeVersions: readonly VolumeVersion[] = [
       shockTouchSeconds: 20,
       cheapRescue: true,
       shockAgainstUnits: 2,
+    },
+  },
+  {
+    id: "1.3.0",
+    name: "Volume 1.3.0",
+    since: "2026-11-04",
+    notes:
+      "1.2.0 + the shock against today's own volume: the 60-second window also at least 3x today's pace, so a shock is a sudden jump on the day, not only against other days (the user, 2026-11-03). Year 2025-11 .. 2026-10, 50 stocks, 2%: $153.1K -> $154.4K (a tie), drop 12% -> 13%; 3-year twin $896K -> $937K, drop 18.7% -> 18.0%, better on tune and check.",
+    rules: {
+      ...v1,
+      shockTouchSeconds: 20,
+      cheapRescue: true,
+      shockAgainstUnits: 2,
+      shockPaceMin: 3,
     },
   },
 ];

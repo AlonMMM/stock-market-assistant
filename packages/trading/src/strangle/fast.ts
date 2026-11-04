@@ -17,6 +17,7 @@ export const fastRule = {
   lastSlot: 1259, // the slot ending 13:00:00
   paceFrom: 180, // the pace zone: minutes 30..359 of the session, in slots
   paceTo: 2160,
+  paceMin: 0, // the window also ≥ this × today's pace; 0 = off
 };
 
 export type FastRule = typeof fastRule;
@@ -25,6 +26,71 @@ export type FastRule = typeof fastRule;
 // rule at 15× volume, 09:40-15:30 (indi_bt/f60_alerts.py F60_K=15
 // F60_LAST=2159, the backtest's e_shock15 alerts).
 export const shockRule: FastRule = { ...fastRule, volume: 15, lastSlot: 2159 };
+
+// The shock against today's own volume (Volume 1.3.0, the user 2026-11-03:
+// "shock is a sadden increase in the volume. to not compare it to today
+// volume is weird"): the window also ≥ paceMin × today's pace; before the
+// pace exists (~10:16) it does not fire (indi_bt/f60_variants.py GATE).
+export const shockRuleFor = (paceMin: number): FastRule => ({
+  ...shockRule,
+  paceMin,
+});
+
+/** The stored kind of a shock list: "shock" ungated, "shock_p3" at 3× the pace. */
+export const shockKind = (paceMin: number) =>
+  paceMin > 0 ? `shock_p${paceMin}` : "shock";
+
+/** One 10-second rule the trader checks: its own fire state (`key`), the list it is kept in, whether it trades. */
+export interface LiveFastRule {
+  key: "fast" | "shock" | "paced";
+  rule: FastRule;
+  kind: string;
+  isShock: boolean;
+  trades: boolean;
+}
+
+// The one gated list stored (settings.ts strangleLimits: shockPaceMin is 0 or 3).
+export const storedPaceMin = 3;
+
+/**
+ * The 10-second rules the trader checks for these settings. With the shock
+ * on, both shock lists are checked from the open and kept whatever the gate
+ * (each list stays whole for the backtest, and switching the gate mid-session
+ * trades from a list already in step); shockPaceMin (Volume 1.3.0) picks the
+ * one that trades.
+ */
+export function liveFastRules(s: {
+  fastAlert: boolean;
+  shockAlert: boolean;
+  shockPaceMin: number;
+}): LiveFastRule[] {
+  const out: LiveFastRule[] = [];
+  if (s.fastAlert)
+    out.push({
+      key: "fast",
+      rule: fastRule,
+      kind: "fast",
+      isShock: false,
+      trades: true,
+    });
+  if (!s.shockAlert) return out;
+  const gated = s.shockPaceMin > 0;
+  out.push({
+    key: "shock",
+    rule: shockRule,
+    kind: "shock",
+    isShock: true,
+    trades: !gated,
+  });
+  out.push({
+    key: "paced",
+    rule: shockRuleFor(storedPaceMin),
+    kind: shockKind(storedPaceMin),
+    isShock: true,
+    trades: gated,
+  });
+  return out;
+}
 
 /** One session of a stock in 10-second slots: volume (0 without a bar) and close (null without a bar). */
 export interface FastDay {
@@ -136,7 +202,8 @@ export function fastState(
     const avg = paceCum[before]! / (before - r.paceFrom + 1);
     if (avg > 0) pace = win / (avg * W);
   }
-  const volumeOk = ratio >= r.volume || pace >= r.volume;
+  let volumeOk = ratio >= r.volume || pace >= r.volume;
+  if (r.paceMin > 0 && pace < r.paceMin) volumeOk = false;
   const expMove = base.move[t];
   const am = Math.abs(move);
   const moveOk =

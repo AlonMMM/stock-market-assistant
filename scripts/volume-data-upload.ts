@@ -4,7 +4,9 @@
 //
 //   shock    the shock alerts of every stock in data/local/bars-10s.sqlite,
 //            computed with the live rule (strangle/fast.ts fastAlerts with
-//            shockRule) on the 20 sessions before each day -> volume_alerts
+//            shockRule) on the 20 sessions before each day -> volume_alerts;
+//            --pace 3: the list at 3x today's pace too (Volume 1.3.0's
+//            shockRuleFor(3), kind shock_p3)
 //   seconds  the research's 1-second Databento windows after its alerts
 //            (leg_seconds.py sec_cache): the stocks' last price each second
 //            -> stock_seconds, the contracts' books -> option_seconds
@@ -15,7 +17,7 @@
 //            -> option_seconds, a window a contract (volume-daily.ts
 //            bookWindows, as the scheduled step stores the live ones)
 //
-//   node --import tsx scripts/volume-data-upload.ts shock|seconds|books --from YYYY-MM-DD --to YYYY-MM-DD [--symbols A,B] [--apply]
+//   node --import tsx scripts/volume-data-upload.ts shock|seconds|books --from YYYY-MM-DD --to YYYY-MM-DD [--symbols A,B] [--pace 3] [--apply]
 //
 // Without --apply the SQL files are written (data/local/volume-upload/) and
 // counted, nothing is sent; with it each file goes up with `wrangler d1
@@ -50,7 +52,8 @@ import {
   fastBaseline,
   fastRule,
   fastWindows,
-  shockRule,
+  shockKind,
+  shockRuleFor,
   type FastDay,
   type FastWindows,
 } from "../packages/trading/src/strangle/fast.js";
@@ -74,6 +77,7 @@ const from = opt("from", "2024-02-01");
 const to = opt("to", "2026-10-30");
 const only = opt("symbols", "").split(",").filter(Boolean);
 const apply = args.includes("--apply");
+const paceMin = Number(opt("pace", "0"));
 
 function sessions(lo: string, hi: string): string[] {
   const out: string[] = [];
@@ -193,7 +197,7 @@ function shock() {
       if (!rows.length) continue; // no trades: not a session of this stock's history
       const base = date >= from ? fastBaseline(prior) : null;
       if (base)
-        for (const a of fastAlerts(today, base, shockRule))
+        for (const a of fastAlerts(today, base, shockRuleFor(paceMin)))
           found.push({
             symbol,
             date,
@@ -241,12 +245,12 @@ function shock() {
   }
   const lines = found.map(
     (a) =>
-      `INSERT OR REPLACE INTO volume_alerts (symbol, date, kind, second, price, up) VALUES (${q(a.symbol)}, ${q(a.date)}, 'shock', ${a.second}, ${a.price}, ${a.up ? 1 : 0});`,
+      `INSERT OR REPLACE INTO volume_alerts (symbol, date, kind, second, price, up) VALUES (${q(a.symbol)}, ${q(a.date)}, ${q(shockKind(paceMin))}, ${a.second}, ${a.price}, ${a.up ? 1 : 0});`,
   );
   console.log(
-    `${found.length} shock alerts, ${symbols.length} stocks, ${from} .. ${to}`,
+    `${found.length} ${shockKind(paceMin)} alerts, ${symbols.length} stocks, ${from} .. ${to}`,
   );
-  send(writeFiles("shock", volumeAlertsTable, lines));
+  send(writeFiles(shockKind(paceMin), volumeAlertsTable, lines));
 }
 
 // ---- seconds: the research's 1-second windows ----

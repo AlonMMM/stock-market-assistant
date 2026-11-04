@@ -25,6 +25,7 @@ import {
   sideOf,
   type Leg,
 } from "./decide.js";
+import { shockKind } from "./fast.js";
 import { legAt, legDeltas } from "./pick.js";
 import type { StrangleSettings } from "./settings.js";
 
@@ -96,7 +97,13 @@ export interface VolumeBacktestData extends Pick<
     to: number,
   ): Promise<SecondBook[]>;
   /** The stock's shock alerts over [from, to]. */
-  shockAlerts(symbol: string, from: string, to: string): Promise<ShockAlert[]>;
+  /** A stock's shock alerts over [from, to], of one stored list (fast.ts shockKind). */
+  shockAlerts(
+    symbol: string,
+    from: string,
+    to: string,
+    kind: string,
+  ): Promise<ShockAlert[]>;
 }
 
 export type AlertKind = "plan" | "shock";
@@ -496,7 +503,12 @@ export async function runVolumeStock(
   const signals: VolumeSignal[] = [];
   const shocks =
     s.shockAlert && !o.alerts && dates.length
-      ? await data.shockAlerts(symbol, dates[0]!, dates.at(-1)!)
+      ? await data.shockAlerts(
+          symbol,
+          dates[0]!,
+          dates.at(-1)!,
+          shockKind(s.shockPaceMin),
+        )
       : [];
   for (const date of dates) {
     const length = cal.sessionLength(date);

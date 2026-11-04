@@ -11,7 +11,7 @@ import {
   liveUrl,
   paperUrl,
 } from "../../../packages/trading/src/alpaca-trading.js";
-import Fastify from "fastify";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import {
   defaults,
   replay,
@@ -29,6 +29,12 @@ import { handleCandles } from "../../../packages/market-data/src/candles.js";
 import { handleChartBars } from "../../../packages/market-data/src/chart-bars.js";
 import { handleTradeChart } from "../../../packages/market-data/src/trade-chart.js";
 import { handleBotBacktest } from "../../../packages/market-data/src/bot-backtest.js";
+import {
+  handleBacktestJobs,
+  runParts,
+  type BacktestJobs,
+  type PartCompute,
+} from "../../../packages/market-data/src/backtest-jobs.js";
 import { handleVolumeBacktest } from "../../../packages/market-data/src/volume-backtest.js";
 import type { VolumeDataStore } from "../../../packages/market-data/src/volume-data.js";
 import type { BarCache } from "../../../packages/market-data/src/bar-cache.js";
@@ -86,6 +92,7 @@ export function buildApp(
     strengths?: StrengthStore; // stored β/σ vs SPY for the board's score
     sigmas?: MarksSigmaStore; // stored σ curves of the marked-sections score
     results?: ResultCache; // computed backtest parts
+    jobs?: BacktestJobs; // the Backtest page's runs, run here (backtest-jobs.ts)
     symbols?: D1SymbolList; // the Backtest page's symbol list
     watchlists?: D1Watchlists; // the user's named watchlists
     priceAlerts?: D1PriceAlerts; // the user's own price alerts
@@ -518,6 +525,58 @@ export function buildApp(
       .header("Cache-Control", "no-store")
       .send(result.body);
   });
+  // The Backtest page's runs: kept and run in this process, so the page may
+  // leave and come back (backtest-jobs.ts).
+  const partCompute: PartCompute = (bot, body) => {
+    const tradingUrl =
+      process.env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl;
+    return bot === "main"
+      ? handleBotBacktest(
+          body,
+          alpaca,
+          tradingUrl,
+          alpaca.fetcher,
+          Date.now(),
+          alpaca.cache,
+          alpaca.quotes,
+          alpaca.optionBars,
+        )
+      : handleVolumeBacktest(
+          body,
+          alpaca,
+          tradingUrl,
+          alpaca.fetcher,
+          Date.now(),
+          alpaca.cache,
+          alpaca.quotes,
+          alpaca.optionBars,
+          alpaca.volume,
+        );
+  };
+  const backtestJobs = async (request: FastifyRequest, reply: FastifyReply) => {
+    const result = await handleBacktestJobs({
+      method: request.method,
+      path: request.url.split("?")[0]!,
+      query: (request.query ?? {}) as Record<string, unknown>,
+      body: request.body,
+      owner: "",
+      jobs: alpaca.jobs,
+      start: async (tasks) => {
+        void runParts(alpaca.jobs!, tasks, partCompute).catch((error) =>
+          app.log.error(error),
+        );
+      },
+    });
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  };
+  app.post("/api/backtest-jobs", backtestJobs);
+  app.get("/api/backtest-jobs", backtestJobs);
+  app.get("/api/backtest-jobs/latest", backtestJobs);
+  app.get("/api/backtest-jobs/:id", backtestJobs);
+  app.post("/api/backtest-jobs/:id/stop", backtestJobs);
   // The Main bot's backtest of one stock over a range (the Backtest page).
   app.post("/api/bot-backtest", async (request, reply) => {
     const result = await handleBotBacktest(
