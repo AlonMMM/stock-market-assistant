@@ -2999,6 +2999,17 @@ paid); every signal: among 2.10's expiry's strikes in the band, the most contrac
   at the busiest strike, about $200K less than 2.10's 0.15 strike made on them; the best 5 shrink ($1.05M vs $1.19M):
   the busiest strike is mostly a higher delta (median 0.16, p90 0.21), dearer, and a giant move multiplies it less.
   Verdict: not better; the busiest delta closed.
+- **The busiest LOWER delta, on 2.10's own trades (2026-11-04, look 3; delta_volume_lower.py):** the user, "if the
+  original delta have more than 200 contacts, then go ... to the most volume delta, but only if it's lower than the
+  original delta", then "go even beyond 0.09. You can go up until 0.05". 2.10's pick must pass; then the busiest of it and
+  its lower-delta strikes (down to 0.10 / 0.09 / 0.08 / 0.07 / 0.05), only if busier than the original; floor $0.10 (L10)
+  or $0.20 (L20), under it the original. Trades = 2.10's (main legs 504 / 507 tune); the strike moves on 90-175 a half.
+  2%, vs 2.10 (tune fair / Fav, check fair / Fav): 🎯 L10w (0.08, $0.10) +6% / +9% (drop 21% / 22% vs 16% / 14%), check
+  -4% / -8% (26% / 25% vs 24% / 23%); L10 (0.09) +0% / +1%, -5% / -6%; L10x (0.05) -4% / -1%, -9% / -15%; 🎯 L20n
+  -1% / -1%, -4% / -5%. 3% check: L10w -6% / -11%. Tune fair w/o best 5 worse ($127,616 vs $138,044).
+  The tune gain is SMCI (+$391K at $10K of +$271K moved); without it the moved trades lose (median -$2,700). On the check
+  the moved trades: fair +$163K, Favorites -$4K, median -$2,650, both below 2.10's strike. Verdict: not better; fails the
+  check on both lists, with a bigger drop.
 
 ### The volume against SPY's, on 2.10 (2026-11-03, not better: the extra trades fail the check; size-rel near, one gate short)
 The user: "can we also check the thesis in the main bot? if today the main bot does not normelized the spy volume I think
