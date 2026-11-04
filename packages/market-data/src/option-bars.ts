@@ -62,10 +62,14 @@ const perRead = 90;
 const perInsert = 10;
 
 export class D1OptionBars implements OptionBarStore {
-  private ready?: Promise<unknown>;
+  // True once the table exists. Never the promise itself: on Workers a D1
+  // call started by one request hangs forever when another awaits it.
+  private ready = false;
   constructor(private db: D1Like) {}
-  private init() {
-    return (this.ready ??= this.db.prepare(optionBarsTable).run());
+  private async init() {
+    if (this.ready) return;
+    await this.db.prepare(optionBarsTable).run();
+    this.ready = true;
   }
   async get(contracts: string[], date: string) {
     const out = new Map<string, MinuteBar[]>();

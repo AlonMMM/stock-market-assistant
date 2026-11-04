@@ -23,18 +23,22 @@ export interface Watchlist {
 const idPattern = /^[a-z0-9]{8,32}$/;
 
 export class D1Watchlists {
-  private ready?: Promise<unknown>;
+  // True once the table exists. Never the promise itself: on Workers a D1
+  // call started by one request hangs forever when another awaits it.
+  private ready = false;
   constructor(private readonly db: D1Like) {}
 
-  private init() {
-    return (this.ready ??= this.db.batch([
+  private async init() {
+    if (this.ready) return;
+    await this.db.batch([
       this.db.prepare(
         "CREATE TABLE IF NOT EXISTS watchlists (id TEXT PRIMARY KEY, name TEXT NOT NULL, position INTEGER NOT NULL, created_at INTEGER NOT NULL)",
       ),
       this.db.prepare(
         "CREATE TABLE IF NOT EXISTS watchlist_symbols (watchlist_id TEXT NOT NULL, ticker TEXT NOT NULL, position INTEGER NOT NULL, PRIMARY KEY (watchlist_id, ticker))",
       ),
-    ]));
+    ]);
+    this.ready = true;
   }
 
   async lists(): Promise<Watchlist[]> {

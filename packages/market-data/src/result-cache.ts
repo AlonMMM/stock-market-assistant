@@ -82,21 +82,25 @@ export const runKey = (
 
 /** Text values in a D1 table, split into rows; `meta` columns are readable. */
 export class D1Blobs {
-  private ready?: Promise<unknown>;
+  // True once the table exists. Never the promise itself: on Workers a D1
+  // call started by one request hangs forever when another awaits it.
+  private ready = false;
   constructor(
     private readonly db: D1Like,
     private readonly table: string,
     private readonly meta: string[],
   ) {}
 
-  private init() {
-    return (this.ready ??= this.db
+  private async init() {
+    if (this.ready) return;
+    await this.db
       .prepare(
         `CREATE TABLE IF NOT EXISTS ${this.table} (key TEXT NOT NULL, chunk INTEGER NOT NULL, ` +
           `chunks INTEGER NOT NULL, ${this.meta.map((c) => `${c} TEXT`).join(", ")}, ` +
           `data TEXT NOT NULL, stored_at INTEGER NOT NULL, PRIMARY KEY (key, chunk))`,
       )
-      .run());
+      .run();
+    this.ready = true;
   }
 
   /** Values found for `keys`; incomplete values count as missing. */

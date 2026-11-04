@@ -98,6 +98,8 @@ interface JobView<R, B> {
 }
 
 export const pollMs = 2500;
+// The waits before the list of recent runs is read again after a failure.
+const recentRetryMs = [3000, 10000, 30000];
 const jobsUrl = "/api/backtest-jobs";
 
 function backtestRun<R extends RanBase, B>(o: {
@@ -419,7 +421,7 @@ function backtestRun<R extends RanBase, B>(o: {
   let recent: RecentRun<R>[] | null = null;
   const recentListeners = new Set<() => void>();
   let recentRead = false;
-  async function loadRecent() {
+  async function loadRecent(attempt = 0) {
     recentRead = true;
     try {
       const response = await fetch(`${jobsUrl}?bot=${o.bot}`, {
@@ -428,7 +430,13 @@ function backtestRun<R extends RanBase, B>(o: {
       });
       recent = (await readJson<{ runs: RecentRun<R>[] }>(response)).runs;
     } catch {
-      // The list is a convenience: the shown run does not depend on it.
+      // The list is a convenience: the shown run does not depend on it. A
+      // failed read is tried again (the user, 2026-11-04: the list never
+      // came back after one failure), then shown as empty.
+      if (attempt < recentRetryMs.length) {
+        setTimeout(() => void loadRecent(attempt + 1), recentRetryMs[attempt]);
+        return;
+      }
       recent ??= [];
     }
     for (const l of recentListeners) l();

@@ -53,13 +53,17 @@ export function mergeSources(
 }
 
 export class D1OptionQuotes implements OptionQuoteStore {
-  private ready?: Promise<unknown>;
+  // True once the table exists. Never the promise itself: on Workers a D1
+  // call started by one request hangs forever when another awaits it.
+  private ready = false;
   constructor(
     private db: D1Like,
     private sources: readonly string[] = ["databento"],
   ) {}
-  private init() {
-    return (this.ready ??= this.db.prepare(quotesTable).run());
+  private async init() {
+    if (this.ready) return;
+    await this.db.prepare(quotesTable).run();
+    this.ready = true;
   }
   async get(contract: string, from: string, to: string) {
     await this.init();

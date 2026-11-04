@@ -52,15 +52,19 @@ const toAlert = (r: Row): PriceAlert => ({
 });
 
 export class D1PriceAlerts {
-  private ready?: Promise<unknown>;
+  // True once the table exists. Never the promise itself: on Workers a D1
+  // call started by one request hangs forever when another awaits it.
+  private ready = false;
   constructor(private readonly db: D1Like) {}
 
-  private init() {
-    return (this.ready ??= this.db
+  private async init() {
+    if (this.ready) return;
+    await this.db
       .prepare(
         "CREATE TABLE IF NOT EXISTS price_alerts (id TEXT PRIMARY KEY, ticker TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, note TEXT NOT NULL, created_at INTEGER NOT NULL, fired_at INTEGER, fired_price REAL)",
       )
-      .run());
+      .run();
+    this.ready = true;
   }
 
   async list(ticker?: string): Promise<PriceAlert[]> {

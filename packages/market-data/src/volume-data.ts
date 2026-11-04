@@ -97,15 +97,19 @@ export async function unpackJson<T>(text: string): Promise<T> {
 }
 
 export class D1VolumeData implements VolumeDataStore {
-  private ready?: Promise<unknown>;
+  // True once the table exists. Never the promise itself: on Workers a D1
+  // call started by one request hangs forever when another awaits it.
+  private ready = false;
   constructor(private db: D1Like) {}
-  private init() {
-    return (this.ready ??= this.db.batch([
+  private async init() {
+    if (this.ready) return;
+    await this.db.batch([
       this.db.prepare(volumeAlertsTable),
       this.db.prepare(stockSecondsTable),
       this.db.prepare(optionSecondsTable),
       this.db.prepare(volumeDaysTable),
-    ]));
+    ]);
+    this.ready = true;
   }
 
   private async write(statements: D1Statement[]) {
