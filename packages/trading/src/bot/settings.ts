@@ -402,7 +402,7 @@ export function parseSettings(
     return {
       ok: false,
       error:
-        "sizeSteps must be up to 6 steps of { from: dollars, rising, pct: 0.5 to 5 }",
+        "sizeSteps must be up to 5 steps of { from: dollars, rising, pct: 0.5 to 5 }",
     };
   out.sizeSteps = steps;
   const tiers = parseVolumeTiers(body.volumeTiers);
@@ -416,9 +416,12 @@ export function parseSettings(
   return { ok: true, value: out };
 }
 
+/** The most size steps the owner can set (the owner, 2026-11-04: "up until 5 rules"). */
+export const maxSizeSteps = 5;
+
 /** Size steps from a request: rising account values, each size within the size's limits; null when wrong. */
 function parseSizeSteps(v: unknown): SizeStep[] | null {
-  if (!Array.isArray(v) || v.length > 6) return null;
+  if (!Array.isArray(v) || v.length > maxSizeSteps) return null;
   const [min, max] = limits.sizePct;
   const out: SizeStep[] = [];
   for (const x of v) {

@@ -1,8 +1,10 @@
 import type { BotView } from "../../../packages/trading/src/bot-api.js";
 import {
   defaultSettings,
+  maxSizeSteps,
   neverWatched,
   type BotSettings,
+  type SizeStep,
 } from "../../../packages/trading/src/bot/settings.js";
 
 // The bot's settings page (docs/tasks/frontend-bot-settings.md): the stocks
@@ -24,6 +26,7 @@ import {
 
 export {
   defaultSettings,
+  maxSizeSteps,
   neverWatched,
   untested,
   type BotSettings,
@@ -170,9 +173,35 @@ export function resetToDefaults(s: BotSettings): BotSettings {
 export const sameSettings = (a: BotSettings, b: BotSettings) =>
   JSON.stringify(a) === JSON.stringify(b);
 
+/** What is wrong with the size steps, in words; null when the service would take them. */
+export function sizeStepsProblem(steps: readonly SizeStep[]): string | null {
+  if (steps.length > maxSizeSteps) return `At most ${maxSizeSteps} size steps.`;
+  for (const [i, x] of steps.entries()) {
+    if (!(x.from > 0))
+      return `Step ${i + 1}: the account value must be above $0.`;
+    if (!(x.pct >= 0.5 && x.pct <= 5))
+      return `Step ${i + 1}: the size must be 0.5% to 5%.`;
+    const before = steps[i - 1];
+    if (before && x.from <= before.from)
+      return `Step ${i + 1}: the account value must be above step ${i}'s.`;
+  }
+  return null;
+}
+
+/** One more size step after the last: twice its account value, half a point smaller. */
+export function addSizeStep(s: BotSettings): SizeStep[] {
+  const last = s.sizeSteps.at(-1);
+  if (s.sizeSteps.length >= maxSizeSteps) return s.sizeSteps;
+  const from = last ? last.from * 2 : 100_000;
+  const pct = Math.max(0.5, (last?.pct ?? s.sizePct) - 0.5);
+  return [...s.sizeSteps, { from, pct }];
+}
+
 /** Values that work against each other, in words. */
 export function settingsWarnings(s: BotSettings): string[] {
   const out: string[] = [];
+  const steps = sizeStepsProblem(s.sizeSteps);
+  if (steps) out.push(steps);
   if (s.safetyStopPct < s.stopPct)
     out.push(
       `The broker safety stop (−${s.safetyStopPct}%) is above the stop (−${s.stopPct}%), so it fires first.`,

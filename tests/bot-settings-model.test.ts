@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  addSizeStep,
   addTicker,
   algorithmSteps,
   botVersions,
@@ -9,6 +10,7 @@ import {
   leftBacktest,
   resetToDefaults,
   settingsWarnings,
+  sizeStepsProblem,
   tickerItems,
   toggleTicker,
   versionState,
@@ -236,4 +238,54 @@ test("the signal leaves the backtest when any of its values change", () => {
   assert.equal(leftBacktest(defaultSettings), false);
   assert.equal(leftBacktest({ ...defaultSettings, minT: 2.5 }), true);
   assert.equal(leftBacktest({ ...defaultSettings, skipEarnings: false }), true);
+});
+
+test("size steps: up to 5 the owner sets, rising account values, 0.5-5% each", async () => {
+  const { parseSettings } =
+    await import("../packages/trading/src/bot/settings.js");
+  // The owner's steps of 2026-11-04: 5% under $50K, 4% from $50K, 3% from $100K, then the version's.
+  const mine = [
+    { from: 50_000, pct: 4 },
+    { from: 100_000, pct: 3 },
+    { from: 300_000, pct: 2.5 },
+    { from: 1_000_000, pct: 1.5 },
+    { from: 4_000_000, pct: 1 },
+  ];
+  assert.equal(sizeStepsProblem(mine), null);
+  assert.ok(
+    parseSettings({ ...defaultSettings, sizePct: 5, sizeSteps: mine }).ok,
+  );
+  const six = [...mine, { from: 8_000_000, pct: 0.5 }];
+  assert.match(sizeStepsProblem(six)!, /At most 5/);
+  assert.equal(parseSettings({ ...defaultSettings, sizeSteps: six }).ok, false);
+  assert.match(sizeStepsProblem([{ from: 0, pct: 3 }])!, /above \$0/);
+  assert.match(sizeStepsProblem([{ from: 50_000, pct: 6 }])!, /0\.5% to 5%/);
+  assert.match(
+    sizeStepsProblem([
+      { from: 100_000, pct: 4 },
+      { from: 50_000, pct: 3 },
+    ])!,
+    /above step 1/,
+  );
+  // A blocked step also shows next to Save.
+  assert.ok(
+    settingsWarnings({
+      ...defaultSettings,
+      sizeSteps: [{ from: 0, pct: 3 }],
+    }).some((w) => /Step 1/.test(w)),
+  );
+});
+
+test("size steps: a new step doubles the last account value, half a point smaller; none past 5", () => {
+  const none = { ...defaultSettings, sizePct: 5, sizeSteps: [] };
+  assert.deepEqual(addSizeStep(none), [{ from: 100_000, pct: 4.5 }]);
+  assert.deepEqual(addSizeStep(defaultSettings).at(-1), {
+    from: 8_000_000,
+    pct: 0.5,
+  });
+  const full = {
+    ...defaultSettings,
+    sizeSteps: [1, 2, 3, 4, 5].map((i) => ({ from: i * 100_000, pct: 3 })),
+  };
+  assert.equal(addSizeStep(full).length, 5);
 });

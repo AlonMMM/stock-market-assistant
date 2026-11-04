@@ -6,6 +6,7 @@ import {
 import type { BotView } from "../../../packages/trading/src/bot-api.js";
 import { readJson } from "./api.js";
 import {
+  addSizeStep,
   addTicker,
   algorithmSteps,
   applyVersion,
@@ -13,9 +14,11 @@ import {
   defaultSettings,
   fromBotView,
   leftBacktest,
+  maxSizeSteps,
   resetToDefaults,
   sameSettings,
   settingsWarnings,
+  sizeStepsProblem,
   tickerItems,
   toggleTicker,
   untested,
@@ -95,6 +98,7 @@ interface Group {
   sub: string;
   sliders: SliderSpec[];
   switches: [SwitchKey, string, string][];
+  sizeSteps?: boolean; // the card that edits the size steps
 }
 
 /** The size steps in words: "2.5% from $300K, 1.5% from $1M"; "" when none. */
@@ -118,6 +122,7 @@ function groups(s: BotSettings): Group[] {
     {
       title: "Trade size",
       sub: sizeSub,
+      sizeSteps: true,
       sliders: [
         {
           key: "sizePct",
@@ -413,6 +418,83 @@ const signalSwitches: [SwitchKey, string, string][] = [
 // Range steps such as 0.05 drift in floating point: snap to the step.
 const snap = (v: number, step: number) =>
   Number((Math.round(v / step) * step).toFixed(4));
+
+/** The size by account value: up to 5 steps, each "from $X, Y% a trade" (the owner, 2026-11-04). */
+function SizeSteps({
+  s,
+  onChange,
+}: {
+  s: BotSettings;
+  onChange: (steps: BotSettings["sizeSteps"]) => void;
+}) {
+  const steps = s.sizeSteps;
+  const problem = sizeStepsProblem(steps);
+  const set = (i: number, patch: Partial<BotSettings["sizeSteps"][number]>) =>
+    onChange(steps.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  return (
+    <div className="bs-row">
+      <div className="bs-what">
+        <span className="bs-label">Size by account value</span>
+        <span className="muted small">
+          Up to {maxSizeSteps} steps. From each account value (as the day
+          starts), its size replaces the one above. Under the first step:{" "}
+          {pct(s.sizePct)}.
+        </span>
+      </div>
+      <div className="bs-control">
+        {steps.length === 0 && (
+          <span className="muted small">
+            No steps: {pct(s.sizePct)} at any account value.
+          </span>
+        )}
+        {steps.map((x, i) => (
+          <div key={i} className="bs-step">
+            <span className="muted small">From $</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step={1000}
+              value={x.from || ""}
+              aria-label={`Step ${i + 1}: account value, dollars`}
+              onChange={(e) => set(i, { from: Number(e.target.value) })}
+            />
+            <input
+              type="number"
+              inputMode="decimal"
+              min={0.5}
+              max={5}
+              step={0.5}
+              value={x.pct || ""}
+              aria-label={`Step ${i + 1}: size, % of the account`}
+              onChange={(e) => set(i, { pct: Number(e.target.value) })}
+            />
+            <span className="muted small">% a trade</span>
+            <button
+              type="button"
+              className="bs-secondary"
+              aria-label={`Remove step ${i + 1}`}
+              onClick={() => onChange(steps.filter((_, j) => j !== i))}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        {problem && <span className="small bs-bad">{problem}</span>}
+        <div>
+          <button
+            type="button"
+            className="bs-secondary"
+            disabled={steps.length >= maxSizeSteps}
+            onClick={() => onChange(addSizeStep(s))}
+          >
+            Add a step
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Slider({
   spec,
@@ -948,7 +1030,11 @@ export function BotSettingsPage({ onBack }: { onBack: () => void }) {
     status = "Saved. The bot uses the new settings.";
     statusTone = "bs-good";
   }
-  const canSave = connected && dirty && run.step !== "saving";
+  const canSave =
+    connected &&
+    dirty &&
+    run.step !== "saving" &&
+    !sizeStepsProblem(s.sizeSteps);
 
   let modeHelp = "Every signal is a paper order.";
   if (s.mode === "dry") modeHelp = "Signals are logged as “would buy”.";
@@ -1078,6 +1164,9 @@ export function BotSettingsPage({ onBack }: { onBack: () => void }) {
               onChange={(v) => put({ [spec.key]: v })}
             />
           ))}
+          {g.sizeSteps && (
+            <SizeSteps s={s} onChange={(sizeSteps) => put({ sizeSteps })} />
+          )}
           {g.switches.map(([key, label, help]) => (
             <Switch
               key={key}
