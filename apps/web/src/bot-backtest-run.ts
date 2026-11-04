@@ -53,6 +53,20 @@ export interface RunState<R, B> {
   ran: R | null;
   // Set when the user stopped the run: the parts back by then, of all of them.
   stopped?: { done: number; total: number } | null;
+  // The server's id of the run shown (null before one was read).
+  id?: string | null;
+}
+
+/** One of the latest runs, as the list shows it (backtest-jobs.ts, JobSummary). */
+export interface RecentRun<R> {
+  id: string;
+  status: "running" | "done" | "stopped";
+  total: number;
+  done: number;
+  failed: number;
+  createdAt: number;
+  updatedAt: number;
+  meta: R;
 }
 
 export interface BacktestRun<R extends RanBase, B> {
@@ -62,6 +76,11 @@ export interface BacktestRun<R extends RanBase, B> {
   use(): RunState<R, B>;
   /** Reads the run on the server again (on load and when the page shows). */
   resume(): Promise<void>;
+  /** Shows one of the latest runs (not while a run is going). */
+  open(id: string): Promise<void>;
+  /** The latest 10 runs, newest first; null until read. */
+  useRecent(): RecentRun<R>[] | null;
+  loadRecent(): Promise<void>;
 }
 
 /** The run as the server tells it (backtest-jobs.ts, JobView). */
@@ -132,6 +151,7 @@ function backtestRun<R extends RanBase, B>(o: {
         runs: saved.runs,
         ran: saved.ran,
         stopped: saved.stopped ?? null,
+        id: saved.id ?? null,
       };
     } catch {
       return empty;
@@ -143,8 +163,11 @@ function backtestRun<R extends RanBase, B>(o: {
     for (const l of listeners) l();
   }
   function save() {
-    const { ran, runs, errors, stopped } = current();
-    storage.set(o.resultKey, JSON.stringify({ ran, runs, errors, stopped }));
+    const { ran, runs, errors, stopped, id } = current();
+    storage.set(
+      o.resultKey,
+      JSON.stringify({ ran, runs, errors, stopped, id }),
+    );
   }
   const subscribe = (l: () => void) => {
     listeners.add(l);
@@ -186,17 +209,22 @@ function backtestRun<R extends RanBase, B>(o: {
         errors,
         ran: view.meta,
         stopped: null,
+        id: view.id,
       });
       return;
     }
+    const finishing = current().busy !== null || current().id !== view.id;
     set({
       busy: null,
       runs,
       errors,
       ran: view.meta,
       stopped: view.stopped,
+      id: view.id,
     });
     save();
+    // The list shows the run's new state.
+    if (finishing) void loadRecent();
   }
 
   /** Reads the run now, then every pollMs while it runs. */
@@ -210,7 +238,7 @@ function backtestRun<R extends RanBase, B>(o: {
         { signal: AbortSignal.timeout(20000), cache: "no-store" },
       );
       if (response.status === 404) {
-        // The run is gone (kept a week): what was read stays.
+        // The run is gone (only the latest 10 are kept): what was read stays.
         if (gen !== generation) return;
         forget();
         const busy = current().busy;
@@ -249,25 +277,37 @@ function backtestRun<R extends RanBase, B>(o: {
       return;
     }
     if (typeof window === "undefined") return;
-    // The run this browser started, else the latest one (another device's).
+    // A run still going comes first (the user, 2026-11-04: "on refresh the
+    // job I started should keep running and show"), even one started on
+    // another device; else the run this browser showed last; else the latest.
     const saved = storage.get(jobKey);
     let id = saved;
     try {
-      // Only its state: no results (since far ahead).
-      const response = await fetch(
-        saved
-          ? `${jobsUrl}/${encodeURIComponent(saved)}?since=${Number.MAX_SAFE_INTEGER}`
-          : `${jobsUrl}/latest?bot=${o.bot}&since=${Number.MAX_SAFE_INTEGER}`,
-        { signal: AbortSignal.timeout(20000), cache: "no-store" },
-      );
-      if (response.status === 404) {
-        if (saved) forget();
-        return;
-      }
-      const head = await readJson<JobView<R, B>>(response);
-      id = head.id;
+      // Only their state: no results (since far ahead).
+      const head = async (url: string) => {
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(20000),
+          cache: "no-store",
+        });
+        if (response.status === 404) return null;
+        return readJson<JobView<R, B>>(response);
+      };
+      const far = `since=${Number.MAX_SAFE_INTEGER}`;
+      const latest = await head(`${jobsUrl}/latest?bot=${o.bot}&${far}`);
+      const shown =
+        saved && saved !== latest?.id
+          ? await head(`${jobsUrl}/${encodeURIComponent(saved)}?${far}`)
+          : latest;
+      if (saved && !shown) forget();
+      const pick = latest?.status === "running" ? latest : (shown ?? latest);
+      if (!pick) return;
+      id = pick.id;
       // Finished, and its result is the one kept here: nothing to read.
-      if (head.status !== "running" && saved === head.id && current().ran)
+      if (
+        pick.status !== "running" &&
+        current().id === pick.id &&
+        current().ran
+      )
         return;
     } catch {
       // The server is not reachable now; a later look tries again.
@@ -299,6 +339,7 @@ function backtestRun<R extends RanBase, B>(o: {
     })
       .then((r) => readJson<JobView<R, B>>(r))
       .then(() => {
+        void loadRecent();
         // Parts finished before the stop came in: read them all.
         if (gen !== generation) return;
         results = new Map();
@@ -346,6 +387,8 @@ function backtestRun<R extends RanBase, B>(o: {
       jobId = id;
       storage.set(jobKey, id);
       resumed = true;
+      set({ id });
+      void loadRecent();
       await read(id);
     } catch (e) {
       if (gen !== generation) return;
@@ -358,10 +401,51 @@ function backtestRun<R extends RanBase, B>(o: {
     }
   }
 
+  /** Shows one of the latest runs: its result, or its progress if it runs. */
+  async function open(id: string) {
+    if (current().busy || id === current().id) return;
+    clearTimer();
+    generation++;
+    jobId = id;
+    storage.set(jobKey, id);
+    results = new Map();
+    since = 0;
+    failures = 0;
+    await read(id);
+  }
+
+  // The latest runs, for the list (read on first use, after a start and
+  // when a run ends).
+  let recent: RecentRun<R>[] | null = null;
+  const recentListeners = new Set<() => void>();
+  let recentRead = false;
+  async function loadRecent() {
+    recentRead = true;
+    try {
+      const response = await fetch(`${jobsUrl}?bot=${o.bot}`, {
+        signal: AbortSignal.timeout(20000),
+        cache: "no-store",
+      });
+      recent = (await readJson<{ runs: RecentRun<R>[] }>(response)).runs;
+    } catch {
+      // The list is a convenience: the shown run does not depend on it.
+      recent ??= [];
+    }
+    for (const l of recentListeners) l();
+  }
+  const subscribeRecent = (l: () => void) => {
+    recentListeners.add(l);
+    if (!recentRead) void loadRecent();
+    return () => recentListeners.delete(l);
+  };
+
   return {
     start,
     stop,
     resume,
+    open,
+    loadRecent,
+    useRecent: () => useSyncExternalStore(subscribeRecent, () => recent),
     state: current,
     use: () => useSyncExternalStore(subscribe, current),
   };

@@ -979,6 +979,38 @@ test("Stop ends the run at once and on the server: the parts back stay, no new p
   }
 });
 
+test("a past run opens with its own result; a new run cannot start while one runs", async () => {
+  const realFetch = globalThis.fetch;
+  const server = fakeJobServer();
+  globalThis.fetch = server.fetcher;
+  try {
+    await startRun({ ...sixStocks, tickers: ["NVDA"] });
+    await server.finish(0);
+    await mainRun.resume();
+    const first = runState().id!;
+    assert.equal(runState().busy, null);
+    await startRun({ ...sixStocks, tickers: ["AMD", "TSLA"] });
+    const second = runState().id!;
+    assert.notEqual(first, second);
+    // While the second runs, another run is not opened.
+    await mainRun.open(first);
+    assert.equal(runState().id, second);
+    await server.finish(1);
+    await server.finish(2);
+    await mainRun.resume();
+    assert.equal(runState().busy, null);
+    await mainRun.open(first);
+    assert.equal(runState().id, first);
+    assert.deepEqual(
+      runState().runs.map((r) => r.symbol),
+      ["NVDA"],
+    );
+    assert.deepEqual(runState().ran?.tickers, ["NVDA"]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test("held: the nights a position was held after its entry day", () => {
   const step = (date: string, kind: "buy" | "sell" | "carry") => ({
     date,

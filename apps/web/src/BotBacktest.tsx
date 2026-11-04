@@ -68,6 +68,7 @@ import {
   type PeriodId,
 } from "./bot-backtest-model.js";
 import {
+  mainRun,
   startRun,
   stopRun,
   useBacktestRun,
@@ -75,6 +76,8 @@ import {
   type Busy,
   type Ran,
   type RanBase,
+  type RecentRun,
+  type VolumeRan,
 } from "./bot-backtest-run.js";
 import {
   defaultStrangleSettings,
@@ -988,6 +991,52 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
         </form>
 
         <div className="results-column">
+          {isVolume ? (
+            <RecentRuns
+              key="volume"
+              runs={volumeRun.useRecent()}
+              shown={vol.id ?? null}
+              busy={busy}
+              onOpen={(id, meta) => {
+                const r = meta as VolumeRan;
+                // The form takes the run's setup, so Run repeats it.
+                patch({
+                  tickers: r.tickers,
+                  from: r.from,
+                  to: r.to,
+                  period: "custom",
+                  fillPct: r.fillPct,
+                  volume: { ...setup.volume, settings: r.settings },
+                });
+                void volumeRun.open(id);
+              }}
+              label={() => "Volume bot"}
+            />
+          ) : (
+            <RecentRuns
+              key="main"
+              runs={mainRun.useRecent()}
+              shown={main.id ?? null}
+              busy={busy}
+              onOpen={(id, meta) => {
+                const r = meta as Ran;
+                setOpen(null);
+                // The form takes the run's setup, so Run repeats it.
+                const version = r.version.replace(/\*$/, "");
+                patch({
+                  tickers: r.tickers,
+                  from: r.from,
+                  to: r.to,
+                  period: "custom",
+                  fillPct: r.fillPct,
+                  rules: r.rules,
+                  ...(versionById(version) ? { version } : {}),
+                });
+                void mainRun.open(id);
+              }}
+              label={(meta) => `Main bot ${(meta as Ran).version}`}
+            />
+          )}
           {errors.length > 0 && (
             <div className="run-error">
               <strong>
@@ -1261,6 +1310,96 @@ function RuleInput({
       changed={changed}
       onChange={(v) => onChange({ ...rules, [key]: v })}
     />
+  );
+}
+
+/**
+ * The latest 10 runs of the bot (the user, 2026-11-04: "I would like to see my
+ * last 10 results"). Tapping one shows its result, or its progress while it
+ * runs; while a run is going the others wait.
+ */
+function RecentRuns({
+  runs,
+  shown,
+  busy,
+  onOpen,
+  label,
+}: {
+  runs: RecentRun<RanBase>[] | null;
+  shown: string | null;
+  busy: Busy | null;
+  onOpen: (id: string, meta: RanBase) => void;
+  label: (meta: RanBase) => string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (!runs || runs.length === 0) return null;
+  const rows = expanded ? runs : runs.slice(0, 3);
+  return (
+    <section className="card bt-recent" aria-label="Recent runs">
+      <div className="card-head">
+        <h2>Recent runs</h2>
+        <span className="muted small">the latest {runs.length}</span>
+      </div>
+      <ul className="bt-recent-list">
+        {rows.map((r) => {
+          const isShown = r.id === shown;
+          // The shown run's own state is the freshest while it runs.
+          const done = isShown && busy ? busy.done : r.done;
+          const status =
+            r.status === "running" || (isShown && busy)
+              ? `Running ${done}/${r.total}`
+              : r.status === "stopped"
+                ? `Stopped ${r.done}/${r.total}`
+                : "Done";
+          const meta = r.meta;
+          return (
+            <li key={r.id}>
+              <button
+                type="button"
+                className="bt-recent-row"
+                aria-current={isShown ? "true" : undefined}
+                disabled={!isShown && busy !== null}
+                title={
+                  !isShown && busy !== null
+                    ? "Wait for the running backtest to end, or stop it"
+                    : undefined
+                }
+                onClick={() => {
+                  if (!isShown) onOpen(r.id, meta);
+                }}
+              >
+                <span className="bt-recent-when num">
+                  {israelDayLabel(r.createdAt)} {israelClock(r.createdAt)}
+                </span>
+                <span className="bt-recent-what">
+                  {label(meta)} · {meta.tickers.length} stock
+                  {meta.tickers.length === 1 ? "" : "s"} ·{" "}
+                  <span className="num">
+                    {meta.from} → {meta.to}
+                  </span>
+                </span>
+                <span
+                  className={`bt-recent-status${r.status === "running" || (isShown && busy) ? " running" : ""}`}
+                >
+                  {status}
+                  {r.failed > 0 && ` · ${r.failed} failed`}
+                  {isShown && " · shown"}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {runs.length > 3 && (
+        <button
+          type="button"
+          className="reset bt-recent-more"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? "Show fewer" : `Show all ${runs.length}`}
+        </button>
+      )}
+    </section>
   );
 }
 

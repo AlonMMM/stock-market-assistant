@@ -4,6 +4,7 @@ import { SqliteD1 } from "../apps/api/src/sqlite-d1.js";
 import worker from "../apps/api/src/worker.js";
 import {
   BacktestJobs,
+  keptRuns,
   handleBacktestJobs,
   parseJobSpec,
   runPart,
@@ -188,7 +189,23 @@ test("runs are their starter's; latest finds the starter's last run", async () =
     (await call("me@x", "POST", "/api/backtest-jobs", { bot: "main" })).status,
     400,
   );
-  assert.equal((await call("me@x", "GET", "/api/backtest-jobs")).status, 405);
+  const listed = await call("me@x", "GET", "/api/backtest-jobs", undefined, {
+    bot: "main",
+  });
+  assert.deepEqual(
+    (listed.body as { runs: { id: string }[] }).runs.map((r) => r.id),
+    [id],
+  );
+  const theirs = await call("other@x", "GET", "/api/backtest-jobs", undefined, {
+    bot: "main",
+  });
+  assert.deepEqual((theirs.body as { runs: unknown[] }).runs, []);
+  assert.equal(
+    (await call("me@x", "GET", "/api/backtest-jobs", undefined, { bot: "x" }))
+      .status,
+    400,
+  );
+  assert.equal((await call("me@x", "PUT", "/api/backtest-jobs")).status, 405);
 });
 
 test("runParts runs every part, a few at a time", async () => {
@@ -238,4 +255,54 @@ test("the Worker puts a run's parts on the queue and its consumer runs them", as
   assert.equal(view.status, "done");
   assert.equal(view.errors.length, 3);
   assert.match(view.errors[0]!.error, /credentials/);
+});
+
+test("the latest 10 runs of each bot are kept; a running one is never removed", async () => {
+  const jobs = new BacktestJobs(new SqliteD1(":memory:"));
+  const first = await jobs.create(parseJobSpec(spec), "me@x", 1000); // stays running
+  const ids: string[] = [];
+  for (let n = 1; n <= keptRuns + 2; n++) {
+    const id = await jobs.create(parseJobSpec(spec), "me@x", 1000 + n);
+    await jobs.stop(id, 1000 + n);
+    ids.push(id);
+  }
+  // Another bot's and another person's runs are counted on their own.
+  const volume = await jobs.create(
+    parseJobSpec({ ...spec, bot: "volume" }),
+    "me@x",
+    5000,
+  );
+  const list = await jobs.list("me@x", "main");
+  assert.equal(list.length, keptRuns);
+  assert.deepEqual(
+    list.map((r) => r.id),
+    ids.slice(-keptRuns).reverse(),
+    "newest first",
+  );
+  assert.equal(list[0]!.status, "stopped");
+  assert.deepEqual(list[0]!.meta, spec.meta);
+  assert.ok(await jobs.view(first), "the running run is kept");
+  assert.equal(
+    await jobs.view(ids[0]!),
+    undefined,
+    "the oldest finished run is gone",
+  );
+  assert.equal((await jobs.list("me@x", "volume"))[0]!.id, volume);
+});
+
+test("a run's summary counts its finished and failed parts", async () => {
+  const jobs = new BacktestJobs(new SqliteD1(":memory:"));
+  const id = await jobs.create(parseJobSpec(spec), "", 1000);
+  await runPart(jobs, { job: id, index: 0 }, echo);
+  await runPart(jobs, { job: id, index: 2 }, echo); // NVDA fails
+  const [summary] = await jobs.list("", "main");
+  assert.deepEqual(
+    {
+      status: summary!.status,
+      total: summary!.total,
+      done: summary!.done,
+      failed: summary!.failed,
+    },
+    { status: "running", total: 3, done: 2, failed: 1 },
+  );
 });

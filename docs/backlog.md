@@ -114,7 +114,8 @@ its decisions with the backtest (parity was 497 of 499), then switch to paper.
 - source: Session of Nov 4
 
 On the phone, leaving the Backtest page cut the run off. The server now runs the whole run, and the page reads its
-progress and trades during the run and catches up when it comes back
+progress and trades during the run and catches up when it comes back. A refresh shows the run still going, and
+"Recent runs" lists the latest 10
 ([docs/tasks/backend-backtest-jobs.md](tasks/backend-backtest-jobs.md)). Left: create the queue, deploy from
 `main`, then try it on the phone.
 

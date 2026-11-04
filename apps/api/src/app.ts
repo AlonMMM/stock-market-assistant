@@ -573,6 +573,7 @@ export function buildApp(
       .send(result.body);
   };
   app.post("/api/backtest-jobs", backtestJobs);
+  app.get("/api/backtest-jobs", backtestJobs);
   app.get("/api/backtest-jobs/latest", backtestJobs);
   app.get("/api/backtest-jobs/:id", backtestJobs);
   app.post("/api/backtest-jobs/:id/stop", backtestJobs);
