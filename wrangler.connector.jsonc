@@ -8,8 +8,12 @@
   "compatibility_date": "2026-09-01",
   "preview_urls": false,
   "observability": { "enabled": true },
+  // The website, for the end-of-day review tools (mcp.ts SITE).
+  "services": [{ "binding": "SITE", "service": "stock-market-assistant" }],
   // Secrets (npx wrangler@4 secret put <NAME> -c wrangler.connector.jsonc):
   //   MCP_TOKEN     the credential Claude presents, at least 32 characters
   //   TRADER_URL    the trading service's address
   //   TRADER_TOKEN  the trading service's token
+  //   DAY_REVIEW_TOKEN  the website's credential for the end-of-day reviews,
+  //                     the same secret as the website's, at least 32 characters
 }

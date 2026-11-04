@@ -126,6 +126,13 @@ const traders = new Traders({
 traders.forCaller(undefined);
 
 const api = Fastify({ bodyLimit: 16384 });
+/** The `day` query parameter, a date (YYYY-MM-DD). */
+const dayParam = (query: unknown): string => {
+  const day = (query as { day?: unknown }).day;
+  if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day))
+    throw new RequestError("day must be a date (YYYY-MM-DD)");
+  return day;
+};
 // A second, optional token that can only read: the website shows orders and
 // their reasons with it and can never send one.
 const readToken = env("TRADER_READ_TOKEN");
@@ -431,6 +438,11 @@ api.get("/v1/bot", async () => {
   if (!bot) throw new RequestError(botOff, 409);
   return bot.status();
 });
+// One session's signals and positions, for the website's end-of-day review.
+api.get("/v1/bot/day", async (request) => {
+  if (!bot) throw new RequestError(botOff, 409);
+  return bot.dayRecords(dayParam(request.query));
+});
 // Alpaca against IBKR as two bots, over the last `sessions` sessions (1-60).
 api.get<{ Querystring: { sessions?: string } }>(
   "/v1/bot/compare",
@@ -584,10 +596,12 @@ api.get("/v1/strangle", async () => {
 // website's scheduled step into D1 (volume-daily.ts) for the backtest.
 api.get("/v1/strangle/alert-data", async (request) => {
   if (!strangle) throw new RequestError(strangleOff, 409);
-  const day = (request.query as { day?: unknown }).day;
-  if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day))
-    throw new RequestError("day must be a date (YYYY-MM-DD)");
-  return strangle.alertData(day);
+  return strangle.alertData(dayParam(request.query));
+});
+// One session's alerts and trades, for the website's end-of-day review.
+api.get("/v1/strangle/day", async (request) => {
+  if (!strangle) throw new RequestError(strangleOff, 409);
+  return strangle.dayRecords(dayParam(request.query));
 });
 api.get("/v1/strangle/settings", async () => {
   if (!strangle) throw new RequestError(strangleOff, 409);

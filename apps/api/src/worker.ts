@@ -106,6 +106,15 @@ import {
   type PartCompute,
   type PartTask,
 } from "../../../packages/market-data/src/backtest-jobs.js";
+import {
+  D1DayReviews,
+  recordedSource,
+} from "../../../packages/market-data/src/day-review.js";
+import {
+  handleDayReviews,
+  refreshRunning,
+  type ReviewDeps,
+} from "../../../packages/market-data/src/day-review-run.js";
 
 declare const __STATIC_ASSETS__: Record<
   string,
@@ -189,6 +198,16 @@ function partCompute(env: JobsEnv): PartCompute {
     };
     const tradingUrl = env.ALPACA_TRADING_LIVE === "true" ? liveUrl : paperUrl;
     const db = env.BARS_CACHE ? stores(env.BARS_CACHE) : undefined;
+    // The end-of-day review's runs also read the books recorded during the
+    // session (day-review.ts); the Backtest page's read Databento's only.
+    const { quoteSources, ...rest } = request as Record<string, unknown>;
+    const recorded =
+      Array.isArray(quoteSources) && quoteSources.includes(recordedSource);
+    request = rest;
+    const quotes =
+      recorded && env.BARS_CACHE
+        ? new D1OptionQuotes(env.BARS_CACHE, ["databento", recordedSource])
+        : db?.quotes;
     return bot === "main"
       ? handleBotBacktest(
           request,
@@ -197,7 +216,7 @@ function partCompute(env: JobsEnv): PartCompute {
           fetch,
           Date.now(),
           db?.cache,
-          db?.quotes,
+          quotes,
           db?.optionBars,
         )
       : handleVolumeBacktest(
@@ -207,7 +226,7 @@ function partCompute(env: JobsEnv): PartCompute {
           fetch,
           Date.now(),
           db?.cache,
-          db?.quotes,
+          quotes,
           db?.optionBars,
           db?.volume,
         );
@@ -232,6 +251,45 @@ async function startParts(
   const run = runParts(backtestJobs(env.BARS_CACHE!), tasks, partCompute(env));
   if (ctx) ctx.waitUntil(run);
   else await run;
+}
+
+// The end-of-day review (day-review.ts): its store, the trader (read-only)
+// and the backtest jobs.
+let reviewStore: { db: D1Like; reviews: D1DayReviews } | undefined;
+function reviewDeps(
+  env: JobsEnv & { TRADER_URL?: string; TRADER_READ_TOKEN?: string },
+  ctx: WaitUntil | undefined,
+): ReviewDeps | undefined {
+  const db = env.BARS_CACHE;
+  if (!db) return undefined;
+  if (reviewStore?.db !== db)
+    reviewStore = { db, reviews: new D1DayReviews(db) };
+  return {
+    reviews: reviewStore.reviews,
+    jobs: backtestJobs(db),
+    start: (tasks) => startParts(env, tasks, ctx),
+    trader: { url: env.TRADER_URL, token: env.TRADER_READ_TOKEN },
+    quotes: stores(db).quotes,
+    volume: stores(db).volume,
+    now: Date.now,
+  };
+}
+
+/** The connector's own credential (its service binding): the day reviews only. */
+function reviewCaller(
+  request: Request,
+  path: string,
+  token: string | undefined,
+): boolean {
+  if (!token || token.length < 32) return false;
+  if (path !== "/api/day-reviews" && !path.startsWith("/api/day-reviews/"))
+    return false;
+  const given = request.headers.get("X-Day-Review-Token") ?? "";
+  if (given.length !== token.length) return false;
+  let diff = 0;
+  for (let i = 0; i < token.length; i++)
+    diff |= token.charCodeAt(i) ^ given.charCodeAt(i);
+  return diff === 0;
 }
 
 let watchStore: WatchStore | undefined;
@@ -298,6 +356,14 @@ export default {
         );
         console.log(`backtest jobs: ${stalled.length} lost parts sent again`);
       }
+    }
+    // End-of-day reviews whose backtest finished: compared and kept.
+    const reviews = reviewDeps(env, undefined);
+    if (reviews) {
+      const changed = await refreshRunning(reviews).catch((error: unknown) => [
+        `failed: ${String(error)}`,
+      ]);
+      if (changed.length) console.log(`day reviews: ${changed.join("; ")}`);
     }
     const token = env.TRADES_TELEGRAM_BOT_TOKEN;
     const chat = env.TRADES_TELEGRAM_CHAT_ID;
@@ -429,13 +495,22 @@ export default {
       BOT_WATCHLIST?: string;
       // The Backtest page's run parts (backtest-jobs.ts); unset: run in place.
       BACKTEST_QUEUE?: JobQueue;
+      // The Claude connector's credential for the end-of-day reviews (its
+      // service binding sends it as X-Day-Review-Token); unset: none.
+      DAY_REVIEW_TOKEN?: string;
     } = {},
     ctx?: WaitUntil,
   ): Promise<Response> {
     // Access protection is enabled by configuration; without both values the
     // Worker stays open (local tests, the owner-private Sites publication).
     let identity: AccessIdentity | null = null;
-    if (env.ACCESS_TEAM_DOMAIN || env.ACCESS_AUD) {
+    const reviewPath = new URL(request.url).pathname;
+    // The connector reaches the day reviews through its service binding, not
+    // through Access: its token makes it the owner there and nowhere else.
+    const connector = reviewCaller(request, reviewPath, env.DAY_REVIEW_TOKEN);
+    if (connector && env.TRADE_OWNER_EMAIL)
+      identity = { email: env.TRADE_OWNER_EMAIL };
+    else if (env.ACCESS_TEAM_DOMAIN || env.ACCESS_AUD) {
       if (!env.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUD)
         return new Response("Access is misconfigured", { status: 500 });
       identity = await verifyAccess(request, {
@@ -725,6 +800,39 @@ export default {
         store: env.BARS_CACHE
           ? new D1BacktestSetups(env.BARS_CACHE)
           : undefined,
+      });
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    // The end-of-day reviews, live against the backtest (day-review.ts).
+    if (path === "/api/day-reviews" || path.startsWith("/api/day-reviews/")) {
+      const deps = reviewDeps(env, ctx);
+      if (!deps)
+        return Response.json(
+          { error: "The review store is not configured" },
+          { status: 503 },
+        );
+      let body: unknown;
+      if (request.method === "POST" || request.method === "PUT") {
+        const text = await request.text();
+        if (text.length > 131072)
+          return Response.json({ error: "Request too large" }, { status: 413 });
+        try {
+          body = text ? JSON.parse(text) : {};
+        } catch {
+          return Response.json(
+            { error: "Expected JSON object" },
+            { status: 400 },
+          );
+        }
+      }
+      const result = await handleDayReviews(deps, {
+        method: request.method,
+        path,
+        query: Object.fromEntries(new URL(request.url).searchParams),
+        body,
       });
       return Response.json(result.body, {
         status: result.status,

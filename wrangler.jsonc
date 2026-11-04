@@ -56,4 +56,8 @@
   // above TRADES_TELEGRAM_BOT_TOKEN and TRADES_TELEGRAM_CHAT_ID, are Worker
   // secrets:
   //   npx wrangler secret put ALPACA_API_KEY
+  // DAY_REVIEW_TOKEN (at least 32 characters, the same secret on the
+  // connector, wrangler.connector.jsonc) lets the Claude connector read and
+  // save the end-of-day reviews (/api/day-reviews) through its service
+  // binding; unset: only the signed-in site reaches them.
 }

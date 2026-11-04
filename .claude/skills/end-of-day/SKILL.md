@@ -1,0 +1,98 @@
+---
+name: end-of-day
+description: The end-of-day review of both live bots (the Main bot and the Volume bot), run every trading day at 23:05 Israel time by a scheduled cloud routine - the app's backtest of the day on the live settings and stocks, set beside the live trades trade by trade (entry time, entry and exit prices, money at paper and at real prices), a verdict on whether the backtest was too optimistic or too pessimistic, and a written analysis saved on each bot's Analyse page in the app. Use when the routine fires, or when the user asks for the end-of-day review, "live vs backtest today", or to redo a day's review.
+user-invocable: true
+argument-hint: "[YYYY-MM-DD] [main|volume]"
+---
+
+# End-of-day review
+
+User request, 2026-11-05: "run backtest (app) and compare the trade in enter time, enter and exit, enter and exit
+money, etc. it will in the end summarize if the bot was too optimistic or too pessimistic, and save it all with
+analysis under analyse tab in the bot window in the app."
+
+Everything runs on the website through the **trader assistant connector** (its `day_review_*` tools), so the cloud
+routine needs no secret, no `.env` and no Mac. The website does the numbers
+(`packages/market-data/src/day-review.ts`); this skill reads them, writes the analysis and saves it. The result shows
+in the app: Trading → 🤖 Main bot → **Analyse**, and 🎯 Volume bot → **Analyse**.
+
+Ground rules: read-only towards the bots. Never call `buy`, `sell`, `set_stop`, `cancel_order` or any
+`*_update_*` tool. Israel time in everything written. Never invent a number: every figure comes from the review.
+
+## 1. The day
+
+- No argument: the New York session that has just closed (`TZ=America/New_York date +%F`; at 23:05 Israel time the
+  US close has passed). A day the market was closed (weekend, holiday) is answered by `day_review_start` with
+  "date must be a session that has closed": stop there and say so in one line.
+- `YYYY-MM-DD`: that session (a redo); add `force: true` to the start.
+- `main` / `volume`: that bot only. Default: both.
+
+## 2. Start, and redo the day before when it held trades overnight
+
+1. `day_review_start {bot, date}` for each bot. The website stores the day's recorded option books, then queues the
+   app's backtest of the day ("Same as paper": the live settings and stock list) on its job queue.
+2. For each bot, `day_review_get` of the **previous session**. If its `comparison.summary.open > 0` (a trade was held
+   overnight on either side), `day_review_start {force: true}` for that day too: its exits are known now. Its old
+   analysis stays until you save the new one.
+
+## 3. Wait for the comparison
+
+Poll `day_review_get {bot, date}` about once a minute until `status` is `compared` (or `failed`). A day takes a few
+minutes; give up after 40 minutes and report what is still running. `failed`: report its `error` and stop for that
+bot (do not save an analysis).
+
+## 4. Read the comparison
+
+`comparison.rows`: one row a trade, `match` = `both`, `live-only` or `backtest-only` (with `why`).
+
+- `live`: `entryAt` (ms), `qty`, `paidPaper` (the paper fill), `paidReal` (the book's mid at the fill: the real
+  price), `exits[]` (paper and real each), `retReal` / `pnlReal` and `retPaper` / `pnlPaper` (after $0.62 a contract
+  each way), `open` (held overnight), `dry`, `broker`, `version`.
+- `backtest`: `entryAt`, `entryPrice`, `exits[]`, `ret` (after fees), `priced` (`quotes` = real books; `trades` = the
+  option's trade bars, **an estimate**; Volume: `buyPriced/sellPriced`), `account`.
+- Gaps on a matched closed pair (backtest − live): `entryMinutes`, `entryPct` (backtest buy vs live real buy),
+  `exitPct`, `retGapPts`, `dollarsGap` (the backtest's return at the live cost − the live real $).
+- `summary`: `verdict` (from `gapPts` against ±5 points: above = optimistic, below = pessimistic), `gapDollars`,
+  `gapPts`, `livePaper`, `liveReal`, `backtestAtLiveSize`, counts, `open`, `estimates`. `notes`: dry runs, stocks
+  that failed in the backtest, a stopped run.
+
+## 5. Write the analysis, one per bot
+
+The **verdict** is the comparison's unless the figures it rests on are weak (say a single matched trade priced on
+trade bars, or most of the day one-sided): then still pick one of the four values, and say in the first paragraph
+why it differs from the computed one. "Too optimistic" = the backtest made more than live at real prices; "too
+pessimistic" = less.
+
+`headline`: one sentence with the verdict and the dollar gap, e.g. "The backtest was too optimistic by $412 (+8.1
+pts) on 3 matched trades; live paid more at the entry."
+
+`markdown`, in this order and no longer than needed:
+
+1. `## Verdict`: two or three sentences: the figures (live real, live paper, backtest at live size, gap) and the
+   main reason.
+2. `## Trade by trade`: a table, one row a trade: stock and side, entry live / backtest (Israel time, minutes
+   apart), buy paper / real / backtest, average sale real / backtest, return real / backtest, $ gap. Mark an
+   estimate (trade bars) and a trade held overnight.
+3. `## Where the gap came from`: entries (late or early, paid above the backtest's price), exits (a different
+   exit reason or minute, a sale at a worse book), paper vs real (what the paper fills flattered), one-sided
+   trades (why each, from `why`).
+4. `## Notes`: open trades to be judged on a later day, estimates, dry runs, failed stocks, a version change.
+5. `## To test`: at most three ideas the day suggests. A pattern from one day is **a test to run** with the
+   `new-test` skill, never a rule; say so.
+
+A day with no trade on either side: verdict `no trades`, a one-line headline, and a short markdown that says the
+signals of the day and why none was taken (from the rows' `why`, or "no signal").
+
+## 6. Save and report
+
+`day_review_save {bot, date, verdict, headline, markdown}` for each bot (and for the redone previous day). In the
+final message, 3–5 lines: for each bot the verdict and headline, any redone day, anything that failed or is still
+running, and where to read it (Trading → the bot's tab → Analyse).
+
+## When it breaks
+
+- A connector tool answers "not configured for the day reviews": the connector's `SITE` binding or
+  `DAY_REVIEW_TOKEN` secret is missing (setup, see `wrangler.connector.jsonc`); report it, nothing else to do.
+- "The trading service answered 404 for /v1/bot/day": the trader on Railway is older than the day-review routes.
+- Many `estimates`: the day's books were not recorded for the backtest's contracts (it picked other contracts than
+  live); say so, and expect a fairer picture once the day's Databento books are uploaded (`force` a redo then).

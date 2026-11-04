@@ -9461,3 +9461,31 @@ i.added {
 .pos-name .stock-tags.block {
   margin-top: 2px;
 }
+
+/* The Analyse page: the end-of-day reviews (DayReviews.tsx). */
+.dr-day {
+  display: grid;
+  gap: 10px;
+}
+.dr-headline {
+  margin: 0;
+  font-weight: 600;
+}
+.dr-kpis {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.dr-kpis li {
+  display: grid;
+  gap: 2px;
+}
+.dr-analysis h4,
+.dr-analysis h5 {
+  margin: 12px 0 4px;
+}
+.dr-analysis p,
+.dr-analysis ul {
+  margin: 4px 0;
+}
+.dr-trades td {
+  vertical-align: top;
+}

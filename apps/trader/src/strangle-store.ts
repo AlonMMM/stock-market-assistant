@@ -263,6 +263,17 @@ export class StrangleStore {
     ).map((r) => JSON.parse(r.data) as StrangleTrade);
   }
 
+  /** The trades of `day`, open or closed, oldest first (the day review). */
+  dayTrades(day: string): StrangleTrade[] {
+    return (
+      this.db
+        .prepare(
+          "SELECT data FROM strangle_trades WHERE day = ? ORDER BY rowid",
+        )
+        .all(day) as { data: string }[]
+    ).map((r) => JSON.parse(r.data) as StrangleTrade);
+  }
+
   /** A session's 60-second windows of a stock (strangle/fast.ts), for the 60-second alert's medians. */
   fastDay(symbol: string, day: string): FastWindows | undefined {
     const row = this.db

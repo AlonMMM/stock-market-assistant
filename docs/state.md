@@ -1,7 +1,17 @@
 # Current state
 
-Updated: 2026-11-04
+Updated: 2026-11-05
 Phase: Live stock-market assistant with Alpaca market data, alerts, backtesting, portfolio/history, and paper options support. Production validation and next priorities are tracked in the [product backlog](product-backlog.md).
+
+## End-of-day review: live against the backtest, each evening (2026-11-05, `feat/end-of-day-analysis`)
+
+Each trading day at 23:05 Israel time a cloud routine runs the `end-of-day` skill: for both bots, the website runs
+the app's backtest of the day ("Same as paper", the live settings and stocks) on its job queue, sets every live trade
+beside the backtest's (entry time, entry and exit prices paper and real, $ at the live size), and the skill writes the
+analysis and the verdict (the backtest too optimistic, too pessimistic, or on target, at real prices = the recorded
+book's mid at each fill). Shown in each bot's tab, **Analyse**. The day's backtest also reads the books the trading
+service recorded during the session (option quotes source `recorded`, only for these runs; Databento wins a minute it
+has). See [the task](tasks/backend-day-review.md).
 
 ## Backtest trades: the size and its reason, the bid / ask at each fill (2026-11-04)
 
