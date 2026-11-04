@@ -132,11 +132,13 @@ export interface BotMarket {
 
 /** What the bot needs from the owner's trading service and broker. */
 export interface BotTrading {
+  /** `spot`: the stock's price the bot has, so IBKR need not quote it again. */
   chain(
     underlying: string,
     right: "call" | "put",
     from: string,
     to: string,
+    spot?: number,
   ): Promise<OptionQuote[]>;
   quote(contract: string): Promise<OptionQuote>;
   /** Many contracts' quotes at once (the alert books); absent: one by one. */
@@ -963,7 +965,7 @@ export class IndiBot {
     const side = first.right === "C" ? "call" : "put";
     const [from, to] = expiryWindow(date, pick);
     const picked = pickContract(
-      await this.trading(broker).chain(first.symbol, side, from, to),
+      await this.trading(broker).chain(first.symbol, side, from, to, spot),
       spot,
       side,
       date,
@@ -1061,52 +1063,12 @@ export class IndiBot {
         "refused",
         `no ${s.broker} account connected`,
       );
-    // Each account has its own limits; one at its limit, or whose account
-    // cannot be read, sits this signal out.
-    const legs: BotBroker[] = [];
-    const sitOut: BotLeg[] = [];
-    for (const broker of brokers) {
-      const startedAt = this.o.now();
-      const why = await this.limit(date, s, broker).catch((error: unknown) => ({
-        outcome: "error",
-        detail: `the account could not be read: ${error instanceof Error ? error.message : String(error)}`,
-      }));
-      if (why) sitOut.push({ broker, startedAt, ...why });
-      else legs.push(broker);
-    }
-    if (legs.length === 0) {
-      if (brokers.length > 1) this.o.store.setSignalLegs(date, symbol, sitOut);
-      const last = sitOut.at(-1)!;
-      return this.outcome(date, symbol, last.outcome, last.detail);
-    }
     const pick = pickRules(s, symbol);
     const spot = opts.spotNow ?? this.lastClose(symbol, minute);
     if (spot === null)
       return this.outcome(date, symbol, "no_prices", "no stock price");
     const side = right === "C" ? "call" : "put";
     const [from, to] = expiryWindow(date, pick);
-    // Each account picks from its own chain, with its own book and 30-minute
-    // volume, at the same time (the owner, 2026-11-03: "I need ibkr to be
-    // autonomous, read by its own"; it replaces 2026-10-24's one contract for
-    // every leg): the two may buy different strikes, and each leg's pick is
-    // kept so the two can be compared as two bots.
-    const picks = await Promise.all(
-      legs.map((broker) =>
-        this.pickLeg(broker, symbol, { side, from, to, spot, date, minute }),
-      ),
-    );
-    // The first account's pick, kept with the signal as before the legs.
-    const lead = picks[0]!;
-    if (lead.leg.contract && lead.leg.book)
-      this.o.store.setSignalBook(date, symbol, {
-        ...plainBook(lead.leg.book),
-        contract: lead.leg.contract,
-      });
-    if (lead.leg.volume30 !== undefined)
-      this.o.store.setSignalPick(date, symbol, {
-        volume30: lead.leg.volume30,
-        ...(lead.fallback ? { fallback: lead.fallback } : {}),
-      });
     // The entry's note carries the version, so the trade's record has it too.
     const version = versionLabel(s);
     // 2.10: the size follows the signal's volume (its pyramid add too).
@@ -1115,70 +1077,119 @@ export class IndiBot {
       share !== 1
         ? ` · ${Math.round(share * 100)}% of the size (volume ${rvol.toFixed(2)}×)`
         : "";
-    const done = new Map<BotBroker, BotLeg>(sitOut.map((l) => [l.broker, l]));
-    for (const { leg, picked, fallback: fell } of picks) {
-      if (!picked) {
-        done.set(leg.broker, leg);
-        continue;
-      }
-      let fallback = "";
-      if (fell === "cheap")
-        fallback = ` · the 0.15-delta option was under $${pick.minPrice.toFixed(2)}, so the nearest strike at $${pick.minPrice.toFixed(2)} or more`;
-      const why = `Signal ${side} at ${clock(minute)}: strength t ${t.toFixed(1)}, volume ${rvol.toFixed(1)}× normal${fallback}${half} · bot ${version}`;
-      const base: Omit<BotPosition, "id" | "broker"> = {
-        day: date,
-        symbol,
-        contract: picked.quote.symbol,
-        right,
-        qty: 0,
-        bought: 0,
-        cost: picked.mid,
-        entryMinute: minute,
-        entryStock: spot,
-        nights: 0,
-        checksDone: [],
-        morningDone: false,
-        breakWatch: watchFor(
-          this.levels.get(symbol),
-          this.barsOf(symbol),
-          minute,
+    // Each account runs on its own, all at once: its limits, its pick from
+    // its own chain, with its own book and 30-minute volume, and its buy. The
+    // two may buy different strikes, and each leg's pick is kept so the two
+    // can be compared as two bots (the owner, 2026-11-03: "I need ibkr to be
+    // autonomous, read by its own"). A slow account never holds up the other's
+    // buy: IBKR's pick takes seconds (the owner, 2026-11-04).
+    const runs = await Promise.all(
+      brokers.map(async (broker) => {
+        // One at its limit, or whose account cannot be read, sits this signal out.
+        const startedAt = this.o.now();
+        const limited = await this.limit(date, s, broker).catch(
+          (error: unknown) => ({
+            outcome: "error",
+            detail: `the account could not be read: ${error instanceof Error ? error.message : String(error)}`,
+          }),
+        );
+        if (limited)
+          return {
+            leg: { broker, startedAt, ...limited } as BotLeg,
+            ran: false,
+          };
+        const {
+          leg,
+          picked,
+          fallback: fell,
+        } = await this.pickLeg(broker, symbol, {
+          side,
+          from,
+          to,
           spot,
+          date,
+          minute,
+        });
+        if (!picked) return { leg, ran: true, fell };
+        let fallback = "";
+        if (fell === "cheap")
+          fallback = ` · the 0.15-delta option was under $${pick.minPrice.toFixed(2)}, so the nearest strike at $${pick.minPrice.toFixed(2)} or more`;
+        const why = `Signal ${side} at ${clock(minute)}: strength t ${t.toFixed(1)}, volume ${rvol.toFixed(1)}× normal${fallback}${half} · bot ${version}`;
+        const base: Omit<BotPosition, "id" | "broker"> = {
+          day: date,
+          symbol,
+          contract: picked.quote.symbol,
           right,
-        ),
-        decidedOn: null,
-        version,
-        status: "buying",
-        jobId: null,
-        dry: s.mode === "dry",
-        sales: [],
-        openedAt: this.o.now(),
-        closedAt: null,
-        ...(opts.bonus ? { bonus: true } : {}),
-        ...(share !== 1 ? { sizeShare: share } : {}),
-      };
-      // A leg that throws (IBKR refusing the contract's market data, user
-      // 2026-10-26) is that account's miss; the other account's entry stands.
-      const result: { outcome: string; detail: string; positionId?: string } =
-        await this.enterAt(
-          leg.broker,
-          base,
-          picked.mid,
-          s,
-          why,
-          legs.length > 1,
-          leg.book && plainBook(leg.book),
-        ).catch((error: unknown) => ({
-          outcome: "error",
-          detail: error instanceof Error ? error.message : String(error),
-        }));
-      done.set(leg.broker, {
-        ...leg,
-        outcome: result.outcome,
-        detail: result.detail,
-        ...(result.positionId ? { positionId: result.positionId } : {}),
-      });
+          qty: 0,
+          bought: 0,
+          cost: picked.mid,
+          entryMinute: minute,
+          entryStock: spot,
+          nights: 0,
+          checksDone: [],
+          morningDone: false,
+          breakWatch: watchFor(
+            this.levels.get(symbol),
+            this.barsOf(symbol),
+            minute,
+            spot,
+            right,
+          ),
+          decidedOn: null,
+          version,
+          status: "buying",
+          jobId: null,
+          dry: s.mode === "dry",
+          sales: [],
+          openedAt: this.o.now(),
+          closedAt: null,
+          ...(opts.bonus ? { bonus: true } : {}),
+          ...(share !== 1 ? { sizeShare: share } : {}),
+        };
+        // A leg that throws (IBKR refusing the contract's market data, user
+        // 2026-10-26) is that account's miss; the other account's entry stands.
+        const result: { outcome: string; detail: string; positionId?: string } =
+          await this.enterAt(
+            broker,
+            base,
+            picked.mid,
+            s,
+            why,
+            brokers.length > 1,
+            leg.book && plainBook(leg.book),
+          ).catch((error: unknown) => ({
+            outcome: "error",
+            detail: error instanceof Error ? error.message : String(error),
+          }));
+        const entered: BotLeg = {
+          ...leg,
+          outcome: result.outcome,
+          detail: result.detail,
+          ...(result.positionId ? { positionId: result.positionId } : {}),
+        };
+        return { leg: entered, ran: true, fell };
+      }),
+    );
+    const legs = runs.filter((r) => r.ran).map((r) => r.leg.broker);
+    if (legs.length === 0) {
+      const sitOut = runs.map((r) => r.leg);
+      if (brokers.length > 1) this.o.store.setSignalLegs(date, symbol, sitOut);
+      const last = sitOut.at(-1)!;
+      return this.outcome(date, symbol, last.outcome, last.detail);
     }
-    const results = brokers.map((b) => done.get(b)!);
+    // The first account's pick, kept with the signal as before the legs.
+    const lead = runs.find((r) => r.ran)!;
+    if (lead.leg.contract && lead.leg.book)
+      this.o.store.setSignalBook(date, symbol, {
+        ...plainBook(lead.leg.book),
+        contract: lead.leg.contract,
+      });
+    if (lead.leg.volume30 !== undefined)
+      this.o.store.setSignalPick(date, symbol, {
+        volume30: lead.leg.volume30,
+        ...(lead.fell ? { fallback: lead.fell } : {}),
+      });
+    const results = runs.map((r) => r.leg);
     await this.crossQuotes(results);
     this.o.store.setSignalLegs(date, symbol, results);
     // The signal's one outcome: an entry if any leg entered, else the first
@@ -1235,7 +1246,13 @@ export class IndiBot {
     let picked: Picked;
     try {
       picked = pickContract(
-        await this.trading(broker).chain(symbol, at.side, at.from, at.to),
+        await this.trading(broker).chain(
+          symbol,
+          at.side,
+          at.from,
+          at.to,
+          at.spot,
+        ),
         at.spot,
         at.side,
         at.date,

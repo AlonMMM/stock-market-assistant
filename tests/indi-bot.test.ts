@@ -720,10 +720,19 @@ function harness(
   const bot = new IndiBot({
     store,
     market,
+    // Each call names its own account: the legs of a 'both' signal run at once.
     trading: (b) => {
-      broker = b;
       const own = opts.legs?.[b];
-      return own ? { ...trading, ...own } : trading;
+      const methods = own ? { ...trading, ...own } : trading;
+      return Object.fromEntries(
+        Object.entries(methods).map(([name, method]) => [
+          name,
+          (...args: unknown[]) => {
+            broker = b;
+            return (method as (...a: unknown[]) => unknown)(...args);
+          },
+        ]),
+      ) as unknown as BotTrading;
     },
     brokers: opts.brokers ?? ["alpaca", "ibkr"],
     broker: "alpaca",
@@ -1721,6 +1730,44 @@ test("broker setting 'both': an account that throws does not undo the other's en
   assert.match(
     signal.detail ?? "",
     /Alpaca: 33 .*; Interactive Brokers: market data requires additional subscription/,
+  );
+});
+
+test("broker setting 'both': a slow IBKR pick does not hold up Alpaca's buy; the stock price is passed to the chain", async () => {
+  const spots: (number | undefined)[] = [];
+  let boughtWhileIbkrPicked: BotBroker[] = [];
+  const h = harness("live", {}, undefined, {
+    legs: {
+      ibkr: {
+        async chain(_u, _right, _from, _to, spot) {
+          spots.push(spot);
+          // IBKR's chain takes seconds in production (2026-11-04).
+          await new Promise((r) => setTimeout(r, 30));
+          boughtWhileIbkrPicked = h.calls
+            .filter((c) => c.kind === "buy")
+            .map((c) => c.broker);
+          return [q(110, 0.15, 0.59), q(115, 0.08, 0.3)];
+        },
+      },
+    },
+  });
+  h.bot.setSettings({ ...h.bot.settings(), broker: "both" });
+  await h.run(DAY, 565, 600);
+  assert.deepEqual(boughtWhileIbkrPicked, ["alpaca"]);
+  assert.equal(spots.length, 1);
+  assert.ok(spots[0]! > 0);
+  assert.deepEqual(
+    h.store
+      .openPositions()
+      .map((p) => p.broker)
+      .sort(),
+    ["alpaca", "ibkr"],
+  );
+  const signal = h.store.signals(DAY)[0]!;
+  assert.equal(signal.outcome, "bought");
+  assert.deepEqual(
+    signal.legs!.map((l) => l.broker),
+    ["alpaca", "ibkr"],
   );
 });
 

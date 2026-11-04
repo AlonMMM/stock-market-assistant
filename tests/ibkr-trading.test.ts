@@ -313,6 +313,41 @@ test("ibkr: the chain asks only the strikes nearest the stock, one expiry, and r
   assert.ok(tws.lookups > lookups);
 });
 
+test("ibkr: the chain uses the caller's stock price and asks IBKR for none", async () => {
+  const tws = new FakeTws();
+  const broker = new IbkrTrading(tws, {
+    paper: true,
+    now: () => monday,
+    chainStrikes: 3,
+  });
+  // No stock quote listed: asking for one would find no price.
+  tws.params = { expirations: ["20261016"], strikes: [195, 200, 205, 210] };
+  for (const strike of tws.params.strikes)
+    tws.list(
+      occSymbol({
+        ...optionContract(nvdaCall),
+        strike,
+        lastTradeDateOrContractMonth: "20261016",
+      }),
+      { bid: 1, ask: 1.1, delta: 0.2, at: monday },
+    );
+  const asked: string[] = [];
+  const snapshot = tws.snapshot.bind(tws);
+  tws.snapshot = async (c) => {
+    asked.push(key(c));
+    return snapshot(c);
+  };
+  const quotes = await broker.chain(
+    "NVDA",
+    "call",
+    "2026-10-13",
+    "2026-10-30",
+    200,
+  );
+  assert.deepEqual(quotes.map((q) => q.strike).sort(), [200, 205, 210]);
+  assert.equal(asked.filter((k) => k.startsWith("STK")).length, 0);
+});
+
 test("ibkr: the 30-minute volume adds IBKR's own minute bars up to the end", async () => {
   const { tws, broker } = setup();
   tws.volumes.set(nvdaCall, [10, 0, 25, 7]);
