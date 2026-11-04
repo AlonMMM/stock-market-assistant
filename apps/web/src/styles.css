@@ -2595,6 +2595,12 @@ dialog.stocks-dialog {
   flex-direction: column;
   gap: 8px;
 }
+.setup-save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
 .setup .run {
   margin: 0;
   min-height: 48px;

@@ -193,12 +193,11 @@ function defaultSetup(last: string): Setup {
   };
 }
 
-function savedSetup(last: string): Setup {
+/** A saved setup over the defaults: what is missing takes the default; a preset period moves with the calendar. */
+function mergeSetup(saved: Partial<Setup> | null, last: string): Setup {
   const base = defaultSetup(last);
+  if (!saved) return base;
   try {
-    const raw = localStorage.getItem(setupKey);
-    if (!raw) return base;
-    const saved = JSON.parse(raw) as Partial<Setup>;
     const setup = {
       ...base,
       ...saved,
@@ -212,13 +211,65 @@ function savedSetup(last: string): Setup {
         money: { ...base.volume.money, ...saved.volume?.money },
       },
     };
-    // A preset period moves with the calendar.
     const preset = periods.find((p) => p.id === setup.period);
     if (preset) return { ...setup, ...periodRange(preset.months, last) };
     return setup;
   } catch {
     return base;
   }
+}
+
+/**
+ * The setup this browser kept before the server kept it (until 2026-11-04):
+ * offered once, unsaved, when the server has none.
+ */
+function browserSetup(): Partial<Setup> | null {
+  try {
+    const raw = localStorage.getItem(setupKey);
+    return raw ? (JSON.parse(raw) as Partial<Setup>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function forgetBrowserSetup() {
+  try {
+    localStorage.removeItem(setupKey);
+  } catch {
+    // Nothing kept.
+  }
+}
+
+/** The line under Save: whether this screen's setup is the saved one. */
+function saveText(
+  saved: SaveState,
+  dirty: boolean,
+): { text: string; bad: boolean } {
+  if (saved.state === "loading")
+    return { text: "Loading your saved setup…", bad: false };
+  if (saved.error) return { text: saved.error, bad: true };
+  if (dirty && saved.json === null)
+    return {
+      text: "Not saved yet: Save keeps it for every device.",
+      bad: false,
+    };
+  if (dirty)
+    return {
+      text: "Changed here, not saved: other devices still open the saved setup.",
+      bad: true,
+    };
+  if (saved.at === null) return { text: "Not saved yet.", bad: false };
+  return {
+    text: `Saved ${israelDateTime(saved.at)}: every device opens with this setup.`,
+    bad: false,
+  };
+}
+
+interface SaveState {
+  state: "loading" | "ready" | "saving";
+  json: string | null; // the setup the server has, as JSON; null: none
+  at: number | null; // when it was saved
+  error: string | null;
 }
 
 /** The version label a run is stamped with: starred when its rules were changed. */
@@ -231,15 +282,89 @@ function versionLabel(version: string, rules: Rules): string {
 
 export function BotBacktest({ modes }: { modes: ReactNode }) {
   const last = useMemo(() => lastSession(Date.now()), []);
-  const [setup, setSetupState] = useState<Setup>(() => savedSetup(last));
+  // The setup is kept on the server, per viewer (the user, 2026-11-04: "do
+  // not cache the settings - save them on backend"): changes here are this
+  // screen's until Save.
+  const [setup, setSetupState] = useState<Setup>(() => defaultSetup(last));
+  const [saved, setSaved] = useState<SaveState>({
+    state: "loading",
+    json: null,
+    at: null,
+    error: null,
+  });
+  const touched = useRef(false);
   const setSetup = (next: Setup) => {
+    touched.current = true;
     setSetupState(next);
-    try {
-      localStorage.setItem(setupKey, JSON.stringify(next));
-    } catch {
-      // Remembered for this visit only.
-    }
   };
+  useEffect(() => {
+    let active = true;
+    fetch("/api/backtest-setup", {
+      signal: AbortSignal.timeout(15000),
+      cache: "no-store",
+    })
+      .then(async (r) => {
+        if (r.status === 404) return null;
+        return readJson<{ setup: Partial<Setup>; savedAt: number }>(r);
+      })
+      .then((body) => {
+        if (!active) return;
+        const server = body ? mergeSetup(body.setup, last) : null;
+        const local = browserSetup();
+        // A change made while it loaded stays; what the server has is still known.
+        if (!touched.current) {
+          if (server) setSetupState(server);
+          else if (local) setSetupState(mergeSetup(local, last));
+        }
+        setSaved({
+          state: "ready",
+          json: server ? JSON.stringify(server) : null,
+          at: body?.savedAt ?? null,
+          error: null,
+        });
+      })
+      .catch((e: unknown) => {
+        if (!active) return;
+        setSaved({
+          state: "ready",
+          json: null,
+          at: null,
+          error: `The saved setup could not be read (${e instanceof Error ? e.message : "failed"}): the defaults are shown.`,
+        });
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const dirty = saved.json !== JSON.stringify(setup);
+  async function saveSetup() {
+    const next = setup;
+    setSaved({ ...saved, state: "saving", error: null });
+    try {
+      const body = await readJson<{ savedAt: number }>(
+        await fetch("/api/backtest-setup", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ setup: next }),
+          signal: AbortSignal.timeout(15000),
+        }),
+      );
+      forgetBrowserSetup();
+      setSaved({
+        state: "ready",
+        json: JSON.stringify(next),
+        at: body.savedAt,
+        error: null,
+      });
+    } catch (e) {
+      setSaved({
+        ...saved,
+        state: "ready",
+        error: `Not saved (${e instanceof Error ? e.message : "failed"}).`,
+      });
+    }
+  }
+  const saveLine = saveText(saved, dirty);
   const patch = (p: Partial<Setup>) => setSetup({ ...setup, ...p });
   const [lists, setLists] = useState<Watchlist[]>([]);
   const [stocksOpen, setStocksOpen] = useState(false);
@@ -1023,6 +1148,22 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
             <button type="submit" className="run" disabled={!runnable}>
               {busy ? "Running…" : "Run backtest"}
             </button>
+            <div className="setup-save">
+              <button
+                type="button"
+                className="bs-secondary"
+                disabled={!dirty || saved.state !== "ready"}
+                onClick={() => void saveSetup()}
+              >
+                {saved.state === "saving" ? "Saving…" : "Save setup"}
+              </button>
+              <span
+                role="status"
+                className={`small ${saveLine.bad ? "bs-bad" : "muted"}`}
+              >
+                {saveLine.text}
+              </span>
+            </div>
           </div>
         </form>
 

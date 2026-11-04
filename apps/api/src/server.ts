@@ -1,3 +1,4 @@
+import { D1BacktestSetups } from "../../../packages/market-data/src/backtest-setup.js";
 import { D1PriceAlerts } from "../../../packages/market-data/src/price-alerts.js";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -34,6 +35,7 @@ const app = buildApp(true, {
   // Run from the repository root, like the cache path above.
   results: new ResultCache(db, codeVersion(`${process.cwd()}/`)),
   jobs: new BacktestJobs(db),
+  setups: new D1BacktestSetups(db),
   symbols: new D1SymbolList(db),
   watchlists: new D1Watchlists(db),
   priceAlerts: new D1PriceAlerts(db),

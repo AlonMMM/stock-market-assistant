@@ -1,4 +1,8 @@
 import {
+  D1BacktestSetups,
+  handleBacktestSetup,
+} from "../../../packages/market-data/src/backtest-setup.js";
+import {
   alpacaLastPrices,
   checkPriceAlerts,
   D1PriceAlerts,
@@ -693,6 +697,35 @@ export default {
         Object.fromEntries(query),
         credentials,
       );
+      return Response.json(result.body, {
+        status: result.status,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    // The Backtest page's setup, kept per viewer (backtest-setup.ts).
+    if (path === "/api/backtest-setup") {
+      let body: unknown;
+      if (request.method === "PUT") {
+        const text = await request.text();
+        if (text.length > 131072)
+          return Response.json({ error: "Request too large" }, { status: 413 });
+        try {
+          body = text ? JSON.parse(text) : {};
+        } catch {
+          return Response.json(
+            { error: "Expected JSON object" },
+            { status: 400 },
+          );
+        }
+      }
+      const result = await handleBacktestSetup({
+        method: request.method,
+        body,
+        owner: identity?.email.toLowerCase() ?? "",
+        store: env.BARS_CACHE
+          ? new D1BacktestSetups(env.BARS_CACHE)
+          : undefined,
+      });
       return Response.json(result.body, {
         status: result.status,
         headers: { "Cache-Control": "no-store" },
