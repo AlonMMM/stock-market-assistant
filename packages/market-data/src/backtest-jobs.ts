@@ -48,6 +48,19 @@ export interface JobError extends JobPartInput {
   error: string;
 }
 
+/** One run in the list of the latest runs (GET /api/backtest-jobs). */
+export interface JobSummary {
+  id: string;
+  bot: JobBot;
+  status: JobStatus;
+  total: number;
+  done: number; // parts finished, failed ones included
+  failed: number;
+  createdAt: number;
+  updatedAt: number;
+  meta: unknown;
+}
+
 /** What GET /api/backtest-jobs/:id returns. */
 export interface JobView {
   id: string;
@@ -73,8 +86,9 @@ const maxBodyChars = 64_000;
 // A part claimed this long ago and not finished is taken to be lost (its
 // worker died) and is sent again; a queue consumer may run 15 minutes.
 export const staleClaimMs = 16 * 60_000;
-// Finished runs are kept for a week.
-const keepMs = 7 * 24 * 3600_000;
+// The runs kept for each person and bot (the user, 2026-11-04: "I would like
+// to see my last 10 results"); older finished runs are removed.
+export const keptRuns = 10;
 
 export class JobInputError extends Error {}
 
@@ -177,14 +191,13 @@ export class BacktestJobs {
     ]));
   }
 
-  /** Stores a new run; returns its id. Runs older than a week are removed. */
+  /** Stores a new run; returns its id. Beyond the latest 10, finished runs go. */
   async create(
     spec: JobSpec,
     owner: string,
     now = Date.now(),
   ): Promise<string> {
     await this.init();
-    await this.prune(now);
     const id = crypto.randomUUID();
     const statements = [
       this.db
@@ -214,14 +227,19 @@ export class BacktestJobs {
     // A run of many parts goes in batches of 100 statements.
     for (let i = 0; i < statements.length; i += 100)
       await this.db.batch(statements.slice(i, i + 100));
+    await this.prune(owner, spec.bot);
     return id;
   }
 
-  private async prune(now: number) {
-    const before = now - keepMs;
+  /** Removes the person's finished runs of a bot beyond the latest 10. */
+  private async prune(owner: string, bot: JobBot) {
     const { results } = await this.db
-      .prepare("SELECT id FROM backtest_jobs WHERE created_at < ?")
-      .bind(before)
+      .prepare(
+        "SELECT id FROM backtest_jobs WHERE owner = ? AND bot = ? AND status != 'running' " +
+          "AND id NOT IN (SELECT id FROM backtest_jobs WHERE owner = ? AND bot = ? " +
+          "ORDER BY created_at DESC LIMIT ?)",
+      )
+      .bind(owner, bot, owner, bot, keptRuns)
       .all<{ id: string }>();
     if (!results.length) return;
     await this.db.batch(
@@ -303,6 +321,45 @@ export class BacktestJobs {
           ? { done: Number(job.stopped_done ?? 0), total: Number(job.total) }
           : null,
     };
+  }
+
+  /** The person's latest runs of a bot, newest first. */
+  async list(
+    owner: string,
+    bot: JobBot,
+    limit = keptRuns,
+  ): Promise<JobSummary[]> {
+    await this.init();
+    const { results } = await this.db
+      .prepare(
+        "SELECT j.id, j.bot, j.status, j.total, j.meta, j.created_at, j.updated_at, " +
+          "(SELECT COUNT(*) FROM backtest_job_parts p WHERE p.job_id = j.id AND p.state != 'pending') AS done, " +
+          "(SELECT COUNT(*) FROM backtest_job_parts p WHERE p.job_id = j.id AND p.state = 'failed') AS failed " +
+          "FROM backtest_jobs j WHERE j.owner = ? AND j.bot = ? ORDER BY j.created_at DESC LIMIT ?",
+      )
+      .bind(owner, bot, limit)
+      .all<{
+        id: string;
+        bot: JobBot;
+        status: JobStatus;
+        total: number;
+        meta: string;
+        created_at: number;
+        updated_at: number;
+        done: number;
+        failed: number;
+      }>();
+    return results.map((r) => ({
+      id: r.id,
+      bot: r.bot,
+      status: r.status,
+      total: Number(r.total),
+      done: Number(r.done),
+      failed: Number(r.failed),
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at),
+      meta: JSON.parse(r.meta),
+    }));
   }
 
   /** The owner's latest run of a bot, if any. */
@@ -490,6 +547,7 @@ export async function runParts(
  * runner (a queue, or in-process) and must not wait for them.
  *
  *   POST /api/backtest-jobs                 { bot, parts, body, meta } → 201 { id, total }
+ *   GET  /api/backtest-jobs?bot=main        the caller's latest 10 runs → { runs: JobSummary[] }
  *   GET  /api/backtest-jobs/latest?bot=main the caller's latest run → JobView (404: none)
  *   GET  /api/backtest-jobs/:id?since=ms    JobView with parts finished since then
  *   POST /api/backtest-jobs/:id/stop        → JobView
@@ -516,8 +574,22 @@ export async function handleBacktestJobs(o: {
       body: { error: `Method not allowed (${allowed})` },
     }) as const;
 
+  const botOf = (): JobBot | null => {
+    const bot = (o.query.bot ?? "main") as JobBot;
+    return jobBots.includes(bot) ? bot : null;
+  };
+  const badBot = {
+    status: 400,
+    body: { error: `bot must be one of ${jobBots.join(", ")}` },
+  } as const;
+
+  if (first === "" && o.method === "GET") {
+    const bot = botOf();
+    if (!bot) return badBot;
+    return { status: 200, body: { runs: await jobs.list(o.owner, bot) } };
+  }
   if (first === "") {
-    if (o.method !== "POST") return allow("POST");
+    if (o.method !== "POST") return allow("GET, POST");
     let spec: JobSpec;
     try {
       spec = parseJobSpec(o.body);
@@ -532,12 +604,8 @@ export async function handleBacktestJobs(o: {
   }
   if (first === "latest" && second === undefined) {
     if (o.method !== "GET") return allow("GET");
-    const bot = (o.query.bot ?? "main") as JobBot;
-    if (!jobBots.includes(bot))
-      return {
-        status: 400,
-        body: { error: `bot must be one of ${jobBots.join(", ")}` },
-      };
+    const bot = botOf();
+    if (!bot) return badBot;
     const id = await jobs.latest(o.owner, bot);
     const view = id && (await jobs.view(id, sinceOf(o.query)));
     return view

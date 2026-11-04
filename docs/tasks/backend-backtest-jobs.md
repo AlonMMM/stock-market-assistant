@@ -23,7 +23,8 @@ The server keeps and runs the whole run (`packages/market-data/src/backtest-jobs
 - The page reads the run as often as it likes, with `since`, and gets the progress and the new parts' trades while
   the run goes on. If it leaves and comes back, `latest` finds the run again.
 - A part whose worker died (claimed over 16 minutes ago, still pending) is sent again by the every-minute cron.
-- Runs are kept for a week, under the starter's Access email: another viewer neither sees nor stops them. Viewers
+- The latest 10 runs of each bot are kept for each person; older finished runs are removed when a new one starts.
+  A running run is never removed. Runs are kept under the starter's Access email: another viewer neither sees nor stops them. Viewers
   may start runs, as they may use `/api/bot-backtest` (compute only).
 - Local API (Fastify): the same store in the local SQLite file, with parts run in the process.
 - A Worker without the queue binding (wrangler dev, tests) runs the parts after the response (`waitUntil`). That is
@@ -45,6 +46,9 @@ The server keeps and runs the whole run (`packages/market-data/src/backtest-jobs
 - Make the parts with `periodParts` as today (20 sessions a part for volume).
 - At most 1000 parts. The request may be up to 256 KB, with `body` and `meta` up to 64 KB each.
 - Answer: `201 { id, total }`. A bad request gets `400 { error }`.
+
+`GET /api/backtest-jobs?bot=main|volume` lists the caller's latest 10 runs of that bot, newest first:
+`{ runs: [{ id, bot, status, total, done, failed, createdAt, updatedAt, meta }] }`.
 
 `GET /api/backtest-jobs/:id?since=<ms>` and `GET /api/backtest-jobs/latest?bot=main|volume[&since=<ms>]`
 
@@ -79,6 +83,12 @@ parts stay.
   "Runs on the server: you can leave this page and come back."
 - `stop` stops the run on the server, then reads the parts finished by then.
 - A run that could not start shows "The run did not start: …".
+- On load, a run still going comes first, even one started on another device. Otherwise the page shows the run it
+  showed last, then the latest.
+- "Recent runs" (the user, 2026-11-04: "I would like to see my last 10 results") lists the bot's latest 10 runs
+  above the result: when (Israel time), version, stocks, period, and status ("Running 7/20", "Done", "Stopped",
+  "· N failed", "· shown"). Three rows show until "Show all". Tapping a row shows that run and puts its setup in
+  the form, so Run repeats it. While a run is going, the other rows are disabled.
 
 ## Deploy step (once)
 
@@ -97,6 +107,10 @@ parts stay.
   routes, 10 stocks, 20 parts): progress during the run; the page hidden with no network while parts finish
   ("Reconnecting…" shown); back in view it caught up at once (7 → 10 of 20); a reload mid-run found the run
   again; the finished result showed the failed part.
+- Recent runs and refresh (2026-11-04), same Chromium setup with synthetic runs: a refresh mid-run showed the run
+  again at 7 of 20 with the list row "Running 7/20 · 1 failed · shown"; after two runs, tapping the older one
+  showed its result and failed part. Tests cover the latest-10 cap per person and bot, the summary counts, and
+  opening a past run (not while one runs).
 - The local API (Fastify, in-process runner) without Alpaca keys: a run of 2 parts finished with both parts'
   credential errors; `latest` found it.
 - Not run on Cloudflare: the queue has not been created, the code has not been deployed, and it has not been tried
