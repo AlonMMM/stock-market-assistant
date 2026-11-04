@@ -291,6 +291,24 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### Bigger size on a small account: 5% under $50K, 4% to $100K, 3% above (2026-11-04, a risk choice, not better: more money only through the giants, a much bigger drop)
+
+The user: "when 10K account sise you can use 5%, on 50K use 4%", then "more than 100K stay with 3%". `size_steps_small.py`
+on 2.10 and candidate 2.11 (M5), the account steps by the day's opening account, the volume tier on top (50 / 100 /
+150%) under the 5% cap per buy, the add within 5% with its main leg. Steps now: 3% under $300K. Flat 3% from $100K
+reproduces size_volume's 3% within 1-6% (this script takes each leg's overnight cap at its own size).
+
+| End / worst drop, steps now -> small steps | Tune fair | Tune Favorites | Check fair | Check Favorites |
+| --- | --- | --- | --- | --- |
+| 2.10 from $10K | $83,905 / 24% -> $139,066 / 35% | $61,027 / 27% -> $120,297 / 34% | $111,390 / 32% -> $141,271 / 37% | $23,945 / 32% -> **$17,249 / 46%** |
+| 2.10 from $100K | $858,700 -> $854,008 | $672,936 -> $711,689 | $1,172,324 -> $1,226,267 | $239,447 -> $247,258 |
+| 2.11 from $10K | $104,840 / 23% -> $176,543 / 31% | $82,725 / 25% -> $164,185 / 32% | $142,225 / 29% -> $205,162 / 30% | $31,140 / 31% -> **$25,215 / 45%** |
+
+From $10K: more money on 3 of 4 (x1.3-2.0) but the worst drop rises 5-14 points and the Favorites check loses money (46%
+drop); without the best 5 2.10 tune is the same or less ($14,639 -> $14,143): the extra money is the giants at a bigger
+size, the bleed grows with it. From $100K it barely matters (it only acts after the account falls under $100K). Not
+better by the log's rule; the size is the owner's risk choice.
+
 ### Sell above the bid: from the mid, stepped down to the bid over 5 minutes (2026-11-04, BETTER on tune and check; fill unproven) -> candidate 2.11 (look 2)
 
 **Second run, look 2 (the user: "you can move up to 5 minutes try to sold it. find the best.")**: 15 versions set before
