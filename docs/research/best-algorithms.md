@@ -3013,6 +3013,31 @@ instead of rv). A gate's trade keeps 2.10's size (on rv). Look 1 on rel. 2.10's 
   without the best 5) and its gain is all giants. Next if pursued: size-rel against a flat size at the same drop, and the
   2022-23 last feature test.
 
+- **size-rel against a flat size at the same drop (2026-11-04, look 2 on size-rel; size_rel.py):** the user, "in parellal -
+  lets check the sizing thesis via spy relative on the main bot". Set before the run: 2.10, size-rel, its neighbours (the
+  rel cuts x0.8 = 1.4 / 2.0 and x1.2 = 2.1 / 3.0), and 2.10 flat (every trade scaled by f, f picked on tune per list and
+  size so its tune drop equals size-rel's; the check reads the same f). 2.10 and size-rel reproduce to the dollar.
+
+| 2% (3%) | Tune fair | Tune Favorites | Check fair | Check Favorites | w/o best 5, tune fair / check fair / check Fav |
+|---|---|---|---|---|---|
+| 2.10 | $620,535 / 15.7% | $449,178 / 14.5% | $957,771 / 23.6% | $226,846 / 22.6% | $138,044 / $169,718 / $74,497 |
+| 2.10 flat (x1.19 fair, x1.08 Fav) | $802,529 / 18.4% | $490,496 / 15.5% | $1,189,468 / 27.3% | $236,906 / 24.2% | $142,275 / $170,308 / $72,212 |
+| size-rel | $742,025 -8% / 18.3% ($972,966 +15%) | $665,910 +36% / 15.5% ($894,292 +106%) | $1,121,654 -6% / 22.5% ($1,414,558 +29%) | $269,942 +14% / 23.7% ($316,919 +38%) | $126,966 / $199,684 / $77,611 |
+| size-rel x0.8 | $1,026,204 +28% / 21.0% | $916,390 +87% / 18.9% | $1,094,932 -8% / 26.4% | $249,896 +5% / 28.8% | $159,740 / $191,919 / $65,802 |
+| size-rel x1.2 | $627,444 -22% / 14.2% | $550,213 +12% / 13.3% | $770,974 -35% / 22.7% | $214,810 -9% / 20.8% | $134,193 / $175,825 / $73,262 |
+
+  (% = vs 2.10 flat. At 3% the flat f is x1.04 fair, x0.82 Favorites.)
+- **Where it comes from (main legs at $10K):** the trades size-rel sizes up vs down against 2.10: tune fair 115 / 89,
+  median -$2,658 / -$2,574, sum +$430K / +$175K; tune Fav 113 / 105, -$2,754 / -$2,571, +$639K / +$127K; check fair 126 /
+  92, -$2,849 / -$2,459, sum -$36K / -$160K; check Fav 126 / 100, -$2,682 / -$2,459, -$3K / -$129K. The sized-up trades
+  have the worse median on every half and list; on the check they are about flat. The tune gain is 4-6 giants landing
+  in the up group.
+- Without 10 Oct 2025: moves 2 check trades; the same verdict.
+- **Verdict: not better; size-rel closed.** Against a flat size at the same drop it loses the fair list on tune (-8%) and
+  on the check (-6%, at 2%); tune fair without the best 5 is still worse. x0.8 wins tune only by taking a bigger drop
+  and loses the check on the fair list. The edge over 2.10 was mostly more size, and the rest the giants (giants decide
+  buckets). Not run on 2022-23 (only a pass goes there).
+
 ### Fills bigger than the book shows, on 2.10 (2026-11-03, analysis of the fill model, not a rule)
 The user: "Why are we looking on volume and not ask bid size?", "Does the test use ask and bid size when filling?",
 "Yes". The walk (opt_spread.price on real_bench.quote) fills the whole order at one price and never reads the size.
