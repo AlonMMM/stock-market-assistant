@@ -419,6 +419,17 @@ export function parseSettings(
 /** The most size steps the owner can set (the owner, 2026-11-04: "up until 5 rules"). */
 export const maxSizeSteps = 5;
 
+/**
+ * Wider ranges the Backtest page allows than the live bot (the user,
+ * 2026-11-04: an overnight cap of 30%). Only for values the backtest's account
+ * applies (backtest-account.ts), never the walk: the live bot keeps `limits`.
+ */
+export const backtestLimits: Partial<
+  Record<NumberKey, readonly [number, number, number]>
+> = {
+  nightCapPct: [0, 100, 1],
+};
+
 /** Size steps from a request: rising account values, each size within the size's limits; null when wrong. */
 function parseSizeSteps(v: unknown): SizeStep[] | null {
   if (!Array.isArray(v) || v.length > maxSizeSteps) return null;

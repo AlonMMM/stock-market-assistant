@@ -613,3 +613,32 @@ test("volume backtest (2026-11-04, Volume 1.3.0): the shock list is the one of s
     assert.deepEqual(h.asked, [kind]);
   }
 });
+
+test("the backtest takes an overnight cap up to 100% (the live bot's limit is 25%); out of range is a plain error", async () => {
+  const { parseSettings, defaultSettings } =
+    await import("../packages/trading/src/bot/settings.js");
+  const down = (async () =>
+    new Response("", { status: 500 })) as unknown as typeof fetch;
+  const credentials = { key: "k", secret: "s" };
+  const now = Date.parse("2026-10-31T12:00:00Z");
+  const body = (nightCapPct: unknown) => ({
+    symbol: "NVDA",
+    from: "2026-10-01",
+    to: "2026-10-02",
+    rules: { nightCapPct },
+  });
+  const run = (v: unknown) =>
+    handleBotBacktest(body(v), credentials, "https://paper", down, now);
+  // 30 passes the checks: the market data is what fails here (502).
+  assert.equal((await run(30)).status, 502);
+  assert.deepEqual(await run(101), {
+    status: 400,
+    body: { error: "nightCapPct must be a number from 0 to 100" },
+  });
+  assert.equal((await run("30")).status, 400);
+  // The live bot's settings still stop at 25.
+  assert.equal(
+    parseSettings({ ...defaultSettings, nightCapPct: 30 }).ok,
+    false,
+  );
+});
