@@ -483,6 +483,63 @@ export const statusWords: Record<AccountTrade["status"], string> = {
 
 const sideWord = (right: "C" | "P") => (right === "C" ? "call" : "put");
 
+export type SizeKind = "pyramid" | "small" | "regular" | "big";
+
+export interface TradeSize {
+  kind: SizeKind;
+  label: string; // the chip: "Pyramid", "Half size", "Regular size", "Big size"
+  pct: number; // what the buy cost, % of the account it was sized from
+  why: string; // the reason, one sentence
+}
+
+const fmtPct = (v: number) => `${Number(v.toFixed(2))}%`;
+
+/**
+ * How big a trade was and why (the user, 2026-11-04: "a % of the account and
+ * a badge for why (pyramid / regular size, big size)"): the pyramid's add, or
+ * the volume tier the signal's volume since the open reached (versions 2.10+),
+ * and what the buy cost against the account it was sized from.
+ */
+export function tradeSize(a: AccountTrade, rules: Rules): TradeSize {
+  const t = a.trade;
+  const share = t.sizeShare;
+  const pct = a.basis > 0 ? (a.paid / a.basis) * 100 : 0;
+  const stepPct = share > 0 ? a.targetPct / share : a.targetPct;
+  let kind: SizeKind = "regular";
+  if (t.pyramid) kind = "pyramid";
+  else if (share > 1.001) kind = "big";
+  else if (share < 0.999) kind = "small";
+  let label = "Regular size";
+  if (kind === "pyramid") label = "Pyramid";
+  if (kind === "big") label = `Big size ×${Number(share.toFixed(2))}`;
+  if (kind === "small")
+    label =
+      Math.abs(share - 0.5) < 0.001
+        ? "Half size"
+        : `Small size ×${Number(share.toFixed(2))}`;
+  const tiers = [...(rules.volumeTiers ?? [])].sort(
+    (x, y) => x.atLeast - y.atLeast,
+  );
+  let reason: string;
+  if (t.pyramid)
+    reason = `The pyramid's add after a D2 entry: ${rules.pyramidSharePct}% of the first trade's size, the two within 5% of the account`;
+  else if (tiers.length === 0)
+    reason = "The bot's whole size: this version has no volume tiers";
+  else {
+    const at = tiers.filter((x) => t.rvol >= x.atLeast).at(-1);
+    const next = tiers.find((x) => x.atLeast > t.rvol);
+    let range = "any volume";
+    if (at && at.atLeast > 0) range = `from ${at.atLeast}×`;
+    if (at && at.atLeast > 0 && next) range += ` to ${next.atLeast}×`;
+    if ((!at || at.atLeast <= 0) && next) range = `under ${next.atLeast}×`;
+    reason = `Volume since the open ${t.rvol.toFixed(2)}× its usual (${range}: ${at?.pct ?? 100}% of the size)`;
+  }
+  let cost = "";
+  if (a.status === "taken" && a.basis > 0)
+    cost = `; meant ${fmtPct(a.targetPct)} of the account (${fmtPct(stepPct)} × ${Math.round(share * 100)}%), whole contracts cost ${fmtPct(pct)}`;
+  return { kind, label, pct, why: `${reason}${cost}.` };
+}
+
 /** When a step happened: the start of its New York session minute, in ms. */
 export const stepMs = (date: string, minute: number) =>
   newYorkToUtc(date, 570 + minute);
@@ -573,6 +630,12 @@ export function backtestStory(
     entry.push(
       `Level ahead: ${t.watch.name} at $${t.watch.level.toFixed(2)}, watched for a failed break.`,
     );
+  if (a.status === "taken") {
+    const size = tradeSize(a, rules);
+    entry.push(
+      `Size: ${size.label}, ${fmtPct(size.pct)} of the account. ${size.why}`,
+    );
+  }
   if (a.status !== "taken") entry.push(statusWords[a.status]);
   const exits: ExitRow[] = a.fills
     .filter((f) => f.kind !== "buy")
@@ -583,6 +646,9 @@ export function backtestStory(
         qty: f.qty,
         price: f.kind === "carry" ? null : f.price,
         ...words,
+        ...(f.book
+          ? { book: { ...f.book, at: stepMs(f.date, f.minute) } }
+          : {}),
       };
     });
   const markers = fillMarkers(closed);
@@ -611,7 +677,26 @@ export function backtestStory(
     rule: rules.minT,
     markers,
     decision: null,
-    entryQuote: null,
+    entryQuote: entryQuoteOf(a, signalMs),
+  };
+}
+
+/**
+ * The bid / ask at the buy: the book as the signal minute closed, and the
+ * next minute's when the buy chased its ask (backtest.ts walkQuotes).
+ */
+function entryQuoteOf(a: AccountTrade, signalMs: number): Story["entryQuote"] {
+  const filled = a.fills.find((f) => f.kind === "buy")?.book;
+  const book = a.trade.book ?? filled;
+  if (!book) return null;
+  const chased = filled && (filled.bid !== book.bid || filled.ask !== book.ask);
+  return {
+    bid: book.bid,
+    ask: book.ask,
+    at: signalMs,
+    ...(chased
+      ? { fill: { bid: filled.bid, ask: filled.ask, at: signalMs + 60_000 } }
+      : {}),
   };
 }
 

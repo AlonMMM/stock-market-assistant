@@ -47,6 +47,7 @@ import {
   bots,
   clockText,
   closedTradeOf,
+  tradeSize,
   exitTitle,
   firstDate,
   maxStocks,
@@ -143,7 +144,9 @@ interface Setup {
   period: PeriodId | "custom";
   from: string;
   to: string;
-  money: Omit<MoneySettings, "nightCapPct" | "fillPct">;
+  // `limits` off: no cap on the day's buys, the open positions or what is
+  // held overnight (user 2026-11-04: "disable the broker limits").
+  money: Omit<MoneySettings, "nightCapPct" | "fillPct"> & { limits: boolean };
   fillPct: number;
   // The Volume bot's: its settings (from the live bot's, then changed here),
   // the live ones they started from, and the account's money.
@@ -173,7 +176,7 @@ function defaultSetup(last: string): Setup {
     period: "3m",
     from,
     to,
-    money,
+    money: { ...money, limits: true },
     fillPct: defaultFillPct,
     volume: {
       settings: defaultStrangleSettings,
@@ -262,7 +265,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
         version: live.version,
         rules: live.rules,
         tickers: live.tickers,
-        money: { ...setup.money, ...live.money },
+        money: { ...setup.money, ...live.money, limits: true },
       });
       const steps = (live.rules.sizeSteps ?? [])
         .map((x) => `${x.pct}% from $${x.from.toLocaleString("en-US")}`)
@@ -402,8 +405,11 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
         ? runAccount(trades, {
             ...setup.money,
             sizeSteps: ran.rules.sizeSteps ?? [],
-            nightCapPct: ran.rules.nightCapPct,
+            nightCapPct: setup.money.limits ? ran.rules.nightCapPct : 0,
             fillPct: ran.fillPct,
+            ...(setup.money.limits
+              ? {}
+              : { maxBuysPerDay: Infinity, maxOpen: Infinity }),
           })
         : null,
     [trades, setup.money, ran],
@@ -815,26 +821,48 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                       patch({ money: { ...setup.money, feePerContract: v } })
                     }
                   />
-                  <NumberRow
-                    label="Most buys a day"
-                    value={setup.money.maxBuysPerDay}
-                    min={1}
-                    max={100}
-                    step={1}
-                    onChange={(v) =>
-                      patch({ money: { ...setup.money, maxBuysPerDay: v } })
-                    }
-                  />
-                  <NumberRow
-                    label="Most open positions"
-                    value={setup.money.maxOpen}
-                    min={1}
-                    max={100}
-                    step={1}
-                    onChange={(v) =>
-                      patch({ money: { ...setup.money, maxOpen: v } })
-                    }
-                  />
+                  <label className="rule-field switch-row">
+                    <span>
+                      The live bot&apos;s limits
+                      <span className="hint">
+                        {" "}
+                        buys a day, open positions, the overnight cap
+                      </span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={setup.money.limits}
+                      onChange={(e) =>
+                        patch({
+                          money: { ...setup.money, limits: e.target.checked },
+                        })
+                      }
+                    />
+                  </label>
+                  {setup.money.limits && (
+                    <>
+                      <NumberRow
+                        label="Most buys a day"
+                        value={setup.money.maxBuysPerDay}
+                        min={1}
+                        max={100}
+                        step={1}
+                        onChange={(v) =>
+                          patch({ money: { ...setup.money, maxBuysPerDay: v } })
+                        }
+                      />
+                      <NumberRow
+                        label="Most open positions"
+                        value={setup.money.maxOpen}
+                        min={1}
+                        max={100}
+                        step={1}
+                        onChange={(v) =>
+                          patch({ money: { ...setup.money, maxOpen: v } })
+                        }
+                      />
+                    </>
+                  )}
                   <NumberRow
                     label="Fill cost (needs a new run)"
                     unit="% of the price"
@@ -1500,7 +1528,10 @@ function Summary({
       <p className="muted small">
         {money.sizePct}% a trade{money.compound ? ", compounding" : ""} · fees $
         {money.feePerContract.toFixed(2)} a contract each way · fill cost{" "}
-        {ran.fillPct}% · overnight cap {ran.rules.nightCapPct}%
+        {ran.fillPct}% ·{" "}
+        {money.limits
+          ? `${money.maxBuysPerDay} buys a day, ${money.maxOpen} open, overnight cap ${ran.rules.nightCapPct}%`
+          : "no limits on buys a day, open positions or overnight"}
         {refused > 0
           ? ` · ${refused} signal${refused === 1 ? "" : "s"} refused by the limits`
           : ""}
@@ -1985,7 +2016,7 @@ function TradeList({
                 <strong>{a.trade.symbol}</strong> {a.trade.strike}{" "}
                 {a.trade.right === "C" ? "Call" : "Put"}
                 {a.trade.bonus && <span className="state-chip">D2</span>}
-                {a.trade.pyramid && <span className="state-chip">Pyramid</span>}
+                <SizeChip a={a} rules={rules} />
                 {a.open && <span className="state-chip">Open</span>}
                 {a.trade.priced !== "quotes" && (
                   <span
@@ -2019,5 +2050,17 @@ function TradeList({
         each exit.
       </p>
     </section>
+  );
+}
+
+/** The trade's size in the row: why it was this size, and its % of the account. */
+function SizeChip({ a, rules }: { a: AccountTrade; rules: Rules }) {
+  const size = tradeSize(a, rules);
+  const taken = a.status === "taken";
+  return (
+    <span className={`state-chip bt-size ${size.kind}`} title={size.why}>
+      {size.label}
+      {taken && <span className="num"> · {Number(size.pct.toFixed(2))}%</span>}
+    </span>
   );
 }

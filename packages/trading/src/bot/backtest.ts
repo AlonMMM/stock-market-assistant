@@ -129,6 +129,8 @@ export interface SimStep {
   share: number;
   price: number; // the fill (a carry: the option's 15:50 close)
   reason: ExitReason | "entry" | "data-end";
+  // The real bid / ask the fill was priced on (quote-priced trades only).
+  book?: Book;
 }
 
 export interface SimTrade {
@@ -618,8 +620,12 @@ async function walkQuotes(
   const entryDay = quotes.get(w.date) ?? [];
   const q0 = bookAt(entryDay, w.minute)!;
   let cost = (q0.bid + 3 * q0.ask) / 4;
+  let filledOn = q0;
   const q1 = bookAt(entryDay, w.minute + 1);
-  if (q1 && q1.bid > cost) cost = q1.ask;
+  if (q1 && q1.bid > cost) {
+    cost = q1.ask;
+    filledOn = q1;
+  }
   const steps: SimStep[] = [
     {
       date: w.date,
@@ -628,6 +634,7 @@ async function walkQuotes(
       share: 1,
       price: cost,
       reason: "entry",
+      book: { bid: filledOn.bid, ask: filledOn.ask },
     },
   ];
   let rem = 1;
@@ -646,6 +653,8 @@ async function walkQuotes(
   // The newest mark of any kind: a book's mid, or a trade close once the books are over.
   let lastMark = (q0.bid + q0.ask) / 2;
   let markAt = { date: w.date, minute: w.minute };
+  // The book the newest mark came from; null when it was a trade bar.
+  let markBook: Book | null = { bid: q0.bid, ask: q0.ask };
   let option: Map<string, MinuteBar[]> | null = null;
   const tradeBars = async (date: string) => {
     option ??= await data
@@ -687,6 +696,7 @@ async function walkQuotes(
       share: q,
       price: book.bid,
       reason,
+      book: { bid: book.bid, ask: book.ask },
     });
     state = { ...state, qty: Math.round(rem * nominal) };
   };
@@ -728,8 +738,13 @@ async function walkQuotes(
       // The mark is the newest book of any age, as the live bot always has a
       // price; only a sale needs a fresh one. Once the books are over, the
       // minute's trade close when the option traded.
-      if (book) lastMark = (book.bid + book.ask) / 2;
-      else if (bar) lastMark = bar.c;
+      if (book) {
+        lastMark = (book.bid + book.ask) / 2;
+        markBook = { bid: book.bid, ask: book.ask };
+      } else if (bar) {
+        lastMark = bar.c;
+        markBook = null;
+      }
       if (book || bar) markAt = { date, minute: m };
       const mark = lastMark;
       // A sale once the books are over fills on the next minute, as sim.py's
@@ -857,6 +872,7 @@ async function walkQuotes(
       share: rem,
       price: lastMark,
       reason: "data-end",
+      ...(markBook ? { book: markBook } : {}),
     });
     return {
       steps,

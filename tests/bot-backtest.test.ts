@@ -41,6 +41,7 @@ import {
   runClock,
   periodRange,
   sessionsBetween,
+  tradeSize,
 } from "../apps/web/src/bot-backtest-model.js";
 import {
   mainRun,
@@ -132,6 +133,49 @@ test("the account sizes each trade from the day's start and pays a fee each way"
   assert.equal(r.losses, 1);
 });
 
+test("a trade's size: the volume tier or the pyramid, and its % of the account it was sized from", () => {
+  const rules = defaultSettings; // 1.75× and 2.5× volume tiers
+  const buy = [
+    step("2026-09-02", 11, "buy", 1, 0.5, "entry"),
+    step("2026-09-02", 31, "sell", 1, 0.6, "close-1550"),
+  ];
+  const r = runAccount(
+    [
+      trade("big", "2026-09-02", buy, { rvol: 3, sizeShare: 1.5 }),
+      trade(
+        "half",
+        "2026-09-03",
+        buy.map((x) => ({ ...x, date: "2026-09-03" })),
+        {
+          rvol: 1.2,
+          sizeShare: 0.5,
+        },
+      ),
+      trade(
+        "pyr",
+        "2026-09-04",
+        buy.map((x) => ({ ...x, date: "2026-09-04" })),
+        {
+          pyramid: true,
+          sizeShare: 0.75,
+        },
+      ),
+    ],
+    { ...money, feePerContract: 0 },
+  );
+  const [big, half, pyr] = r.trades.map((a) => tradeSize(a, rules));
+  assert.equal(r.trades[0]!.basis, 100_000);
+  assert.equal(r.trades[0]!.targetPct, 3); // 2% × 150%
+  assert.equal(big!.kind, "big");
+  assert.equal(big!.label, "Big size ×1.5");
+  assert.equal(big!.pct, 3); // 60 contracts at $0.50
+  assert.match(big!.why, /3\.00× its usual \(from 2\.5×: 150% of the size\)/);
+  assert.equal(half!.label, "Half size");
+  assert.match(half!.why, /under 1\.75×: 50%/);
+  assert.equal(pyr!.kind, "pyramid");
+  assert.match(pyr!.why, /pyramid's add/);
+});
+
 test("the account refuses a buy over the open positions and the day's buys", () => {
   const day = "2026-09-02";
   const held = (id: string, at: number) =>
@@ -160,6 +204,26 @@ test("the account refuses a buy over the open positions and the day's buys", () 
     r2.trades.map((a) => a.status),
     ["taken", "taken", "day-limit"],
   );
+});
+
+test("with the limits off the account takes every buy and holds the night uncapped", () => {
+  const day = (id: string, m: number) =>
+    trade(id, "2026-09-02", [
+      step("2026-09-02", m, "buy", 1, 0.5, "entry"),
+      step("2026-09-02", 380, "sell", 1, 0.5, "close-1550"),
+    ]);
+  const many = ["a", "b", "c", "d", "e", "f", "g"].map((id, i) =>
+    day(id, 11 + i),
+  );
+  const limited = runAccount(many, money);
+  assert.ok(limited.trades.some((a) => a.status !== "taken"));
+  const free = runAccount(many, {
+    ...money,
+    maxBuysPerDay: Infinity,
+    maxOpen: Infinity,
+    nightCapPct: 0,
+  });
+  assert.equal(free.taken, 7);
 });
 
 test("the overnight cap sells what is worth more than its share of the account", () => {
@@ -421,6 +485,12 @@ test("with real quotes: the buy pays the mid + a quarter of the spread at the si
   const last = t.steps.at(-1)!;
   assert.equal(last.reason, "close-1550");
   assert.ok(Math.abs(last.price - (p - 0.01)) < 1e-9, String(last.price));
+  // Each fill keeps the book it was priced on, for the trade window.
+  assert.ok(Math.abs(buy.book!.ask - buy.book!.bid - 0.02) < 1e-9);
+  assert.ok(Math.abs(last.book!.bid - last.price) < 1e-9);
+  const a = runAccount([t], money).trades[0]!;
+  assert.deepEqual(a.fills[0]!.book, buy.book);
+  assert.deepEqual(a.fills.at(-1)!.book, last.book);
 });
 
 test("with real quotes: the bid running past the price makes the buy pay the ask a minute later", async () => {
@@ -439,6 +509,9 @@ test("with real quotes: the bid running past the price makes the buy pay the ask
   const t = run.trades[0]!;
   const p = 3 * Math.exp(-(t.strike - 100) / 3);
   assert.ok(Math.abs(t.steps[0]!.price - (p + 0.21)) < 1e-9);
+  // The buy's book is the one it paid the ask of, a minute after the signal's.
+  assert.ok(Math.abs(t.steps[0]!.book!.ask - t.steps[0]!.price) < 1e-9);
+  assert.ok(Math.abs(t.book!.ask - (p + 0.01)) < 1e-9);
 });
 
 test("with only the bots' saved books (a few minutes): once the books are over, the 15:50 sale is on the trade bars, as the research", async () => {

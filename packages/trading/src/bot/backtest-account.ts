@@ -1,5 +1,5 @@
 import { sizeAt, type SizeStep } from "./settings.js";
-import type { SimStep, SimTrade } from "./backtest.js";
+import type { Book, SimStep, SimTrade } from "./backtest.js";
 
 // The account over a backtest's trades (backtest.ts): every stock's trades in
 // time order, each sized from the account, the bot's limits on buys a day and
@@ -42,6 +42,7 @@ export interface Fill {
   qty: number;
   price: number;
   reason: SimStep["reason"] | "night-cap";
+  book?: Book; // the real bid / ask the fill was priced on, when it had one
 }
 
 export interface AccountTrade {
@@ -55,6 +56,11 @@ export interface AccountTrade {
   retPct: number; // pnl / paid, %
   fills: Fill[];
   open: boolean; // valued at the last price, not sold
+  // The size's basis at the buy (the day's opening account, or the starting
+  // one without compounding) and the share of it this trade was meant to buy:
+  // the size step's % × the trade's sizeShare. 0 when no buy was tried.
+  basis: number;
+  targetPct: number;
 }
 
 export interface AccountResult {
@@ -117,6 +123,8 @@ export function runAccount(
     retPct: 0,
     fills: [],
     open: trade.open,
+    basis: 0,
+    targetPct: 0,
   }));
   // Per trade: contracts held, and the factor later shares are scaled by after the cap.
   const held = new Array<number>(trades.length).fill(0);
@@ -148,6 +156,9 @@ export function runAccount(
     const s = t.steps[e.step]!;
     const a = out[e.trade]!;
     if (s.kind === "buy") {
+      a.basis = money.compound ? dayStart : money.startEquity;
+      a.targetPct =
+        sizeAt(money.sizePct, money.sizeSteps ?? [], a.basis) * t.sizeShare;
       if (buysToday >= money.maxBuysPerDay) {
         a.status = "day-limit";
         refused.add(e.trade);
@@ -180,6 +191,7 @@ export function runAccount(
         qty,
         price: s.price,
         reason: s.reason,
+        ...(s.book ? { book: s.book } : {}),
       });
       continue;
     }
@@ -241,6 +253,7 @@ export function runAccount(
       qty: q,
       price: s.price,
       reason: s.reason,
+      ...(s.book ? { book: s.book } : {}),
     });
     if (held[e.trade] === 0) close(e.trade);
   }
