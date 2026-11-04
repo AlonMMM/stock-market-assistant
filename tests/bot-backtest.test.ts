@@ -198,6 +198,26 @@ test("the account refuses a buy over the open positions and the day's buys", () 
   );
 });
 
+test("with the limits off the account takes every buy and holds the night uncapped", () => {
+  const day = (id: string, m: number) =>
+    trade(id, "2026-09-02", [
+      step("2026-09-02", m, "buy", 1, 0.5, "entry"),
+      step("2026-09-02", 380, "sell", 1, 0.5, "close-1550"),
+    ]);
+  const many = ["a", "b", "c", "d", "e", "f", "g"].map((id, i) =>
+    day(id, 11 + i),
+  );
+  const limited = runAccount(many, money);
+  assert.ok(limited.trades.some((a) => a.status !== "taken"));
+  const free = runAccount(many, {
+    ...money,
+    maxBuysPerDay: Infinity,
+    maxOpen: Infinity,
+    nightCapPct: 0,
+  });
+  assert.equal(free.taken, 7);
+});
+
 test("the overnight cap sells what is worth more than its share of the account", () => {
   const t = trade("a", "2026-09-02", [
     step("2026-09-02", 11, "buy", 1, 1, "entry"),

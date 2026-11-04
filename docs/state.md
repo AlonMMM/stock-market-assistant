@@ -13,7 +13,10 @@ whole contracts cost). The trade window repeats it under "Why the bot entered" a
 quotes: the entry's bid / mid / ask bar (the next minute's book too when the buy chased the ask) and each
 exit's bid / ask. Each quote-priced step keeps the book it was priced on (`SimStep.book`, `Fill.book`);
 `AccountTrade` adds `basis` and `targetPct`. No pricing or timing changed. Trades priced from trade bars have
-no book. The Volume bot's backtest is unchanged (flat size; its window already shows its book). Validation:
+no book. The Volume bot's backtest is unchanged (flat size; its window already shows its book). The Main bot's
+Money card also gains "The live bot's limits" (on by default and with "Same as paper"); off, the account has
+no cap on the day's buys, the open positions or the overnight hold, and the result's note says so; only a size
+too small for one contract still refuses a buy (user 2026-11-04: "disable the broker limits"). Validation:
 unit tests; screenshots on synthetic backtest data, light and dark.
 
 ## Stock tags: earnings and big news (2026-11-01)
