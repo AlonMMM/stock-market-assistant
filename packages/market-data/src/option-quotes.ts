@@ -40,12 +40,17 @@ async function unpackQuotes(text: string): Promise<[number, number, number][]> {
   return JSON.parse(await new Response(stream).text());
 }
 
+// A later source wins a minute: the books recorded during the session
+// ("recorded", the end-of-day review only, day-review.ts) fill the minutes
+// Databento has not, and the live books win over both.
+const sourceOrder: Record<string, number> = { recorded: -1, live: 1 };
+
 /** The sources of one day merged: Databento's minutes, the live books over them. */
 export function mergeSources(
   rows: { source: string; quotes: [number, number, number][] }[],
 ): QuoteMinute[] {
   const byMinute = new Map<number, QuoteMinute>();
-  const order = (s: string) => (s === "live" ? 1 : 0);
+  const order = (s: string) => sourceOrder[s] ?? 0;
   for (const r of [...rows].sort((a, b) => order(a.source) - order(b.source)))
     for (const [m, bid, ask] of r.quotes)
       if (ask > 0 && bid >= 0 && bid <= ask) byMinute.set(m, { m, bid, ask });
@@ -88,5 +93,23 @@ export class D1OptionQuotes implements OptionQuoteStore {
       if (day.length) out.set(date, day);
     }
     return out;
+  }
+
+  /** One contract's day from one source, replacing what that source had. */
+  async put(
+    contract: string,
+    date: string,
+    source: string,
+    quotes: [number, number, number][],
+    now: number,
+  ) {
+    await this.init();
+    await this.db
+      .prepare(
+        "INSERT INTO option_quotes (contract, date, source, quotes, stored_at) VALUES (?, ?, ?, ?, ?) " +
+          "ON CONFLICT (contract, date, source) DO UPDATE SET quotes = excluded.quotes, stored_at = excluded.stored_at",
+      )
+      .bind(contract, date, source, JSON.stringify(quotes), now)
+      .run();
   }
 }

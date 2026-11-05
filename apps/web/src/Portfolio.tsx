@@ -21,6 +21,7 @@ import { BotChip, BotPanel, useBotContracts } from "./BotPanel.js";
 import { BotSettingsPage } from "./BotSettings.js";
 import { RiskSettingsPage } from "./RiskSettings.js";
 import { StrangleActivity } from "./StrangleActivity.js";
+import { DayReviews } from "./DayReviews.js";
 import { StrangleBenchmark } from "./StrangleBenchmark.js";
 import { StrangleSettingsPage } from "./StranglePanel.js";
 import { Orders, useDecisions, WhyButton } from "./Orders.js";
@@ -320,6 +321,7 @@ const groups = [
     [
       ["trades", "Trades"],
       ["activity", "Activity"],
+      ["analyse", "Analyse"],
       ["settings", "Settings"],
       ["b-risk", "Risk"],
     ],
@@ -333,6 +335,7 @@ const groups = [
       ["s-trades", "Trades"],
       ["s-activity", "Activity"],
       ["s-bench", "Benchmark"],
+      ["s-analyse", "Analyse"],
       ["s-settings", "Settings"],
       ["s-risk", "Risk"],
     ],
@@ -484,6 +487,9 @@ export function Portfolio({
         </div>
       );
     if (page === "s-bench") return <StrangleBenchmark />;
+    // Each evening's live trades against the backtest (day-review.ts).
+    if (page === "analyse") return <DayReviews bot="main" />;
+    if (page === "s-analyse") return <DayReviews bot="volume" />;
     if (page === "s-settings" && canTrade)
       return (
         <StrangleSettingsPage onBack={() => open("strangle", "s-activity")} />

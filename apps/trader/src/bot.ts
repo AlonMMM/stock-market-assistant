@@ -2067,6 +2067,23 @@ export class IndiBot {
   }
 
   /**
+   * One past or present session for the end-of-day review (GET /v1/bot/day):
+   * its signals and the positions entered that day with every fill and book,
+   * and the settings now (the review runs the same evening).
+   */
+  dayRecords(day: string) {
+    const s = this.settings();
+    return {
+      day,
+      version: versionLabel(s),
+      settings: s,
+      watching: this.symbols.length ? this.symbols : this.universe(),
+      signals: this.o.store.signals(day),
+      positions: this.o.store.dayPositions(day),
+    };
+  }
+
+  /**
    * Alpaca against IBKR over the last `sessions` sessions: the signals that
    * went to both accounts, each account's pick, fill and result
    * (GET /v1/bot/compare, and the Main bot page).

@@ -120,6 +120,9 @@ test("connector: initialize, notifications and the tool list", async () => {
       "volume_bot_update_settings",
       "volume_bot_account_risk",
       "volume_bot_update_account_risk",
+      "day_review_start",
+      "day_review_get",
+      "day_review_save",
     ],
   );
   assert.equal(list.body.result.tools[0].call, undefined);
@@ -172,7 +175,7 @@ test("connector: each tool reaches its route on the trading service", async () =
     ],
   );
   assert.ok(seen.every((s) => s.auth === "Bearer service-token"));
-  assert.equal(tools.length, 12);
+  assert.equal(tools.length, 15);
 });
 
 test("connector: errors of the trading service are shown as errors", async () => {
@@ -202,4 +205,85 @@ test("connector: errors of the trading service are shown as errors", async () =>
     arguments: {},
   });
   assert.equal(unknown.body.error.code, -32602);
+});
+
+test("connector: the day review tools go to the website with its own token, never to the trader", async () => {
+  const seen: {
+    url: string;
+    method: string;
+    token: string | null;
+    body: unknown;
+  }[] = [];
+  const site = {
+    fetch: (async (input: URL, init: RequestInit) => {
+      seen.push({
+        url: String(input),
+        method: init.method ?? "GET",
+        token: new Headers(init.headers).get("X-Day-Review-Token"),
+        body: init.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return Response.json({ status: "running" });
+    }) as unknown as typeof fetch,
+  };
+  const traderFetch = (async () => {
+    throw new Error("the trader must not be called");
+  }) as unknown as typeof fetch;
+  const call = async (name: string, args: unknown, extra = {}) => {
+    const response = await handleMcp(
+      new Request("https://connector.test/mcp", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name, arguments: args },
+        }),
+      }),
+      { ...env, ...extra },
+      traderFetch,
+    );
+    return (await response.json()).result;
+  };
+  const missing = await call("day_review_get", {
+    bot: "main",
+    date: "2026-11-04",
+  });
+  assert.equal(missing.isError, true);
+  assert.match(missing.content[0].text, /not configured for the day reviews/);
+  const review = "r".repeat(40);
+  const ok = { SITE: site, DAY_REVIEW_TOKEN: review };
+  await call("day_review_start", { bot: "volume", date: "2026-11-04" }, ok);
+  await call("day_review_get", { bot: "main", date: "2026-11-04" }, ok);
+  await call(
+    "day_review_save",
+    {
+      bot: "main",
+      date: "2026-11-04",
+      verdict: "optimistic",
+      headline: "h",
+      markdown: "m",
+    },
+    ok,
+  );
+  assert.deepEqual(
+    seen.map((s) => [s.method, new URL(s.url).pathname, s.body]),
+    [
+      ["POST", "/api/day-reviews/volume/2026-11-04/start", { force: false }],
+      ["GET", "/api/day-reviews/main/2026-11-04", undefined],
+      [
+        "PUT",
+        "/api/day-reviews/main/2026-11-04/analysis",
+        {
+          analysis: {
+            verdict: "optimistic",
+            headline: "h",
+            markdown: "m",
+            differences: [],
+          },
+        },
+      ],
+    ],
+  );
+  assert.ok(seen.every((s) => s.token === review));
 });

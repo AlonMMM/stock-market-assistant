@@ -634,6 +634,21 @@ export class StrangleBot {
     await this.books.step();
   }
 
+  /**
+   * One session for the end-of-day review (GET /v1/strangle/day): its alerts
+   * and what came of each, its trades with every order and book, and the
+   * settings and stocks now (the review runs the same evening).
+   */
+  dayRecords(day: string) {
+    return {
+      day,
+      settings: this.settings(),
+      watching: this.symbols,
+      signals: this.o.store.signals(day),
+      trades: this.o.store.dayTrades(day),
+    };
+  }
+
   /** A day's fired 10-second alerts and alert books, for the website's backtest data (read-only). */
   alertData(day: string): {
     day: string;

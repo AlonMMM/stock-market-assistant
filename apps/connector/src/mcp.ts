@@ -10,6 +10,11 @@ export interface ConnectorEnv {
   MCP_TOKEN?: string;
   TRADER_URL?: string;
   TRADER_TOKEN?: string;
+  // The website, through a service binding (wrangler.connector.jsonc), for
+  // the end-of-day reviews; DAY_REVIEW_TOKEN is the site's credential for
+  // them (the same secret on both Workers).
+  SITE?: { fetch: typeof fetch };
+  DAY_REVIEW_TOKEN?: string;
 }
 
 interface Tool {
@@ -18,8 +23,10 @@ interface Tool {
   description: string;
   inputSchema: object;
   annotations: { readOnlyHint: boolean; destructiveHint?: boolean };
+  // Where the call goes: the trading service (default) or the website.
+  target?: "site";
   call: (args: Record<string, unknown>) => {
-    method: "GET" | "POST";
+    method: "GET" | "POST" | "PUT";
     path: string;
     body?: unknown;
   };
@@ -278,6 +285,134 @@ export const tools: Tool[] = [
       body: args.changes,
     }),
   },
+  // The end-of-day review (the user, 2026-11-05; the end-of-day skill): the
+  // app's backtest of a session against the live trades, on the website.
+  {
+    name: "day_review_start",
+    title: "Start a bot's end-of-day review",
+    description:
+      "Starts the end-of-day review of one bot for one closed session: the app's backtest of that day on the live settings and stocks, run on the website's job queue, then compared with the live trades trade by trade. Returns the review (status running, compared or failed). A review already started is returned as it is unless force is true (rerun it, for example after a trade held overnight was sold). Changes no order, setting or position.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        bot: { type: "string", enum: ["main", "volume"] },
+        date: { type: "string", description: "The session, YYYY-MM-DD" },
+        force: { type: "boolean" },
+      },
+      required: ["bot", "date"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    target: "site",
+    call: (args) => ({
+      method: "POST",
+      path: `/api/day-reviews/${String(args.bot)}/${String(args.date)}/start`,
+      body: { force: args.force === true },
+    }),
+  },
+  {
+    name: "day_review_get",
+    title: "Read a bot's end-of-day review",
+    description:
+      "One bot's end-of-day review of a session: status (running until the backtest is done, then compared), the comparison (each live trade beside the backtest's: entry time, entry and exit prices paper and real, returns, dollar gap, one-sided trades with why) with its summary and verdict, and the saved analysis if any.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        bot: { type: "string", enum: ["main", "volume"] },
+        date: { type: "string", description: "The session, YYYY-MM-DD" },
+      },
+      required: ["bot", "date"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+    target: "site",
+    call: (args) => ({
+      method: "GET",
+      path: `/api/day-reviews/${String(args.bot)}/${String(args.date)}`,
+    }),
+  },
+  {
+    name: "day_review_save",
+    title: "Save a bot's end-of-day analysis",
+    description:
+      "Saves the written analysis of a compared review on the bot's Analyse page in the app, replacing the one there: verdict (optimistic, pessimistic, on target or no trades: was the backtest too optimistic or too pessimistic against the live trades at real prices), a one-sentence headline and the analysis in markdown.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        bot: { type: "string", enum: ["main", "volume"] },
+        date: { type: "string", description: "The session, YYYY-MM-DD" },
+        verdict: {
+          type: "string",
+          enum: ["optimistic", "pessimistic", "on target", "no trades"],
+        },
+        headline: { type: "string" },
+        markdown: { type: "string" },
+        differences: {
+          type: "array",
+          description:
+            "Every difference between the bot and the backtest and its cause, shown as cards on the page: class (live bug, backtest bug, pick, data, expected, unknown), title (a few words), why (one or two plain sentences), evidence (the record or file:line), action (what to do), symbols (the stocks).",
+          items: {
+            type: "object",
+            properties: {
+              class: {
+                type: "string",
+                enum: [
+                  "live bug",
+                  "backtest bug",
+                  "pick",
+                  "data",
+                  "expected",
+                  "unknown",
+                ],
+              },
+              title: { type: "string" },
+              why: { type: "string" },
+              evidence: { type: "string" },
+              action: { type: "string" },
+              symbols: { type: "array", items: { type: "string" } },
+              accounts: {
+                type: "array",
+                items: { type: "string", enum: ["alpaca", "ibkr"] },
+                description:
+                  "The Main bot's accounts it concerns; leave empty when it concerns every account.",
+              },
+            },
+            required: [
+              "class",
+              "title",
+              "why",
+              "evidence",
+              "action",
+              "symbols",
+            ],
+          },
+        },
+      },
+      required: [
+        "bot",
+        "date",
+        "verdict",
+        "headline",
+        "markdown",
+        "differences",
+      ],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    target: "site",
+    call: (args) => ({
+      method: "PUT",
+      path: `/api/day-reviews/${String(args.bot)}/${String(args.date)}/analysis`,
+      body: {
+        analysis: {
+          verdict: args.verdict,
+          headline: args.headline,
+          markdown: args.markdown,
+          differences: args.differences ?? [],
+        },
+      },
+    }),
+  },
 ];
 
 const versions = ["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -297,6 +432,57 @@ interface Rpc {
   params?: Record<string, unknown>;
 }
 
+/** A website tool (the day reviews), through the service binding. */
+async function callSite(
+  tool: Tool,
+  method: string,
+  path: string,
+  body: unknown,
+  env: ConnectorEnv,
+) {
+  const text = (value: unknown, isError: boolean) => ({
+    content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
+    isError,
+  });
+  if (!env.SITE || !env.DAY_REVIEW_TOKEN)
+    return text(
+      { error: "The website is not configured for the day reviews" },
+      true,
+    );
+  let response: Response;
+  try {
+    response = await env.SITE.fetch(new URL(path, "https://site.internal"), {
+      method,
+      headers: {
+        "X-Day-Review-Token": env.DAY_REVIEW_TOKEN,
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: AbortSignal.timeout(60000),
+    });
+  } catch {
+    return text(
+      { error: `The website could not be reached for ${tool.name}.` },
+      true,
+    );
+  }
+  const raw = await response.text();
+  let answer: unknown;
+  try {
+    answer = JSON.parse(raw);
+  } catch {
+    answer = { error: `HTTP ${response.status}`, body: raw.slice(0, 300) };
+  }
+  if (response.ok) return text(answer, false);
+  return text(
+    {
+      ...(answer && typeof answer === "object" ? answer : { error: answer }),
+      httpStatus: response.status,
+    },
+    true,
+  );
+}
+
 async function callTool(
   params: Record<string, unknown>,
   env: ConnectorEnv,
@@ -312,9 +498,10 @@ async function callTool(
     content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
     isError,
   });
+  const { method, path, body } = tool.call(args);
+  if (tool.target === "site") return callSite(tool, method, path, body, env);
   if (!env.TRADER_URL || !env.TRADER_TOKEN)
     return text({ error: "The trading service is not configured" }, true);
-  const { method, path, body } = tool.call(args);
   let response: Response;
   try {
     response = await fetcher(new URL(path, env.TRADER_URL), {

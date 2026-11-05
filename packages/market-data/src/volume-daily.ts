@@ -82,6 +82,21 @@ export async function syncVolumeDay(o: {
   if (close === null) return "not a session";
   if (minute < close + afterClose) return "not yet";
   if (await o.store.daySynced(date)) return "done";
+  return syncVolumeDate(o, date);
+}
+
+/**
+ * One session's data now, whatever the time (the end-of-day review reads it
+ * from 16:05 New York, before the scheduled step's 16:20); a line for the log.
+ */
+export async function syncVolumeDate(
+  o: {
+    trader: { url?: string; token?: string };
+    store: VolumeDataStore;
+    fetcher?: typeof fetch;
+  },
+  date: string,
+): Promise<string> {
   if (!o.trader.url || !o.trader.token) return "the trader is not configured";
   const url = new URL("/v1/strangle/alert-data", o.trader.url);
   url.searchParams.set("day", date);

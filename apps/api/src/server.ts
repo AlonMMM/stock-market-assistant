@@ -16,6 +16,7 @@ import { BacktestJobs } from "../../../packages/market-data/src/backtest-jobs.js
 import { D1SymbolList } from "../../../packages/market-data/src/backtest-symbols.js";
 import { D1Watchlists } from "../../../packages/market-data/src/watchlists.js";
 import { buildApp } from "./app.js";
+import { D1DayReviews } from "../../../packages/market-data/src/day-review.js";
 import { getPorts } from "../../../packages/config/src/ports.js";
 
 // Local bar cache (ignored by Git under data/local).
@@ -39,6 +40,7 @@ const app = buildApp(true, {
   symbols: new D1SymbolList(db),
   watchlists: new D1Watchlists(db),
   priceAlerts: new D1PriceAlerts(db),
+  dayReviews: new D1DayReviews(db),
 });
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {

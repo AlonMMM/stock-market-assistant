@@ -122,6 +122,9 @@
   --tag-past-dot: #8b4fd8;
   --tag-week-dot: #2f74d0;
   --tag-news-dot: #d6338a;
+  /* The Analyse page: the bot and its backtest (dataviz palette slots 1-2, validated light and dark). */
+  --dr-bot: #2a78d6;
+  --dr-bt: #eb6834;
 }
 :root.dark {
   color-scheme: dark;
@@ -242,6 +245,8 @@
   --tag-past-dot: #b388ff;
   --tag-week-dot: #5c9dff;
   --tag-news-dot: #ff6fb5;
+  --dr-bot: #3987e5;
+  --dr-bt: #d95926;
 }
 :root {
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
@@ -9508,4 +9513,630 @@ i.added {
 }
 .pos-name .stock-tags.block {
   margin-top: 2px;
+}
+
+/* The Analyse page: the end-of-day reviews (DayReviews.tsx). The bot is
+   --dr-bot (solid), its backtest --dr-bt (dashed). */
+.dr-page {
+  display: grid;
+  /* A wide table scrolls in its own box instead of widening the page. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+.dr-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dr-seg {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--gray-75b);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.dr-seg button {
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--gray-75b);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.dr-seg button:hover {
+  color: inherit;
+}
+.dr-seg button[aria-pressed="true"] {
+  background: var(--gray-27);
+  color: var(--on-ink);
+}
+.dr-summary {
+  display: grid;
+  gap: 16px;
+}
+.dr-summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.dr-summary-head h3 {
+  margin: 0;
+}
+.dr-summary-head p {
+  margin: 2px 0 0;
+}
+/* The figures: one row of cells split by hairlines; label, value, caption. */
+.dr-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  margin: 0;
+  border-block: 1px solid var(--bot-line);
+}
+.dr-kpis > div {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  padding: 12px 16px;
+  box-shadow: -1px 0 0 var(--bot-line);
+}
+.dr-kpis > div:first-child {
+  padding-left: 0;
+  box-shadow: none;
+}
+.dr-kpis dt,
+.dr-strip dt {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gray-75b);
+  white-space: nowrap;
+}
+.dr-kpis dd {
+  margin: 0;
+}
+.dr-kpis dd.num {
+  font-size: 1.5rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.dr-cap {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--gray-75b);
+}
+/* The days' verdicts as one bar split by count. */
+.dr-vbar-wrap {
+  display: grid;
+  gap: 8px;
+  padding-top: 6px;
+}
+.dr-vbar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.dr-vbar span,
+.dr-vbar-key i {
+  background: var(--gray-75b);
+}
+.dr-vbar .red,
+.dr-vbar-key i.red {
+  background: var(--red-41b);
+}
+.dr-vbar .amber,
+.dr-vbar-key i.amber {
+  background: var(--orange-44);
+}
+.dr-vbar .green,
+.dr-vbar-key i.green {
+  background: var(--green-39);
+}
+.dr-vbar-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.76rem;
+  color: var(--gray-75b);
+}
+.dr-vbar-key i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 2px;
+}
+.dr-vbar-key .num {
+  color: var(--gray-27);
+  font-weight: 650;
+}
+.dr-bugs {
+  color: var(--red-41b);
+  font-weight: 650;
+}
+.dr-key {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  margin-right: 2px;
+  vertical-align: middle;
+  border-top: 2px solid;
+}
+.dr-key.bot {
+  border-top-color: var(--dr-bot);
+}
+.dr-key.bt {
+  border-top-color: var(--dr-bt);
+}
+.dr-key.dashed {
+  border-top-style: dashed;
+}
+.dr-key.band {
+  height: 8px;
+  border: 0;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.18;
+}
+.dr-perf {
+  position: relative;
+}
+.dr-perf svg,
+.dr-mini svg {
+  display: block;
+  max-width: 100%;
+  touch-action: pan-y;
+}
+.dr-axis {
+  fill: var(--gray-75b);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.dr-end {
+  fill: currentColor;
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.dr-end-name {
+  fill: var(--gray-75b);
+  font-size: 11px;
+  font-weight: 600;
+}
+.dr-grid {
+  stroke: var(--gray-75b);
+  stroke-opacity: 0.18;
+}
+.dr-zero {
+  stroke: var(--gray-75b);
+  stroke-opacity: 0.6;
+}
+.dr-cross {
+  stroke: currentColor;
+  stroke-opacity: 0.35;
+}
+.dr-hover-col {
+  fill: currentColor;
+  fill-opacity: 0.05;
+}
+.dr-band {
+  fill: currentColor;
+  fill-opacity: 0.06;
+}
+.dr-line-bot,
+.dr-line-bt {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.dr-line-bot {
+  stroke: var(--dr-bot);
+}
+.dr-line-bt {
+  stroke: var(--dr-bt);
+  stroke-dasharray: 6 4;
+}
+.dr-dot-bot,
+.dr-dot-bt {
+  stroke: var(--bot-card);
+  stroke-width: 2;
+}
+.dr-dot-bot {
+  fill: var(--dr-bot);
+}
+.dr-dot-bt {
+  fill: var(--dr-bt);
+}
+/* The day under the pointer, beside it. */
+.dr-tooltip {
+  position: absolute;
+  top: 8px;
+  z-index: 2;
+  min-width: 230px;
+  padding: 10px 12px;
+  border: 1px solid var(--bot-line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--gray-27) 14%, transparent);
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+.dr-tooltip[hidden] {
+  display: none;
+}
+.dr-tooltip-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.dr-tooltip-head .dr-tag {
+  margin: 0;
+}
+.dr-tooltip table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.dr-tooltip th,
+.dr-tooltip td {
+  padding: 2px 0 2px 12px;
+  font-weight: 500;
+  text-align: right;
+  white-space: nowrap;
+}
+.dr-tooltip th:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+.dr-tooltip thead th {
+  font-size: 0.68rem;
+  color: var(--gray-75b);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dr-tooltip-gap > * {
+  border-top: 1px solid var(--bot-line);
+  font-weight: 650;
+}
+.dr-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+}
+.dr-h {
+  margin: 4px 0 8px;
+}
+/* The ledgers: the days, a day's trades, a trade's fills. Numbers right
+   aligned in tabular figures; the bot's and the backtest's columns marked by a
+   rule of their colour under the header, never by coloured text. */
+.dr-ledger-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--gray-75b);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.dr-ledger {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+.dr-ledger th,
+.dr-ledger td {
+  padding: 7px 6px;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+  border-bottom: 1px solid color-mix(in srgb, var(--gray-75b) 45%, transparent);
+}
+.dr-ledger .num {
+  text-align: right;
+}
+.dr-ledger thead th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--gray-75b);
+  background: var(--gray-97);
+}
+.dr-ledger .dr-groups th {
+  padding-bottom: 0;
+  border-bottom: 0;
+  text-align: center;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+}
+.dr-ledger .dr-groups th:not(:empty) {
+  border-left: 1px solid color-mix(in srgb, var(--gray-75b) 45%, transparent);
+}
+.dr-ledger thead th.bot {
+  box-shadow: inset 0 -2px 0 var(--dr-bot);
+}
+.dr-ledger thead th.bt {
+  box-shadow: inset 0 -2px 0 var(--dr-bt);
+}
+.dr-ledger tbody th {
+  font-weight: 400;
+}
+.dr-ledger tfoot th,
+.dr-ledger tfoot td {
+  font-weight: 600;
+  border-bottom: 0;
+  background: var(--gray-97);
+}
+.dr-ledger-row.open > * {
+  background: var(--gray-97);
+}
+.dr-ledger-detail > td {
+  padding: 0 0 12px;
+  white-space: normal;
+  background: var(--gray-97);
+}
+.dr-row-toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dr-chevron {
+  display: inline-block;
+  width: 0.7em;
+  color: var(--gray-75b);
+  transition: transform 0.15s;
+}
+[aria-expanded="true"] > .dr-chevron {
+  transform: rotate(90deg);
+}
+.dr-sub {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--gray-75b);
+}
+.dr-other {
+  font-weight: 600;
+  color: inherit;
+}
+.dr-delta {
+  color: inherit;
+}
+.dr-gap {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-weight: 600;
+}
+.dr-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.dr-dot.bot {
+  background: var(--dr-bot);
+}
+.dr-dot.bt {
+  background: var(--dr-bt);
+}
+.dr-tag {
+  display: inline-block;
+  margin: 0 4px 2px 0;
+  padding: 1px 6px;
+  border: 1px solid var(--gray-75b);
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.dr-tag.red {
+  background: var(--red-95);
+  border-color: var(--red-81);
+  color: var(--red-41b);
+}
+.dr-tag.amber {
+  background: var(--amber-96);
+  border-color: var(--amber-83);
+  color: var(--orange-44);
+}
+.dr-tag.green {
+  background: var(--gray-96);
+  border-color: var(--green-85);
+  color: var(--green-39);
+}
+.dr-tag.grey {
+  color: var(--gray-75b);
+}
+.dr-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+.dr-day-section {
+  padding: 14px;
+  border: 1px solid var(--gray-27);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.dr-day-section .dr-h {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 0;
+}
+.dr-day-section .dr-ledger-wrap {
+  background: var(--surface);
+}
+.dr-headline {
+  margin: 0;
+  font-weight: 600;
+}
+.dr-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  margin: 0;
+  border: 1px solid var(--gray-75b);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.dr-strip > div {
+  padding: 10px 12px;
+  box-shadow:
+    inset -1px 0 0 color-mix(in srgb, var(--gray-75b) 60%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--gray-75b) 60%, transparent);
+}
+.dr-strip dd.dr-cap {
+  font-size: 0.74rem;
+  font-weight: 400;
+}
+.dr-strip dd {
+  margin: 2px 0 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.dr-trade-detail {
+  display: grid;
+  gap: 10px;
+  padding: 10px 14px 0 34px;
+}
+.dr-why {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0;
+  max-width: 80ch;
+}
+.dr-fills {
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+.dr-fills th,
+.dr-fills td {
+  padding: 4px 12px 4px 0;
+  text-align: left;
+  white-space: nowrap;
+}
+.dr-fills th {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--gray-75b);
+}
+.dr-fills .num {
+  text-align: right;
+}
+.dr-trade-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.dr-causes-table {
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.dr-causes-table th,
+.dr-causes-table td {
+  padding: 5px 12px 5px 0;
+  text-align: left;
+  vertical-align: baseline;
+}
+.dr-causes-table th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dr-stock {
+  fill: none;
+  stroke: var(--gray-75b);
+  stroke-width: 1.5;
+}
+.dr-mark {
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+.dr-mark.bot {
+  fill: var(--dr-bot);
+}
+.dr-mark.bt {
+  fill: none;
+  stroke: var(--dr-bt);
+  stroke-width: 2;
+}
+.dr-analysis h5 {
+  margin: 12px 0 4px;
+}
+.dr-analysis p,
+.dr-analysis ul {
+  margin: 4px 0;
+}
+@media (max-width: 640px) {
+  .dr-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dr-kpis li:last-child {
+    grid-column: 1 / -1;
+  }
+  /* The trade (or day) column stays while the numbers scroll sideways. */
+  .dr-ledger > tbody > tr > th,
+  .dr-ledger > thead > tr:last-child > th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--surface);
+  }
+  .dr-trade-detail {
+    padding-left: 14px;
+  }
+  .dr-causes-table,
+  .dr-causes-table tbody,
+  .dr-causes-table tr,
+  .dr-causes-table th,
+  .dr-causes-table td {
+    display: block;
+  }
+  .dr-causes-table tr {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--gray-75b);
+  }
+  .dr-causes-table th {
+    white-space: normal;
+  }
+  .dr-day-section {
+    padding: 10px;
+  }
+}
+@media (max-width: 560px) {
+  /* The figures two by two: no side rules, each cell from the left edge. */
+  .dr-kpis {
+    grid-template-columns: 1fr 1fr;
+    gap: 0 16px;
+  }
+  .dr-kpis > div,
+  .dr-kpis > div:first-child {
+    padding: 10px 0;
+    box-shadow: none;
+  }
+  .dr-kpis dd.num {
+    font-size: 1.25rem;
+  }
 }

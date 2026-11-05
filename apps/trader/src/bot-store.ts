@@ -306,6 +306,15 @@ export class BotStore {
     ).map((r) => JSON.parse(r.data) as BotPosition);
   }
 
+  /** The positions entered on `day`, open or closed (the day review). */
+  dayPositions(day: string): BotPosition[] {
+    return (
+      this.db
+        .prepare("SELECT id, data FROM bot_positions WHERE day = ? ORDER BY id")
+        .all(day) as unknown as PositionRow[]
+    ).map((r) => JSON.parse(r.data) as BotPosition);
+  }
+
   setting(name: string): string | undefined {
     const row = this.db
       .prepare("SELECT value FROM bot_settings WHERE name = ?")
