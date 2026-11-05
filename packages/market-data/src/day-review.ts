@@ -530,8 +530,11 @@ function pairUp<
   for (const l of [...live].sort((a, b) => a.at - b.at)) {
     let best: B | null = null;
     for (const b of bt) {
-      if (b.symbol !== l.symbol || b.right !== l.right || b.kind !== l.kind)
-        continue;
+      if (b.symbol !== l.symbol || b.right !== l.right) continue;
+      // A pyramid add pairs only with an add; a first entry pairs with a
+      // first entry whatever each side called it (live's plain entry was the
+      // backtest's D2 entry on GOOGL 2026-11-04).
+      if ((b.kind === "pyramid") !== (l.kind === "pyramid")) continue;
       if (Math.abs(b.at - l.at) > window) continue;
       if (usedBy.get(b)?.has(l.broker ?? "")) continue;
       if (!best || Math.abs(b.at - l.at) < Math.abs(best.at - l.at)) best = b;

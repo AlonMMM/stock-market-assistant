@@ -381,6 +381,53 @@ test("day review: the Volume bot's trades are matched by stock, side and alert t
   assert.equal(c.summary.verdict, "on target");
 });
 
+test("day review: a plain live entry pairs with the backtest's D2 entry, a pyramid add only with an add", () => {
+  const live = mainLive();
+  live.positions = [live.positions[0]!];
+  const steps = [
+    {
+      date: day,
+      minute: 29,
+      kind: "buy",
+      share: 1,
+      price: 1.0,
+      reason: "entry",
+    },
+    {
+      date: day,
+      minute: 80,
+      kind: "sell",
+      share: 1,
+      price: 1.5,
+      reason: "check-10",
+    },
+  ] as SimTrade["steps"];
+  const d2 = simTrade({
+    symbol: "NVDA",
+    right: "C",
+    minute: 29,
+    bonus: true,
+    steps,
+  });
+  const job = mainJob(live, day);
+  assert.equal(
+    compareMain(live, runAccount([d2], job.money), [], 1).rows[0]!.match,
+    "both",
+  );
+  const add = simTrade({
+    symbol: "NVDA",
+    right: "C",
+    minute: 29,
+    pyramid: true,
+    steps,
+  });
+  const rows = compareMain(live, runAccount([add], job.money), [], 1).rows;
+  assert.deepEqual(rows.map((r) => r.match).sort(), [
+    "backtest-only",
+    "live-only",
+  ]);
+});
+
 test("day review: an analysis is checked before it is kept", () => {
   assert.equal(
     typeof parseAnalysis({ verdict: "maybe", headline: "x", markdown: "y" }, 1),
