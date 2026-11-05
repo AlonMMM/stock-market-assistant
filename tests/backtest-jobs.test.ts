@@ -326,6 +326,32 @@ test("every run is kept and listed a page at a time, newest first", async () => 
   assert.equal(await jobs.count("me@x", "volume"), 1);
 });
 
+test("a run's result in short is kept and comes back in the list", async () => {
+  const jobs = new BacktestJobs(new SqliteD1(":memory:"));
+  const id = await jobs.create(parseJobSpec(spec), "me@x", 1000);
+  const call = (owner: string, body: unknown) =>
+    handleBacktestJobs({
+      method: "POST",
+      path: `/api/backtest-jobs/${id}/summary`,
+      query: {},
+      body,
+      owner,
+      jobs,
+      start: async () => {},
+    });
+  assert.equal((await jobs.list("me@x", "main"))[0]!.summary, null);
+  const summary = { v: 1, returnPct: 12.5, trades: 40 };
+  assert.equal((await call("me@x", { summary })).status, 200);
+  assert.deepEqual((await jobs.list("me@x", "main"))[0]!.summary, summary);
+  // Only its owner keeps one, and only a small object.
+  assert.equal((await call("other@x", { summary })).status, 404);
+  assert.equal((await call("me@x", { summary: [1] })).status, 400);
+  assert.equal(
+    (await call("me@x", { summary: { x: "a".repeat(3000) } })).status,
+    400,
+  );
+});
+
 test("a run's summary counts its finished and failed parts", async () => {
   const jobs = new BacktestJobs(new SqliteD1(":memory:"));
   const id = await jobs.create(parseJobSpec(spec), "", 1000);

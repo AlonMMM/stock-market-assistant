@@ -12,6 +12,8 @@
 //   backtest_jobs        one row a run: who, which bot, its setup, its state
 //   backtest_job_parts   one row a part: its request, state, error, times
 //   backtest_job_results each finished part's response (gzipped, D1Blobs)
+//   backtest_job_summaries a finished run's result in short, as the page
+//                        worked it out, for its History row
 import type { D1Like } from "./bar-cache.js";
 import { D1Blobs } from "./result-cache.js";
 
@@ -59,6 +61,8 @@ export interface JobSummary {
   createdAt: number;
   updatedAt: number;
   meta: unknown;
+  // The result in short, saved by the page once it read the run (null before).
+  summary: unknown;
 }
 
 /** What GET /api/backtest-jobs/:id returns. */
@@ -83,6 +87,7 @@ export interface JobView {
 export const maxJobParts = 1000;
 const maxMetaChars = 64_000;
 const maxBodyChars = 64_000;
+const maxSummaryChars = 2_000;
 // A part claimed this long ago and not finished is taken to be lost (its
 // worker died) and is sent again; a queue consumer may run 15 minutes.
 export const staleClaimMs = 16 * 60_000;
@@ -191,6 +196,10 @@ export class BacktestJobs {
           "symbol TEXT NOT NULL, from_date TEXT NOT NULL, to_date TEXT NOT NULL, " +
           "state TEXT NOT NULL, error TEXT, claimed_at INTEGER, done_at INTEGER, " +
           "PRIMARY KEY (job_id, idx))",
+      ),
+      this.db.prepare(
+        "CREATE TABLE IF NOT EXISTS backtest_job_summaries (job TEXT PRIMARY KEY, " +
+          "summary TEXT NOT NULL, stored_at INTEGER NOT NULL)",
       ),
     ]);
     this.ready = true;
@@ -315,10 +324,11 @@ export class BacktestJobs {
     await this.init();
     const { results } = await this.db
       .prepare(
-        "SELECT j.id, j.bot, j.status, j.total, j.meta, j.created_at, j.updated_at, " +
+        "SELECT j.id, j.bot, j.status, j.total, j.meta, j.created_at, j.updated_at, s.summary, " +
           "(SELECT COUNT(*) FROM backtest_job_parts p WHERE p.job_id = j.id AND p.state != 'pending') AS done, " +
           "(SELECT COUNT(*) FROM backtest_job_parts p WHERE p.job_id = j.id AND p.state = 'failed') AS failed " +
-          "FROM backtest_jobs j WHERE j.owner = ? AND j.bot = ? ORDER BY j.created_at DESC LIMIT ? OFFSET ?",
+          "FROM backtest_jobs j LEFT JOIN backtest_job_summaries s ON s.job = j.id " +
+          "WHERE j.owner = ? AND j.bot = ? ORDER BY j.created_at DESC LIMIT ? OFFSET ?",
       )
       .bind(owner, bot, limit, offset)
       .all<{
@@ -329,6 +339,7 @@ export class BacktestJobs {
         meta: string;
         created_at: number;
         updated_at: number;
+        summary: string | null;
         done: number;
         failed: number;
       }>();
@@ -342,7 +353,19 @@ export class BacktestJobs {
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at),
       meta: JSON.parse(r.meta),
+      summary: r.summary ? JSON.parse(r.summary) : null,
     }));
+  }
+
+  /** Keeps a run's result in short (the page works it out from the run). */
+  async saveSummary(id: string, summary: unknown, now = Date.now()) {
+    await this.init();
+    await this.db
+      .prepare(
+        "INSERT OR REPLACE INTO backtest_job_summaries (job, summary, stored_at) VALUES (?, ?, ?)",
+      )
+      .bind(id, JSON.stringify(summary), now)
+      .run();
   }
 
   /** How many runs of a bot the person has. */
@@ -548,6 +571,7 @@ export async function runParts(
  *   GET  /api/backtest-jobs/latest?bot=main the caller's latest run → JobView (404: none)
  *   GET  /api/backtest-jobs/:id?since=ms    JobView with parts finished since then
  *   POST /api/backtest-jobs/:id/stop        → JobView
+ *   POST /api/backtest-jobs/:id/summary     { summary } → { saved }, the run's result in short
  */
 export async function handleBacktestJobs(o: {
   method: string;
@@ -620,6 +644,24 @@ export async function handleBacktestJobs(o: {
     if (o.method !== "GET") return allow("GET");
     const view = await jobs.view(first, sinceOf(o.query));
     return { status: 200, body: view };
+  }
+  if (second === "summary" && rest.length === 2) {
+    if (o.method !== "POST") return allow("POST");
+    const summary = (o.body as { summary?: unknown } | null)?.summary;
+    const text = JSON.stringify(summary ?? null);
+    const isObject =
+      typeof summary === "object" &&
+      summary !== null &&
+      !Array.isArray(summary);
+    if (!isObject || text.length > maxSummaryChars)
+      return {
+        status: 400,
+        body: {
+          error: `summary must be an object under ${maxSummaryChars} characters`,
+        },
+      };
+    await jobs.saveSummary(first, summary, now);
+    return { status: 200, body: { saved: true } };
   }
   if (second === "stop" && rest.length === 2) {
     if (o.method !== "POST") return allow("POST");
