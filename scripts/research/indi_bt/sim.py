@@ -519,6 +519,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                     if want > 1 - rem + 1e-9: pending = (want - (1 - rem), "BD_" + BD["ref"]); continue
             if carry_day and t < X["morning_minute"]: continue
             c = b[4]; peak = max(peak, c); g = c / basis - 1
+            if k == 0: st["c_day0"] = c
             stall = sd.ok and t - sd.last_ext[min(t, 389)] >= X["stall_min"]
             rsd = sd.ok and (sd.rs[min(t, 389)] or 0) <= X["rs_drop"]
             if carry_day and k == 1 and "morning" not in st:
@@ -546,6 +547,18 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                     z = bet * (px / p0 - 1) / um
                     want = max((sh for lv, sh in BM["entry"] if z >= lv), default=0)
                     if want > 1 - rem + 1e-9: pending = (want - (1 - rem), "BM_entry"); continue
+            DL2 = X.get("day2_ladder")  # dte1_day2.py (the user 2026-11-05: "The rule is only on the secod day only. not on the
+            # fiest. second day start from 0. so if we're up 400% on forst day, second day start is 0% no meatter what happen
+            # before"): the second session held, after the morning sale; gains count from `ref` ("0940": the option at the
+            # first bar after the morning sale; "night": the last bar of the day before); {steps: [[gain, share], ...]}: `share`
+            # of what was held when the ladder started, sold by then; {arm, trail}: then all out `trail` under the day's best
+            # since the start, once up `arm` (arm 0 = from the start)
+            if DL2 and k == 1 and st.get("morning"):
+                if "d2" not in st: st["d2"] = dict(ref=c if DL2.get("ref", "0940") == "0940" else st.get("c_day0", c), rem=rem, peak=c)
+                z = st["d2"]; z["peak"] = max(z["peak"], c); best = z["peak"] / z["ref"] - 1
+                want = max((sh for gn, sh in DL2.get("steps", []) if best >= gn), default=0) * z["rem"]
+                if want > z["rem"] - rem + 1e-9: pending = (want - (z["rem"] - rem), "D2_step"); continue
+                if "trail" in DL2 and best >= DL2.get("arm", 0) and c <= z["peak"] * (1 - DL2["trail"]): pending = ("all", "D2_trail"); continue
             NT = X.get("night_trail")  # carried days, after the morning sale: the rest out `NT` under the option's high since then
             if NT and carry_day and st.get("morning"):
                 st["npeak"] = max(st.get("npeak", c), c)

@@ -291,6 +291,30 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### The ladder and a trail on the second day only, from zero (2026-11-05, not better: the ladder is a tie on 0-2 trades; the trails lose the check)
+
+The user, after the 1DTE charts (2.10 holds a 1DTE winner overnight into its expiry day): "The rule is only on the secod
+day only. not on the fiest. second day start from 0. so if we're up 400% on forst day, second day start is 0% no meatter
+what happen before"; then "can you do 'Et: only a 30% trail from 09:40' only on the second day? and do it also on all
+other not only 0dte". `dte1_day2.py` on 2.10 (reproduced to the dollar), sim.py `day2_ladder` (new): the second session
+held, after the 09:40 morning sale, gains counted from zero. Set before running: on 1DTE legs E the user's (25% of what
+is left at +150%, 25% more at +300%, then 30% under the day's best; zero = the first bar after the morning sale), En
+(zero = the day before's last price), E50 (+50% / +100%), Et a 30% trail only, Et40 a 40% trail; on every leg held into
+a second day Xt / Xt40. Pick per group (money >= 0.98, then the win rate, a tie -> more money; the first run had no
+tie-break and picked E, so it was run again with Et's check). Look 3 of the 1DTE idea.
+
+| 2%, vs 2.10 (fair / Favorites) | Tune | Check | Changed (tune / check, fair) |
+|---|---|---|---|
+| E (the user's ladder, 1DTE) | 1.000 / 1.000 | 1.011 / 1.011 | 0 / 2 (ORCL 2025-07-02, QCOM 2026-05-07) |
+| En / E50 | 0.992 / 0.992 · 1.000 / 1.000 | - | 1 / - · 0 / - |
+| Et 🎯 (30% trail, 1DTE) / Et40 | 1.034 / 1.029 · 1.030 / 1.021 | Et **0.889 / 0.936** | 2 / 7 |
+| Xt (30% trail, every carried leg) / Xt40 🎯 (fallback) | 0.915 / 0.890 · 0.984 / 0.954 | Xt40 **0.697 / 0.755** | 21 / 16 |
+
+No candidate. From zero on the expiry day an option rarely makes another +150%, so the user's ladder fires twice in 2.5
+years (+1.1% on check, a tie). A trail from 09:40 sells the second day's first 30-40% dip, and on the second day the
+carried winners swing that much before their run (the 7 check 1DTE giants: AMD, ORCL, COIN, QCOM cut); on every
+carried leg it costs 25-30% on check. The win rate does not move (a carried leg is a winner already).
+
 ### The user's 1DTE ladder: 25% at +150%, 25% at +300%, then a 30% trail (2026-11-05, not better: wins tune, loses check by more than half on the fair list)
 
 The user, after dte1_trim.py: "25% at +50%, half by +100% ... NO. go with 25% at 150%, 25% at 300% and than 30% trail".
