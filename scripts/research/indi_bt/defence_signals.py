@@ -108,6 +108,21 @@ if REL:
         RULES[f"{inner}_ra15"] = ("relv", inner, "add", 1.5)
         for lv in (125, 150, 200):
             RULES[f"{inner}_rr{lv}"] = ("relv", inner, "rel", lv / 100)
+# The volume after a flip (vol_flip.py; the user, 2026-11-05: "when T is switching from call to put, the volume stay -
+# correct?", then "try all of them"): the day volume ratio counts every share since the open, so a morning's selloff
+# volume also passes (and sizes) a later call. BT_FLIP=1 adds c_opp (the opposite side's highest t earlier today), c_rv30,
+# c_share and c_rvflip to every row, and three families on the champion's entry c12_15 and the add's base:
+#   <rule>_r30XXX    the volume of the last 30 minutes over the usual of that window >= XXX/100, instead of rv
+#   <rule>_dirXX     rv >= 1.5x and >= XX% of the volume since the open on minutes the stock moved the bet's way (stock
+#                    minus beta x SPY)
+#   <rule>_flipXX    when the opposite side's t reached XX/10 earlier today, the ratio counts from the last minute this
+#                    side's t was <= 0 (the volume since then over the usual of that span), instead of since the open
+FLIP = bool(os.environ.get("BT_FLIP"))
+if FLIP:
+    for inner in ("c12_15", "base"):
+        for lv in (125, 150, 200): RULES[f"{inner}_r30{lv}"] = ("volx", inner, "r30", lv / 100)
+        for lv in (50, 55, 60): RULES[f"{inner}_dir{lv}"] = ("volx", inner, "dir", lv / 100)
+        for lv in (10, 15, 18): RULES[f"{inner}_flip{lv}"] = ("volx", inner, "flip", lv / 10)
 SPYCUM = {}
 
 
@@ -143,7 +158,8 @@ def shock_low(rule, t, rv, e):
 
 def passes(rule, t, rv, d, e, sm=0.0, rel=None):
     """sm: SPY's move from the day before's close to this minute, on the bet's side (the "mkt" rules); rel: the volume
-    ratio over SPY's (the "relv" rules)."""
+    ratio over SPY's (the "relv" rules). A "volx" rule gets its side's own volume ratio as rv (vol_rv)."""
+    if rule[0] == "volx": return passes(RULES[rule[1]] if rule[1] in RULES else BASE_RULES[rule[1]], t, rv, d, e, sm)
     if rule[0] == "relv":
         rel_ok = rel is not None and rel >= rule[3]
         eff = 0.0
@@ -202,6 +218,13 @@ def stock(sym):
         for x in bars: vol[x[0]] = x[5]
         cum, acc = [], 0
         for x in vol: acc += x; cum.append(acc)
+        if FLIP:
+            def usual_span(a, z):   # the median volume of minutes a+1..z over the 20 sessions before
+                med = sorted(h[z] - (h[a] if a >= 0 else 0) for h in hist); k = len(med) // 2
+                return med[k] if len(med) % 2 else (med[k - 1] + med[k]) / 2
+            vbet = [0.0, 0.0]          # volume on minutes the stock beat beta x SPY (call) / lagged it (put)
+            opp = [-99.0, -99.0]       # the highest t of each side so far (call, put)
+            lowm = [0, 0]              # the last minute each side's t was <= 0
         n = s1 = s2 = 0.0
         sw = sw2 = 0.0
         # The last WINDOW minutes' defence, both sides, as rolling sums.
@@ -215,6 +238,9 @@ def stock(sym):
             if c[m] and c[m - 1] and spy[m] and spy[m - 1]:
                 rs = c[m] / c[m - 1] - 1; rp = spy[m] / spy[m - 1] - 1
                 x = rs - b_ * rp
+                if FLIP:
+                    if x > 0: vbet[0] += vol[m]
+                    elif x < 0: vbet[1] += vol[m]
                 w = 1.0
                 if VWEIGHT and umin[m] > 0:
                     w = min(VW_CAP, max(0.1, vol[m] / umin[m]))
@@ -256,6 +282,30 @@ def stock(sym):
             rel = None
             if REL and sr and sr[m]: rel = rv / sr[m]
             sm = (spy[m] / spy_prev - 1) if spy_prev and spy[m] else 0.0   # SPY since the day before's close (the "mkt" rules)
+            if FLIP:
+                # each side's flip context as of the minutes before m (the opposite side's best t, the last t <= 0)
+                ctx_c, ctx_p = (opp[1], lowm[0]), (opp[0], lowm[1])
+                if t <= 0: lowm[0] = m
+                if -t <= 0: lowm[1] = m
+                opp[0] = max(opp[0], t); opp[1] = max(opp[1], -t)
+                u30 = usual_span(m - 30, m) if m >= 30 else usual
+                rv30 = ((cum[m] - cum[m - 30]) if m >= 30 else cum[m]) / u30 if u30 else 0.0
+                tot = vbet[0] + vbet[1]
+                share = (vbet[0] / tot if tot else 0.5, vbet[1] / tot if tot else 0.5)
+
+                def flip_rv(side):
+                    o, c0 = ctx_c if side == 0 else ctx_p
+                    if c0 <= 0: return rv, o
+                    u = usual_span(c0, m)
+                    return ((cum[m] - cum[c0]) / u if u else 0.0), o
+
+                def vol_rv(rule, side):
+                    """The volume ratio a volx rule tests for a side (call 0, put 1), scaled so its pass is rv >= 1.5."""
+                    mode, lvl = rule[2], rule[3]
+                    if mode == "r30": return rv30 * RV_MIN / lvl
+                    if mode == "dir": return rv if share[side] >= lvl else 0.0
+                    f, o = flip_rv(side)
+                    return f if o >= lvl else rv
             if ALL:
                 for name in RULES:
                     if passes(RULES[name], t, rv, dsum[0], e_c, sm, rel): every[name][(date, "C")].append((m, round(t, 2)))
@@ -279,14 +329,20 @@ def stock(sym):
                                           c_d=round(d_, 2), c_e=round(e_, 2), sector="", lowered=int(low), confirm=m if not low else ""))
                     if low: pending[name] = (len(out[name]) - 1, side)
                     continue
-                if passes(RULES[name], t, rv, dsum[0], e_c, sm, rel): side, d_, e_, t_ = "C", dsum[0], e_c, t
-                elif passes(RULES[name], -t, rv, dsum[1], e_p, -sm, rel): side, d_, e_, t_ = "P", dsum[1], e_p, -t
+                rvc = rvp = rv
+                if r_[0] == "volx": rvc, rvp = vol_rv(r_, 0), vol_rv(r_, 1)
+                if passes(RULES[name], t, rvc, dsum[0], e_c, sm, rel): side, d_, e_, t_ = "C", dsum[0], e_c, t
+                elif passes(RULES[name], -t, rvp, dsum[1], e_p, -sm, rel): side, d_, e_, t_ = "P", dsum[1], e_p, -t
                 else: continue
                 left.discard(name)
                 row = dict(date=date, sym=sym, right=side, minute=m, time=f"{(570 + m) // 60:02d}:{(570 + m) % 60:02d}",
                            price=c[m], b_minute="", a_minute="", c_t=round(t_, 2), c_rvol=round(rv, 2),
                            c_d=round(d_, 2), c_e=round(e_, 2), sector="")
                 if REL: row["c_rel"] = "" if rel is None else round(rel, 3)
+                if FLIP:
+                    si = 0 if side == "C" else 1
+                    fr, o = flip_rv(si)
+                    row.update(c_opp=round(o, 2), c_rv30=round(rv30, 3), c_share=round(share[si], 3), c_rvflip=round(fr, 3))
                 out[name].append(row)
             if not left and not pending: break
     if ALL:

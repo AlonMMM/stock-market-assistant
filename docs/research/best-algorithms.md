@@ -291,6 +291,55 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### The volume after a call/put flip, on 2.10 (2026-11-05, not better; size-r30 near, fails without the best 5)
+
+The user: "when T is switching from call to put, the volume stay - correct?" (yes: rv, the volume since the open over
+its usual, is one number for both sides, so a morning's selloff volume also passes, and through 2.10's tiers sizes, a
+later call), "it can only remove trader right? not add" (no: a moved or freed signal is a new trade, and a ratio from
+a later start can be higher) and "try all of them". Not tested before; neighbours: the volume-weighted t / D2
+(2026-10-27), the volume against SPY's (rel_volume.py, 2026-11-03: size-rel near, one gate short). `vol_flip.py` on
+thin_strike.py's 2.10 walk (2.10 to the dollar; the generator, defence_signals.py BT_FLIP=1, reproduces 2,767 / 2,778
+fair and 3,331 / 3,341 Favorites entries). Levels set before running; a gate's trade keeps 2.10's size. Look 1 on the
+flip, the direction and the 30-minute volume; the size family is the third look at which volume measure sizes (rv,
+rel, now rv30).
+- recent r30-125 / 150 / 200: the last 30 minutes' volume over the usual of that window, instead of rv
+- dir50 / 55 / 60: rv >= 1.5x and >= 50 / 55 / 60% of the volume since the open on minutes the stock beat beta x SPY
+  (the bet's way)
+- flip10 / 15 / 18: when the opposite side's t reached 1.0 / 1.5 / 1.8 earlier today, the ratio counts from the last
+  minute this side's t was <= 0
+- size-r30 / size-flip: 2.10's signals, the 0.5 / 1 / 1.5 tiers on the 30-minute ratio / on the after-flip ratio
+
+**The diagnostic, 2.10's main legs by the other side's best t earlier that day** (at $10K, 1% basis): the case the user
+describes is rare. Opposite t >= 1.0: tune 8 fair / 14 Favorites, check 15 / 22 (2-4% of the trades), 0-40% winners,
+median -$2.2K to -$4.6K, no giant, -$9K to -$40K a group. Opposite t >= 1.8 (a full signal the other way): 1 / 2 / 3 / 5
+trades. The rest: never the other side ~80% (all the giants), 0 to 1.0 ~15%. So the flip costs a little, on few trades.
+
+| 2% (3%) | Tune fair | Tune Favorites | Check fair | Check Favorites | w/o best 5 tune fair / Fav; check fair / Fav |
+|---|---|---|---|---|---|
+| 2.10 | $620,535 / 16% ($794,867) | $449,178 / 14% ($546,403) | $957,771 / 24% ($1,082,694) | $226,846 / 23% ($240,889) | $138,044 / $110,057; $169,718 / $74,497 |
+| 🎯 r30-125 (recent) | $803,486 +29% / 22% | $437,118 -3% / 23% | $563,543 -41% / 40% | $175,580 -23% / 43% | |
+| r30-150 / r30-200 | -14% / -18% | -28% / -29% | - | - | |
+| dir50 / dir55 | +2% / +5% | +3% / +5% | - | - | |
+| 🎯 dir60 (dir) | $693,337 +12% / 15% | $472,866 +5% / 15% | $405,002 -58% / 27% | $154,754 -32% / 25% | $156,942 / $117,751; $83,032 / $56,327 |
+| flip10 / flip15 | +10% / +3% | -4% / -2% | - | - | |
+| 🎯 flip18 (flip) | $613,094 -1% / 15% | $444,650 -1% / 14% | $917,566 -4% / 24% | $225,241 -1% / 23% | |
+| 🎯 size-r30 (size) | $671,139 +8% / 20% ($849,481 +7%) | $489,639 +9% / 18% ($589,742 +8%) | $1,214,741 +27% / 24% ($1,459,225 +35%) | $283,668 +25% / 26% ($315,519 +31%) | $122,624 / $95,942; $211,213 / $73,491 |
+| size-flip | -2% | -1% | - | - | |
+
+- **recent (30-minute volume): no.** It about doubles the trades (1,101 vs 543 on tune fair; 698 added, median -$2.2K,
+  half of them without a real book at the buy) and loses tune on the Favorites; on check -41% / -23%, the worst drop
+  40% / 43%.
+- **dir: no.** dir50 / dir55 barely move a trade (the signals already have ~66% of the volume the bet's way, the
+  lowest 48%). dir60 removes 94 / 90 tune trades and wins tune, then on check removes 111 / 115 with 5 / 2 giants
+  (+$636K / +$115K at $10K): -58% / -32%. A giant filter, not an edge.
+- **flip: no.** The after-flip ratio adds more trades than it removes (a quiet morning, a busy turn: the ratio from the
+  cross is usually higher); flip18 changes 2-3 trades a half. The small cost the diagnostic shows is not worth a rule.
+- **size-r30: near, one gate short.** Better than 2.10 on tune and check, both lists, at 2% and 3%. But the money is
+  the giants sized up: the best 5 grow (tune fair +$1,096K vs +$936K) while the median (-$1,709 vs -$1,504) and the
+  non-giant sums (-$787K vs -$700K) get worse; without the best 5 it is worse on tune on both lists ($122,624 vs
+  $138,044; $95,942 vs $110,057) and on check Favorites ($73,491 vs $74,497), and the tune worst drop is bigger (20% /
+  18% vs 16% / 14%). The fresh 30-minute volume finds the moves that become giants more than rv does (as size-rel did),
+  but it does not make the typical trade better. Not a candidate.
 ### A third at +200% within 60 minutes, on every leg (2026-11-05, not better: +1 point of win rate for a quarter to a third of the money; the drop does not move)
 
 The user, after dte1_fast.py: "can you try to apply third at +200% within 60 min on all dte?". `all_fast.py` on 2.10
