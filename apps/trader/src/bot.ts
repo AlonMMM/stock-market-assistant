@@ -285,6 +285,18 @@ const expiryOf = (contract: string) => {
   return m ? `20${m[1]}-${m[2]}-${m[3]}` : "";
 };
 
+/**
+ * A 30-minute volume in words. Before 10:00 the window is the time since the
+ * 09:30 open (the minute's end, session minute + 1), so it says so (the
+ * owner, 2026-11-05: at 09:40 "the volume so far, e.g. the last 10 minutes").
+ */
+function volumeWords(volume: number, minute: number): string {
+  const sinceOpen = minute + 1;
+  if (sinceOpen < 30)
+    return `${volume} contracts in the ${sinceOpen} minutes since the open`;
+  return `${volume} contracts in 30 minutes`;
+}
+
 // How often the strikes kept warm are chosen again (they follow the price).
 const warmEveryMinutes = 15;
 
@@ -1071,7 +1083,7 @@ export class IndiBot {
     if (volume < pick.minVolume30)
       return this.event(
         "skip",
-        `${first.symbol} pyramid: ${this.words(contract)} ${volume} contracts in 30 minutes`,
+        `${first.symbol} pyramid: ${this.words(contract)} ${volumeWords(volume, minute)}`,
       );
     const version = versionLabel(s);
     const why = `Pyramid ${side} at ${clock(minute)}: the full signal (t ${t.toFixed(1)}) after the D2 entry at ${clock(first.entryMinute)}, which is up · ${s.pyramidSharePct}% of the size · bot ${version}`;
@@ -1372,7 +1384,7 @@ export class IndiBot {
       return {
         ...stop(
           "thin",
-          `${this.words(contract)}: ${leg.volume30} contracts in 30 minutes`,
+          `${this.words(contract)}: ${volumeWords(leg.volume30, at.minute)}`,
         ),
         ...fallback,
       };
