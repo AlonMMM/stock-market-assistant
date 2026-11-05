@@ -195,7 +195,7 @@ The backtested Indi rules trade the owner's Alpaca paper account from the tradin
   IBKR quotes are now live streams (`packages/trading/src/tws-client.ts`): the first read of a contract opens a stream
   and waits for it (up to 3 s), every later read answers at once. The bot's watched stocks stream all day, and every 15
   minutes it keeps the strikes near its pick warm, so a pick's 30-minute volume comes from the stream at once (checked
-  against IBKR's bars in the log). The line count is `IBKR_STREAM_LINES` (default 90; the owner is adding Quote Booster
+  against IBKR's bars in the log); before 10:00 it is the day's volume so far, from any stream. The line count is `IBKR_STREAM_LINES` (default 90; the owner is adding Quote Booster
   lines). See [IBKR operations](ibkr-operations.md). The contract rules are unchanged. IBKR's paper fills (slow chases, "too late to replace") are not addressed.
 - **IBKR (2026-10-24, #140 and #142 deployed):** the Bot settings page gets a Broker
   switch (Alpaca | Interactive Brokers | Both) for new entries; a position is sold where it was bought. "Both"

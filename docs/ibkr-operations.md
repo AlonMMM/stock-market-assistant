@@ -58,7 +58,10 @@ Setup:
   a strike) are read once a New York day.
 - The 30-minute volume of an IBKR pick comes from the contract's stream when the stream
   has watched the whole 30 minutes (its day volume, tick 8, now less 30 minutes ago,
-  within one New York day), at once; the bars are then asked in the background and the
+  within one New York day), at once. A window that starts before the 09:30 open is the
+  day so far (options trade from the open), so before 10:00 any stream with today's count
+  answers, even one the chain read just opened; a count seen before the open is taken as
+  nothing traded yet. The bars are then asked in the background and the
   log compares them ("stream N, bars M (differs)"). Otherwise it comes from IBKR's own
   1-minute TRADES bars (`reqHistoricalData`, 1800 S), one request per picked contract. IBKR paces
   historical requests (about 60 in 10 minutes; identical ones within 15 s), so only

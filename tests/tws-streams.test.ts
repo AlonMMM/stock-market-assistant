@@ -252,3 +252,43 @@ test("tws streams: the kept options get the lines the watched stocks leave", asy
     ["AAPL", "MSFT", "NVDA200"],
   );
 });
+
+test("tws streams: before 10:00 the 30-minute volume is the day so far, from any stream with today's count", async () => {
+  // 09:25 in New York: the stream opens before the open.
+  const nineTwentyFive = Date.parse("2026-11-05T14:25:00Z");
+  mock.timers.enable({ apis: ["Date"], now: nineTwentyFive });
+  try {
+    const { gateway, tws } = client();
+    await tws.watch([option], "options");
+    const req = gateway.reqOf("NVDA200");
+    // Before the open the count may still be the day before's.
+    gateway.emit(EventName.tickSize, req, 8, 4800);
+    mock.timers.setTime(nineTwentyFive + minutes(10)); // 09:35, nothing traded yet
+    assert.equal(tws.streamVolume(option, Date.now(), 30), 0);
+    gateway.emit(EventName.tickSize, req, 8, 120); // today's first trades
+    mock.timers.setTime(nineTwentyFive + minutes(20)); // 09:45
+    assert.equal(tws.streamVolume(option, Date.now(), 30), 120);
+    // A stream opened at 09:45 knows the day so far at once.
+    const other = { ...option, conId: 901, strike: 205 };
+    const read = tws.snapshot(other);
+    await tick();
+    gateway.emit(EventName.tickSize, gateway.reqOf("NVDA205"), 8, 75);
+    assert.equal(tws.streamVolume(other, Date.now(), 30), 75);
+    gateway.quote("NVDA205", 1, 1.1);
+    gateway.emit(
+      EventName.tickOptionComputation,
+      gateway.reqOf("NVDA205"),
+      13,
+      0,
+      0.4,
+      0.2,
+    );
+    await read;
+    // From 10:00 on, the window needs a stream that watched its start: at
+    // 10:14 it starts at 09:44, before this stream opened.
+    mock.timers.setTime(nineTwentyFive + minutes(49));
+    assert.equal(tws.streamVolume(other, Date.now(), 30), null);
+  } finally {
+    mock.timers.reset();
+  }
+});

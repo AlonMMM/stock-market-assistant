@@ -19,6 +19,7 @@ import type {
   IbSnapshot,
   TwsClient,
 } from "./ibkr-trading.js";
+import { newYorkToUtc } from "../../market-data/src/calendar.js";
 
 // `TwsClient` over @stoqey/ib's event API: one socket to the IB Gateway on
 // Railway's private network (docs/ibkr-operations.md). Each request waits for
@@ -483,18 +484,27 @@ export class StoqeyTws implements TwsClient {
 
   /**
    * Contracts traded in the `minutes` up to `end` (ms), from the contract's
-   * stream: its day volume at `end` less the one at the window's start.
-   * Null when no stream has watched the whole window (then ask the history).
+   * stream: its day volume at `end` less the one at the window's start. A
+   * window that starts before the 09:30 open is the whole day so far, since
+   * options trade from the open: any stream with today's count answers it
+   * (the owner, 2026-11-05: "use what we have instead of waiting to 10:00").
+   * Null when the stream cannot tell (then ask the history).
    */
   streamVolume(contract: IbContract, end: number, minutes: number) {
     const stream = this.streams.get(streamKey(contract));
     if (!stream) return null;
     const at = (t: number) => stream.volumes.findLast((v) => v.at <= t);
-    const start = at(end - minutes * 60_000);
     const last = at(end);
+    const day = nyDate.format(end);
+    if (!last || last.day !== day) return null;
+    const open = newYorkToUtc(day, 570);
+    if (end - minutes * 60_000 < open)
+      // A count from before the open is the day before's or none: nothing
+      // has traded today until a sample after it.
+      return last.at <= open ? 0 : last.volume;
+    const start = at(end - minutes * 60_000);
     // Both from the same New York day: a count never spans two sessions.
-    if (!start || !last || start.day !== last.day) return null;
-    if (last.day !== nyDate.format(end)) return null;
+    if (!start || start.day !== day) return null;
     return Math.max(0, last.volume - start.volume);
   }
 
