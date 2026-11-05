@@ -75,10 +75,20 @@ import {
   stepMs,
   type BotId,
   type PeriodId,
-  mainRunChanges,
   stocksLabel,
-  volumeRunChanges,
 } from "./bot-backtest-model.js";
+import {
+  changeText,
+  isCurrentSummary,
+  mainRuleChanges,
+  mainRunSummary,
+  periodDates,
+  periodName,
+  volumeRuleChanges,
+  volumeRunSummary,
+  type RuleChange,
+  type RunSummary,
+} from "./backtest-history-model.js";
 import {
   mainRun,
   startRun,
@@ -646,7 +656,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
       return {
         label: `Volume bot ${volumeVersionLabel(r.settings)}`,
         base: r.settings.version,
-        changes: volumeRunChanges(r),
+        changes: volumeRuleChanges(r),
         stocks: stocksLabel(r.tickers, picks),
       };
     }
@@ -654,7 +664,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
     return {
       label: `Main bot ${r.version}`,
       base: r.version.replace(/\*$/, ""),
-      changes: mainRunChanges(r),
+      changes: mainRuleChanges(r),
       stocks: stocksLabel(r.tickers, picks),
     };
   };
@@ -707,6 +717,46 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
   }
   const shownRan = isVolume ? volShown.ran : ran;
   const recent = isVolume ? volRecent : mainRecent;
+
+  // Each finished run on the History page shown gets its result in short,
+  // worked out here once and kept on the server (backtest-history-model.ts).
+  const summarized = useRef(new Set<string>());
+  useEffect(() => {
+    if (!history || !recent) return;
+    const todo = recent.runs.filter(
+      (r) =>
+        r.status !== "running" &&
+        !isCurrentSummary(r.summary) &&
+        !summarized.current.has(r.id),
+    );
+    if (todo.length === 0) return;
+    // Tried once a page load: a run that fails shows no result, not a loop.
+    for (const r of todo) summarized.current.add(r.id);
+    const volume = isVolume;
+    void (async () => {
+      for (const r of todo) {
+        try {
+          if (volume) {
+            const v = await volumeRun.whole(r.id);
+            if (!v.run.ran) continue;
+            await volumeRun.saveSummary(
+              r.id,
+              volumeRunSummary(v.run.ran, v.run.runs),
+            );
+          } else {
+            const v = await mainRun.whole(r.id);
+            if (!v.run.ran) continue;
+            await mainRun.saveSummary(
+              r.id,
+              mainRunSummary(v.run.ran, v.run.runs),
+            );
+          }
+        } catch {
+          // The row stays without its result.
+        }
+      }
+    })();
+  }, [history, recent, isVolume]);
 
   return (
     <div className="backtest-page bot-bt">
@@ -1636,16 +1686,16 @@ function RuleInput({
 interface RunDescription {
   label: string; // "Main bot 2.9*"
   base: string; // the version its rules are compared with
-  changes: string[]; // its rules that differ from the version's
+  changes: RuleChange[]; // its rules that differ from the version's
   stocks: string;
 }
 
 /**
  * The bot's runs, under History, a page at a time (the user, 2026-11-04: "I
  * would like to see my last 10 results"; 2026-11-05: what each tested, open
- * while a run goes on, and every run, in pages). Each row says what changed
- * from its version, the stocks and the period; tapping one shows its result
- * below.
+ * while a run goes on, every run, in pages, and in tags). Each row is tags:
+ * its state, its stocks, its period, each rule it changed and its result;
+ * tapping one shows it whole below.
  */
 function RecentRuns({
   page,
@@ -1688,9 +1738,12 @@ function RecentRuns({
         <h2>Your runs</h2>
         <span className="muted small num">
           {first}–{last} of {total}
-          {!shown && " · pick one to see its result"}
         </span>
       </div>
+      <p className="muted small bt-runs-note">
+        Results at $100,000 with each run&apos;s own sizes and limits
+        {!shown && " · pick a run to see it whole"}
+      </p>
       <ul className="bt-recent-list">
         {runs.map((r) => {
           const isShown = r.id === shown;
@@ -1699,40 +1752,102 @@ function RecentRuns({
           // The run going on reads its own progress, the freshest.
           const done = isActive && busy ? busy.done : r.done;
           let status = "Done";
-          if (running) status = `Running ${done}/${r.total}`;
-          else if (r.status === "stopped")
+          let statusKind = "done";
+          if (running) {
+            status = `Running ${done}/${r.total}`;
+            statusKind = "running";
+          } else if (r.status === "stopped") {
             status = `Stopped ${r.done}/${r.total}`;
+            statusKind = "stopped";
+          }
           const d = describe(r.meta);
-          let changed = `${d.base}'s own rules`;
-          if (d.changes.length > 0) changed = d.changes.join(" · ");
+          const sessions = sessionsBetween(r.meta.from, r.meta.to).length;
+          const summary = isCurrentSummary(r.summary) ? r.summary : null;
           return (
             <li key={r.id}>
               <button
                 type="button"
-                className="bt-recent-row"
+                className="bt-run"
                 aria-current={isShown ? "true" : undefined}
                 title={running ? "Opens under This run" : undefined}
                 onClick={() => onOpen(r.id)}
               >
-                <span className="bt-recent-when num">
-                  {israelDayLabel(r.createdAt)} {israelClock(r.createdAt)}
+                <span className="bt-run-head">
+                  <span className="bt-run-state">
+                    <span className={`bt-tag bt-tag-${statusKind}`}>
+                      {status}
+                    </span>
+                    {r.failed > 0 && (
+                      <span
+                        className="bt-tag bt-tag-failed num"
+                        title="Parts of the run that failed: their stock and dates are missing from the result"
+                      >
+                        {r.failed} failed
+                      </span>
+                    )}
+                  </span>
+                  <span className="bt-run-title">
+                    <strong>{d.label}</strong>
+                    <span className="muted num">
+                      {israelDayLabel(r.createdAt)} {israelClock(r.createdAt)}
+                    </span>
+                  </span>
+                  <RunResult
+                    summary={summary}
+                    running={running}
+                    partial={r.status === "stopped"}
+                  />
                 </span>
-                <span className="bt-recent-what">{d.label}</span>
-                <span
-                  className={`bt-recent-status${running ? " running" : ""}`}
-                >
-                  {status}
-                  {r.failed > 0 && ` · ${r.failed} failed`}
+                <span className="bt-run-tags">
+                  <span
+                    className="bt-tag bt-tag-list"
+                    title={r.meta.tickers.join(", ")}
+                  >
+                    {d.stocks}
+                  </span>
+                  <span
+                    className="bt-tag bt-tag-period"
+                    title={`${sessions} session${sessions === 1 ? "" : "s"}`}
+                  >
+                    {periodName(r.meta.from, r.meta.to)}
+                  </span>
+                  <span className="bt-run-dates muted num">
+                    {periodDates(r.meta.from, r.meta.to)}
+                  </span>
+                  <span className="bt-tag num">fill {r.meta.fillPct}%</span>
                 </span>
-                <span
-                  className={`bt-recent-changed num${d.changes.length ? "" : " muted"}`}
-                >
-                  {changed}
+                <span className="bt-run-tags" aria-label="What changed">
+                  {d.changes.length === 0 && (
+                    <span className="bt-tag bt-tag-same">
+                      {d.base}&apos;s own rules
+                    </span>
+                  )}
+                  {d.changes.map((c) => (
+                    <span
+                      key={c.label}
+                      className="bt-tag bt-tag-change num"
+                      title={`${c.label}: ${c.from} → ${c.to}`}
+                    >
+                      {changeText(c)}
+                    </span>
+                  ))}
                 </span>
-                <span className="bt-recent-scope muted num">
-                  {d.stocks} · {r.meta.from} → {r.meta.to} · fill{" "}
-                  {r.meta.fillPct}%
-                </span>
+                {summary && summary.trades > 0 && (
+                  <span className="bt-run-tags" aria-label="Result">
+                    <span className="bt-tag num">
+                      {summary.trades} trade{summary.trades === 1 ? "" : "s"}
+                    </span>
+                    <span className="bt-tag num">
+                      {Math.round(summary.winRate)}% won
+                    </span>
+                    <span className="bt-tag num">
+                      worst drop −{Math.abs(summary.maxDrawdownPct).toFixed(1)}%
+                    </span>
+                    {summary.realQuotesPct !== null && (
+                      <QuotesTag pct={summary.realQuotesPct} />
+                    )}
+                  </span>
+                )}
               </button>
             </li>
           );
@@ -1765,6 +1880,51 @@ function RecentRuns({
   );
 }
 
+/** A History row's result: the return, big, and the money. */
+function RunResult({
+  summary,
+  running,
+  partial,
+}: {
+  summary: RunSummary | null;
+  running: boolean;
+  partial: boolean;
+}) {
+  if (running)
+    return <span className="bt-run-result muted small">running</span>;
+  if (!summary)
+    return <span className="bt-run-result muted small">reading…</span>;
+  if (summary.trades === 0)
+    return <span className="bt-run-result muted small">no trades</span>;
+  return (
+    <span className="bt-run-result">
+      <span className={`bt-run-return num${tone(summary.returnPct)}`}>
+        {signedPct(summary.returnPct)}
+      </span>
+      <span className="muted small num">
+        {signedUsd(summary.pnl)}
+        {partial && " · partial"}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The share of the Main bot's trades priced on real quotes: the rest are on
+ * trade prints, which hide the spread (the user's "test oct 26" run, 2026-11-05).
+ */
+function QuotesTag({ pct }: { pct: number }) {
+  const low = pct < 80;
+  return (
+    <span
+      className={`bt-tag num${low ? " bt-tag-warn" : ""}`}
+      title="Trades priced on real bid/ask quotes; the rest on trade prints, which hide the spread"
+    >
+      {Math.round(pct)}% real quotes
+    </span>
+  );
+}
+
 /** The shown run's setup: its bot and version, what changed, stocks, period. */
 function RunTested({
   title,
@@ -1792,8 +1952,8 @@ function RunTested({
           {d.changes.length > 0 ? (
             <ul className="bt-tested-changes">
               {d.changes.map((c) => (
-                <li key={c} className="num">
-                  {c}
+                <li key={c.label} className="num">
+                  {c.label}: {c.from} → {c.to}
                 </li>
               ))}
             </ul>

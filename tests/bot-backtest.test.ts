@@ -50,7 +50,6 @@ import {
   periodRange,
   sessionsBetween,
   stocksLabel,
-  mainRunChanges,
   tradeSize,
 } from "../apps/web/src/bot-backtest-model.js";
 import {
@@ -59,6 +58,14 @@ import {
   startRun,
   stopRun,
 } from "../apps/web/src/bot-backtest-run.js";
+import {
+  changeText,
+  isCurrentSummary,
+  mainRuleChanges,
+  mainRunSummary,
+  periodDates,
+  periodName,
+} from "../apps/web/src/backtest-history-model.js";
 import {
   BacktestJobs,
   handleBacktestJobs,
@@ -1127,20 +1134,34 @@ test("History reads a past run while another runs: the run going on keeps its pr
   }
 });
 
-test("a run says what it tested: its changed rules and its stocks", () => {
+test("a run says what it tested: its changed rules in words and its stocks", () => {
   const v = versionById(currentVersion)!;
   assert.deepEqual(
-    mainRunChanges({ ...sixStocks, version: v.id, rules: v.rules }),
+    mainRuleChanges({ ...sixStocks, version: v.id, rules: v.rules }),
     [],
   );
-  const changed = mainRunChanges({
+  const changed = mainRuleChanges({
     ...sixStocks,
     version: `${v.id}*`,
-    rules: { ...v.rules, stopPct: v.rules.stopPct + 5 },
+    rules: {
+      ...v.rules,
+      stopPct: v.rules.stopPct + 5,
+      skipEarnings: !v.rules.skipEarnings,
+      nightCapPct: 40,
+      sizeSteps: [{ from: 10, pct: 5 }],
+    },
   });
-  assert.deepEqual(changed, [
-    `stopPct ${v.rules.stopPct} → ${v.rules.stopPct + 5}`,
-  ]);
+  const on = (b: boolean) => (b ? "on" : "off");
+  assert.deepEqual(
+    changed.map(changeText).sort(),
+    [
+      `Skip earnings reaction days ${on(v.rules.skipEarnings)} → ${on(!v.rules.skipEarnings)}`,
+      `Stop ${v.rules.stopPct}% → ${v.rules.stopPct + 5}%`,
+      `Night cap ${v.rules.nightCapPct}% → 40%`,
+      "Size steps changed",
+    ].sort(),
+  );
+  assert.equal(changed.length, 4);
   const lists = [{ label: "Semis", tickers: ["MU", "AMD", "NVDA"] }];
   assert.equal(stocksLabel(["NVDA", "MU", "AMD"], lists), "Semis · 3 stocks");
   assert.equal(stocksLabel(["TSLA", "MU"], lists), "TSLA, MU");
@@ -1148,6 +1169,59 @@ test("a run says what it tested: its changed rules and its stocks", () => {
     stocksLabel(["A", "B", "C", "D", "E", "F"], lists),
     "6 stocks: A, B, C, D +2",
   );
+});
+
+test("a History row names its period by length", () => {
+  assert.equal(periodName("2025-11-05", "2026-11-04"), "1 year");
+  assert.equal(periodName("2026-05-05", "2026-11-04"), "6 months");
+  assert.equal(periodName("2026-08-05", "2026-11-04"), "3 months");
+  assert.equal(periodName("2026-10-05", "2026-11-04"), "1 month");
+  assert.equal(periodName("2026-10-12", "2026-10-30"), "3 weeks");
+  assert.equal(periodName("2026-10-29", "2026-10-30"), "2 days");
+  assert.equal(periodDates("2025-11-05", "2026-11-04"), "5 Nov 25 → 4 Nov 26");
+});
+
+test("a run's result in short: the default money, and its share on real quotes", () => {
+  const v = versionById(currentVersion)!;
+  const ran = { ...sixStocks, version: v.id, rules: v.rules };
+  const trade = (priced: "quotes" | "trades", sell: number) => ({
+    id: `NVDA|2026-10-01|${priced}`,
+    symbol: "NVDA",
+    contract: "NVDA261002C00200000",
+    date: "2026-10-01",
+    minute: 30,
+    sizeShare: 1,
+    open: false,
+    priced,
+    steps: [
+      {
+        date: "2026-10-01",
+        minute: 30,
+        kind: "buy",
+        share: 1,
+        price: 1,
+        reason: "entry",
+      },
+      {
+        date: "2026-10-01",
+        minute: 60,
+        kind: "sell",
+        share: 1,
+        price: sell,
+        reason: "stage-full",
+      },
+    ],
+  });
+  const summary = mainRunSummary(ran, [
+    { trades: [trade("quotes", 2), trade("trades", 0.5)] } as never,
+  ]);
+  assert.equal(summary.v, 1);
+  assert.equal(summary.trades, 2);
+  assert.equal(summary.winRate, 50);
+  assert.equal(summary.realQuotesPct, 50);
+  assert.ok(summary.pnl > 0, "the double beats the half");
+  assert.ok(isCurrentSummary(summary));
+  assert.ok(!isCurrentSummary({ returnPct: 1 }), "an older summary is redone");
 });
 
 test("held: the nights a position was held after its entry day", () => {

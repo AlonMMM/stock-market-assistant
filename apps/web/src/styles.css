@@ -2495,15 +2495,19 @@ dialog.stocks-dialog {
 .bt-recent-list li + li {
   border-top: 1px solid var(--gray-92b);
 }
-.bt-recent-row {
+/* A History row in tags (the user, 2026-11-05: "use tags and more ux"):
+   state, bot and time, the result on the right; then the stocks and period,
+   each rule changed, the result's numbers. */
+.bt-runs-note {
+  margin: 2px 0 6px;
+}
+.bt-run {
   width: 100%;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 4px 12px;
-  align-items: baseline;
-  padding: 8px 6px;
+  gap: 6px;
+  padding: 12px 8px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: none;
   color: inherit;
   font: inherit;
@@ -2511,32 +2515,118 @@ dialog.stocks-dialog {
   text-align: left;
   cursor: pointer;
 }
-.bt-recent-row[aria-current="true"] {
+.bt-run:hover {
+  background: var(--gray-94);
+}
+.bt-run[aria-current="true"] {
+  background: var(--lime-94);
   box-shadow: inset 3px 0 0 var(--lime-53);
 }
-.bt-recent-row:focus-visible {
+.bt-run:focus-visible {
   outline: 2px solid var(--lime-53);
   outline-offset: 1px;
 }
-.bt-recent-when {
-  color: var(--gray-50);
-  white-space: nowrap;
+.bt-run-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
 }
-.bt-recent-what {
+.bt-run-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
+.bt-run-title strong {
+  font-size: 14px;
+  font-weight: 650;
+}
+.bt-run-result {
+  display: grid;
+  justify-items: end;
+  line-height: 1.2;
+}
+.bt-run-return {
+  font-size: 18px;
+  font-weight: 700;
+}
+.bt-run-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.bt-run-dates {
+  font-size: 12px;
+}
+.bt-tag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid var(--gray-85);
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--gray-36);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.bt-recent-status {
-  color: var(--gray-50);
-  white-space: nowrap;
-}
-.bt-recent-status.running {
-  color: var(--lime-53);
+.bt-tag-done {
+  color: var(--green-43);
+  background: var(--green-94);
+  border-color: var(--green-94);
   font-weight: 600;
 }
-.bt-recent-row:hover {
+.bt-tag-running {
+  color: var(--blue-42);
+  background: var(--blue-94);
+  border-color: var(--blue-94);
+  font-weight: 600;
+}
+.bt-tag-stopped {
+  color: var(--amber-43);
+  background: var(--amber-95);
+  border-color: var(--amber-95);
+  font-weight: 600;
+}
+.bt-tag-list {
+  color: var(--gray-27);
   background: var(--gray-94);
+  border-color: var(--gray-94);
+  font-weight: 600;
+}
+.bt-tag-period {
+  color: var(--gray-27);
+  font-weight: 600;
+}
+.bt-tag-change {
+  color: var(--blue-42);
+  border-color: var(--blue-92);
+  background: var(--blue-94);
+}
+.bt-tag-same {
+  color: var(--gray-50);
+  border-style: dashed;
+}
+.bt-run-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.bt-tag-failed {
+  color: var(--red-44);
+  background: var(--red-95);
+  border-color: var(--red-95);
+  font-weight: 600;
+}
+.bt-tag-warn {
+  color: var(--amber-43);
+  background: var(--amber-95);
+  border-color: var(--amber-90);
 }
 /* Newer / Older pages of runs. */
 .bt-recent-pager {
@@ -2551,20 +2641,6 @@ dialog.stocks-dialog {
 .bt-recent-pager button:disabled {
   opacity: 0.4;
   cursor: default;
-}
-/* What the run tested: its changed rules, then its stocks and period. */
-.bt-recent-changed,
-.bt-recent-scope {
-  grid-column: 1 / -1;
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-.bt-recent-changed:not(.muted) {
-  color: var(--gray-27);
-  font-weight: 500;
-}
-.bt-recent-changed.muted {
-  color: var(--gray-50);
 }
 .bt-run-tabs {
   margin-top: 0;
@@ -2599,13 +2675,18 @@ dialog.stocks-dialog {
   list-style: none;
 }
 @media (max-width: 640px) {
-  .bt-recent-row {
+  .bt-run-head {
     grid-template-columns: minmax(0, 1fr) auto;
   }
-  .bt-recent-what {
+  .bt-run-head > .bt-run-state {
     grid-column: 1 / -1;
+    justify-self: start;
+  }
+  .bt-run-title {
     grid-row: 2;
-    white-space: normal;
+  }
+  .bt-run-result {
+    grid-row: 2;
   }
   .bt-tested-grid {
     grid-template-columns: minmax(0, 1fr);

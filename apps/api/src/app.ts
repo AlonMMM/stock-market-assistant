@@ -646,6 +646,7 @@ export function buildApp(
   app.get("/api/backtest-jobs/latest", backtestJobs);
   app.get("/api/backtest-jobs/:id", backtestJobs);
   app.post("/api/backtest-jobs/:id/stop", backtestJobs);
+  app.post("/api/backtest-jobs/:id/summary", backtestJobs);
   // The Main bot's backtest of one stock over a range (the Backtest page).
   app.post("/api/bot-backtest", async (request, reply) => {
     const result = await handleBotBacktest(

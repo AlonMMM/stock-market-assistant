@@ -67,6 +67,8 @@ export interface RecentRun<R> {
   createdAt: number;
   updatedAt: number;
   meta: R;
+  // Its result in short, once a page worked it out (backtest-history-model.ts).
+  summary?: unknown;
 }
 
 /** A page of the runs, newest first (GET /api/backtest-jobs). */
@@ -103,6 +105,10 @@ export interface BacktestRun<R extends RanBase, B> {
   view(id: string): Promise<void>;
   viewed(): RunView<R, B>;
   useView(): RunView<R, B>;
+  /** Reads a past run whole without showing it (for its History summary). */
+  whole(id: string): Promise<RunView<R, B>>;
+  /** Keeps a run's result in short on the server and in the list. */
+  saveSummary(id: string, summary: unknown): Promise<void>;
 }
 
 /** The run as the server tells it (backtest-jobs.ts, JobView). */
@@ -503,6 +509,39 @@ function backtestRun<R extends RanBase, B>(o: {
     shownPast = next;
     for (const l of viewListeners) l();
   }
+  /** A past run read whole, once: a finished one is kept for next time. */
+  async function whole(id: string): Promise<RunView<R, B>> {
+    const kept = pastKept.get(id);
+    if (kept) return kept;
+    const response = await fetch(`${jobsUrl}/${encodeURIComponent(id)}`, {
+      signal: AbortSignal.timeout(30000),
+      cache: "no-store",
+    });
+    if (response.status === 404) throw new Error("This run is no longer kept");
+    const job = await readJson<JobView<R, B>>(response);
+    const next: RunView<R, B> = {
+      id,
+      status: job.status,
+      loading: false,
+      error: null,
+      run: {
+        busy: null,
+        errors: job.errors.map(errorText),
+        runs: [...job.results]
+          .sort((a, b) => a.index - b.index)
+          .map((r) => r.body),
+        ran: job.meta,
+        stopped: job.stopped,
+        id,
+      },
+    };
+    if (job.status !== "running") {
+      pastKept.set(id, next);
+      // The last few opened.
+      if (pastKept.size > 10) pastKept.delete(pastKept.keys().next().value!);
+    }
+    return next;
+  }
   async function view(id: string) {
     const gen = ++viewGeneration;
     const kept = pastKept.get(id);
@@ -512,35 +551,8 @@ function backtestRun<R extends RanBase, B>(o: {
     }
     setView({ id, status: null, loading: true, error: null, run: noRun });
     try {
-      const response = await fetch(`${jobsUrl}/${encodeURIComponent(id)}`, {
-        signal: AbortSignal.timeout(30000),
-        cache: "no-store",
-      });
-      if (response.status === 404)
-        throw new Error("This run is no longer kept");
-      const job = await readJson<JobView<R, B>>(response);
+      const next = await whole(id);
       if (gen !== viewGeneration) return;
-      const next: RunView<R, B> = {
-        id,
-        status: job.status,
-        loading: false,
-        error: null,
-        run: {
-          busy: null,
-          errors: job.errors.map(errorText),
-          runs: [...job.results]
-            .sort((a, b) => a.index - b.index)
-            .map((r) => r.body),
-          ran: job.meta,
-          stopped: job.stopped,
-          id,
-        },
-      };
-      if (job.status !== "running") {
-        pastKept.set(id, next);
-        // The last few opened.
-        if (pastKept.size > 10) pastKept.delete(pastKept.keys().next().value!);
-      }
       setView(next);
     } catch (e) {
       if (gen !== viewGeneration) return;
@@ -552,6 +564,24 @@ function backtestRun<R extends RanBase, B>(o: {
         run: noRun,
       });
     }
+  }
+  async function saveSummary(id: string, summary: unknown) {
+    const response = await fetch(
+      `${jobsUrl}/${encodeURIComponent(id)}/summary`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ summary }),
+        signal: AbortSignal.timeout(20000),
+      },
+    );
+    await readJson<unknown>(response);
+    if (!recent?.runs.some((r) => r.id === id)) return;
+    recent = {
+      ...recent,
+      runs: recent.runs.map((r) => (r.id === id ? { ...r, summary } : r)),
+    };
+    for (const l of recentListeners) l();
   }
   const subscribeView = (l: () => void) => {
     viewListeners.add(l);
@@ -565,6 +595,8 @@ function backtestRun<R extends RanBase, B>(o: {
     open,
     loadRecent,
     view,
+    whole,
+    saveSummary,
     viewed: () => shownPast,
     useView: () => useSyncExternalStore(subscribeView, () => shownPast),
     useRecent: () => useSyncExternalStore(subscribeRecent, () => recent),
