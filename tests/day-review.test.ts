@@ -497,6 +497,7 @@ test("day review: an analysis is checked before it is kept", () => {
         evidence: "bot.ts:1251",
         action: "test",
         symbols: ["COIN"],
+        accounts: [],
       },
     ],
     writtenAt: 5,
@@ -765,6 +766,7 @@ test("day review page: the running sums by account, the fallback causes, the bot
     qty: 10,
     paidPaper: 1,
     paidReal: 0.98,
+    entryBook: null,
     exits: [
       {
         at: Date.parse("2026-11-04T14:54:00Z"),
@@ -772,6 +774,7 @@ test("day review page: the running sums by account, the fallback causes, the bot
         paper: 0.8,
         real: 0.82,
         reason: "stage-half",
+        book: null,
       },
       {
         at: Date.parse("2026-11-04T14:55:00Z"),
@@ -779,6 +782,7 @@ test("day review page: the running sums by account, the fallback causes, the bot
         paper: 0.6,
         real: 0.62,
         reason: "stage-full",
+        book: null,
       },
     ],
     open: false,

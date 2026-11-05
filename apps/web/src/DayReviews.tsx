@@ -13,14 +13,16 @@ import {
   accountNames,
   accountsIn,
   bugCount,
+  classTag,
   classTone,
-  classWords,
   closedTradeOf,
-  contractWords,
   dayLabel,
   differencesOf,
   inlineSpans,
   isBug,
+  ledgerRow,
+  pctOver,
+  strikeWords,
   markdownBlocks,
   performance,
   price,
@@ -29,6 +31,7 @@ import {
   statusWords,
   tradeLine,
   verdictCounts,
+  verdictShort,
   verdictTone,
   verdictWords,
   type PerfPoint,
@@ -383,90 +386,114 @@ function TradeChartMini({ r, date }: { r: ReviewRow; date: string }) {
   );
 }
 
-function BotSide({ side }: { side: ReviewRow["live"] }) {
-  if (!side)
-    return (
-      <div className="dr-side bot none">
-        <h5>
-          <i className="dr-key bot" /> Bot
-        </h5>
-        <p className="muted small">Did not trade it.</p>
-      </div>
-    );
-  let result = `${signed(side.retReal)}%`;
-  if (side.pnlReal !== null) result += ` · ${signedUsd(side.pnlReal)}`;
+/** One fill of either side, for a trade's open row. */
+interface FillLine {
+  who: "bot" | "bt";
+  side: "buy" | "sell";
+  at: number;
+  size: string;
+  paper: number | null;
+  bid: number | null;
+  ask: number | null;
+  price: number; // at market (the bot), or the backtest's price
+  reason: string;
+}
+
+function fillLines(r: ReviewRow): FillLine[] {
+  const out: FillLine[] = [];
+  const l = r.live;
+  const b = r.backtest;
+  if (l) {
+    out.push({
+      who: "bot",
+      side: "buy",
+      at: l.entryAt,
+      size: String(l.qty),
+      paper: l.paidPaper,
+      bid: l.entryBook?.bid ?? null,
+      ask: l.entryBook?.ask ?? null,
+      price: l.paidReal ?? l.paidPaper,
+      reason: "entry",
+    });
+    for (const e of l.exits)
+      out.push({
+        who: "bot",
+        side: "sell",
+        at: e.at,
+        size: String(e.qty),
+        paper: e.paper,
+        bid: e.book?.bid ?? null,
+        ask: e.book?.ask ?? null,
+        price: e.real ?? e.paper,
+        reason: e.reason,
+      });
+  }
+  if (b) {
+    out.push({
+      who: "bt",
+      side: "buy",
+      at: b.entryAt,
+      size: "100%",
+      paper: null,
+      bid: b.entryBook?.bid ?? null,
+      ask: b.entryBook?.ask ?? null,
+      price: b.entryPrice,
+      reason: "entry",
+    });
+    for (const e of b.exits)
+      out.push({
+        who: "bt",
+        side: "sell",
+        at: e.at,
+        size: `${Math.round(e.share * 100)}%`,
+        paper: null,
+        bid: e.book?.bid ?? null,
+        ask: e.book?.ask ?? null,
+        price: e.price,
+        reason: e.reason,
+      });
+  }
+  return out.sort((x, y) => x.at - y.at);
+}
+
+/** A signed difference, plain ink, with its unit. */
+function Delta({
+  v,
+  unit,
+  digits = 1,
+}: {
+  v: number | null;
+  unit: string;
+  digits?: number;
+}) {
+  if (v === null) return <span className="muted">—</span>;
   return (
-    <div className="dr-side bot">
-      <h5>
-        <i className="dr-key bot" /> Bot
-      </h5>
-      <dl>
-        <dt>Contract</dt>
-        <dd>
-          {side.qty} × {contractWords(side.contract)}
-        </dd>
-        <dt>Bought</dt>
-        <dd>
-          {clock(side.entryAt)} · {price(side.paidReal ?? side.paidPaper)}
-          <span className="muted"> (paper {price(side.paidPaper)})</span>
-        </dd>
-        <dt>Sold</dt>
-        <dd>
-          {side.open && "held overnight"}
-          {side.exits.map((e, i) => (
-            <div key={i}>
-              {clock(e.at)} · {e.qty} @ {price(e.real ?? e.paper)}{" "}
-              <span className="muted">{e.reason}</span>
-            </div>
-          ))}
-        </dd>
-        <dt>Result</dt>
-        <dd className={`num${tone(side.retReal)}`}>{result}</dd>
-      </dl>
-    </div>
+    <span className="dr-delta">
+      {signed(v, digits)}
+      {unit}
+    </span>
   );
 }
 
-function BacktestSide({ side }: { side: ReviewRow["backtest"] }) {
-  if (!side)
-    return (
-      <div className="dr-side bt none">
-        <h5>
-          <i className="dr-key bt" /> Backtest
-        </h5>
-        <p className="muted small">Did not trade it.</p>
-      </div>
-    );
+/** Who did better on a trade: a dot of that side's colour, the gap in plain ink. */
+function Gap({ v }: { v: number | null }) {
+  if (v === null) return <span className="muted">—</span>;
+  if (Math.abs(v) < 1) return <span className="muted">$0</span>;
+  // A positive gap is the backtest's: it made more than the bot.
+  const ahead = v > 0 ? "bt" : "bot";
   return (
-    <div className="dr-side bt">
-      <h5>
-        <i className="dr-key bt" /> Backtest
-      </h5>
-      <dl>
-        <dt>Contract</dt>
-        <dd>{contractWords(side.contract)}</dd>
-        <dt>Bought</dt>
-        <dd>
-          {clock(side.entryAt)} · {price(side.entryPrice)}
-        </dd>
-        <dt>Sold</dt>
-        <dd>
-          {side.open && "held overnight"}
-          {side.exits.map((e, i) => (
-            <div key={i}>
-              {clock(e.at)} · {Math.round(e.share * 100)}% @ {price(e.price)}{" "}
-              <span className="muted">{e.reason}</span>
-            </div>
-          ))}
-        </dd>
-        <dt>Result</dt>
-        <dd className={`num${tone(side.ret)}`}>{signed(side.ret)}%</dd>
-      </dl>
-    </div>
+    <span className="dr-gap">
+      <i className={`dr-dot ${ahead}`} aria-hidden="true" />
+      {signedUsd(v)}
+    </span>
   );
 }
 
-function TradeCard({
+const clockOf = (ms: number | null) => (ms === null ? "—" : israelClock(ms));
+const minutesApart = (a: number | null, b: number | null) =>
+  a === null || b === null ? null : Math.round((a - b) / 60000);
+
+function TradeDetail({
   r,
   date,
   causes,
@@ -477,91 +504,318 @@ function TradeCard({
   causes: Difference[];
   onStory: (t: ClosedTrade) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [chart, setChart] = useState(false);
   const story = r.live ? closedTradeOf(r.symbol, r.live) : null;
-  const account = r.live?.broker ? accountNames[r.live.broker] : null;
-  // The gap is the backtest's: more for it is a worse day for the bot.
-  const gapTone = r.dollarsGap === null ? "" : tone(-r.dollarsGap);
-  let botResult = "—";
-  if (r.live) botResult = `${signed(r.live.retReal)}%`;
-  let btResult = "—";
-  if (r.backtest) btResult = `${signed(r.backtest.ret)}%`;
+  const fills = fillLines(r);
   return (
-    <article className={`dr-trade${open ? " open" : ""}`}>
-      <button
-        type="button"
-        className="dr-trade-row"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        <span className="dr-trade-name">
-          <b>
-            {r.symbol} {rightWords(r.right)}
-          </b>
-          {account && <span className="muted small"> · {account}</span>}
-        </span>
-        <span className="dr-trade-results small">
-          <span>
-            <i className="dr-key bot" /> Bot{" "}
-            <b className={`num${tone(r.live?.retReal ?? null)}`}>{botResult}</b>
+    <div className="dr-trade-detail">
+      {causes.map((d) => (
+        <p key={d.title} className="dr-why">
+          <span className={`dr-tag ${classTone[d.class]}`}>
+            {classTag[d.class]}
           </span>
           <span>
-            <i className="dr-key bt dashed" /> Backtest{" "}
-            <b className={`num${tone(r.backtest?.ret ?? null)}`}>{btResult}</b>
+            <b>{d.title}.</b> {d.why}
+            {d.action && <span className="muted"> Next: {d.action}</span>}
           </span>
-        </span>
-        <span className={`dr-trade-line num${gapTone}`}>{tradeLine(r)}</span>
-        <span className="dr-chevron" aria-hidden="true">
-          ›
-        </span>
-      </button>
-      {open && (
-        <div className="dr-trade-body">
-          {causes.length > 0 && (
-            <p className="dr-trade-why">
-              {causes.map((d) => (
-                <span key={d.title}>
-                  <span className={`pill ${classTone[d.class]}`}>
-                    {classWords[d.class]}
-                  </span>{" "}
-                  {d.title}
-                </span>
-              ))}
-            </p>
-          )}
-          <div className="dr-sides">
-            <BotSide side={r.live} />
-            <BacktestSide side={r.backtest} />
-          </div>
-          <div className="dr-trade-actions">
-            <button
-              type="button"
-              className="bot-more"
-              aria-expanded={chart}
-              onClick={() => setChart(!chart)}
-            >
-              {chart ? "Hide the chart" : "Show the chart"}
-            </button>
-            {story && (
-              <button
-                type="button"
-                className="bot-more"
-                onClick={() => onStory(story)}
-              >
-                Open the bot's trade story
-              </button>
-            )}
-            {r.backtest?.priced === "trades" && (
-              <span className="muted small">
-                The backtest priced this on the option's trades: an estimate.
-              </span>
-            )}
-          </div>
-          {chart && <TradeChartMini r={r} date={date} />}
-        </div>
-      )}
-    </article>
+        </p>
+      ))}
+      {r.why && !causes.length && <p className="dr-why muted">{r.why}</p>}
+      <table className="dr-fills">
+        <thead>
+          <tr>
+            <th scope="col">Side</th>
+            <th scope="col">Time</th>
+            <th scope="col">Order</th>
+            <th scope="col" className="num">
+              Size
+            </th>
+            <th scope="col" className="num">
+              Paper
+            </th>
+            <th scope="col" className="num">
+              Bid
+            </th>
+            <th scope="col" className="num">
+              Ask
+            </th>
+            <th scope="col" className="num">
+              Price
+            </th>
+            <th scope="col">Why</th>
+          </tr>
+        </thead>
+        <tbody>
+          {fills.map((f, i) => (
+            <tr key={i} className={f.who}>
+              <td>
+                <i
+                  className={`dr-key ${f.who}${f.who === "bt" ? " dashed" : ""}`}
+                />{" "}
+                {f.who === "bot" ? "Bot" : "Backtest"}
+              </td>
+              <td className="num">{israelClock(f.at)}</td>
+              <td>{f.side === "buy" ? "Buy" : "Sell"}</td>
+              <td className="num">{f.size}</td>
+              <td className="num">{price(f.paper)}</td>
+              <td className="num">{price(f.bid)}</td>
+              <td className="num">{price(f.ask)}</td>
+              <td className="num">
+                <b>{price(f.price)}</b>
+              </td>
+              <td className="muted">{f.reason}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted small">
+        Price: the bot's at market (the mid of its bid and ask), the backtest's
+        as it filled.
+        {r.backtest?.priced === "trades" &&
+          " The backtest priced this on the option's trades: an estimate."}
+      </p>
+      <div className="dr-trade-actions">
+        <button
+          type="button"
+          className="bot-more"
+          aria-expanded={chart}
+          onClick={() => setChart(!chart)}
+        >
+          {chart ? "Hide the chart" : "Show the chart"}
+        </button>
+        {story && (
+          <button
+            type="button"
+            className="bot-more"
+            onClick={() => onStory(story)}
+          >
+            Open the bot's trade story
+          </button>
+        )}
+      </div>
+      {chart && <TradeChartMini r={r} date={date} />}
+    </div>
+  );
+}
+
+/** The day's trades, one row each, the bot's numbers beside the backtest's. */
+function Ledger({
+  rows,
+  date,
+  causesOf,
+  onStory,
+}: {
+  rows: ReviewRow[];
+  date: string;
+  causesOf: (row: ReviewRow) => Difference[];
+  onStory: (t: ClosedTrade) => void;
+}) {
+  const [open, setOpen] = useState<string | null>(null);
+  const lines = rows.map(ledgerRow);
+  const sum = (xs: (number | null)[]) =>
+    xs.reduce<number>((a, x) => a + (x ?? 0), 0);
+  const columns = 15;
+  return (
+    <div className="dr-ledger-wrap">
+      <table className="dr-ledger">
+        <thead>
+          <tr className="dr-groups">
+            <th scope="colgroup" colSpan={2} />
+            <th scope="colgroup" colSpan={3}>
+              Entry time
+            </th>
+            <th scope="colgroup" colSpan={3}>
+              Buy price
+            </th>
+            <th scope="colgroup" colSpan={3}>
+              Sale price
+            </th>
+            <th scope="colgroup" colSpan={3}>
+              Return
+            </th>
+            <th scope="colgroup" />
+          </tr>
+          <tr>
+            <th scope="col">Trade</th>
+            <th scope="col">Cause</th>
+            <th scope="col" className="num bot">
+              Bot
+            </th>
+            <th scope="col" className="num bt">
+              BT
+            </th>
+            <th scope="col" className="num">
+              Δ min
+            </th>
+            <th scope="col" className="num bot">
+              Bot
+            </th>
+            <th scope="col" className="num bt">
+              BT
+            </th>
+            <th scope="col" className="num">
+              Δ
+            </th>
+            <th scope="col" className="num bot">
+              Bot
+            </th>
+            <th scope="col" className="num bt">
+              BT
+            </th>
+            <th scope="col" className="num">
+              Δ
+            </th>
+            <th scope="col" className="num bot">
+              Bot
+            </th>
+            <th scope="col" className="num bt">
+              BT
+            </th>
+            <th scope="col" className="num">
+              Δ pts
+            </th>
+            <th scope="col" className="num">
+              $ gap
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((x) => {
+            const r = x.row;
+            const causes = causesOf(r);
+            const first = causes[0];
+            const isOpen = open === r.key;
+            return (
+              <Fragment key={r.key}>
+                <tr className={`dr-ledger-row${isOpen ? " open" : ""}`}>
+                  <th scope="row">
+                    <button
+                      type="button"
+                      className="dr-row-toggle"
+                      aria-expanded={isOpen}
+                      onClick={() => setOpen(isOpen ? null : r.key)}
+                    >
+                      <span className="dr-chevron" aria-hidden="true">
+                        ›
+                      </span>
+                      <span>
+                        <b>{r.symbol}</b> {rightWords(r.right)}
+                        <span className="dr-sub">
+                          {strikeWords(x.botContract)}
+                          {x.otherContract && (
+                            <span className="dr-other">
+                              {" "}
+                              · BT {strikeWords(x.btContract)}
+                            </span>
+                          )}
+                          {!x.botContract &&
+                            x.btContract &&
+                            ` BT ${strikeWords(x.btContract)}`}
+                          {x.account && ` · ${accountNames[x.account]}`}
+                        </span>
+                      </span>
+                    </button>
+                  </th>
+                  <td>
+                    {first && (
+                      <span
+                        className={`dr-tag ${classTone[first.class]}`}
+                        title={first.title}
+                      >
+                        {classTag[first.class]}
+                      </span>
+                    )}
+                    {!first && r.match !== "both" && (
+                      <span className="dr-tag grey" title={r.why ?? ""}>
+                        {r.match === "live-only" ? "BOT ONLY" : "BT ONLY"}
+                      </span>
+                    )}
+                    {x.estimate && <span className="dr-sub">BT est.</span>}
+                  </td>
+                  <td className="num">{clockOf(x.botEntryAt)}</td>
+                  <td className="num">{clockOf(x.btEntryAt)}</td>
+                  <td className="num">
+                    <Delta
+                      v={minutesApart(x.btEntryAt, x.botEntryAt)}
+                      unit=""
+                      digits={0}
+                    />
+                  </td>
+                  <td className="num">
+                    {price(x.botBuy)}
+                    {x.botBid !== null && (
+                      <span className="dr-sub">
+                        {price(x.botBid)}×{price(x.botAsk)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="num">{price(x.btBuy)}</td>
+                  <td className="num">
+                    <Delta v={pctOver(x.botBuy, x.btBuy)} unit="%" />
+                  </td>
+                  <td className="num">
+                    {price(x.botSell)}
+                    {x.botSales > 1 && (
+                      <span className="dr-sub">{x.botSales} sales</span>
+                    )}
+                  </td>
+                  <td className="num">
+                    {price(x.btSell)}
+                    {x.btSales > 1 && (
+                      <span className="dr-sub">{x.btSales} sales</span>
+                    )}
+                  </td>
+                  <td className="num">
+                    <Delta v={pctOver(x.botSell, x.btSell)} unit="%" />
+                  </td>
+                  <td className={`num${tone(x.botRet)}`}>
+                    {x.botRet === null ? "—" : `${signed(x.botRet)}%`}
+                    {x.botPnl !== null && (
+                      <span className="dr-sub">{signedUsd(x.botPnl)}</span>
+                    )}
+                  </td>
+                  <td className={`num${tone(x.btRet)}`}>
+                    {x.btRet === null ? "—" : `${signed(x.btRet)}%`}
+                  </td>
+                  <td className="num">
+                    <Delta v={r.retGapPts} unit="" />
+                  </td>
+                  <td className="num">
+                    <Gap v={r.dollarsGap} />
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr className="dr-ledger-detail">
+                    <td colSpan={columns}>
+                      <TradeDetail
+                        r={r}
+                        date={date}
+                        causes={causes}
+                        onStory={onStory}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row" colSpan={11}>
+              {plural(lines.length, "trade")} ·{" "}
+              {lines.filter((x) => x.row.match === "both").length} on both sides
+            </th>
+            <td className="num" colSpan={3}>
+              Bot {signedUsd(sum(lines.map((x) => x.botPnl)))}
+            </td>
+            <td className="num">
+              <Gap v={sum(rows.map((r) => r.dollarsGap))} />
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
   );
 }
 
@@ -652,64 +906,109 @@ function DayDetail({
   const rows = (r.comparison?.rows ?? []).filter(
     (x) => !account || !x.live?.broker || x.live.broker === account,
   );
+  const a =
+    r.comparison?.accounts?.find((x) => x.broker === account) ??
+    r.comparison?.accounts?.[0];
+  const s = r.comparison?.summary;
   const status = statusWords(r);
+  // A trade's causes: its stock's, and its account's when one is named.
+  const causesOf = (row: ReviewRow) =>
+    (r.analysis?.differences ?? []).filter(
+      (d) =>
+        d.symbols.includes(row.symbol) &&
+        (!d.accounts?.length ||
+          !row.live?.broker ||
+          d.accounts.includes(row.live.broker)),
+    );
+  const ordered = [...differences].sort(
+    (x, y) => Number(isBug(y.class)) - Number(isBug(x.class)),
+  );
   return (
     <div className="dr-detail">
       {r.analysis && <p className="dr-headline">{r.analysis.headline}</p>}
       {status && <p className="muted small">{status}</p>}
-      {differences.length > 0 && (
-        <section aria-label="Why they differ">
-          <h4 className="dr-h">Why the bot and the backtest differ</h4>
-          {!written && (
-            <p className="muted small">
-              Found by the comparison; the causes come with the written
-              analysis.
-            </p>
-          )}
-          <ul className="dr-causes">
-            {differences.map((d) => (
-              <li
-                key={d.title}
-                className={`dr-cause${isBug(d.class) ? " bug" : ""}`}
-              >
-                <span className={`pill ${classTone[d.class]}`}>
-                  {isBug(d.class) && "⚠ "}
-                  {classWords[d.class]}
-                </span>
-                <div>
-                  <b>{d.title}</b>
-                  <p>{d.why}</p>
-                  {d.action && (
-                    <p className="small">
-                      <b>Next:</b> {d.action}
-                    </p>
-                  )}
-                  {d.evidence && (
-                    <details className="dr-evidence small">
-                      <summary>Evidence</summary>
-                      <p className="muted">{d.evidence}</p>
-                    </details>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
+      {a && s && (
+        <dl className="dr-strip">
+          <div>
+            <dt>Bot, paper</dt>
+            <dd className={`num${tone(a.botPaper)}`}>
+              {signedUsd(a.botPaper)}
+            </dd>
+          </div>
+          <div>
+            <dt>
+              <i className="dr-key bot" /> Bot, at market
+            </dt>
+            <dd className={`num${tone(a.bot)}`}>{signedUsd(a.bot)}</dd>
+          </div>
+          <div>
+            <dt>
+              <i className="dr-key bt dashed" /> Backtest
+            </dt>
+            <dd className={`num${tone(a.backtest)}`}>
+              {signedUsd(a.backtest)}
+            </dd>
+          </div>
+          <div>
+            <dt>Backtest − bot</dt>
+            <dd className="num">{signedUsd(a.backtest - a.bot)}</dd>
+          </div>
+          <div>
+            <dt>Paper fills cost</dt>
+            <dd className="num">{signedUsd(a.botPaper - a.bot)}</dd>
+          </div>
+          <div>
+            <dt>Trades both / bot / BT</dt>
+            <dd className="num">
+              {rows.filter((x) => x.match === "both").length} /{" "}
+              {rows.filter((x) => x.match === "live-only").length} /{" "}
+              {rows.filter((x) => x.match === "backtest-only").length}
+            </dd>
+          </div>
+        </dl>
       )}
       {rows.length > 0 && (
-        <section aria-label="Trade by trade">
-          <h4 className="dr-h">Trade by trade</h4>
-          {rows.map((x) => (
-            <TradeCard
-              key={x.key}
-              r={x}
-              date={r.date}
-              causes={(r.analysis?.differences ?? []).filter((d) =>
-                d.symbols.includes(x.symbol),
-              )}
-              onStory={onStory}
-            />
-          ))}
+        <>
+          <Ledger
+            rows={rows}
+            date={r.date}
+            causesOf={causesOf}
+            onStory={onStory}
+          />
+          <p className="muted small dr-note">
+            Δ is the backtest against the bot: minutes later, % above the bot's
+            price, return points. Bot prices are at market (the mid of its bid ×
+            ask, shown under it). $ gap: the backtest's return on the bot's
+            money minus the bot's own result; the dot shows who did better. A
+            row opens every fill.
+          </p>
+        </>
+      )}
+      {ordered.length > 0 && (
+        <section aria-label="Causes">
+          <h4 className="dr-h">
+            Causes{" "}
+            {!written && (
+              <span className="muted small">
+                (found by the comparison; checked at 23:05)
+              </span>
+            )}
+          </h4>
+          <table className="dr-causes-table">
+            <tbody>
+              {ordered.map((d) => (
+                <tr key={d.title}>
+                  <td>
+                    <span className={`dr-tag ${classTone[d.class]}`}>
+                      {classTag[d.class]}
+                    </span>
+                  </td>
+                  <th scope="row">{d.title}</th>
+                  <td className="muted">{d.action || d.why}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </section>
       )}
       {r.analysis && (
@@ -720,7 +1019,7 @@ function DayDetail({
             aria-expanded={full}
             onClick={() => setFull(!full)}
           >
-            {full ? "Hide the full analysis" : "Read the full analysis"}
+            {full ? "Hide the written analysis" : "Read the written analysis"}
           </button>
           {full && <Markdown text={r.analysis.markdown} />}
         </section>
@@ -736,70 +1035,112 @@ function DayDetail({
   );
 }
 
-function DayRow({
-  r,
+/** The days, one row each; a row opens its day underneath. */
+function DayTable({
+  days,
   account,
-  open,
+  shownDay,
   onToggle,
-  onStory,
 }: {
-  r: DayReview;
+  days: DayReview[];
   account: string | null;
-  open: boolean;
-  onToggle: () => void;
-  onStory: (t: ClosedTrade) => void;
+  shownDay: string | null;
+  onToggle: (date: string) => void;
 }) {
-  const verdict = shownVerdict(r);
-  const a =
-    r.comparison?.accounts?.find((x) => x.broker === account) ??
-    r.comparison?.accounts?.[0];
-  const bugs = bugCount(r);
-  const differences = differencesOf(r).length;
   return (
-    <li className={`dr-day${open ? " open" : ""}`}>
-      <button
-        type="button"
-        className="dr-day-row"
-        aria-expanded={open}
-        onClick={onToggle}
-      >
-        <span className="dr-day-date">{dayLabel(r.date)}</span>
-        {verdict && (
-          <span className={`pill ${verdictTone[verdict]}`}>
-            {verdictWords[verdict]}
-          </span>
-        )}
-        {!verdict && <span className="pill grey">{r.status}</span>}
-        <span className="dr-day-money">
-          {a && (
-            <>
-              <span>
-                <i className="dr-key bot" /> Bot{" "}
-                <b className={`num${tone(a.bot)}`}>{signedUsd(a.bot)}</b>
-              </span>
-              <span>
-                <i className="dr-key bt dashed" /> Backtest{" "}
-                <b className={`num${tone(a.backtest)}`}>
-                  {signedUsd(a.backtest)}
-                </b>
-              </span>
-            </>
-          )}
-        </span>
-        <span className="dr-day-flags small">
-          {bugs > 0 && (
-            <span className="pill red">⚠ {plural(bugs, "bug")}</span>
-          )}
-          {differences > 0 && (
-            <span className="muted">{plural(differences, "difference")}</span>
-          )}
-        </span>
-        <span className="dr-chevron" aria-hidden="true">
-          ›
-        </span>
-      </button>
-      {open && <DayDetail r={r} account={account} onStory={onStory} />}
-    </li>
+    <div className="dr-ledger-wrap">
+      <table className="dr-ledger dr-day-table">
+        <thead>
+          <tr>
+            <th scope="col">Day</th>
+            <th scope="col">Verdict</th>
+            <th scope="col" className="num bot">
+              Bot
+            </th>
+            <th scope="col" className="num bt">
+              Backtest
+            </th>
+            <th scope="col" className="num">
+              BT − bot
+            </th>
+            <th scope="col" className="num">
+              Trades both / bot / BT
+            </th>
+            <th scope="col">Causes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {days.map((r) => {
+            const verdict = shownVerdict(r);
+            const a =
+              r.comparison?.accounts?.find((x) => x.broker === account) ??
+              r.comparison?.accounts?.[0];
+            const s = r.comparison?.summary;
+            const bugs = bugCount(r);
+            const differences = differencesOf(r);
+            const isOpen = shownDay === r.date;
+            const tags = [...new Set(differences.map((d) => d.class))];
+            return (
+              <Fragment key={r.date}>
+                <tr className={`dr-ledger-row${isOpen ? " open" : ""}`}>
+                  <th scope="row">
+                    <button
+                      type="button"
+                      className="dr-row-toggle"
+                      aria-expanded={isOpen}
+                      onClick={() => onToggle(r.date)}
+                    >
+                      <span className="dr-chevron" aria-hidden="true">
+                        ›
+                      </span>
+                      <b>{dayLabel(r.date)}</b>
+                    </button>
+                  </th>
+                  <td>
+                    {verdict && (
+                      <span className={`dr-tag ${verdictTone[verdict]}`}>
+                        {verdictShort[verdict]}
+                      </span>
+                    )}
+                    {!verdict && (
+                      <span className="dr-tag grey">{r.status}</span>
+                    )}
+                  </td>
+                  <td className={`num${tone(a?.bot ?? null)}`}>
+                    {a ? signedUsd(a.bot) : "—"}
+                  </td>
+                  <td className={`num${tone(a?.backtest ?? null)}`}>
+                    {a ? signedUsd(a.backtest) : "—"}
+                  </td>
+                  <td className="num">
+                    {a ? signedUsd(a.backtest - a.bot) : "—"}
+                  </td>
+                  <td className="num">
+                    {s
+                      ? `${s.matched} / ${s.liveOnly} / ${s.backtestOnly}`
+                      : "—"}
+                  </td>
+                  <td>
+                    {bugs > 0 && (
+                      <span className="dr-tag red">
+                        ⚠ {plural(bugs, "bug")}
+                      </span>
+                    )}
+                    {tags
+                      .filter((c) => !isBug(c))
+                      .map((c) => (
+                        <span key={c} className={`dr-tag ${classTone[c]}`}>
+                          {classTag[c]}
+                        </span>
+                      ))}
+                  </td>
+                </tr>
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -835,6 +1176,8 @@ export function DayReviews({ bot }: { bot: ReviewBot }) {
   const bugs = days.reduce((s, r) => s + bugCount(r), 0);
   const shownDay = openDay ?? days[0]?.date ?? null;
   const promised = last ? last.cumBacktest - last.cumBot : 0;
+  const selected = days.find((r) => r.date === shownDay) ?? null;
+  const selectedVerdict = selected ? shownVerdict(selected) : null;
   return (
     <div className="bot-panel dr-page">
       <div className="bot-head">
@@ -946,19 +1289,28 @@ export function DayReviews({ bot }: { bot: ReviewBot }) {
             No review yet. The first one comes after the next close.
           </p>
         )}
-        <ul className="dr-days">
-          {days.map((r) => (
-            <DayRow
-              key={r.date}
-              r={r}
-              account={account}
-              open={shownDay === r.date}
-              onToggle={() => setOpenDay(shownDay === r.date ? "" : r.date)}
-              onStory={setStory}
-            />
-          ))}
-        </ul>
+        <DayTable
+          days={days}
+          account={account}
+          shownDay={shownDay}
+          onToggle={(date) => setOpenDay(shownDay === date ? "" : date)}
+        />
       </section>
+      {/* The chosen day, under the list (not inside it, so its wide tables
+          scroll on their own on a phone). */}
+      {selected && (
+        <section className="dr-day-section" aria-labelledby={`dr-day-${bot}`}>
+          <h3 id={`dr-day-${bot}`} className="dr-h">
+            {dayLabel(selected.date)}
+            {selectedVerdict && (
+              <span className={`dr-tag ${verdictTone[selectedVerdict]}`}>
+                {verdictShort[selectedVerdict]}
+              </span>
+            )}
+          </h3>
+          <DayDetail r={selected} account={account} onStory={setStory} />
+        </section>
+      )}
       {story && (
         <Suspense fallback={null}>
           <TradeStory

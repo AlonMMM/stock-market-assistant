@@ -370,6 +370,12 @@ export const tools: Tool[] = [
               evidence: { type: "string" },
               action: { type: "string" },
               symbols: { type: "array", items: { type: "string" } },
+              accounts: {
+                type: "array",
+                items: { type: "string", enum: ["alpaca", "ibkr"] },
+                description:
+                  "The Main bot's accounts it concerns; leave empty when it concerns every account.",
+              },
             },
             required: [
               "class",

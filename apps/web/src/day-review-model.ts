@@ -20,6 +20,13 @@ export const verdictWords: Record<Verdict, string> = {
   "no trades": "No trades to judge",
 };
 
+export const verdictShort: Record<Verdict, string> = {
+  optimistic: "BT TOO HIGH",
+  pessimistic: "BT TOO LOW",
+  "on target": "ON TARGET",
+  "no trades": "NO TRADES",
+};
+
 export const verdictTone: Record<Verdict, string> = {
   optimistic: "red",
   pessimistic: "amber",
@@ -273,6 +280,7 @@ export function differencesOf(r: DayReview): Difference[] {
       evidence: "",
       action: "",
       symbols: [x.symbol],
+      accounts: [],
     }));
 }
 
@@ -358,3 +366,100 @@ export function tradeLine(r: ReviewRow): string {
   if (r.dollarsGap > 0) return `The backtest made $${abs} more`;
   return `The bot made $${abs} more`;
 }
+
+// ---- the day's ledger (one row a trade) ----
+
+export interface LedgerRow {
+  row: ReviewRow;
+  account: string | null;
+  botContract: string | null;
+  btContract: string | null;
+  otherContract: boolean; // the two sides bought different contracts
+  botEntryAt: number | null;
+  btEntryAt: number | null;
+  botPaper: number | null; // the bot's buy fill
+  botBid: number | null;
+  botAsk: number | null;
+  botBuy: number | null; // at market: the book's mid, else the fill
+  btBuy: number | null;
+  botExitAt: number | null; // the last sale
+  btExitAt: number | null;
+  botSales: number;
+  btSales: number;
+  botSell: number | null; // the average sale at market
+  btSell: number | null;
+  botRet: number | null;
+  btRet: number | null;
+  botPnl: number | null;
+  estimate: boolean; // the backtest priced on the option's trades
+  open: boolean;
+}
+
+const lastAt = (xs: readonly { at: number }[]) =>
+  xs.length ? Math.max(...xs.map((x) => x.at)) : null;
+
+/** A trade's numbers side by side. */
+export function ledgerRow(r: ReviewRow): LedgerRow {
+  const l = r.live;
+  const b = r.backtest;
+  let botSell: number | null = null;
+  if (l && l.exits.length)
+    botSell = averageExit(
+      l.exits.map((e) => ({ price: e.real ?? e.paper, qty: e.qty })),
+    );
+  let btSell: number | null = null;
+  if (b && b.exits.length) btSell = averageExit(b.exits);
+  const botContract = l?.contract ?? null;
+  const btContract = b?.contract ?? null;
+  return {
+    row: r,
+    account: l?.broker ?? null,
+    botContract,
+    btContract,
+    otherContract: Boolean(
+      botContract && btContract && botContract !== btContract,
+    ),
+    botEntryAt: l?.entryAt ?? null,
+    btEntryAt: b?.entryAt ?? null,
+    botPaper: l?.paidPaper ?? null,
+    botBid: l?.entryBook?.bid ?? null,
+    botAsk: l?.entryBook?.ask ?? null,
+    botBuy: l ? (l.paidReal ?? l.paidPaper) : null,
+    btBuy: b?.entryPrice ?? null,
+    botExitAt: l ? lastAt(l.exits) : null,
+    btExitAt: b ? lastAt(b.exits) : null,
+    botSales: l?.exits.length ?? 0,
+    btSales: b?.exits.length ?? 0,
+    botSell,
+    btSell,
+    botRet: l?.retReal ?? null,
+    btRet: b?.ret ?? null,
+    botPnl: l?.pnlReal ?? null,
+    estimate: b?.priced === "trades",
+    open: Boolean(l?.open || b?.open),
+  };
+}
+
+/** b against a, %: how much the backtest's price is above the bot's. */
+export function pctOver(a: number | null, b: number | null): number | null {
+  if (a === null || b === null || a <= 0) return null;
+  return (b / a - 1) * 100;
+}
+
+/** The strike in words from an OCC contract: "160C". */
+export function strikeWords(contract: string | null): string {
+  if (!contract) return "—";
+  const m = /([CP])(\d{8})$/.exec(contract);
+  if (!m) return contract;
+  return `${Number(m[2]) / 1000}${m[1]}`;
+}
+
+/** The shortest tag of a cause class, for the ledger's column. */
+export const classTag: Record<DifferenceClass, string> = {
+  "live bug": "BOT BUG",
+  "backtest bug": "BT BUG",
+  pick: "CONTRACT",
+  data: "PRICES",
+  expected: "EXPECTED",
+  unknown: "OPEN",
+};

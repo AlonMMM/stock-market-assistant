@@ -121,10 +121,11 @@ pts) on 3 matched trades; live paid more at the entry."
 6. `## To do`: at most three items. A **live bug** or **backtest bug**: the fix to make (ask the user before any
    change to the bots). A pattern: **a test to run** with the `new-test` skill, never a rule; say so.
 
-`differences`: every item of step 5 as `{class, title, why, evidence, action, symbols}`; the Analyse page shows them
+`differences`: every item of step 5 as `{class, title, why, evidence, action, symbols, accounts}`; the Analyse page shows them
 as the "Why the bot and the backtest differ" cards (bugs first) and tags each trade with its cause. `title` is a few
 words ("COIN: a different strike"), `why` one or two plain sentences, `evidence` the record or `file:line`, `action`
-what to do ("None." is fine), `symbols` the stocks.
+what to do ("None." is fine), `symbols` the stocks, `accounts` the Main bot's accounts it concerns (`alpaca`,
+`ibkr`; empty for all).
 
 Words on the page: say **the bot** (what it did on its paper account), **the backtest** (the app's simulation of
 the same day) and **at market** (the book's mid at the fill), never "live" or "real".

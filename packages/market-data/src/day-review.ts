@@ -288,12 +288,15 @@ export interface LiveSide {
   qty: number;
   paidPaper: number; // the average buy fill, a share
   paidReal: number | null; // the recorded book's mid at the buy
+  // The bid and ask recorded at the buy (the fill's, else the decision's).
+  entryBook: Quote | null;
   exits: {
     at: number;
     qty: number;
     paper: number;
     real: number | null;
     reason: string;
+    book: Quote | null; // at the sale
   }[];
   open: boolean;
   retPaper: number | null; // % after fees, closed only
@@ -302,11 +305,25 @@ export interface LiveSide {
   pnlReal: number | null;
 }
 
+/** A bid and an ask. */
+export interface Quote {
+  bid: number;
+  ask: number;
+}
+
 export interface BacktestSide {
   contract: string;
   entryAt: number;
   entryPrice: number;
-  exits: { at: number; share: number; price: number; reason: string }[];
+  // The book the backtest's buy was priced on; null on trade bars.
+  entryBook: Quote | null;
+  exits: {
+    at: number;
+    share: number;
+    price: number;
+    reason: string;
+    book: Quote | null;
+  }[];
   open: boolean;
   ret: number | null; // % after fees, closed only
   priced: string; // "quotes" | "trades" (Main), "seconds" | ... (Volume)
@@ -392,6 +409,12 @@ export interface Comparison {
   };
 }
 
+/** A recorded book's bid and ask, when it is a usable one. */
+const quoteOf = (b: Book | undefined): Quote | null =>
+  b && b.ask > 0 && b.bid >= 0 && b.bid <= b.ask
+    ? { bid: b.bid, ask: b.ask }
+    : null;
+
 const mid = (b: Book | undefined): number | null =>
   b && b.ask > 0 && b.bid >= 0 && b.bid <= b.ask ? (b.bid + b.ask) / 2 : null;
 
@@ -417,6 +440,7 @@ function liveSide(o: {
   qty: number;
   paidPaper: number;
   paidReal: number | null;
+  entryBook: Quote | null;
   exits: LiveSide["exits"];
   open: boolean;
 }): LiveSide {
@@ -471,6 +495,7 @@ function mainLive(live: MainDay): LiveSide[] {
       qty: p.bought,
       paidPaper: p.cost,
       paidReal: mid(p.entryFillBook ?? p.entryBook),
+      entryBook: quoteOf(p.entryFillBook ?? p.entryBook),
       exits: p.sales
         .filter((s) => s.price !== undefined && s.settled !== false)
         .map((s) => ({
@@ -479,6 +504,7 @@ function mainLive(live: MainDay): LiveSide[] {
           paper: s.price!,
           real: mid(s.fillBook ?? s.book),
           reason: s.reason,
+          book: quoteOf(s.fillBook ?? s.book),
         })),
       open: p.status !== "closed",
     }),
@@ -509,11 +535,13 @@ function mainBacktest(t: SimTrade, status: string): BacktestSide {
     contract: t.contract,
     entryAt: buy ? at(buy.date, buy.minute) : at(t.date, t.minute),
     entryPrice,
+    entryBook: buy?.book ?? null,
     exits: sells.map((s) => ({
       at: at(s.date, s.minute),
       share: s.share,
       price: s.price,
       reason: s.reason,
+      book: s.book ?? null,
     })),
     open,
     ret: !open && entryPrice > 0 ? retAfterFees(entryPrice, got, 1) : null,
@@ -892,6 +920,7 @@ export function compareVolume(
       qty: leg.bought,
       paidPaper: leg.cost,
       paidReal,
+      entryBook: quoteOf(firstBuy?.fillBook ?? firstBuy?.book),
       exits: leg.orders
         .filter((o) => o.side === "sell" && o.settled && o.price !== undefined)
         .map((o) => ({
@@ -900,6 +929,7 @@ export function compareVolume(
           paper: o.price!,
           real: mid(o.fillBook ?? o.book),
           reason: o.reason,
+          book: quoteOf(o.fillBook ?? o.book),
         })),
       open: t.phase !== "closed",
     });
@@ -923,12 +953,14 @@ export function compareVolume(
         contract: tr.contract,
         entryAt,
         entryPrice: tr.buy,
+        entryBook: tr.book ? { bid: tr.book.bid, ask: tr.book.ask } : null,
         exits: [
           {
             at: newYorkToUtc(date, 570 + tr.exitMinute + 1),
             share: 1,
             price: tr.sell,
             reason: tr.exitReason,
+            book: null,
           },
         ],
         open: false,
@@ -1068,7 +1100,9 @@ export interface Difference {
   why: string; // the cause in one or two plain sentences
   evidence: string; // the record or the file:line it rests on
   action: string; // what to do: nothing, a test, a fix to propose
-  symbols: string[]; // the stocks it concerns, for the trade cards
+  symbols: string[]; // the stocks it concerns, for the trade rows
+  // The accounts it concerns ("alpaca", "ibkr"); empty: every account.
+  accounts: string[];
 }
 
 export interface ReviewAnalysis {
@@ -1222,6 +1256,11 @@ export function parseAnalysis(
       action: text(x.action),
       symbols: Array.isArray(x.symbols)
         ? x.symbols.map((v) => String(v).toUpperCase()).slice(0, 10)
+        : [],
+      accounts: Array.isArray(x.accounts)
+        ? x.accounts
+            .map((v) => String(v).toLowerCase())
+            .filter((v) => v === "alpaca" || v === "ibkr")
         : [],
     });
   }
