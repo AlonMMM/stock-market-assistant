@@ -19,6 +19,7 @@ import type {
   IbSnapshot,
   TwsClient,
 } from "./ibkr-trading.js";
+import { newYorkToUtc } from "../../market-data/src/calendar.js";
 
 // `TwsClient` over @stoqey/ib's event API: one socket to the IB Gateway on
 // Railway's private network (docs/ibkr-operations.md). Each request waits for
@@ -34,10 +35,49 @@ export interface TwsOptions {
   // How long a quote waits for its bid, ask (and an option's model delta)
   // before it answers with what came.
   quoteMs?: number;
+  // Market-data lines the streams may hold (IBKR's default allowance is 100;
+  // more with Quote Booster packs).
+  streamLines?: number;
+  // Of those, how many the kept contracts (the watched stocks, then the
+  // options kept warm) may hold; the rest is room for chain reads. Default:
+  // all but 25.
+  pinnedLines?: number;
+  // An option stream nobody read for this long is closed.
+  idleMs?: number;
+  // Tests: a stand-in for the Gateway connection.
+  api?: IBApi;
+}
+
+/**
+ * One contract's live quote: TWS keeps sending its changes, so a read is the
+ * stream's current values, with no request to wait for.
+ */
+interface QuoteStream {
+  reqId: number;
+  key: string;
+  contract: IbContract;
+  option: boolean;
+  snap: IbSnapshot;
+  // Tick types seen; a side with no market arrives as -1 or 0.
+  seen: Set<number>;
+  usedAt: number;
+  // Whether a read already waited its full quoteMs (an option whose delta
+  // never comes): later reads answer at once with what the stream has.
+  waited: boolean;
+  wake: Set<(error?: Error) => void>;
+  // The contract's day volume as it changed: [ms, contracts traded today].
+  volumes: { at: number; day: string; volume: number }[];
 }
 
 // TWS tick types (TickType in the TWS API).
-const tick = { bid: 1, ask: 2, last: 4, modelOption: 13 } as const;
+const tick = { bid: 1, ask: 2, last: 4, volume: 8, modelOption: 13 } as const;
+// How far back a stream keeps its day-volume samples (the 30-minute volume
+// and a little more).
+const volumeKeepMs = 40 * 60_000;
+// The New York date of a time: a day's volume counts that day only.
+const nyDate = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York",
+});
 // TWS error codes that only report, such as market-data farm messages.
 const informational = new Set([2104, 2106, 2107, 2108, 2158, 2119, 10167]);
 const noContract = 200;
@@ -94,6 +134,14 @@ function fromIb(c: Contract): IbContract | null {
   };
 }
 
+/** Kept contracts' groups, in the order they get lines. */
+type PinGroup = "stocks" | "options";
+const pinOrder: PinGroup[] = ["stocks", "options"];
+
+/** A contract's stream key: its conId, else its description. */
+const streamKey = (c: IbContract) =>
+  c.conId ? `#${c.conId}` : JSON.stringify(toIb(c));
+
 export class StoqeyTws implements TwsClient {
   private readonly ib: IBApi;
   private readonly log: (line: string) => void;
@@ -106,24 +154,89 @@ export class StoqeyTws implements TwsClient {
   private readonly known = new Map<number, IbOrderState>();
   // Requests without an id (positions, open orders) run one at a time.
   private queue: Promise<unknown> = Promise.resolve();
+  private readonly streamLines: number;
+  private readonly pinnedLines: number;
+  private readonly idleMs: number;
+  // Live quote streams by contract, and by their request id.
+  private readonly streams = new Map<string, QuoteStream>();
+  private readonly byReq = new Map<number, QuoteStream>();
+  // Contracts kept streaming whatever their use, by group, in the order
+  // they get lines: the watched stocks, then the options kept warm.
+  private readonly groups = new Map<PinGroup, IbContract[]>();
+  private pins = new Map<string, IbContract>();
 
   constructor(private readonly options: TwsOptions) {
     this.log = options.log ?? (() => {});
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.quoteMs = options.quoteMs ?? 3_000;
-    this.ib = new IBApi({
-      host: options.host,
-      port: options.port,
-      clientId: options.clientId,
-    });
+    this.streamLines = options.streamLines ?? 90;
+    this.pinnedLines =
+      options.pinnedLines ?? Math.max(0, this.streamLines - 25);
+    this.idleMs = options.idleMs ?? 10 * 60_000;
+    this.ib =
+      options.api ??
+      new IBApi({
+        host: options.host,
+        port: options.port,
+        clientId: options.clientId,
+      });
     this.ib.on(EventName.disconnected, () => {
       this.log("ibkr: disconnected from the Gateway");
       this.ready = null;
+      // The Gateway forgets every stream with the connection.
+      for (const stream of [...this.streams.values()])
+        this.drop(stream, new Error("disconnected from the IB Gateway"));
     });
     this.ib.on(EventName.error, (error, code, reqId) => {
       if (!informational.has(code))
         this.log(`ibkr: error ${code} (request ${reqId}): ${error.message}`);
+      const stream = this.byReq.get(reqId);
+      if (stream && !informational.has(code))
+        this.drop(stream, Object.assign(new Error(error.message), { code }));
     });
+    this.ib.on(EventName.tickPrice, (reqId, field, value) => {
+      const stream = this.byReq.get(reqId);
+      if (!stream) return;
+      stream.seen.add(field);
+      // A side with no market (-1 or 0) has no price now, not its old one.
+      const price = value > 0 ? value : null;
+      if (field === tick.bid) stream.snap.bid = price;
+      else if (field === tick.ask) stream.snap.ask = price;
+      else if (field === tick.last && price !== null) stream.snap.last = price;
+      if (price !== null) stream.snap.at = Date.now();
+      for (const wake of stream.wake) wake();
+    });
+    this.ib.on(EventName.tickSize, (reqId, field, value) => {
+      const stream = this.byReq.get(reqId);
+      if (!stream || field !== tick.volume) return;
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+        return;
+      const now = Date.now();
+      const day = nyDate.format(now);
+      const kept = stream.volumes;
+      const last = kept.at(-1);
+      if (last?.volume === value && last.day === day) return;
+      // A new session's count starts again: no window spans the reset.
+      if (last && value < last.volume) kept.length = 0;
+      kept.push({ at: now, day, volume: value });
+      // Keeps the newest sample older than the window: a window's start.
+      let old = 0;
+      while (old + 1 < kept.length && kept[old + 1]!.at <= now - volumeKeepMs)
+        old++;
+      if (old > 0) kept.splice(0, old);
+    });
+    this.ib.on(
+      EventName.tickOptionComputation,
+      (reqId, field, _attrib, iv, delta) => {
+        const stream = this.byReq.get(reqId);
+        if (!stream || field !== tick.modelOption) return;
+        if (typeof delta === "number" && Math.abs(delta) <= 1)
+          stream.snap.delta = delta;
+        // TWS sends a huge sentinel when it has no value.
+        if (typeof iv === "number" && iv > 0 && iv < 100) stream.snap.iv = iv;
+        for (const wake of stream.wake) wake();
+      },
+    );
     this.ib.on(EventName.openOrder, (orderId, contract, order, state) =>
       this.remember(orderId, contract, order, state),
     );
@@ -185,6 +298,8 @@ export class StoqeyTws implements TwsClient {
         this.ib.reqMarketDataType(1);
         this.log("ibkr: connected to the Gateway");
         resolve();
+        // The watched stocks stream again after a drop.
+        for (const contract of this.pins.values()) this.open(contract);
       });
       this.ib.connect(this.options.clientId);
     }));
@@ -309,65 +424,155 @@ export class StoqeyTws implements TwsClient {
 
   /**
    * The contract's bid, ask and last (an option's model delta and IV too)
-   * from a short real-time stream: it answers as soon as the bid and ask (and
-   * an option's delta) have come, at most `quoteMs` later with what came, and
-   * the stream is then cancelled. A TWS snapshot (snapshot=true) waits up to
-   * about 11 seconds for its end, which made an IBKR chain take 9-22 seconds
-   * (2026-11-02); a stream's first ticks come in well under a second.
+   * from its live stream. The first read opens the stream and answers as
+   * soon as the bid and ask (and an option's delta) have come, at most
+   * `quoteMs` later with what came; the stream then stays open, so every
+   * later read answers at once with IBKR's current values (the owner,
+   * 2026-11-04: "the fastest we can be"). A one-off TWS snapshot waited up
+   * to about 11 s, and a stream per read up to 3 s each time.
    */
-  snapshot(contract: IbContract): Promise<IbSnapshot> {
-    const snap: IbSnapshot = {
-      bid: null,
-      ask: null,
-      last: null,
-      delta: null,
-      at: null,
-    };
-    const option = contract.secType === "OPT";
-    // A side with no market arrives as -1 or 0: known, but no price.
-    const seen = new Set<number>();
-    const complete = () =>
-      seen.has(tick.bid) &&
-      seen.has(tick.ask) &&
-      (!option || snap.delta !== null);
-    return this.request<IbSnapshot>(
-      (reqId) => this.ib.reqMktData(reqId, toIb(contract), "", false, false),
-      (reqId, finish) => {
-        const enough = setTimeout(() => finish(snap), this.quoteMs);
-        const onPrice = (id: number, field: number, value: number) => {
-          if (id !== reqId) return;
-          seen.add(field);
-          if (!(value > 0)) return;
-          if (field === tick.bid) snap.bid = value;
-          else if (field === tick.ask) snap.ask = value;
-          else if (field === tick.last) snap.last = value;
-          snap.at = Date.now();
-          if (complete()) finish(snap);
-        };
-        const onGreeks = (
-          id: number,
-          field: number,
-          _attrib: number | undefined,
-          iv?: number,
-          delta?: number,
-        ) => {
-          if (id !== reqId || field !== tick.modelOption) return;
-          if (typeof delta === "number" && Math.abs(delta) <= 1)
-            snap.delta = delta;
-          // TWS sends a huge sentinel when it has no value.
-          if (typeof iv === "number" && iv > 0 && iv < 100) snap.iv = iv;
-          if (complete()) finish(snap);
-        };
-        this.ib.on(EventName.tickPrice, onPrice);
-        this.ib.on(EventName.tickOptionComputation, onGreeks);
-        return () => {
+  async snapshot(contract: IbContract): Promise<IbSnapshot> {
+    await this.connect();
+    const stream = this.open(contract);
+    stream.usedAt = Date.now();
+    if (!this.complete(stream) && !stream.waited) {
+      await new Promise<void>((resolve, reject) => {
+        const done = (error?: Error) => {
+          if (!error && !this.complete(stream)) return;
           clearTimeout(enough);
-          this.ib.off(EventName.tickPrice, onPrice);
-          this.ib.off(EventName.tickOptionComputation, onGreeks);
+          stream.wake.delete(done);
+          if (error) reject(error);
+          else resolve();
         };
-      },
-      (reqId) => this.ib.cancelMktData(reqId),
+        const enough = setTimeout(() => {
+          stream.waited = true;
+          stream.wake.delete(done);
+          resolve();
+        }, this.quoteMs);
+        stream.wake.add(done);
+      });
+    }
+    // A live stream's values hold now: TWS sends only changes.
+    return {
+      ...stream.snap,
+      at: stream.snap.at === null ? null : Date.now(),
+    };
+  }
+
+  /**
+   * Keeps these contracts streaming: `stocks` (the watched stocks) first,
+   * then `options` (the strikes kept warm), together up to `pinnedLines`.
+   * A group's new list replaces its old one; contracts no longer kept become
+   * like any other stream.
+   */
+  async watch(
+    contracts: IbContract[],
+    group: PinGroup = "stocks",
+  ): Promise<void> {
+    this.groups.set(group, contracts);
+    const all = pinOrder.flatMap((g) => this.groups.get(g) ?? []);
+    const unique = [...new Map(all.map((c) => [streamKey(c), c])).values()];
+    const keep = unique.slice(0, this.pinnedLines);
+    if (unique.length > keep.length)
+      this.log(
+        `ibkr: streaming ${keep.length} of ${unique.length} kept contracts (the line allowance)`,
+      );
+    this.pins = new Map(keep.map((c) => [streamKey(c), c]));
+    await this.connect();
+    for (const contract of keep) this.open(contract);
+  }
+
+  /**
+   * Contracts traded in the `minutes` up to `end` (ms), from the contract's
+   * stream: its day volume at `end` less the one at the window's start. A
+   * window that starts before the 09:30 open is the whole day so far, since
+   * options trade from the open: any stream with today's count answers it
+   * (the owner, 2026-11-05: "use what we have instead of waiting to 10:00").
+   * Null when the stream cannot tell (then ask the history).
+   */
+  streamVolume(contract: IbContract, end: number, minutes: number) {
+    const stream = this.streams.get(streamKey(contract));
+    if (!stream) return null;
+    const at = (t: number) => stream.volumes.findLast((v) => v.at <= t);
+    const last = at(end);
+    const day = nyDate.format(end);
+    if (!last || last.day !== day) return null;
+    const open = newYorkToUtc(day, 570);
+    if (end - minutes * 60_000 < open)
+      // A count from before the open is the day before's or none: nothing
+      // has traded today until a sample after it.
+      return last.at <= open ? 0 : last.volume;
+    const start = at(end - minutes * 60_000);
+    // Both from the same New York day: a count never spans two sessions.
+    if (!start || start.day !== day) return null;
+    return Math.max(0, last.volume - start.volume);
+  }
+
+  private complete(stream: QuoteStream): boolean {
+    return (
+      stream.seen.has(tick.bid) &&
+      stream.seen.has(tick.ask) &&
+      (!stream.option || stream.snap.delta !== null)
     );
+  }
+
+  /** The contract's stream, opened when there is none. */
+  private open(contract: IbContract): QuoteStream {
+    const key = streamKey(contract);
+    const known = this.streams.get(key);
+    if (known) return known;
+    this.makeRoom();
+    const stream: QuoteStream = {
+      reqId: this.nextReqId++,
+      key,
+      contract,
+      option: contract.secType === "OPT",
+      snap: { bid: null, ask: null, last: null, delta: null, at: null },
+      seen: new Set(),
+      usedAt: Date.now(),
+      waited: false,
+      wake: new Set(),
+      volumes: [],
+    };
+    this.streams.set(key, stream);
+    this.byReq.set(stream.reqId, stream);
+    this.ib.reqMktData(stream.reqId, toIb(contract), "", false, false);
+    return stream;
+  }
+
+  /**
+   * Closes streams nobody read for `idleMs`, then, while the lines are all
+   * taken, the least recently read one that is not watched or being waited on.
+   */
+  private makeRoom() {
+    const now = Date.now();
+    const free = (s: QuoteStream) => !this.pins.has(s.key) && s.wake.size === 0;
+    for (const s of [...this.streams.values()])
+      if (free(s) && now - s.usedAt > this.idleMs) this.close(s);
+    while (this.streams.size >= this.streamLines) {
+      let oldest: QuoteStream | null = null;
+      for (const s of this.streams.values())
+        if (free(s) && (!oldest || s.usedAt < oldest.usedAt)) oldest = s;
+      if (!oldest) return;
+      this.close(oldest);
+    }
+  }
+
+  private close(stream: QuoteStream) {
+    this.forget(stream);
+    this.ib.cancelMktData(stream.reqId);
+  }
+
+  /** A stream TWS ended (an error, a drop): readers waiting get the error. */
+  private drop(stream: QuoteStream, error: Error) {
+    this.forget(stream);
+    for (const wake of [...stream.wake]) wake(error);
+  }
+
+  private forget(stream: QuoteStream) {
+    if (this.streams.get(stream.key) === stream)
+      this.streams.delete(stream.key);
+    this.byReq.delete(stream.reqId);
   }
 
   /** Contracts traded in each 1-minute bar (TRADES) of the `minutes` up to `end` (ms). */

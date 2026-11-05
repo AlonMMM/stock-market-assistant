@@ -328,6 +328,37 @@ test("ibkr: the 30-minute volume adds IBKR's own minute bars up to the end", asy
   await assert.rejects(none.optionVolume30([nvdaCall], end), /historical/);
 });
 
+test("ibkr: the 30-minute volume comes from the option's stream when it has one, checked against the bars in the log", async () => {
+  const lines: string[] = [];
+  const tws = new FakeTws();
+  tws.list(nvdaCall, {});
+  tws.volumes.set(nvdaCall, [100, 200]);
+  const streamed = new Map<string, number>([[nvdaCall, 290]]);
+  Object.assign(tws, {
+    streamVolume: (c: IbContract) => streamed.get(key(c)) ?? null,
+  });
+  const broker = new IbkrTrading(tws, {
+    paper: true,
+    now: () => monday,
+    log: (l) => lines.push(l),
+  });
+  const end = monday + 60_000;
+  assert.equal(
+    (await broker.optionVolume30([nvdaCall], end)).get(nvdaCall),
+    290,
+  );
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(lines, [
+    `ibkr: 30-minute volume of ${nvdaCall}: stream 290, bars 300 (differs)`,
+  ]);
+  // No stream old enough: the bars, as before.
+  streamed.clear();
+  assert.equal(
+    (await broker.optionVolume30([nvdaCall], end)).get(nvdaCall),
+    300,
+  );
+});
+
 test("ibkr: the market is open in core hours of trading days only", async () => {
   const at = async (iso: string) => setup(Date.parse(iso)).broker.marketOpen();
   assert.equal(await at("2026-10-12T13:30:00Z"), true); // 9:30

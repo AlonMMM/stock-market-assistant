@@ -720,10 +720,19 @@ function harness(
   const bot = new IndiBot({
     store,
     market,
+    // Each call names its own account: the legs of a 'both' signal run at once.
     trading: (b) => {
-      broker = b;
       const own = opts.legs?.[b];
-      return own ? { ...trading, ...own } : trading;
+      const methods = own ? { ...trading, ...own } : trading;
+      return Object.fromEntries(
+        Object.entries(methods).map(([name, method]) => [
+          name,
+          (...args: unknown[]) => {
+            broker = b;
+            return (method as (...a: unknown[]) => unknown)(...args);
+          },
+        ]),
+      ) as unknown as BotTrading;
     },
     brokers: opts.brokers ?? ["alpaca", "ibkr"],
     broker: "alpaca",
@@ -1722,6 +1731,84 @@ test("broker setting 'both': an account that throws does not undo the other's en
     signal.detail ?? "",
     /Alpaca: 33 .*; Interactive Brokers: market data requires additional subscription/,
   );
+});
+
+test("broker setting 'both': a slow IBKR pick does not hold up Alpaca's buy", async () => {
+  let boughtWhileIbkrPicked: BotBroker[] = [];
+  const h = harness("live", {}, undefined, {
+    legs: {
+      ibkr: {
+        async chain() {
+          // IBKR's chain takes seconds in production (2026-11-04).
+          await new Promise((r) => setTimeout(r, 30));
+          boughtWhileIbkrPicked = h.calls
+            .filter((c) => c.kind === "buy")
+            .map((c) => c.broker);
+          return [q(110, 0.15, 0.59), q(115, 0.08, 0.3)];
+        },
+      },
+    },
+  });
+  h.bot.setSettings({ ...h.bot.settings(), broker: "both" });
+  await h.run(DAY, 565, 600);
+  assert.deepEqual(boughtWhileIbkrPicked, ["alpaca"]);
+  assert.deepEqual(
+    h.store
+      .openPositions()
+      .map((p) => p.broker)
+      .sort(),
+    ["alpaca", "ibkr"],
+  );
+  const signal = h.store.signals(DAY)[0]!;
+  assert.equal(signal.outcome, "bought");
+  assert.deepEqual(
+    signal.legs!.map((l) => l.broker),
+    ["alpaca", "ibkr"],
+  );
+});
+
+test("IBKR keeps the strikes near the pick warm: every 15 minutes of the entry window, the pick and a strike either side", async () => {
+  const kept: { minute: number; contracts: string[] }[] = [];
+  let minute = 0;
+  const h = harness("live", {}, undefined, {
+    legs: {
+      ibkr: {
+        async chain(_u, right) {
+          // Out of the money on each side of a stock near 100.
+          const strikes =
+            right === "call" ? [105, 110, 115, 120] : [95, 90, 85, 80];
+          return [0.3, 0.15, 0.08, 0.04].map((delta, i) =>
+            q(strikes[i]!, delta, 0.6 - i * 0.1, "2026-10-23", right),
+          );
+        },
+        async keepStreaming(contracts) {
+          kept.push({ minute, contracts });
+        },
+      },
+    },
+  });
+  h.bot.setSettings({ ...h.bot.settings(), broker: "both" });
+  for (let wall = 565; wall <= 602; wall++) {
+    minute = wall - 570;
+    await h.run(DAY, wall, wall);
+    await new Promise((r) => setImmediate(r));
+  }
+  assert.deepEqual(
+    kept.map((k) => k.minute),
+    [0, 15, 30],
+  );
+  assert.deepEqual(kept[0]!.contracts, [
+    "NVDA261023C00105000",
+    "NVDA261023C00110000",
+    "NVDA261023C00115000",
+    "NVDA261023P00085000",
+    "NVDA261023P00090000",
+    "NVDA261023P00095000",
+  ]);
+  // Alpaca keeps nothing warm: it has no streams to keep.
+  const alpacaOnly = harness("live");
+  await alpacaOnly.run(DAY, 565, 600);
+  assert.equal(kept.length, 3);
 });
 
 test("broker setting 'both': each account picks from its own chain, with its own volume, and every leg is kept", async () => {
