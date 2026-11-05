@@ -75,6 +75,9 @@ import {
   stepMs,
   type BotId,
   type PeriodId,
+  mainRunChanges,
+  stocksLabel,
+  volumeRunChanges,
 } from "./bot-backtest-model.js";
 import {
   mainRun,
@@ -478,8 +481,22 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
   // The runs live outside the page: they go on, and stay, across sections.
   const main = useBacktestRun();
   const vol = volumeRun.use();
-  const { runs, ran } = main;
-  const { busy, errors, stopped } = isVolume ? vol : main;
+  // The results show the run (the one going on, or the last one) or, under
+  // History, a past run picked there; a run going on does not lock History.
+  const [resultTab, setResultTab] = useState<"run" | "history">("run");
+  const history = resultTab === "history";
+  const mainPast = mainRun.useView();
+  const volPast = volumeRun.useView();
+  const mainRecent = mainRun.useRecent();
+  const volRecent = volumeRun.useRecent();
+  const past = isVolume ? volPast : mainPast;
+  const mainShown = history ? mainPast.run : main;
+  const volShown = history ? volPast.run : vol;
+  const { runs, ran } = mainShown;
+  const { busy } = isVolume ? vol : main;
+  const { errors, stopped } = isVolume ? volShown : mainShown;
+  // The shown result's own progress: a past run is not the one running.
+  const shownBusy = history ? null : busy;
   const [filter, setFilter] = useState<"all" | "won" | "lost" | "refused">(
     "all",
   );
@@ -511,6 +528,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
 
   function run() {
     setOpen(null);
+    setResultTab("run");
     if (isVolume) {
       void volumeRun.start({
         settings: setup.volume.settings,
@@ -568,16 +586,18 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
   // limits settings at once; the rest needs a new run.
   const vMoney = volumeMoney(setup.volume.money, setup.volume.settings);
   const vAccount = useMemo(
-    () => (vol.ran ? volumeAccount(vol.runs, vMoney) : null),
+    () => (volShown.ran ? volumeAccount(volShown.runs, vMoney) : null),
     // The money is rebuilt each render: its values, not the object, decide.
-    [vol.runs, vol.ran, JSON.stringify(vMoney)],
+    [volShown.runs, volShown.ran, JSON.stringify(vMoney)],
   );
   const vRows = useMemo(
-    () => volumeRows(vol.runs, vAccount),
-    [vol.runs, vAccount],
+    () => volumeRows(volShown.runs, vAccount),
+    [volShown.runs, vAccount],
   );
-  const vIgnored = [...new Set(vol.runs.flatMap((r) => r.ignored))];
+  const vIgnored = [...new Set(volShown.runs.flatMap((r) => r.ignored))];
+  // A past run is not stale: it is shown as it ran (its card says how).
   const vStale =
+    !history &&
     vol.ran !== null &&
     (!sameRun(vol.ran.settings, setup.volume.settings) ||
       vol.ran.fillPct !== setup.fillPct ||
@@ -598,6 +618,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
   const vLive = setup.volume.base?.version ?? currentVolumeVersion;
 
   const stale =
+    !history &&
     ran !== null &&
     (!sameRules(ran.rules, setup.rules) ||
       ran.fillPct !== setup.fillPct ||
@@ -617,6 +638,75 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
     })),
   ];
   const previewCount = 12;
+
+  // What each run tested, for its History row and its card.
+  const describe = (meta: RanBase): RunDescription => {
+    if (isVolume) {
+      const r = meta as VolumeRan;
+      return {
+        label: `Volume bot ${volumeVersionLabel(r.settings)}`,
+        base: r.settings.version,
+        changes: volumeRunChanges(r),
+        stocks: stocksLabel(r.tickers, picks),
+      };
+    }
+    const r = meta as Ran;
+    return {
+      label: `Main bot ${r.version}`,
+      base: r.version.replace(/\*$/, ""),
+      changes: mainRunChanges(r),
+      stocks: stocksLabel(r.tickers, picks),
+    };
+  };
+
+  function showTab(tab: "run" | "history") {
+    setOpen(null);
+    setOpenSkip(null);
+    setVOpen(null);
+    setResultTab(tab);
+  }
+
+  /** A History row: the run going on opens under This run, others here. */
+  function openPast(id: string) {
+    setOpen(null);
+    setOpenSkip(null);
+    setVOpen(null);
+    const active = isVolume ? vol : main;
+    if (id === active.id) {
+      setResultTab("run");
+      return;
+    }
+    void (isVolume ? volumeRun : mainRun).view(id);
+  }
+
+  /** The form takes a past run's setup, so Run repeats it. */
+  function loadRunSetup(meta: RanBase) {
+    if (isVolume) {
+      const r = meta as VolumeRan;
+      patch({
+        tickers: r.tickers,
+        from: r.from,
+        to: r.to,
+        period: "custom",
+        fillPct: r.fillPct,
+        volume: { ...setup.volume, settings: r.settings },
+      });
+      return;
+    }
+    const r = meta as Ran;
+    const version = r.version.replace(/\*$/, "");
+    patch({
+      tickers: r.tickers,
+      from: r.from,
+      to: r.to,
+      period: "custom",
+      fillPct: r.fillPct,
+      rules: r.rules,
+      ...(versionById(version) ? { version } : {}),
+    });
+  }
+  const shownRan = isVolume ? volShown.ran : ran;
+  const recent = isVolume ? volRecent : mainRecent;
 
   return (
     <div className="backtest-page bot-bt">
@@ -1169,50 +1259,92 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
         </form>
 
         <div className="results-column">
-          {isVolume ? (
+          <div
+            role="tablist"
+            aria-label="Runs"
+            className="subtabs bt-run-tabs"
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+              e.preventDefault();
+              const next = history ? "run" : "history";
+              showTab(next);
+              document.getElementById(`bt-tab-${next}`)?.focus();
+            }}
+          >
+            <button
+              type="button"
+              role="tab"
+              id="bt-tab-run"
+              aria-selected={!history}
+              tabIndex={history ? -1 : 0}
+              onClick={() => showTab("run")}
+            >
+              {busy ? "This run · running" : "This run"}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="bt-tab-history"
+              aria-selected={history}
+              tabIndex={history ? 0 : -1}
+              onClick={() => showTab("history")}
+            >
+              History
+              {recent && recent.length > 0 && (
+                <span className="tab-count num"> {recent.length}</span>
+              )}
+            </button>
+          </div>
+          {history && (
             <RecentRuns
-              key="volume"
-              runs={volumeRun.useRecent()}
-              shown={vol.id ?? null}
+              key={isVolume ? "volume" : "main"}
+              runs={recent}
+              shown={past.id}
+              active={(isVolume ? vol : main).id ?? null}
               busy={busy}
-              onOpen={(id, meta) => {
-                const r = meta as VolumeRan;
-                // The form takes the run's setup, so Run repeats it.
-                patch({
-                  tickers: r.tickers,
-                  from: r.from,
-                  to: r.to,
-                  period: "custom",
-                  fillPct: r.fillPct,
-                  volume: { ...setup.volume, settings: r.settings },
-                });
-                void volumeRun.open(id);
-              }}
-              label={() => "Volume bot"}
+              onOpen={openPast}
+              describe={describe}
             />
-          ) : (
-            <RecentRuns
-              key="main"
-              runs={mainRun.useRecent()}
-              shown={main.id ?? null}
-              busy={busy}
-              onOpen={(id, meta) => {
-                const r = meta as Ran;
-                setOpen(null);
-                // The form takes the run's setup, so Run repeats it.
-                const version = r.version.replace(/\*$/, "");
-                patch({
-                  tickers: r.tickers,
-                  from: r.from,
-                  to: r.to,
-                  period: "custom",
-                  fillPct: r.fillPct,
-                  rules: r.rules,
-                  ...(versionById(version) ? { version } : {}),
-                });
-                void mainRun.open(id);
-              }}
-              label={(meta) => `Main bot ${(meta as Ran).version}`}
+          )}
+          {history && past.loading && (
+            <p className="muted small" role="status">
+              Reading the run…
+            </p>
+          )}
+          {history && past.error && (
+            <p className="run-error" role="alert">
+              {past.error}
+            </p>
+          )}
+          {history && past.status === "running" && (
+            <p className="stale">
+              This run is still going: the parts back so far.
+            </p>
+          )}
+          {shownRan && (
+            <RunTested
+              title={
+                history ? "What this past run tested" : "What this run tested"
+              }
+              d={describe(shownRan)}
+              ran={shownRan}
+              action={
+                history && (
+                  <button
+                    type="button"
+                    className="bs-secondary"
+                    disabled={busy !== null}
+                    title={
+                      busy
+                        ? "The setup is locked while a run is going"
+                        : "Put this run's stocks, period and rules in the form"
+                    }
+                    onClick={() => loadRunSetup(shownRan)}
+                  >
+                    Use this setup
+                  </button>
+                )
+              }
             />
           )}
           {errors.length > 0 && (
@@ -1229,7 +1361,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
           )}
           {!isVolume && (
             <>
-              {!ran && <Empty />}
+              {!ran && !history && <Empty />}
               {ran && account && (
                 <>
                   {stale && !busy && (
@@ -1237,7 +1369,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                       The setup changed since this run. Run again to see it.
                     </p>
                   )}
-                  {stopped && !busy && (
+                  {stopped && !shownBusy && (
                     <p className="stale">
                       Stopped after {stopped.done} of {stopped.total} parts: the
                       result covers those parts only.
@@ -1248,7 +1380,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                     account={account}
                     money={setup.money}
                     skipsCount={skips.length}
-                    busy={busy !== null}
+                    busy={shownBusy !== null}
                   />
                   {account.trades.length > 0 && (
                     <Suspense fallback={null}>
@@ -1282,27 +1414,27 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
           )}
           {isVolume && (
             <>
-              {!vol.ran && <VolumeEmpty />}
-              {vol.ran && vAccount && (
+              {!volShown.ran && !history && <VolumeEmpty />}
+              {volShown.ran && vAccount && (
                 <>
                   {vStale && !busy && (
                     <p className="stale">
                       The setup changed since this run. Run again to see it.
                     </p>
                   )}
-                  {stopped && !busy && (
+                  {stopped && !shownBusy && (
                     <p className="stale">
                       Stopped after {stopped.done} of {stopped.total} parts: the
                       result covers those parts only.
                     </p>
                   )}
                   <VolumeSummary
-                    ran={vol.ran}
+                    ran={volShown.ran}
                     account={vAccount}
                     money={vMoney}
                     rows={vRows}
                     ignored={vIgnored}
-                    busy={busy !== null}
+                    busy={shownBusy !== null}
                   />
                   {vAccount.taken > 0 && (
                     <Suspense fallback={null}>
@@ -1324,7 +1456,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
           )}
         </div>
       </div>
-      {vOpen && vol.ran && (
+      {vOpen && volShown.ran && (
         <Suspense fallback={null}>
           <TradeStory
             t={closedVolumeTrade(vOpen)}
@@ -1332,7 +1464,7 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
             source="volume"
             backtest={volumeBacktestStory(
               vOpen,
-              vol.ran.settings,
+              volShown.ran.settings,
               true, // the page's runs model the broker stop
             )}
             onClose={() => setVOpen(null)}
@@ -1497,92 +1629,153 @@ function RuleInput({
   );
 }
 
+/** What a run tested, in short (describe in the page). */
+interface RunDescription {
+  label: string; // "Main bot 2.9*"
+  base: string; // the version its rules are compared with
+  changes: string[]; // its rules that differ from the version's
+  stocks: string;
+}
+
 /**
- * The latest 10 runs of the bot (the user, 2026-11-04: "I would like to see my
- * last 10 results"). Tapping one shows its result, or its progress while it
- * runs; while a run is going the others wait.
+ * The latest 10 runs of the bot, under History (the user, 2026-11-04: "I
+ * would like to see my last 10 results"; 2026-11-05: what each tested, and
+ * open while a run goes on). Each row says what changed from its version,
+ * the stocks and the period; tapping one shows its result below.
  */
 function RecentRuns({
   runs,
   shown,
+  active,
   busy,
   onOpen,
-  label,
+  describe,
 }: {
   runs: RecentRun<RanBase>[] | null;
   shown: string | null;
+  active: string | null;
   busy: Busy | null;
-  onOpen: (id: string, meta: RanBase) => void;
-  label: (meta: RanBase) => string;
+  onOpen: (id: string) => void;
+  describe: (meta: RanBase) => RunDescription;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  if (!runs || runs.length === 0) return null;
-  const rows = expanded ? runs : runs.slice(0, 3);
+  if (runs === null)
+    return (
+      <p className="muted small" role="status">
+        Reading the latest runs…
+      </p>
+    );
+  if (runs.length === 0)
+    return (
+      <section className="card bt-empty">
+        <h2>No runs yet</h2>
+        <p className="muted">Each run you make is kept here, the latest 10.</p>
+      </section>
+    );
   return (
     <section className="card bt-recent" aria-label="Recent runs">
       <div className="card-head">
         <h2>Recent runs</h2>
-        <span className="muted small">the latest {runs.length}</span>
+        <span className="muted small">
+          the latest {runs.length}
+          {!shown && " · pick one to see its result"}
+        </span>
       </div>
       <ul className="bt-recent-list">
-        {rows.map((r) => {
+        {runs.map((r) => {
           const isShown = r.id === shown;
-          // The shown run's own state is the freshest while it runs.
-          const done = isShown && busy ? busy.done : r.done;
-          const status =
-            r.status === "running" || (isShown && busy)
-              ? `Running ${done}/${r.total}`
-              : r.status === "stopped"
-                ? `Stopped ${r.done}/${r.total}`
-                : "Done";
-          const meta = r.meta;
+          const isActive = r.id === active;
+          const running = r.status === "running" || (isActive && busy !== null);
+          // The run going on reads its own progress, the freshest.
+          const done = isActive && busy ? busy.done : r.done;
+          let status = "Done";
+          if (running) status = `Running ${done}/${r.total}`;
+          else if (r.status === "stopped")
+            status = `Stopped ${r.done}/${r.total}`;
+          const d = describe(r.meta);
+          let changed = `${d.base}'s own rules`;
+          if (d.changes.length > 0) changed = d.changes.join(" · ");
           return (
             <li key={r.id}>
               <button
                 type="button"
                 className="bt-recent-row"
                 aria-current={isShown ? "true" : undefined}
-                disabled={!isShown && busy !== null}
-                title={
-                  !isShown && busy !== null
-                    ? "Wait for the running backtest to end, or stop it"
-                    : undefined
-                }
-                onClick={() => {
-                  if (!isShown) onOpen(r.id, meta);
-                }}
+                title={running ? "Opens under This run" : undefined}
+                onClick={() => onOpen(r.id)}
               >
                 <span className="bt-recent-when num">
                   {israelDayLabel(r.createdAt)} {israelClock(r.createdAt)}
                 </span>
-                <span className="bt-recent-what">
-                  {label(meta)} · {meta.tickers.length} stock
-                  {meta.tickers.length === 1 ? "" : "s"} ·{" "}
-                  <span className="num">
-                    {meta.from} → {meta.to}
-                  </span>
-                </span>
+                <span className="bt-recent-what">{d.label}</span>
                 <span
-                  className={`bt-recent-status${r.status === "running" || (isShown && busy) ? " running" : ""}`}
+                  className={`bt-recent-status${running ? " running" : ""}`}
                 >
                   {status}
                   {r.failed > 0 && ` · ${r.failed} failed`}
-                  {isShown && " · shown"}
+                </span>
+                <span
+                  className={`bt-recent-changed num${d.changes.length ? "" : " muted"}`}
+                >
+                  {changed}
+                </span>
+                <span className="bt-recent-scope muted num">
+                  {d.stocks} · {r.meta.from} → {r.meta.to} · fill{" "}
+                  {r.meta.fillPct}%
                 </span>
               </button>
             </li>
           );
         })}
       </ul>
-      {runs.length > 3 && (
-        <button
-          type="button"
-          className="reset bt-recent-more"
-          onClick={() => setExpanded(!expanded)}
-        >
-          {expanded ? "Show fewer" : `Show all ${runs.length}`}
-        </button>
-      )}
+    </section>
+  );
+}
+
+/** The shown run's setup: its bot and version, what changed, stocks, period. */
+function RunTested({
+  title,
+  d,
+  ran,
+  action,
+}: {
+  title: string;
+  d: RunDescription;
+  ran: RanBase;
+  action?: ReactNode;
+}) {
+  const sessions = sessionsBetween(ran.from, ran.to).length;
+  return (
+    <section className="card bt-tested" aria-label={title}>
+      <div className="card-head">
+        <h2>{title}</h2>
+        {action}
+      </div>
+      <dl className="bt-tested-grid">
+        <dt>Bot</dt>
+        <dd>{d.label}</dd>
+        <dt>Changed from {d.base}</dt>
+        <dd>
+          {d.changes.length > 0 ? (
+            <ul className="bt-tested-changes">
+              {d.changes.map((c) => (
+                <li key={c} className="num">
+                  {c}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="muted">Nothing: the version&apos;s own rules</span>
+          )}
+        </dd>
+        <dt>Stocks</dt>
+        <dd title={ran.tickers.join(", ")}>{d.stocks}</dd>
+        <dt>Period</dt>
+        <dd className="num">
+          {ran.from} → {ran.to} · {sessions} session{sessions === 1 ? "" : "s"}
+        </dd>
+        <dt>Fill cost</dt>
+        <dd className="num">{ran.fillPct}% of the price</dd>
+      </dl>
     </section>
   );
 }

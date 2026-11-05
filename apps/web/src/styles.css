@@ -2506,10 +2506,6 @@ dialog.stocks-dialog {
   text-align: left;
   cursor: pointer;
 }
-.bt-recent-row:disabled {
-  cursor: default;
-  opacity: 0.55;
-}
 .bt-recent-row[aria-current="true"] {
   box-shadow: inset 3px 0 0 var(--lime-53);
 }
@@ -2534,9 +2530,54 @@ dialog.stocks-dialog {
   color: var(--lime-53);
   font-weight: 600;
 }
-.bt-recent-more {
-  align-self: flex-start;
+.bt-recent-row:hover {
+  background: var(--gray-94);
+}
+/* What the run tested: its changed rules, then its stocks and period. */
+.bt-recent-changed,
+.bt-recent-scope {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.bt-recent-changed:not(.muted) {
+  color: var(--gray-27);
+  font-weight: 500;
+}
+.bt-recent-changed.muted {
+  color: var(--gray-50);
+}
+.bt-run-tabs {
+  margin-top: 0;
+}
+.bt-tested .card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bt-tested h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.bt-tested-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 16px;
+  margin: 0;
   font-size: 13px;
+}
+.bt-tested-grid dt {
+  color: var(--gray-50);
+}
+.bt-tested-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.bt-tested-changes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 @media (max-width: 640px) {
   .bt-recent-row {
@@ -2546,6 +2587,13 @@ dialog.stocks-dialog {
     grid-column: 1 / -1;
     grid-row: 2;
     white-space: normal;
+  }
+  .bt-tested-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .bt-tested-grid dd + dt {
+    margin-top: 6px;
   }
 }
 .bt-loader-note {

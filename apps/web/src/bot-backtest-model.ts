@@ -13,11 +13,16 @@ import type {
 import type { BotSettings } from "../../../packages/trading/src/bot/settings.js";
 import {
   currentVersion,
+  ruleChanges,
   ruleKeys,
   versionById,
   type RuleKey,
   type Rules,
 } from "../../../packages/trading/src/bot/versions.js";
+import {
+  volumeRuleKeys,
+  volumeVersionById,
+} from "../../../packages/trading/src/strangle/versions.js";
 import type {
   ClosedTrade,
   TradeFill,
@@ -28,6 +33,7 @@ import {
   type ExitRow,
   type Story,
 } from "./trade-story-model.js";
+import type { Ran, VolumeRan } from "./bot-backtest-run.js";
 
 // The Backtest page (the user, 2026-10-30): pick a bot, its version, stocks
 // and a period, change the settings, run. The run is one request a stock and
@@ -1000,4 +1006,46 @@ export function paperSetup(
       .filter((t) => !off.has(t))
       .slice(0, maxStocks),
   };
+}
+
+// What a run tested, for its History row and its card (the user, 2026-11-05:
+// "more informative data on the run, that I could understand what it tested
+// (what changed)"): where its rules differ from its version's, and its stocks.
+
+/** The Main bot run's rules that differ from its version's ("stopPct 30 → 40"). */
+export function mainRunChanges(ran: Ran): string[] {
+  const version = versionById(ran.version.replace(/\*$/, ""));
+  if (!version) return [];
+  return ruleChanges(ran.rules, version);
+}
+
+/** The Volume bot run's rules that differ from its version's. */
+export function volumeRunChanges(ran: VolumeRan): string[] {
+  const version = volumeVersionById(ran.settings.version);
+  if (!version) return [];
+  // A run older than a rule did not have it: "—".
+  const text = (v: unknown) => (v === undefined ? "—" : String(v));
+  return volumeRuleKeys
+    .filter(
+      (k) =>
+        JSON.stringify(ran.settings[k]) !== JSON.stringify(version.rules[k]),
+    )
+    .map((k) => `${k} ${text(version.rules[k])} → ${text(ran.settings[k])}`);
+}
+
+/**
+ * A run's stocks in short: the list's name when they are one of the picks
+ * (the user's watchlists, the bots' lists), else the first few.
+ */
+export function stocksLabel(
+  tickers: string[],
+  lists: readonly { label: string; tickers: readonly string[] }[],
+  few = 4,
+): string {
+  const count = `${tickers.length} stock${tickers.length === 1 ? "" : "s"}`;
+  const key = [...tickers].sort().join();
+  const list = lists.find((l) => [...l.tickers].sort().join() === key);
+  if (list) return `${list.label} · ${count}`;
+  if (tickers.length <= few) return tickers.join(", ");
+  return `${count}: ${tickers.slice(0, few).join(", ")} +${tickers.length - few}`;
 }
