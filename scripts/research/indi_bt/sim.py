@@ -309,6 +309,23 @@ def stock_secs(sym, d):
     return _SECS[k]
 
 
+_UM = {}
+
+
+def usual_move(und, d, cal, n=20):
+    """The stock's usual daily move (big_move.py): the mean |close-to-close| over the n sessions before d, or None."""
+    k = (und, d)
+    if k not in _UM:
+        if len(_UM) > 4000: _UM.clear()
+        i = cal.index(d); cl = []
+        for x in cal[max(0, i - n - 1):i]:
+            b = day(und, x)
+            if b: cl.append(b[-1][4])
+        r = [abs(y / x - 1) for x, y in zip(cl, cl[1:]) if x > 0]
+        _UM[k] = sum(r) / len(r) if len(r) >= n // 2 and sum(r) > 0 else None
+    return _UM[k]
+
+
 def sec_stop(und, sym, d, t, minute, bet, basis, st, uout, exp, sp0):
     """-> (second, price, rule) of the first price stop inside minute t, or None."""
     import real_bench as RB
@@ -454,6 +471,18 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                 if c <= level: pending = ("all", rule); continue
                 if not st["nx_took"] and c >= ref * (1 + NX["take"]):
                     st["nx_took"] = True; pending = (rem * NX["take_share"], "NX_take"); continue
+            BM = X.get("big_move")  # big_move.py (the user 2026-11-05: "a lock with stages when the stock raised much more than
+            # her usual, specally on day overnight ... if stock raised 5% but it used to more 1% in a day - you can sell half"):
+            # the stock's move our way in usual daily moves (usual_move); each rung [z, share] once, `share` = the part of the
+            # original position sold by then. "open": a carried day's first bar vs yesterday's close; "entry": any minute held
+            # vs the entry minute's stock price (on carried days from the morning minute on)
+            if BM and BM.get("open") and carry_day and sd.ok and sd.prev_close and ("bm_open", d) not in st:
+                st[("bm_open", d)] = True
+                um, px = usual_move(und, d, cal), sd.c[min(t, 389)]
+                if um and px:
+                    z = bet * (px / sd.prev_close - 1) / um
+                    want = max((sh for lv, sh in BM["open"] if z >= lv), default=0)
+                    if want > 1 - rem + 1e-9: pending = (want - (1 - rem), "BM_open"); continue
             if carry_day and t < X["morning_minute"]: continue
             c = b[4]; peak = max(peak, c); g = c / basis - 1
             stall = sd.ok and t - sd.last_ext[min(t, 389)] >= X["stall_min"]
@@ -467,8 +496,22 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                 if ref != "open" and sd.ok and sd.prev_close and sd.c[min(t, 389)]:
                     now = bet * (sd.c[min(t, 389)] / sd.prev_close - 1) * 100
                     gap = now if ref == "now" or gap is None else max(gap, now)
-                pending = (rem * X["gap_sell_share"], "morning_gap_keep") if gap is not None and gap >= X["gap_keep"] else ("all", "morning_gap_against")
+                share = X["gap_sell_share"]
+                GZ = X.get("gap_z")  # big_move.py: [[z, share], ...] the morning sale's share by the gap in usual daily moves
+                if GZ and gap is not None and gap >= X["gap_keep"]:
+                    um = usual_move(und, d, cal)
+                    if um: share = max((sh for lv, sh in GZ if gap / 100 / um >= lv), default=share)
+                if gap is not None and gap >= X["gap_keep"] and share >= 1: pending = ("all", "morning_gap_z"); continue
+                pending = (rem * share, "morning_gap_keep") if gap is not None and gap >= X["gap_keep"] else ("all", "morning_gap_against")
                 continue
+            if BM and BM.get("entry") and sd.ok:
+                if "bm_p0" not in st:
+                    st["bm_p0"] = (sd.c[minute] if k == 0 else None, usual_move(und, dates[0], cal))
+                p0, um = st["bm_p0"]; px = sd.c[min(t, 389)]
+                if p0 and um and px:
+                    z = bet * (px / p0 - 1) / um
+                    want = max((sh for lv, sh in BM["entry"] if z >= lv), default=0)
+                    if want > 1 - rem + 1e-9: pending = (want - (1 - rem), "BM_entry"); continue
             NT = X.get("night_trail")  # carried days, after the morning sale: the rest out `NT` under the option's high since then
             if NT and carry_day and st.get("morning"):
                 st["npeak"] = max(st.get("npeak", c), c)

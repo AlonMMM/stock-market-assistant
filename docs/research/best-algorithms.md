@@ -291,6 +291,35 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### A big move vs the stock's usual move, and the unchecked lock ladders (2026-11-05, not better: no pick wins both halves)
+
+The user (2026-11-04): "mainly I would like to test a lock with stages when the stock raised much motr than her usual,
+specally on day overnight. for example, in overnight trade if stock raised 5% but it used to more 1% in a day - you can
+sell half"; 2026-11-05: "lets search for lock gain strategy". Not tested before in this form (the option-gain ladders of
+2026-11-04 and the 09:40 morning rule are its neighbours; 2.10 already sells half at 09:40 on any gap of +0.5% our way).
+`big_move.py` on 2.10 (reproduced to the dollar; L13 / L04 / L09 reproduce lock_gain.py's tune figures), real quotes,
+sim.py `usual_move` (the mean |close-to-close| of the 20 sessions before), `big_move` and `gap_z`. Set before running,
+four ideas, one pick each on tune by min(fair, Favorites) vs 2.10 at 2%: G on top of the morning rule, a carried day's
+first bar vs yesterday's close (G2h z >= 2 half, G3h z >= 3 half = the user's example, G3q z >= 3 75%); M the 09:40
+sale's share by the gap in usual moves (M2q z >= 2 75%, M3q z >= 3 75%, M3a z >= 3 all); S stages any day held, the
+stock vs the entry price (S2h z >= 2 half, S3h z >= 3 half, S23 a third at 2, two thirds at 3); L the ladders whose check
+was never run (L13, L04, L09). Look 1 for G / M / S, look 2 for the lock ladders.
+
+| 2%, vs 2.10 (fair / Favorites) | Tune | Check | Trades changed (tune / check, fair) |
+|---|---|---|---|
+| 2.10 | $620,535 / $449,178 | $957,771 / $226,846 | - |
+| G2h / G3h 🎯 / G3q | 0.934 / 0.934 · **1.030 / 1.030** · 1.024 / 1.024 | G3h 1.000 / 1.000 | G3h 3 / 0 |
+| M2q / M3q 🎯 / M3a | 0.901 · 0.926 · 0.811 (both lists) | M3q 1.005 / 1.004 | M3q 5 / 1 |
+| S2h / S3h 🎯 / S23 | 0.454 / 0.535 · 0.703 / 0.767 · 0.436 / 0.521 | S3h 0.666 / 0.948 | S3h 12 / 9 |
+| L13 🎯 / L04 / L09 | **1.116 / 1.054** · 1.070 / 1.038 · 1.075 / 0.970 | L13 0.929 / 0.937 | L13 19 / 16 |
+
+No candidate. A move of 2-3 usual days our way is where the giants start: every trade S changed was a winner on 2.10
+(S2h tune fair 32 changed, their sum at $10K +$1.93M -> +$1.31M, 16 giants -> 13), so selling there sells the trades
+that pay for the rest. An overnight move of 3+ usual days happens ~3 times a half (G3h: 3 tune trades, 0 check trades),
+so its +3% on tune is three trades and a tie on check. L13 (the best tune ladder) loses 6-7% on check. The user's
+reply (2026-11-05): "Selling in half is too much. Maybe start with selling 25%" and measure against the stock's own big
+days (a stock that moves 5% on a big day often, 10% once a year) -> the next run.
+
 ### The morning rule from yesterday's close at 09:40, not the open (2026-11-04, not better: wins tune, loses check; ~10 trades a half)
 
 The user, on AAPL 2024-06-12 (opened +0.1% over the close, so 2.10 sold all at 09:40, then ran ~+6%): "So only if the
