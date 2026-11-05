@@ -291,6 +291,34 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### A big day for the stock itself, 25% sold (2026-11-05, not better: the picks split the lists on check; the win rate barely moves)
+
+The user, after big_move.py: "Selling in half is too much. Maybe start with selling 25%. Also, stock that are moving much
+more than their usual move, it's not always a good measurement ... a stock can usually move 1%, but in a big day they
+move like 5% all the time. But there is a huge day, which come once in a year ... that they move 10%. And then in 10%, we
+must take gain", and "we are trying to increase also the win rate, because we are going to add more trades". `big_day.py`
+on 2.10 (reproduced to the dollar), real quotes, sim.py `year_move` (the q quantile of the stock's |close-to-close| moves
+over the 252 sessions before; 0.95 ~ 12 days a year, 0.99 ~ 2-3, 1.0 = the year's biggest) and `big_day`, 25% a rung.
+Set before running: Y a carried day's first bar vs yesterday's close (Yg95 / Yg99 / Ygmx); D any minute held, the day's
+move vs yesterday's close while the stock is past the entry price (Dd95 / Dd99 / Ddmx, Dst 25% at 0.95 + 50% by the max);
+E the move from the entry price (Ee95 / Ee99 / Eemx). The pick (the user's win-rate goal, set before running): money at
+least 0.98 of 2.10 on both lists, then the highest win rate. Look 1 of this measure (look 2 of the big-move idea).
+
+| 2%, vs 2.10 (fair / Favorites) | Tune: money, winners | Check: money, winners | Changed (tune / check, fair) |
+|---|---|---|---|
+| 2.10 | $620,535 / $449,178; 15.7% / 16.5% | $957,771 / $226,846; 14.6% / 15.6% | - |
+| Yg95 🎯 (Yg99, Ygmx change nothing) | 1.016 / 1.016; same | 0.984 / 0.984; same | 3 / 1 |
+| Dd95 / Dd99 / Dst | 0.642 / 0.674, 17.9% / 18.2% · 0.893 / 0.938 · 0.677 / 0.725, 18.2% / 18.6% | - | 109 / - |
+| Ddmx 🎯 (the year's biggest day) | **1.057 / 1.075**, 16.0% / 16.9% | **0.927** / 1.029, 14.9% / 15.8% | 5 / 6 |
+| Ee95 / Eemx | 0.854 / 0.879 · 1.051 / 1.062 | - | 21 / - |
+| Ee99 🎯 | 1.046 / 1.050, 15.8% / 16.7% | **0.920** / 1.032, 14.7% / 15.8% | 9 / 5 |
+
+No candidate. The rare-day versions the user asked for (Ddmx, Ee99, Eemx) win tune by 5-7% on both lists, but on check
+they lose 7-8% on the fair list and win 3% on the Favorites: 5-9 trades a half, and which giant gets 25% trimmed decides
+it. The win rate moves +0.1-0.4 points. The only version that buys real win rate is the frequent one (Dd95, +2 points,
+109 trades changed a half: 47 -> 58 winners) and it costs a third of the money: most stocks' 95th-percentile day is the
+day a giant is still running. A once-a-year day is too rare to read on 2.5 years (5-9 trades a half).
+
 ### A big move vs the stock's usual move, and the unchecked lock ladders (2026-11-05, not better: no pick wins both halves)
 
 The user (2026-11-04): "mainly I would like to test a lock with stages when the stock raised much motr than her usual,

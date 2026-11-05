@@ -326,6 +326,24 @@ def usual_move(und, d, cal, n=20):
     return _UM[k]
 
 
+_CLOSES, _YM = {}, {}
+
+
+def year_move(und, d, cal, q):
+    """big_day.py: the stock's own big day, the q quantile (1.0 = the largest) of its |close-to-close| moves over the 252
+    sessions before d (moves over 45% dropped: the bars are not split-adjusted), or None under 120 sessions."""
+    if und not in _CLOSES:
+        from store import db
+        _CLOSES[und] = {r[0]: json.loads(r[1][r[1].rfind("["):-1])[4] for r in db.execute("SELECT date, bars FROM bars WHERE symbol=?", (und,)) if len(r[1]) > 4}
+    k = (und, d)
+    if k not in _YM:
+        cl = _CLOSES[und]; i = cal.index(d)
+        xs = [cl.get(x) for x in cal[max(0, i - 253):i]]
+        _YM[k] = sorted(abs(b / a - 1) for a, b in zip(xs, xs[1:]) if a and b and abs(b / a - 1) < 0.45)
+    m = _YM[k]
+    return m[min(len(m) - 1, int(q * len(m)))] if len(m) >= 120 else None
+
+
 def sec_stop(und, sym, d, t, minute, bet, basis, st, uout, exp, sp0):
     """-> (second, price, rule) of the first price stop inside minute t, or None."""
     import real_bench as RB
@@ -483,6 +501,22 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                     z = bet * (px / sd.prev_close - 1) / um
                     want = max((sh for lv, sh in BM["open"] if z >= lv), default=0)
                     if want > 1 - rem + 1e-9: pending = (want - (1 - rem), "BM_open"); continue
+            BD = X.get("big_day")  # big_day.py (the user 2026-11-05: "Selling in half is too much. Maybe start with selling 25%
+            # ... sometimes a stock can usually move 1%, but in a big day they move like 5% all the time. But there is a huge
+            # day, which come once in a year ... they move 10%. And then in 10%, we must take gain"): {"ref", "rungs": [[q,
+            # share], ...]}, the move our way against year_move(q); each rung once, `share` = the part of the original sold
+            # by then. ref "gap": a carried day's first bar vs yesterday's close; "day": any minute held, the day's move vs
+            # yesterday's close while the stock is past the entry price; "entry": the move from the entry minute's price
+            if BD and sd.ok and (BD["ref"] != "gap" or (carry_day and ("bd_gap", d) not in st)):
+                if BD["ref"] == "gap": st[("bd_gap", d)] = True
+                if "bd_p0" not in st: st["bd_p0"] = sd.c[minute] if k == 0 else None
+                px, p0 = sd.c[min(t, 389)], st["bd_p0"]
+                ref = p0 if BD["ref"] == "entry" else sd.prev_close
+                past = BD["ref"] != "day" or (p0 and px and bet * (px - p0) > 0)
+                if px and ref and past and not (k == 0 and t <= minute):
+                    mv = bet * (px / ref - 1)
+                    want = max((sh for q, sh in BD["rungs"] if (lv := year_move(und, d, cal, q)) and mv >= lv), default=0)
+                    if want > 1 - rem + 1e-9: pending = (want - (1 - rem), "BD_" + BD["ref"]); continue
             if carry_day and t < X["morning_minute"]: continue
             c = b[4]; peak = max(peak, c); g = c / basis - 1
             stall = sd.ok and t - sd.last_ext[min(t, 389)] >= X["stall_min"]
