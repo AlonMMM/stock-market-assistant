@@ -291,6 +291,28 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### A fast big gain on 1DTE, a third taken (2026-11-05, not better: +0.5 points of win rate for 11% of the check money; the drop does not move)
+
+The user: "something that might help to increase the winners. on 1DTE, if a winner is up very shortly 300% I would like
+to take 33% off. or somthing similar. I don't mind to hurt some gaint (not too much) if it's reducing the drop and
+increasing winrate". `dte1_fast.py` on 2.10 (reproduced to the dollar), 1DTE legs only, sim `fast_take` (new): once, on
+the entry day, the option up `gain` within `within` minutes of the entry -> `share` sold. Set before running: F300_30 /
+F300_60 / F300_120 a third at +300% within 30 / 60 / 120 minutes, F300_day any time that day, F200_60 a third at +200%
+within 60, F300_60h half at +300% within 60, A300_60 = F300_60 on every leg. Pick (the user's goal): money at least
+0.90 of 2.10 on both lists, then the win rate, a tie -> more money. Look 1.
+
+| 2%, vs 2.10 (fair / Favorites) | Tune: money, winners | Check: money, winners | Changed (tune / check, fair) |
+|---|---|---|---|
+| 2.10 | 1 / 1; 15.7% / 16.5% | 1 / 1; 14.6% / 15.6% | - |
+| F300_30 / F300_60 (the user's) / F300_120 | 1.000 / 0.982 · 0.990 / 0.990 · 0.990 / 0.990; same | F300_60 0.935 / 0.987; 14.7% / 15.6% | 0-1 / 6 |
+| F300_day / F300_60h | 1.005 / 0.994, 16.0% / 16.9% · 0.990 / 0.999 | - | 4 / - |
+| F200_60 🎯 | 1.010 / 0.985, **16.6% / 17.5%** | **0.889** / 0.977, 15.1% / 16.2% | 7 / 11 |
+| A300_60 (every leg) | 0.825 / 0.861 | 0.797 / 0.938 | 10 / 11 |
+
+No candidate. A 1DTE leg up +300% within an hour is nearly always a giant that keeps going (1-3 a half on tune, 6 on
+check; the worst drop is the same in every version), so the third sold early cuts giants and rarely saves a round trip.
+At +200% it saves a few more (tune winners +0.9-1.0 points) but on check it costs 11% on the fair list for +0.5 points.
+
 ### The second-day rules from 10:30 (2026-11-05, not better: the trails still lose the check; the ladder ties on 0-4 trades)
 
 The user, after dte1_day2.py: "I want this rule to be apply only 60 minutes after the open....". `dte1_day2_60.py` on
