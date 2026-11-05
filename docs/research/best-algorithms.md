@@ -291,6 +291,26 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### The user's 1DTE ladder: 25% at +150%, 25% at +300%, then a 30% trail (2026-11-05, not better: wins tune, loses check by more than half on the fair list)
+
+The user, after dte1_trim.py: "25% at +50%, half by +100% ... NO. go with 25% at 150%, 25% at 300% and than 30% trail".
+`dte1_ladder.py` on 2.10 (reproduced to the dollar), only 1DTE legs (as dte1_trim.py), sim.py `gain_trim` + `guard`
+{arm, trail}. Set before running: U the user's (the trail armed at +300%), U2 trail armed at +150%, U40 a 40% trail,
+N1 25% at +100% / +200%, N2 at +200% / +400%, Uall the user's on every trade. Pick (money >= 0.98, then the win rate)
+among U..N2; the pick, U and Uall run on check. Look 2 of the 1DTE idea.
+
+| 2%, vs 2.10 (fair / Favorites) | Tune: money, winners | Check: money, winners | Changed (tune / check, fair) |
+|---|---|---|---|
+| 2.10 | $620,535 / $449,178; 15.7% / 16.5% | $957,771 / $226,846; 14.6% / 15.6% | - |
+| U (the user's) | 1.091 / 1.008, 17.5% / 18.2% | **0.418 / 0.854**, 15.8% / 16.5% | 18 / 30 |
+| U2 🎯 | 1.146 / 1.038, 18.2% / 18.8% | **0.387 / 0.902**, 16.0% / 16.9% | 20 / 30 |
+| U40 / N1 / N2 | 1.082 / 1.016 · 1.088 / 0.975 · 1.064 / 1.002 | - | 18 / 25 / 11 |
+| Uall (every trade) | 0.321 / 0.429, 17.7% / 18.6% | 0.160 / 0.441 | 63 / 64 |
+
+No. On check the user's ladder changes 30 fair-list 1DTE trades (23 winners -> 30) and their sum at $10K falls from
+$1.15M to $0.56M: the 7 check giants stay above +300% but end far smaller, and at 2% compounding that is 58% of the
+money. Every version wins tune (where the 1DTE giants were 3) and loses check (7). On every trade it costs 57-84%.
+
 ### Cut winners on 1DTE trades only (2026-11-05, not better: 1DTE trades do have giants; the win-rate picks lose the check by far)
 
 The user: "can you try couple of permotation on 1DTE? I expect cutting winners ther make sense as we won't have very big
