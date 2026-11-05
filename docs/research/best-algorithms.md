@@ -291,6 +291,23 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### The second-day rules from 10:30 (2026-11-05, not better: the trails still lose the check; the ladder ties on 0-4 trades)
+
+The user, after dte1_day2.py: "I want this rule to be apply only 60 minutes after the open....". `dte1_day2_60.py` on
+2.10, sim `day2_ladder` start 60: zero and the day's best count from the first bar at 10:30 (the 09:40 morning sale
+untouched). Set before running: 1DTE legs Et60 / Et60_40 (30% / 40% trail), E60 the user's ladder; every carried leg
+Xt60 / Xt60_40. Pick per group (money >= 0.98, then the win rate, a tie -> more money). Look 4 of the second-day idea.
+
+| 2%, vs 2.10 (fair / Favorites) | Tune | Check | Changed (tune / check, fair) |
+|---|---|---|---|
+| E60 (the user's ladder from 10:30) | 1.000 / 1.000 | 1.024 / 1.023 | 0 / 4 |
+| Et60 🎯 / Et60_40 (1DTE) | 1.018 / 1.011 · 1.017 / 1.006 | Et60 **0.957 / 0.964** | 2 / 6 |
+| Xt60 🎯 / Xt60_40 (every carried leg) | 1.060 / 1.012 · 1.054 / 1.009 | Xt60 **0.743 / 0.847** | 20 / 19 |
+
+No candidate. Waiting until 10:30 halves the harm of the 09:40 trail (1DTE check 0.889 -> 0.957) but it still sells
+the second-day giants on a mid-day dip; on every carried leg the check loses 15-26%. The ladder from 10:30 adds 2% on
+check on 4 trades and touches none on tune: a tie.
+
 ### The ladder and a trail on the second day only, from zero (2026-11-05, not better: the ladder is a tie on 0-2 trades; the trails lose the check)
 
 The user, after the 1DTE charts (2.10 holds a 1DTE winner overnight into its expiry day): "The rule is only on the secod

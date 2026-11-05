@@ -553,7 +553,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
             # first bar after the morning sale; "night": the last bar of the day before); {steps: [[gain, share], ...]}: `share`
             # of what was held when the ladder started, sold by then; {arm, trail}: then all out `trail` under the day's best
             # since the start, once up `arm` (arm 0 = from the start)
-            if DL2 and k == 1 and st.get("morning"):
+            if DL2 and k == 1 and st.get("morning") and t >= DL2.get("start", 0):  # start: the session minute it begins (60 = 10:30)
                 if "d2" not in st: st["d2"] = dict(ref=c if DL2.get("ref", "0940") == "0940" else st.get("c_day0", c), rem=rem, peak=c)
                 z = st["d2"]; z["peak"] = max(z["peak"], c); best = z["peak"] / z["ref"] - 1
                 want = max((sh for gn, sh in DL2.get("steps", []) if best >= gn), default=0) * z["rem"]
@@ -736,6 +736,13 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                     faded = ref > 0 and now < SX["vol"] * ref
                 below = g < SX.get("below", 1e9)  # "below": only while under this gain (not going to be held overnight)
                 if stalled and given and faded and below: pending = ("all", "X_stall"); continue
+            FT = X.get("fast_take")  # dte1_fast.py (the user 2026-11-05: "on 1DTE, if a winner is up very shortly 300% I would
+            # like to take 33% off"): {gain, within, share}, once, on the entry day: the option's bar up `gain` over what was paid
+            # within `within` minutes of the entry (None = any time that day) -> `share` of the original sold
+            if FT and k == 0 and not st.get("ft") and peak / cost - 1 >= FT["gain"]:
+                st["ft"] = True
+                if (FT.get("within") is None or t - minute <= FT["within"]) and rem > 1e-9:
+                    pending = (min(rem, FT["share"]), "F_take"); continue
             GT = X.get("gain_trim")  # dte1_trim.py: [[gain, share], ...] once the option has been up `gain` over what was paid
             # (any day held), `share` of the original position sold by then; each rung once
             if GT and peak / cost - 1 >= GT[0][0]:
