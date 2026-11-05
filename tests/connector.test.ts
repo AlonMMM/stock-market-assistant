@@ -274,7 +274,14 @@ test("connector: the day review tools go to the website with its own token, neve
       [
         "PUT",
         "/api/day-reviews/main/2026-11-04/analysis",
-        { analysis: { verdict: "optimistic", headline: "h", markdown: "m" } },
+        {
+          analysis: {
+            verdict: "optimistic",
+            headline: "h",
+            markdown: "m",
+            differences: [],
+          },
+        },
       ],
     ],
   );

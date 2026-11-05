@@ -315,6 +315,22 @@ export interface BacktestSide {
   // price) and 30-minute volume, for the causes of a difference.
   delta: number | null;
   volume30: number | null;
+  // What the backtest's own account paid ($, on its $100,000 start at the
+  // bot's size): sizes a trade the bot did not take on a day it took none.
+  simPaid: number | null;
+}
+
+/** One account's day, for the bot-against-backtest chart (Analyse page). */
+export interface AccountDay {
+  broker: string; // "alpaca" | "ibkr"
+  bot: number; // $ at market, the bot's closed trades of the day, after fees
+  botPaper: number; // $ at the paper fills
+  // $, each backtest trade at the bot's size: the cost of the bot's own trade
+  // when it took the same one, else the bot's average cost a trade that day
+  // (else the backtest account's own cost).
+  backtest: number;
+  botTrades: number;
+  backtestTrades: number;
 }
 
 export interface ReviewRow {
@@ -360,6 +376,8 @@ export interface Comparison {
   stocks: number;
   rows: ReviewRow[];
   summary: ReviewSummary;
+  // Each account the bot trades at: its day against the backtest's.
+  accounts: AccountDay[];
   notes: string[];
   // The records the causes are looked for in (the end-of-day skill's
   // "find the cause" step): each side's view of the day's signals.
@@ -503,6 +521,7 @@ function mainBacktest(t: SimTrade, status: string): BacktestSide {
     account: status,
     delta: t.delta ?? null,
     volume30: t.volume30 ?? null,
+    simPaid: null,
   };
 }
 
@@ -583,6 +602,53 @@ function pairUp<
   return { pairs, liveOnly, btOnly: bt.filter((b) => !usedBy.has(b)) };
 }
 
+const liveCost = (l: LiveSide) =>
+  (l.paidReal ?? l.paidPaper) * 100 * l.qty + reviewFee * l.qty;
+
+/** Each account's day: the bot's closed trades, and every backtest trade at that account's size. */
+function accountsOf(
+  brokers: readonly string[],
+  rows: readonly ReviewRow[],
+  backtest: readonly BacktestSide[],
+): AccountDay[] {
+  // The accounts the bot traded at that day; on a day without a trade, the
+  // first one it buys at (never an account that did not trade, sized from the
+  // backtest's own $100,000: a loss nobody could have had).
+  const seen = rows.flatMap((r) =>
+    r.live ? [r.live.broker ?? brokers[0]!] : [],
+  );
+  const traded = seen.length ? [...new Set(seen)] : [brokers[0]!];
+  return traded.map((broker) => {
+    const own = rows.filter(
+      (r) => r.live && (r.live.broker ?? brokers[0]) === broker,
+    );
+    const closed = own.filter((r) => !r.live!.open);
+    const costs = own.map((r) => liveCost(r.live!));
+    const average = costs.length
+      ? costs.reduce((a, b) => a + b, 0) / costs.length
+      : null;
+    let total = 0;
+    let counted = 0;
+    for (const b of backtest) {
+      if (b.open || b.ret === null) continue;
+      const pair = own.find((r) => r.backtest === b);
+      let cost = average ?? b.simPaid;
+      if (pair) cost = liveCost(pair.live!);
+      if (cost === null) continue;
+      total += (cost * b.ret) / 100;
+      counted++;
+    }
+    return {
+      broker,
+      bot: closed.reduce((a, r) => a + (r.live!.pnlReal ?? 0), 0),
+      botPaper: closed.reduce((a, r) => a + (r.live!.pnlPaper ?? 0), 0),
+      backtest: total,
+      botTrades: own.length,
+      backtestTrades: counted,
+    };
+  });
+}
+
 function summarize(rows: ReviewRow[]): ReviewSummary {
   const liveRows = rows.filter((r) => r.live);
   const btRows = rows.filter((r) => r.backtest);
@@ -653,7 +719,7 @@ export function compareMain(
     .filter((a) => a.trade.date === date && a.status === "taken")
     .map((a) => ({
       a,
-      side: mainBacktest(a.trade, a.status),
+      side: { ...mainBacktest(a.trade, a.status), simPaid: a.paid },
       symbol: a.trade.symbol,
       right: a.trade.right,
       kind: mainKind(a.trade),
@@ -725,6 +791,11 @@ export function compareMain(
     stocks,
     rows: sortRows(rows),
     summary: summarize(rows),
+    accounts: accountsOf(
+      mainBrokers(live.settings.broker),
+      rows,
+      btRows.map((b) => b.side),
+    ),
     notes,
     evidence: {
       live: live.signals.filter((s) => s.day === date),
@@ -742,6 +813,12 @@ export function compareMain(
       settings: live.settings,
     },
   };
+}
+
+/** The accounts the Main bot buys at: one, or both (settings.ts BotBrokerChoice). */
+function mainBrokers(choice: string | undefined): string[] {
+  if (choice === "both") return ["alpaca", "ibkr"];
+  return [choice ?? "alpaca"];
 }
 
 function oneSided(
@@ -860,6 +937,7 @@ export function compareVolume(
         account: a.status,
         delta: tr.delta ?? null,
         volume30: null,
+        simPaid: a.qty * tr.buy * 100,
       };
       return {
         a,
@@ -945,6 +1023,11 @@ export function compareVolume(
     stocks,
     rows: sortRows(rows),
     summary: summarize(rows),
+    accounts: accountsOf(
+      ["alpaca"],
+      rows,
+      btRows.map((b) => b.side),
+    ),
     notes,
     evidence: {
       live: live.signals.filter((x) => x.day === date),
@@ -968,10 +1051,31 @@ export function compareVolume(
 export type ReviewStatus = "running" | "compared" | "failed";
 
 /** The written analysis (the end-of-day skill). */
+export const differenceClasses = [
+  "live bug",
+  "backtest bug",
+  "pick",
+  "data",
+  "expected",
+  "unknown",
+] as const;
+export type DifferenceClass = (typeof differenceClasses)[number];
+
+/** One difference and its cause (the end-of-day skill's "find the cause" step). */
+export interface Difference {
+  class: DifferenceClass;
+  title: string; // a few words: "COIN: a different strike"
+  why: string; // the cause in one or two plain sentences
+  evidence: string; // the record or the file:line it rests on
+  action: string; // what to do: nothing, a test, a fix to propose
+  symbols: string[]; // the stocks it concerns, for the trade cards
+}
+
 export interface ReviewAnalysis {
   verdict: Verdict;
   headline: string;
   markdown: string;
+  differences: Difference[];
   writtenAt: number;
 }
 
@@ -1099,10 +1203,33 @@ export function parseAnalysis(
     return "markdown must be the analysis";
   if (o.headline.length + o.markdown.length > maxAnalysisChars)
     return "the analysis is too long";
+  const differences: Difference[] = [];
+  const given = (o as { differences?: unknown }).differences ?? [];
+  if (!Array.isArray(given)) return "differences must be a list";
+  for (const d of given.slice(0, 30)) {
+    const x = d as Partial<Difference> | null;
+    if (!x || !differenceClasses.includes(x.class as DifferenceClass))
+      return `each difference needs a class: ${differenceClasses.join(", ")}`;
+    const text = (v: unknown) =>
+      typeof v === "string" ? v.trim().slice(0, 600) : "";
+    if (!text(x.title) || !text(x.why))
+      return "each difference needs a title and a why";
+    differences.push({
+      class: x.class as DifferenceClass,
+      title: text(x.title),
+      why: text(x.why),
+      evidence: text(x.evidence),
+      action: text(x.action),
+      symbols: Array.isArray(x.symbols)
+        ? x.symbols.map((v) => String(v).toUpperCase()).slice(0, 10)
+        : [],
+    });
+  }
   return {
     verdict: o.verdict as Verdict,
     headline: o.headline.trim().slice(0, 300),
     markdown: o.markdown,
+    differences,
     writtenAt: now,
   };
 }

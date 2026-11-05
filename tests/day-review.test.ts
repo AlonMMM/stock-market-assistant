@@ -280,6 +280,13 @@ test("day review: the Main bot's live trades beside the backtest's, with the ver
   assert.deepEqual(c.evidence.settings, live.settings);
   assert.equal(byMatch.NVDAC!.backtest!.delta, 0.15);
   assert.equal(byMatch.NVDAC!.backtest!.volume30, 500);
+  // The account's day: the bot's closed trades; the backtest's NVDA at the
+  // bot's cost, its AMD (the bot took none) at the bot's average cost.
+  assert.equal(c.accounts.length, 1);
+  assert.equal(c.accounts[0]!.broker, "alpaca");
+  assert.equal(c.accounts[0]!.botTrades, 2);
+  assert.equal(c.accounts[0]!.backtestTrades, 2);
+  assert.ok(Math.abs(c.accounts[0]!.bot - livePnl) < 1e-9);
   assert.ok(c.summary.gapPts > 5);
 });
 
@@ -448,14 +455,50 @@ test("day review: an analysis is checked before it is kept", () => {
     ),
     "string",
   );
+  assert.equal(
+    typeof parseAnalysis(
+      {
+        verdict: "optimistic",
+        headline: "h",
+        markdown: "m",
+        differences: [{ class: "a guess", title: "t", why: "w" }],
+      },
+      1,
+    ),
+    "string",
+  );
   const ok = parseAnalysis(
-    { verdict: "pessimistic", headline: " Live beat it ", markdown: "## Why" },
+    {
+      verdict: "pessimistic",
+      headline: " Live beat it ",
+      markdown: "## Why",
+      differences: [
+        {
+          class: "pick",
+          title: "COIN: another strike",
+          why: "Delta differs.",
+          evidence: "bot.ts:1251",
+          action: "test",
+          symbols: ["coin"],
+        },
+      ],
+    },
     5,
   );
   assert.deepEqual(ok, {
     verdict: "pessimistic",
     headline: "Live beat it",
     markdown: "## Why",
+    differences: [
+      {
+        class: "pick",
+        title: "COIN: another strike",
+        why: "Delta differs.",
+        evidence: "bot.ts:1251",
+        action: "test",
+        symbols: ["COIN"],
+      },
+    ],
     writtenAt: 5,
   });
 });
@@ -642,5 +685,121 @@ test("day review: the connector's token opens the day reviews and nothing else",
   assert.equal(
     (await get("/api/watchlists", { "X-Day-Review-Token": review })).status,
     401,
+  );
+});
+
+test("day review page: the running sums by account, the fallback causes, the bot's trade for its window", async () => {
+  const m = await import("../apps/web/src/day-review-model.js");
+  const review = (
+    date: string,
+    bot: number,
+    backtest: number,
+    broker = "alpaca",
+  ) =>
+    ({
+      bot: "main",
+      date,
+      status: "compared",
+      jobId: "j",
+      startedAt: 0,
+      updatedAt: 0,
+      error: null,
+      analysis: null,
+      comparison: {
+        summary: { verdict: "on target" },
+        accounts: [
+          {
+            broker,
+            bot,
+            botPaper: bot,
+            backtest,
+            botTrades: 1,
+            backtestTrades: 1,
+          },
+        ],
+        rows: [
+          {
+            key: "k",
+            symbol: "COIN",
+            right: "C",
+            kind: "entry",
+            match: "live-only",
+            why: "backtest skipped: illiquid",
+          },
+        ],
+      },
+    }) as never;
+  // Newest first from the server; the chart runs oldest first.
+  const points = m.performance(
+    [review("2026-11-04", -100, 50), review("2026-11-03", 200, 300)],
+    "alpaca",
+  );
+  assert.deepEqual(
+    points.map((p) => [p.date, p.cumBot, p.cumBacktest]),
+    [
+      ["2026-11-03", 200, 300],
+      ["2026-11-04", 100, 350],
+    ],
+  );
+  assert.deepEqual(
+    m.accountsIn([
+      review("2026-11-04", 1, 1, "ibkr"),
+      review("2026-11-03", 1, 1),
+    ]),
+    ["alpaca", "ibkr"],
+  );
+  const causes = m.differencesOf(review("2026-11-04", 0, 0));
+  assert.deepEqual(
+    causes.map((d) => [d.class, d.title, d.why]),
+    [["unknown", "COIN: only the bot traded", "backtest skipped: illiquid"]],
+  );
+  assert.equal(m.contractWords("COIN261106C00160000"), "Call 160 · 6 Nov");
+  assert.equal(m.dayLabel("2026-11-04"), "Wed 4 Nov");
+  const t = m.closedTradeOf("COIN", {
+    ref: "p",
+    contract: "COIN261106C00160000",
+    broker: "alpaca",
+    dry: false,
+    version: null,
+    entryAt: Date.parse("2026-11-04T14:50:00Z"),
+    qty: 10,
+    paidPaper: 1,
+    paidReal: 0.98,
+    exits: [
+      {
+        at: Date.parse("2026-11-04T14:54:00Z"),
+        qty: 5,
+        paper: 0.8,
+        real: 0.82,
+        reason: "stage-half",
+      },
+      {
+        at: Date.parse("2026-11-04T14:55:00Z"),
+        qty: 5,
+        paper: 0.6,
+        real: 0.62,
+        reason: "stage-full",
+      },
+    ],
+    open: false,
+    retPaper: -30,
+    retReal: -28,
+    pnlPaper: -300,
+    pnlReal: -280,
+  });
+  assert.equal(t!.exit, 0.7);
+  assert.deepEqual(t!.option, {
+    right: "call",
+    strike: 160,
+    expiry: "2026-11-06",
+  });
+  assert.equal(t!.closedAt, "2026-11-04T14:55:00.000Z");
+  assert.equal(
+    m.tradeLine({ match: "both", dollarsGap: -350 } as never),
+    "The bot made $350 more",
+  );
+  assert.equal(
+    m.tradeLine({ match: "both", dollarsGap: 176 } as never),
+    "The backtest made $176 more",
   );
 });

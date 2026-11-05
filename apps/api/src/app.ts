@@ -1,3 +1,8 @@
+import { D1DayReviews } from "../../../packages/market-data/src/day-review.js";
+import {
+  handleDayReviews,
+  type ReviewDeps,
+} from "../../../packages/market-data/src/day-review-run.js";
 import {
   handleBacktestSetup,
   type D1BacktestSetups,
@@ -101,6 +106,9 @@ export function buildApp(
     symbols?: D1SymbolList; // the Backtest page's symbol list
     watchlists?: D1Watchlists; // the user's named watchlists
     priceAlerts?: D1PriceAlerts; // the user's own price alerts
+    // The end-of-day reviews (day-review.ts), with the trader to read the
+    // bots' days from (TRADER_URL / TRADER_READ_TOKEN; unset: start fails).
+    dayReviews?: D1DayReviews;
   } = {
     key: process.env.ALPACA_API_KEY,
     secret: process.env.ALPACA_API_SECRET,
@@ -592,6 +600,45 @@ export function buildApp(
       .header("Cache-Control", "no-store")
       .send(result.body);
   };
+  const dayReviews = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!alpaca.dayReviews || !alpaca.jobs || !alpaca.volume)
+      return reply
+        .code(503)
+        .send({ error: "The review store is not configured" });
+    const quotes = alpaca.quotes as unknown as ReviewDeps["quotes"];
+    const result = await handleDayReviews(
+      {
+        reviews: alpaca.dayReviews,
+        jobs: alpaca.jobs,
+        start: async (tasks) => {
+          void runParts(alpaca.jobs!, tasks, partCompute).catch((error) =>
+            app.log.error(error),
+          );
+        },
+        trader: {
+          url: process.env.TRADER_URL,
+          token: process.env.TRADER_READ_TOKEN,
+        },
+        quotes,
+        volume: alpaca.volume,
+        now: Date.now,
+      },
+      {
+        method: request.method,
+        path: request.url.split("?")[0]!,
+        query: (request.query ?? {}) as Record<string, string>,
+        body: request.body,
+      },
+    );
+    return reply
+      .code(result.status)
+      .header("Cache-Control", "no-store")
+      .send(result.body);
+  };
+  app.get("/api/day-reviews", dayReviews);
+  app.get("/api/day-reviews/:bot/:date", dayReviews);
+  app.post("/api/day-reviews/:bot/:date/start", dayReviews);
+  app.put("/api/day-reviews/:bot/:date/analysis", dayReviews);
   app.get("/api/backtest-setup", backtestSetup);
   app.put("/api/backtest-setup", backtestSetup);
   app.post("/api/backtest-jobs", backtestJobs);

@@ -1,8 +1,12 @@
 import type {
   DayReview,
+  Difference,
+  DifferenceClass,
+  LiveSide,
   ReviewRow,
   Verdict,
 } from "../../../packages/market-data/src/day-review.js";
+import type { ClosedTrade } from "../../../packages/trading/src/portfolio.js";
 
 // The Analyse page (the user, 2026-11-05): each evening's end-of-day review
 // of a bot, live against the app's backtest. The analysis is written in
@@ -162,4 +166,195 @@ export function inlineSpans(
   }
   if (last < text.length) out.push({ kind: "text", text: text.slice(last) });
   return out;
+}
+
+// ---- the page's figures (DayReviews.tsx) ----
+
+export interface PerfPoint {
+  date: string;
+  bot: number; // the day's $, at market
+  backtest: number; // the day's $, the backtest at the bot's size
+  cumBot: number;
+  cumBacktest: number;
+  verdict: Verdict | null;
+}
+
+/** The compared days, oldest first, for one account: the day's $ and the running sums. */
+export function performance(
+  reviews: readonly DayReview[],
+  broker: string,
+): PerfPoint[] {
+  let cumBot = 0;
+  let cumBacktest = 0;
+  const out: PerfPoint[] = [];
+  const days = reviews
+    .filter((r) => r.comparison)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  for (const r of days) {
+    const a = r.comparison!.accounts?.find((x) => x.broker === broker);
+    if (!a) continue;
+    cumBot += a.bot;
+    cumBacktest += a.backtest;
+    out.push({
+      date: r.date,
+      bot: a.bot,
+      backtest: a.backtest,
+      cumBot,
+      cumBacktest,
+      verdict: shownVerdict(r),
+    });
+  }
+  return out;
+}
+
+/** The accounts the reviews have, the first one first ("alpaca" before "ibkr"). */
+export function accountsIn(reviews: readonly DayReview[]): string[] {
+  const all = new Set<string>();
+  for (const r of reviews)
+    for (const a of r.comparison?.accounts ?? []) all.add(a.broker);
+  return ["alpaca", "ibkr"].filter((b) => all.has(b));
+}
+
+export const accountNames: Record<string, string> = {
+  alpaca: "Alpaca",
+  ibkr: "IBKR",
+};
+
+/** How many days of each verdict. */
+export function verdictCounts(
+  reviews: readonly DayReview[],
+): Record<Verdict, number> {
+  const out: Record<Verdict, number> = {
+    optimistic: 0,
+    pessimistic: 0,
+    "on target": 0,
+    "no trades": 0,
+  };
+  for (const r of reviews) {
+    const v = shownVerdict(r);
+    if (v) out[v]++;
+  }
+  return out;
+}
+
+export const classWords: Record<DifferenceClass, string> = {
+  "live bug": "Bot bug",
+  "backtest bug": "Backtest bug",
+  pick: "Different contract",
+  data: "Prices / data",
+  expected: "Expected",
+  unknown: "Not found yet",
+};
+
+export const classTone: Record<DifferenceClass, string> = {
+  "live bug": "red",
+  "backtest bug": "red",
+  pick: "amber",
+  data: "amber",
+  expected: "grey",
+  unknown: "grey",
+};
+
+export const isBug = (c: DifferenceClass) =>
+  c === "live bug" || c === "backtest bug";
+
+/**
+ * The day's differences: the written ones, else the one-sided trades as the
+ * comparison found them (before 23:05's analysis, or if it failed).
+ */
+export function differencesOf(r: DayReview): Difference[] {
+  if (r.analysis?.differences?.length) return r.analysis.differences;
+  return (r.comparison?.rows ?? [])
+    .filter((x) => x.match !== "both")
+    .map((x) => ({
+      class: "unknown" as const,
+      title: `${x.symbol}: ${x.match === "live-only" ? "only the bot traded" : "only the backtest traded"}`,
+      why: x.why ?? "",
+      evidence: "",
+      action: "",
+      symbols: [x.symbol],
+    }));
+}
+
+export function bugCount(r: DayReview): number {
+  return (r.analysis?.differences ?? []).filter((d) => isBug(d.class)).length;
+}
+
+const weekdayDay = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+});
+/** "Wed 4 Nov" from a session date. */
+export const dayLabel = (date: string) =>
+  weekdayDay.format(Date.parse(`${date}T12:00:00Z`));
+
+/** An OCC contract in words: "Call 160 · 6 Nov". */
+export function contractWords(contract: string): string {
+  const m = /^([A-Z.]+)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/.exec(contract);
+  if (!m) return contract;
+  const strike = Number(m[6]) / 1000;
+  const expiry = weekdayDay
+    .format(Date.parse(`20${m[2]}-${m[3]}-${m[4]}T12:00:00Z`))
+    .replace(/^\w+ /, "");
+  const right = m[5] === "C" ? "Call" : "Put";
+  return `${right} ${strike} · ${expiry}`;
+}
+
+/** The bot's side of a trade as the trade window reads it; null while it is held. */
+export function closedTradeOf(
+  symbol: string,
+  live: LiveSide,
+): ClosedTrade | null {
+  if (live.open || !live.exits.length) return null;
+  const m = /^[A-Z.]+(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/.exec(live.contract);
+  const sold = live.exits.reduce((s, e) => s + e.qty, 0);
+  const exit = live.exits.reduce((s, e) => s + e.paper * e.qty, 0) / sold;
+  const last = Math.max(...live.exits.map((e) => e.at));
+  let option: ClosedTrade["option"] = null;
+  if (m)
+    option = {
+      right: m[4] === "C" ? "call" : "put",
+      strike: Number(m[5]) / 1000,
+      expiry: `20${m[1]}-${m[2]}-${m[3]}`,
+    };
+  return {
+    symbol: live.contract,
+    underlying: symbol,
+    option,
+    openedAt: new Date(live.entryAt).toISOString(),
+    closedAt: new Date(last).toISOString(),
+    qty: live.qty,
+    entry: live.paidPaper,
+    exit,
+    pnl: live.pnlPaper ?? 0,
+    pnlPct: live.retPaper,
+    expired: false,
+    fills: [
+      {
+        side: "buy",
+        at: new Date(live.entryAt).toISOString(),
+        qty: live.qty,
+        price: live.paidPaper,
+      },
+      ...live.exits.map((e) => ({
+        side: "sell" as const,
+        at: new Date(e.at).toISOString(),
+        qty: e.qty,
+        price: e.paper,
+      })),
+    ],
+  };
+}
+
+/** A trade's one-line result: who did better and by how much. */
+export function tradeLine(r: ReviewRow): string {
+  if (r.match === "live-only") return "Only the bot traded it";
+  if (r.match === "backtest-only") return "Only the backtest traded it";
+  if (r.dollarsGap === null) return "Held overnight: judged on a later day";
+  const abs = Math.abs(Math.round(r.dollarsGap)).toLocaleString("en-US");
+  if (Math.abs(r.dollarsGap) < 1) return "Same result";
+  if (r.dollarsGap > 0) return `The backtest made $${abs} more`;
+  return `The bot made $${abs} more`;
 }

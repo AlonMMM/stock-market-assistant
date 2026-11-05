@@ -121,6 +121,11 @@ pts) on 3 matched trades; live paid more at the entry."
 6. `## To do`: at most three items. A **live bug** or **backtest bug**: the fix to make (ask the user before any
    change to the bots). A pattern: **a test to run** with the `new-test` skill, never a rule; say so.
 
+`differences`: every item of step 5 as `{class, title, why, evidence, action, symbols}`; the Analyse page shows them
+as the "Why the bot and the backtest differ" cards (bugs first) and tags each trade with its cause. `title` is a few
+words ("COIN: a different strike"), `why` one or two plain sentences, `evidence` the record or `file:line`, `action`
+what to do ("None." is fine), `symbols` the stocks.
+
 Words on the page: say **the bot** (what it did on its paper account), **the backtest** (the app's simulation of
 the same day) and **at market** (the book's mid at the fill), never "live" or "real".
 
@@ -129,7 +134,7 @@ signals of the day and why none was taken (from the rows' `why`, or "no signal")
 
 ## 7. Save and report
 
-`day_review_save {bot, date, verdict, headline, markdown}` for each bot (and for the redone previous day). In the
+`day_review_save {bot, date, verdict, headline, markdown, differences}` for each bot (and for the redone previous day). In the
 final message, 3–5 lines: for each bot the verdict and headline, every **live bug** or **backtest bug** found (with
 its evidence), any redone day, anything that failed or is still running, and where to read it (Trading → the bot's
 tab → Analyse).
