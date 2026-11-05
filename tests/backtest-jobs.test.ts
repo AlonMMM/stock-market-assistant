@@ -4,8 +4,8 @@ import { SqliteD1 } from "../apps/api/src/sqlite-d1.js";
 import worker from "../apps/api/src/worker.js";
 import {
   BacktestJobs,
-  keptRuns,
   handleBacktestJobs,
+  runsPage,
   parseJobSpec,
   runPart,
   runParts,
@@ -257,11 +257,12 @@ test("the Worker puts a run's parts on the queue and its consumer runs them", as
   assert.match(view.errors[0]!.error, /credentials/);
 });
 
-test("the latest 10 runs of each bot are kept; a running one is never removed", async () => {
+test("every run is kept and listed a page at a time, newest first", async () => {
+  // The user, 2026-11-05: "show me pagination of all my runs" (only the
+  // latest 10 were kept before).
   const jobs = new BacktestJobs(new SqliteD1(":memory:"));
-  const first = await jobs.create(parseJobSpec(spec), "me@x", 1000); // stays running
   const ids: string[] = [];
-  for (let n = 1; n <= keptRuns + 2; n++) {
+  for (let n = 1; n <= runsPage + 5; n++) {
     const id = await jobs.create(parseJobSpec(spec), "me@x", 1000 + n);
     await jobs.stop(id, 1000 + n);
     ids.push(id);
@@ -272,22 +273,57 @@ test("the latest 10 runs of each bot are kept; a running one is never removed", 
     "me@x",
     5000,
   );
-  const list = await jobs.list("me@x", "main");
-  assert.equal(list.length, keptRuns);
+  await jobs.create(parseJobSpec(spec), "other@x", 6000);
+  const newest = [...ids].reverse();
+  const call = (query: Record<string, unknown>) =>
+    handleBacktestJobs({
+      method: "GET",
+      path: "/api/backtest-jobs",
+      query: { bot: "main", ...query },
+      body: undefined,
+      owner: "me@x",
+      jobs,
+      start: async () => {},
+    });
+  type Page = {
+    runs: { id: string }[];
+    total: number;
+    offset: number;
+    limit: number;
+  };
+  const first = (await call({})).body as Page;
   assert.deepEqual(
-    list.map((r) => r.id),
-    ids.slice(-keptRuns).reverse(),
-    "newest first",
+    {
+      ids: first.runs.map((r) => r.id),
+      total: first.total,
+      offset: first.offset,
+      limit: first.limit,
+    },
+    {
+      ids: newest.slice(0, runsPage),
+      total: runsPage + 5,
+      offset: 0,
+      limit: runsPage,
+    },
   );
-  assert.equal(list[0]!.status, "stopped");
-  assert.deepEqual(list[0]!.meta, spec.meta);
-  assert.ok(await jobs.view(first), "the running run is kept");
-  assert.equal(
-    await jobs.view(ids[0]!),
-    undefined,
-    "the oldest finished run is gone",
+  const second = (await call({ offset: String(runsPage) })).body as Page;
+  assert.deepEqual(
+    second.runs.map((r) => r.id),
+    newest.slice(runsPage),
+    "the older runs, none removed",
   );
+  assert.ok(await jobs.view(ids[0]!), "the oldest run is still there");
+  const small = (await call({ offset: "2", limit: "3" })).body as Page;
+  assert.deepEqual(
+    small.runs.map((r) => r.id),
+    newest.slice(2, 5),
+  );
+  // Nonsense paging falls back to the first page, and a page is at most 50.
+  const odd = (await call({ offset: "-4", limit: "500" })).body as Page;
+  assert.equal(odd.offset, 0);
+  assert.equal(odd.limit, 50);
   assert.equal((await jobs.list("me@x", "volume"))[0]!.id, volume);
+  assert.equal(await jobs.count("me@x", "volume"), 1);
 });
 
 test("a run's summary counts its finished and failed parts", async () => {

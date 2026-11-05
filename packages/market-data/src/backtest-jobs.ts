@@ -86,9 +86,10 @@ const maxBodyChars = 64_000;
 // A part claimed this long ago and not finished is taken to be lost (its
 // worker died) and is sent again; a queue consumer may run 15 minutes.
 export const staleClaimMs = 16 * 60_000;
-// The runs kept for each person and bot (the user, 2026-11-04: "I would like
-// to see my last 10 results"); older finished runs are removed.
-export const keptRuns = 10;
+// Every run is kept (the user, 2026-11-05: "show me pagination of all my
+// runs"; before, only the latest 10 were). The list is read a page at a time.
+export const runsPage = 10;
+export const maxRunsPage = 50;
 
 export class JobInputError extends Error {}
 
@@ -195,7 +196,7 @@ export class BacktestJobs {
     this.ready = true;
   }
 
-  /** Stores a new run; returns its id. Beyond the latest 10, finished runs go. */
+  /** Stores a new run; returns its id. */
   async create(
     spec: JobSpec,
     owner: string,
@@ -231,30 +232,7 @@ export class BacktestJobs {
     // A run of many parts goes in batches of 100 statements.
     for (let i = 0; i < statements.length; i += 100)
       await this.db.batch(statements.slice(i, i + 100));
-    await this.prune(owner, spec.bot);
     return id;
-  }
-
-  /** Removes the person's finished runs of a bot beyond the latest 10. */
-  private async prune(owner: string, bot: JobBot) {
-    const { results } = await this.db
-      .prepare(
-        "SELECT id FROM backtest_jobs WHERE owner = ? AND bot = ? AND status != 'running' " +
-          "AND id NOT IN (SELECT id FROM backtest_jobs WHERE owner = ? AND bot = ? " +
-          "ORDER BY created_at DESC LIMIT ?)",
-      )
-      .bind(owner, bot, owner, bot, keptRuns)
-      .all<{ id: string }>();
-    if (!results.length) return;
-    await this.db.batch(
-      results.flatMap(({ id }) => [
-        this.db
-          .prepare("DELETE FROM backtest_job_parts WHERE job_id = ?")
-          .bind(id),
-        this.db.prepare("DELETE FROM backtest_jobs WHERE id = ?").bind(id),
-      ]),
-    );
-    await this.results.remove({ job: results.map((r) => r.id) });
   }
 
   private async row(id: string): Promise<JobRow | undefined> {
@@ -327,11 +305,12 @@ export class BacktestJobs {
     };
   }
 
-  /** The person's latest runs of a bot, newest first. */
+  /** A page of the person's runs of a bot, newest first. */
   async list(
     owner: string,
     bot: JobBot,
-    limit = keptRuns,
+    offset = 0,
+    limit = runsPage,
   ): Promise<JobSummary[]> {
     await this.init();
     const { results } = await this.db
@@ -339,9 +318,9 @@ export class BacktestJobs {
         "SELECT j.id, j.bot, j.status, j.total, j.meta, j.created_at, j.updated_at, " +
           "(SELECT COUNT(*) FROM backtest_job_parts p WHERE p.job_id = j.id AND p.state != 'pending') AS done, " +
           "(SELECT COUNT(*) FROM backtest_job_parts p WHERE p.job_id = j.id AND p.state = 'failed') AS failed " +
-          "FROM backtest_jobs j WHERE j.owner = ? AND j.bot = ? ORDER BY j.created_at DESC LIMIT ?",
+          "FROM backtest_jobs j WHERE j.owner = ? AND j.bot = ? ORDER BY j.created_at DESC LIMIT ? OFFSET ?",
       )
-      .bind(owner, bot, limit)
+      .bind(owner, bot, limit, offset)
       .all<{
         id: string;
         bot: JobBot;
@@ -364,6 +343,18 @@ export class BacktestJobs {
       updatedAt: Number(r.updated_at),
       meta: JSON.parse(r.meta),
     }));
+  }
+
+  /** How many runs of a bot the person has. */
+  async count(owner: string, bot: JobBot): Promise<number> {
+    await this.init();
+    const { results } = await this.db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM backtest_jobs WHERE owner = ? AND bot = ?",
+      )
+      .bind(owner, bot)
+      .all<{ n: number }>();
+    return Number(results[0]?.n ?? 0);
   }
 
   /** The owner's latest run of a bot, if any. */
@@ -551,7 +542,9 @@ export async function runParts(
  * runner (a queue, or in-process) and must not wait for them.
  *
  *   POST /api/backtest-jobs                 { bot, parts, body, meta } → 201 { id, total }
- *   GET  /api/backtest-jobs?bot=main        the caller's latest 10 runs → { runs: JobSummary[] }
+ *   GET  /api/backtest-jobs?bot=main&offset=0&limit=10
+ *                                           a page of the caller's runs, newest first
+ *                                           → { runs: JobSummary[], total, offset, limit }
  *   GET  /api/backtest-jobs/latest?bot=main the caller's latest run → JobView (404: none)
  *   GET  /api/backtest-jobs/:id?since=ms    JobView with parts finished since then
  *   POST /api/backtest-jobs/:id/stop        → JobView
@@ -590,7 +583,11 @@ export async function handleBacktestJobs(o: {
   if (first === "" && o.method === "GET") {
     const bot = botOf();
     if (!bot) return badBot;
-    return { status: 200, body: { runs: await jobs.list(o.owner, bot) } };
+    const offset = countOf(o.query.offset, 0, Number.MAX_SAFE_INTEGER, 0);
+    const limit = countOf(o.query.limit, 1, maxRunsPage, runsPage);
+    const runs = await jobs.list(o.owner, bot, offset, limit);
+    const total = await jobs.count(o.owner, bot);
+    return { status: 200, body: { runs, total, offset, limit } };
   }
   if (first === "") {
     if (o.method !== "POST") return allow("GET, POST");
@@ -635,4 +632,11 @@ export async function handleBacktestJobs(o: {
 function sinceOf(query: Record<string, unknown>) {
   const n = Number(query.since ?? 0);
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** A whole number from the query, within min..max; the fallback otherwise. */
+function countOf(value: unknown, min: number, max: number, fallback: number) {
+  const n = Number(value);
+  if (value === undefined || !Number.isInteger(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
 }

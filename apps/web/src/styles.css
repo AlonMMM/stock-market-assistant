@@ -2538,6 +2538,20 @@ dialog.stocks-dialog {
 .bt-recent-row:hover {
   background: var(--gray-94);
 }
+/* Newer / Older pages of runs. */
+.bt-recent-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--gray-92b);
+}
+.bt-recent-pager button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 /* What the run tested: its changed rules, then its stocks and period. */
 .bt-recent-changed,
 .bt-recent-scope {

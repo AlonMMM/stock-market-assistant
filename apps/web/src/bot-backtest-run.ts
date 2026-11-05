@@ -57,7 +57,7 @@ export interface RunState<R, B> {
   id?: string | null;
 }
 
-/** One of the latest runs, as the list shows it (backtest-jobs.ts, JobSummary). */
+/** One run, as the list shows it (backtest-jobs.ts, JobSummary). */
 export interface RecentRun<R> {
   id: string;
   status: "running" | "done" | "stopped";
@@ -67,6 +67,14 @@ export interface RecentRun<R> {
   createdAt: number;
   updatedAt: number;
   meta: R;
+}
+
+/** A page of the runs, newest first (GET /api/backtest-jobs). */
+export interface RecentPage<R> {
+  runs: RecentRun<R>[];
+  total: number; // all the runs of the bot
+  offset: number;
+  limit: number;
 }
 
 /** A past run picked under History, read apart from the run going on. */
@@ -87,10 +95,11 @@ export interface BacktestRun<R extends RanBase, B> {
   resume(): Promise<void>;
   /** Shows one of the latest runs (not while a run is going). */
   open(id: string): Promise<void>;
-  /** The latest 10 runs, newest first; null until read. */
-  useRecent(): RecentRun<R>[] | null;
-  loadRecent(): Promise<void>;
-  /** Reads one of the latest runs for History; the run going on goes on. */
+  /** The page of runs shown under History; null until read. */
+  useRecent(): RecentPage<R> | null;
+  /** Reads a page of runs (the one shown when no offset is given). */
+  loadRecent(offset?: number): Promise<void>;
+  /** Reads one past run for History; the run going on goes on. */
   view(id: string): Promise<void>;
   viewed(): RunView<R, B>;
   useView(): RunView<R, B>;
@@ -114,6 +123,8 @@ const errorText = (e: JobView<unknown, unknown>["errors"][number]) =>
   `${e.symbol} ${e.from} → ${e.to}: ${e.error}`;
 
 export const pollMs = 2500;
+// The runs on one page of History.
+export const runsPage = 10;
 // The waits before the list of recent runs is read again after a failure.
 const recentRetryMs = [3000, 10000, 30000];
 const jobsUrl = "/api/backtest-jobs";
@@ -254,7 +265,7 @@ function backtestRun<R extends RanBase, B>(o: {
         { signal: AbortSignal.timeout(20000), cache: "no-store" },
       );
       if (response.status === 404) {
-        // The run is gone (only the latest 10 are kept): what was read stays.
+        // The run is gone: what was read stays.
         if (gen !== generation) return;
         forget();
         const busy = current().busy;
@@ -404,7 +415,8 @@ function backtestRun<R extends RanBase, B>(o: {
       storage.set(jobKey, id);
       resumed = true;
       set({ id });
-      void loadRecent();
+      // The new run tops the first page.
+      void loadRecent(0);
       await read(id);
     } catch (e) {
       if (gen !== generation) return;
@@ -430,28 +442,39 @@ function backtestRun<R extends RanBase, B>(o: {
     await read(id);
   }
 
-  // The latest runs, for the list (read on first use, after a start and
-  // when a run ends).
-  let recent: RecentRun<R>[] | null = null;
+  // A page of the runs, for the list (read on first use, after a start,
+  // when a run ends and when another page is picked).
+  let recent: RecentPage<R> | null = null;
   const recentListeners = new Set<() => void>();
   let recentRead = false;
-  async function loadRecent(attempt = 0) {
+  let recentOffset = 0;
+  let recentGeneration = 0;
+  async function loadRecent(offset = recentOffset, attempt = 0) {
     recentRead = true;
+    recentOffset = offset;
+    const gen = ++recentGeneration;
     try {
-      const response = await fetch(`${jobsUrl}?bot=${o.bot}`, {
-        signal: AbortSignal.timeout(20000),
-        cache: "no-store",
-      });
-      recent = (await readJson<{ runs: RecentRun<R>[] }>(response)).runs;
+      const response = await fetch(
+        `${jobsUrl}?bot=${o.bot}&offset=${offset}&limit=${runsPage}`,
+        { signal: AbortSignal.timeout(20000), cache: "no-store" },
+      );
+      const page = await readJson<RecentPage<R>>(response);
+      // A later pick wins over a slower earlier read.
+      if (gen !== recentGeneration) return;
+      recent = page;
     } catch {
+      if (gen !== recentGeneration) return;
       // The list is a convenience: the shown run does not depend on it. A
       // failed read is tried again (the user, 2026-11-04: the list never
       // came back after one failure), then shown as empty.
       if (attempt < recentRetryMs.length) {
-        setTimeout(() => void loadRecent(attempt + 1), recentRetryMs[attempt]);
+        setTimeout(
+          () => void loadRecent(offset, attempt + 1),
+          recentRetryMs[attempt],
+        );
         return;
       }
-      recent ??= [];
+      recent ??= { runs: [], total: 0, offset, limit: runsPage };
     }
     for (const l of recentListeners) l();
   }
@@ -494,7 +517,7 @@ function backtestRun<R extends RanBase, B>(o: {
         cache: "no-store",
       });
       if (response.status === 404)
-        throw new Error("This run is no longer kept (only the latest 10 are)");
+        throw new Error("This run is no longer kept");
       const job = await readJson<JobView<R, B>>(response);
       if (gen !== viewGeneration) return;
       const next: RunView<R, B> = {
@@ -515,7 +538,7 @@ function backtestRun<R extends RanBase, B>(o: {
       };
       if (job.status !== "running") {
         pastKept.set(id, next);
-        // As many as the server keeps.
+        // The last few opened.
         if (pastKept.size > 10) pastKept.delete(pastKept.keys().next().value!);
       }
       setView(next);

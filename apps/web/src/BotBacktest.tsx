@@ -88,7 +88,7 @@ import {
   type Busy,
   type Ran,
   type RanBase,
-  type RecentRun,
+  type RecentPage,
   type VolumeRan,
 } from "./bot-backtest-run.js";
 import {
@@ -1290,15 +1290,18 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
               onClick={() => showTab("history")}
             >
               History
-              {recent && recent.length > 0 && (
-                <span className="tab-count num"> {recent.length}</span>
+              {recent && recent.total > 0 && (
+                <span className="tab-count num"> {recent.total}</span>
               )}
             </button>
           </div>
           {history && (
             <RecentRuns
               key={isVolume ? "volume" : "main"}
-              runs={recent}
+              page={recent}
+              onPage={(offset) =>
+                void (isVolume ? volumeRun : mainRun).loadRecent(offset)
+              }
               shown={past.id}
               active={(isVolume ? vol : main).id ?? null}
               busy={busy}
@@ -1638,45 +1641,53 @@ interface RunDescription {
 }
 
 /**
- * The latest 10 runs of the bot, under History (the user, 2026-11-04: "I
- * would like to see my last 10 results"; 2026-11-05: what each tested, and
- * open while a run goes on). Each row says what changed from its version,
- * the stocks and the period; tapping one shows its result below.
+ * The bot's runs, under History, a page at a time (the user, 2026-11-04: "I
+ * would like to see my last 10 results"; 2026-11-05: what each tested, open
+ * while a run goes on, and every run, in pages). Each row says what changed
+ * from its version, the stocks and the period; tapping one shows its result
+ * below.
  */
 function RecentRuns({
-  runs,
+  page,
+  onPage,
   shown,
   active,
   busy,
   onOpen,
   describe,
 }: {
-  runs: RecentRun<RanBase>[] | null;
+  page: RecentPage<RanBase> | null;
+  onPage: (offset: number) => void;
   shown: string | null;
   active: string | null;
   busy: Busy | null;
   onOpen: (id: string) => void;
   describe: (meta: RanBase) => RunDescription;
 }) {
-  if (runs === null)
+  if (page === null)
     return (
       <p className="muted small" role="status">
-        Reading the latest runs…
+        Reading your runs…
       </p>
     );
-  if (runs.length === 0)
+  const { runs, total, offset, limit } = page;
+  if (total === 0)
     return (
       <section className="card bt-empty">
         <h2>No runs yet</h2>
-        <p className="muted">Each run you make is kept here, the latest 10.</p>
+        <p className="muted">Each run you make is kept here.</p>
       </section>
     );
+  const first = Math.min(offset + 1, total);
+  const last = offset + runs.length;
+  const hasNewer = offset > 0;
+  const hasOlder = last < total;
   return (
-    <section className="card bt-recent" aria-label="Recent runs">
+    <section className="card bt-recent" aria-label="Your runs">
       <div className="card-head">
-        <h2>Recent runs</h2>
-        <span className="muted small">
-          the latest {runs.length}
+        <h2>Your runs</h2>
+        <span className="muted small num">
+          {first}–{last} of {total}
           {!shown && " · pick one to see its result"}
         </span>
       </div>
@@ -1727,6 +1738,29 @@ function RecentRuns({
           );
         })}
       </ul>
+      {(hasNewer || hasOlder) && (
+        <nav className="bt-recent-pager" aria-label="Pages of runs">
+          <button
+            type="button"
+            className="bs-secondary"
+            disabled={!hasNewer}
+            onClick={() => onPage(Math.max(0, offset - limit))}
+          >
+            ← Newer
+          </button>
+          <span className="muted small num">
+            Page {Math.floor(offset / limit) + 1} of {Math.ceil(total / limit)}
+          </span>
+          <button
+            type="button"
+            className="bs-secondary"
+            disabled={!hasOlder}
+            onClick={() => onPage(offset + limit)}
+          >
+            Older →
+          </button>
+        </nav>
+      )}
     </section>
   );
 }
