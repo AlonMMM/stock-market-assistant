@@ -69,6 +69,15 @@ export interface RecentRun<R> {
   meta: R;
 }
 
+/** A past run picked under History, read apart from the run going on. */
+export interface RunView<R, B> {
+  id: string | null;
+  status: "running" | "done" | "stopped" | null;
+  loading: boolean;
+  error: string | null;
+  run: RunState<R, B>;
+}
+
 export interface BacktestRun<R extends RanBase, B> {
   start(ran: R): Promise<void>;
   stop(): void;
@@ -81,6 +90,10 @@ export interface BacktestRun<R extends RanBase, B> {
   /** The latest 10 runs, newest first; null until read. */
   useRecent(): RecentRun<R>[] | null;
   loadRecent(): Promise<void>;
+  /** Reads one of the latest runs for History; the run going on goes on. */
+  view(id: string): Promise<void>;
+  viewed(): RunView<R, B>;
+  useView(): RunView<R, B>;
 }
 
 /** The run as the server tells it (backtest-jobs.ts, JobView). */
@@ -96,6 +109,9 @@ interface JobView<R, B> {
   errors: { symbol: string; from: string; to: string; error: string }[];
   stopped: { done: number; total: number } | null;
 }
+
+const errorText = (e: JobView<unknown, unknown>["errors"][number]) =>
+  `${e.symbol} ${e.from} → ${e.to}: ${e.error}`;
 
 export const pollMs = 2500;
 // The waits before the list of recent runs is read again after a failure.
@@ -195,9 +211,7 @@ function backtestRun<R extends RanBase, B>(o: {
     const runs = [...results.entries()]
       .sort((a, b) => a[0] - b[0])
       .map(([, body]) => body);
-    const errors = view.errors.map(
-      (e) => `${e.symbol} ${e.from} → ${e.to}: ${e.error}`,
-    );
+    const errors = view.errors.map(errorText);
     if (view.status === "running") {
       set({
         busy: {
@@ -447,12 +461,89 @@ function backtestRun<R extends RanBase, B>(o: {
     return () => recentListeners.delete(l);
   };
 
+  // A past run under History (the user, 2026-11-05: a run should not stop
+  // "looking on historical run"): read whole, once, on its own, so the run
+  // going on keeps its progress and its parts. Finished runs do not change:
+  // they are kept here and open again at once.
+  const noRun: RunState<R, B> = { busy: null, errors: [], runs: [], ran: null };
+  let shownPast: RunView<R, B> = {
+    id: null,
+    status: null,
+    loading: false,
+    error: null,
+    run: noRun,
+  };
+  const pastKept = new Map<string, RunView<R, B>>();
+  const viewListeners = new Set<() => void>();
+  let viewGeneration = 0;
+  function setView(next: RunView<R, B>) {
+    shownPast = next;
+    for (const l of viewListeners) l();
+  }
+  async function view(id: string) {
+    const gen = ++viewGeneration;
+    const kept = pastKept.get(id);
+    if (kept) {
+      setView(kept);
+      return;
+    }
+    setView({ id, status: null, loading: true, error: null, run: noRun });
+    try {
+      const response = await fetch(`${jobsUrl}/${encodeURIComponent(id)}`, {
+        signal: AbortSignal.timeout(30000),
+        cache: "no-store",
+      });
+      if (response.status === 404)
+        throw new Error("This run is no longer kept (only the latest 10 are)");
+      const job = await readJson<JobView<R, B>>(response);
+      if (gen !== viewGeneration) return;
+      const next: RunView<R, B> = {
+        id,
+        status: job.status,
+        loading: false,
+        error: null,
+        run: {
+          busy: null,
+          errors: job.errors.map(errorText),
+          runs: [...job.results]
+            .sort((a, b) => a.index - b.index)
+            .map((r) => r.body),
+          ran: job.meta,
+          stopped: job.stopped,
+          id,
+        },
+      };
+      if (job.status !== "running") {
+        pastKept.set(id, next);
+        // As many as the server keeps.
+        if (pastKept.size > 10) pastKept.delete(pastKept.keys().next().value!);
+      }
+      setView(next);
+    } catch (e) {
+      if (gen !== viewGeneration) return;
+      setView({
+        id,
+        status: null,
+        loading: false,
+        error: e instanceof Error ? e.message : String(e),
+        run: noRun,
+      });
+    }
+  }
+  const subscribeView = (l: () => void) => {
+    viewListeners.add(l);
+    return () => viewListeners.delete(l);
+  };
+
   return {
     start,
     stop,
     resume,
     open,
     loadRecent,
+    view,
+    viewed: () => shownPast,
+    useView: () => useSyncExternalStore(subscribeView, () => shownPast),
     useRecent: () => useSyncExternalStore(subscribeRecent, () => recent),
     state: current,
     use: () => useSyncExternalStore(subscribe, current),

@@ -30,6 +30,10 @@ import {
   runAccount,
 } from "../packages/trading/src/bot/backtest-account.js";
 import { defaultSettings } from "../packages/trading/src/bot/settings.js";
+import {
+  currentVersion,
+  versionById,
+} from "../packages/trading/src/bot/versions.js";
 import { defaultExitRules } from "../packages/trading/src/bot/exits.js";
 import type { MinuteBar } from "../packages/trading/src/bot/signal.js";
 import {
@@ -45,6 +49,8 @@ import {
   runClock,
   periodRange,
   sessionsBetween,
+  stocksLabel,
+  mainRunChanges,
   tradeSize,
 } from "../apps/web/src/bot-backtest-model.js";
 import {
@@ -1086,6 +1092,62 @@ test("a past run opens with its own result; a new run cannot start while one run
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+test("History reads a past run while another runs: the run going on keeps its progress", async () => {
+  const realFetch = globalThis.fetch;
+  const server = fakeJobServer();
+  globalThis.fetch = server.fetcher;
+  try {
+    await startRun({ ...sixStocks, tickers: ["NVDA"] });
+    await server.finish(server.tasks.length - 1);
+    await mainRun.resume();
+    const first = runState().id!;
+    await startRun({ ...sixStocks, tickers: ["AMD", "TSLA"] });
+    const second = runState().id!;
+    await mainRun.view(first);
+    const past = mainRun.viewed();
+    assert.equal(past.id, first);
+    assert.equal(past.status, "done");
+    assert.deepEqual(
+      past.run.runs.map((r) => r.symbol),
+      ["NVDA"],
+    );
+    assert.deepEqual(past.run.ran?.tickers, ["NVDA"]);
+    // The run going on is untouched: still shown, still running.
+    assert.equal(runState().id, second);
+    assert.notEqual(runState().busy, null);
+    await mainRun.view("gone");
+    assert.match(mainRun.viewed().error ?? "", /no longer kept/);
+    for (const i of [1, 2]) await server.finish(server.tasks.length - i);
+    await mainRun.resume();
+    assert.equal(runState().busy, null);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("a run says what it tested: its changed rules and its stocks", () => {
+  const v = versionById(currentVersion)!;
+  assert.deepEqual(
+    mainRunChanges({ ...sixStocks, version: v.id, rules: v.rules }),
+    [],
+  );
+  const changed = mainRunChanges({
+    ...sixStocks,
+    version: `${v.id}*`,
+    rules: { ...v.rules, stopPct: v.rules.stopPct + 5 },
+  });
+  assert.deepEqual(changed, [
+    `stopPct ${v.rules.stopPct} → ${v.rules.stopPct + 5}`,
+  ]);
+  const lists = [{ label: "Semis", tickers: ["MU", "AMD", "NVDA"] }];
+  assert.equal(stocksLabel(["NVDA", "MU", "AMD"], lists), "Semis · 3 stocks");
+  assert.equal(stocksLabel(["TSLA", "MU"], lists), "TSLA, MU");
+  assert.equal(
+    stocksLabel(["A", "B", "C", "D", "E", "F"], lists),
+    "6 stocks: A, B, C, D +2",
+  );
 });
 
 test("held: the nights a position was held after its entry day", () => {
