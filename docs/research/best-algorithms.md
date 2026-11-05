@@ -291,6 +291,25 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### A third at +200% within 60 minutes, on every leg (2026-11-05, not better: +1 point of win rate for a quarter to a third of the money; the drop does not move)
+
+The user, after dte1_fast.py: "can you try to apply third at +200% within 60 min on all dte?". `all_fast.py` on 2.10
+(reproduced to the dollar), every leg, sim `fast_take`. Set before running: A200_60 (the user's), A200_30 / A200_120
+(within 30 / 120 minutes), A200_60q (a quarter). Pick: money at least 0.90 of 2.10 on both lists, then the win rate.
+Look 2 of the fast-gain idea.
+
+| 2%, vs 2.10 (fair / Favorites) | Tune: money, winners | Check: money, winners | Changed (tune / check, fair) |
+|---|---|---|---|
+| 2.10 | 1 / 1; 15.7% / 16.5% | 1 / 1; 14.6% / 15.6% | - |
+| A200_60 (the user's) | **0.745 / 0.780**, 16.8% / 17.6% | **0.661 / 0.843**, 15.6% / 16.7% | 21 / 21 |
+| A200_30 🎯 | 0.926 / 0.934, 16.4% / 17.3% | 0.927 / 0.921, 15.1% / 16.2% | 8 / 10 |
+| A200_120 / A200_60q | 0.715 / 0.761 · 0.803 / 0.829 | - | 30 / 21 |
+
+No candidate. On every leg, a trade up +200% within the hour is a giant in the making about half the time (tune fair:
+21 changed, 10 of them giants on 2.10): selling a third there turns 4-5 small round trips into winners (+1 point) and
+costs 22-34% of the money on both halves; the worst drop is unchanged. The 30-minute version touches 8-10 trades a half
+and still loses 7-8%.
+
 ### A fast big gain on 1DTE, a third taken (2026-11-05, not better: +0.5 points of win rate for 11% of the check money; the drop does not move)
 
 The user: "something that might help to increase the winners. on 1DTE, if a winner is up very shortly 300% I would like
