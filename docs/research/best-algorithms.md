@@ -385,7 +385,19 @@ drop); without the best 5 2.10 tune is the same or less ($14,639 -> $14,143): th
 size, the bleed grows with it. From $100K it barely matters (it only acts after the account falls under $100K). Not
 better by the log's rule; the size is the owner's risk choice.
 
-### Sell above the bid: from the mid, stepped down to the bid over 5 minutes (2026-11-04; WITHDRAWN 2026-11-05: a backtest bug; look 3 with real fill sizes: not better)
+### Sell above the bid: from the mid, stepped down to the bid over 5 minutes (2026-11-04; WITHDRAWN 2026-11-05: a backtest bug; looks 3-4 with real fill sizes and a 16-second ladder: not better)
+
+**Look 4, a 16-second ladder (2026-11-05, not better: a tie at best; the sale at the bid stays).** The user: "what about
+try for 1sec the mids, than hold 5sec for mid-25% spread, than move to -50%, 75 than big" (read: the mid 1 s, then 25 /
+50 / 75% of the way to the bid, 5 s each, then the bid), then "go". `sale_sec4.py` on 2.10 (bid reproduces to the
+dollar); second-level books bought for minute m-1 .. m+1 around every sale (cbbo-1s from 2025-02-20, cmbp-1 before;
+~$0.55; `sec911_fetch.py`, dbx_cache/sec911) + look 3's trades with sizes. A step fills from prints at or above it in its
+own seconds (up to their size) or once that second's bid reaches it; leftovers at the bid of the last second; $5K stake.
+Set before running: A P3 / P5 / P10 (steps held 3 / 5 / 10 s; P5 the user's), B P5 on the planned exits only. 2%, vs
+2.10 (fair / Favorites): tune P3 0.999 / 1.010, P5 0.977 / 1.007, P10 0.984 / 1.011, P5 planned 0.990 / 0.992; check
+(picks) P3 0.993 / 0.997, P5 planned 1.013 / 1.017 (its tune lost). The fast ladder no longer bleeds like the 5-minute
+one (limits above the bid fill in full ~70%, the average sale +0.0-0.2% over the bid) but adds nothing either: every
+result sits within 2% of 2.10, and no pick wins both halves. Look 4 of the sale limit. **No candidate.**
 
 **Look 3, with the fix and a size-aware fill proof (2026-11-05, not better: every start above the bid loses on tune and
 check; the sale at the bid stays).** `sale_limit3.py` on 2.10 (bid-c5 reproduces $620,535 / $449,178 / $957,771 /
