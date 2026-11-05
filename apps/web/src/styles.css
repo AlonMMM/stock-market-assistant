@@ -9482,20 +9482,25 @@ i.added {
 }
 .dr-seg {
   display: inline-flex;
+  padding: 2px;
   border: 1px solid var(--gray-75b);
-  border-radius: 8px;
-  overflow: hidden;
+  border-radius: 7px;
+  background: var(--surface);
 }
 .dr-seg button {
   border: 0;
+  border-radius: 5px;
   background: none;
-  color: inherit;
+  color: var(--gray-75b);
   font: inherit;
-  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 6px 10px;
   cursor: pointer;
 }
-.dr-seg button + button {
-  border-left: 1px solid var(--gray-75b);
+.dr-seg button:hover {
+  color: inherit;
 }
 .dr-seg button[aria-pressed="true"] {
   background: var(--gray-27);
@@ -9503,33 +9508,121 @@ i.added {
 }
 .dr-summary {
   display: grid;
-  gap: 12px;
+  gap: 16px;
 }
+.dr-summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.dr-summary-head h3 {
+  margin: 0;
+}
+.dr-summary-head p {
+  margin: 2px 0 0;
+}
+/* The figures: one row of cells split by hairlines; label, value, caption. */
 .dr-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  margin: 0;
+  border-block: 1px solid var(--bot-line);
+}
+.dr-kpis > div {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  padding: 12px 16px;
+  box-shadow: -1px 0 0 var(--bot-line);
+}
+.dr-kpis > div:first-child {
+  padding-left: 0;
+  box-shadow: none;
+}
+.dr-kpis dt,
+.dr-strip dt {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gray-75b);
+  white-space: nowrap;
+}
+.dr-kpis dd {
+  margin: 0;
+}
+.dr-kpis dd.num {
+  font-size: 1.5rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.dr-cap {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--gray-75b);
+}
+/* The days' verdicts as one bar split by count. */
+.dr-vbar-wrap {
+  display: grid;
+  gap: 8px;
+  padding-top: 6px;
+}
+.dr-vbar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.dr-vbar span,
+.dr-vbar-key i {
+  background: var(--gray-75b);
+}
+.dr-vbar .red,
+.dr-vbar-key i.red {
+  background: var(--red-41b);
+}
+.dr-vbar .amber,
+.dr-vbar-key i.amber {
+  background: var(--orange-44);
+}
+.dr-vbar .green,
+.dr-vbar-key i.green {
+  background: var(--green-39);
+}
+.dr-vbar-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
   margin: 0;
   padding: 0;
   list-style: none;
+  font-size: 0.76rem;
+  color: var(--gray-75b);
 }
-.dr-kpis li {
-  display: grid;
-  gap: 4px;
-  align-content: start;
+.dr-vbar-key i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 2px;
 }
-.dr-kpis b {
-  font-size: 1.35rem;
+.dr-vbar-key .num {
+  color: var(--gray-27);
+  font-weight: 650;
 }
-.dr-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+.dr-bugs {
+  color: var(--red-41b);
+  font-weight: 650;
 }
 .dr-key {
   display: inline-block;
   width: 14px;
   height: 0;
+  margin-right: 2px;
   vertical-align: middle;
   border-top: 2px solid;
 }
@@ -9541,6 +9634,13 @@ i.added {
 }
 .dr-key.dashed {
   border-top-style: dashed;
+}
+.dr-key.band {
+  height: 8px;
+  border: 0;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.18;
 }
 .dr-perf {
   position: relative;
@@ -9554,22 +9654,38 @@ i.added {
 .dr-axis {
   fill: var(--gray-75b);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 .dr-end {
   fill: currentColor;
   font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.dr-end-name {
+  fill: var(--gray-75b);
+  font-size: 11px;
   font-weight: 600;
 }
 .dr-grid {
   stroke: var(--gray-75b);
-  stroke-opacity: 0.35;
+  stroke-opacity: 0.18;
 }
 .dr-zero {
   stroke: var(--gray-75b);
+  stroke-opacity: 0.6;
 }
 .dr-cross {
   stroke: currentColor;
   stroke-opacity: 0.35;
+}
+.dr-hover-col {
+  fill: currentColor;
+  fill-opacity: 0.05;
+}
+.dr-band {
+  fill: currentColor;
+  fill-opacity: 0.06;
 }
 .dr-line-bot,
 .dr-line-bt {
@@ -9587,7 +9703,7 @@ i.added {
 }
 .dr-dot-bot,
 .dr-dot-bt {
-  stroke: var(--surface);
+  stroke: var(--bot-card);
   stroke-width: 2;
 }
 .dr-dot-bot {
@@ -9596,18 +9712,63 @@ i.added {
 .dr-dot-bt {
   fill: var(--dr-bt);
 }
-.dr-tip {
+/* The day under the pointer, beside it. */
+.dr-tooltip {
+  position: absolute;
+  top: 8px;
+  z-index: 2;
+  min-width: 230px;
+  padding: 10px 12px;
+  border: 1px solid var(--bot-line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--gray-27) 14%, transparent);
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+.dr-tooltip[hidden] {
+  display: none;
+}
+.dr-tooltip-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  min-height: 1.5em;
-  font-size: 0.9rem;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.dr-tooltip-head .dr-tag {
+  margin: 0;
+}
+.dr-tooltip table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.dr-tooltip th,
+.dr-tooltip td {
+  padding: 2px 0 2px 12px;
+  font-weight: 500;
+  text-align: right;
+  white-space: nowrap;
+}
+.dr-tooltip th:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+.dr-tooltip thead th {
+  font-size: 0.68rem;
+  color: var(--gray-75b);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dr-tooltip-gap > * {
+  border-top: 1px solid var(--bot-line);
+  font-weight: 650;
 }
 .dr-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
-  margin: 4px 0 0;
+  gap: 4px 18px;
+  margin: 0;
 }
 .dr-h {
   margin: 4px 0 8px;
@@ -9790,18 +9951,18 @@ i.added {
   overflow: hidden;
 }
 .dr-strip > div {
-  padding: 8px 10px;
+  padding: 10px 12px;
   box-shadow:
     inset -1px 0 0 color-mix(in srgb, var(--gray-75b) 60%, transparent),
     inset 0 -1px 0 color-mix(in srgb, var(--gray-75b) 60%, transparent);
 }
-.dr-strip dt {
-  font-size: 0.72rem;
-  color: var(--gray-75b);
+.dr-strip dd.dr-cap {
+  font-size: 0.74rem;
+  font-weight: 400;
 }
 .dr-strip dd {
   margin: 2px 0 0;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -9914,5 +10075,20 @@ i.added {
   }
   .dr-day-section {
     padding: 10px;
+  }
+}
+@media (max-width: 560px) {
+  /* The figures two by two: no side rules, each cell from the left edge. */
+  .dr-kpis {
+    grid-template-columns: 1fr 1fr;
+    gap: 0 16px;
+  }
+  .dr-kpis > div,
+  .dr-kpis > div:first-child {
+    padding: 10px 0;
+    box-shadow: none;
+  }
+  .dr-kpis dd.num {
+    font-size: 1.25rem;
   }
 }

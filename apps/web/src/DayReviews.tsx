@@ -67,69 +67,96 @@ type Period = (typeof periods)[number][0];
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+/** Bot − backtest in words: who made more. */
+function aheadWords(v: number): string {
+  if (Math.abs(v) < 1) return "the same";
+  if (v > 0) return "the bot made more";
+  return "the backtest made more";
+}
+
+/** Paper − market in words. */
+function paperWords(v: number): string {
+  if (Math.abs(v) < 1) return "paper fills matched the market";
+  if (v > 0) return "paper fills flattered the bot";
+  return "paper fills cost the bot";
+}
+
 // ---- the performance chart ----
 
-const chartPad = { l: 64, r: 78, t: 16, b: 28 };
+const chartPad = { l: 56, r: 132, t: 12, b: 30 };
+
+/** Round grid steps (1, 2, 2.5 or 5 times a power of ten), about four of them. */
+function gridTicks(lo: number, hi: number): number[] {
+  const rough = Math.max(1, (hi - lo) / 4);
+  const power = 10 ** Math.floor(Math.log10(rough));
+  const step =
+    [1, 2, 2.5, 5, 10].map((m) => m * power).find((s) => s >= rough) ??
+    10 * power;
+  const out: number[] = [];
+  for (let v = Math.floor(lo / step) * step; v <= hi + step / 2; v += step)
+    out.push(Math.round(v));
+  if (out.at(-1)! < hi) out.push(out.at(-1)! + step);
+  return out;
+}
+
+/** Axis money: −$4k, $500. */
+function axisUsd(v: number): string {
+  if (v === 0) return "$0";
+  const sign = v < 0 ? "−" : "";
+  const abs = Math.abs(v);
+  if (abs < 1000) return `${sign}$${abs}`;
+  return `${sign}$${Number((abs / 1000).toFixed(1))}k`;
+}
 
 function PerformanceChart({ points }: { points: PerfPoint[] }) {
   const box = useBoxWidth(640);
   const [hover, setHover] = useState<number | null>(null);
-  const w = Math.max(300, Math.min(960, box.width));
-  const h = w < 520 ? 220 : 260;
+  const w = Math.max(300, box.width);
+  const narrow = w < 520;
+  const h = narrow ? 220 : 280;
   if (points.length === 0)
     return (
       <div ref={box.ref}>
         <p className="muted">No compared day yet.</p>
       </div>
     );
+  const pad = { ...chartPad, r: narrow ? 70 : chartPad.r };
   const values = points.flatMap((p) => [p.cumBot, p.cumBacktest, 0]);
-  let lo = Math.min(...values);
-  let hi = Math.max(...values);
-  if (hi - lo < 1) {
-    hi += 50;
-    lo -= 50;
-  }
-  const span = hi - lo;
-  lo -= span * 0.08;
-  hi += span * 0.08;
-  const innerW = w - chartPad.l - chartPad.r;
-  const innerH = h - chartPad.t - chartPad.b;
-  // One day a step; a single day sits in the middle.
-  const x = (i: number) => {
-    if (points.length === 1) return chartPad.l + innerW / 2;
-    return chartPad.l + (i / (points.length - 1)) * innerW;
-  };
-  const y = (v: number) => chartPad.t + ((hi - v) / (hi - lo)) * innerH;
-  const path = (pick: (p: PerfPoint) => number) =>
-    points
-      .map(
-        (p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(pick(p)).toFixed(1)}`,
-      )
-      .join(" ");
-  // The top, zero and the bottom, without two on each other.
-  const ticks = [hi - span * 0.08, 0, lo + span * 0.08].filter(
-    (v, i, all) => all.findIndex((u) => Math.abs(u - v) < span * 0.15) === i,
-  );
+  const ticks = gridTicks(Math.min(...values), Math.max(...values));
+  const lo = ticks[0]!;
+  const hi = ticks.at(-1)!;
+  const innerW = w - pad.l - pad.r;
+  const innerH = h - pad.t - pad.b;
+  // One day a step, with half a step of room at both ends.
+  const x = (i: number) => pad.l + ((i + 0.5) / points.length) * innerW;
+  const y = (v: number) => pad.t + ((hi - v) / (hi - lo || 1)) * innerH;
+  const line = (pick: (p: PerfPoint) => number) =>
+    points.map((p, i) => `${x(i).toFixed(1)},${y(pick(p)).toFixed(1)}`);
+  const botLine = line((p) => p.cumBot);
+  const btLine = line((p) => p.cumBacktest);
+  // The gap between the two, shaded.
+  const band = `M${botLine.join(" L")} L${[...btLine].reverse().join(" L")} Z`;
   const last = points.at(-1)!;
-  const step = Math.max(1, Math.ceil(points.length / Math.floor(innerW / 70)));
+  const step = Math.max(1, Math.ceil(points.length / Math.floor(innerW / 64)));
   const shown = hover === null ? null : points[hover]!;
   const pick = (clientX: number, rect: DOMRect) => {
     const at = ((clientX - rect.left) / rect.width) * w;
-    let best = 0;
-    points.forEach((_, i) => {
-      if (Math.abs(x(i) - at) < Math.abs(x(best) - at)) best = i;
-    });
-    setHover(best);
+    const i = Math.floor(((at - pad.l) / innerW) * points.length);
+    setHover(Math.max(0, Math.min(points.length - 1, i)));
   };
   // The two end labels never sit on each other.
   let botLabelY = y(last.cumBot);
   let btLabelY = y(last.cumBacktest);
-  if (Math.abs(botLabelY - btLabelY) < 14) {
+  if (Math.abs(botLabelY - btLabelY) < 30) {
     const mid = (botLabelY + btLabelY) / 2;
     const botAbove = last.cumBot >= last.cumBacktest;
-    botLabelY = mid + (botAbove ? -7 : 7);
-    btLabelY = mid + (botAbove ? 7 : -7);
+    botLabelY = mid + (botAbove ? -15 : 15);
+    btLabelY = mid + (botAbove ? 15 : -15);
   }
+  const endX = x(points.length - 1) + 10;
+  const tipX = hover === null ? 0 : x(hover);
+  const tipFlip = tipX > w * 0.55;
+  const tipStyle = tipFlip ? { right: w - tipX + 14 } : { left: tipX + 14 };
   return (
     <div ref={box.ref} className="dr-perf">
       <svg
@@ -147,18 +174,18 @@ function PerformanceChart({ points }: { points: PerfPoint[] }) {
           <g key={v}>
             <line
               className={v === 0 ? "dr-zero" : "dr-grid"}
-              x1={chartPad.l}
-              x2={w - chartPad.r}
+              x1={pad.l}
+              x2={w - pad.r + 8}
               y1={y(v)}
               y2={y(v)}
             />
             <text
               className="dr-axis"
-              x={chartPad.l - 6}
+              x={pad.l - 8}
               y={y(v) + 4}
               textAnchor="end"
             >
-              {v === 0 ? "$0" : signedUsd(v)}
+              {axisUsd(v)}
             </text>
           </g>
         ))}
@@ -176,81 +203,155 @@ function PerformanceChart({ points }: { points: PerfPoint[] }) {
             </text>
           );
         })}
-        <path className="dr-line-bt" d={path((p) => p.cumBacktest)} />
-        <path className="dr-line-bot" d={path((p) => p.cumBot)} />
-        <circle
-          className="dr-dot-bt"
-          cx={x(points.length - 1)}
-          cy={y(last.cumBacktest)}
-          r={4}
-        />
-        <circle
-          className="dr-dot-bot"
-          cx={x(points.length - 1)}
-          cy={y(last.cumBot)}
-          r={4}
-        />
-        <text className="dr-end" x={w - chartPad.r + 8} y={botLabelY + 4}>
-          Bot
-        </text>
-        <text className="dr-end" x={w - chartPad.r + 8} y={btLabelY + 4}>
-          Backtest
-        </text>
-        {shown && hover !== null && (
-          <g>
-            <line
-              className="dr-cross"
-              x1={x(hover)}
-              x2={x(hover)}
-              y1={chartPad.t}
-              y2={h - chartPad.b}
-            />
+        {hover !== null && (
+          <rect
+            className="dr-hover-col"
+            x={pad.l + (hover / points.length) * innerW}
+            y={pad.t}
+            width={innerW / points.length}
+            height={innerH}
+          />
+        )}
+        <path className="dr-band" d={band} />
+        <polyline className="dr-line-bt" points={btLine.join(" ")} />
+        <polyline className="dr-line-bot" points={botLine.join(" ")} />
+        {points.map((p, i) => (
+          <g key={p.date}>
             <circle
               className="dr-dot-bt"
-              cx={x(hover)}
-              cy={y(shown.cumBacktest)}
-              r={4}
+              cx={x(i)}
+              cy={y(p.cumBacktest)}
+              r={i === hover ? 5 : 3.5}
             />
             <circle
               className="dr-dot-bot"
-              cx={x(hover)}
-              cy={y(shown.cumBot)}
-              r={4}
+              cx={x(i)}
+              cy={y(p.cumBot)}
+              r={i === hover ? 5 : 3.5}
             />
           </g>
-        )}
+        ))}
+        <text className="dr-end" x={endX} y={botLabelY - 2}>
+          <tspan className="dr-end-name">Bot</tspan>
+          <tspan x={endX} dy={14}>
+            {signedUsd(last.cumBot)}
+          </tspan>
+        </text>
+        <text className="dr-end" x={endX} y={btLabelY - 2}>
+          <tspan className="dr-end-name">Backtest</tspan>
+          <tspan x={endX} dy={14}>
+            {signedUsd(last.cumBacktest)}
+          </tspan>
+        </text>
       </svg>
-      <div className="dr-tip" role="status" aria-live="polite">
+      <div
+        className="dr-tooltip"
+        role="status"
+        aria-live="polite"
+        hidden={!shown}
+        style={tipStyle}
+      >
         {shown && (
           <>
-            <b>{dayLabel(shown.date)}</b>
-            <span>
-              <i className="dr-key bot" /> Bot {signedUsd(shown.bot)} · so far{" "}
-              {signedUsd(shown.cumBot)}
-            </span>
-            <span>
-              <i className="dr-key bt" /> Backtest {signedUsd(shown.backtest)} ·
-              so far {signedUsd(shown.cumBacktest)}
-            </span>
-            {shown.verdict && (
-              <span className="muted">{verdictWords[shown.verdict]}</span>
-            )}
+            <div className="dr-tooltip-head">
+              <b>{dayLabel(shown.date)}</b>
+              {shown.verdict && (
+                <span className={`dr-tag ${verdictTone[shown.verdict]}`}>
+                  {verdictShort[shown.verdict]}
+                </span>
+              )}
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th />
+                  <th>Day</th>
+                  <th>So far</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th>
+                    <i className="dr-key bot" /> Bot
+                  </th>
+                  <td className={`num${tone(shown.bot)}`}>
+                    {signedUsd(shown.bot)}
+                  </td>
+                  <td className="num">{signedUsd(shown.cumBot)}</td>
+                </tr>
+                <tr>
+                  <th>
+                    <i className="dr-key bt dashed" /> Backtest
+                  </th>
+                  <td className={`num${tone(shown.backtest)}`}>
+                    {signedUsd(shown.backtest)}
+                  </td>
+                  <td className="num">{signedUsd(shown.cumBacktest)}</td>
+                </tr>
+                <tr className="dr-tooltip-gap">
+                  <th>Bot − BT</th>
+                  <td className="num">
+                    {signedUsd(shown.bot - shown.backtest)}
+                  </td>
+                  <td className="num">
+                    {signedUsd(shown.cumBot - shown.cumBacktest)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </>
         )}
-        {!shown && (
-          <span className="muted small">
-            Move over the chart to see each day.
-          </span>
-        )}
       </div>
-      <p className="dr-legend muted small">
-        <span>
-          <i className="dr-key bot" /> Bot, at market price
-        </span>
-        <span>
-          <i className="dr-key bt dashed" /> Backtest, at the bot's size
-        </span>
-      </p>
+    </div>
+  );
+}
+
+// ---- the summary over the chart ----
+
+const verdictOrder = ["optimistic", "on target", "pessimistic"] as const;
+const barWords: Record<(typeof verdictOrder)[number], string> = {
+  optimistic: "backtest too high",
+  "on target": "on target",
+  pessimistic: "backtest too low",
+};
+
+function VerdictBar({
+  counts,
+  bugs,
+}: {
+  counts: ReturnType<typeof verdictCounts>;
+  bugs: number;
+}) {
+  const total = verdictOrder.reduce((s, v) => s + counts[v], 0);
+  return (
+    <div className="dr-vbar-wrap">
+      <div
+        className="dr-vbar"
+        role="img"
+        aria-label={verdictOrder
+          .map((v) => `${counts[v]} ${verdictWords[v]}`)
+          .join(", ")}
+      >
+        {verdictOrder.map((v) =>
+          counts[v] > 0 ? (
+            <span
+              key={v}
+              className={verdictTone[v]}
+              style={{ flexGrow: counts[v] }}
+            />
+          ) : null,
+        )}
+        {total === 0 && <span className="grey" style={{ flexGrow: 1 }} />}
+      </div>
+      <ul className="dr-vbar-key">
+        {verdictOrder.map((v) => (
+          <li key={v}>
+            <i className={verdictTone[v]} />
+            <span className="num">{counts[v]}</span> {barWords[v]}
+          </li>
+        ))}
+        {bugs > 0 && <li className="dr-bugs">⚠ {plural(bugs, "bug")}</li>}
+      </ul>
     </div>
   );
 }
@@ -934,12 +1035,14 @@ function DayDetail({
             <dd className={`num${tone(a.botPaper)}`}>
               {signedUsd(a.botPaper)}
             </dd>
+            <dd className="dr-cap">at its paper fills</dd>
           </div>
           <div>
             <dt>
               <i className="dr-key bot" /> Bot, at market
             </dt>
             <dd className={`num${tone(a.bot)}`}>{signedUsd(a.bot)}</dd>
+            <dd className="dr-cap">same trades, at the book's mid</dd>
           </div>
           <div>
             <dt>
@@ -948,22 +1051,30 @@ function DayDetail({
             <dd className={`num${tone(a.backtest)}`}>
               {signedUsd(a.backtest)}
             </dd>
+            <dd className="dr-cap">the app's run, at the bot's size</dd>
           </div>
           <div>
-            <dt>Backtest − bot</dt>
-            <dd className="num">{signedUsd(a.backtest - a.bot)}</dd>
+            <dt>Bot vs backtest</dt>
+            <dd className={`num${tone(a.bot - a.backtest)}`}>
+              {signedUsd(a.bot - a.backtest)}
+            </dd>
+            <dd className="dr-cap">{aheadWords(a.bot - a.backtest)}</dd>
           </div>
           <div>
-            <dt>Paper fills cost</dt>
-            <dd className="num">{signedUsd(a.botPaper - a.bot)}</dd>
+            <dt>Paper vs market</dt>
+            <dd className={`num${tone(a.botPaper - a.bot)}`}>
+              {signedUsd(a.botPaper - a.bot)}
+            </dd>
+            <dd className="dr-cap">{paperWords(a.botPaper - a.bot)}</dd>
           </div>
           <div>
-            <dt>Trades both / bot / BT</dt>
+            <dt>Trades</dt>
             <dd className="num">
               {rows.filter((x) => x.match === "both").length} /{" "}
               {rows.filter((x) => x.match === "live-only").length} /{" "}
               {rows.filter((x) => x.match === "backtest-only").length}
             </dd>
+            <dd className="dr-cap">both / bot only / backtest only</dd>
           </div>
         </dl>
       )}
@@ -1061,7 +1172,7 @@ function DayTable({
               Backtest
             </th>
             <th scope="col" className="num">
-              BT − bot
+              Bot vs BT
             </th>
             <th scope="col" className="num">
               Trades both / bot / BT
@@ -1112,8 +1223,8 @@ function DayTable({
                   <td className={`num${tone(a?.backtest ?? null)}`}>
                     {a ? signedUsd(a.backtest) : "—"}
                   </td>
-                  <td className="num">
-                    {a ? signedUsd(a.backtest - a.bot) : "—"}
+                  <td className={`num${tone(a ? a.bot - a.backtest : null)}`}>
+                    {a ? signedUsd(a.bot - a.backtest) : "—"}
                   </td>
                   <td className="num">
                     {s
@@ -1175,7 +1286,7 @@ export function DayReviews({ bot }: { bot: ReviewBot }) {
   const counts = verdictCounts(days);
   const bugs = days.reduce((s, r) => s + bugCount(r), 0);
   const shownDay = openDay ?? days[0]?.date ?? null;
-  const promised = last ? last.cumBacktest - last.cumBot : 0;
+  const ahead = last ? last.cumBot - last.cumBacktest : 0;
   const selected = days.find((r) => r.date === shownDay) ?? null;
   const selectedVerdict = selected ? shownVerdict(selected) : null;
   return (
@@ -1184,101 +1295,101 @@ export function DayReviews({ bot }: { bot: ReviewBot }) {
         <div>
           <h2 className="portfolio-title">{botTitle[bot]} · analyse</h2>
           <p className="muted small">
-            What the bot really did on its paper account, against what its
-            backtest says it should have done the same day. Checked every
-            evening at 23:05 Israel time. "At market" is the market's price at
-            each fill, since paper fills are not real prices.
+            Each trading day at 23:05 Israel time, the bot's trades are set
+            beside the app's backtest of the same day.
           </p>
         </div>
-      </div>
-      <div className="dr-controls">
-        <div className="dr-seg" role="group" aria-label="Period">
-          {periods.map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              aria-pressed={period === key}
-              onClick={() => setPeriod(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {accounts.length > 1 && (
-          <div className="dr-seg" role="group" aria-label="Account">
-            {accounts.map((a) => (
-              <button
-                key={a}
-                type="button"
-                aria-pressed={account === a}
-                onClick={() => setChosen(a)}
-              >
-                {accountNames[a] ?? a}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
       <section
         className="bot-card dr-summary"
         aria-labelledby={`dr-perf-${bot}`}
       >
-        <div className="bot-card-head">
-          <h3 id={`dr-perf-${bot}`}>The bot against its backtest</h3>
-          <span className="muted small">
-            {plural(points.length, "day")}
-            {account && accounts.length > 1 && ` · ${accountNames[account]}`}
-          </span>
+        <div className="dr-summary-head">
+          <div>
+            <h3 id={`dr-perf-${bot}`}>Bot vs backtest</h3>
+            <p className="muted small">
+              Running total of {plural(points.length, "day")}
+              {account && accounts.length > 1 && `, ${accountNames[account]}`}
+            </p>
+          </div>
+          <div className="dr-controls">
+            <div className="dr-seg" role="group" aria-label="Period">
+              {periods.map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={period === key}
+                  onClick={() => setPeriod(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {accounts.length > 1 && (
+              <div className="dr-seg" role="group" aria-label="Account">
+                {accounts.map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    aria-pressed={account === a}
+                    onClick={() => setChosen(a)}
+                  >
+                    {accountNames[a] ?? a}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         {last && (
-          <ul className="dr-kpis">
-            <li>
-              <span className="muted small">
+          <dl className="dr-kpis">
+            <div>
+              <dt>
                 <i className="dr-key bot" /> Bot, at market
-              </span>
-              <b className={`num${tone(last.cumBot)}`}>
+              </dt>
+              <dd className={`num${tone(last.cumBot)}`}>
                 {signedUsd(last.cumBot)}
-              </b>
-            </li>
-            <li>
-              <span className="muted small">
+              </dd>
+              <dd className="dr-cap">
+                {signedUsd(last.cumBot / points.length)} a day
+              </dd>
+            </div>
+            <div>
+              <dt>
                 <i className="dr-key bt dashed" /> Backtest
-              </span>
-              <b className={`num${tone(last.cumBacktest)}`}>
+              </dt>
+              <dd className={`num${tone(last.cumBacktest)}`}>
                 {signedUsd(last.cumBacktest)}
-              </b>
-            </li>
-            <li>
-              <span className="muted small">Backtest − bot</span>
-              <b className="num">{signedUsd(promised)}</b>
-              <span className="muted small">
-                {promised >= 0
-                  ? "the backtest promised more"
-                  : "the bot did better"}
-              </span>
-            </li>
-            <li>
-              <span className="muted small">The days</span>
-              <span className="dr-counts">
-                <span className="pill red">
-                  {counts.optimistic} too optimistic
-                </span>
-                <span className="pill amber">
-                  {counts.pessimistic} too pessimistic
-                </span>
-                <span className="pill green">
-                  {counts["on target"]} on target
-                </span>
-                {bugs > 0 && (
-                  <span className="pill red">
-                    ⚠ {plural(bugs, "bug")} found
-                  </span>
-                )}
-              </span>
-            </li>
-          </ul>
+              </dd>
+              <dd className="dr-cap">
+                {signedUsd(last.cumBacktest / points.length)} a day
+              </dd>
+            </div>
+            <div>
+              <dt>Bot vs backtest</dt>
+              <dd className={`num${tone(ahead)}`}>{signedUsd(ahead)}</dd>
+              <dd className="dr-cap">{aheadWords(ahead)}</dd>
+            </div>
+            <div>
+              <dt>Backtest verdict by day</dt>
+              <dd>
+                <VerdictBar counts={counts} bugs={bugs} />
+              </dd>
+            </div>
+          </dl>
         )}
         <PerformanceChart points={points} />
+        <p className="dr-legend muted small">
+          <span>
+            <i className="dr-key bot" /> Bot, at the market price of its fills
+          </span>
+          <span>
+            <i className="dr-key bt dashed" /> Backtest, at the bot's size
+          </span>
+          <span>
+            <i className="dr-key band" /> Gap between them
+          </span>
+        </p>
       </section>
       <section aria-labelledby={`dr-days-${bot}`}>
         <h3 id={`dr-days-${bot}`} className="dr-h">
