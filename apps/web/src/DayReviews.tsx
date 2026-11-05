@@ -116,11 +116,11 @@ function TradeRows({ rows }: { rows: ReviewRow[] }) {
         <thead>
           <tr>
             <th>Stock</th>
-            <th>Found by</th>
-            <th>Entry live / bt</th>
-            <th className="num">Buy paper / real / bt</th>
-            <th className="num">Sale real / bt</th>
-            <th className="num">Return real / bt</th>
+            <th>Taken by</th>
+            <th>Entry bot / backtest</th>
+            <th className="num">Buy: paper / at market / backtest</th>
+            <th className="num">Sale: at market / backtest</th>
+            <th className="num">Return: at market / backtest</th>
             <th className="num">$ gap</th>
           </tr>
         </thead>
@@ -205,21 +205,22 @@ function ReviewCard({ r, first }: { r: DayReview; first: boolean }) {
       {s && (
         <ul className="vb-kpis dr-kpis">
           <li>
-            <span className="muted small">Live, real prices</span>
+            <span className="muted small">Bot, at market price</span>
             <b className={`num${tone(s.liveReal)}`}>{signedUsd(s.liveReal)}</b>
             <span className="muted small">paper {signedUsd(s.livePaper)}</span>
           </li>
           <li>
-            <span className="muted small">Backtest at live size</span>
+            <span className="muted small">Backtest (simulation)</span>
             <b className={`num${tone(s.backtestAtLiveSize)}`}>
               {signedUsd(s.backtestAtLiveSize)}
             </b>
             <span className="muted small">
-              same trades, live {signedUsd(s.liveRealMatched)}
+              on the trades both took; the bot made{" "}
+              {signedUsd(s.liveRealMatched)}
             </span>
           </li>
           <li>
-            <span className="muted small">Gap (backtest − live)</span>
+            <span className="muted small">Backtest − bot</span>
             <b className={`num${tone(s.gapDollars)}`}>
               {signedUsd(s.gapDollars)}
             </b>
@@ -232,7 +233,7 @@ function ReviewCard({ r, first }: { r: DayReview; first: boolean }) {
             <b className="num">
               {s.matched} / {s.liveTrades} / {s.backtestTrades}
             </b>
-            <span className="muted small">both / live / backtest</span>
+            <span className="muted small">both / bot / backtest</span>
           </li>
         </ul>
       )}
@@ -281,9 +282,11 @@ export function DayReviews({ bot }: { bot: ReviewBot }) {
         <div>
           <h2 className="portfolio-title">{botTitle[bot]} · analyse</h2>
           <p className="muted small">
-            Each evening at 23:05 Israel time: the day's live trades against the
-            app's backtest of the same day, priced at the real market (the
-            book's mid at each fill). Times are Israel time.
+            Each evening at 23:05 Israel time: what the bot really did on its
+            paper account, beside what the backtest (the app's simulation of the
+            same day) says it should have done. "At market" is the market's
+            price at each fill (the middle of the bid and the ask), since paper
+            fills are not real prices. Times are Israel time.
           </p>
         </div>
       </div>

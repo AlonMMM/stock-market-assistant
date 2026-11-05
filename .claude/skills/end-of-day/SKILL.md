@@ -56,7 +56,47 @@ bot (do not save an analysis).
   `gapPts`, `livePaper`, `liveReal`, `backtestAtLiveSize`, counts, `open`, `estimates`. `notes`: dry runs, stocks
   that failed in the backtest, a stopped run.
 
-## 5. Write the analysis, one per bot
+## 5. Find the cause of every difference
+
+The review's job is not only to say the bot and the backtest differ, but **why**. Go through:
+
+- every one-sided row (`bot only` / `backtest only`);
+- every matched row with a different contract, an entry more than 2 minutes apart, a different exit reason or
+  minute, or `retGapPts` beyond ±5;
+- every refusal in the bot's records that the backtest did not have (or the reverse).
+
+For each, find the cause in this order, and stop at the first that explains it with evidence:
+
+1. **The records.** `comparison.evidence.live` (Main: each signal with each account's pick, `legs[]`: contract,
+   `delta` and `volume30` as the broker gave them, outcome and detail; Volume: each alert and what came of it) and
+   `comparison.evidence.backtest` (Main: the backtest's skips with reason and contract; Volume: the alerts it did not
+   trade, with why). `backtest.delta` / `backtest.volume30` on each row: the backtest's own pick.
+2. **The settings**: `comparison.evidence.settings`, the bot's saved settings both sides ran (a cap, a floor, a
+   filter the backtest applies differently).
+3. **The code**, in this repository: the live rule in `apps/trader/src/bot.ts` / `strangle.ts` and its backtest
+   twin in `packages/trading/src/bot/backtest.ts` / `strangle/backtest.ts`. Name the two places with `file:line`
+   and say how they differ.
+
+Put each difference in exactly one class:
+
+| Class        | Meaning                                        | Example                                                                                                                                  |
+| ------------ | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| expected     | both followed the same rule on different facts | an account limit hit live only                                                                                                           |
+| pick         | each side chose a different contract           | live uses the broker's delta, the backtest its own from the price: one strike apart, so the volume floor passed on one and not the other |
+| data         | different market data or fills                 | a paper fill far from the book, a missing book, a backtest priced on trade bars                                                          |
+| live bug     | the bot broke its own rule                     | it bought under its volume floor by its own records                                                                                      |
+| backtest bug | the backtest broke the bot's rule              | it bought what the live rule refuses                                                                                                     |
+| unknown      | not found in records, settings or code         | say what was checked                                                                                                                     |
+
+**Never call something a bug without proof**: a bug needs the record that shows the rule broken, or the two code
+places that disagree. A guess is `unknown` with what to check next. (2026-11-04: COIN looked like the bot ignoring
+its 200-contract floor; the records showed the bot bought Call 160 with 293 / 375 contracts and the backtest
+skipped Call 162.5 with 98: a **pick** difference, not a bug.)
+
+A difference that repeats across days (look at the previous reviews with `day_review_get`) is worth more than one
+day's: say how many days it has appeared.
+
+## 6. Write the analysis, one per bot
 
 The **verdict** is the comparison's unless the figures it rests on are weak (say a single matched trade priced on
 trade bars, or most of the day one-sided): then still pick one of the four values, and say in the first paragraph
@@ -73,21 +113,26 @@ pts) on 3 matched trades; live paid more at the entry."
 2. `## Trade by trade`: a table, one row a trade: stock and side, entry live / backtest (Israel time, minutes
    apart), buy paper / real / backtest, average sale real / backtest, return real / backtest, $ gap. Mark an
    estimate (trade bars) and a trade held overnight.
-3. `## Where the gap came from`: entries (late or early, paid above the backtest's price), exits (a different
-   exit reason or minute, a sale at a worse book), paper vs real (what the paper fills flattered), one-sided
-   trades (why each, from `why`).
-4. `## Notes`: open trades to be judged on a later day, estimates, dry runs, failed stocks, a version change.
-5. `## To test`: at most three ideas the day suggests. A pattern from one day is **a test to run** with the
-   `new-test` skill, never a rule; say so.
+3. `## Differences and causes`: a table from step 5: what differed, the class, the evidence (the record or
+   `file:line`), what to do. Bugs first, then pick and data, then expected.
+4. `## Where the money gap came from`: entries (late or early, paid above the backtest's price), exits (a
+   different exit reason or minute, a sale at a worse book), paper vs market (what the paper fills cost).
+5. `## Notes`: open trades to be judged on a later day, estimates, dry runs, failed stocks, a version change.
+6. `## To do`: at most three items. A **live bug** or **backtest bug**: the fix to make (ask the user before any
+   change to the bots). A pattern: **a test to run** with the `new-test` skill, never a rule; say so.
+
+Words on the page: say **the bot** (what it did on its paper account), **the backtest** (the app's simulation of
+the same day) and **at market** (the book's mid at the fill), never "live" or "real".
 
 A day with no trade on either side: verdict `no trades`, a one-line headline, and a short markdown that says the
 signals of the day and why none was taken (from the rows' `why`, or "no signal").
 
-## 6. Save and report
+## 7. Save and report
 
 `day_review_save {bot, date, verdict, headline, markdown}` for each bot (and for the redone previous day). In the
-final message, 3–5 lines: for each bot the verdict and headline, any redone day, anything that failed or is still
-running, and where to read it (Trading → the bot's tab → Analyse).
+final message, 3–5 lines: for each bot the verdict and headline, every **live bug** or **backtest bug** found (with
+its evidence), any redone day, anything that failed or is still running, and where to read it (Trading → the bot's
+tab → Analyse).
 
 ## When it breaks
 

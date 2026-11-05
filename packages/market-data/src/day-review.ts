@@ -105,6 +105,21 @@ export interface LiveSignal {
   minute: number;
   outcome: string;
   detail: string;
+  t?: number;
+  rvol?: number;
+  volume30?: number;
+  version?: string;
+  // Each account's pick (bot-store.ts BotLeg): the contract, its delta and
+  // 30-minute volume as the broker gave them, and what came of it.
+  legs?: {
+    broker: string;
+    outcome: string;
+    detail: string;
+    contract?: string;
+    delta?: number;
+    volume30?: number;
+    volumeSource?: string;
+  }[];
 }
 
 export interface MainDay {
@@ -296,6 +311,10 @@ export interface BacktestSide {
   ret: number | null; // % after fees, closed only
   priced: string; // "quotes" | "trades" (Main), "seconds" | ... (Volume)
   account: string; // the account's verdict: taken, or why refused
+  // The contract's pick: its |delta| (the backtest's own, from the option's
+  // price) and 30-minute volume, for the causes of a difference.
+  delta: number | null;
+  volume30: number | null;
 }
 
 export interface ReviewRow {
@@ -342,6 +361,17 @@ export interface Comparison {
   rows: ReviewRow[];
   summary: ReviewSummary;
   notes: string[];
+  // The records the causes are looked for in (the end-of-day skill's
+  // "find the cause" step): each side's view of the day's signals.
+  evidence: {
+    // Main: the live signals with each account's pick; Volume: the alerts.
+    live: unknown[];
+    // Main: the backtest's skips (no contract, illiquid, too cheap, news);
+    // Volume: the backtest's alerts that did not trade, with why.
+    backtest: unknown[];
+    // The bot's saved settings at review time (what both sides ran).
+    settings: unknown;
+  };
 }
 
 const mid = (b: Book | undefined): number | null =>
@@ -471,6 +501,8 @@ function mainBacktest(t: SimTrade, status: string): BacktestSide {
     ret: !open && entryPrice > 0 ? retAfterFees(entryPrice, got, 1) : null,
     priced: t.priced,
     account: status,
+    delta: t.delta ?? null,
+    volume30: t.volume30 ?? null,
   };
 }
 
@@ -694,6 +726,21 @@ export function compareMain(
     rows: sortRows(rows),
     summary: summarize(rows),
     notes,
+    evidence: {
+      live: live.signals.filter((s) => s.day === date),
+      backtest: skips
+        .filter((k) => k.date === date)
+        .map((k) => ({
+          symbol: k.symbol,
+          right: k.right,
+          minute: k.minute,
+          reason: k.reason,
+          detail: k.detail,
+          pyramid: k.pyramid,
+          contract: k.contract,
+        })),
+      settings: live.settings,
+    },
   };
 }
 
@@ -811,6 +858,8 @@ export function compareVolume(
         ret: a.ret * 100,
         priced: `${tr.buyPriced}/${tr.sellPriced}`,
         account: a.status,
+        delta: tr.delta ?? null,
+        volume30: null,
       };
       return {
         a,
@@ -897,6 +946,20 @@ export function compareVolume(
     rows: sortRows(rows),
     summary: summarize(rows),
     notes,
+    evidence: {
+      live: live.signals.filter((x) => x.day === date),
+      backtest: signals
+        .filter((x) => x.date === date && x.outcome !== "traded")
+        .map((x) => ({
+          symbol: x.symbol,
+          kind: x.kind,
+          second: x.second,
+          alert: x.alert,
+          outcome: x.outcome,
+          detail: x.detail,
+        })),
+      settings: live.settings,
+    },
   };
 }
 

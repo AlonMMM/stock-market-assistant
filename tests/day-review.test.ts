@@ -272,6 +272,14 @@ test("day review: the Main bot's live trades beside the backtest's, with the ver
   assert.equal(c.summary.estimates, 1);
   // The backtest made 60% where live made ~42% at real prices: optimistic.
   assert.equal(c.summary.verdict, "optimistic");
+  // The records the causes are looked for in go with the comparison.
+  assert.deepEqual(
+    (c.evidence.live as { symbol: string }[]).map((x) => x.symbol),
+    ["AMD"],
+  );
+  assert.deepEqual(c.evidence.settings, live.settings);
+  assert.equal(byMatch.NVDAC!.backtest!.delta, 0.15);
+  assert.equal(byMatch.NVDAC!.backtest!.volume30, 500);
   assert.ok(c.summary.gapPts > 5);
 });
 

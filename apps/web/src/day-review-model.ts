@@ -39,7 +39,7 @@ export function shownVerdict(r: DayReview): Verdict | null {
 
 export const matchWords: Record<ReviewRow["match"], string> = {
   both: "both",
-  "live-only": "live only",
+  "live-only": "bot only",
   "backtest-only": "backtest only",
 };
 
