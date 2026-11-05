@@ -385,7 +385,23 @@ drop); without the best 5 2.10 tune is the same or less ($14,639 -> $14,143): th
 size, the bleed grows with it. From $100K it barely matters (it only acts after the account falls under $100K). Not
 better by the log's rule; the size is the owner's risk choice.
 
-### Sell above the bid: from the mid, stepped down to the bid over 5 minutes (2026-11-04, BETTER on tune and check; fill unproven) -> candidate 2.11 (look 2)
+### Sell above the bid: from the mid, stepped down to the bid over 5 minutes (2026-11-04; WITHDRAWN 2026-11-05: a backtest bug, and the rest is fill unproven)
+
+**Correction, the 2.11 release audit (2026-11-05, NO-GO).** Reproduced to the dollar (stored outputs and a fresh
+re-run), no look-ahead, but `sale_limit.py:94` (`if L <= bid: return bid`) uses the **decision minute's** bid: when a
+later step rounds down to the bid, the sale books a bid 1-4 minutes old instead of the bid then (856 of 1,071 unfilled
+M5 sales). AAPL260213P00255000 2026-02-12 m381: book 0.64 / 0.66, booked 0.64 while the real bid fell 0.61 -> 0.36.
+Fixed (M5f), 2% vs 2.10: tune fair 1.053, Favorites 1.132; check 1.109 / 1.117 (logged 1.147 / 1.215 / 1.176 / 1.201).
+Unfilled sales end -9.7% under the decision bid (not 2-4%); M3f = M4f = M5f (the "longer is better" slope was the bug).
+Fill proof, all with the fix: bar high strictly above the limit 1.006 / 1.086 / 1.059 / 1.064; the minute's volume
+covers our contracts at a $2K stake 0.99 / 1.02 / 0.98 / 0.97, at $10K 0.90 / 0.94 / 0.89 / 0.88; only the bid coming
+up 0.80 / 0.84 / 0.81 / 0.80. Tune fair without the best 10 changed trades -$4,105. The gain rests on small prints, so
+it does not count. What looks real: wide-spread morning-gap sales at 09:41 where the bid itself rose into the limit
+(PANW, BA). Live risks found: the broker stop is off during the window; one working order per symbol (508 sales within
+5 minutes of the previous one). Next (look 3): fix line 94, a size-aware fill proof (Databento OPRA trades with sizes),
+the mid start vs the higher of the mid and a print in the last 5 seconds (the user, 2026-11-05), 1 / 3 / 5 minutes,
+and wide-spread morning-gap sales only. Audit files: the 2026-11-05 session scratchpad (audit211.py, audit_report.txt).
+
 
 **Second run, look 2 (the user: "you can move up to 5 minutes try to sold it. find the best.")**: 15 versions set before
 running, N = 1..5 minutes: S<N> from BS - 30% stepped down evenly over N minutes, F<N> BS - 30% held flat, M<N> from

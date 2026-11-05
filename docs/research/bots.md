@@ -52,11 +52,16 @@ What the live bot runs when its settings are reset to defaults: the default vers
 
 ## Candidate
 
-**2.11 (2026-11-04, fill unproven): 2.10 + the sale stepped down from the mid** (`sale_limit.py` M5-c5, look 2): a
+**WITHDRAWN 2026-11-05 (the release audit, NO-GO; see best-algorithms.md "Sell above the bid").** A backtest bug
+(`sale_limit.py:94` books the decision minute's bid when a later step reaches the bid, 1-4 minutes stale) inflated it;
+fixed, M5 is 1.053 / 1.132 tune, 1.109 / 1.117 check, and the gain disappears once the minute's prints must cover our
+contracts (0.99 / 1.02 / 0.98 / 0.97). No candidate until look 3 (the fix + a size-aware fill proof) passes. Was:
+
+~~**2.11 (2026-11-04, fill unproven): 2.10 + the sale stepped down from the mid** (`sale_limit.py` M5-c5, look 2): a
 sale posts a limit at the mid (whole cents, at most the ask - 1 cent), lowers it evenly toward the first bid each minute
 for 5 minutes (mid, then 4/5, 3/5, 2/5, 1/5 of the way above the bid), then sells at the bid. 2%: tune fair $711,585 /
 15%, Favorites $545,898 / 13%; check $1,126,476 / 21%, $272,542 / 22% (2.10: $620,535 / $449,178 / $957,771 /
-$226,846). Fill proven only by option prints; a live trial settles it.
+$226,846). Fill proven only by option prints; a live trial settles it.~~
 
 **2.9, merged and deployed 2026-11-01 11:00 Israel (PR #231 with #227 = 2.8.1, and #225: splits + broker stop -60% default; website + Railway sma-trader from main 2a8dfc3; live once the owner picks 2.9 on the settings page):** 2.8.1 (the size steps: 3%,
 2.5% from $300K, 1.5% from $1M, 1% from $4M; a step never raises the owner's size) + the break-even lock (`be_lock
