@@ -291,6 +291,35 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### Cut winners on 1DTE trades only (2026-11-05, not better: 1DTE trades do have giants; the win-rate picks lose the check by far)
+
+The user: "can you try couple of permotation on 1DTE? I expect cutting winners ther make sense as we won't have very big
+gaint if the stock its in one of its bigger day". Tested before: nc-50-30 (expiry_rules.py, 2026-10-29, the older
+champion: a 30% trail from +50% on a day that cannot be held overnight; tune won, check lost on the fair list) and
+night_dte.py (no pattern by days left). New here: the rule only on legs whose contract expires the next session (1 DTE
+at the entry), 2.10 elsewhere. `dte1_trim.py` on 2.10 (reproduced to the dollar), real quotes, sim.py `gain_trim` (new),
+`big_day`, `guard`, `locks`. Set before running: A take gains (A50q 25% at +50% and half by +100%, A100h half at +100%,
+A100a all at +100%, A200a all at +200%); B the stock's big day (B95q 25% / B95h half at its 95th-pct day, B99h half at
+the 99th); C protect (C50 / C100 all out 30% under the best from +50% / +100%, L04 the ladder). Pick: money at least
+0.98 of 2.10 on both lists, then the win rate (none holding the money -> the most money). Look 1.
+
+The 1DTE legs (main, at $10K, 2.10): tune fair 132 of 504, 8% winners, median -$3,451, 3 giants (+300%), sum -$169K;
+tune fav 149, 10%, 5 giants, +$47K; check fair 164 of 503, 14%, **7 giants (best +$317K), sum +$683K**; check fav 150,
+11%, 4 giants, +$75K. So 1DTE trades are a third of the trades and carry giants like the rest, more of them in the odd
+weeks.
+
+| 2%, vs 2.10 (fair / Favorites) | Tune: money, winners | Check: money, winners |
+|---|---|---|
+| 2.10 | $620,535 / $449,178; 15.7% / 16.5% | $957,771 / $226,846; 14.6% / 15.6% |
+| A50q 🎯 / A100h / A100a / A200a | **1.062 / 1.183, 18.8% / 20.4%** · 1.062 / 1.003 · 1.133 / 0.970 · 1.144 / 0.976 | A50q **0.684 / 0.939**, 18.3% / 19.1% |
+| B95q / B95h / B99h 🎯 (fallback: none held 0.98) | 1.004 / 0.970 · 1.001 / 0.944 · 1.012 / 0.976, 15.7% / 16.5% | B99h 1.073 / 1.053, 14.9% / 16.0% |
+| C50 / C100 🎯 / L04 | 1.095 / 0.947 · **1.067 / 1.017, 19.2% / 20.2%** · 1.096 / 0.990 | C100 **0.415 / 0.979**, 18.0% / 18.8% |
+
+No candidate. Cutting 1DTE winners buys 3-4 points of win rate (A50q tune fair: 36 changed, winners 9 -> 24) and wins
+the tune weeks, where the 1DTE giants were few; on the check weeks the same cuts sell the 7 fair-list giants (A50q: 49
+changed, $1.10M -> $0.68M; C100 $1.10M -> $0.53M). B99h (half on the stock's 99th-pct day) wins check (+5-7%) but lost
+tune on the Favorites (0.976) and touches 4-9 trades a half: a near miss on few trades, not a pass.
+
 ### A big day for the stock itself, 25% sold (2026-11-05, not better: the picks split the lists on check; the win rate barely moves)
 
 The user, after big_move.py: "Selling in half is too much. Maybe start with selling 25%. Also, stock that are moving much

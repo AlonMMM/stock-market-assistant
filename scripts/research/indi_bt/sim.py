@@ -723,6 +723,11 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                     faded = ref > 0 and now < SX["vol"] * ref
                 below = g < SX.get("below", 1e9)  # "below": only while under this gain (not going to be held overnight)
                 if stalled and given and faded and below: pending = ("all", "X_stall"); continue
+            GT = X.get("gain_trim")  # dte1_trim.py: [[gain, share], ...] once the option has been up `gain` over what was paid
+            # (any day held), `share` of the original position sold by then; each rung once
+            if GT and peak / cost - 1 >= GT[0][0]:
+                want = max((sh for gn, sh in GT if peak / cost - 1 >= gn), default=0)
+                if want > 1 - rem + 1e-9: pending = (want - (1 - rem), "GT_trim"); continue
             LK = X.get("locks")  # step locks [[arm, floor], ...]: once the option has been up `arm`, sell all at `floor`
             if LK:
                 pg = peak / cost - 1
