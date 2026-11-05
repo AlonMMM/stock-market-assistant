@@ -385,7 +385,31 @@ drop); without the best 5 2.10 tune is the same or less ($14,639 -> $14,143): th
 size, the bleed grows with it. From $100K it barely matters (it only acts after the account falls under $100K). Not
 better by the log's rule; the size is the owner's risk choice.
 
-### Sell above the bid: from the mid, stepped down to the bid over 5 minutes (2026-11-04; WITHDRAWN 2026-11-05: a backtest bug, and the rest is fill unproven)
+### Sell above the bid: from the mid, stepped down to the bid over 5 minutes (2026-11-04; WITHDRAWN 2026-11-05: a backtest bug; look 3 with real fill sizes: not better)
+
+**Look 3, with the fix and a size-aware fill proof (2026-11-05, not better: every start above the bid loses on tune and
+check; the sale at the bid stays).** `sale_limit3.py` on 2.10 (bid-c5 reproduces $620,535 / $449,178 / $957,771 /
+$226,846 to the dollar). Databento OPRA trades with sizes bought for minute m-2 .. m+7 around every 2.10 sale (1,934
+windows, 544 days, ~$18; `trades911_fetch.py`, dbx_cache/trades911). A step at or under the bid then sells at that bid;
+a limit fills only by prints at or above it inside its own minute after it is posted, up to their summed size (the rest
+to the next step), or in full when the bid comes up to it; leftovers at the bid at the window's end. Our contracts at a
+$5K stake x 2.10's volume size (the verdict; $10K shown). Set before running: A M1 / M3 / M5 from the mid; B L1 / L3 /
+L5 from the higher of the mid and the last print in the 5 s before the decision (the user: "what about going with the
+real last trade price if its in the last 5 sec?"); C M3 / M5 on the 09:40 morning-gap sales with the spread >= 10% /
+20% of the mid only. 2%, vs 2.10 (fair / Favorites):
+
+| Pick (tune) | Tune | Check | $10K proof, tune |
+| --- | --- | --- | --- |
+| A M5 | $580,864 / $442,980 (0.936 / 0.986) | $898,052 / $212,440 (0.938 / 0.936) | 0.895 |
+| B L5 | $584,666 / $445,895 (0.942 / 0.993) | $901,347 / $213,002 (0.941 / 0.939) | 0.902 |
+| C G3w20 | $627,052 / $453,409 (1.011 / 1.009) | $959,765 / $226,734 (1.002 / 1.000) | 1.009 |
+
+Every A and B version is below 2.10 on both lists (M1 0.904 / 0.964, L1 0.905 / 0.966; the longer the window the less
+it loses); 3% the same. The average sale vs the bid at once is -0.4% to +0.2%: what the filled limits gain, the sales
+that chase a falling option give back, and the non-giant sum is worse on both halves. B barely differs from A: only
+~38% of sales have a print in the 5 s before the decision, and a print above the mid is rare. C touches 2-11 sales a
+half (a tie, nothing to ship). Look 3 of the sale limit; 9 versions x 2 stakes. **No candidate: the bot keeps selling
+at the bid.** The live note stands: a fast sale at the bid also keeps the broker stop off for seconds, not minutes.
 
 **Correction, the 2.11 release audit (2026-11-05, NO-GO).** Reproduced to the dollar (stored outputs and a fresh
 re-run), no look-ahead, but `sale_limit.py:94` (`if L <= bid: return bid`) uses the **decision minute's** bid: when a

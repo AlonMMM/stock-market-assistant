@@ -55,7 +55,7 @@ What the live bot runs when its settings are reset to defaults: the default vers
 **WITHDRAWN 2026-11-05 (the release audit, NO-GO; see best-algorithms.md "Sell above the bid").** A backtest bug
 (`sale_limit.py:94` books the decision minute's bid when a later step reaches the bid, 1-4 minutes stale) inflated it;
 fixed, M5 is 1.053 / 1.132 tune, 1.109 / 1.117 check, and the gain disappears once the minute's prints must cover our
-contracts (0.99 / 1.02 / 0.98 / 0.97). No candidate until look 3 (the fix + a size-aware fill proof) passes. Was:
+contracts (0.99 / 1.02 / 0.98 / 0.97). Look 3 (the fix + fills proven by Databento print sizes, plus the last-print start) loses on tune and check: 0.94 / 0.94; no candidate, the sale stays at the bid. Was:
 
 ~~**2.11 (2026-11-04, fill unproven): 2.10 + the sale stepped down from the mid** (`sale_limit.py` M5-c5, look 2): a
 sale posts a limit at the mid (whole cents, at most the ask - 1 cent), lowers it evenly toward the first bid each minute
