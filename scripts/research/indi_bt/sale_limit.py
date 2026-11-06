@@ -52,6 +52,17 @@ ADVERSE = {"T_half", "T_full", "T_tstat", "U_out", "U_rest", "U_check10", "U_che
 for v in MODES: SV.SIZEV[v] = SV.SIZEV["t3A-c5"]
 
 
+OUT = os.environ.get("SL_OUT", "")   # a suffix for the output files
+TICK = os.environ.get("SL_TICK") == "1"
+BUSY = os.environ.get("SL_BUSY") == "1"   # the live 2.11: a sale decided while another walks waits for it to end   # the release check (2026-11-06): levels on the option's tick, as live 2.11
+if os.environ.get("SL_MODES"): MODES = tuple(os.environ["SL_MODES"].split(","))
+
+
+def tick_down(x):
+    t = 0.01 if x < 3 else 0.05
+    return round(math.floor(x / t + 1e-9) * t, 2)
+
+
 def bar(sym, d, m):
     for b in day(sym, d):
         if b[0] == m: return b
@@ -76,6 +87,7 @@ def sell(mode, c, und, right, d, m, rule, iv0):
     info = dict(bid=bid, ask=ask, mid=round(mid, 4), bs=None, limit=None, filled_min=None)
     if mode == "bid-c5": return bid, info
     kind, n = mode[0], int(mode[1:-3])
+    if TICK and m + n >= 390: return bid, info   # the live 2.11: no walk that cannot end before the close
     if kind == "M":
         top = mid
     else:
@@ -85,7 +97,8 @@ def sell(mode, c, und, right, d, m, rule, iv0):
         top = f - 0.3 * (f - bid)
     steps = [top] * n if kind == "F" else [bid + (top - bid) * (1 - k / n) for k in range(n)]
     cap = ask - 0.01
-    steps = [math.floor(min(x, cap) * 100 + 1e-6) / 100 for x in steps]   # a sale limit in whole cents, rounded down
+    if TICK: steps = [tick_down(min(x, cap)) for x in steps]   # the live 2.11: the option's tick ($0.05 from $3), down
+    else: steps = [math.floor(min(x, cap) * 100 + 1e-6) / 100 for x in steps]   # a sale limit in whole cents, rounded down
     info["limit"] = round(steps[0], 4)
     if steps[0] <= bid: return bid, info
     for i, L in enumerate(steps):
@@ -105,13 +118,18 @@ def price(steps, c, cost, mode, und, right, iv0, log):
     """opt_spread.price "bid" with the sales under a mode; each sale's record into log."""
     rcost, real = OS.price(steps, c[0], cost, "bid")
     if mode == "bid-c5" and log is None: return rcost, real
-    out = []
+    out, busy = [], {}
     for s, r in zip(steps, real):
         d, m, side, q, px, rule = r
         if side != "sell" or rule.endswith("_1s"): out.append(r); continue
-        got = sell(mode, c, und, right, d, m, rule, iv0)
+        at = m
+        if BUSY and mode != "bid-c5" and busy.get(d, -1) > m: at = busy[d]   # the live bot: no new sale while one walks
+        got = sell(mode, c, und, right, d, at, rule, iv0)
         if got is None: out.append(r); continue
         p, info = got
+        if BUSY and mode != "bid-c5":
+            n = int(mode[1:-3])
+            busy[d] = at + (info["filled_min"] or (n if info["limit"] and info["limit"] > info["bid"] else 0))
         out.append((d, m, side, q, round(p, 4), rule))
         if log is not None: log.append(dict(mode=mode, day=d, minute=m, rule=rule, share=q, got=round(p, 4), **info))
     return rcost, out
@@ -218,7 +236,7 @@ def main():
     for r in R:
         if r["kind"] == "add": adds[(r["src"], r["date"], r["sym"], r["right"])].append(r)
     L = [x for r in R for x in r["log"]]
-    with open(f"{B}/sale_limit_sales.csv", "w", newline="") as f:
+    with open(f"{B}/sale_limit{OUT}_sales.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(L[0].keys())); w.writeheader(); w.writerows(L)
     out = {}
     table(R, adds, "tune", MODES, out, "Tune weeks (even)")
@@ -229,7 +247,7 @@ def main():
     print(f"\n🎯 Picked on tune (min of fair and Favorites vs 2.10, 2%): {best} ({score(best):.3f}); better on both: {score(best) > 1}", flush=True)
     table(R, adds, "check", ("bid-c5", best), out, "Check weeks (odd), the same run")
     fills(L, "check", ("bid-c5", best), out)
-    json.dump(out, open(f"{B}/sale_limit_summary.json", "w"), indent=1)
+    json.dump(out, open(f"{B}/sale_limit{OUT}_summary.json", "w"), indent=1)
 
 
 if __name__ == "__main__":

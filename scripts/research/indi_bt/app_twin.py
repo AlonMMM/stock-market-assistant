@@ -8,7 +8,7 @@ Prices: the f2 walk (option bars +-2%, what the walk decides on) and the real bo
 -> out.json: every trade (contract, the walk's steps, the real fills) and every skip. The app side and the trade-by-trade
 compare (both through the app's own account) are scripts/bot-backtest-compare.ts in the app repo.
 """
-import datetime as dt, json, multiprocessing as mp, os, sys
+import datetime as dt, json, math, multiprocessing as mp, os, sys
 IB = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, IB)
 os.environ.setdefault("BT_VARIANT", "v2")
@@ -33,10 +33,45 @@ def prep():
 import sim, tune_signals as ts, news_filter as nf, defence_signals as ds
 import cheap_up as cu, floor_exception as fe, opt_spread as OS, real_bench as RB, fill_models as fm
 from d2_failed_break import CHAMP
+from store import day
 CAL = calendar()
 
 def init():
     RB.DBX = fm.DBX["fav"]; RB.Q.clear(); RB.OI.clear()
+
+
+def bar_at(sym, d, m):
+    for b in day(sym, d):
+        if b[0] == m: return b
+    return None
+
+
+def tick_down(x):
+    """Down to the option's tick: $0.01 under $3, $0.05 from $3 (options.ts roundToTick)."""
+    t = 0.01 if x < 3 else 0.05
+    return round(math.floor(x / t + 1e-9) * t, 2)
+
+
+def mid_sale(sym, r, n):
+    """2.11's sale (TWIN_SALE_MIN=n, sale_limit.py M<n>-c5): a limit at the decision book's mid, lowered evenly toward
+    its bid each minute for n minutes, filled at a level when the option trades at or above it or the bid comes up to
+    it, else the bid after the last step. The book at the end of minute m - 1 is the decision's."""
+    d, m, side, q, px, rule = r
+    if side != "sell" or rule.endswith("_1s"): return r, None
+    k = RB.quote(sym, d, max(m - 1, 0))
+    if not k: return r, None
+    bid, ask = k
+    mid = (bid + ask) / 2
+    steps = [tick_down(min(bid + (mid - bid) * (1 - i / n), ask - 0.01)) for i in range(n)]
+    if steps[0] <= bid or (m - 1) + n + 1 >= 390: return (d, m, side, q, bid, rule), None   # the app's close cut-off
+    for i, L in enumerate(steps):
+        j = m + i
+        if j > 389: break
+        if L <= bid: return (d, m, side, q, bid, rule), None
+        b, kq = bar_at(sym, d, j), RB.quote(sym, d, j)
+        if (b and b[2] >= L - 1e-9) or (kq and kq[0] >= L - 1e-9): return (d, m, side, q, round(L, 4), rule), m + i + 1
+    kq = RB.quote(sym, d, min(m + n - 1, 389))
+    return (d, m, side, q, kq[0] if kq else bid, rule), m + n
 
 
 def walk(t, c):
@@ -53,6 +88,15 @@ def walk(t, c):
             cost, steps = c2, s2
             _, real = OS.price(steps, c[0], rcost, "bid")
             real = [steps[0][:4] + (rcost, steps[0][5])] + real[1:]
+    n = int(os.environ.get("TWIN_SALE_MIN", "0"))
+    if n > 0:
+        out, busy = [], {}
+        for r in real:
+            if r[2] == "sell" and busy.get(r[0], -1) > r[1]: r = (r[0], busy[r[0]]) + tuple(r[2:])   # waits for the walk
+            r2, until = mid_sale(c[0], r, n)
+            if until is not None: busy[r[0]] = until
+            out.append((r2[0], r[1] if r2[1] == r[1] else r2[1]) + tuple(r2[2:]))
+        real = out
     sells = [s for s in real if s[2] == "sell" and s[0] == t["date"]]
     held = {}
     for mm in range(m0, 390):
