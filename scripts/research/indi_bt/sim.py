@@ -772,6 +772,25 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                     if ref is None or bet * (spy_ - ref) > 0: st["sc_ref"] = ref = spy_
                     if bet * (spy_ / ref - 1) <= -SC["drop"]:
                         st["sc_done"] = True; pending = (rem * SC["share"], "S_spy_cut"); continue
+            STN = X.get("spy_turn")  # {big, drop, share, stall}, spy_turn.py (the user, 2026-11-06: on a big SPY day the bot
+            # "buy a lot in the direction of the fallen ... but the bot didn't understand when the spy start to go back we can
+            # take the profits and the stock stopped move in it's own direction"): armed on a day held once SPY is `big` our
+            # way vs yesterday's close (the gap and pre-market included); then, when SPY gives back `drop` from its extreme
+            # our way since the arm and (stall > 0) the stock made no new day extreme our way for `stall` minutes, while the
+            # option is up, sell `share` of what is left, once a day
+            if STN and ("stn_done", d) not in st:
+                spy_ = st.setdefault(("spy", d), series(day("SPY", d))[0])[min(t, 389)]
+                if ("spy_pc", d) not in st:
+                    pb = day("SPY", cal[cal.index(d) - 1]) if cal.index(d) > 0 else None
+                    st[("spy_pc", d)] = pb[-1][4] if pb else None
+                pc, ext = st[("spy_pc", d)], st.get(("stn_ext", d))
+                if spy_ and pc:
+                    if ext is None and bet * (spy_ / pc - 1) >= STN["big"]: ext = spy_
+                    if ext is not None and bet * (spy_ - ext) > 0: ext = spy_
+                    st[("stn_ext", d)] = ext
+                    stalled = not STN.get("stall") or (sd.ok and t - sd.last_ext[min(t, 389)] >= STN["stall"])
+                    if ext is not None and g > 0 and stalled and bet * (spy_ / ext - 1) <= -STN["drop"]:
+                        st[("stn_done", d)] = True; pending = (rem * STN["share"], "S_spy_turn"); continue
             NC = X.get("nocarry_trail")  # {arm, trail}, expiry_rules.py (the user, 2026-10-29: "if this is the last trading
             # day (can't overnight) try to cut winnings during the day"): on a day the position cannot be held tonight
             # (under carry_min_dte days to expiry), once up `arm` over the cost, all out `trail` under the option's high

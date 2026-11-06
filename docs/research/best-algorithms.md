@@ -291,6 +291,37 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### Take the profit when SPY turns on a big SPY day (2026-11-06, not better: wins tune +7-8%, loses check on the fair list by 11%)
+
+The user (2026-11-06, after the big SPY day of 2026-11-05): "my paper buy a lot in the direction of the fallen, which
+was a big success. but the bot didn't understand when the spy start to go back we can take the profits and the stock
+stopped move in it's own direction". Why 2.10 misses it: its strength exit reads the stock net of SPY x beta, so a turn
+in SPY itself is invisible to it. Tested before in another form: spy_rules.py B (2026-10-29, the older champion, any day,
+part of a winner up +50-200% when SPY fell 0.3-0.5% from its best: slightly less money, 3 of 9 tune giants cut). New
+here: only on a big SPY day, any leg in profit, and the stock's stall. `spy_turn.py` on 2.10 (reproduced to the dollar),
+real quotes, sim.py `spy_turn` (new): armed on a day held once SPY is 1% or more our way vs yesterday's close (the gap
+and pre-market included); then when SPY gives back 0.3 / 0.5 / 0.8% from its extreme our way since the arm, with the
+option up, sell 25% (q) / half (h) / all (a) of what is left, once a day. S = SPY only; SS = also no new day extreme of
+the stock our way for 10 minutes. Set before running; the pick: money at least 0.98 of 2.10 on both lists, then the win
+rate. Look 1 of the big-day version (look 2 of the SPY-turn idea).
+
+| 2%, vs 2.10 (fair / Favorites) | Tune: money, winners | Check: money, winners | Changed (tune / check, fair) |
+|---|---|---|---|
+| 2.10 | $620,535 / $449,178; 15.7% / 16.5% | $957,771 / $226,846; 14.6% / 15.6% | - |
+| S03q / S03h 🎯 / S03a | 1.034 / 1.038 · **1.068 / 1.076, 16.6% / 17.6%** · 1.103 / -, 16.4% | S03h **0.886 / 1.012**, 15.6% / 16.7% | 22 / 28 |
+| S05q / S05h / S05a | 1.026 / 1.027 · 1.061 / - · 1.119 / -, 16.6% | - | 13 / - |
+| S08q / S08h / S08a | 0.993 / 0.992 · 0.995 / 0.993 · 0.990 / 0.984 | - | 8 / - |
+| SS03q / SS03h 🎯 / SS03a | 1.036 / 1.040 · **1.074 / 1.082, 16.6% / 17.6%** · 1.114 / - | SS03h **0.890 / 1.016**, 15.6% / 16.7% | 22 / 28 |
+| SS05q / SS05h / SS05a | 1.026 / 1.028 · 1.061 / 1.063 · 1.118 / - | - | 12 / - |
+| SS08 (q / h / a) | 0.993 / 0.992 · 0.994 / 0.992 · 0.988 / 0.983 | - | 8 / - |
+
+No candidate. The rule touches 22-30 trades a half (about 4%), lifts the win rate by 1 point on every list and half,
+and leaves the median and the giant count unchanged. On tune it adds money (fair changed trades +$271K -> +$308K, winners
+13 -> 18); on check the same rule trims the fair list's 2024 giants (changed trades +$569K -> +$441K, 2024 $1.04M ->
+$0.93M) while the Favorites gain +1-2%. The 10-minute stall adds almost nothing (SS vs S within 0.5%): on a big SPY day
+the stock usually stalls when SPY turns. As with every profit-taking rule so far: a win-rate gain paid for by whichever
+giant it trims.
+
 ### The volume after a call/put flip, on 2.10 (2026-11-05, not better; size-r30 near, fails without the best 5)
 
 The user: "when T is switching from call to put, the volume stay - correct?" (yes: rv, the volume since the open over
