@@ -327,6 +327,26 @@ Verdict: not better. A fresh late signal held overnight is a lottery ticket with
 the tune gain is four giants and the check has none. It repeats sig_lasthour.py (2.10's day signals at 15:57) and the
 Volume bot's late carry. His late overnights win on his stock choice, not the hour. 2.10 stays.
 
+### The strength exit: t 1.0 held 15-45 minutes, on top of 0.5 (2026-11-06, a tie: dw15 -0.4% / -0.5% on check; the giants are no longer cut)
+
+The user, after the t 1.0 charts (`t1_charts.py`, the check-week trades t 1.0 changed: 226 helped, 95 hurt, the giants
+sold on a mid-morning dip of t to ~1): "add this on top - down more than t = 1.0 and stay there for 30minutes. Or go
+down to 0.5". `strength_dwell.py` on 2.10 (reproduced to the dollar), real quotes, sim.py `thesis.dwell` (new): the 0.5
+exit stays; also all out on the entry day once t has been 1.0 or under for N minutes in a row (the count restarts when t
+is back over 1.0). Set before running: U dw30 (the user's, always on check); N dw15, dw45. Look 1.
+
+| 2%, vs 2.10 (fair / Favorites) | Tune: money, winners | Check: money, winners, median | Changed (tune / check, fair; giants) |
+|---|---|---|---|
+| 2.10 | $620,535 / $449,178; 15.7% / 16.5% | $957,771 / $226,846; 14.6% / 15.6%; -1,622 / -1,563 | - |
+| dw30 🎯 (the user's) | 1.014 / 0.998; 15.7% / 16.2% | **0.976 / 0.967**; 14.7% / 15.8%; -1,618 / -1,540 | 23 / 22; 0 -> 0 |
+| dw15 🎯 | 1.006 / 1.012; 15.5% / 16.2% | **0.996 / 0.995**; 14.4% / 16.0%; -1,562 / -1,510 | 38 / 41; 0 -> 0 |
+| dw45 | 1.003 / 0.994 | - | 16 / -; 0 -> 0 |
+
+No candidate: a tie. Waiting fixes what t 1.0 alone broke: no giant is touched on any list or half (t 1.0 alone took 2
+of them on check fair). What is left is small: 16-41 losing trades a half sold a little earlier. dw15 makes the changed
+check trades better (fair -$52K -> -$33K, Favorites -$14K -> +$1K, median ~$60 better) but the account is still 0.4-0.5%
+under 2.10 and the worst drop is higher (fair 23.6% -> 25.1%); dw30 loses 2-3% on check. 2.10 stays.
+
 ### The strength exit at t 1.0, not 0.5 (2026-11-06, not better: check -40% fair / -38% Favorites; it sells the giants early)
 
 The user: "can you run a test with "lost T steight = 1" and not 0.5?". Tested before: t <= 1 as a neighbour on

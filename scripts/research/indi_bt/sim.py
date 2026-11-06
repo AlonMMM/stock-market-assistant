@@ -857,6 +857,14 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                     if TH.get("s30") and unit and bet * (px - sd.c[minute]) <= -TH["s30"] * unit: pending = ("all", "T_s30"); continue
                     if TH.get("bar") and sb and (px < sb[3] if bet > 0 else px > sb[2]): pending = ("all", "T_bar"); continue
                     if TH.get("t") is not None and tser and tser[tt] is not None and bet * tser[tt] <= TH["t"]: pending = ("all", "T_tstat"); continue
+                    DW = TH.get("dwell")  # strength_dwell.py (the user, 2026-11-06: "down more than t = 1.0 and stay there for
+                    # 30minutes. Or go down to 0.5"): all out once t vs SPY x beta has been at DW["t"] or under for DW["min"]
+                    # minutes in a row (the 0.5 exit above stays)
+                    if DW and tser and tser[tt] is not None:
+                        if bet * tser[tt] <= DW["t"]:
+                            st.setdefault("dw_since", tt)
+                            if tt - st["dw_since"] >= DW["min"]: pending = ("all", "T_dwell"); continue
+                        else: st.pop("dw_since", None)
             BE = X.get("be_lock")  # the user 2026-11-01 ("when we up 20% calculate the stock down we need to exit that will
             # make us breakeven"), the entry day: once the option bar closes `arm` over what was paid, the stock price where
             # the option would be worth what was paid (be_level) becomes a stop on the stock; all out when the stock gets
