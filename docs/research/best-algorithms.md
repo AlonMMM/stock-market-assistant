@@ -291,6 +291,42 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### A late window that resets the day's signals, and a night for late trades that are not winners, on 2.10 (2026-11-06, not better: the pick wins tune by giants, loses check by far)
+
+The user: "reset the signals we filter on 1 hour before the close or half an hour before the close, and then allow the
+bots to re-enter a new trade, even if the stocked was signaled, which today is filtered", "let the bot go overnight even
+if it's not a winner, if it's traded in the last hour or last half an hour ... like with a stock that lose like 5 or
+10%, like Indy does"; on the volume: "the whole day volume is not necessarily an enter". Came from his overnight split
+(his trades 2024-26: overnight bought 15:00+ 135 trades, 36% won, the best group; 2.10 carries winners only).
+`late_reset.py` (signals: `defence_signals.py BT_LATE=330`, every minute 15:00-15:44 where t >= 1.8 or t >= 1.2 and D2
+>= 1.5 holds, no volume test). One late trade a stock a day from the window's start, whatever 2.10 did earlier (traded
+and closed, or skipped cheap / thin), at the first minute the volume rule and 2.10's pick pass; none while a 2.10 leg is
+open, when 2.10's own signal is in the window, or on Fridays. Late trades and 2.10's own window trades take 2.10's exits
+to 15:50, then are held overnight at or above the carry level (no day-range rule); the next morning 2.10's. 12 versions
+set before: volume none (n) / last 30 minutes >= 1.25x usual (r) x window 15:00 / 15:30 x carry -5% / -10% / any. Look 1
+on the Main bot (priors: sig_lasthour.py 2026-11-01; retry_skip.py 2026-11-05; the Volume bot's late_carry.py
+2026-10-28, late alerts carried overnight lost in every slice). Quick check at the user's word ("no need option-second
+level qoude"): 58% of the 1,612 late legs on a real book at entry, the rest on the option's bar +-2% (dbx not bought).
+2.10 to the dollar (tune $620,535 / $449,178, check $957,771 / $226,846 at 2%).
+
+| 2% | Tune fair | Tune Favorites | Check fair | Check Favorites |
+|---|---|---|---|---|
+| 2.10 | $620,535 / 16% | $449,178 / 14% | $957,771 / 24% | $226,846 / 23% |
+| 🎯 r30-a (last-30-min volume, 15:30, carry any) | $893,642 +44% / 26% | $543,104 +21% / 23% | $631,658 −34% / 32% | $132,030 −42% / 32% |
+| r30-10 | +9% / 25% | +14% / 22% | −34% | −42% |
+| n30-a | +23% | +1% | −37% | −45% |
+| from 15:00 (n15-*, r15-*) | −12% to −36% | −14% to −35% | −42% to −48% | −37% to −52% |
+
+At 3% the pick: tune +60% / +25%, check −47% / −56%. The late trades themselves (main legs at $10K): win 10-18%,
+median −$2.3K to −$4.0K in every version and half; r30-a tune 128 / 120 trades +$98K / +$118K (MU +$122K, HOOD +$78K,
+COIN +$64K, ARM +$57K; without the giants −$411K / −$287K), check 120 / 141, −$285K / −$351K, 2 giants each. "Carry any"
+holds 74-93% of them overnight; it lifts the win rate (17% vs 14% with −5%) but deepens the median (−$3.9K vs −$2.4K).
+2.10's own trades in the window are few (1-10 a half) and barely move.
+
+Verdict: not better. A fresh late signal held overnight is a lottery ticket with the bot's usual −$2.5K to −$4K median;
+the tune gain is four giants and the check has none. It repeats sig_lasthour.py (2.10's day signals at 15:57) and the
+Volume bot's late carry. His late overnights win on his stock choice, not the hour. 2.10 stays.
+
 ### The strength exit at t 1.0, not 0.5 (2026-11-06, not better: check -40% fair / -38% Favorites; it sells the giants early)
 
 The user: "can you run a test with "lost T steight = 1" and not 0.5?". Tested before: t <= 1 as a neighbour on

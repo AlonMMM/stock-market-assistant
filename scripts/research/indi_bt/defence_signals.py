@@ -123,6 +123,12 @@ if FLIP:
         for lv in (125, 150, 200): RULES[f"{inner}_r30{lv}"] = ("volx", inner, "r30", lv / 100)
         for lv in (50, 55, 60): RULES[f"{inner}_dir{lv}"] = ("volx", inner, "dir", lv / 100)
         for lv in (10, 15, 18): RULES[f"{inner}_flip{lv}"] = ("volx", inner, "flip", lv / 10)
+# The late window (late_carry.py; the user, 2026-11-06: "reset the signals ... half an hour before the close ... and then
+# allow the bots to re-enter a new trade", "the whole day volume is not necessarily an enter"): BT_LATE=<minute> writes
+# s_late_<year>.csv, every minute from <minute> to 15:44 where the champion's strength holds (t >= 1.8, or t >= 1.2 and
+# D2 >= 1.5) on a side, with no volume test, and the day ratio (c_rvol) and the last 30 minutes' ratio (c_rv30) beside it.
+LATE = int(os.environ.get("BT_LATE", 0))
+if LATE: FLIP = True
 SPYCUM = {}
 
 
@@ -184,6 +190,7 @@ FULL = (T_MIN, 1.5, "e", 1.2)   # the champion's rule c12_15, for the shock rule
 def stock(sym):
     cal = calendar(); out = {k: [] for k in RULES}
     every = {k: collections.defaultdict(list) for k in RULES}   # BT_ALL: (date, side) -> [(minute, t)]
+    late = []   # BT_LATE
     for i, date in enumerate(cal):
         if not any(a <= date <= b for a, b in SPAN.values()) or i < 21: continue
         bars = day(sym, date)
@@ -306,6 +313,13 @@ def stock(sym):
                     if mode == "dir": return rv if share[side] >= lvl else 0.0
                     f, o = flip_rv(side)
                     return f if o >= lvl else rv
+            if LATE:
+                if m >= LATE:
+                    for sd, tt, ee in (("C", t, e_c), ("P", -t, e_p)):
+                        if tt >= T_MIN or (tt >= 1.2 and ee >= 1.5):
+                            late.append(dict(date=date, sym=sym, right=sd, minute=m, price=c[m], c_t=round(tt, 2),
+                                             c_e=round(ee, 2), c_rvol=round(rv, 2), c_rv30=round(rv30, 3)))
+                continue
             if ALL:
                 for name in RULES:
                     if passes(RULES[name], t, rv, dsum[0], e_c, sm, rel): every[name][(date, "C")].append((m, round(t, 2)))
@@ -345,6 +359,7 @@ def stock(sym):
                     row.update(c_opp=round(o, 2), c_rv30=round(rv30, 3), c_share=round(share[si], 3), c_rvflip=round(fr, 3))
                 out[name].append(row)
             if not left and not pending: break
+    if LATE: return late
     if ALL:
         return {k: [dict(date=d, sym=sym, right=r, minutes=" ".join(str(x[0]) for x in v), ts=" ".join(str(x[1]) for x in v))
                     for (d, r), v in sorted(every[k].items())] for k in RULES}
@@ -354,6 +369,14 @@ def stock(sym):
 def main():
     syms = os.environ["BT_SYMS"].split(",") if os.environ.get("BT_SYMS") else P["universe"]
     with mp.Pool(8) as pool: parts = pool.map(stock, syms)
+    if LATE:
+        rows = sorted((r for p in parts for r in p), key=lambda r: (r["date"], r["sym"], r["minute"]))
+        for y in SPAN:
+            ys = [r for r in rows if r["date"][:4] == y]
+            if not ys: continue
+            with open(f"{B}/s_late{SUFFIX}_{y}.csv", "w") as f:
+                w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(ys)
+        print("late rows", len(rows), flush=True); return
     for name in RULES:
         rows = sorted((r for p in parts for r in p[name]), key=lambda r: (r["date"], r["sym"]))
         for y in SPAN:
