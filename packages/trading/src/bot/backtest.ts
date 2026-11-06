@@ -1499,7 +1499,7 @@ async function pyramid(
 // ---- what if it had bought: the bot's walk on Black-Scholes prices ----
 
 /** The stock's volatility over the sessions before: daily closes, annualised; null under 10 days. */
-function stockVol(
+export function stockVol(
   priorStock: readonly (readonly MinuteBar[])[],
 ): number | null {
   const closes = priorStock
@@ -1515,7 +1515,7 @@ function stockVol(
 }
 
 /** The strike at |delta| `target`, to the nearest step of the stock's price. */
-function strikeAt(
+export function strikeAt(
   spot: number,
   years: number,
   vol: number,

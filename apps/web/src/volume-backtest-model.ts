@@ -1,16 +1,17 @@
 import type { VolumeBacktestResponse } from "../../../packages/market-data/src/volume-backtest.js";
 import type { ClosedTrade } from "../../../packages/trading/src/portfolio.js";
-import type {
-  PricedBy,
-  VolumeAccount,
-  VolumeAccountTrade,
-  VolumeMoney,
-  VolumeOutcome,
-  VolumeRefusal,
-  VolumeSignal,
+import {
+  tradeReturn,
+  type PricedBy,
+  type VolumeAccount,
+  type VolumeAccountTrade,
+  type VolumeMoney,
+  type VolumeOutcome,
+  type VolumeRefusal,
+  type VolumeSignal,
 } from "../../../packages/trading/src/strangle/backtest.js";
 import type { StrangleSettings } from "../../../packages/trading/src/strangle/settings.js";
-import { stepMs } from "./bot-backtest-model.js";
+import { stepMs, type SortDir } from "./bot-backtest-model.js";
 import { fillMarkers, type ExitRow, type Story } from "./trade-story-model.js";
 
 // The Volume bot's backtest on the Backtest page (the user, 2026-10-31: "lets
@@ -239,6 +240,16 @@ export function volumeCsv(rows: readonly VolumeRow[]): string {
     "qty",
     "pnl",
     "return_pct",
+    "reach_pct",
+    "held_min",
+    "bid",
+    "ask",
+    "spread_pct",
+    "volume30",
+    "whatif_contract",
+    "whatif_buy",
+    "whatif_sell",
+    "whatif_return_pct",
   ];
   const lines = rows.map((r) => {
     const s = r.signal;
@@ -263,6 +274,16 @@ export function volumeCsv(rows: readonly VolumeRow[]): string {
       taken ? r.account!.qty : null,
       taken ? r.account!.pnl.toFixed(2) : null,
       taken ? (r.account!.ret * 100).toFixed(1) : null,
+      s.reach === undefined ? null : Math.round(s.reach * 100),
+      rowHeld(r)?.minutes,
+      t?.book?.bid,
+      t?.book?.ask,
+      t?.spread == null ? null : (t.spread * 100).toFixed(1),
+      t?.volume30,
+      s.whatIf?.contract,
+      s.whatIf?.buy,
+      s.whatIf?.sell,
+      s.whatIf ? (s.whatIf.ret * 100).toFixed(1) : null,
     ]
       .map(csvCell)
       .join(",");
@@ -365,5 +386,161 @@ export function volumeBacktestStory(
     entryQuote: t.book
       ? { bid: t.book.bid, ask: t.book.ask, at: Date.parse(closed.openedAt) }
       : null,
+  };
+}
+
+// ---- the alerts table's columns (the user, 2026-11-06: "add more data ... like the main") ----
+
+/**
+ * A row's return: the taken trade's; the trade's own when the account refused
+ * it ("if taken"); else the what-if's (a model); null without any.
+ */
+export function rowReturn(
+  r: VolumeRow,
+  fee: number,
+): { ret: number; kind: "trade" | "refused" | "model" } | null {
+  if (r.bought && r.account) return { ret: r.account.ret, kind: "trade" };
+  const t = r.signal.trade;
+  if (t) return { ret: tradeReturn(t, fee), kind: "refused" };
+  const w = r.signal.whatIf;
+  if (w) return { ret: w.ret, kind: "model" };
+  return null;
+}
+
+/** Minutes from the buy to the sale: the trade's, else the what-if's. */
+export function rowHeld(
+  r: VolumeRow,
+): { minutes: number; model: boolean } | null {
+  const t = r.signal.trade;
+  if (t) return { minutes: t.exitMinute - t.buyMinute, model: false };
+  const w = r.signal.whatIf;
+  if (w) return { minutes: w.exitMinute - w.buyMinute, model: true };
+  return null;
+}
+
+export type VolumeSortKey =
+  | "when"
+  | "symbol"
+  | "outcome"
+  | "ret"
+  | "reach"
+  | "side"
+  | "held"
+  | "contract"
+  | "buy"
+  | "sell"
+  | "spread"
+  | "volume30"
+  | "burst";
+
+function sortValue(r: VolumeRow, key: VolumeSortKey): number | string | null {
+  const s = r.signal;
+  const t = s.trade;
+  if (key === "when") return stepMs(s.date, 0) + s.second * 1000;
+  if (key === "symbol") return s.symbol;
+  if (key === "outcome") return r.why;
+  if (key === "ret") return rowReturn(r, 0)?.ret ?? null;
+  if (key === "reach") return s.reach ?? null;
+  if (key === "side") return t?.toSide ?? null;
+  if (key === "held") return rowHeld(r)?.minutes ?? null;
+  if (key === "contract") return t?.strike ?? s.whatIf?.strike ?? null;
+  if (key === "buy") return t?.buy ?? s.whatIf?.buy ?? null;
+  if (key === "sell") return t?.sell ?? s.whatIf?.sell ?? null;
+  if (key === "spread") return t?.spread ?? null;
+  if (key === "volume30") return t?.volume30 ?? null;
+  return s.burst;
+}
+
+/** The rows by a column; empty cells last, ties newest first. */
+export function sortVolumeRows(
+  rows: readonly VolumeRow[],
+  key: VolumeSortKey,
+  dir: SortDir,
+): VolumeRow[] {
+  const sign = dir === "asc" ? 1 : -1;
+  const when = (r: VolumeRow) =>
+    stepMs(r.signal.date, 0) + r.signal.second * 1000;
+  return [...rows].sort((a, b) => {
+    const x = sortValue(a, key);
+    const y = sortValue(b, key);
+    if (x === null && y !== null) return 1;
+    if (y === null && x !== null) return -1;
+    if (x !== null && y !== null && x !== y) {
+      if (typeof x === "string" || typeof y === "string")
+        return sign * String(x).localeCompare(String(y));
+      return sign * (x - y);
+    }
+    return when(b) - when(a);
+  });
+}
+
+/** An alert's what-if as a one-contract trade, so the trade story can draw it; null without one. */
+export function whatIfTrade(sig: VolumeSignal): VolumeAccountTrade | null {
+  const w = sig.whatIf;
+  if (!w) return null;
+  const side = w.sideSecond ?? sig.second;
+  return {
+    signal: {
+      ...sig,
+      trade: {
+        contract: w.contract,
+        right: w.right,
+        strike: w.strike,
+        expiry: w.expiry,
+        delta: 0,
+        fallback: "",
+        sideSecond: side,
+        toSide: side - sig.second,
+        stockIn: w.stockIn,
+        buyMinute: w.buyMinute,
+        buy: w.buy,
+        book: null,
+        spread: null,
+        buyPriced: "bars",
+        exitMinute: w.exitMinute,
+        exitReason: w.exitReason,
+        sell: w.sell,
+        sellPriced: "bars",
+        stockOut: w.stockOut,
+      },
+    },
+    status: "taken",
+    qty: 1,
+    pnl: (w.sell - w.buy) * 100,
+    ret: w.ret,
+  };
+}
+
+/** The trade story of an alert not bought: why, and the trade a model makes of it. */
+export function volumeWhatIfStory(
+  sig: VolumeSignal,
+  why: string,
+  s: StrangleSettings,
+): { trade: VolumeAccountTrade; story: Story } | null {
+  const trade = whatIfTrade(sig);
+  const w = sig.whatIf;
+  if (!trade || !w) return null;
+  const story = volumeBacktestStory(trade, s, false);
+  const kind = sig.kind === "shock" ? "Shock alert" : "Volume alert";
+  const right = w.right === "C" ? "a call" : "a put";
+  let side = `No side was crossed, so the alert's way (${right}) at the alert.`;
+  if (w.sideSecond !== null)
+    side = `The side: ${right} at ${nyClock(w.sideSecond)}, ${w.sideSecond - sig.second} s after the alert, stock ${w.stockIn.toFixed(2)}.`;
+  let reach = "";
+  if (sig.reach !== undefined)
+    reach = ` In the window the stock reached ${Math.round(sig.reach * 100)}% of the nearer side line.`;
+  return {
+    trade,
+    story: {
+      ...story,
+      entryTitle: "Not bought: the trade it would have made (a model)",
+      entry: [
+        `${kind} ${sig.alert} at ${nyClock(sig.second)} New York${sig.burst === null ? "" : `, burst ${sig.burst.toFixed(2)}`}. Not bought: ${why}.${reach}`,
+        side,
+        `The model: ${w.contract}, the ${s.delta.toFixed(2)}-delta strike, Black-Scholes at the stock's volatility (${(w.iv * 100).toFixed(0)}% a year): bought ${w.buy.toFixed(2)}, sold ${w.sell.toFixed(2)}. No book, no fees, no broker stop.`,
+      ],
+      stop: null,
+      entryQuote: null,
+    },
   };
 }

@@ -19,6 +19,11 @@ import {
   volumeCsv,
   volumeMoney,
   volumeRows,
+  rowHeld,
+  rowReturn,
+  sortVolumeRows,
+  volumeWhatIfStory,
+  whatIfTrade,
 } from "../apps/web/src/volume-backtest-model.js";
 
 const trade = (over: Partial<VolumeTrade> = {}): VolumeTrade => ({
@@ -194,10 +199,85 @@ test("volume backtest page: New York clock and CSV", () => {
   assert.match(csv[0]!, /^date,symbol,alert,time_ny/);
   assert.match(
     csv[1]!,
-    /^2024-02-07,MRVL,shock,10:30:00,up,1.40,traded,Traded,MRVL240207C00070000,10:30:05,0.41,seconds,0.82,minutes,giveback,,,$/,
+    /^2024-02-07,MRVL,shock,10:30:00,up,1.40,traded,Traded,MRVL240207C00070000,10:30:05,0.41,seconds,0.82,minutes,giveback,,,,,60,0.4,0.42,5.0,,,,,$/,
   );
   assert.match(
     csv[2]!,
     /^2024-02-06,MRVL,plan,10:10:00,up,1.40,no_fill,No fill,/,
   );
+});
+
+test("volume alerts table (2026-11-06): the return of a trade, of one the account refused (if taken), and of an alert not bought (a model); how close; held; sorting", () => {
+  const whatIf = {
+    contract: "MRVL240207C00071000",
+    right: "C" as const,
+    strike: 71,
+    expiry: "2024-02-07",
+    sideSecond: null,
+    buyMinute: 70,
+    exitMinute: 100,
+    exitReason: "giveback" as const,
+    stockIn: 68.4,
+    stockOut: 68.9,
+    buy: 0.2,
+    sell: 0.3,
+    iv: 0.55,
+    ret: 0.5,
+  };
+  const taken = signal({ trade: trade({ volume30: 640 }) });
+  const refused = signal({
+    id: "MRVL|2024-02-07|plan|9000",
+    kind: "plan",
+    second: 9000,
+    trade: trade({ buyMinute: 150, exitMinute: 170, buy: 0.5, sell: 0.4 }),
+  });
+  const slow = signal({
+    id: "MRVL|2024-02-07|plan|4200",
+    kind: "plan",
+    second: 4200,
+    outcome: "slow_cross",
+    reach: 0.87,
+    whatIf,
+  });
+  const runs = [run([taken, refused, slow])];
+  const rows = volumeRows(runs, volumeAccount(runs, money));
+  const by = (id: string) => rows.find((r) => r.key === id)!;
+  assert.equal(rowReturn(by(taken.id), 0.62)!.kind, "trade");
+  const ifTaken = rowReturn(by(refused.id), 0.62)!;
+  assert.equal(ifTaken.kind, "refused");
+  assert.equal(ifTaken.ret, (0.4 * 100 - 0.62) / (0.5 * 100 + 0.62) - 1);
+  assert.deepEqual(rowReturn(by(slow.id), 0.62), { ret: 0.5, kind: "model" });
+  assert.deepEqual(rowHeld(by(taken.id)), { minutes: 60, model: false });
+  assert.deepEqual(rowHeld(by(slow.id)), { minutes: 30, model: true });
+  // Sorting: how close, high first; the empty ones last.
+  assert.deepEqual(
+    sortVolumeRows(rows, "reach", "desc").map((r) => r.key),
+    [slow.id, refused.id, taken.id],
+  );
+  assert.deepEqual(
+    sortVolumeRows(rows, "ret", "desc").map((r) => r.key)[0],
+    taken.id,
+  );
+  // The CSV carries the new columns.
+  const csv = volumeCsv(rows).split("\n");
+  assert.match(
+    csv[0]!,
+    /reach_pct,held_min,bid,ask,spread_pct,volume30,whatif_contract,whatif_buy,whatif_sell,whatif_return_pct$/,
+  );
+  assert.match(
+    csv.find((l) => l.includes("slow_cross"))!,
+    /,87,30,,,,,MRVL240207C00071000,0.2,0.3,50.0$/,
+  );
+  // The what-if opens as a one-contract trade with its own story.
+  const one = whatIfTrade(slow)!;
+  assert.equal(one.qty, 1);
+  assert.equal(one.signal.trade!.toSide, 0);
+  const story = volumeWhatIfStory(slow, "Side too slow", settings)!;
+  assert.match(story.story.entryTitle, /a model/);
+  assert.match(
+    story.story.entry[0]!,
+    /Not bought: Side too slow\. In the window the stock reached 87%/,
+  );
+  assert.equal(story.story.stop, null);
+  assert.equal(whatIfTrade(taken), null);
 });

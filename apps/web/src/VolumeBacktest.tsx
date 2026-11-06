@@ -21,9 +21,14 @@ import {
   pricedCounts,
   pricedWords,
   refusalWords,
+  rowHeld,
+  rowReturn,
+  sortVolumeRows,
   volumeCsv,
   type VolumeRow,
+  type VolumeSortKey,
 } from "./volume-backtest-model.js";
+import type { SortDir } from "./bot-backtest-model.js";
 
 // The Volume bot's parts of the Backtest page (BotBacktest.tsx holds the
 // setup and the run): its rules form, the result, every alert and the trades.
@@ -244,21 +249,45 @@ export function VolumeSummary({
 }
 
 /** Every alert of the run in one folded table: traded or not, and why. */
-export function VolumeSignalList({ rows }: { rows: VolumeRow[] }) {
+export function VolumeSignalList({
+  rows,
+  fee,
+  onOpen,
+}: {
+  rows: VolumeRow[];
+  fee: number; // a contract each way, for the return of a trade the account refused
+  onOpen: (r: VolumeRow) => void;
+}) {
   const [which, setWhich] = useState<"all" | "bought" | "skipped">("all");
   const [reason, setReason] = useState<string>("");
+  const [sort, setSort] = useState<{ key: VolumeSortKey; dir: SortDir }>({
+    key: "when",
+    dir: "desc",
+  });
+  // A new column starts high to low (the newest, the biggest); text A to Z.
+  const onSort = (key: VolumeSortKey) => {
+    if (sort.key === key) {
+      setSort({ key, dir: sort.dir === "asc" ? "desc" : "asc" });
+      return;
+    }
+    const text = key === "symbol" || key === "outcome";
+    setSort({ key, dir: text ? "asc" : "desc" });
+  };
   if (!rows.length) return null;
   const reasons = outcomeCounts(rows);
-  const shown = rows.filter((r) => {
+  const filtered = rows.filter((r) => {
     if (which === "bought" && !r.bought) return false;
     if (which === "skipped" && r.bought) return false;
     if (reason && r.reason !== reason) return false;
     return true;
   });
+  const shown = sortVolumeRows(filtered, sort.key, sort.dir);
   const bought = rows.filter((r) => r.bought).length;
   const refusedByAccount = reasons
     .filter((r) => r.account)
     .reduce((n, r) => n + r.count, 0);
+  const modelled = rows.filter((r) => !r.bought && r.signal.whatIf);
+  const modelWon = modelled.filter((r) => r.signal.whatIf!.ret > 0).length;
   const download = () => {
     const url = URL.createObjectURL(
       new Blob([volumeCsv(shown)], { type: "text/csv" }),
@@ -274,6 +303,15 @@ export function VolumeSignalList({ rows }: { rows: VolumeRow[] }) {
     ["bought", "Bought"],
     ["skipped", "Not bought"],
   ] as const;
+  const th = (id: VolumeSortKey, label: string, title?: string) => (
+    <VolumeSortTh
+      id={id}
+      label={label}
+      title={title}
+      sort={sort}
+      onSort={onSort}
+    />
+  );
   return (
     <details className="card bt-signals">
       <summary>
@@ -281,6 +319,8 @@ export function VolumeSignalList({ rows }: { rows: VolumeRow[] }) {
         {rows.length - bought} not bought
         {refusedByAccount > 0 &&
           ` (${refusedByAccount} by the account's limits)`}
+        {modelled.length > 0 &&
+          ` · if bought: ${modelWon} of ${modelled.length} would have gained (a model)`}
         {reasons.length > 0 && (
           <span className="muted small bt-why-top">
             {" "}
@@ -327,23 +367,45 @@ export function VolumeSignalList({ rows }: { rows: VolumeRow[] }) {
         <table className="bt-signals-table">
           <thead>
             <tr>
-              <th>When</th>
-              <th>Stock</th>
+              {th("when", "When")}
+              {th("symbol", "Stock")}
               <th>Alert</th>
-              <th>Outcome</th>
-              <th title="The trade's return after fees">Return</th>
-              <th title="The 3 minutes up to the alert, in typical 30-minute moves">
-                Burst
-              </th>
-              <th title="Seconds from the alert to the side">Side after</th>
-              <th>Contract</th>
-              <th title="The buy, and what priced it">Bought at</th>
-              <th title="The sale, and what priced it">Sold at</th>
+              {th("outcome", "Outcome")}
+              {th(
+                "ret",
+                "Return",
+                "The trade's return after fees. Refused by the account: the trade's own, if taken. Not bought: the trade a model makes of it (Black-Scholes at the stock's volatility, no book, no fees)",
+              )}
+              {th(
+                "reach",
+                "How close",
+                "How far the stock got toward the nearer side line in the window (15 s; a shock's touch, 20 s): 100% is on the line",
+              )}
+              {th("side", "Side after", "Seconds from the alert to the side")}
+              {th("held", "Held", "Minutes from the buy to the sale")}
+              {th("contract", "Contract", "Sorts by the strike")}
+              {th("buy", "Bought at", "The buy, and what priced it")}
+              {th("sell", "Sold at", "The sale, and what priced it")}
+              {th(
+                "spread",
+                "Bid / ask",
+                "The book the buy read, and its spread as a share of its middle. Sorts by the spread",
+              )}
+              {th(
+                "volume30",
+                "Vol 30 min",
+                "Contracts of the leg traded in the 30 minutes before the pick (the liquidity check)",
+              )}
+              {th(
+                "burst",
+                "Burst",
+                "The 3 minutes up to the alert, in typical 30-minute moves",
+              )}
             </tr>
           </thead>
           <tbody>
             {shown.map((r) => (
-              <VolumeSignalLine key={r.key} r={r} />
+              <VolumeSignalLine key={r.key} r={r} fee={fee} onOpen={onOpen} />
             ))}
           </tbody>
         </table>
@@ -351,47 +413,136 @@ export function VolumeSignalList({ rows }: { rows: VolumeRow[] }) {
       <p className="muted small">
         Times in {israelLabel}. A plan alert is the minute volume alert, read at
         its minute&apos;s close; a shock alert is the 60-second one at 15×
-        volume.
+        volume. A stock&apos;s name opens its chart: the trade, or for an alert
+        not bought the trade a model makes of it.
       </p>
     </details>
   );
 }
 
-function VolumeSignalLine({ r }: { r: VolumeRow }) {
+/** A column header that sorts the alerts: a click sorts by it, again flips the order. */
+function VolumeSortTh({
+  id,
+  label,
+  title,
+  sort,
+  onSort,
+}: {
+  id: VolumeSortKey;
+  label: string;
+  title?: string;
+  sort: { key: VolumeSortKey; dir: SortDir };
+  onSort: (key: VolumeSortKey) => void;
+}) {
+  const on = sort.key === id;
+  let aria: "ascending" | "descending" | "none" = "none";
+  if (on) aria = sort.dir === "asc" ? "ascending" : "descending";
+  let arrow = "";
+  if (on) arrow = sort.dir === "asc" ? " ▲" : " ▼";
+  return (
+    <th title={title} aria-sort={aria}>
+      <button
+        type="button"
+        className={`th-sort${on ? " on" : ""}`}
+        onClick={() => onSort(id)}
+      >
+        {label}
+        {arrow}
+      </button>
+    </th>
+  );
+}
+
+function VolumeSignalLine({
+  r,
+  fee,
+  onOpen,
+}: {
+  r: VolumeRow;
+  fee: number;
+  onOpen: (r: VolumeRow) => void;
+}) {
   const s = r.signal;
   const t = s.trade;
-  const taken = r.account?.status === "taken";
+  const w = s.whatIf;
   let outcome = r.why;
-  if (taken) outcome = "Bought";
+  if (r.bought) outcome = "Bought";
+  const ret = rowReturn(r, fee);
+  const held = rowHeld(r);
+  let retNote = "";
+  if (ret?.kind === "refused") retNote = " if taken";
+  if (ret?.kind === "model") retNote = " model";
+  let reach = "—";
+  if (s.reach !== undefined) reach = `${Math.round(s.reach * 100)}%`;
+  let contract = "—";
+  if (t) contract = `${t.strike} ${t.right}`;
+  else if (w) contract = `${w.strike} ${w.right}`;
+  let book = "—";
+  if (t?.book) {
+    book = `${t.book.bid.toFixed(2)} / ${t.book.ask.toFixed(2)}`;
+    if (t.spread !== null) book += ` · ${(t.spread * 100).toFixed(0)}%`;
+  }
+  const name = <strong>{s.symbol}</strong>;
+  const opens = r.bought || (!t && w !== undefined);
+  const kindWord = s.kind === "shock" ? "Shock" : "Plan";
+  const arrow = s.alert === "up" ? "▲" : "▼";
   return (
     <tr className={r.bought ? "bought" : undefined}>
       <td className="num">
         {israelDateTime(stepMs(s.date, 0) + s.second * 1000)}
       </td>
       <td>
-        <strong>{s.symbol}</strong>
+        {opens ? (
+          <button
+            type="button"
+            className="link"
+            title={
+              r.bought
+                ? "The trade's window"
+                : "Why it was not bought, and the trade a model makes of it"
+            }
+            onClick={() => onOpen(r)}
+          >
+            {name}
+          </button>
+        ) : (
+          name
+        )}
       </td>
       <td>
-        {s.kind === "shock" ? "Shock" : "Plan"} {s.alert === "up" ? "▲" : "▼"}
+        {kindWord} {arrow}
       </td>
       <td title={s.detail || undefined}>{outcome}</td>
-      <td className={taken ? `num${tone(r.account!.ret)}` : "num muted"}>
-        {taken ? signedPct(r.account!.ret * 100) : "—"}
+      <td className={ret ? `num${tone(ret.ret)}` : "num muted"}>
+        {ret ? signedPct(ret.ret * 100) : "—"}
+        {retNote && <span className="small muted">{retNote}</span>}
       </td>
-      <td className="num">{s.burst === null ? "—" : s.burst.toFixed(2)}</td>
+      <td className="num">{reach}</td>
       <td className="num">{t ? `${t.toSide} s` : "—"}</td>
-      <td className="num">{t ? `${t.strike} ${t.right}` : "—"}</td>
+      <td className="num">
+        {held ? `${held.minutes} min` : "—"}
+        {held?.model && <span className="small muted"> model</span>}
+      </td>
+      <td className="num">
+        {contract}
+        {!t && w && <span className="state-chip">Model</span>}
+      </td>
       <td className="num" title={t ? pricedWords[t.buyPriced] : undefined}>
-        {t ? t.buy.toFixed(2) : "—"}
+        {money(t?.buy ?? w?.buy)}
         {t && <PricedMark p={t.buyPriced} />}
       </td>
       <td className="num" title={t ? pricedWords[t.sellPriced] : undefined}>
-        {t ? t.sell.toFixed(2) : "—"}
+        {money(t?.sell ?? w?.sell)}
         {t && <PricedMark p={t.sellPriced} />}
       </td>
+      <td className="num">{book}</td>
+      <td className="num">{t?.volume30 ?? "—"}</td>
+      <td className="num">{s.burst === null ? "—" : s.burst.toFixed(2)}</td>
     </tr>
   );
 }
+
+const money = (v: number | undefined) => (v === undefined ? "—" : v.toFixed(2));
 
 /** How many fills one source priced; gray when none. */
 function PricedChip({ p, n }: { p: PricedBy; n: number }) {

@@ -132,7 +132,9 @@ import {
   sameRun,
   volumeMoney,
   volumeRows,
+  volumeWhatIfStory,
   type VolumeMoneySetup,
+  type VolumeRow,
 } from "./volume-backtest-model.js";
 import { Card, NumberRow } from "./backtest-ui.js";
 import { signedPct, signedUsd, tone, usd } from "./format.js";
@@ -513,6 +515,8 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
   const [open, setOpen] = useState<AccountTrade | null>(null);
   const [openSkip, setOpenSkip] = useState<SignalRow | null>(null);
   const [vOpen, setVOpen] = useState<VolumeAccountTrade | null>(null);
+  // An alert not bought, opened on its what-if (a model).
+  const [vModel, setVModel] = useState<VolumeRow | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -605,6 +609,10 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
     [volShown.runs, vAccount],
   );
   const vIgnored = [...new Set(volShown.runs.flatMap((r) => r.ignored))];
+  const vModelStory =
+    vModel && volShown.ran
+      ? volumeWhatIfStory(vModel.signal, vModel.why, volShown.ran.settings)
+      : null;
   // A past run is not stale: it is shown as it ran (its card says how).
   const vStale =
     !history &&
@@ -1501,7 +1509,17 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                       />
                     </Suspense>
                   )}
-                  <VolumeSignalList rows={vRows} />
+                  <VolumeSignalList
+                    rows={vRows}
+                    fee={vMoney.feePerContract}
+                    onOpen={(r) => {
+                      if (r.bought && r.account) {
+                        setVOpen(r.account);
+                        return;
+                      }
+                      setVModel(r);
+                    }}
+                  />
                   <VolumeTradeList account={vAccount} onOpen={setVOpen} />
                 </>
               )}
@@ -1521,6 +1539,17 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
               true, // the page's runs model the broker stop
             )}
             onClose={() => setVOpen(null)}
+          />
+        </Suspense>
+      )}
+      {vModelStory && (
+        <Suspense fallback={null}>
+          <TradeStory
+            t={closedVolumeTrade(vModelStory.trade)}
+            bot
+            source="volume"
+            backtest={vModelStory.story}
+            onClose={() => setVModel(null)}
           />
         </Suspense>
       )}
