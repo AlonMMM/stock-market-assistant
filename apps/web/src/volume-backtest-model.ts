@@ -250,6 +250,7 @@ export function volumeCsv(rows: readonly VolumeRow[]): string {
     "whatif_buy",
     "whatif_sell",
     "whatif_return_pct",
+    "data_gap_s",
   ];
   const lines = rows.map((r) => {
     const s = r.signal;
@@ -285,6 +286,7 @@ export function volumeCsv(rows: readonly VolumeRow[]): string {
       s.whatIf?.buy,
       s.whatIf?.sell,
       s.whatIf && priced ? (s.whatIf.ret * 100).toFixed(1) : null,
+      s.dataGap ? s.dataGap.to - s.dataGap.from : null,
     ]
       .map(csvCell)
       .join(",");
@@ -391,6 +393,13 @@ export function volumeBacktestStory(
 }
 
 // ---- the alerts table's columns (the user, 2026-11-06: "add more data ... like the main") ----
+
+/** The alert's data gap in words, for the warning; null without one. */
+export function dataGapWords(sig: VolumeSignal): string | null {
+  const g = sig.dataGap;
+  if (!g) return null;
+  return `No stock price from ${nyClock(g.from)} to ${nyClock(g.to)} New York (${g.to - g.from} s) while the alert was being decided: the saved seconds may miss trades there, so this outcome may be wrong.`;
+}
 
 /**
  * A row's return: the taken trade's; the trade's own when the account refused
@@ -518,6 +527,11 @@ export function whatIfTrade(sig: VolumeSignal): VolumeAccountTrade | null {
 }
 
 /** The trade story of an alert not bought: why, and the trade a model makes of it. */
+function gapLine(sig: VolumeSignal): string[] {
+  const words = dataGapWords(sig);
+  return words ? [`⚠ Data gap. ${words}`] : [];
+}
+
 export function volumeWhatIfStory(
   sig: VolumeSignal,
   why: string,
@@ -542,6 +556,7 @@ export function volumeWhatIfStory(
       entryTitle: "Not bought: the trade it would have made (a model)",
       entry: [
         `${kind} ${sig.alert} at ${nyClock(sig.second)} New York${sig.burst === null ? "" : `, burst ${sig.burst.toFixed(2)}`}. Not bought: ${why}.${reach}`,
+        ...gapLine(sig),
         side,
         `The model: ${w.contract}, the ${s.delta.toFixed(2)}-delta strike, Black-Scholes at the stock's volatility (${(w.iv * 100).toFixed(0)}% a year): bought ${w.buy.toFixed(2)}, sold ${w.sell.toFixed(2)}. No book, no fees, no broker stop.`,
       ],

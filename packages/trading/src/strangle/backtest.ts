@@ -197,8 +197,17 @@ export interface VolumeSignal {
   // shock's touch window), the nearer line's share: 1 = on the line. Only when
   // the stock's seconds were read.
   reach?: number;
+  // The longest stretch of the decision window (the shock's touch window, the
+  // plan's cross window) with no stock price, session seconds, when it is at
+  // least DATA_GAP_SECONDS: the saved seconds may miss trades there, so the
+  // outcome is flagged, not changed (the user, 2026-11-06: "just add a proper
+  // error for me to be able to see it and fix it later").
+  dataGap?: { from: number; to: number };
   whatIf?: VolumeWhatIf; // an alert not traded, when a model can price it
 }
+
+/** A stretch this long with no stock price in an alert's decision window is flagged. */
+export const DATA_GAP_SECONDS = 5;
 
 export interface VolumeStockRun {
   symbol: string;
@@ -649,13 +658,10 @@ export async function runVolumeStock(
         a.second,
         a.second + within,
       );
-      signal.reach = reachOf(
-        seconds,
-        a.second + (shock ? s.shockTouchSeconds : within),
-        a.price,
-        unit,
-        s,
-      );
+      const decideBy = a.second + (shock ? s.shockTouchSeconds : within);
+      signal.reach = reachOf(seconds, decideBy, a.price, unit, s);
+      const gap = longestGap(seconds, a.second, decideBy);
+      if (gap) signal.dataGap = gap;
       // The shock: a side line touched within shockTouchSeconds, as the live bot.
       if (
         shock &&
@@ -883,6 +889,28 @@ function reachOf(
     most = Math.max(most, Math.abs(p / price - 1) / line);
   }
   return Number(most.toFixed(3));
+}
+
+/**
+ * The longest stretch of (from, until] with no price, from the last price
+ * before it (or `from`) to the next one (or `until`); null under DATA_GAP_SECONDS.
+ */
+export function longestGap(
+  seconds: readonly [number, number][],
+  from: number,
+  until: number,
+): { from: number; to: number } | null {
+  let last = from;
+  let best = { from, to: from };
+  for (const [sec] of seconds) {
+    if (sec <= from) continue;
+    if (sec > until) break;
+    if (sec - last > best.to - best.from) best = { from: last, to: sec };
+    last = sec;
+  }
+  if (until - last > best.to - best.from) best = { from: last, to: until };
+  if (best.to - best.from < DATA_GAP_SECONDS) return null;
+  return best;
 }
 
 /** An alert not traded, as a model trades it; null when it cannot be modelled. */

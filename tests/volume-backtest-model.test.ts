@@ -20,6 +20,7 @@ import {
   volumeMoney,
   volumeRows,
   rowHeld,
+  dataGapWords,
   rowReturn,
   sortVolumeRows,
   volumeWhatIfStory,
@@ -199,7 +200,7 @@ test("volume backtest page: New York clock and CSV", () => {
   assert.match(csv[0]!, /^date,symbol,alert,time_ny/);
   assert.match(
     csv[1]!,
-    /^2024-02-07,MRVL,shock,10:30:00,up,1.40,traded,Traded,MRVL240207C00070000,10:30:05,0.41,seconds,0.82,minutes,giveback,,,,,60,0.4,0.42,5.0,,,,,$/,
+    /^2024-02-07,MRVL,shock,10:30:00,up,1.40,traded,Traded,MRVL240207C00070000,10:30:05,0.41,seconds,0.82,minutes,giveback,,,,,60,0.4,0.42,5.0,,,,,,$/,
   );
   assert.match(
     csv[2]!,
@@ -262,11 +263,11 @@ test("volume alerts table (2026-11-06): the return of a trade, of one the accoun
   const csv = volumeCsv(rows).split("\n");
   assert.match(
     csv[0]!,
-    /reach_pct,held_min,bid,ask,spread_pct,volume30,whatif_contract,whatif_buy,whatif_sell,whatif_return_pct$/,
+    /reach_pct,held_min,bid,ask,spread_pct,volume30,whatif_contract,whatif_buy,whatif_sell,whatif_return_pct,data_gap_s$/,
   );
   assert.match(
     csv.find((l) => l.includes("slow_cross"))!,
-    /,87,30,,,,,MRVL240207C00071000,0.2,0.3,50.0$/,
+    /,87,30,,,,,MRVL240207C00071000,0.2,0.3,50.0,$/,
   );
   // The what-if opens as a one-contract trade with its own story.
   const one = whatIfTrade(slow)!;
@@ -311,4 +312,19 @@ test("volume alerts table (2026-11-06): a buy under 5 cents shows no return, tra
   for (const r of rows) assert.equal(rowReturn(r, 0.62), null);
   const csv = volumeCsv(rows).split("\n");
   assert.ok(!csv.some((line) => line.includes("1900.0")));
+});
+
+test("volume alerts table (2026-11-06): a data gap is a warning in words and a CSV column", () => {
+  const gapped = signal({
+    outcome: "slow_cross",
+    dataGap: { from: 12200, to: 12213 },
+  });
+  const words = dataGapWords(gapped)!;
+  assert.match(words, /from 12:53:20 to 12:53:33 New York \(13 s\)/);
+  assert.equal(dataGapWords(signal({})), null);
+  const runs = [run([gapped])];
+  const csv = volumeCsv(volumeRows(runs, volumeAccount(runs, money))).split(
+    "\n",
+  );
+  assert.match(csv[1]!, /,13$/);
 });

@@ -22,6 +22,7 @@ import {
   pricedWords,
   refusalWords,
   rowHeld,
+  dataGapWords,
   rowReturn,
   sortVolumeRows,
   volumeCsv,
@@ -290,6 +291,7 @@ export function VolumeSignalList({
     (r) => !r.bought && rowReturn(r, 0)?.kind === "model",
   );
   const modelWon = modelled.filter((r) => rowReturn(r, 0)!.ret > 0).length;
+  const gaps = rows.filter((r) => r.signal.dataGap).length;
   const download = () => {
     const url = URL.createObjectURL(
       new Blob([volumeCsv(shown)], { type: "text/csv" }),
@@ -323,6 +325,14 @@ export function VolumeSignalList({
           ` (${refusedByAccount} by the account's limits)`}
         {modelled.length > 0 &&
           ` · if bought: ${modelWon} of ${modelled.length} would have gained (a model)`}
+        {gaps > 0 && (
+          <span
+            className="state-chip weak"
+            title="Alerts decided over a stretch with no stock price in the saved seconds: their outcome may be wrong"
+          >
+            ⚠ {gaps} with a data gap
+          </span>
+        )}
         {reasons.length > 0 && (
           <span className="muted small bt-why-top">
             {" "}
@@ -471,6 +481,7 @@ function VolumeSignalLine({
   if (r.bought) outcome = "Bought";
   const ret = rowReturn(r, fee);
   const held = rowHeld(r);
+  const gap = dataGapWords(s);
   let retNote = "";
   if (ret?.kind === "refused") retNote = " if taken";
   if (ret?.kind === "model") retNote = " model";
@@ -514,7 +525,14 @@ function VolumeSignalLine({
       <td>
         {kindWord} {arrow}
       </td>
-      <td title={s.detail || undefined}>{outcome}</td>
+      <td title={s.detail || undefined}>
+        {outcome}
+        {gap && (
+          <span className="state-chip weak" title={gap}>
+            ⚠ Data gap {s.dataGap!.to - s.dataGap!.from} s
+          </span>
+        )}
+      </td>
       <td className={ret ? `num${tone(ret.ret)}` : "num muted"}>
         {ret ? signedPct(ret.ret * 100) : "—"}
         {retNote && <span className="small muted">{retNote}</span>}

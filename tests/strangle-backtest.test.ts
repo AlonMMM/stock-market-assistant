@@ -26,6 +26,7 @@ import {
 } from "../packages/trading/src/bot/backtest.js";
 import type { MinuteBar } from "../packages/trading/src/bot/signal.js";
 import {
+  longestGap,
   runVolumeStock,
   tradeReturn,
   volumeAccount,
@@ -748,4 +749,38 @@ test("volume backtest (2026-11-06): each alert keeps how close the stock got to 
   assert.equal(t.outcome, "traded");
   assert.equal(t.whatIf, undefined);
   assert.equal(typeof t.trade!.volume30, "number");
+});
+
+test("longestGap (2026-11-06): the longest stretch with no stock price in the decision window, from 5 s", () => {
+  // DELL 2026-05-08: the shock at 12200, prices 12195 then 12213 (the saved seconds missed the trades between).
+  const seconds: [number, number][] = [
+    [12195, 247.04],
+    [12213, 246.915],
+    [12217, 246.95],
+    [12220, 246.89],
+  ];
+  assert.deepEqual(longestGap(seconds, 12200, 12220), {
+    from: 12200,
+    to: 12213,
+  });
+  assert.equal(
+    longestGap(
+      [
+        [12201, 1],
+        [12204, 1],
+        [12208, 1],
+        [12212, 1],
+        [12216, 1],
+        [12219, 1],
+      ],
+      12200,
+      12220,
+    ),
+    null,
+  );
+  assert.deepEqual(longestGap([[12201, 1]], 12200, 12220), {
+    from: 12201,
+    to: 12220,
+  });
+  assert.deepEqual(longestGap([], 12200, 12215), { from: 12200, to: 12215 });
 });
