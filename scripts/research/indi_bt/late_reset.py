@@ -28,8 +28,7 @@ sig_lasthour.py 2026-11-01, the day's signals bought at 15:57; retry_skip.py 202
 late_carry.py 2026-10-28, late alerts carried overnight lost in every slice).
 Real quotes: LR_PASS=list writes the late legs with no book at their entry minute -> open39_dbx_list.csv.
 
-  node --env-file=.env <dir>/run.mjs late_reset.py      (from the app repo root; defence_signals.py BT_LATE=330 BT_LATE_ALL=1
-  BT_SIG_SUFFIX=_t12 first: every late minute with t >= 1.2, the earlier versions keep their own rows rule)
+  node --env-file=.env <dir>/run.mjs late_reset.py      (from the app repo root; defence_signals.py BT_LATE=330 first)
 -> data/local/x/bt/late_reset_summary.json, late_reset_legs.csv
 """
 import collections, csv, datetime as dt, glob, json, math, multiprocessing as mp, os, statistics as st, sys
@@ -73,6 +72,14 @@ MODES += ("r30-a-nf", "r30-a-nm-nf")
 #   L<hard x10><rp x10>-a-<exit>: x = 2.10's own t exit only (0.5); d15 / d30 = out 0.15 / 0.3 under the entry's t
 LMODES = ("L109-a-x", "L109-a-d15", "L109-a-d30", "L059-a-d30", "L108-a-d30")
 MODES += LMODES
+# H versions (the user, 2026-11-06: "I think that T is not good enough to enter here. lets start from T>= 0.5 AND stock
+# it's in it's 80% hight of the day (and holding)"): 15:30-15:44, t >= 0.5 on the bet's side and the stock at >= `rp` of
+# the day's range so far (a call near the high, a put near the low) at every minute of the last `hold` minutes up to the
+# entry; busy pre-market days allowed (floor and 200 contracts kept); always held overnight, 2.10's morning sale. 2.10's
+# entry-day t exit (t <= 0.5) would sell a t 0.5 entry at once, so it is off (x), or out once t turns against (t0, t <= 0).
+#   H<vol: n none | r last 30 min >= 1.25x><rp x10><hold minutes 2 digits>-a-<x | t0>
+HMODES = ("Hn815-a-x", "Hn815-a-t0", "Hn805-a-x", "Hn830-a-x", "Hn715-a-x", "Hn915-a-x", "Hr815-a-x")
+MODES += HMODES
 NO_MORNING = {"gap_keep": -1e9, "gap_sell_share": 0.0}   # the morning rule then sells 0 (the 0-share step is dropped)
 LAST = 374   # 15:44
 _pick = TS.pick
@@ -140,15 +147,33 @@ def nofilter(mode):
 
 
 def win_of(mode):
-    if mode.startswith("L"): return WINS["30"]
+    if mode[0] in "LH": return WINS["30"]
     return WINS[mode[1:3]]
 
 
-def drop_of(mode):
-    """The L versions' t drop that exits (None: 2.10's t exit only)."""
+def exit_of(mode):
+    """The entry day's t exit of a late version: None = 2.10's (0.5); ("drop", x) = x under the entry's t; ("at", x)."""
     last = mode.split("-")[-1]
-    if mode.startswith("L") and last.startswith("d"): return int(last[1:]) / 100
+    if mode.startswith("L") and last.startswith("d"): return ("drop", int(last[1:]) / 100)
+    if mode.startswith("H") and last == "x": return ("at", -99.0)
+    if mode.startswith("H") and last == "t0": return ("at", 0.0)
     return None
+
+
+def th_of(spec, entry_t):
+    if spec is None: return None
+    if spec[0] == "drop": return entry_t - spec[1]
+    return spec[1]
+
+
+def range_series(sym, date):
+    """Per minute, where the close sits in the day's range so far (0 = the low, 1 = the high); None without a bar."""
+    out, hi, lo = [None] * 390, None, None
+    for b in sorted(day(sym, date), key=lambda b: b[0]):
+        if not 0 <= b[0] < 390: continue
+        hi = b[2] if hi is None else max(hi, b[2]); lo = b[3] if lo is None else min(lo, b[3])
+        out[b[0]] = (b[4] - lo) / (hi - lo) if hi > lo else 0.5
+    return out
 
 
 def tseries(sym, date):
@@ -203,7 +228,7 @@ def walk_main(job):
 
 
 def late_rows():
-    rows = [r for f in sorted(glob.glob(f"{B}/s_late_t12_20*.csv")) for r in csv.DictReader(open(f))]   # every t >= 1.2 (BT_LATE_ALL)
+    rows = [r for f in sorted(glob.glob(f"{B}/s_late_t05_20*.csv")) for r in csv.DictReader(open(f))]   # every t >= 0.5 (BT_LATE_ALL)
     for r in rows:
         r["minute"] = int(r["minute"])
         r["old"] = float(r["c_t"]) >= 1.8 or (float(r["c_t"]) >= 1.2 and float(r["c_e"]) >= 1.5)   # the earlier versions' rows
@@ -255,6 +280,23 @@ def find_late(job):
             k = (m, r["right"], False)
             if k not in tried: tried[k] = champ_pick(sym, date, m, r["right"], float(r["price"]))
             if tried[k]: got[("L", lm)] = (r, tried[k]); break
+    rs = None
+    for hm in sorted({u.split("-")[0] for u in HMODES}):
+        vol, rp, hold = hm[1], int(hm[2]) / 10, int(hm[3:5])
+        if any(c["minute"] >= WINS["30"] for c in champ): continue
+        for r in rows:
+            m = r["minute"]
+            if m < WINS["30"] or m > LAST or float(r["c_t"]) < 0.5: continue
+            if vol == "r" and float(r["c_rv30"]) < 1.25: continue
+            if any(c["minute"] < m and c["open"].get(m, 0) > 0 for c in champ): continue
+            if rs is None: rs = range_series(sym, date)
+            span = [rs[x] for x in range(m - hold, m + 1)]
+            if any(x is None for x in span): continue
+            if r["right"] == "P": span = [1 - x for x in span]
+            if min(span) < rp: continue
+            k = (m, r["right"], False)
+            if k not in tried: tried[k] = champ_pick(sym, date, m, r["right"], float(r["price"]))
+            if tried[k]: got[("H", hm)] = (r, tried[k]); break
     return (src, sym, date), got
 
 
@@ -263,13 +305,12 @@ def walk_late(job):
     dbx(src)
     t = dict(sym=sym, date=date, right=right, minute=str(m), price=r["price"], c_t=r["c_t"], c_rvol=r["c_rvol"])
     v = {}
-    key = lambda u: (carry_of(u), drop_of(u))
-    for c, drop in sorted({key(u) for u in uses}, key=str):
-        th = float(r["c_t"]) - drop if drop is not None else None
-        x = walk_carry(t, m, b, CARRY[c[0]], c[1], th)
+    key = lambda u: (carry_of(u), exit_of(u))
+    for c, spec in sorted({key(u) for u in uses}, key=str):
+        x = walk_carry(t, m, b, CARRY[c[0]], c[1], th_of(spec, float(r["c_t"])))
         if x is None: continue
         for u in uses:
-            if key(u) == (c, drop): v[u] = x
+            if key(u) == (c, spec): v[u] = x
     if not v: return None
     info = dict(contract=b[0], strike=b[2], delta=round(abs(b[3]), 3), price=b[4], vol30=b[5], how="late",
                 rv30=float(r["c_rv30"]), book=bool(RB.quote(b[0], date, m)))
@@ -360,6 +401,7 @@ def main():
         for gk, (r, b) in got.items():
             k = (src, sym, date, r["minute"], r["right"], b[0])
             if gk[0] == "L": uses = [u for u in LMODES if u.startswith(gk[1] + "-")]
+            elif gk[0] == "H": uses = [u for u in HMODES if u.startswith(gk[1] + "-")]
             else: uses = [u for u in MODES[1:] if u.startswith(f"{gk[0]}{gk[1]}-") and nofilter(u) == gk[2]]
             legs.setdefault(k, [r, b, set()])[2].update(uses)
     print(f"late legs: {len(legs)}; by vol + window:",

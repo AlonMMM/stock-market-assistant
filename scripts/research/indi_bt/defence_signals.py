@@ -129,7 +129,8 @@ if FLIP:
 # D2 >= 1.5) on a side, with no volume test, and the day ratio (c_rvol) and the last 30 minutes' ratio (c_rv30) beside it.
 LATE = int(os.environ.get("BT_LATE", 0))
 if LATE: FLIP = True
-LATE_ALL = os.environ.get("BT_LATE_ALL") == "1"   # late_reset.py L versions (2026-11-06): every late minute with t >= 1.2 (late_reset.py filters)
+LATE_TMIN = float(os.environ.get("BT_LATE_TMIN", 1.2))   # with BT_LATE_ALL: the lowest t written (the H versions: 0.5)
+LATE_ALL = os.environ.get("BT_LATE_ALL") == "1"   # late_rules (2026-11-06): every late minute with t >= 1.2 (late_reset.py filters)
 SPYCUM = {}
 
 
@@ -317,7 +318,7 @@ def stock(sym):
             if LATE:
                 if m >= LATE:
                     for sd, tt, ee in (("C", t, e_c), ("P", -t, e_p)):
-                        if tt >= T_MIN or (tt >= 1.2 and ee >= 1.5) or (LATE_ALL and tt >= 1.2):
+                        if tt >= T_MIN or (tt >= 1.2 and ee >= 1.5) or (LATE_ALL and tt >= LATE_TMIN):
                             late.append(dict(date=date, sym=sym, right=sd, minute=m, price=c[m], c_t=round(tt, 2),
                                              c_e=round(ee, 2), c_rvol=round(rv, 2), c_rv30=round(rv30, 3)))
                 continue
