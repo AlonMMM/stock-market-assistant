@@ -5,16 +5,22 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-export const lanes = { Now: "now", Next: "next", Later: "later", Done: "done" };
-export const areas = ["Bots", "Research", "App", "Alerts", "Ops"];
-const fields = ["id", "area", "tags", "waiting", "source", "done"];
+export const parts = {
+  Analysis: "analysis",
+  Research: "research",
+  App: "app",
+  "Data & Infra": "infra",
+};
+export const statuses = ["open", "active", "waiting", "done"];
+const fields = ["id", "status", "tags", "waiting", "log", "source", "done"];
 const idPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const doneKept = 10;
 
-/** Items in file order: {id, title, status, rank, area, tags, waiting, source, done, notes}. */
+/** Items in file order: {id, title, part, rank, status, tags, waiting, log, source, done, notes}. */
 export function parseBacklog(text) {
   const items = [];
   const errors = [];
-  let status = null;
+  let part = null;
   let item = null;
   let notes = [];
   const finish = () => {
@@ -30,30 +36,31 @@ export function parseBacklog(text) {
   };
   text.split("\n").forEach((line, i) => {
     const at = `line ${i + 1}`;
-    const lane = /^## (.+?)\s*$/.exec(line);
-    if (lane) {
+    const section = /^## (.+?)\s*$/.exec(line);
+    if (section) {
       finish();
-      status = lanes[lane[1]] ?? null;
+      part = parts[section[1]] ?? null;
       return;
     }
     const heading = /^### (.+?)\s*$/.exec(line);
     if (heading) {
       finish();
-      if (!status) {
+      if (!part) {
         errors.push(
-          `${at}: "${heading[1]}" is not under a lane (Now, Next, Later, Done)`,
+          `${at}: "${heading[1]}" is not under a part (${Object.keys(parts).join(", ")})`,
         );
         return;
       }
-      const rank = items.filter((x) => x.status === status).length + 1;
+      const rank = items.filter((x) => x.part === part).length + 1;
       item = {
         id: "",
         title: heading[1],
-        status,
+        part,
         rank,
-        area: "",
+        status: "",
         tags: [],
         waiting: "",
+        log: "",
         source: "",
         done: "",
         notes: "",
@@ -83,14 +90,26 @@ export function parseBacklog(text) {
       errors.push(`${name}: id must be lowercase words joined by dashes`);
     else if (seen.has(x.id)) errors.push(`${name}: id ${x.id} is used twice`);
     seen.add(x.id);
-    if (!areas.includes(x.area))
-      errors.push(`${name}: area must be one of ${areas.join(", ")}`);
+    if (!statuses.includes(x.status))
+      errors.push(`${name}: status must be one of ${statuses.join(", ")}`);
+    if (x.status === "waiting" && !x.waiting)
+      errors.push(`${name}: a waiting item needs waiting (on what)`);
+    if (x.part === "research" && !x.log)
+      errors.push(
+        `${name}: a Research item needs log (its research log entry)`,
+      );
     if (!x.source) errors.push(`${name}: source is missing`);
     if (x.status === "done" && !x.done)
-      errors.push(`${name}: a Done item needs done (date and PR)`);
+      errors.push(`${name}: a done item needs done (date and PR or session)`);
   }
-  if (items.filter((x) => x.status === "done").length > 10)
-    errors.push("Done keeps the latest 10 items; remove the oldest");
+  for (const [label, key] of Object.entries(parts))
+    if (
+      items.filter((x) => x.part === key && x.status === "done").length >
+      doneKept
+    )
+      errors.push(
+        `${label} keeps its latest ${doneKept} done items; remove the oldest`,
+      );
   return { items, errors };
 }
 

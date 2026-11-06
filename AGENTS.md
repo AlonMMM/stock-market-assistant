@@ -25,14 +25,21 @@ Preserve unrelated changes and use a task branch for implementation.
 
 ## Backlog
 
-[docs/backlog.md](docs/backlog.md) is the backlog; the board at https://claude.ai/artifact/VzgHGHzP5SYWhVefpvTmRH
-shows the same items. Keep both live in every session:
+[docs/backlog.md](docs/backlog.md) is the backlog; the board at https://claude.ai/artifact/VnRvCnUXzfyXX1a3n9LCiN
+shows the same items in four parts: Analysis (what the owner sees watching charts and trades), Research (open
+threads in the research logs), App (UX / UI and its backend) and Data & Infra. Bugs are not on it; they have their own
+dashboard. Keep both live in every session:
 
 - When the user asks for work that is on the backlog, say so in your first reply and name the item.
-- When that work is finished (merged), move the item to Done with the date and the PR; Done keeps the latest 10.
+- When that work is finished (merged), set the item's status to done with the date and the PR; each part keeps its
+  latest 10 done items.
 - When work stops unfinished, or a change leaves something out (a "not done" list, a blocker, a follow-up the
   user agreed to), add an item or update the existing one with a note on what is left and why. A blocker goes in
-  `waiting`. New ideas go to Later unless the user says otherwise.
+  `waiting` with status waiting. New ideas go in at the end of their part with status open unless the user says
+  otherwise.
+- Research: when a test ends as a candidate waiting for the owner's yes, a near miss (a tie, wins one half), or a
+  thread the log says was not taken far enough, add or update its Research item with `log` naming the log entry.
+  When it is decided, set it to done.
 - After editing, run `npm run backlog`: it checks the format and prints the items as JSON.
 - The user also edits the board. A session that can read and write it (the Artifact tools) first brings the
   board's changes into the file, then makes its own, then writes every item to the board as `items/<id>` and

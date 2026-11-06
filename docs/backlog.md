@@ -1,477 +1,159 @@
 # Backlog
 
-Updated: 2026-11-04
+Updated: 2026-11-06
 
 What is next for the Stock Market Assistant. This file is the source of truth; the board at
-https://claude.ai/artifact/VzgHGHzP5SYWhVefpvTmRH shows the same items with lanes, filters and search. How every
-session keeps both live: [AGENTS.md, Backlog](../AGENTS.md#backlog).
+https://claude.ai/artifact/VnRvCnUXzfyXX1a3n9LCiN shows the same items in four parts, with filters and search. How every
+session keeps both live: [AGENTS.md, Backlog](../AGENTS.md#backlog). Bugs are not here: they have their own dashboard.
 
-Lanes, in order of urgency: **Now** (being worked on), **Next** (up after that), **Later** (when there is room),
-**Done** (the latest 10 finished items). Within a lane, the first item comes first.
+The four parts:
+
+- **Analysis**: what the owner sees when watching the charts and the trades: a question about a trade, something that
+  looks off, an improvement idea that came from watching.
+- **Research**: open threads in the research logs: a candidate waiting for the owner's yes, a test that came close
+  to a candidate and was never closed, a test that did not go deep enough. Every item names its log entry in `log`.
+- **App**: the application itself: how it looks and works (UX / UI) and the backend behind it.
+- **Data & Infra**: the data, the infrastructure, how we run things and how we run them from anywhere.
+
+Within a part, the first item comes first.
 
 ## Item format
 
-One `###` heading per item under its lane, then its fields as `- key: value` lines, a blank line and the notes:
+One `###` heading per item under its part, then its fields as `- key: value` lines, a blank line and the notes:
 
 - `id`: unique, lowercase words joined by dashes; never reused.
-- `area`: one of Bots, Research, App, Alerts, Ops.
-- `tags`: topics to filter by, comma-separated (for example Main bot, Volume bot, Performance, Watchlist,
-  Overnight, Charts, Backtest, Deploy, Telegram, Docs).
+- `status`: one of open, active (being worked on), waiting (blocked; say on what in `waiting`), done.
+- `tags`: topics to filter by, comma-separated (for example Main bot, Volume bot, Exits, Charts, Backtest, Deploy).
 - `waiting` (optional): what the item is blocked on: a person, a key, a decision, another item.
-- `source`: where it came from (a PR, a doc, a session).
-- `done` (Done lane only): the date and the PR that finished it.
+- `log` (Research items): the research log entry it comes from, as `file: heading` (the logs are on the
+  `research/indi-v2` branch, `docs/research/`).
+- `source`: where it came from (a PR, a doc, a session, the board).
+- `done` (done items only): the date and the PR or session that finished it.
 
-`npm run backlog` checks the file and prints the items as JSON for the board. The board's page is
-[backlog-board.html](backlog-board.html): republish it to the same URL with the Artifact tool (`url`) after a change;
-its items live in the page's store (`items/<id>`), written from that JSON.
+Each part keeps its latest 10 done items. `npm run backlog` checks the file and prints the items as JSON for the
+board. The board's page is [backlog-board.html](backlog-board.html): republish it to the same URL with the Artifact
+tool (`url`) after a change to the page; its items live in the page's store (`items/<id>`), written from that JSON.
 
-The detailed acceptance criteria of the older items are in [the October 15 product backlog](product-backlog.md).
+The backlog before 2026-11-06 (Now / Next / Later lanes) is in git history; older acceptance criteria are in
+[the October 15 product backlog](product-backlog.md).
 
-## Now
+## Analysis
 
-### Deploy the October 26 merges
+## Research
 
-- id: deploy-oct26
-- area: Ops
-- tags: Deploy, Site
-- waiting: A deploy from your Mac (cloud sessions have no Cloudflare access)
-- source: Session of Oct 26
-
-PRs #160 to #171 merged on Oct 26: overnight prices, the IBKR-style watchlist and dark mode, risk pages per
-account, Volume bot changes, read-only for visitors. Deploy the site from a clean main with `npm run deploy`, and
-redeploy the trading service on Railway where its code changed. Done when the live site shows the moon prices at
-night and the Risk pages load.
-
-### Check overnight prices on the live site
-
-- id: night-prices-live
-- area: App
-- tags: Watchlist, Overnight
-- waiting: The deploy
-- source: PR #160
-
-After the deploy, open the watchlist between 20:00 and 04:00 New York (02:00 to 10:00 Israel time until New York
-changes its clocks on Nov 1, then 03:00 to 11:00) and confirm night prices show with a moon. If every row shows C,
-Alpaca refused the BOATS request and the endpoint fell back to SIP.
-
-### Check the trade page and the account chart on real trades
-
-- id: trade-page-live
-- area: App
-- tags: Main bot, Portfolio, Charts
-- waiting: The deploy
-- source: Session of Oct 26
-
-After the deploy, open the CRWV 66 call of Oct 26 (Portfolio → Bot → Trades): the chart should show Oct 26 with
-"Buy 16:53" and "Sell 18:47" at their minutes, the time held shaded, and the summary above it. Check the account
-chart's day labels and drag across it to see each trade. Then, with a trade open, tap it under Live trades: its
-window should show the buy at its minute and "Still open"; on the bots' pages, zoom the map, see the ◆ on the held
-stock and the banner on the next entry. Built and checked on synthetic data only; no live data was reachable from
-the session.
-
-### Compare the Main bot's paper trades with the backtest
-
-- id: main-bot-vs-backtest
-- area: Bots
-- tags: Main bot, Performance, Backtest
-- source: Research log; session of Oct 25
-
-For each live entry, replay the same day with the bot-backtest skill: same signal minute, contract and exits
-expected. Log every difference with its cause (contract picker, fills, settings, data). This is the only clean
-test left; the rules were chosen on 2024 to Oct 2026 data.
-
-### Explain the CRWD trade of October 23
-
-- id: crwd-oct23
-- area: Bots
-- tags: Main bot, Backtest
-- waiting: The entry line from the Bot tab (time, contract, signal note)
-- source: Session of Oct 25
-
-The live bot bought CRWD on Oct 23, but none of the 21 backtest lists has it. CRWD is the backtest's thinnest
-name: 30 of 37 signals in the favorites year were rejected as illiquid. Most likely the live picker chose another
-strike than the backtest's (broker delta and quotes vs delta from the last option bar), or a setting differs.
-
-### Start the Volume bot: dry run, then paper
+### Main bot 2.10: run the live check
 
-- id: volume-bot-start
-- area: Bots
-- tags: Volume bot
-- waiting: The account's keys (STRANGLE_ALPACA_API_KEY) on the trading service
-- source: docs/state.md, Volume bot task
+- id: main-210-live-check
+- status: active
+- tags: Main bot, Live check
+- log: bots.md: Champion (Main bot)
+- source: Research log, 2026-11-02
 
-The bot is merged and starts off and in dry run. Add the paper account's keys, run a week in dry run and compare
-its decisions with the backtest (parity was 497 of 499), then switch to paper.
+2.10 has been the champion since 2026-11-02, but stage 5 (`bot-live-check`: one month of the app's backtest against
+the research twin trade by trade, and the end-to-end run) has not run on it. The twin had to be brought up from 2.7.0
+to 2.10 first; the 2026-11-06 commits record app vs twin 40 of 45 trades identical. Left: explain or fix the other 5,
+then the end-to-end run.
 
-## Next
+### Volume 1.3.0: run the live check
 
-### Backtest runs go on when the phone leaves the page
+- id: volume-130-live-check
+- status: open
+- tags: Volume bot, Live check
+- log: bots.md: The Volume bot
+- source: Research log, 2026-11-04
 
-- id: backtest-server-runs
-- area: App
-- tags: Backtest, Deploy
-- waiting: A deploy from your Mac, after `npx wrangler queues create sma-backtest-parts`
-- source: Session of Nov 4
+1.3.0 (the shock must also be at least 3x the day's pace) has been live as the candidate since 2026-11-04. Stage 5 has
+not run on it, nor on 1.1.0 or 1.2.0 before it. It becomes champion only when the live check passes.
 
-On the phone, leaving the Backtest page cut the run off. The server now runs the whole run, and the page reads its
-progress and trades during the run and catches up when it comes back. A refresh shows the run still going, and
-"Recent runs" lists the latest 10
-([docs/tasks/backend-backtest-jobs.md](tasks/backend-backtest-jobs.md)). Left: create the queue, deploy from
-`main`, then try it on the phone.
+### Sell above the bid: decide what is left
 
-### Build the bots' Review page
+- id: main-sale-above-bid
+- status: waiting
+- tags: Main bot, Exits, Fills
+- waiting: The owner's call: stop here, try a live trial, or test the narrow case
+- log: best-algorithms.md: Sell above the bid: from the mid, stepped down to the bid over 5 minutes
+- source: Research log, 2026-11-04 to 11-06
 
-- id: review-page
-- area: App
-- tags: Main bot, Volume bot, Backtest, Charts, Performance
-- waiting: Your comments on the design (reminder Fri Oct 30)
-- source: The user, Oct 28 ("important"); design https://claude.ai/artifact/LSMxNqsoDhSHcYQgraAqo3
+Candidate 2.11 (sell from the mid, stepped down to the bid over 5 minutes) was withdrawn on 2026-11-05: a backtest bug
+booked a stale bid, and with real fill sizes looks 3-4 were not better or tied. The 2026-11-06 release checks still
+went on (SL_TICK, SL_BUSY, SL_LATE). Not closed: (1) the one case that looked real, wide-spread morning-gap sales at
+09:41 where the bid rose into the limit (PANW, BA), never tested on its own; (2) a live trial on real sales, the only
+way to prove a fill; (3) two live risks the audit found: the broker stop is off during the sale window, and only one
+working order per symbol (508 sales came within 5 minutes of the previous one).
 
-Important (the user's). A Review page under each bot (Trades · Activity · Review · Settings · Risk) to
-analyse a day, a week or any period. The user's four: a time period (day, week, month, since a
-version, custom), the gain / loss graph on top (live, real prices, backtest, Indi), switching the
-strategy for the period and for one trade, and running a backtest to see if it acts differently.
-Added: the "why live ≠ backtest" steps (missed signals, other contract or entry, exit timing, fills),
-the day and week analyst verdicts, the period's numbers (win rate, worst drop, time under water,
-without the best 5) and the trade list matched to the backtest. Replays use the recorded prices
-(PR #191: every order step, every second held, the Volume bot's watches); known versions are run
-nightly, custom runs on the Mac. Next: the user's comments on the design, then the spec.
+### Strength exit after 15 minutes at t 1.0: close to a candidate
 
-### Support Interactive Brokers on the Watchlist and in Trading
+- id: main-strength-dwell
+- status: open
+- tags: Main bot, Exits
+- log: best-algorithms.md: The strength exit: t 1.0 held 15-45 minutes, on top of 0.5
+- source: Research log, 2026-11-06
 
-- id: ibkr-watchlist-trading
-- area: App
-- tags: IBKR, Watchlist, Orders, Portfolio
-- source: The user, Oct 28 ("important")
+dw15 (also sell when t stays at 1.0 or under for 15 minutes) tied 2.10: check -0.4% fair / -0.5% Favorites, no giant
+touched, the changed check trades better (fair -$52K to -$33K, Favorites -$14K to +$1K). The account is still a little
+under 2.10 and the worst drop is higher (23.6% to 25.1%). Open question: is a smaller drop in losers worth a tie in
+money, or a variant (dw15 on the D2 legs only, a dwell at 0.75) worth one more look?
 
-Important (the user's). Today IBKR is only a bot broker (the Main bot's Broker switch, behind the Gateway) and market
-data is Alpaca's. Wanted: IBKR as a full broker in the app. On the Watchlist, IBKR quotes and the IBKR account's
-positions next to Alpaca's. In Trading, the owner's IBKR account (live trades, orders, history, risk) and the
-trade ticket able to buy and sell there, with the same risk rules (paper first, never short, stops). Decide per
-page which broker is shown and how to switch.
+### Pyramid on confirmed D2 moves + trim the weak picks
 
-### Fill the Volume bot's benchmark band
+- id: main-pyramid-trim
+- status: open
+- tags: Main bot, Sizing
+- log: bots.md: Next to test (saved)
+- source: Research log, 2026-10-25
 
-- id: volume-bot-benchmark
-- area: Bots
-- tags: Volume bot, Performance
-- source: PR #167
+Saved by the owner on 2026-10-25 ("save it for now; we build on top of it"): $1,667,924 / 12% on 2.5 + cheap + the
+next strike for D2. Never re-run on today's champion (2.10, the fixed walk, the tune / check split).
 
-`config/volume-bot-benchmark.json` is still a placeholder of zeros, so the Benchmark page compares live P&L with
-nothing. Fill it from the backtest: expected P&L by day with a band.
+### Re-entry with D2 after an SPY-driven stop
 
-### Add time under water to the research reports
+- id: main-reentry-d2
+- status: waiting
+- tags: Main bot, Entries
+- waiting: The owner's three answers (asked 2026-10-25)
+- log: bots.md: Next to test (saved)
+- source: Research log, 2026-10-25
 
-- id: time-under-water
-- area: Research
-- tags: Backtest, Performance
-- source: Session of Oct 25
+After an entry-day stop that was mostly SPY's doing, re-enter when D2 since the exit >= 1.5 with t >= 1.2 and volume
 
-The longest stretch from an equity high to the next one, in trades and in sessions; the current stretch, shown
-apart; and the average drawdown (pain index). Add it to the account function the reports share and to the
-Backtest Reports page. Then decide whether "what counts as better" should require no longer worst stretch.
+> = 1.5x; R0 control without D2. Not run.
 
-### Prove the live alert pipeline end to end
+### Buy near the fair price (a microprice limit)
 
-- id: alert-pipeline
-- area: Alerts
-- tags: Collector, Telegram
-- source: docs/product-backlog.md, P0 item 1
+- id: main-fair-limit-entry
+- status: open
+- tags: Main bot, Entries, Fills
+- log: best-algorithms.md: Second-level entries; the fair-price limit re-checked
+- source: Research log, 2026-10-27
 
-Confirm the collector's feed and symbol count, reconnects and restarts, duplicate suppression and the 120-minute
-cooldown on production data. Follow one real alert from Alpaca through storage, analysis and Telegram back to the
-right alert on the site.
+Better on the minute model, unproven on the second data (2026-10-27). Not re-tested since the quote-minute fix
+(2026-11-01) or on 2.10. The size-aware fill proof built for the sale test (Databento prints with sizes) could settle
+it.
 
-### Measure alert quality on a held-out period
+### The fading shock: a lead waiting for more trades
 
-- id: alert-quality
-- area: Alerts
-- tags: Alert quality, Performance
-- source: docs/product-backlog.md, P0 item 2
+- id: volume-fading-shock
+- status: open
+- tags: Volume bot, Exits
+- log: volume-bot.md: Exits from the trade review
+- source: Research log, 2026-11-03
 
-Confirm production runs the approved 4× thresholds and 120-minute cooldown. Count alerts and their follow-through
-by session (pre-market, regular, after-hours). Measurement only: no new filter without approval.
+After a shock, sell when the volume falls under 3x usual within 5 minutes (B5): better on both halves (+$1.2K /
++$2.0K, 5 of 6 trades better, no giant touched, same drop), but only 6 trades and a level chosen after the look.
+Re-test when more shock trades exist, with the level set before the run.
 
-### Check that backtest alerts match live alerts
+## App
 
-- id: live-backtest-parity
-- area: Alerts
-- tags: Backtest
-- source: docs/product-backlog.md, P0 item 3
+## Data & Infra
 
-Rebuild alerts from SIP bars for a few symbols and compare with stored live alerts on overlapping days. Make
-missing sessions and feed differences visible; confirm a cached run equals a cold run within the Worker's limits.
+### An MCP server on our database, to run backtests from any computer
 
-### Overnight candles on the charts
+- id: infra-mcp-backtest
+- status: open
+- tags: MCP, Backtest, Remote
+- source: The owner, 2026-11-06
 
-- id: night-candles
-- area: App
-- tags: Charts, Overnight
-- source: PR #160, not included
-
-The stock page candles, the full-screen chart and the day chart still end at 20:00 because they read SIP bars.
-Fetch BOATS minute bars for 20:00 to 04:00 New York and draw them as a night session.
-
-### Refresh the state doc and the task statuses
-
-- id: refresh-docs
-- area: Ops
-- tags: Docs
-- source: Repo review, Oct 26
-
-`docs/state.md` mixes current notes with September ones and still calls merged branches "not merged". Many task
-files show stale statuses (for example, Indi bot work "on feat/indi-bot"). Bring them up to date.
-
-## Later
-
-### Deploy automatically from main
-
-- id: auto-deploy
-- area: Ops
-- tags: Deploy
-- waiting: Your decision, and a Cloudflare token in GitHub secrets
-- source: Session of Oct 26
-
-A GitHub Action that deploys the Worker after CI passes on main would remove the manual step. The alternative is
-to let cloud sessions deploy: allow api.cloudflare.com and add `CLOUDFLARE_API_TOKEN` in the environment settings.
-
-### Forward-test the two steady 0DTE clusters
-
-- id: zero-dte-forward
-- area: Research
-- tags: 0DTE, Performance
-- source: docs/research/best-algorithms.md (research/indi-v2)
-
-Log them in the paper bot's log, not as rules: (1) yesterday's high/low breakout, thirds at +50% and +100% with a
-30% trail, delta 0.45; (2) a new day-high breakout on the favorites, the −40% stop only, delta 0.20 to 0.30. Both
-are small and rest on few trades.
-
-### Write up Indi's 0DTE study
-
-- id: indi-0dte-writeup
-- area: Research
-- tags: Indi, 0DTE
-- source: Session of Oct 24
-
-The analysis of his 256 same-day trades without SPX lives only in chat: mostly the nearest expiry on expiry day,
-half size, closer strikes, out within 20 minutes; Mon to Wed big names in 2026 win, Fridays lose; two news trades
-carry the total. Add it to `docs/tasks/research-indi-summary.md`.
-
-### Log the fade cut on carried days
-
-- id: fade-cut
-- area: Research
-- tags: Main bot, Performance
-- source: docs/research/best-algorithms.md (research/indi-v2)
-
-Candidate from the research log: from 10:00 on a carried day, sell the rest when strength vs SPY drops under 0.5
-and volume is under normal. It helped only 4 trades and was picked from 5 variants, so log it in the paper bot,
-don't make it a rule.
-
-### Compare Alpaca and IBKR fills in Both mode
-
-- id: alpaca-vs-ibkr
-- area: Bots
-- tags: Main bot, IBKR, Performance
-- source: PRs #142, #150
-
-After 20 or more trades in Both mode, compare each fill with the bid and ask kept on every record since Oct 25,
-and the fees per broker. Decide which broker the Main bot should use.
-
-### Decide whether to unmute the volume alerts
-
-- id: unmute-alerts
-- area: Alerts
-- tags: Telegram
-- waiting: Your decision
-- source: docs/state.md
-
-The volume alerts were muted in Telegram on Oct 26 when the Volume bot took over their chat. They still show in
-the app.
-
-### Show Telegram delivery state for each alert
-
-- id: delivery-state
-- area: Alerts
-- tags: Telegram
-- source: docs/product-backlog.md, P1 item 6
-
-Show pending, sent, failed or expired for recent alerts, with a short failure reason and a retry only where it
-cannot send a duplicate.
-
-### Add the IV change to overnight option estimates
-
-- id: vega-estimate
-- area: App
-- tags: Portfolio, Overnight
-- source: docs/product-backlog.md, P1 item 4
-
-Add vega × change in implied volatility only when both are known; otherwise label the estimate partial instead of
-assuming no change. Tests for up, down and unknown.
-
-### Check what is left of the order lifecycle test
-
-- id: order-lifecycle
-- area: Bots
-- tags: Main bot, Volume bot, Orders
-- source: docs/product-backlog.md, P1 item 5
-
-The plan was to watch partial fills, stops, cancels and sales in market hours and confirm a position never goes
-short. The bots now exercise much of this every day; check their records and test only what they don't cover.
-
-### Price alerts through the night
-
-- id: price-alerts-night
-- area: App
-- tags: Overnight, Price alerts
-- source: PR #160, not included
-
-Price alerts check SIP prices before and after hours, but not overnight prints from 20:00 to 04:00 New York.
-
-### Measure readiness for about 500 symbols
-
-- id: symbols-500
-- area: Alerts
-- tags: Collector
-- source: docs/product-backlog.md, P2 item 7
-
-Benchmark the collector, Alpaca limits, storage and Cloudflare request budgets at growing watchlist sizes, then
-show the cost and reliability trade-offs before changing production.
-
-### Choose the next alert family
-
-- id: next-alert-family
-- area: Alerts
-- tags: New signal
-- waiting: Your choice of family and formula
-- source: docs/product-backlog.md, P2 item 8
-
-Candidates from the original brief: breakouts and new highs or lows, momentum, pullbacks. Implementation starts
-only after you approve the exact formula, timeframe, thresholds and cooldown.
-
-### Split the web bundle for faster phone loads
-
-- id: bundle-split
-- area: Ops
-- tags: Site, Speed
-- source: npm run build warning
-
-The build warns that a chunk is over 500 KB. Load Backtest, Portfolio and the bot pages on demand so the
-watchlist opens faster on a phone.
-
-## Done
-
-### A tap on the bots' maps picks the stock; signaled stocks back in the list
-
-- id: done-map-pick
-- area: App
-- tags: Main bot, Volume bot, Charts
-- source: Session of Oct 28
-- done: 2026-10-28, PR #196
-
-A tap on a stock's dot or row picks it on the map and in the list; its page opens only from the card's button.
-Stocks that signaled today stay in the Main bot's list (META at the corner was missing). Both lists are sorted by how near each dot is to its corner on the map. Both pages read every
-second; the bots' numbers still move once a minute, when each minute's bar closes.
-
-### The bots' maps on a log scale; skipped stocks off the list
-
-- id: done-map-scale-find
-- area: App
-- tags: Main bot, Volume bot, Charts
-- source: Session of Oct 27
-- done: 2026-10-27, PR #186
-
-Both maps' axes are logarithmic, so the stocks near 1× spread out. Stocks already out for today stay on the map but
-leave the list; a "Find a stock" box finds any watched stock.
-
-### A shorter open position, with the entry against its bid and ask
-
-- id: done-position-brief
-- area: App
-- tags: Main bot, Volume bot, Portfolio, Charts
-- source: Session of Oct 27
-- done: 2026-10-27, PR #185
-
-An open position shows three numbers (the rest folded), the stop, then the trade in brief: the entry on a bid /
-mid / ask bar with where the fill landed, where it stands now, and a smaller chart of the stock and the option.
-Closed trades' windows show the same bar. The Watchlist opens sorted by today's volume, most first. Both bots' map sections carry less text.
-
-### Ongoing trades open their window; the bots' maps zoom and mark trades
-
-- id: done-live-trade-maps
-- area: App
-- tags: Main bot, Volume bot, Portfolio, Charts
-- source: Session of Oct 27
-- done: 2026-10-27, PR #184
-
-An open position under Live trades shows the trade's window instead of the day chart. Both bots' maps zoom, read
-every 2 seconds, mark held stocks with a ◆, open a stock's page on a tap, and a green or red banner and an "In
-trade" sign show the bot's entries. The volume bot's trades are told from its own records.
-
-### Dark mode for the whole app
-
-- id: done-dark-mode
-- area: App
-- tags: Dark mode
-- source: PR #160, not included; the user on Oct 27
-- done: 2026-10-27, PR #181
-
-Every section, a stock's page, the price alerts, the trade window and the charts follow one theme, with the
-sun/moon button in every page's header. Colours are tokens with a light and a dark value; a test keeps new rules
-on them. Checked on synthetic data in screenshots only.
-
-### The account chart as one clean line
-
-- id: done-account-line
-- area: App
-- tags: Portfolio, Charts
-- source: Session of Oct 26, chart option A
-- done: 2026-10-26, PR #179
-
-The user chose option A of five chart designs: the account value large on top with its change, one line from the
-starting value through each closed trade, evenly spaced, no grid or axis numbers. Dragging across the line shows
-each trade's value, symbol, result and Israel time in the header.
-
-### Trade page shows the real entry and exit; a cleaner account chart
-
-- id: done-trade-page
-- area: App
-- tags: Main bot, Portfolio, Charts
-- source: Session of Oct 26
-- done: 2026-10-26, PR #175
-
-The trade's own day is drawn even during its session; fills are drawn at their minutes with the time held shaded; a
-summary gives the entry, exits, time held, best and worst while held and the option after the sale. The account
-chart is a step line with precise axis labels and day ticks that survive Israel's clock change.
-
-### The backlog in the repo, kept live by every session
-
-- id: done-backlog
-- area: Ops
-- tags: Docs
-- source: Session of Oct 26
-- done: 2026-10-26, PR #172
-
-This file, the board's search and tags, and the Backlog rules in AGENTS.md.
-
-### Watchlist: overnight prices, IBKR's look and dark mode
-
-- id: done-watchlist
-- area: App
-- tags: Watchlist, Overnight, Dark mode
-- source: Session of Oct 26
-- done: 2026-10-26, PRs #160, #161, #166
-
-Night prices from BOATS with a moon and change from the close, IBKR's columns and number font, dark mode with a
-switch; followed by aligned phone columns and IBKR's number size.
-
-### Risk settings per account
-
-- id: done-risk
-- area: Bots
-- tags: Risk, Main bot, Volume bot
-- source: docs/state.md
-- done: 2026-10-26, PRs #154, #159, #163
-
-Each account has its own loss limits and brake on a Risk page in each bot's tab; a trade's risk is counted at
-its stop.
+Reach the database (D1 and the bar / book stores) through an MCP server, so a backtest can be started and read from
+any computer or a cloud session, not only from the Mac that holds the research worktree. To decide: which runs it
+exposes (the app's backtest engine, the research scripts or both), read-only vs runs that write, and how it is
+authorized.
