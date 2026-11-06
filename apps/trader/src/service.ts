@@ -463,11 +463,19 @@ export class TraderService {
     const waitMs = number(body, "waitMs");
     if (waitMs !== undefined && !(waitMs >= 1000 && waitMs <= 3_600_000))
       throw new RequestError("waitMs must be 1000–3600000");
+    // Minutes walked down from the mid before the bid (the bot's 2.11 sale).
+    const midSteps = number(body, "midSteps");
+    if (
+      midSteps !== undefined &&
+      !(Number.isInteger(midSteps) && midSteps >= 0 && midSteps <= 10)
+    )
+      throw new RequestError("midSteps must be a whole number 0–10");
     const request = {
       contract: symbol,
       qty,
       ...(stopPct === undefined ? {} : { stopPct }),
       ...(waitMs === undefined ? {} : { waitMs }),
+      ...(midSteps ? { midSteps } : {}),
       ...postLines(body),
     };
     const jobId = this.start("sell", symbol, request, () =>

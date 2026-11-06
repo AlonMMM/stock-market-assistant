@@ -204,6 +204,15 @@ function groups(s: BotSettings): Group[] {
           fmt: (v) => `+${v}%`,
         },
         {
+          key: "saleStepMin",
+          label: "Sale from the mid",
+          help: "Each sale starts as a limit at the mid and is lowered evenly toward the bid each minute for this many minutes, then sells at the bid. 0 sells at the bid at once.",
+          min: 0,
+          max: 10,
+          step: 1,
+          fmt: (v) => (v === 0 ? "off: at the bid" : `${v} min`),
+        },
+        {
           key: "safetyStopPct",
           label: "Broker safety stop",
           help: "A stop order at the broker, in case the bot is down. Should sit below the stop above.",

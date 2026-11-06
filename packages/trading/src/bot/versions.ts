@@ -56,7 +56,8 @@ export type RuleKey =
   | "sizeSteps"
   | "breakEvenLock"
   | "lockArmPct"
-  | "volumeTiers";
+  | "volumeTiers"
+  | "saleStepMin";
 
 export type Rules = Pick<BotSettings, RuleKey>;
 
@@ -96,6 +97,7 @@ export const ruleKeys: readonly RuleKey[] = [
   "breakEvenLock",
   "lockArmPct",
   "volumeTiers",
+  "saleStepMin",
 ];
 
 export interface BotVersion {
@@ -143,6 +145,7 @@ const v1: Rules = {
   breakEvenLock: false,
   lockArmPct: 50,
   volumeTiers: [],
+  saleStepMin: 0,
 };
 // 2.0: the V2 champion (t 1.8, the overnight cap, the news filter).
 const v2: Rules = {
@@ -257,6 +260,14 @@ const v210: Rules = {
     { atLeast: 2.5, pct: 150 },
   ],
 };
+// 2.11 (the owner, 2026-11-06: "yes", after research/indi-v2 sale_limit.py
+// M5-c5): 2.10 with every sale walked down from the mid: a limit at the mid,
+// lowered evenly toward the first bid each minute (mid, then 4/5, 3/5, 2/5,
+// 1/5 of the way above it), then the bid after 5 minutes. Real quotes, 2%:
+// tune fair $711,585 / 15% and Favorites $545,898 / 13% vs 2.10's $620,535 /
+// $449,178; check $1,126,476 / 21% and $272,542 / 22% vs $957,771 / $226,846.
+// Fill proven only by option prints; the live check settles it.
+const v211: Rules = { ...v210, saleStepMin: 5 };
 
 /** Every version, oldest first. */
 export const botVersions: readonly BotVersion[] = [
@@ -363,6 +374,14 @@ export const botVersions: readonly BotVersion[] = [
       "2.9's rules. The size follows the signal's volume since the open (× its usual for that time): under 1.75× half the size, from 1.75× the whole size, from 2.5× one and a half (its pyramid add too).",
     rules: v210,
   },
+  {
+    id: "2.11.0",
+    name: "2.10 + the sale from the mid",
+    since: "2026-11-06",
+    notes:
+      "2.10's rules. Every sale starts as a limit at the mid and is lowered evenly toward the bid each minute for 5 minutes, then sells at the bid.",
+    rules: v211,
+  },
 ];
 
 /** The version a new bot runs. */
@@ -415,6 +434,7 @@ export const minorKeys: ReadonlySet<RuleKey> = new Set<RuleKey>([
 const offAtZero: ReadonlySet<RuleKey> = new Set<RuleKey>([
   "restStopPct",
   "nightCapPct",
+  "saleStepMin",
 ]);
 
 /** How big a change of one rule from `from` to `to` is, or null when it is the same. */

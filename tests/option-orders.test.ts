@@ -7,6 +7,7 @@ import type {
 import { buyWithLadder } from "../packages/trading/src/ladder.js";
 import {
   exitQty,
+  midSteps,
   sellAtBid,
   type ExitClient,
 } from "../packages/trading/src/exit.js";
@@ -410,6 +411,7 @@ function holding(
   fillAt: number | null,
   held = 8,
   stopAt: number | null = 0.6,
+  ask = 9,
 ) {
   const calls: string[] = [];
   let quotes = 0;
@@ -438,7 +440,7 @@ function holding(
           ]
         : [],
     quote: async () =>
-      q(symbol, bids[Math.min(quotes++, bids.length - 1)]!, 9, 0.1),
+      q(symbol, bids[Math.min(quotes++, bids.length - 1)]!, ask, 0.1),
     sellLimit: async (_s, qty, price) => {
       calls.push(`sell ${qty} @ ${price}`);
       sale = {
@@ -544,6 +546,66 @@ test("sell: a remainder that had no stop gets the default one", async () => {
   await sellAtBid(client, symbol, "2", brisk);
   // 40% below the 1.00 entry.
   assert.deepEqual(calls, ["sell 2 @ 0.9", "stop 6 @ 0.6"]);
+});
+
+test("mid steps: from the mid evenly toward the bid, whole cents, under the ask", () => {
+  assert.deepEqual(midSteps(0.8, 1.0, 5), [0.9, 0.88, 0.86, 0.84, 0.82]);
+  assert.deepEqual(midSteps(0.8, 1.0, 1), [0.9]);
+  // A one-cent spread: the mid is capped at the ask less a cent, the bid.
+  assert.deepEqual(midSteps(0.1, 0.11, 2), [0.1, 0.1]);
+  // No bid, a crossed book or no steps: nothing to walk.
+  assert.deepEqual(midSteps(0, 1, 5), []);
+  assert.deepEqual(midSteps(1, 1, 5), []);
+  assert.deepEqual(midSteps(0.8, 1, 0), []);
+});
+
+// A step a minute, read once a minute (the live sale reads every 5 seconds).
+const walk = {
+  sleep: async () => {},
+  intervalMs: 60_000,
+  maxMs: 600_000,
+  fromMid: { steps: 5, stepMs: 60_000 },
+};
+
+test("sell from the mid: lowered a step a minute until a buyer takes it", async () => {
+  const { client, calls } = holding([0.8], 0.86, 8, 0.6, 1.0);
+  const result = await sellAtBid(client, symbol, "all", walk);
+  assert.deepEqual(calls, [
+    "cancel stop",
+    "sell 8 @ 0.9",
+    "reprice @ 0.88",
+    "reprice @ 0.86",
+  ]);
+  assert.equal(result.sold, 8);
+  assert.equal(result.price, 0.86);
+});
+
+test("sell from the mid: no buyer over the walk, then the bid", async () => {
+  const { client, calls } = holding([0.8], 0.8, 8, 0.6, 1.0);
+  const result = await sellAtBid(client, symbol, "all", walk);
+  assert.deepEqual(calls, [
+    "cancel stop",
+    "sell 8 @ 0.9",
+    "reprice @ 0.88",
+    "reprice @ 0.86",
+    "reprice @ 0.84",
+    "reprice @ 0.82",
+    "reprice @ 0.8",
+  ]);
+  assert.equal(result.price, 0.8);
+});
+
+test("sell from the mid: never under the bid of the moment", async () => {
+  // The bid comes up to 0.87 in minute 3, over that minute's 0.86 step.
+  const { client, calls } = holding([0.8, 0.8, 0.87], 0.87, 8, 0.6, 1.0);
+  const result = await sellAtBid(client, symbol, "all", walk);
+  assert.deepEqual(calls, [
+    "cancel stop",
+    "sell 8 @ 0.9",
+    "reprice @ 0.88",
+    "reprice @ 0.87",
+  ]);
+  assert.equal(result.price, 0.87);
 });
 
 test("exit post: partial and full", () => {

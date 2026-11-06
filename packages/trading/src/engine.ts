@@ -289,6 +289,8 @@ export interface SellRequest {
   qty: string; // all, half or a number of contracts
   stopPct?: number; // for a remainder that had no stop before
   waitMs?: number;
+  // Minutes the sale walks down from the mid before the bid (exit.ts fromMid).
+  midSteps?: number;
   tag?: string; // as in BuyRequest
   note?: string;
 }
@@ -1474,6 +1476,7 @@ export class TradeEngine {
     await this.refuseLeg(symbol);
     const result = await sellAtBid(this.broker, symbol, request.qty, {
       ...(request.waitMs === undefined ? {} : { maxMs: request.waitMs }),
+      ...(request.midSteps ? { fromMid: { steps: request.midSteps } } : {}),
       stopPct: request.stopPct ?? defaultStopPct,
       ...this.timing,
     });

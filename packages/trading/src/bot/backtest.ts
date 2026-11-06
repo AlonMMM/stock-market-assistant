@@ -34,6 +34,7 @@ import {
   type Prior,
 } from "./signal.js";
 import { maxSizePct, parseOccSymbol, type OptionQuote } from "../options.js";
+import { midSteps } from "../exit.js";
 
 // The Main bot's backtest for the app's Backtest page (the user, 2026-10-30:
 // "test bot on a period on stocks ... the results is total gain/loss, and a
@@ -681,6 +682,31 @@ async function walkQuotes(
     });
     state = { ...state, qty: Math.round(rem * nominal) };
   };
+  // The sale walked down from the mid (2.11, research sale_limit.py M<n>):
+  // the levels from the decision book; the sale fills at a level when the
+  // option trades at or above it in its minute, or that minute closes with
+  // the bid up to it; after the last level, the bid as that minute closed.
+  let walkDay: {
+    quotes: readonly QuoteMinute[];
+    bars: Map<number, MinuteBar>;
+    length: number;
+  } | null = null;
+  const salePrice = (book: QuoteMinute) => {
+    const levels = midSteps(book.bid, book.ask, s.saleStepMin);
+    if (!walkDay || !levels.length || levels[0]! <= book.bid) return book.bid;
+    for (let i = 0; i < levels.length; i++) {
+      const j = book.m + 1 + i;
+      if (j >= walkDay.length) return book.bid;
+      const level = levels[i]!;
+      if (level <= book.bid) return book.bid;
+      const bar = walkDay.bars.get(j);
+      const q = bookAt(walkDay.quotes, j);
+      if ((bar && bar.h >= level - 1e-9) || (q && q.bid >= level - 1e-9))
+        return level;
+    }
+    const last = Math.min(book.m + levels.length, walkDay.length - 1);
+    return bookAt(walkDay.quotes, last)?.bid ?? book.bid;
+  };
   const sell = (
     date: string,
     book: QuoteMinute,
@@ -694,7 +720,7 @@ async function walkQuotes(
       minute: book.m,
       kind: "sell",
       share: q,
-      price: book.bid,
+      price: salePrice(book),
       reason,
       book: { bid: book.bid, ask: book.ask },
     });
@@ -731,6 +757,14 @@ async function walkQuotes(
     const booksEnd = day.length ? day.at(-1)!.m + quoteAge - 1 : -1;
     const bars = booksEnd < length - 1 ? await tradeBars(date) : [];
     const barAt = new Map(bars.map((b) => [b.m, b]));
+    walkDay =
+      s.saleStepMin > 0
+        ? {
+            quotes: day,
+            bars: new Map((await tradeBars(date)).map((b) => [b.m, b])),
+            length,
+          }
+        : null;
     for (let m = k === 0 ? w.minute + 1 : 0; m < length; m++) {
       const book = bookAt(day, m);
       const over = m > booksEnd;

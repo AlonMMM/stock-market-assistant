@@ -1970,6 +1970,8 @@ export class IndiBot {
         stopPct: s.safetyStopPct,
         // Re-priced at the bid every few seconds for this long (user 2026-10-23).
         waitMs: sellWaitMs,
+        // 2.11: first walked down from the mid, a step a minute.
+        ...(s.saleStepMin > 0 ? { midSteps: s.saleStepMin } : {}),
         tag: botTag,
         note: why,
       })
