@@ -30,7 +30,6 @@ import {
   type VolumeDay,
 } from "./day-review.js";
 import type { VolumeDataStore } from "./volume-data.js";
-import { syncVolumeDate, type TraderBooks } from "./volume-daily.js";
 
 export interface ReviewDeps {
   reviews: D1DayReviews;
@@ -149,29 +148,20 @@ async function addTicks(
   for (const t of ticks ?? []) addSample(into, t.contract ?? contract, t);
 }
 
-/** The Volume bot's alert books: every candidate contract around each alert. */
+/**
+ * The Volume bot's traded contracts, every second held, for its sales after
+ * the alert windows. The alert windows themselves are already in D1: the
+ * scheduled step at 16:20 New York keeps them (option_seconds), and the
+ * backtest reads them there first.
+ */
 async function volumeSamples(
   d: ReviewDeps,
   date: string,
   live: VolumeDay,
 ): Promise<Samples> {
   const out: Samples = new Map();
-  // The traded contracts, every second held.
   for (const t of live.trades)
     if (t.day === date && t.leg) await addTicks(d, out, t.id, t.leg.contract);
-  const data = await traderGet<{ books?: TraderBooks[] }>(
-    d,
-    `/v1/strangle/alert-data?day=${date}`,
-  );
-  for (const b of data.books ?? []) {
-    if (b.day !== date) continue;
-    b.contracts.forEach((c, i) => {
-      for (const s of b.samples) {
-        const q = s.books[i];
-        if (q) addSample(out, c.symbol, { at: s.at, bid: q[0], ask: q[1] });
-      }
-    });
-  }
   return out;
 }
 
@@ -216,12 +206,11 @@ export async function startReview(
       );
       spec = parseJobSpec(mainJob(live, date).spec);
     } else {
-      // The day's alerts and 1-second books, as the scheduled step keeps
-      // them at 16:20 New York; the review may come first.
+      // The day's alerts and 1-second books come from our own D1, kept by
+      // the scheduled step at 16:20 New York; never copied again here.
       if (!(await d.volume.daySynced(date)))
-        await syncVolumeDate(
-          { trader: d.trader, store: d.volume, fetcher: d.fetcher },
-          date,
+        throw new Error(
+          "the Volume bot's data of the day is saved at 16:20 New York; start the review after it",
         );
       const live = await liveVolume(d, date);
       books = await keepBooks(d, date, await volumeSamples(d, date, live));

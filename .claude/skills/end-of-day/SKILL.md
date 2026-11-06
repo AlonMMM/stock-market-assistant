@@ -1,6 +1,6 @@
 ---
 name: end-of-day
-description: The end-of-day review of both live bots (the Main bot and the Volume bot), run every trading day at 23:05 Israel time by a scheduled cloud routine - the app's backtest of the day on the live settings and stocks, set beside the live trades trade by trade (entry time, entry and exit prices, money at paper and at real prices), a verdict on whether the backtest was too optimistic or too pessimistic, and a written analysis saved on each bot's Analyse page in the app. Use when the routine fires, or when the user asks for the end-of-day review, "live vs backtest today", or to redo a day's review.
+description: The end-of-day review of both live bots (the Main bot and the Volume bot), run every trading day at 23:25 Israel time by a scheduled cloud routine - the app's backtest of the day on the live settings and stocks, set beside the live trades trade by trade (entry time, entry and exit prices, money at paper and at real prices), a verdict on whether the backtest was too optimistic or too pessimistic, and a written analysis saved on each bot's Analyse page in the app. Use when the routine fires, or when the user asks for the end-of-day review, "live vs backtest today", or to redo a day's review.
 user-invocable: true
 argument-hint: "[YYYY-MM-DD] [main|volume]"
 ---
@@ -21,7 +21,7 @@ Ground rules: read-only towards the bots. Never call `buy`, `sell`, `set_stop`, 
 
 ## 1. The day
 
-- No argument: the New York session that has just closed (`TZ=America/New_York date +%F`; at 23:05 Israel time the
+- No argument: the New York session that has just closed (`TZ=America/New_York date +%F`; at 23:25 Israel time the
   US close has passed). A day the market was closed (weekend, holiday) is answered by `day_review_start` with
   "date must be a session that has closed": stop there and say so in one line.
 - `YYYY-MM-DD`: that session (a redo); add `force: true` to the start.
@@ -146,4 +146,6 @@ tab → Analyse).
   `DAY_REVIEW_TOKEN` secret is missing (setup, see `wrangler.connector.jsonc`); report it, nothing else to do.
 - "The trading service answered 404 for /v1/bot/day": the trader on Railway is older than the day-review routes.
 - Many `estimates`: the day's books were not recorded for the backtest's contracts (it picked other contracts than
-  live); say so, and expect a fairer picture once the day's Databento books are uploaded (`force` a redo then).
+  live); say so. Never download option data for the review: everything it reads is already in our database.
+- Volume: "the Volume bot's data of the day is saved at 16:20 New York": the scheduled step that saves the day's
+  alerts and 1-second books has not run yet; wait 10 minutes and start again.

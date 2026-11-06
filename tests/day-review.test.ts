@@ -807,3 +807,49 @@ test("day review page: the running sums by account, the fallback causes, the bot
     "The backtest made $176 more",
   );
 });
+
+test("day review: the Volume bot's review reads the day saved in D1, never the trader's books again", async () => {
+  const db = new SqliteD1(":memory:");
+  const jobs = new BacktestJobs(db);
+  const volume = new D1VolumeData(db);
+  const live: VolumeDay = {
+    day,
+    settings: {},
+    watching: ["INTC"],
+    signals: [],
+    trades: [],
+  };
+  const traderCalls: string[] = [];
+  const fetcher = (async (input: URL) => {
+    const url = String(input);
+    traderCalls.push(url.replace("https://trader.test", "").split("?")[0]!);
+    if (url.includes("/v1/strangle/day")) return Response.json(live);
+    return Response.json({ error: "no" }, { status: 404 });
+  }) as unknown as typeof fetch;
+  const deps: ReviewDeps = {
+    reviews: new D1DayReviews(db),
+    jobs,
+    start: async () => {},
+    trader: { url: "https://trader.test", token: "read" },
+    quotes: { put: async () => {} },
+    volume,
+    now: () => at(395),
+    fetcher,
+  };
+  const start = () =>
+    handleDayReviews(deps, {
+      method: "POST",
+      path: `/api/day-reviews/volume/${day}/start`,
+      query: {},
+      body: {},
+    });
+  // Before the 16:20 step saved the day: a clear failure, nothing copied.
+  const early = (await start()).body as { status: string; error: string };
+  assert.equal(early.status, "failed");
+  assert.match(early.error, /16:20 New York/);
+  await volume.markDay(day, 3, 40);
+  const started = (await start()).body as { status: string };
+  assert.equal(started.status, "running");
+  assert.equal((await jobs.list(reviewOwner, "volume")).length, 1);
+  assert.ok(!traderCalls.includes("/v1/strangle/alert-data"));
+});
