@@ -291,6 +291,23 @@ export function nightsHeld(steps: readonly SimStep[]): number | null {
   return new Set(steps.map((x) => x.date)).size - 1;
 }
 
+/**
+ * The cheapest buy whose return is shown. Under 5 cents a tick is most of the
+ * price, so the return is huge and says nothing (the user, 2026-11-06: "we pay 0
+ * to buy their options and it caused the % return to be huge").
+ */
+export const MIN_PRICED_BUY = 0.05;
+
+/** The return, or null when the buy was too cheap to read it. */
+export function pricedReturn(
+  ret: number | null,
+  buy: number | null,
+): number | null {
+  if (ret === null || buy === null) return ret;
+  if (buy < MIN_PRICED_BUY) return null;
+  return ret;
+}
+
 /** What the sales got back over what the buy paid, minus 1. */
 export function stepsReturn(steps: readonly SimStep[]): number | null {
   const cost = steps[0]?.price;
@@ -329,7 +346,7 @@ function skipRow(k: SimSkip, i: number): SignalRow {
     ask: c?.book?.ask ?? null,
     delta: c?.delta ?? null,
     volume30: c?.volume30 ?? null,
-    ret: w?.ret ?? null,
+    ret: pricedReturn(w?.ret ?? null, w?.steps[0]?.price ?? null),
     nights: w ? nightsHeld(w.steps) : null,
     model: w !== null,
     modelled: w?.modelled ?? false,
@@ -377,7 +394,7 @@ export function signalRows(
         ask: t.book?.ask ?? null,
         delta: t.delta,
         volume30: t.volume30,
-        ret: stepsReturn(t.steps),
+        ret: pricedReturn(stepsReturn(t.steps), t.steps[0]?.price ?? null),
         nights: nightsHeld(t.steps),
         model: false,
         modelled: false,

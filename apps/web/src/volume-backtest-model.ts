@@ -11,7 +11,7 @@ import {
   type VolumeSignal,
 } from "../../../packages/trading/src/strangle/backtest.js";
 import type { StrangleSettings } from "../../../packages/trading/src/strangle/settings.js";
-import { stepMs, type SortDir } from "./bot-backtest-model.js";
+import { MIN_PRICED_BUY, stepMs, type SortDir } from "./bot-backtest-model.js";
 import { fillMarkers, type ExitRow, type Story } from "./trade-story-model.js";
 
 // The Volume bot's backtest on the Backtest page (the user, 2026-10-31: "lets
@@ -255,6 +255,7 @@ export function volumeCsv(rows: readonly VolumeRow[]): string {
     const s = r.signal;
     const t = s.trade;
     const taken = r.account?.status === "taken";
+    const priced = rowReturn(r, 0) !== null;
     return [
       s.date,
       s.symbol,
@@ -273,7 +274,7 @@ export function volumeCsv(rows: readonly VolumeRow[]): string {
       t?.exitReason,
       taken ? r.account!.qty : null,
       taken ? r.account!.pnl.toFixed(2) : null,
-      taken ? (r.account!.ret * 100).toFixed(1) : null,
+      taken && priced ? (r.account!.ret * 100).toFixed(1) : null,
       s.reach === undefined ? null : Math.round(s.reach * 100),
       rowHeld(r)?.minutes,
       t?.book?.bid,
@@ -283,7 +284,7 @@ export function volumeCsv(rows: readonly VolumeRow[]): string {
       s.whatIf?.contract,
       s.whatIf?.buy,
       s.whatIf?.sell,
-      s.whatIf ? (s.whatIf.ret * 100).toFixed(1) : null,
+      s.whatIf && priced ? (s.whatIf.ret * 100).toFixed(1) : null,
     ]
       .map(csvCell)
       .join(",");
@@ -393,16 +394,21 @@ export function volumeBacktestStory(
 
 /**
  * A row's return: the taken trade's; the trade's own when the account refused
- * it ("if taken"); else the what-if's (a model); null without any.
+ * it ("if taken"); else the what-if's (a model); null without any, or when
+ * the buy was under MIN_PRICED_BUY.
  */
 export function rowReturn(
   r: VolumeRow,
   fee: number,
 ): { ret: number; kind: "trade" | "refused" | "model" } | null {
-  if (r.bought && r.account) return { ret: r.account.ret, kind: "trade" };
   const t = r.signal.trade;
-  if (t) return { ret: tradeReturn(t, fee), kind: "refused" };
   const w = r.signal.whatIf;
+  let buy: number | null = null;
+  if (t) buy = t.buy;
+  else if (w) buy = w.buy;
+  if (buy !== null && buy < MIN_PRICED_BUY) return null;
+  if (r.bought && r.account) return { ret: r.account.ret, kind: "trade" };
+  if (t) return { ret: tradeReturn(t, fee), kind: "refused" };
   if (w) return { ret: w.ret, kind: "model" };
   return null;
 }

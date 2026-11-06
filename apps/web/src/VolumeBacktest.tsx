@@ -286,8 +286,10 @@ export function VolumeSignalList({
   const refusedByAccount = reasons
     .filter((r) => r.account)
     .reduce((n, r) => n + r.count, 0);
-  const modelled = rows.filter((r) => !r.bought && r.signal.whatIf);
-  const modelWon = modelled.filter((r) => r.signal.whatIf!.ret > 0).length;
+  const modelled = rows.filter(
+    (r) => !r.bought && rowReturn(r, 0)?.kind === "model",
+  );
+  const modelWon = modelled.filter((r) => rowReturn(r, 0)!.ret > 0).length;
   const download = () => {
     const url = URL.createObjectURL(
       new Blob([volumeCsv(shown)], { type: "text/csv" }),
