@@ -138,7 +138,38 @@ signals of the day and why none was taken (from the rows' `why`, or "no signal")
 `day_review_save {bot, date, verdict, headline, markdown, differences}` for each bot (and for the redone previous day). In the
 final message, 3–5 lines: for each bot the verdict and headline, every **live bug** or **backtest bug** found (with
 its evidence), any redone day, anything that failed or is still running, and where to read it (Trading → the bot's
-tab → Analyse).
+tab → Analyse). Then step 8.
+
+## 8. Go over the board
+
+User request, 2026-11-06: "go over this board every evening after you are finishing to do the analyze of the trading
+day. And if I had changes in production, closed the relevant thing ... and if not, do nothing. Also ... pop up a
+notification for me with the top 3 or 5 stuff ... but only if you think that something is important."
+
+The board: https://claude.ai/artifact/VnRvCnUXzfyXX1a3n9LCiN, its items in the store's `items` collection
+(`ArtifactData` `list`, `collection: "items"`). The board is read as it stands: the owner edits it too. Format and
+parts: [docs/backlog.md](../../../docs/backlog.md).
+
+1. **What reached production since the last review**: the merges on `origin/main` since the previous trading day's
+   23:25 Israel time (`git fetch origin main`, then `git log origin/main --since=... --format='%h %ad %s'`), and,
+   from today's reviews, a bot version that went live (`version` on the day's trades) or a candidate that became the
+   champion.
+2. **Close what they finished**: an item is done only when a merge or a live change plainly finishes what the item
+   asks for (its title and notes), not when it only touches it. Then `update` the item, pinned with `if_version`:
+   `status: "done"`, `done: "<YYYY-MM-DD>, PR #<n>"` (or the version that went live), `updated` now. A merge that
+   finishes part of an item: add one line to its notes on what is left; the status stays. Nothing finished: change
+   nothing. Never delete an item, never add one, never reorder.
+3. **The notification**: pick at most 5 open, active or waiting items that matter now: a candidate or a decision
+   waiting for the owner, a live check owed on a version that is already live, a risk to live trading or the live
+   data, an item today's reviews make urgent (a live bug found today belongs in the bugs dashboard, not here). Send
+   one `PushNotification` (status `proactive`, one line, under 200 characters, the items' short names in order of
+   importance, for example "Board: 1) OK on sale-above-bid 2) 2.10 live check 3) ..."), **only when at least one of
+   them is important**. A quiet board sends nothing.
+4. In the final report add one line: the items closed (with their PR) or "board: nothing closed", and whether a
+   notification was sent.
+
+The routine does not commit: `docs/backlog.md` takes the board's changes at the next session that syncs them
+(AGENTS.md, Backlog).
 
 ## When it breaks
 
