@@ -70,6 +70,19 @@ def walk_steps(t, m, c):
     return rcost, real, sim.result(rcost, real, 0.01)
 
 
+def leg(sym, date, m, right, price, b):
+    """A bought leg on pick b at minute m: the walk, the fills, the nights held and the book as the minute closed."""
+    w = walk_steps(dict(sym=sym, date=date, right=right, minute=str(m), price=price), m, b)
+    if w is None: return None
+    rcost, real, r1 = w
+    q = RB.quote(b[0], date, m + 1)
+    days = sorted({d for d, *_ in real})
+    return dict(minute=m, right=right, contract=b[0], strike=b[2], expiry=b[1], delta=round(abs(b[3]), 3), price=b[4],
+                vol30=b[5], paid=round(rcost, 4), r1=round(r1, 4), usd=round(1e4 * max(-1, r1)), nights=len(days) - 1,
+                book=bool(RB.quote(b[0], date, m)), bid=None if not q else q[0], ask=None if not q else q[1],
+                fills=[dict(date=d, minute=mm, side=sd, q=q_, px=px, rule=rule) for d, mm, sd, q_, px, rule in real])
+
+
 def rows():
     """Every r30 alert minute 15:30-15:44 in the tune weeks on the two lists, with why it is not a candidate."""
     R = [r for f in sorted(glob.glob(f"{LR.B}/s_late_20*.csv")) for r in csv.DictReader(open(f))]
@@ -133,18 +146,17 @@ def one(job):
             elif b[4] < LR.floor_of(sym): e["status"] = f"Too cheap (${b[4]:.2f})"
             elif b[5] < 200: e["status"] = f"Thin ({b[5]} in 30 min)"
             else:
-                t = dict(sym=sym, date=date, right=r["right"], minute=str(m), price=r["price"])
-                w = walk_steps(t, m, b)
+                w = leg(sym, date, m, r["right"], r["price"], b)
                 if w is None: e["status"] = "No price path"
-                else:
-                    e["status"] = "Traded"
-                    rcost, real, r1 = w
-                    trade = dict(minute=m, right=r["right"], contract=b[0], strike=b[2], expiry=b[1], delta=round(abs(b[3]), 3),
-                                 price=b[4], vol30=b[5], paid=round(rcost, 4), r1=round(r1, 4), usd=round(1e4 * max(-1, r1)),
-                                 book=bool(RB.quote(b[0], date, m)),
-                                 fills=[dict(date=d, minute=mm, side=sd, q=q, px=px, rule=rule) for d, mm, sd, q, px, rule in real])
+                else: e["status"] = "Traded"; trade = w
         ev.append(e)
-    i = CAL.index(date)
+    model = False
+    if not trade:   # the what-if: the first alert's 0.15 pick bought anyway, the same exits (the app's "model" row)
+        e0 = ev[0]; r0 = next(r for r in alerts if r["minute"] == e0["minute"] and r["right"] == e0["right"])
+        cands = cu.candidates(sym, date, e0["minute"], e0["right"], float(r0["price"]))
+        b = min(cands, key=lambda c: abs(c[3] - 0.15)) if cands else None
+        if b and b[4] > 0: trade = leg(sym, date, e0["minute"], e0["right"], r0["price"], b); model = trade is not None
+    if trade: trade["model"] = model
     days = [date]
     if trade and any(f["date"] != date for f in trade["fills"]):
         days += sorted({f["date"] for f in trade["fills"] if f["date"] != date})
@@ -167,7 +179,7 @@ def one(job):
             x["opt"] = opt
             x["ov"] = [ob[m][5] if m in ob else 0 for m in range(390)]
         chart["days"].append(x)
-    status = "Traded" if trade else ev[0]["status"]
+    status = "Traded" if trade and not model else ev[0]["status"]
     return dict(sym=sym, date=date, lists=alerts[0]["lists"], first=ev[0]["minute"], n=len(ev), status=status, off=chart["il"],
                 own=[dict(minute=c["minute"], right=c["right"], traded=c["traded"]) for c in champ],
                 events=ev, trade=trade), chart
@@ -186,7 +198,7 @@ def main():
     json.dump([info for info, _ in X], open(f"{out}/alerts.json", "w"), separators=(",", ":"))
     for mo, d in months.items(): json.dump(d, open(f"{out}/days/{mo}.json", "w"), separators=(",", ":"))
     st = collections.Counter(i["status"] for i, _ in X)
-    print(dict(st), "trades:", sum(1 for i, _ in X if i["trade"]), flush=True)
+    print(dict(st), "trades:", sum(1 for i, _ in X if i["trade"] and not i["trade"]["model"]), flush=True)
 
 
 if __name__ == "__main__":
