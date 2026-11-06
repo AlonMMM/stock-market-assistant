@@ -80,7 +80,12 @@ import {
   type FastWindows,
 } from "../../../packages/trading/src/strangle/fast.js";
 import type { BotMarket, BotTrading } from "./bot.js";
-import { FastTape, fetchFastBars, fetchFastDay } from "./strangle-fast.js";
+import {
+  FastTape,
+  fetchFastBars,
+  fetchFastDay,
+  stockSeconds,
+} from "./strangle-fast.js";
 import { AlertBooks, type AlertBookWatch } from "./alert-books.js";
 import {
   tradeCash,
@@ -198,6 +203,15 @@ const soldOf = (result: unknown): number => {
 const shockHoldChecks = shockRules.holdChecks;
 const shockHoldWithin = shockRules.holdWithin;
 const shockMaxSpread = shockRules.maxSpread;
+// The cross window's last second is read this long after it ends (the trades
+// feed is a second or so behind); a watch Alpaca could not read ends this
+// long after the window at the latest.
+const crossReadGrace = 2;
+const lateCrossLimit = 45;
+// A closed minute's alerts are read from this second of the next minute,
+// once its bars are in, and from minuteForceRead whatever is in.
+const minuteFirstRead = 2;
+const minuteForceRead = 8;
 
 /** The alert's name at the start of a watch's detail. */
 /** A shock trade's time left: its touch window until its stock touches a side line, then shockHoldWithin. */
@@ -260,6 +274,8 @@ export class StrangleBot {
   private today = new Map<string, Map<number, MinuteBar>>();
   private done = -1;
   private busy = false;
+  // The new minute's alerts are being read (tick or the 1-second watch).
+  private minuteBusy = false;
   // Trades whose leg is being bought (the 10-second tick and the 1-second watch both look).
   private entering = new Set<string>();
   private summarized: string | null = null;
@@ -392,12 +408,7 @@ export class StrangleBot {
       await this.loadPremarket(date);
     const last = Math.min(wall - 570 - 1, closeMinute - 1);
     await this.settle();
-    if (last > this.done && last >= 0) {
-      await this.refresh(date, Math.max(0, this.done - 2), last);
-      for (let m = Math.max(this.done + 1, last - 2); m <= last; m++)
-        if (s.enabled) await this.entries(date, m);
-      this.done = last;
-    }
+    if (last > this.done && last >= 0) await this.newMinute(date, last, true);
     // Every tick: the minute's bars arrive a few seconds after it closes.
     if (last >= 0) this.scanned = this.scan(last);
     // The minute-close exit reads the open trades' last closed minute: fetch
@@ -424,6 +435,60 @@ export class StrangleBot {
       this.summarized = date;
       await this.summary(date);
       void this.keepFastBars(date);
+    }
+  }
+
+  /**
+   * The closed minutes' alerts. Without `force` only once the last minute's
+   * bars are in (every stock that had the minute before has it too): read
+   * too early, a bar missing its last trades could hide an alert.
+   */
+  private async newMinute(date: string, last: number, force: boolean) {
+    if (this.minuteBusy) return;
+    this.minuteBusy = true;
+    try {
+      await this.refresh(date, Math.max(0, this.done - 2), last);
+      if (!force && !this.minuteIn(last)) return;
+      const s = this.settings();
+      for (let m = Math.max(this.done + 1, last - 2); m <= last; m++)
+        if (s.enabled) await this.entries(date, m);
+      this.done = last;
+    } finally {
+      this.minuteBusy = false;
+    }
+  }
+
+  private minuteIn(m: number): boolean {
+    for (const symbol of this.symbols) {
+      const bars = this.today.get(symbol);
+      if (bars?.has(m - 1) && !bars.has(m)) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Called every second: a closed minute's alerts as soon as its bars are in,
+   * not at the next 10-second tick. The tick found them 12-20 s after the
+   * close (2026-11-05: median 14 s), past most of the 15-second cross window.
+   */
+  async watchMinute(): Promise<void> {
+    if (this.day === null || this.minuteBusy) return;
+    const now = this.o.now();
+    const { date, minute: wall } = newYork(now);
+    const close = coreClose(date);
+    if (close === null || date !== this.day) return;
+    const last = Math.min(wall - 570 - 1, close - 570 - 1);
+    if (!(last > this.done && last >= 0)) return;
+    // Alpaca's bar lands a second or two after the close.
+    const second = Math.floor(now / 1000) % 60;
+    if (wall - 570 - 1 === last && second < minuteFirstRead) return;
+    try {
+      await this.newMinute(date, last, second >= minuteForceRead);
+    } catch (error) {
+      this.event(
+        "error",
+        `Minute read failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -466,6 +531,19 @@ export class StrangleBot {
     try {
       for (const t of waiting) {
         const stock = prices.get(t.symbol);
+        if (this.crossWatch(t, s)) {
+          const crossed = await this.crossedSince(t, s).catch(() => undefined);
+          if (crossed) {
+            await this.enter(t.id, crossed.side, m, stock ?? crossed.price, s);
+            continue;
+          }
+          const over = this.lateBy(t) - s.crossMaxSeconds;
+          // Read: a slow cross once the window's last second is surely in.
+          // Unread (Alpaca failed): the next second asks again, for a while.
+          if (crossed === null && over > crossReadGrace) this.slowCross(t, s);
+          else if (over > lateCrossLimit) this.slowCross(t, s);
+          continue;
+        }
         if (this.tooLate(t, s)) {
           this.slowCross(t, s);
           continue;
@@ -1483,6 +1561,38 @@ export class StrangleBot {
     return s.crossFilter && this.lateBy(t) > s.crossMaxSeconds;
   }
 
+  /**
+   * A minute alert's side with the cross filter is judged on the seconds
+   * since the alert, as the backtest (strangle/backtest.ts findSide): the
+   * alert is found some seconds after its minute closed, and a side crossed
+   * before that counts. Without the trades feed, the last trade each second.
+   */
+  private crossWatch(t: StrangleTrade, s: StrangleSettings): boolean {
+    return !t.shock && !t.fast && s.crossFilter && !!this.o.market.trades;
+  }
+
+  /** The first second within the window beyond a side line; null: none so far. */
+  private async crossedSince(
+    t: StrangleTrade,
+    s: StrangleSettings,
+  ): Promise<{ side: Leg; price: number; second: number } | null> {
+    const from = (t.alertMinute + 1) * 60;
+    const to = Math.min(from + s.crossMaxSeconds, this.sessionSecond());
+    if (to < from) return null;
+    const seconds = await stockSeconds(
+      this.o.market,
+      t.symbol,
+      newYorkToUtc(t.day, 570),
+      from,
+      to,
+    );
+    for (const [second, price] of seconds) {
+      const side = sideOf(price, t.stockRef, t.unit, s);
+      if (side) return { side, price, second };
+    }
+    return null;
+  }
+
   /** The cross filter: no side within crossMaxSeconds of the alert ends the watch. */
   private slowCross(t: StrangleTrade, s: StrangleSettings) {
     this.close(t, "no side fast enough after the alert");
@@ -1521,6 +1631,12 @@ export class StrangleBot {
         this.marks.set(t.id, { leg: null, stock, at: this.o.now() });
         if (t.day !== date) {
           this.close(t, "no side in time");
+          continue;
+        }
+        // A minute alert's cross is the 1-second watch's (on the seconds since the alert).
+        if (this.crossWatch(t, s)) {
+          if (this.lateBy(t) > s.crossMaxSeconds + lateCrossLimit)
+            this.slowCross(t, s);
           continue;
         }
         // A shock's 20-s touch is the 1-second watch's (this copy was read
@@ -1673,7 +1789,8 @@ export class StrangleBot {
     t.side = side;
     t.sideMinute = m;
     const late = this.lateBy(t);
-    if (this.tooLate(t, s))
+    // A minute alert's cross was judged on its own second (crossedSince).
+    if (!this.crossWatch(t, s) && this.tooLate(t, s))
       return fail("slow_cross", `the side ${late} s after the alert`);
     // A same-week expiry (later than the next session) asks for the stronger burst.
     const weekly = !t.shock && (t.expiry ?? t.day) > nextSession(t.day);

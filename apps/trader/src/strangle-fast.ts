@@ -25,6 +25,30 @@ export const toTrade = (t: AlpacaTrade): Trade => ({
   ...(t.u ? { correction: t.u } : {}),
 });
 
+/**
+ * The stock's last trade each second from session second `from` to `to`
+ * (09:30 New York = 0), by Alpaca's bar rules, as the backtest reads them
+ * (volume-backtest.ts secondsFromTrades): only the seconds that traded.
+ */
+export async function stockSeconds(
+  market: BotMarket,
+  symbol: string,
+  openMs: number,
+  from: number,
+  to: number,
+): Promise<[number, number][]> {
+  if (!market.trades) return [];
+  const startMs = openMs + from * 1000;
+  const endMs = openMs + (to + 1) * 1000;
+  const builder = new TradeBarBuilder(1, startMs, endMs);
+  await market.trades([symbol], startMs, endMs, (_, list) => {
+    for (const t of list) builder.add(toTrade(t));
+  });
+  return builder
+    .bars()
+    .map((b) => [b.start - openMs / 1000, b.close] as [number, number]);
+}
+
 /** A session in 10-second slots from its bars. */
 export function dayFromBars(
   bars: readonly TradeBar[],

@@ -576,6 +576,10 @@ const strangle = (() => {
 const strangleTimer = strangle
   ? setInterval(() => void strangle.tick(), 10_000)
   : null;
+// A closed minute's alerts, every second until its bars are in (not the next 10-second tick).
+const minuteTimer = strangle
+  ? setInterval(() => void strangle.watchMinute(), 1_000)
+  : null;
 // The stocks waiting for their side, every second (one price call, only while one waits).
 const sideTimer = strangle
   ? setInterval(() => void strangle.watchSides(), 1_000)
@@ -780,6 +784,7 @@ async function stop() {
   clearInterval(shortWatch);
   if (botTimer) clearInterval(botTimer);
   if (strangleTimer) clearInterval(strangleTimer);
+  if (minuteTimer) clearInterval(minuteTimer);
   if (sideTimer) clearInterval(sideTimer);
   if (fastTimer) clearInterval(fastTimer);
   if (booksTimer) clearInterval(booksTimer);

@@ -19,7 +19,8 @@ import {
   burstAtSecond,
   burstOf,
 } from "../packages/trading/src/strangle/decide.js";
-import { FastTape } from "../apps/trader/src/strangle-fast.js";
+import { FastTape, stockSeconds } from "../apps/trader/src/strangle-fast.js";
+import { secondsFromTrades } from "../packages/market-data/src/volume-backtest.js";
 import type { BotMarket } from "../apps/trader/src/bot.js";
 import type { AlpacaTrade } from "../packages/market-data/src/alpaca.js";
 
@@ -208,4 +209,34 @@ test("60-second alert: the tape reads each trade once across overlapping polls",
   assert.equal(day.v[0], 300);
   assert.equal(day.c[0], 10.1);
   assert.equal(day.v[1], 300);
+});
+
+test("cross look-back (2026-11-06): the bot's seconds since the alert are the backtest's, trade for trade (odd lots and late prints left out alike)", async () => {
+  const open = Date.parse("2026-11-05T14:30:00Z");
+  const at = (sec: number, ms = 0) =>
+    new Date(open + sec * 1000 + ms).toISOString();
+  const trades: AlpacaTrade[] = [
+    { t: at(5940, 100), x: "V", p: 674.4, s: 100, i: 1, z: "A" },
+    { t: at(5951, 200), x: "V", p: 675.36, s: 200, i: 2, z: "A" },
+    // An odd lot: not a second's last price under the bar rules.
+    { t: at(5952, 100), x: "V", p: 675.8, s: 5, i: 3, z: "A", c: ["I"] },
+    { t: at(5952, 300), x: "V", p: 675.375, s: 100, i: 4, z: "A" },
+    { t: at(5953, 900), x: "V", p: 675.55, s: 100, i: 5, z: "A" },
+  ];
+  const market = {
+    async trades(
+      _s: string[],
+      from: number,
+      to: number,
+      onPage: (s: string, t: AlpacaTrade[]) => void,
+    ) {
+      onPage(
+        "MU",
+        trades.filter((x) => Date.parse(x.t) >= from && Date.parse(x.t) < to),
+      );
+    },
+  } as unknown as BotMarket;
+  const bot = await stockSeconds(market, "MU", open, 5940, 5955);
+  assert.deepEqual(bot, secondsFromTrades(trades, open, 5940, 5955));
+  assert.deepEqual(bot.at(-2), [5952, 675.375]);
 });
