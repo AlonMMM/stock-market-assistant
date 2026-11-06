@@ -303,16 +303,17 @@ real quotes, sim.py `spy_turn` (new): armed on a day held once SPY is 1% or more
 and pre-market included); then when SPY gives back 0.3 / 0.5 / 0.8% from its extreme our way since the arm, with the
 option up, sell 25% (q) / half (h) / all (a) of what is left, once a day. S = SPY only; SS = also no new day extreme of
 the stock our way for 10 minutes. Set before running; the pick: money at least 0.98 of 2.10 on both lists, then the win
-rate. Look 1 of the big-day version (look 2 of the SPY-turn idea).
+rate (so the "all" versions, the most tune money, were not the picks). Look 1 of the big-day version (look 2 of the
+SPY-turn idea).
 
 | 2%, vs 2.10 (fair / Favorites) | Tune: money, winners | Check: money, winners | Changed (tune / check, fair) |
 |---|---|---|---|
 | 2.10 | $620,535 / $449,178; 15.7% / 16.5% | $957,771 / $226,846; 14.6% / 15.6% | - |
-| S03q / S03h 🎯 / S03a | 1.034 / 1.038 · **1.068 / 1.076, 16.6% / 17.6%** · 1.103 / -, 16.4% | S03h **0.886 / 1.012**, 15.6% / 16.7% | 22 / 28 |
-| S05q / S05h / S05a | 1.026 / 1.027 · 1.061 / - · 1.119 / -, 16.6% | - | 13 / - |
+| S03q / S03h 🎯 / S03a | 1.034 / 1.038 · **1.068 / 1.076, 16.6% / 17.6%** · 1.103 / 1.118, 16.4% / 17.3% | S03h **0.886 / 1.012**, 15.6% / 16.7% | 22 / 28 |
+| S05q / S05h / S05a | 1.026 / 1.027 · 1.061 / 1.063 · 1.119 / 1.123, 16.6% / 17.6% | - | 13 / - |
 | S08q / S08h / S08a | 0.993 / 0.992 · 0.995 / 0.993 · 0.990 / 0.984 | - | 8 / - |
-| SS03q / SS03h 🎯 / SS03a | 1.036 / 1.040 · **1.074 / 1.082, 16.6% / 17.6%** · 1.114 / - | SS03h **0.890 / 1.016**, 15.6% / 16.7% | 22 / 28 |
-| SS05q / SS05h / SS05a | 1.026 / 1.028 · 1.061 / 1.063 · 1.118 / - | - | 12 / - |
+| SS03q / SS03h 🎯 / SS03a | 1.036 / 1.040 · **1.074 / 1.082, 16.6% / 17.6%** · 1.114 / 1.129 | SS03h **0.890 / 1.016**, 15.6% / 16.7% | 22 / 28 |
+| SS05q / SS05h / SS05a | 1.026 / 1.028 · 1.061 / 1.063 · 1.118 / 1.124 | - | 12 / - |
 | SS08 (q / h / a) | 0.993 / 0.992 · 0.994 / 0.992 · 0.988 / 0.983 | - | 8 / - |
 
 No candidate. The rule touches 22-30 trades a half (about 4%), lifts the win rate by 1 point on every list and half,
