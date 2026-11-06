@@ -52,6 +52,14 @@ What the live bot runs when its settings are reset to defaults: the default vers
 
 ## Candidate
 
+**2.12 (2026-11-06, waiting for the upgrade question): 2.10 + one add when the move confirms** (`add_confirm.py`
+a10m10s50; best-algorithms.md "Add once the stock confirms the move"): on the entry day, once the stock is +1.0 S30
+(the stock's typical 30-minute move) our way from the signal price within 10 minutes of the signal, buy 50% of the first
+leg's contracts more, once, at the next minute's quote (chase to the ask); all of 2.10's exits then run on the whole
+position. Research overlay `{"stock_stages": {"add": {"within": 10, "move": 1.0, "share": 0.5}}}` on 2.10. 2%: tune fair
+$972,938 / 21.5%, Favorites $698,068 / 25.7%; check $1,902,939 / 29.1%, $315,829 / 27.3% (2.10: $620,535 / $449,178 /
+$957,771 / $226,846). To settle in the review: the 5% position cap with the add and the D2 pyramid.
+
 **WITHDRAWN 2026-11-05 (the release audit, NO-GO; see best-algorithms.md "Sell above the bid").** A backtest bug
 (`sale_limit.py:94` books the decision minute's bid when a later step reaches the bid, 1-4 minutes stale) inflated it;
 fixed, M5 is 1.053 / 1.132 tune, 1.109 / 1.117 check, and the gain disappears once the minute's prints must cover our

@@ -1,5 +1,11 @@
 # Best algorithms log
 
+> 🏆 **Candidate 2.12 (2026-11-06): 2.10 + one add when the move confirms** (`add_confirm.py` a10m10s50, set before
+> running; look 2 of the add idea, look 1 on 2.10): once the stock is +1.0 S30 our way within 10 minutes of the signal,
+> buy 50% of the first leg more at the next minute's real quote. 2%, vs 2.10: tune fair $972,938 / 21.5% (1.568),
+> Favorites $698,068 / 25.7% (1.554); check fair $1,902,939 / 29.1% (1.987), Favorites $315,829 / 27.3% (1.392); better
+> without the best 5 on all four. More drop, but it beats 2.10 sized up to 3% on money AND drop on all four lists.
+
 > 🏆 **New champion 2026-10-27 (later the same day): the champion below + early entry** (buy at the first second inside the signal minute the rule holds): 1-second real fills, tune $330,459 vs $306,551, check $484,041 vs $428,884 (fair list), Favorites 12m $238,078 vs $212,222 (export_early.py, Bot vs Indi `champ-early` / `champ-1s`). Not live yet.
 
 > ⚠️ **2026-11-01: the real-quote fills were a minute late; app and research now agree trade for trade.** The app
@@ -290,6 +296,39 @@ V1 (C signal t ≥ 2 vs SPY × β, day volume ≥ 1.5×, delta 0.15, your stop +
 paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
+
+### Add once the stock confirms the move, on 2.10 (2026-11-06, CANDIDATE 2.12: a10m10s50 wins tune and check on both lists, without the best 5 too; more drop, the typical trade worse)
+
+The user: "big move in the stock is for sure a better place to use options to gain. I just wonder what's the best way
+to tackle it", then "go" on adding once the move proves itself. Tested 2026-10-31 on the staged-exit version (checks
+off, fair list only): add 50% at +1.0 S30 within 10 minutes, tune +29% / check +81%, giant-driven, Favorites never run.
+`add_confirm.py` on 2.10 (reproduced to the dollar), real quotes, sim.py `stock_stages {"add": ...}` alone: once, `share`
+of the first leg more, bought at the next minute (mid + half the spread, chased to the ask), money on top of the trade,
+all of 2.10's exits then on the whole position. Set before running, 12 versions: within 10 / 20 minutes, +0.5 / +1.0 /
++1.5 S30, add 25% / 50%; U the 2026-10-31 rule a10m10s50 (always on check), N the other 11 (one pick, most money).
+Look 2 of the add idea, look 1 on 2.10 and on the Favorites.
+
+| 2%, vs 2.10 (fair / Favorites) | Tune: money, drop, winners | Check: money, drop, winners | Without the best 5 (tune / check) |
+|---|---|---|---|
+| 2.10 | $620,535 / $449,178; 15.7% / 14.5%; 15.7% / 16.5% | $957,771 / $226,846; 23.6% / 22.6%; 14.6% / 15.6% | $138,044 / $110,057 · $169,718 / $74,497 |
+| 2.10 at 3% | $794,867 / $546,403; 24.4% / 27.0% | $1,082,694 / $240,889; 32.2% / 32.1% | - |
+| a10m10s50 🎯 U | **1.568 / 1.554**; 21.5% / 25.7%; 15.1% / 15.8% | **1.987 / 1.392**; 29.1% / 27.3%; 13.8% / 14.5% | $170,121 / $138,572 · $243,189 / $81,665 |
+| a20m10s50 🎯 N | 1.514 / 1.522; 22.3% / 26.4% | 1.434 / **0.935**; 30.2% / 28.7% | · $166,834 / $56,915 |
+| a10m05s50 / a20m05s50 (tune) | 1.467 / 1.985 · 1.423 / 1.952; 23-27% | - | - |
+| 25% adds (tune, min of lists) | 1.216-1.329 (a10m10s25 1.286); 16-20% | - | - |
+
+The trades with an add (main legs at $10K, 1%, a10m10s50): tune fair 133, sum +$1.87M -> +$2.49M, median -$1,335 ->
+-$3,292, non-giant sum -$73K -> -$295K, giants 16 -> 18; check fair 141, +$1.35M -> +$1.89M, median -$1,477 -> -$3,382,
+non-giant -$148K -> -$347K, giants 13 -> 16; Favorites check 141, +$926K -> +$1.22M, non-giant -$140K -> -$321K.
+
+Verdict: CANDIDATE (2.12). The pre-set rule passes every bar: both halves, both lists, without the best 5, and 2024 /
+2025 / 2026 the same sign as 2.10 (Favorites tune 2024 -$66K vs -$58K). It is not just more size: at 2% it makes more
+than 2.10 at 3% with a smaller drop on all four lists. What it costs: the drop (+5-11 points at 2%; at 3% 37-42%), the
+win rate (-0.6 to -1.1 points), and the typical added trade (the median about doubles its loss; the add is paid near the
+ask after the move and the move often stalls). The money is the giants: 13-16 of the ~140 added trades a half hold more
+than all of the gain. Not a knife edge in the 10-minute window (+0.5 / +1.0 / +1.5 all win tune), but adding up to
+minute 20 lost the Favorites check (0.935). Not modelled: the 5% position cap with the D2 pyramid add on a 150% leg
+(150% x 1.5 = 4.5% at 2%, over 5% with the pyramid; at 3% over 5% on any 150% leg); the add's fill size on thin contracts.
 
 ### A late window that resets the day's signals, and a night for late trades that are not winners, on 2.10 (2026-11-06, not better: the pick wins tune by giants, loses check by far)
 
