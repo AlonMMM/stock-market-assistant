@@ -693,7 +693,10 @@ async function walkQuotes(
     bars: Map<number, MinuteBar>;
     length: number;
   } | null = null;
-  const salePrice = (book: QuoteMinute, at: number) => {
+  // The minute a walk ends (its fill, or its last step): the live bot makes
+  // no other sale of the position until then (research sale_limit.py SL_BUSY).
+  let busy = { date: "", until: -1 };
+  const salePrice = (date: string, book: QuoteMinute, at: number) => {
     const levels = midSteps(book.bid, book.ask, s.saleStepMin);
     if (!walkDay || !levels.length || levels[0]! <= book.bid) return book.bid;
     if (at + levels.length + 1 >= walkDay.length) return book.bid;
@@ -703,11 +706,16 @@ async function walkQuotes(
       if (level <= book.bid) return book.bid;
       const bar = walkDay.bars.get(j);
       const q = bookAt(walkDay.quotes, j);
-      if ((bar && bar.h >= level - 1e-9) || (q && q.bid >= level - 1e-9))
+      if ((bar && bar.h >= level - 1e-9) || (q && q.bid >= level - 1e-9)) {
+        busy = { date, until: j };
         return level;
+      }
     }
+    busy = { date, until: at + levels.length };
     return bookAt(walkDay.quotes, at + levels.length)?.bid ?? book.bid;
   };
+  const walking = (date: string, m: number) =>
+    busy.date === date && m < busy.until;
   const sell = (
     date: string,
     book: QuoteMinute,
@@ -722,7 +730,7 @@ async function walkQuotes(
       minute: book.m,
       kind: "sell",
       share: q,
-      price: salePrice(book, at),
+      price: salePrice(date, book, at),
       reason,
       book: { bid: book.bid, ask: book.ask },
     });
@@ -793,7 +801,7 @@ async function walkQuotes(
         if (watch.state === "failed" && m < rules.eodMinute)
           pending = { share: "all", reason: "failed-break" };
       }
-      if (pending && book) {
+      if (pending && book && !walking(date, m)) {
         sell(
           date,
           book,
@@ -862,7 +870,7 @@ async function walkQuotes(
           share: all ? "all" : decision.sell / nominal,
           reason: decision.reason,
         };
-        if (book) {
+        if (book && !walking(date, m)) {
           sell(
             date,
             book,
