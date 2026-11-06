@@ -664,9 +664,12 @@ async function walkQuotes(
   let markBook: Book | null = { bid: q0.bid, ask: q0.ask };
   let option: Map<string, MinuteBar[]> | null = null;
   const tradeBars = async (date: string) => {
+    // A failed read fails the run, once tried again: an empty map would
+    // price the walk's sales without the option's prints (2026-11-06: CRWD
+    // 10-06 sold at the last bid, $0.93, when a print reached the $1.05 step).
     option ??= await data
       .optionRange(w.contract, w.date, days.at(-1)!)
-      .catch(() => new Map<string, MinuteBar[]>());
+      .catch(() => data.optionRange(w.contract, w.date, days.at(-1)!));
     return option.get(date) ?? [];
   };
   const sellAtBar = (
@@ -709,7 +712,6 @@ async function walkQuotes(
     for (let i = 0; i < levels.length; i++) {
       const j = at + 1 + i;
       const level = levels[i]!;
-      if (level <= book.bid) return book.bid;
       const bar = walkDay.bars.get(j);
       const q = bookAt(walkDay.quotes, j);
       if ((bar && bar.h >= level - 1e-9) || (q && q.bid >= level - 1e-9)) {

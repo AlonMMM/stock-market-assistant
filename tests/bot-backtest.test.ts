@@ -562,6 +562,53 @@ test("with real quotes, 2.11: a sale walks down from the mid, filled where a buy
   assert.ok(Math.abs(flat.steps.at(-1)!.price - (p - 0.1)) < 1e-9);
 });
 
+test("with real quotes, 2.11: a step that rounds down to the decision's bid is a limit there, not that old bid (the 2026-11-05 audit)", async () => {
+  const { data } = fakeData(1000);
+  // A 2-cent spread on whole cents; after 15:50 the bid falls 20 cents.
+  const cents = (x: number) => Math.round(x * 100) / 100;
+  const tight = (k: number, m: number) => {
+    const p = cents(3 * Math.exp(-(k - 100) / 3));
+    const drop = m > 380 ? 0.2 : 0;
+    return { m, bid: cents(p - 0.01 - drop), ask: cents(p + 0.01 - drop) };
+  };
+  const at = (saleStepMin: number) =>
+    runStock(
+      "NVDA",
+      [date],
+      { ...defaultSettings, pyramid: false, saleStepMin },
+      withQuotes(
+        {
+          ...data,
+          // No print reaches a step after the decision.
+          optionRange: async (contract, from, to) =>
+            new Map(
+              [...(await data.optionRange(contract, from, to))].map(
+                ([d, list]) => [
+                  d,
+                  list.map((b) =>
+                    b.m > 380
+                      ? { ...b, o: 0.01, h: 0.01, l: 0.01, c: 0.01 }
+                      : b,
+                  ),
+                ],
+              ),
+            ),
+        },
+        tight,
+      ),
+      backtestCalendar,
+    );
+  const sale0 = (await at(0)).trades[0]!.steps.at(-1)!;
+  assert.equal(sale0.minute, 380);
+  const bid = sale0.price;
+  assert.ok(bid < 3, String(bid));
+  // Levels: bid + 1 cent, then the bid itself (rounded down) and below. The
+  // old walk sold at the decision's bid there; live posts a limit at that
+  // level, unfilled here, and ends at the bid then, 20 cents lower.
+  const sale5 = (await at(5)).trades[0]!.steps.at(-1)!;
+  assert.ok(Math.abs(sale5.price - (bid - 0.2)) < 1e-9, String(sale5.price));
+});
+
 test("with real quotes: the bid running past the price makes the buy pay the ask a minute later", async () => {
   const { data } = fakeData(1000);
   const run = await runStock(
