@@ -61,6 +61,7 @@ import {
   weekEnd,
   StrangleBot,
   strangleTag,
+  type TradeFeed,
 } from "../apps/trader/src/strangle.js";
 import {
   StrangleStore,
@@ -276,6 +277,10 @@ function harness(
     askOver?: number;
     // the stock's SIP trades (the cross look-back); none: no trades feed
     trades?: () => { second: number; price: number }[];
+    // each trades request's start (Unix ms)
+    asked?: number[];
+    // the live trade stream
+    stream?: TradeFeed;
   } = {},
 ) {
   const store = new StrangleStore(
@@ -338,6 +343,7 @@ function harness(
     ...(opts.trades
       ? {
           async trades(symbols, startMs, endMs, onPage) {
+            opts.asked?.push(startMs);
             const open = newYorkToUtc(DAY, 570);
             const list = opts.trades!()
               .map((x, i) => ({
@@ -431,6 +437,7 @@ function harness(
     market,
     trading,
     account: "owner-strangle",
+    ...(opts.stream ? { stream: opts.stream } : {}),
     now: () => now,
     notify: async (title, lines) => {
       notes.push([title, ...lines].join(" | "));
@@ -452,12 +459,29 @@ function harness(
     now = at(DAY, w, sec);
     await bot.tick();
   };
+  // The shock tape's read at second sec of New York minute w.
+  const fastAt = async (w: number, sec: number) => {
+    now = at(DAY, w, sec);
+    await bot.watchFast();
+  };
   // The one-second minute read at second sec of New York minute w.
   const minuteAt = async (w: number, sec: number) => {
     now = at(DAY, w, sec);
     await bot.watchMinute();
   };
-  return { bot, store, run, watch, tickAt, minuteAt, calls, notes, held, mids };
+  return {
+    bot,
+    store,
+    run,
+    watch,
+    tickAt,
+    minuteAt,
+    fastAt,
+    calls,
+    notes,
+    held,
+    mids,
+  };
 }
 
 // The burst at 10:08-10:09, a climb to 10:29, then a fall.
@@ -1562,4 +1586,40 @@ test("shock look-back (2026-11-06): found 13 s late, the touch and the 5 seconds
     n.store.recentTrades(DAY)[0]!.closeReason,
     "no side fast enough after the alert",
   );
+});
+
+test("shock speed (2026-11-06): on the live stream the side is read from the tape, a second behind, with no request", async () => {
+  let ref = 0;
+  const asked: number[] = [];
+  const open = newYorkToUtc(DAY, 570);
+  const stream: TradeFeed = {
+    live: () => true,
+    since: at(DAY, 600, 0),
+    start: () => {},
+  };
+  const h = harness(
+    { mode: "live", ...SHOCK },
+    { day: climbThenFall(), last: () => ref, trades: () => [], asked, stream },
+  );
+  await h.run(565, 609);
+  await shockAt(h, 101);
+  ref = h.store.openTrades()[0]!.stockRef;
+  // The stream's trades: the call side held from 1 s to 7 s after the alert.
+  for (let k = 1; k <= 7; k++)
+    h.bot.streamTrade("NVDA", {
+      t: new Date(open + (2400 + k) * 1000 + 300).toISOString(),
+      x: "V",
+      p: ref * 1.01,
+      s: 100,
+      i: k,
+      z: "C",
+    });
+  // One poll catches the tape up to the stream's start; then the stream keeps it.
+  await h.fastAt(610, 12);
+  await h.fastAt(610, 13);
+  const before = asked.length;
+  await h.watch(610, 13);
+  assert.equal(asked.length, before, "no trades request for the side");
+  assert.equal(h.calls.filter((c) => c.kind === "buy").length, 1);
+  assert.equal(h.store.openTrades()[0]!.side, "C");
 });

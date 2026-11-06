@@ -31,9 +31,12 @@ import {
   strangleAccount,
   strangleAccountSuffix,
   strangleKeyVariable,
+  strangleSecretVariable,
 } from "./seed-bot.js";
 import { StrangleBot, strangleTag } from "./strangle.js";
 import { StrangleStore } from "./strangle-store.js";
+import { TradeStream } from "./trade-stream.js";
+import type { AlpacaTrade } from "../../../packages/market-data/src/alpaca.js";
 import {
   mergeStrangleSettings,
   parseStrangleSettings,
@@ -531,6 +534,20 @@ api.get("/v1/bot/portfolio/history", async (request) => {
 // saved from the site's Strangle settings page; market data comes from the
 // owner's Alpaca keys, as the Indi bot's.
 const strangleStore = new StrangleStore(dbPath);
+// The shock's live trades (trade-stream.ts), on the Volume bot's own keys:
+// the owner's hold the collector's stream. VOLUME_TRADE_STREAM=off: REST only.
+let streamTo: ((symbol: string, trade: AlpacaTrade) => void) | null = null;
+const tradeStream =
+  env("VOLUME_TRADE_STREAM") !== "off" &&
+  env(strangleKeyVariable) &&
+  env(strangleSecretVariable)
+    ? new TradeStream({
+        key: env(strangleKeyVariable),
+        secret: env(strangleSecretVariable),
+        onTrade: (symbol, trade) => streamTo?.(symbol, trade),
+        log,
+      })
+    : null;
 let strangleOff = `The strangle bot has no account: set ${strangleKeyVariable} and its secret`;
 const strangle = (() => {
   const key = env("ALPACA_API_KEY", "APCA_API_KEY_ID");
@@ -550,6 +567,7 @@ const strangle = (() => {
   return new StrangleBot({
     store: strangleStore,
     market: new AlpacaBotMarket(key, secret, "sip"),
+    ...(tradeStream ? { stream: tradeStream } : {}),
     account: account.id,
     trading: {
       chain: (u, right, from, to) => t.broker.chain(u, right, from, to),
@@ -573,6 +591,7 @@ const strangle = (() => {
     log,
   });
 })();
+if (strangle) streamTo = (symbol, trade) => strangle.streamTrade(symbol, trade);
 const strangleTimer = strangle
   ? setInterval(() => void strangle.tick(), 10_000)
   : null;
@@ -584,9 +603,10 @@ const minuteTimer = strangle
 const sideTimer = strangle
   ? setInterval(() => void strangle.watchSides(), 1_000)
   : null;
-// The 60-second alert's 10-second bars, every 2 seconds (strangle/fast.ts).
+// The shock and 60-second alerts' 10-second slots, 4 times a second: a slot
+// is read a second after it ends on the stream (REST polls stay every 2 s).
 const fastTimer = strangle
-  ? setInterval(() => void strangle.watchFast(), 2_000)
+  ? setInterval(() => void strangle.watchFast(), 250)
   : null;
 // The option books around each alert, every 2 seconds (alert-books.ts).
 const booksTimer = strangle
@@ -787,6 +807,7 @@ async function stop() {
   if (minuteTimer) clearInterval(minuteTimer);
   if (sideTimer) clearInterval(sideTimer);
   if (fastTimer) clearInterval(fastTimer);
+  tradeStream?.stop();
   if (booksTimer) clearInterval(booksTimer);
   if (recordTimer) clearInterval(recordTimer);
   botStore.close();

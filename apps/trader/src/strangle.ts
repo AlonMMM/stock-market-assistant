@@ -80,10 +80,12 @@ import {
   type FastWindows,
 } from "../../../packages/trading/src/strangle/fast.js";
 import type { BotMarket, BotTrading } from "./bot.js";
+import type { AlpacaTrade } from "../../../packages/market-data/src/alpaca.js";
 import {
   FastTape,
   fetchFastBars,
   fetchFastDay,
+  slotsToRead,
   stockSeconds,
 } from "./strangle-fast.js";
 import { AlertBooks, type AlertBookWatch } from "./alert-books.js";
@@ -117,6 +119,15 @@ export interface StrangleOptions {
   earnings?: (date: string) => Promise<EarningsReport[]>;
   now?: () => number;
   log?: (line: string) => void;
+  // Live trades of the watched stocks (trade-stream.ts); without it, or
+  // while it is down, the REST polls read them.
+  stream?: TradeFeed;
+}
+
+export interface TradeFeed {
+  live(): boolean;
+  since: number | null; // Unix ms its trades start
+  start(symbols: string[]): void;
 }
 
 export const strangleTag = "🎯 Volume bot";
@@ -213,6 +224,12 @@ const lateCrossLimit = 45;
 // once its bars are in, and from minuteForceRead whatever is in.
 const minuteFirstRead = 2;
 const minuteForceRead = 8;
+// The shock's tape: on the stream, every trade before a second ago is in
+// (a 10-second slot is read once it is a second old, and again at 3 s for
+// the late prints); without it, a REST poll every 2 s.
+const streamLagMs = 1_000;
+const pollEveryMs = 2_000;
+const lateTradesMs = 3_000;
 
 /** The alert's name at the start of a watch's detail. */
 /** A shock trade's time left: its touch window until its stock touches a side line, then shockHoldWithin. */
@@ -259,8 +276,9 @@ const weekLater = (date: string) =>
     .slice(0, 10);
 
 export class StrangleBot {
-  private readonly o: Required<Omit<StrangleOptions, "earnings">> & {
+  private readonly o: Required<Omit<StrangleOptions, "earnings" | "stream">> & {
     earnings?: StrangleOptions["earnings"];
+    stream?: TradeFeed;
   };
   private day: string | null = null;
   private symbols: string[] = [];
@@ -304,6 +322,7 @@ export class StrangleBot {
   private holds = new Map<string, { side: Leg; n: number }>();
   private fastDone = new Map<string, number>();
   private fastBusy = false;
+  private lastPoll = 0;
   private marks = new Map<
     string,
     { leg: number | null; stock: number | null; at: number }
@@ -597,6 +616,11 @@ export class StrangleBot {
    * 10-second bars, checks each finished slot in order, and on a fresh alert
    * in the rule's hours watches the stock for its side, as a minute alert does.
    */
+  /** A trade from the stream (trade-stream.ts) onto today's tape. */
+  streamTrade(symbol: string, trade: AlpacaTrade) {
+    this.tape?.add(symbol, trade);
+  }
+
   async watchFast(): Promise<void> {
     const tape = this.tape;
     const date = this.day;
@@ -607,16 +631,31 @@ export class StrangleBot {
     if (newYork(now).date !== date || now < tape.openMs) return;
     this.fastBusy = true;
     try {
-      await tape.poll(this.o.market, now);
-      // A slot is checked 3 seconds after it ends, once its trades are in.
+      const stream = this.o.stream;
+      const since = stream?.live() ? stream.since : null;
+      // On the stream once a poll has read up to its start.
+      if (since !== null && tape.cursor >= since)
+        tape.reached(now - streamLagMs);
+      else if (now - this.lastPoll >= pollEveryMs) {
+        this.lastPoll = now;
+        await tape.poll(this.o.market, now);
+      }
+      // A slot is read once its trades are in; one that does not fire is
+      // read again 3 s after it ends, with the late prints (more volume can
+      // only start an alert, not stop one).
+      const lastSlot = fastRule.slots - 1;
+      const early = Math.min(
+        Math.floor((tape.cursor - tape.openMs) / 10_000) - 1,
+        lastSlot,
+      );
       const ready = Math.min(
-        Math.floor((tape.cursor - 3_000 - tape.openMs) / 10_000) - 1,
-        fastRule.slots - 1,
+        Math.floor((tape.cursor - lateTradesMs - tape.openMs) / 10_000) - 1,
+        lastSlot,
       );
       for (const symbol of this.symbols) {
         const base = this.fastBase.get(symbol);
         const done = this.fastDone.get(symbol) ?? -1;
-        if (!base || ready <= done) continue;
+        if (!base || early <= done) continue;
         const day = tape.day(symbol);
         const cf = carried(day.c);
         const cum = paceSums(day.v);
@@ -627,7 +666,11 @@ export class StrangleBot {
           if (!fire) fires.set(r.key, (fire = new FastFire()));
           return { ...r, fire };
         });
-        for (let t = done + 1; t <= ready; t++) {
+        const slots = slotsToRead(done, early, ready, (t) =>
+          rules.some((r) => fastState(day, cf, base, t, cum, r.rule).on),
+        );
+        const read = slots.at(-1) ?? done;
+        for (const t of slots) {
           let shockBooks = false; // a shock's books already watched at t
           for (const r of rules) {
             const st = fastState(day, cf, base, t, cum, r.rule);
@@ -668,7 +711,7 @@ export class StrangleBot {
             );
           }
         }
-        this.fastDone.set(symbol, ready);
+        this.fastDone.set(symbol, read);
       }
     } catch (error) {
       this.event(
@@ -981,6 +1024,7 @@ export class StrangleBot {
         newYorkToUtc(date, 570),
         newYorkToUtc(date, closeAt),
       );
+      this.o.stream?.start([...this.symbols]);
       void this.fillFast(date);
     }
   }
@@ -1634,6 +1678,14 @@ export class StrangleBot {
     from: number,
     to: number,
   ): Promise<[number, number][]> {
+    // On the tape when it has every second the decision reads (the stream
+    // keeps it a second behind): no request.
+    const tape = this.tape;
+    if (
+      tape &&
+      tape.covered() >= Math.min(to, this.sessionSecond() - crossReadGrace)
+    )
+      return tape.seconds(t.symbol, from, to);
     let kept = this.sinceAlert.get(t.id);
     if (!kept)
       this.sinceAlert.set(t.id, (kept = { rows: new Map(), upTo: from - 1 }));
