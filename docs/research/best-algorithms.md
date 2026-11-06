@@ -327,6 +327,29 @@ Verdict: not better. A fresh late signal held overnight is a lottery ticket with
 the tune gain is four giants and the check has none. It repeats sig_lasthour.py (2.10's day signals at 15:57) and the
 Volume bot's late carry. His late overnights win on his stock choice, not the hour. 2.10 stays.
 
+**Follow-up, no morning sale (2026-11-06, look 2, worse).** The user, on the late list's few +1000% trades (3 of 978
+stock-days; 2.10's own bought day signals 11 of 649): "remove the morning exit for these trade". `late_reset.py` `-nm`
+versions: the day after a late entry 2.10's morning rule (sell half at 09:40 on a gap our way, all on a gap against) is
+off (`gap_keep` -1e9, `gap_sell_share` 0); the whole position stays under the day's stops. Set before: n30-a-nm,
+r30-5-nm, r30-10-nm, r30-a-nm, in the same run as the 12 above (2.10 again to the dollar).
+
+| 2% | Tune fair | Tune Favorites | Check fair | Check Favorites |
+|---|---|---|---|---|
+| 2.10 | $620,535 / 16% | $449,178 / 14% | $957,771 / 24% | $226,846 / 23% |
+| r30-a (with the morning sale) | +44% / 26% | +21% / 23% | −34% / 32% | −42% / 32% |
+| 🎯 r30-a-nm | $1,157,065 +86% / 29% | $589,379 +31% / 26% | $461,678 −52% / 36% | $94,907 −58% / 38% |
+| r30-10-nm | +21% | +29% | −46% | −56% |
+| r30-5-nm | +2% | +5% | −47% | −54% |
+| n30-a-nm | +52% | −4% | −58% | −62% |
+
+At 3% the pick: tune +117% / +30%, check −67% / −73%. The late trades (main legs at $10K): tune fair 128 trades, win
+11% (23 with the morning sale), median −$6.2K (−$3.9K), sum +$216K (+$98K), 8 giants: MU, ARM, HOOD, COIN each run
+further (ARM +786% -> +1,494%, HOOD +756% -> +1,365%, COIN +882% -> +1,524%). Check fair 120 trades, win 6% (17%),
+median −$6.4K, −$518K (−$285K), 2 giants; Favorites −$575K (−$351K). The page's 163 bought tune trades: +1000% 1 -> 5,
+sum +$142K -> +$223K, won 32 -> 23. The morning sale is what keeps the losers small: without it a gap against is held
+into the day's stops. Verdict: the giants grow on tune, the losers grow on both halves; the check is worse than with the
+morning sale. 2.10 stays.
+
 ### The strength exit: t 1.0 held 15-45 minutes, on top of 0.5 (2026-11-06, a tie: dw15 -0.4% / -0.5% on check; the giants are no longer cut)
 
 The user, after the t 1.0 charts (`t1_charts.py`, the check-week trades t 1.0 changed: 226 helped, 95 hurt, the giants

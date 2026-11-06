@@ -57,28 +57,32 @@ def tseries(sym, date):
     return out
 
 
-def walk_steps(t, m, c):
-    over = {"carry_min_gain": -1.0, "carry_range_pos": 0.0}
+def walk_steps(t, m, c, nm=True):
+    """r30-a's walk; nm (r30-a-nm, the user 2026-11-06: "remove the morning exit for these trade"): no morning sale."""
+    over = {"carry_min_gain": -1.0, "carry_range_pos": 0.0, **(LR.NO_MORNING if nm else {})}
     sim.X.clear(); sim.X.update(CHAMP); sim.X.update(over)
     cost, steps, _ = sim.walk(t["sym"], t["date"], m, t["right"], c[0], c[1], CAL)
     if cost is None: return None
-    rcost, real = OS.price(steps, c[0], cost, "bid")
+    rcost, real = OS.price(LR.nonzero(steps), c[0], cost, "bid")
     sim.X.clear(); sim.X.update(CHAMP); sim.X.update(over)
     cost, steps, _ = sim.walk(t["sym"], t["date"], m, t["right"], c[0], c[1], CAL, paid=rcost)
     if cost is None: return None
-    rcost, real = OS.price(steps, c[0], cost, "bid")
+    rcost, real = OS.price(LR.nonzero(steps), c[0], cost, "bid")
     return rcost, real, sim.result(rcost, real, 0.01)
 
 
 def leg(sym, date, m, right, price, b):
     """A bought leg on pick b at minute m: the walk, the fills, the nights held and the book as the minute closed."""
-    w = walk_steps(dict(sym=sym, date=date, right=right, minute=str(m), price=price), m, b)
+    t = dict(sym=sym, date=date, right=right, minute=str(m), price=price)
+    w = walk_steps(t, m, b)
     if w is None: return None
     rcost, real, r1 = w
+    old = walk_steps(t, m, b, nm=False)   # the same trade with 2.10's morning sale (the page's previous version)
     q = RB.quote(b[0], date, m + 1)
     days = sorted({d for d, *_ in real})
     return dict(minute=m, right=right, contract=b[0], strike=b[2], expiry=b[1], delta=round(abs(b[3]), 3), price=b[4],
                 vol30=b[5], paid=round(rcost, 4), r1=round(r1, 4), usd=round(1e4 * max(-1, r1)), nights=len(days) - 1,
+                r1_m=None if old is None else round(old[2], 4), usd_m=None if old is None else round(1e4 * max(-1, old[2])),
                 book=bool(RB.quote(b[0], date, m)), bid=None if not q else q[0], ask=None if not q else q[1],
                 fills=[dict(date=d, minute=mm, side=sd, q=q_, px=px, rule=rule) for d, mm, sd, q_, px, rule in real])
 

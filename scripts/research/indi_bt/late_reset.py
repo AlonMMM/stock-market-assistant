@@ -54,6 +54,10 @@ WINS = {"15": 330, "30": 360}
 CARRY = {"5": -0.05, "10": -0.10, "a": -1.0}
 VOLS = ("n", "r")
 MODES = ("champ",) + tuple(f"{v}{w}-{c}" for v in VOLS for w in WINS for c in CARRY)
+# -nm (the user, 2026-11-06: "remove the morning exit for these trade"): no morning sale the day after the late entry
+# (2.10 sells half on a gap our way, all on a gap against); the whole position stays under the day's stops
+MODES += ("n30-a-nm", "r30-5-nm", "r30-10-nm", "r30-a-nm")
+NO_MORNING = {"gap_keep": -1e9, "gap_sell_share": 0.0}   # the morning rule then sells 0 (the 0-share step is dropped)
 LAST = 374   # 15:44
 _pick = TS.pick
 
@@ -79,16 +83,17 @@ def champ_pick(sym, date, m, right, spot):
     return b
 
 
-def walk_carry(t, m, c, gain):
-    """thin_strike.walk_c with the night held from `gain` and no day-range rule."""
-    over = {"carry_min_gain": gain, "carry_range_pos": 0.0}
+def walk_carry(t, m, c, gain, nm=False):
+    """thin_strike.walk_c with the night held from `gain` and no day-range rule; nm: no morning sale."""
+    over = {"carry_min_gain": gain, "carry_range_pos": 0.0, **(NO_MORNING if nm else {})}
     sim.X.clear(); sim.X.update(CHAMP); sim.X.update(over)
     cost, steps, _ = sim.walk(t["sym"], t["date"], m, t["right"], c[0], c[1], TS.CAL)
     if cost is None: return None
-    rcost, real = OS.price(steps, c[0], cost, "bid")
+    rcost, real = OS.price(nonzero(steps), c[0], cost, "bid")
     sim.X.clear(); sim.X.update(CHAMP); sim.X.update(over)
     cost, steps, _ = sim.walk(t["sym"], t["date"], m, t["right"], c[0], c[1], TS.CAL, paid=rcost)
     if cost is None: return None
+    steps = nonzero(steps)
     rcost, real = OS.price(steps, c[0], cost, "bid")
     row = dict(r1=sim.result(rcost, real, 0.01), r2=sim.result(rcost, real, 0.02), r3=sim.result(rcost, real, 0.03),
                r15=sim.result(rcost, real, 0.015), over=int(any(s[2] == "carry" for s in steps)), h=booked(rcost, real))
@@ -98,6 +103,16 @@ def walk_carry(t, m, c, gain):
         k = RB.quote(c[0], t["date"], mm)
         row["held"][mm] = (1 - sum(s[3] for s in sells if s[1] <= mm), None if not k else (k[0] + k[1]) / 2 / rcost - 1)
     return row
+
+
+def nonzero(steps):
+    return [s for s in steps if not (s[2] == "sell" and s[3] <= 1e-9)]
+
+
+def carry_of(mode):
+    """-> (the carry level's key, no morning sale)"""
+    p = mode.split("-")
+    return p[1], len(p) > 2 and p[2] == "nm"
 
 
 def dbx(src):
@@ -116,8 +131,8 @@ def walk_main(job):
     v, by_c = {}, {}
     for mode in MODES:
         if mode == "champ" or m0 < WINS[mode[1:3]]: v[mode] = base; continue
-        c = mode.split("-")[1]
-        if c not in by_c: by_c[c] = walk_carry(t, m0, b, CARRY[c])
+        c = carry_of(mode)
+        if c not in by_c: by_c[c] = walk_carry(t, m0, b, CARRY[c[0]], c[1])
         if by_c[c] is not None: v[mode] = by_c[c]
     info = dict(contract=b[0], strike=b[2], delta=round(abs(b[3]), 3), price=b[4], vol30=b[5], how="champ")
     return dict(src=src, kind="main", date=t["date"], minute=m0, sym=t["sym"], right=t["right"], late=False,
@@ -161,11 +176,11 @@ def walk_late(job):
     dbx(src)
     t = dict(sym=sym, date=date, right=right, minute=str(m), price=r["price"], c_t=r["c_t"], c_rvol=r["c_rvol"])
     v = {}
-    for c in sorted({u.split("-")[1] for u in uses}):
-        x = walk_carry(t, m, b, CARRY[c])
+    for c in sorted({carry_of(u) for u in uses}):
+        x = walk_carry(t, m, b, CARRY[c[0]], c[1])
         if x is None: continue
         for u in uses:
-            if u.endswith("-" + c): v[u] = x
+            if carry_of(u) == c: v[u] = x
     if not v: return None
     info = dict(contract=b[0], strike=b[2], delta=round(abs(b[3]), 3), price=b[4], vol30=b[5], how="late",
                 rv30=float(r["c_rv30"]), book=bool(RB.quote(b[0], date, m)))
@@ -224,7 +239,7 @@ def main():
     for (src, sym, date), got in F:
         for (vol, w), (r, b) in got.items():
             k = (src, sym, date, r["minute"], r["right"], b[0])
-            legs.setdefault(k, [r, b, set()])[2].update(f"{vol}{w}-{c}" for c in CARRY)
+            legs.setdefault(k, [r, b, set()])[2].update(u for u in MODES[1:] if u.startswith(f"{vol}{w}-"))
     print(f"late legs: {len(legs)}; by vol + window:",
           dict(collections.Counter(u[:3] for v in legs.values() for u in v[2] if u.endswith("-a"))), flush=True)
     if LISTING:
