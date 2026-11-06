@@ -2408,7 +2408,7 @@ function SignalList({
   const th = (id: SignalSortKey, label: string, title?: string) => (
     <SortTh id={id} label={label} title={title} sort={sort} onSort={onSort} />
   );
-  const modelled = rows.filter((r) => r.model);
+  const modelled = rows.filter((r) => r.model && r.ret !== null);
   const modelWon = modelled.filter((r) => (r.ret ?? 0) > 0).length;
   const download = () => {
     const url = URL.createObjectURL(

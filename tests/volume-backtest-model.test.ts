@@ -281,3 +281,34 @@ test("volume alerts table (2026-11-06): the return of a trade, of one the accoun
   assert.equal(story.story.stop, null);
   assert.equal(whatIfTrade(taken), null);
 });
+
+test("volume alerts table (2026-11-06): a buy under 5 cents shows no return, traded or a model", () => {
+  const cheapTrade = signal({ trade: trade({ buy: 0.04, sell: 0.4 }) });
+  const cheapModel = signal({
+    id: "MRVL|2024-02-07|plan|4200",
+    kind: "plan",
+    second: 4200,
+    outcome: "slow_cross",
+    whatIf: {
+      contract: "MRVL240207C00075000",
+      right: "C" as const,
+      strike: 75,
+      expiry: "2024-02-07",
+      sideSecond: null,
+      buyMinute: 70,
+      exitMinute: 100,
+      exitReason: "giveback" as const,
+      stockIn: 68.4,
+      stockOut: 68.9,
+      buy: 0.01,
+      sell: 0.2,
+      iv: 0.55,
+      ret: 19,
+    },
+  });
+  const runs = [run([cheapTrade, cheapModel])];
+  const rows = volumeRows(runs, volumeAccount(runs, money));
+  for (const r of rows) assert.equal(rowReturn(r, 0.62), null);
+  const csv = volumeCsv(rows).split("\n");
+  assert.ok(!csv.some((line) => line.includes("1900.0")));
+});
