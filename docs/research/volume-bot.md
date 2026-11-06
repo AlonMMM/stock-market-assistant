@@ -9,6 +9,56 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### A slower plan cross (30 / 60 s) and an early shock buy at 50% after 10 s (2026-11-06, look 1): not better
+
+The user, 2026-11-06: "can you try on the plan 30-60 seconds? and for the shock use 50% from the current rult after 10
+seoncs and confirm after 30sec we did not wrong (sell if we did)". The plan window was tested on 2026-10-28 (3 years,
+the winner of that day: 15 / 20 / 30 / 45 / 60 s gave $226K / $233K / $221K / $192K / $190K, keep 15); the early shock
+buy is new. Re-run because the bot is 1.3.0 now and the stock seconds were rebuilt from Alpaca's full tape the same night.
+
+Built on **Volume 1.3.0** (live): the app's engine (origin/main 62334b8: with #281, the leg picked from the 1-second
+books at the buy) + a research-only `SHOCK_EARLY` switch (`engine.patch`), the saved settings, 2025-11-03 .. 2026-10-30,
+real books only, the local read-only D1 snapshot with the **full-tape stock seconds** (refill of 2026-11-06). Versions,
+set before the run: **P30 / P60** the plan's cross window (crossMaxSeconds) 30 / 60 s; **E50-30** (the thesis) a shock
+is bought 10 s after its alert when the stock has gone 50% of the way to a side line (that side; the burst check, the
+pick and the buy as the engine), and sold at the bid 30 s after the alert unless that side's full line was touched by
+then; shocks that do not reach 50% keep the rule (touch within 20 s, 5 checks within 300 s); **E50-20** confirmed by
+20 s; **E30-30** 30% at 10 s. Scripts: `scripts/research/volume_cross_early/`.
+
+The base is not the add-half base of the same day (tune $116.5K / 62 trades there, $107.0K / 71 here): the full-tape
+seconds and #281 moved it; both runs are the engine's own account.
+
+Tune (even ISO entry weeks), from $100K, live limits (non-giant: trades under +300% at a flat $2K):
+
+| Version | Trades | Winners | Median | 2% (drop) | 3% (drop) | W/o best 5 (2%) | Non-giant | Giants | 2025 / 2026 (2%) |
+|---|---|---|---|---|---|---|---|---|---|
+| base 1.3.0 | 71 (32 shock) | 20 | -36% | $107.0K (17%) | $108.6K (25%) | -$35.5K | -$29.0K | 4 | -$2.4K / +$9.4K |
+| P30 🎯 | 85 (31 shock) | 23 | -36% | $120.9K (15%) | $128.1K (23%) | -$33.5K | -$34.2K | 6 | -$2.4K / +$23.4K |
+| P60 | 104 (31 shock) | 24 | -36% | $110.0K (17%) | $111.5K (25%) | -$42.5K | -$43.6K | 6 | -$3.5K / +$13.5K |
+| E50-30 | 76 (36 shock, 9 sold at the check) | 18 | -34% | $95.7K (31%) | $91.3K (43%) | -$44.0K | -$29.3K | 2 | -$2.0K / -$2.3K |
+| E50-20 🎯 | 76 (36 shock, 10 sold at the check) | 18 | -27% | $97.3K (31%) | $93.3K (43%) | -$42.9K | -$27.9K | 2 | -$2.0K / -$0.8K |
+| E30-30 | 84 (44 shock, 17 sold at the check) | 21 | -24% | $95.4K (32%) | $90.8K (44%) | -$43.9K | -$29.6K | 2 | -$2.2K / -$2.4K |
+
+Check (odd ISO entry weeks), the picks (the most 2% money of each idea on tune):
+
+| Version | Trades | Winners | Median | 2% (drop) | 3% (drop) | W/o best 5 (2%) | Non-giant | Giants | 2025 / 2026 (2%) |
+|---|---|---|---|---|---|---|---|---|---|
+| base 1.3.0 | 58 (29 shock) | 21 | -28% | $142.5K (9%) | $162.8K (14%) | -$27.4K | -$13.7K | 3 | -$3.7K / +$46.1K |
+| P30 | 75 (29 shock) | 25 | -31% | $138.4K (12%) | $156.6K (18%) | -$34.6K | -$25.7K | 4 | -$3.7K / +$42.1K |
+| E50-20 | 65 (33 shock, 8 sold at the check) | 22 | -13% | $154.0K (9%) | $185.8K (13%) | -$20.4K | -$7.9K | 3 | -$3.2K / +$57.2K |
+
+- **P30**: +$13.9K on tune from two more giants, the non-giant sum worse (-$34.2K vs -$29.0K); check -$4.1K, a deeper
+  drop, non-giant -$25.7K vs -$13.7K. The extra 14-17 slow crosses lose as a group, as on 2026-10-28. P60 worse. Keep 15 s.
+- **Early shock**: every level loses tune (about -$10K, the drop 17% -> 31%), the pick E50-20 wins check (+$11.5K, the
+  median -13% vs -28%, the same drop). Split by alert over the year (flat $2K, before the account; `crossdiag.ts`,
+  E50-30 / E50-20): the **earlier buy on the 33 shocks both trade is better** (+$34.7K -> +$45.3K, a cheaper entry);
+  new shocks kept -$1.6K / +$3.4K; new ones sold at the 30 s / 20 s check -$3.6K / -$4.3K (14 / 18 trades, -6% to -22%
+  each: a cheap mistake); but **19 base trades are lost to the burst check** because the side at 10 s is the other one
+  than the side the stock later took (the base's burst agreed with the later side), among them GOOGL 2026-08-05 +314%
+  (tune) - that giant is most of the tune loss.
+- Verdict: no candidate (P30 fails check, the early buy fails tune). Lead for a look 2: buy early only when the 10 s
+  side agrees with the burst, else keep the rule (the 19 lost trades come back, the cheaper entry stays).
+
 ### Add half on a same-direction alert while the open leg is up (2026-11-06, looks 1-2): not better
 
 The user, 2026-11-06: "What if we put extra half of the position if we get another alert during an open position in the

@@ -1,0 +1,150 @@
+diff --git a/packages/market-data/src/volume-backtest.ts b/packages/market-data/src/volume-backtest.ts
+index 18da6ca..896df69 100644
+--- a/packages/market-data/src/volume-backtest.ts
++++ b/packages/market-data/src/volume-backtest.ts
+@@ -341,7 +341,19 @@ export async function handleVolumeBacktest(
+       // Real books only (the user, 2026-11-01: "stop fallback as we have the
+       // data now"): a buy needs its 1-second book, a sale its minute book;
+       // without them the alert is not traded, as in the research simulator.
+-      { fillPct, strictQuotes: true, safetyStop },
++      {
++        fillPct,
++        strictQuotes: true,
++        safetyStop,
++        // Research only (2026-11-06): SHOCK_EARLY="at,reach,confirmBy", e.g. "10,0.5,30".
++        ...(globalThis.process?.env?.SHOCK_EARLY
++          ? {
++              shockEarly: (([at, reach, confirmBy]) => ({ at: at!, reach: reach!, confirmBy: confirmBy! }))(
++                globalThis.process.env.SHOCK_EARLY.split(",").map(Number),
++              ),
++            }
++          : {}),
++      },
+     );
+     return {
+       status: 200,
+diff --git a/packages/trading/src/strangle/backtest.ts b/packages/trading/src/strangle/backtest.ts
+index 64ae7d4..58d52de 100644
+--- a/packages/trading/src/strangle/backtest.ts
++++ b/packages/trading/src/strangle/backtest.ts
+@@ -148,7 +148,7 @@ export interface VolumeTrade {
+   spread: number | null; // (ask - bid) / mid of that book
+   buyPriced: PricedBy;
+   exitMinute: number;
+-  exitReason: "giveback" | "end" | "stop";
++  exitReason: "giveback" | "end" | "stop" | "unconfirmed";
+   sell: number;
+   sellPriced: PricedBy;
+   stockOut: number | null;
+@@ -232,6 +232,13 @@ export interface VolumeRunOptions {
+    * less safetyStopPct sells at that bid, before the give-back or the end.
+    */
+   safetyStop?: boolean;
++  /**
++   * Research (2026-11-06, not live): a shock is bought `at` s after its alert
++   * when the stock has gone `reach` of the way to a side line by then (that
++   * side), and sold at the bid `confirmBy` s after the alert unless that side's
++   * full line was touched by then. Shocks that do not reach it keep the rule.
++   */
++  shockEarly?: { at: number; reach: number; confirmBy: number };
+   /** The day's alerts instead of the computed ones (the parity check reads the research's). */
+   alerts?: (
+     symbol: string,
+@@ -716,8 +723,30 @@ export async function runVolumeStock(
+       signal.reach = reachOf(seconds, decideBy, a.price, unit, s);
+       const gap = longestGap(seconds, a.second, decideBy);
+       if (gap) signal.dataGap = gap;
++      let early: { second: number; side: Leg; price: number } | null = null;
++      if (shock && o.shockEarly) {
++        const e = o.shockEarly;
++        const line = s.confirmUnits * unit;
++        let upMost = 0;
++        let downMost = 0;
++        let last: number | null = null;
++        for (const [sec, p] of seconds) {
++          if (sec > a.second + e.at) break;
++          const r = (p / a.price - 1) / line;
++          upMost = Math.max(upMost, r);
++          downMost = Math.max(downMost, -r);
++          last = p;
++        }
++        const most = Math.max(upMost, downMost);
++        if (last !== null && most >= e.reach) {
++          let side: Leg = "P";
++          if (upMost >= downMost) side = "C";
++          early = { second: a.second + e.at, side, price: last };
++        }
++      }
+       // The shock: a side line touched within shockTouchSeconds, as the live bot.
+       if (
++        !early &&
+         shock &&
+         !seconds.some(
+           ([sec, price]) =>
+@@ -731,13 +760,15 @@ export async function runVolumeStock(
+         );
+         continue;
+       }
+-      const side = findSide(
+-        seconds.filter(([sec]) => sec <= a.second + within),
+-        a.price,
+-        unit,
+-        s,
+-        shock,
+-      );
++      const side =
++        early ??
++        findSide(
++          seconds.filter(([sec]) => sec <= a.second + within),
++          a.price,
++          unit,
++          s,
++          shock,
++        );
+       if (!side) {
+         done(s.crossFilter || shock ? "slow_cross" : "no_side");
+         continue;
+@@ -850,13 +881,38 @@ export async function runVolumeStock(
+             bought.buy * (1 - s.safetyStopPct / 100),
+           )
+         : null;
+-      const exitMinute = stopped?.m ?? exit.minute;
+-      const exitReason = stopped ? "stop" : exit.reason;
+-      const sale = stopped ?? bookAt(dayQuotes, exitMinute);
++      let exitMinute = stopped?.m ?? exit.minute;
++      let exitReason: VolumeTrade["exitReason"] = stopped ? "stop" : exit.reason;
++      let sale = stopped ?? bookAt(dayQuotes, exitMinute);
+       let sell: number | null = null;
+       let sellPriced: PricedBy = "minutes";
+-      if (sale) sell = sale.bid;
+-      else if (!o.strictQuotes) {
++      // The early shock buy's check: that side's full line touched by confirmBy, else sold then at the bid.
++      if (early && o.shockEarly) {
++        const by = a.second + o.shockEarly.confirmBy;
++        const confirmed = seconds.some(
++          ([sec, p]) => sec <= by && sideOf(p, a.price, unit, s) === early.side,
++        );
++        if (!confirmed) {
++          exitMinute = Math.floor(by / 60);
++          exitReason = "unconfirmed";
++          const rows = data.optionSeconds
++            ? (
++                await data
++                  .optionSeconds(contract, date, by - 10, by)
++                  .catch(() => [])
++              ).filter((r) => r.bid > 0)
++            : [];
++          const book = bookAtSecond(rows, by);
++          sale = bookAt(dayQuotes, exitMinute - 1);
++          if (book) {
++            sell = book.bid;
++            sellPriced = "seconds";
++            sale = null;
++          }
++        }
++      }
++      if (sell === null && sale) sell = sale.bid;
++      else if (sell === null && !o.strictQuotes) {
+         const b = lastBar(legBars, exitMinute);
+         if (b) sell = Math.max(mid(b) * (1 - o.fillPct / 100), 0.01);
+         sellPriced = "bars";
