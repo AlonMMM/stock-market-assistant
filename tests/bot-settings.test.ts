@@ -41,9 +41,9 @@ import {
 test("versions: distinct ids oldest first; the defaults are the current version's rules", () => {
   const ids = botVersions.map((v) => v.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(currentVersion, "2.10.0");
+  assert.equal(currentVersion, "2.11.0");
   assert.equal(defaultSettings.version, currentVersion);
-  assert.equal(matchingVersion(defaultSettings)?.id, "2.10.0");
+  assert.equal(matchingVersion(defaultSettings)?.id, "2.11.0");
   assert.deepEqual(rulesOf(defaultSettings), botVersions.at(-1)!.rules);
   // Each version differs from the one before, and 2.1 is 2.0 plus the failed-break sale.
   for (let i = 1; i < botVersions.length; i++)
@@ -105,17 +105,17 @@ test("versions: distinct ids oldest first; the defaults are the current version'
 });
 
 test("versions: the label is the version, starred when its rules were changed; an own label stays", () => {
-  assert.equal(versionLabel(defaultSettings), "2.10.0");
-  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.10.0*");
+  assert.equal(versionLabel(defaultSettings), "2.11.0");
+  assert.equal(versionLabel({ ...defaultSettings, stopPct: 40 }), "2.11.0*");
   // The IBIT list is a rule: changing it stars the label.
   assert.equal(
     versionLabel({ ...defaultSettings, lowFloorSymbols: ["IBIT", "MSTR"] }),
-    "2.10.0*",
+    "2.11.0*",
   );
   // The owner's limits and lists are not rules: no star.
   assert.equal(
     versionLabel({ ...defaultSettings, sizePct: 1, off: ["TSLA"] }),
-    "2.10.0",
+    "2.11.0",
   );
   const own = { ...defaultSettings, version: "2.2-test", stopPct: 40 };
   assert.equal(versionLabel(own), "2.2-test");
@@ -131,7 +131,7 @@ test("versions: applying one sets its rules and keeps the owner's limits", () =>
   assert.equal(s.sellFailedBreak, false);
   assert.equal(s.sizePct, 1);
   assert.equal(versionLabel(s), "1.0.0");
-  const back = applyVersion(s, "2.10.0");
+  const back = applyVersion(s, "2.11.0");
   assert.deepEqual(rulesOf(back), rulesOf(defaultSettings));
   assert.equal(applyVersion(s, "mine").version, "mine");
 });
@@ -147,6 +147,8 @@ test("versions: parse checks the label; a record saved before versions gets the 
   assert.equal(own.ok && own.value.version, "2.2 test");
   // A record from before versions takes its missing rules from 2.6. Saved with those rules: 2.6. Without the cheap fallback: 2.5. With the failed break and no D2 bonus either: 2.4; also no rest stop and holding from +100%: 2.2; without the t-stat exit too: 2.1; also without the failed-break sale: 2.0. Odd rules: the current version.
   assert.equal(withDefaults({ stopPct: 30 }).version, "2.6.0");
+  // A 2.10 record saved before 2.11 keeps selling at the bid until 2.11 is picked.
+  assert.equal(withDefaults({ version: "2.10.0" }).saleStepMin, 0);
   assert.equal(withDefaults({ cheapFallback: false }).version, "2.5.0");
   const before25 = {
     sellFailedBreak: true,
@@ -178,7 +180,7 @@ test("versions: parse checks the label; a record saved before versions gets the 
     "2.0.0",
   );
   assert.equal(withDefaults({ stopPct: 40 }).version, currentVersion);
-  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.10.0*");
+  assert.equal(versionLabel(withDefaults({ stopPct: 40 })), "2.11.0*");
   // ...and none of the 2.7 rules came with it.
   assert.equal(withDefaults({ stopPct: 30 }).pyramid, false);
   // A saved version is kept as saved.
@@ -640,6 +642,7 @@ test("numbering: every id is MAJOR.MINOR.PATCH; ids from before the scheme read 
       "2.8.1",
       "2.9.0",
       "2.10.0",
+      "2.11.0",
     ],
   );
   assert.equal(canonicalVersion("2.6"), "2.6.0");

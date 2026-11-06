@@ -142,6 +142,10 @@ export interface BotSettings {
   // the signal's volume since the open (x its usual) reaches sets the share of
   // the size it buys (its pyramid add too); none = the whole size.
   volumeTiers: VolumeTier[];
+  // The sale walked down from the mid (version 2.11): a limit at the mid,
+  // lowered evenly toward the bid each minute for saleStepMin minutes, then
+  // the bid; 0 sells at the bid at once.
+  saleStepMin: number;
 }
 
 export interface VolumeTier {
@@ -238,6 +242,7 @@ export const defaultSettings: BotSettings = {
     { atLeast: 1.75, pct: 100 },
     { atLeast: 2.5, pct: 150 },
   ],
+  saleStepMin: 5,
 };
 
 // Values the backtest never ran.
@@ -284,6 +289,7 @@ export const limits: Record<
   stageHalfS30: [0.25, 2, 0.25],
   stageFullS30: [0.5, 3, 0.25],
   lockArmPct: [20, 200, 10],
+  saleStepMin: [0, 10, 1],
 };
 
 const booleans: BooleanKey[] = [

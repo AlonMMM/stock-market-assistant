@@ -1,6 +1,6 @@
 import type { Broker, Order } from "./broker.js";
 import { finished } from "./ladder.js";
-import { stopPrice } from "./options.js";
+import { roundToTick, stopPrice } from "./options.js";
 import { uncovered } from "./safety.js";
 
 // Selling at the bid (user-confirmed 2026-10-10): a limit sell at the current
@@ -27,7 +27,13 @@ export interface ExitOptions {
   intervalMs?: number; // between attempts
   maxMs?: number; // give up after this long and restore the stop
   stopPct?: number; // for a remainder that had no stop before
+  // The sale walked down from the mid (bot version 2.11): the first quote's
+  // mid, lowered evenly toward its bid each stepMs for `steps` steps, never
+  // under the bid of the moment; then the bid. None = the bid at once.
+  fromMid?: { steps: number; stepMs?: number };
   sleep?: (ms: number) => Promise<void>;
+  // The clock the walk's steps follow (a poll can take seconds at IBKR).
+  now?: () => number;
   log?: (line: string) => void;
 }
 
@@ -60,6 +66,23 @@ export function exitQty(wanted: string, held: number): number {
       `Quantity must be all, half or a whole number from 1 to ${held}`,
     );
   return qty;
+}
+
+/**
+ * The limits of a sale walked down from the mid over `steps` steps: the mid,
+ * then (steps - k) / steps of the way above the bid, in whole cents rounded
+ * down to the option's tick (a nickel from $3), never above the ask less a
+ * cent. Empty when the book has no spread to walk (the sale is then at the bid).
+ */
+export function midSteps(bid: number, ask: number, steps: number): number[] {
+  if (!(bid > 0) || !(ask > bid) || steps < 1) return [];
+  const mid = (bid + ask) / 2;
+  const out: number[] = [];
+  for (let k = 0; k < steps; k++) {
+    const level = Math.min(bid + (mid - bid) * (1 - k / steps), ask - 0.01);
+    out.push(roundToTick(level, "down"));
+  }
+  return out;
 }
 
 const message = (error: unknown) =>
@@ -116,15 +139,28 @@ export async function sellAtBid(
   let waited = 0;
   let lastQuote: ExitResult["quote"];
   let failure: unknown;
+  // The walk's levels, from the first quote the sale reads.
+  let levels: number[] | null = null;
+  const stepMs = options.fromMid?.stepMs ?? 60_000;
+  const now = options.now ?? (options.sleep ? null : () => Date.now());
+  const started = now?.() ?? 0;
   try {
-    while (stopsGone && waited <= maxMs) {
+    // Time spent so far: the clock when there is one, else the sleeps.
+    const spent = () => (now ? now() - started : waited);
+    while (stopsGone && spent() <= maxMs) {
       if (order) {
         order = await client.order(order.id);
         if (finished.has(order.status)) break;
       }
       const q = await client.quote(symbol);
       lastQuote = { bid: q.bid, ask: q.ask };
-      const bid = q.bid;
+      if (levels === null)
+        levels = options.fromMid
+          ? midSteps(q.bid, q.ask, options.fromMid.steps)
+          : [];
+      // Inside the walk, its level for this minute unless the bid is higher.
+      const level = levels[Math.floor(spent() / stepMs)] ?? 0;
+      const bid = q.bid > 0 ? Math.max(q.bid, level) : q.bid;
       if (bid > 0 && bid !== price) {
         try {
           order = order
@@ -137,14 +173,16 @@ export async function sellAtBid(
               );
           price = bid;
           attempts++;
-          log(`selling ${asked} @ ${bid.toFixed(2)} (the bid)`);
+          log(
+            `selling ${asked} @ ${bid.toFixed(2)} (${bid > q.bid ? "the walk from the mid" : "the bid"})`,
+          );
         } catch (error) {
           // Right after the stop is canceled the broker may still hold the
           // contracts; a re-price can also cross a fill. Try again next time.
           log(`could not sell @ ${bid.toFixed(2)}: ${message(error)}`);
         }
       }
-      if (waited >= maxMs) break;
+      if (spent() >= maxMs) break;
       await sleep(interval);
       waited += interval;
     }

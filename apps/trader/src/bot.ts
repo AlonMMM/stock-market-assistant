@@ -196,6 +196,19 @@ export const botTag = "🤖 Main bot";
 export const chaseBuyMs = 10 * 60_000;
 export const sellWaitMs = 10 * 60_000;
 
+/**
+ * The minutes a sale walks down from the mid (2.11): the setting, or none
+ * when the walk and a minute at the bid would not end before the close.
+ */
+export function saleSteps(
+  steps: number,
+  at: { date: string; minute: number },
+): number {
+  const close = coreClose(at.date);
+  if (steps <= 0 || close === null) return 0;
+  return at.minute + steps + 1 < close ? steps : 0;
+}
+
 /** Why the bot sold, in words, with the settings' numbers. */
 function reasonText(reason: ExitReason, s: BotSettings): string {
   const words: Record<ExitReason, string> = {
@@ -1926,6 +1939,7 @@ export class IndiBot {
     book?: OptionBook,
   ) {
     const ask = Math.min(qty, p.qty);
+    const midSteps = saleSteps(s.saleStepMin, newYork(this.o.now()));
     let why = reasonText(reason, s);
     const w = p.breakWatch;
     if (reason === "failed-break" && w)
@@ -1970,6 +1984,8 @@ export class IndiBot {
         stopPct: s.safetyStopPct,
         // Re-priced at the bid every few seconds for this long (user 2026-10-23).
         waitMs: sellWaitMs,
+        // 2.11: first walked down from the mid, a step a minute.
+        ...(midSteps > 0 ? { midSteps } : {}),
         tag: botTag,
         note: why,
       })

@@ -487,7 +487,7 @@ test("with real quotes: the buy pays the mid + a quarter of the spread at the si
   const run = await runStock(
     "NVDA",
     [date],
-    { ...defaultSettings, pyramid: false },
+    { ...defaultSettings, pyramid: false, saleStepMin: 0 },
     withQuotes(data),
     backtestCalendar,
     { fillPct: 2 },
@@ -508,6 +508,58 @@ test("with real quotes: the buy pays the mid + a quarter of the spread at the si
   const a = runAccount([t], money).trades[0]!;
   assert.deepEqual(a.fills[0]!.book, buy.book);
   assert.deepEqual(a.fills.at(-1)!.book, last.book);
+});
+
+test("with real quotes, 2.11: a sale walks down from the mid, filled where a buyer meets it, else the bid", async () => {
+  const { data } = fakeData(1000);
+  // A 20-cent spread around the bar's price.
+  const wide = (k: number, m: number) => {
+    const p = 3 * Math.exp(-(k - 100) / 3);
+    return { m, bid: p - 0.1, ask: p + 0.1 };
+  };
+  const at = (saleStepMin: number, bars?: (m: number) => MinuteBar | null) =>
+    runStock(
+      "NVDA",
+      [date],
+      { ...defaultSettings, pyramid: false, saleStepMin },
+      withQuotes(
+        bars
+          ? {
+              ...data,
+              optionRange: async (contract, from, to) => {
+                const all = await data.optionRange(contract, from, to);
+                return new Map(
+                  [...all].map(([d, list]) => [
+                    d,
+                    list.map((b) => bars(b.m) ?? b),
+                  ]),
+                );
+              },
+            }
+          : data,
+        wide,
+      ),
+      backtestCalendar,
+    );
+  const bid = (await at(0)).trades[0]!;
+  const sale0 = bid.steps.at(-1)!;
+  const p = 3 * Math.exp(-(bid.strike - 100) / 3);
+  assert.ok(Math.abs(sale0.price - (p - 0.1)) < 1e-9, String(sale0.price));
+  // The option trades at its price every minute: the mid (whole cents down) fills at once.
+  const walked = (await at(5)).trades[0]!;
+  const sale5 = walked.steps.at(-1)!;
+  assert.equal(sale5.reason, sale0.reason);
+  assert.equal(sale5.minute, sale0.minute);
+  assert.equal(sale5.price, Math.floor(p * 100 + 1e-6) / 100);
+  // No print over the bid after the decision: each step goes unfilled, then the bid.
+  const flat = (
+    await at(5, (m) =>
+      m > sale0.minute
+        ? { m, o: p - 0.1, h: p - 0.1, l: p - 0.1, c: p - 0.1, v: 1 }
+        : null,
+    )
+  ).trades[0]!;
+  assert.ok(Math.abs(flat.steps.at(-1)!.price - (p - 0.1)) < 1e-9);
 });
 
 test("with real quotes: the bid running past the price makes the buy pay the ask a minute later", async () => {
