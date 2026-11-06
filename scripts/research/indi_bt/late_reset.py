@@ -28,10 +28,11 @@ sig_lasthour.py 2026-11-01, the day's signals bought at 15:57; retry_skip.py 202
 late_carry.py 2026-10-28, late alerts carried overnight lost in every slice).
 Real quotes: LR_PASS=list writes the late legs with no book at their entry minute -> open39_dbx_list.csv.
 
-  node --env-file=.env <dir>/run.mjs late_reset.py      (from the app repo root; defence_signals.py BT_LATE=330 first)
+  node --env-file=.env <dir>/run.mjs late_reset.py      (from the app repo root; defence_signals.py BT_LATE=330 BT_LATE_ALL=1
+  BT_SIG_SUFFIX=_t12 first: every late minute with t >= 1.2, the earlier versions keep their own rows rule)
 -> data/local/x/bt/late_reset_summary.json, late_reset_legs.csv
 """
-import collections, csv, datetime as dt, glob, json, multiprocessing as mp, os, statistics as st, sys
+import collections, csv, datetime as dt, glob, json, math, multiprocessing as mp, os, statistics as st, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import thin_strike as TS   # 2.10's exits and walk, the tables
@@ -47,6 +48,8 @@ from d2_failed_break import CHAMP
 from low_delta import HIS40, PRIOR
 from score_sum import held as booked
 from split import half
+from signals import series, beta
+from store import day
 
 B = "data/local/x/bt"
 LISTING = os.environ.get("LR_PASS") == "list"
@@ -60,6 +63,16 @@ MODES += ("n30-a-nm", "r30-5-nm", "r30-10-nm", "r30-a-nm")
 # -nf (the user, 2026-11-06: "run it without the 3 filters: contract too cheap, thin, and busy pre"): the late trades
 # only, no $0.20 floor (any price > 0), no 200-contract rule, and no pre-market volume 4x filter (2.10's own legs as they are)
 MODES += ("r30-a-nf", "r30-a-nm-nf")
+# L versions (the user, 2026-11-06: "we should have t> 1.5, and t must be more than 1.2 in the last 3 hours, or increase
+# hard on the last hour. also - we should be on the top (low) 0.9 or more on the stock; removing the busy days filter;
+# the T must be flat or increaing - if it dropped exit"): from 15:30 to 15:44 with r30's volume (last 30 minutes >= 1.25x
+# usual): t >= 1.5, and t >= 1.2 every minute of the 3 hours before or t up `hard` over the last hour; the stock at >= `rp`
+# of the day's range so far on the bet's side (a call near the high, a put near the low); busy pre-market days allowed
+# (the $0.20 floor and 200 contracts stay); held overnight always, 2.10's morning sale; on the entry day all out once t is
+# `drop` under its t at the entry (sim.py thesis.t set per trade).
+#   L<hard x10><rp x10>-a-<exit>: x = 2.10's own t exit only (0.5); d15 / d30 = out 0.15 / 0.3 under the entry's t
+LMODES = ("L109-a-x", "L109-a-d15", "L109-a-d30", "L059-a-d30", "L108-a-d30")
+MODES += LMODES
 NO_MORNING = {"gap_keep": -1e9, "gap_sell_share": 0.0}   # the morning rule then sells 0 (the 0-share step is dropped)
 LAST = 374   # 15:44
 _pick = TS.pick
@@ -88,9 +101,11 @@ def champ_pick(sym, date, m, right, spot, free=False):
     return b
 
 
-def walk_carry(t, m, c, gain, nm=False):
-    """thin_strike.walk_c with the night held from `gain` and no day-range rule; nm: no morning sale."""
+def walk_carry(t, m, c, gain, nm=False, th=None):
+    """thin_strike.walk_c with the night held from `gain` and no day-range rule; nm: no morning sale; th: the entry day's
+    t exit level (sim.py thesis.t: all out once the bet's t is at or under it)."""
     over = {"carry_min_gain": gain, "carry_range_pos": 0.0, **(NO_MORNING if nm else {})}
+    if th is not None: over["thesis"] = {**CHAMP["thesis"], "t": th}
     sim.X.clear(); sim.X.update(CHAMP); sim.X.update(over)
     cost, steps, _ = sim.walk(t["sym"], t["date"], m, t["right"], c[0], c[1], TS.CAL)
     if cost is None: return None
@@ -124,6 +139,45 @@ def nofilter(mode):
     return "nf" in mode.split("-")[2:]
 
 
+def win_of(mode):
+    if mode.startswith("L"): return WINS["30"]
+    return WINS[mode[1:3]]
+
+
+def drop_of(mode):
+    """The L versions' t drop that exits (None: 2.10's t exit only)."""
+    last = mode.split("-")[-1]
+    if mode.startswith("L") and last.startswith("d"): return int(last[1:]) / 100
+    return None
+
+
+def tseries(sym, date):
+    """The bot's t (minute excess vs beta x SPY since the open, a t-stat) for minutes 0..389, None before 10 steps."""
+    i = TS.CAL.index(date)
+    b_ = beta(sym, date, i, TS.CAL)
+    c, s = series(day(sym, date))[0], series(day("SPY", date))[0]
+    out, n, s1, s2 = [None] * 390, 0, 0.0, 0.0
+    if b_ is None: return out
+    for m in range(1, 390):
+        if c[m] and c[m - 1] and s[m] and s[m - 1]:
+            x = c[m] / c[m - 1] - 1 - b_ * (s[m] / s[m - 1] - 1)
+            n += 1; s1 += x; s2 += x * x
+        if n >= 10:
+            mu = s1 / n; var = max(s2 / n - mu * mu, 0.0)
+            out[m] = mu / math.sqrt(var) * math.sqrt(n) if var > 0 else 0.0
+    return out
+
+
+def range_pos(sym, date, m, bet):
+    """Where the stock closes minute m in the day's range so far, on the bet's side (1 = at the high for a call)."""
+    bars = [b for b in day(sym, date) if b[0] <= m]
+    if not bars: return 0.0
+    hi, lo = max(b[2] for b in bars), min(b[3] for b in bars)
+    if hi <= lo: return 0.0
+    pos = (bars[-1][4] - lo) / (hi - lo)
+    return pos if bet > 0 else 1 - pos
+
+
 def dbx(src):
     if RB.DBX != fm.DBX[src]: RB.DBX = fm.DBX[src]; RB.Q.clear(); RB.OI.clear()
 
@@ -139,7 +193,7 @@ def walk_main(job):
     if base is None: return None
     v, by_c = {}, {}
     for mode in MODES:
-        if mode == "champ" or m0 < WINS[mode[1:3]]: v[mode] = base; continue
+        if mode == "champ" or m0 < win_of(mode): v[mode] = base; continue
         c = carry_of(mode)
         if c not in by_c: by_c[c] = walk_carry(t, m0, b, CARRY[c[0]], c[1])
         if by_c[c] is not None: v[mode] = by_c[c]
@@ -149,8 +203,10 @@ def walk_main(job):
 
 
 def late_rows():
-    rows = [r for f in sorted(glob.glob(f"{B}/s_late_20*.csv")) for r in csv.DictReader(open(f))]
-    for r in rows: r["minute"] = int(r["minute"])
+    rows = [r for f in sorted(glob.glob(f"{B}/s_late_t12_20*.csv")) for r in csv.DictReader(open(f))]   # every t >= 1.2 (BT_LATE_ALL)
+    for r in rows:
+        r["minute"] = int(r["minute"])
+        r["old"] = float(r["c_t"]) >= 1.8 or (float(r["c_t"]) >= 1.2 and float(r["c_e"]) >= 1.5)   # the earlier versions' rows
     nf.features(rows)
     out = []
     for r in rows:
@@ -174,13 +230,31 @@ def find_late(job):
                 if any(c["minute"] >= m1 for c in champ): continue   # 2.10's own signal is the late trade
                 for r in rows:
                     m = r["minute"]
-                    if m < m1 or m > LAST: continue
+                    if m < m1 or m > LAST or not r["old"]: continue
                     if r["busy_pre"] and not free: continue
                     if vol == "r" and float(r["c_rv30"]) < 1.25: continue
                     if any(c["minute"] < m and c["open"].get(m, 0) > 0 for c in champ): continue
                     k = (m, r["right"], free)
                     if k not in tried: tried[k] = champ_pick(sym, date, m, r["right"], float(r["price"]), free)
                     if tried[k]: got[(vol, w, free)] = (r, tried[k]); break
+    ts = None
+    for lm in sorted({u.split("-")[0] for u in LMODES}):
+        hard, rp = int(lm[1:3]) / 10, int(lm[3]) / 10
+        if any(c["minute"] >= WINS["30"] for c in champ): continue
+        for r in rows:
+            m = r["minute"]
+            if m < WINS["30"] or m > LAST or float(r["c_t"]) < 1.5 or float(r["c_rv30"]) < 1.25: continue
+            if any(c["minute"] < m and c["open"].get(m, 0) > 0 for c in champ): continue
+            if ts is None: ts = tseries(sym, date)
+            bet = 1 if r["right"] == "C" else -1
+            past = [bet * x for x in ts[m - 180:m] if x is not None]
+            steady = len(past) >= 170 and min(past) >= 1.2
+            jump = ts[m - 60] is not None and float(r["c_t"]) - bet * ts[m - 60] >= hard
+            if not (steady or jump): continue
+            if range_pos(sym, date, m, bet) < rp: continue
+            k = (m, r["right"], False)
+            if k not in tried: tried[k] = champ_pick(sym, date, m, r["right"], float(r["price"]))
+            if tried[k]: got[("L", lm)] = (r, tried[k]); break
     return (src, sym, date), got
 
 
@@ -189,11 +263,13 @@ def walk_late(job):
     dbx(src)
     t = dict(sym=sym, date=date, right=right, minute=str(m), price=r["price"], c_t=r["c_t"], c_rvol=r["c_rvol"])
     v = {}
-    for c in sorted({carry_of(u) for u in uses}):
-        x = walk_carry(t, m, b, CARRY[c[0]], c[1])
+    key = lambda u: (carry_of(u), drop_of(u))
+    for c, drop in sorted({key(u) for u in uses}, key=str):
+        th = float(r["c_t"]) - drop if drop is not None else None
+        x = walk_carry(t, m, b, CARRY[c[0]], c[1], th)
         if x is None: continue
         for u in uses:
-            if carry_of(u) == c: v[u] = x
+            if key(u) == (c, drop): v[u] = x
     if not v: return None
     info = dict(contract=b[0], strike=b[2], delta=round(abs(b[3]), 3), price=b[4], vol30=b[5], how="late",
                 rv30=float(r["c_rv30"]), book=bool(RB.quote(b[0], date, m)))
@@ -237,7 +313,7 @@ def report(R, part, out, rows_out):
     print("| Version | List | Late trades (new) | Winners | Median | Sum | Giants | Non-giant sum | Held overnight | 2.10's own legs in the window: count, sum vs 2.10 | By year | Top names |")
     print("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for v in MODES[1:]:
-        m1 = WINS[v[1:3]]
+        m1 = win_of(v)
         for src, a in (("fair", ""), ("fav", FR.A24)):
             rs = [r for r in R if r["src"] == src and r["kind"] == "main" and half(r["date"]) == part and r["date"] >= a and v in r["v"]]
             new = [r for r in rs if r["late"]]
@@ -281,9 +357,11 @@ def main():
     with mp.Pool(8) as pool: F = pool.map(find_late, jobs, chunksize=8)
     legs = {}
     for (src, sym, date), got in F:
-        for (vol, w, free), (r, b) in got.items():
+        for gk, (r, b) in got.items():
             k = (src, sym, date, r["minute"], r["right"], b[0])
-            legs.setdefault(k, [r, b, set()])[2].update(u for u in MODES[1:] if u.startswith(f"{vol}{w}-") and nofilter(u) == free)
+            if gk[0] == "L": uses = [u for u in LMODES if u.startswith(gk[1] + "-")]
+            else: uses = [u for u in MODES[1:] if u.startswith(f"{gk[0]}{gk[1]}-") and nofilter(u) == gk[2]]
+            legs.setdefault(k, [r, b, set()])[2].update(uses)
     print(f"late legs: {len(legs)}; by vol + window:",
           dict(collections.Counter(u[:3] for v in legs.values() for u in v[2] if u.endswith("-a"))), flush=True)
     if LISTING:

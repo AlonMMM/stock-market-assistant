@@ -464,6 +464,33 @@ median stays −$3.3K to −$3.8K and the sum falls: tune fair +$98K -> −$273K
 -> −$303K, carried by INTC +$207K and ASTS +$156K). Verdict: the filtered-out trades are the same lottery at the same
 loss per ticket, more of them. 2.10 stays.
 
+**Follow-up, stricter late rules and a t exit (2026-11-06, look 4, not better).** The user: "we should have t> 1.5, and t
+must be more than 1.2 in the last 3 hours, or increase hard on the last hour. also - we should be on the top (low) 0.9 or
+more on the stock; removing the busy days filter; the T must be flat or increaing - if it dropped exit". `late_reset.py`
+L versions (signals: `defence_signals.py BT_LATE_ALL=1 BT_SIG_SUFFIX=_t12`, every late minute with t >= 1.2): 15:30-15:44
+with r30's volume; t >= 1.5 and either t >= 1.2 every minute of the 3 hours before or t up >= `hard` over the last hour;
+the stock at >= `rp` of the day's range so far on the bet's side; pre-market 4x days allowed (floor and 200 contracts
+kept); always held overnight, 2.10's morning sale; on the entry day all out once t is `drop` under its entry t (sim.py
+thesis.t per trade). Set before: hard 1.0 / rp 0.9 with no t exit (x), drop 0.15, drop 0.3; neighbours hard 0.5, rp 0.8
+(both drop 0.3). Same run as the 19 earlier versions (2.10 to the dollar; r30-a moved by one trade on the new rows).
+
+| 2%, vs 2.10 | Tune fair | Tune Favorites | Check fair | Check Favorites |
+|---|---|---|---|---|
+| r30-a | +44% / 26% | +21% / 23% | −34% / 32% | −41% / 32% |
+| L109-a-x (no t exit) | +64% / 23% | +38% / 22% | −28% / 31% | −23% / 30% |
+| L109-a-d15 | +76% / 20% | +47% / 19% | −26% / 30% | −24% / 30% |
+| L109-a-d30 | +65% / 22% | +39% / 22% | −28% / 31% | −22% / 30% |
+| L059-a-d30 (hard 0.5) | +58% | +30% | −36% | −32% |
+| 🎯 L108-a-d30 (rp 0.8) | $1,106,652 +78% / 25% | $705,392 +57% / 26% | $592,859 −38% / 35% | $141,227 −38% / 34% |
+
+3%: the pick tune +121% / +83%, check −52% / −52%; L109-a-d15 check −37% / −34%. The late trades at $10K: the rules cut
+them to 90-130 a half (r30-a 121-142). Tune L109: fair 90, +$318K to +$364K, but MSFT +$163K and MU +$122K are most of
+it. Check L109: 94 / 97 trades, win 14-27%, median −$2.5K (d15) to −$4.2K, sum −$213K to −$217K fair, −$133K to −$175K
+Favorites, 1-2 giants. The stricter entry cuts the late loss on check by about a third (r30-a −$282K / −$344K); the t
+exit at 0.3 almost never fires before 15:50, 0.15 does (fewer held overnight, 59-64 of 90-94) and halves the median
+loss, yet the sum stays about the same. Verdict: still a loser on check; every L version is under 2.10 on both lists.
+2.10 stays.
+
 ### The strength exit: t 1.0 held 15-45 minutes, on top of 0.5 (2026-11-06, a tie: dw15 -0.4% / -0.5% on check; the giants are no longer cut)
 
 The user, after the t 1.0 charts (`t1_charts.py`, the check-week trades t 1.0 changed: 226 helped, 95 hurt, the giants
