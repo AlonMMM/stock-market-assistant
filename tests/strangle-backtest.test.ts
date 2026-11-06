@@ -751,7 +751,7 @@ test("volume backtest (2026-11-06): each alert keeps how close the stock got to 
   assert.equal(typeof t.trade!.volume30, "number");
 });
 
-test("longestGap (2026-11-06): the longest stretch with no stock price in the decision window, from 5 s", () => {
+test("longestGap (2026-11-06): the longest stretch with no stock price in the decision window, from 10 s", () => {
   // DELL 2026-05-08: the shock at 12200, prices 12195 then 12213 (the saved seconds missed the trades between).
   const seconds: [number, number][] = [
     [12195, 247.04],
@@ -783,4 +783,17 @@ test("longestGap (2026-11-06): the longest stretch with no stock price in the de
     to: 12220,
   });
   assert.deepEqual(longestGap([], 12200, 12215), { from: 12200, to: 12215 });
+  // A 7-second quiet stretch is normal tape, not a hole (the 2026-11-06 survey).
+  assert.equal(
+    longestGap(
+      [
+        [12207, 1],
+        [12213, 1],
+        [12220, 1],
+      ],
+      12200,
+      12220,
+    ),
+    null,
+  );
 });

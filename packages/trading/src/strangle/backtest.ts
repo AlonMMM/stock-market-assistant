@@ -207,7 +207,7 @@ export interface VolumeSignal {
 }
 
 /** A stretch this long with no stock price in an alert's decision window is flagged. */
-export const DATA_GAP_SECONDS = 5;
+export const DATA_GAP_SECONDS = 10;
 
 export interface VolumeStockRun {
   symbol: string;
