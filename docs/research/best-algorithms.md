@@ -3702,3 +3702,34 @@ than 2%) are the least sure. The truth sits between T1 and SP: the book refills 
 all a spread away, while cbbo's size may be one venue's. Every past comparison used the same model, so the rankings
 hold; the dollar figures read high. Next if pursued: a limit that never takes more than the shown size per minute
 (split the order), on the live bot's sizeSteps.
+
+### A higher price floor, and the side's option volume instead of the pick's, on 2.10 (2026-11-06, not better: every pick fails the check)
+The user: "can you test cheapest limit 0.25? 0.3? you can exception stockes that are cost less that 30$ (their option
+must be cheeper)", then "I want to use option volume as a filter, today we filter on the strike we decide - i think it
+not accourate, we need to decide on the overall directional option volume", "on the main bot". Prior: the cheap
+fallback's own floor at $0.30 / $0.50 (cheap_opt.py, 2026-10-27) and the live $0.15 (2.6*); the main pick's floor above
+$0.20 was never tested. Five 11-03 tests changed the pick's 200 floor (spread, usual, scaled, neighbour, wait), all on
+the one strike; the side's total and calls against puts were never tested. minprice_side.py on thin_strike.py's champion
+and walk; the other right's bars (the picker's 16 OTM strikes, the signal's expiry) fetched from Alpaca for the 4,701
+signal-days that lacked them, none missing after. Set before running: P25lo / P30lo (floor $0.25 / $0.30, a stock under
+$30 keeps $0.20), P30all ($0.30 every stock; IBIT $0.10 in all); S1k / S3k / S10k (no 200 on the pick; the side's
+strikes >= 1,000 / 3,000 / 10,000 contracts in 30 minutes); R10 / R15 (2.10's pick and floor, the side >= 1.0x / 1.5x the
+other right's 30-minute volume). Look 1 on each idea.
+- Baseline 2.10 to the dollar (2%, tune / check): fair $620,535 / $957,771, Favorites $449,178 / $226,846.
+- Tune, 2%, vs 2.10 (fair / Favorites): P25lo -30% / -29%, P30lo -31% / -28%, P30all -28% / -28%; S1k -13% / -16%
+  (33% / 37% drop), S3k +28% / +49% (19% / 21% drop), S10k -33% / -31%; R10 +32% / +29% (13% / 18%), R15 -11% / -21%.
+  Picks: P30all (0.718, worse on both), S3k (1.281), R10 (1.288).
+- Check, 2%: P30all $923,803 (-4%) / $222,695 (-2%); S3k $150,140 (-84%) / $139,927 (-38%); R10 $214,768 (-78%) /
+  $136,070 (-40%). At 3%: P30all -4% / -1%, S3k -88% / -51%, R10 -81% / -48%. Without the best 5 at 2%: P30all
+  $164,350 / $73,102, S3k $48,967 / $45,376, R10 $59,409 / $54,241 vs $169,718 / $74,497.
+- P drops only trades: the cheap ones are worse than usual (dropped median -$2.9K to -$4.1K at $10K vs -$1.5K for all,
+  non-giant sum -$36K to -$108K a list), but they hold 2 giants a list on tune, 0-1 on check. Cutting them is not worth
+  the giants.
+- S3k's added picks (thin strikes on a busy side, all under 200 contracts, fill unproven): tune 146 / 165, median
+  -$2,520, the sum COIN, SMCI, IONQ, CRWV (the same names as the 11-03 tests); check 178 / 191, 0 giants, -$367K /
+  -$432K, every year negative.
+- R10 drops the signals against the chain's lean: tune 188 / 167, sum -$208K / -$104K (3 giants), a gain; check 169 /
+  156, +$841K / +$263K (7 / 4 giants): the lean does not tell the giants apart.
+Verdict: not better. A higher floor gives up giants for small savings; a busy side does not make a thin pick tradeable
+(as the busy neighbour, 11-03); calls against puts is noise across halves. 2.10's floor ($0.20, 200 on the pick) stays;
+no candidate.
