@@ -2500,6 +2500,16 @@ function SignalList({
               )}
               {th("t", "t", "Strength against SPY (t-stat)")}
               {th("rvol", "Vol ×", "The stock's day volume against normal")}
+              {th(
+                "premarketX",
+                "Pre ×",
+                "The stock's pre-market volume (04:00–09:30 New York) against the median of its 20 sessions before; the bot skips the stock from 4×",
+              )}
+              {th(
+                "spyPremarketX",
+                "SPY pre ×",
+                "SPY's pre-market volume that morning against the median of its 20 sessions before",
+              )}
               {th("d2", "D2")}
               {th("strike", "Contract", "Sorts by the strike")}
               {th(
@@ -2596,6 +2606,10 @@ function SignalLine({
       </td>
       <td className="num">{fixed(r.t, 1)}</td>
       <td className="num">{fixed(r.rvol, 1, "×")}</td>
+      <td className={`num${r.reason === "premarket" ? " thin" : ""}`}>
+        {fixed(r.premarketX, 1, "×")}
+      </td>
+      <td className="num">{fixed(r.spyPremarketX, 1, "×")}</td>
       <td className="num">{fixed(r.d2, 1)}</td>
       <td className="num">
         {contract}

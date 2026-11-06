@@ -317,6 +317,10 @@ export async function handleVolumeBacktest(
     const stocks = new Map([
       [symbol, splitDays(await history(symbol, start, end))],
     ]);
+    // SPY only for its pre-market volume on the signals list; a failed read
+    // leaves that column empty, never the run.
+    const spy = await history("SPY", start, end).catch(() => null);
+    if (spy) stocks.set("SPY", splitDays(spy));
     const data = new AlpacaVolumeData(
       stocks,
       lastSession,

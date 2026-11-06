@@ -219,6 +219,9 @@ const csvCell = (v: string | number | null | undefined) => {
   return `"${text.replace(/"/g, '""')}"`;
 };
 
+const ratioCell = (x: number | null | undefined) =>
+  typeof x === "number" ? x.toFixed(2) : null;
+
 /** The signals list as CSV (New York times). */
 export function volumeCsv(rows: readonly VolumeRow[]): string {
   const head = [
@@ -228,6 +231,8 @@ export function volumeCsv(rows: readonly VolumeRow[]): string {
     "time_ny",
     "direction",
     "burst",
+    "premarket_x",
+    "spy_premarket_x",
     "outcome",
     "why",
     "contract",
@@ -264,6 +269,8 @@ export function volumeCsv(rows: readonly VolumeRow[]): string {
       nyClock(s.second),
       s.alert,
       s.burst === null ? null : s.burst.toFixed(2),
+      ratioCell(s.premarketX),
+      ratioCell(s.spyPremarketX),
       s.outcome,
       r.why,
       t?.contract,
@@ -446,6 +453,8 @@ export type VolumeSortKey =
   | "sell"
   | "spread"
   | "volume30"
+  | "premarketX"
+  | "spyPremarketX"
   | "burst";
 
 function sortValue(r: VolumeRow, key: VolumeSortKey): number | string | null {
@@ -463,6 +472,8 @@ function sortValue(r: VolumeRow, key: VolumeSortKey): number | string | null {
   if (key === "sell") return t?.sell ?? s.whatIf?.sell ?? null;
   if (key === "spread") return t?.spread ?? null;
   if (key === "volume30") return t?.volume30 ?? null;
+  if (key === "premarketX") return s.premarketX ?? null;
+  if (key === "spyPremarketX") return s.spyPremarketX ?? null;
   return s.burst;
 }
 
