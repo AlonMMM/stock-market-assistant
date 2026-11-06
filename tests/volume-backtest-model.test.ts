@@ -200,11 +200,11 @@ test("volume backtest page: New York clock and CSV", () => {
   assert.match(csv[0]!, /^date,symbol,alert,time_ny/);
   assert.match(
     csv[1]!,
-    /^2024-02-07,MRVL,shock,10:30:00,up,1.40,traded,Traded,MRVL240207C00070000,10:30:05,0.41,seconds,0.82,minutes,giveback,,,,,60,0.4,0.42,5.0,,,,,,$/,
+    /^2024-02-07,MRVL,shock,10:30:00,up,1.40,,,traded,Traded,MRVL240207C00070000,10:30:05,0.41,seconds,0.82,minutes,giveback,,,,,60,0.4,0.42,5.0,,,,,,$/,
   );
   assert.match(
     csv[2]!,
-    /^2024-02-06,MRVL,plan,10:10:00,up,1.40,no_fill,No fill,/,
+    /^2024-02-06,MRVL,plan,10:10:00,up,1.40,,,no_fill,No fill,/,
   );
 });
 

@@ -3,6 +3,7 @@ import {
   bsPrice,
   impliedDelta,
   newsBlock,
+  premarketX,
   occSymbol,
   stockVol,
   strikeAt,
@@ -189,6 +190,10 @@ export interface VolumeSignal {
   price: number | null; // the side lines' start
   unit: number | null; // the stock's typical 30-minute move, a fraction
   burst: number | null;
+  // Pre-market volume (04:00-09:30) vs the median of the 20 sessions before,
+  // the stock's and SPY's (news.ts premarketRatio); null without the data.
+  premarketX?: number | null;
+  spyPremarketX?: number | null;
   expiry: string | null;
   outcome: VolumeOutcome;
   detail: string;
@@ -579,6 +584,10 @@ export async function runVolumeStock(
     const news = o.news
       ? o.news(symbol, date)
       : await newsBlock(symbol, date, s, data, cal);
+    const pre = {
+      premarketX: premarketX(symbol, date, data, cal),
+      spyPremarketX: premarketX("SPY", date, data, cal),
+    };
     let expiry: string | null | undefined;
     const first = signals.length;
     const sides = new Map<
@@ -598,6 +607,7 @@ export async function runVolumeStock(
         alert: a.up ? "up" : "down",
         price: a.price,
         unit,
+        ...pre,
         burst: null,
         expiry: null,
         outcome: "no_prices",

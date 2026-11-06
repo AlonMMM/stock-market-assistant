@@ -154,6 +154,10 @@ export interface SimTrade {
   volume30: number;
   fallback: boolean; // the cheap fallback chose it
   signalPrice?: number; // the option's price at the signal, as the pick read it
+  // Pre-market volume (04:00-09:30) vs the median of the 20 sessions before,
+  // the stock's and SPY's (news.ts premarketRatio); null without the data.
+  premarketX?: number | null;
+  spyPremarketX?: number | null;
   book?: Book; // the real bid / ask as the signal minute closed, when there is one
   steps: SimStep[];
   // "quotes": bought and sold at real bids / asks on the stock's minute clock;
@@ -228,6 +232,8 @@ export interface SimSkip {
   d2?: number | null;
   bonus?: boolean;
   stock?: number;
+  premarketX?: number | null; // as SimTrade's
+  spyPremarketX?: number | null;
   contract?: SeenContract; // missing when no contract was priced
   whatIf?: WhatIf; // missing on a pyramid's skip, or when it cannot be modelled
 }
@@ -1200,6 +1206,11 @@ export async function runStock(
       params,
     );
     if (!sig) continue;
+    // How busy the pre-market was, the stock's and SPY's, on every signal row.
+    const pre = {
+      premarketX: premarketX(symbol, date, data, cal),
+      spyPremarketX: premarketX("SPY", date, data, cal),
+    };
     const skip = (
       reason: SkipReason,
       detail: string,
@@ -1214,6 +1225,7 @@ export async function runStock(
         reason,
         detail,
         pyramid,
+        ...pre,
       });
     const spot = closeAt(day, sig.minute);
     const levels = priorLevels(priorSessions.slice(-5).map((p) => p.stock));
@@ -1261,6 +1273,7 @@ export async function runStock(
         rvol: sig.rvol,
         d2: sig.d2,
         bonus: sig.bonus,
+        ...pre,
       };
       if (spot !== null) row.stock = spot;
       if (seen) {
@@ -1362,6 +1375,7 @@ export async function runStock(
       open: walked.open,
       priced: walked.priced,
       signalPrice: picked.price,
+      ...pre,
       ...(walked.book ? { book: walked.book } : {}),
       watch: watch ? { name: watch.name, level: watch.level } : null,
     };
@@ -1659,6 +1673,19 @@ async function whatIf(
   };
 }
 
+/** A stock's pre-market volume on a day vs its normal (the news filter's ratio), or null. */
+export function premarketX(
+  symbol: string,
+  date: string,
+  data: { premarket: BacktestData["premarket"] },
+  cal: BacktestCalendar,
+): number | null {
+  return premarketRatio(
+    data.premarket(symbol, date),
+    cal.previousSessions(date, 20).map((d) => data.premarket(symbol, d)),
+  );
+}
+
 /** The news filter's reason to skip a stock's signal on a day, or null (the Volume bot's backtest too). */
 export async function newsBlock(
   symbol: string,
@@ -1672,11 +1699,7 @@ export async function newsBlock(
   cal: BacktestCalendar,
 ): Promise<{ reason: "premarket" | "earnings"; detail: string } | null> {
   if (s.skipPremarket) {
-    const before = cal.previousSessions(date, 20);
-    const ratio = premarketRatio(
-      data.premarket(symbol, date),
-      before.map((d) => data.premarket(symbol, d)),
-    );
+    const ratio = premarketX(symbol, date, data, cal);
     if (premarketBlocks(ratio))
       return {
         reason: "premarket",

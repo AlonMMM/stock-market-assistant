@@ -413,6 +413,16 @@ export function VolumeSignalList({
                 "Burst",
                 "The 3 minutes up to the alert, in typical 30-minute moves",
               )}
+              {th(
+                "premarketX",
+                "Pre ×",
+                "The stock's pre-market volume (04:00–09:30 New York) against the median of its 20 sessions before; the bot skips the stock from 4×",
+              )}
+              {th(
+                "spyPremarketX",
+                "SPY pre ×",
+                "SPY's pre-market volume that morning against the median of its 20 sessions before",
+              )}
             </tr>
           </thead>
           <tbody>
@@ -464,6 +474,10 @@ function VolumeSortTh({
     </th>
   );
 }
+
+/** A pre-market ratio as the table shows it: 4.2×, or — without the data. */
+const ratioText = (x: number | null | undefined) =>
+  typeof x === "number" ? `${x.toFixed(1)}×` : "—";
 
 function VolumeSignalLine({
   r,
@@ -558,6 +572,10 @@ function VolumeSignalLine({
       <td className="num">{book}</td>
       <td className="num">{t?.volume30 ?? "—"}</td>
       <td className="num">{s.burst === null ? "—" : s.burst.toFixed(2)}</td>
+      <td className={`num${s.outcome === "premarket" ? " thin" : ""}`}>
+        {ratioText(s.premarketX)}
+      </td>
+      <td className="num">{ratioText(s.spyPremarketX)}</td>
     </tr>
   );
 }

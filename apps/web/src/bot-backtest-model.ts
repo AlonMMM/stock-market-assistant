@@ -275,6 +275,8 @@ export interface SignalRow {
   ask: number | null;
   delta: number | null;
   volume30: number | null;
+  premarketX: number | null; // the stock's pre-market volume vs its normal (04:00-09:30)
+  spyPremarketX: number | null; // SPY's, the same morning
   ret: number | null; // the option's return on what was paid, from its steps
   nights: number | null; // sessions held after the entry day (0 = sold the same day)
   model: boolean; // ret is the Black-Scholes what-if, not the trade
@@ -346,6 +348,8 @@ function skipRow(k: SimSkip, i: number): SignalRow {
     ask: c?.book?.ask ?? null,
     delta: c?.delta ?? null,
     volume30: c?.volume30 ?? null,
+    premarketX: k.premarketX ?? null,
+    spyPremarketX: k.spyPremarketX ?? null,
     ret: pricedReturn(w?.ret ?? null, w?.steps[0]?.price ?? null),
     nights: w ? nightsHeld(w.steps) : null,
     model: w !== null,
@@ -394,6 +398,8 @@ export function signalRows(
         ask: t.book?.ask ?? null,
         delta: t.delta,
         volume30: t.volume30,
+        premarketX: t.premarketX ?? null,
+        spyPremarketX: t.spyPremarketX ?? null,
         ret: pricedReturn(stepsReturn(t.steps), t.steps[0]?.price ?? null),
         nights: nightsHeld(t.steps),
         model: false,
@@ -428,6 +434,8 @@ export type SignalSortKey =
   | "boughtAt"
   | "spread"
   | "volume30"
+  | "premarketX"
+  | "spyPremarketX"
   | "t"
   | "rvol"
   | "d2"
@@ -550,6 +558,8 @@ export function signalsCsv(rows: readonly SignalRow[]): string {
     "spread_pct",
     "delta",
     "volume30",
+    "premarket_x",
+    "spy_premarket_x",
     "return",
     "nights",
     "return_is_model",
@@ -583,6 +593,8 @@ export function signalsCsv(rows: readonly SignalRow[]): string {
       round(spreadPct(r), 4),
       round(r.delta, 3),
       r.volume30,
+      round(r.premarketX, 2),
+      round(r.spyPremarketX, 2),
       round(r.ret, 4),
       r.nights,
       r.model,
