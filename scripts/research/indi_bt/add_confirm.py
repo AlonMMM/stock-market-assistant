@@ -2,7 +2,9 @@
 better place to use options to gain. I just wonder what's the best way to tackle it", then "go" on: add once the move
 confirms). Tested 2026-10-31 on the staged-exit candidate (checks off, fixed walk, fair list only): add 50% at +1.0 S30
 within 10 minutes won tune +29% / check +81%, 10 trades gave most of it, the median added trade worse, the Favorites
-never run. 2.10 has the 10/20-minute checks, the ladder, the break-even lock and the volume sizes; never tested on it.
+never run. 2.10 has 2.9's exits (no 10/20-minute checks since 2.8.0: the staged stock exit half at 0.5 / all at
+1.0 S30 against, the -60% stop, the break-even lock, late winners to 15:50; size_volume's BT_X, merged over the add)
+and the volume sizes; never tested on it.
 sim.py stock_stages {"add": {within, move, share}} only (no staged exit): once, `share` of the first buy more, at the
 next minute's real quote (the rebuy fill: mid + half the spread, chased to the ask), money on top of the trade; all of
 2.10's exits then run on the whole position. Set before running, 12 versions:
