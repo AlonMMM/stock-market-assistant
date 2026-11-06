@@ -10,9 +10,13 @@ import {
 } from "../packages/market-data/src/bot-backtest.js";
 import { previousSessions } from "../packages/market-data/src/calendar.js";
 import {
+  AlpacaVolumeData,
   handleVolumeBacktest,
+  savedMinutes,
   secondsFromTrades,
 } from "../packages/market-data/src/volume-backtest.js";
+import type { AlpacaFeed } from "../packages/market-data/src/alpaca.js";
+import type { VolumeDataStore } from "../packages/market-data/src/volume-data.js";
 import {
   bsPrice,
   occSymbol,
@@ -640,5 +644,66 @@ test("the backtest takes an overnight cap up to 100% (the live bot's limit is 25
   assert.equal(
     parseSettings({ ...defaultSettings, nightCapPct: 30 }).ok,
     false,
+  );
+});
+
+test("volume backtest data (2026-11-06): the minutes Databento has not uploaded come from the 1-second books saved in D1, so the sale finds its bid", async () => {
+  // Rows are the book as their second ended: the newest of each minute is
+  // that minute's book; a bad book is left out.
+  assert.deepEqual(
+    savedMinutes([
+      { s: 3005, bid: 1, ask: 1.1 },
+      { s: 3059, bid: 1.2, ask: 1.3 },
+      { s: 3060, bid: 1.4, ask: 1.5 },
+      { s: 3125, bid: 0.9, ask: 0 },
+      { s: 23400, bid: 1, ask: 1.1 },
+    ]),
+    [
+      { m: 50, bid: 1.2, ask: 1.3 },
+      { m: 51, bid: 1.4, ask: 1.5 },
+    ],
+  );
+  const contract = "NVDA261105C00200000";
+  const saved: SecondBook[] = [
+    { s: 3001, bid: 2, ask: 2.1 }, // minute 50: Databento has it
+    { s: 3660, bid: 2.5, ask: 2.6 }, // minute 61: only saved
+  ];
+  const store = {
+    option: async (c: string, date: string) =>
+      c === contract && date === "2026-11-05" ? saved : [],
+  } as unknown as VolumeDataStore;
+  const databento = new Map([["2026-11-05", [{ m: 50, bid: 1.9, ask: 2 }]]]);
+  const quotes = { get: async () => new Map(databento) };
+  const data = new AlpacaVolumeData(
+    new Map(),
+    "2026-11-05",
+    { key: "k", secret: "s" },
+    "https://paper",
+    fetch,
+    {} as AlpacaFeed,
+    quotes,
+    undefined,
+    store,
+  );
+  // Databento wins its minute; the saved books fill the rest.
+  assert.deepEqual(
+    (await data.optionQuotes(contract, "2026-11-05", "2026-11-05")).get(
+      "2026-11-05",
+    ),
+    [
+      { m: 50, bid: 1.9, ask: 2 },
+      { m: 61, bid: 2.5, ask: 2.6 },
+    ],
+  );
+  // A day with nothing uploaded at all is the saved books alone.
+  databento.clear();
+  assert.deepEqual(
+    (await data.optionQuotes(contract, "2026-11-05", "2026-11-05")).get(
+      "2026-11-05",
+    ),
+    [
+      { m: 50, bid: 2, ask: 2.1 },
+      { m: 61, bid: 2.5, ask: 2.6 },
+    ],
   );
 });

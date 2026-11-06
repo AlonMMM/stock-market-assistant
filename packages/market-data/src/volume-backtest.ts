@@ -16,7 +16,7 @@ import {
   previousSessions,
 } from "./calendar.js";
 import type { OptionBarStore } from "./option-bars.js";
-import type { OptionQuoteStore } from "./option-quotes.js";
+import type { OptionQuoteStore, QuoteMinute } from "./option-quotes.js";
 import { TradeBarBuilder } from "./trade-bars.js";
 import type { VolumeDataStore } from "./volume-data.js";
 import {
@@ -183,6 +183,38 @@ export class AlpacaVolumeData
     return rows;
   }
 
+  /**
+   * A contract's minute books: Databento's (and, in the end-of-day review, the
+   * recorded ones), with the minutes they miss filled from the 1-second books
+   * saved in D1 (the user, 2026-11-06: "we should save it in our db"). Those
+   * hold every alert contract to 15:30, so a sale after Databento's last
+   * upload still finds the bid instead of "no book at the sale".
+   */
+  async optionQuotes(
+    contract: string,
+    from: string,
+    to: string,
+  ): Promise<Map<string, QuoteMinute[]>> {
+    const out = await super.optionQuotes(contract, from, to);
+    if (!this.store) return out;
+    for (let date = from; date <= to; date = nextDay(date)) {
+      const saved = savedMinutes(
+        await this.store
+          .option(contract, date, 0, sessionSeconds)
+          .catch(() => []),
+      );
+      if (!saved.length) continue;
+      const day = out.get(date) ?? [];
+      const have = new Set(day.map((q) => q.m));
+      const merged = [...day, ...saved.filter((q) => !have.has(q.m))];
+      out.set(
+        date,
+        merged.sort((a, b) => a.m - b.m),
+      );
+    }
+    return out;
+  }
+
   async optionSeconds(
     contract: string,
     date: string,
@@ -202,6 +234,32 @@ export class AlpacaVolumeData
   ): Promise<ShockAlert[]> {
     return this.store ? this.store.shocks(symbol, from, to, kind) : [];
   }
+}
+
+const sessionSeconds = 390 * 60;
+
+function nextDay(date: string) {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Saved 1-second books as minute books: a row is the book as its second
+ * ended, so the newest row of minute m is the book as m closed (no look-ahead).
+ */
+export function savedMinutes(rows: readonly SecondBook[]): QuoteMinute[] {
+  const byMinute = new Map<number, SecondBook>();
+  for (const r of rows) {
+    if (!(r.ask > 0) || r.bid < 0 || r.bid > r.ask) continue;
+    const m = Math.floor(r.s / 60);
+    if (m < 0 || m >= 390) continue;
+    const kept = byMinute.get(m);
+    if (!kept || r.s >= kept.s) byMinute.set(m, r);
+  }
+  return [...byMinute.entries()]
+    .map(([m, r]) => ({ m, bid: r.bid, ask: r.ask }))
+    .sort((a, b) => a.m - b.m);
 }
 
 export async function handleVolumeBacktest(
