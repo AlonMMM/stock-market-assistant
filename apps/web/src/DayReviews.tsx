@@ -1101,7 +1101,7 @@ function DayDetail({
             Causes{" "}
             {!written && (
               <span className="muted small">
-                (found by the comparison; checked at 23:05)
+                (found by the comparison; checked at 23:25)
               </span>
             )}
           </h4>
@@ -1295,7 +1295,7 @@ export function DayReviews({ bot }: { bot: ReviewBot }) {
         <div>
           <h2 className="portfolio-title">{botTitle[bot]} · analyse</h2>
           <p className="muted small">
-            Each trading day at 23:05 Israel time, the bot's trades are set
+            Each trading day at 23:25 Israel time, the bot's trades are set
             beside the app's backtest of the same day.
           </p>
         </div>

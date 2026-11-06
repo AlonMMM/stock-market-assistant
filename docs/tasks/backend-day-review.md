@@ -29,8 +29,8 @@ service records ("we are saving the data of the options").
 3. **Connector**: `day_review_start`, `day_review_get`, `day_review_save`, through a service binding to the website
    with the `DAY_REVIEW_TOKEN` secret (the same on both Workers); the website accepts that token on
    `/api/day-reviews` only, as the owner.
-4. **Skill** `.claude/skills/end-of-day/SKILL.md`, run by a scheduled cloud routine at 23:05 Israel time on
-   weekdays, with the connector attached.
+4. **Skill** `.claude/skills/end-of-day/SKILL.md`, run by a scheduled cloud routine at 23:25 Israel time on
+   weekdays (after the 16:20 New York step that saves the Volume bot's day), with the connector attached.
 5. **App**: Trading → 🤖 Main bot → Analyse, 🎯 Volume bot → Analyse (`apps/web/src/DayReviews.tsx`).
 
 ## Limitations
@@ -38,8 +38,8 @@ service records ("we are saving the data of the options").
 - The settings and stock list are the ones at review time (the same evening); a change during the day is not
   replayed. The live records carry the version.
 - A backtest contract other than the live one has no recorded books: the Main bot prices it on trade bars (marked an
-  estimate); the Volume bot's sale needs a minute book, so such a trade comes back unfilled until Databento's books
-  are uploaded (then `force` a redo).
+  estimate); the Volume bot reads the 1-second books the 16:20 New York step saved in D1 (`option_seconds`); the review
+  never copies or downloads option data itself.
 - A trade held overnight is judged when the next day's run redoes the day before.
 
 ## Setup to go live
