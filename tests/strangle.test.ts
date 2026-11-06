@@ -1510,3 +1510,56 @@ test("minute read (2026-11-06): the closed minute's alerts are read once its bar
   assert.equal(b.store.openTrades().length, 1);
   assert.equal(b.store.signal(DAY, "NVDA")!.minute, 39);
 });
+
+test("shock look-back (2026-11-06): found 13 s late, the touch and the 5 seconds in a row are read from the seconds since the alert, as the backtest", async () => {
+  // GOOG / IONQ 2026-11-05: the bot found the shock ~13 s after it fired and
+  // counted its 5 checks from then; the backtest from the alert.
+  let ref = 0;
+  let held = true;
+  const h = harness(
+    { mode: "live", ...SHOCK },
+    {
+      day: climbThenFall(),
+      // Back at the reference by the time the bot looks.
+      last: () => ref,
+      trades: () =>
+        held
+          ? [
+              ...[1, 2, 3, 4, 5, 6, 7].map((k) => ({
+                second: 2400 + k,
+                price: ref * 1.01,
+              })),
+              { second: 2410, price: ref },
+            ]
+          : [{ second: 2405, price: ref }],
+    },
+  );
+  await h.run(565, 609);
+  await shockAt(h, 101);
+  ref = h.store.openTrades()[0]!.stockRef;
+  await h.watch(610, 13);
+  assert.equal(h.calls.filter((c) => c.kind === "buy").length, 1);
+  assert.equal(h.store.openTrades()[0]!.side, "C");
+  // No line touched within 20 s: watching until the 20th second is in, then a slow cross.
+  held = false;
+  const n = harness(
+    { mode: "live", ...SHOCK },
+    {
+      day: climbThenFall(),
+      last: () => ref,
+      trades: () => [{ second: 2405, price: ref }],
+    },
+  );
+  await n.run(565, 609);
+  await shockAt(n, 101);
+  ref = n.store.openTrades()[0]!.stockRef;
+  await n.watch(610, 13);
+  await n.watch(610, 22);
+  assert.equal(n.store.openTrades()[0]!.phase, "watching");
+  await n.watch(610, 23);
+  assert.equal(n.store.openTrades().length, 0);
+  assert.equal(
+    n.store.recentTrades(DAY)[0]!.closeReason,
+    "no side fast enough after the alert",
+  );
+});

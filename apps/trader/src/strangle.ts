@@ -87,6 +87,7 @@ import {
   stockSeconds,
 } from "./strangle-fast.js";
 import { AlertBooks, type AlertBookWatch } from "./alert-books.js";
+import { findSide } from "../../../packages/trading/src/strangle/backtest.js";
 import {
   tradeCash,
   type FastAlertRow,
@@ -276,6 +277,11 @@ export class StrangleBot {
   private busy = false;
   // The new minute's alerts are being read (tick or the 1-second watch).
   private minuteBusy = false;
+  // Each watching trade's stock seconds since its alert, read so far.
+  private sinceAlert = new Map<
+    string,
+    { rows: Map<number, number>; upTo: number }
+  >();
   // Trades whose leg is being bought (the 10-second tick and the 1-second watch both look).
   private entering = new Set<string>();
   private summarized: string | null = null;
@@ -514,6 +520,8 @@ export class StrangleBot {
           !this.pending(t) &&
           !this.entering.has(t.id),
       );
+    for (const id of this.sinceAlert.keys())
+      if (!waiting.some((t) => t.id === id)) this.sinceAlert.delete(id);
     if (!waiting.length) return;
     const saved = this.settings();
     const s = {
@@ -532,16 +540,22 @@ export class StrangleBot {
       for (const t of waiting) {
         const stock = prices.get(t.symbol);
         if (this.crossWatch(t, s)) {
-          const crossed = await this.crossedSince(t, s).catch(() => undefined);
-          if (crossed) {
-            await this.enter(t.id, crossed.side, m, stock ?? crossed.price, s);
+          const got = await this.crossedSince(t, s).catch(() => null);
+          if (got?.side) {
+            await this.enter(
+              t.id,
+              got.side.side,
+              m,
+              stock ?? got.side.price,
+              s,
+            );
             continue;
           }
-          const over = this.lateBy(t) - s.crossMaxSeconds;
-          // Read: a slow cross once the window's last second is surely in.
-          // Unread (Alpaca failed): the next second asks again, for a while.
-          if (crossed === null && over > crossReadGrace) this.slowCross(t, s);
-          else if (over > lateCrossLimit) this.slowCross(t, s);
+          // Read to the window's end: a slow cross. Unread (Alpaca failed):
+          // the next second asks again, for a while.
+          if (got?.over) this.slowCross(t, s);
+          else if (this.lateBy(t) > this.crossWindow(t, s) + lateCrossLimit)
+            this.slowCross(t, s);
           continue;
         }
         if (this.tooLate(t, s)) {
@@ -1562,35 +1576,82 @@ export class StrangleBot {
   }
 
   /**
-   * A minute alert's side with the cross filter is judged on the seconds
-   * since the alert, as the backtest (strangle/backtest.ts findSide): the
-   * alert is found some seconds after its minute closed, and a side crossed
-   * before that counts. Without the trades feed, the last trade each second.
+   * A minute alert with the cross filter, and a shock, are judged on the
+   * stock's seconds since the alert, as the backtest (strangle/backtest.ts
+   * findSide): the bot finds an alert some seconds after it fired (a minute's
+   * bars, the shock's tape; 2026-11-05: medians 14 s and 13 s), and a side
+   * crossed or held before that counts. The 60-second alert keeps the last
+   * trade each second; so does any alert without the trades feed.
    */
   private crossWatch(t: StrangleTrade, s: StrangleSettings): boolean {
-    return !t.shock && !t.fast && s.crossFilter && !!this.o.market.trades;
+    if (!this.o.market.trades) return false;
+    if (t.shock) return true;
+    return !t.fast && s.crossFilter;
   }
 
-  /** The first second within the window beyond a side line; null: none so far. */
+  /** The seconds after the alert a side may come in: a shock's 300, else crossMaxSeconds. */
+  private crossWindow(t: StrangleTrade, s: StrangleSettings): number {
+    return t.shock ? shockHoldWithin : s.crossMaxSeconds;
+  }
+
+  /**
+   * The side found in the seconds since the alert (a shock first needs a
+   * line touched within shockTouchSeconds); `over` once the window is read
+   * to its end without one.
+   */
   private async crossedSince(
     t: StrangleTrade,
     s: StrangleSettings,
-  ): Promise<{ side: Leg; price: number; second: number } | null> {
-    const from = (t.alertMinute + 1) * 60;
-    const to = Math.min(from + s.crossMaxSeconds, this.sessionSecond());
-    if (to < from) return null;
-    const seconds = await stockSeconds(
-      this.o.market,
-      t.symbol,
-      newYorkToUtc(t.day, 570),
-      from,
-      to,
-    );
-    for (const [second, price] of seconds) {
-      const side = sideOf(price, t.stockRef, t.unit, s);
-      if (side) return { side, price, second };
+  ): Promise<{
+    side: { side: Leg; price: number; second: number } | null;
+    over: boolean;
+  }> {
+    const from = t.alertSecond ?? (t.alertMinute + 1) * 60;
+    const now = this.sessionSecond();
+    const end = from + this.crossWindow(t, s);
+    const seconds = await this.secondsSince(t, from, Math.min(end, now));
+    // Every second to `last` is surely in (the trades feed is a second behind).
+    const readTo = now - crossReadGrace;
+    if (t.shock) {
+      const touchEnd = from + s.shockTouchSeconds;
+      const touched = seconds.some(
+        ([sec, price]) =>
+          sec <= touchEnd && sideOf(price, t.stockRef, t.unit, s) !== null,
+      );
+      if (!touched) return { side: null, over: readTo > touchEnd };
+      if (!t.touched) {
+        t.touched = true;
+        this.o.store.saveTrade(t);
+      }
     }
-    return null;
+    const side = findSide(seconds, t.stockRef, t.unit, s, !!t.shock);
+    return { side, over: !side && readTo > end };
+  }
+
+  /** A trade's stock seconds from `from` to `to`, only the newest few read again. */
+  private async secondsSince(
+    t: StrangleTrade,
+    from: number,
+    to: number,
+  ): Promise<[number, number][]> {
+    let kept = this.sinceAlert.get(t.id);
+    if (!kept)
+      this.sinceAlert.set(t.id, (kept = { rows: new Map(), upTo: from - 1 }));
+    const start = Math.max(from, kept.upTo - crossReadGrace);
+    if (to >= start) {
+      const got = await stockSeconds(
+        this.o.market,
+        t.symbol,
+        newYorkToUtc(t.day, 570),
+        start,
+        to,
+      );
+      for (const sec of [...kept.rows.keys()])
+        if (sec >= start) kept.rows.delete(sec);
+      for (const [sec, price] of got) kept.rows.set(sec, price);
+      kept.upTo = to;
+    }
+    return [...kept.rows.entries()].sort((a, b) => a[0] - b[0]);
   }
 
   /** The cross filter: no side within crossMaxSeconds of the alert ends the watch. */
@@ -1635,7 +1696,7 @@ export class StrangleBot {
         }
         // A minute alert's cross is the 1-second watch's (on the seconds since the alert).
         if (this.crossWatch(t, s)) {
-          if (this.lateBy(t) > s.crossMaxSeconds + lateCrossLimit)
+          if (this.lateBy(t) > this.crossWindow(t, s) + lateCrossLimit)
             this.slowCross(t, s);
           continue;
         }

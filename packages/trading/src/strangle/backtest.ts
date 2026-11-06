@@ -276,7 +276,12 @@ function stopHit(
 }
 
 /** The side: the first second past a line (plan), or the 5th check in a row on one side (shock). */
-function findSide(
+/**
+ * The side from the stock's seconds since the alert: a minute alert's first
+ * second beyond a line; a shock's 5 traded seconds in a row on one side. The
+ * live bot decides with this too (apps/trader/src/strangle.ts crossedSince).
+ */
+export function findSide(
   seconds: readonly [number, number][],
   stock0: number,
   unit: number,
