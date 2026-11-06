@@ -297,6 +297,36 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### Balancing 2.12's variance: the SPY-turn sale, the L04 locks, a 25% add (2026-11-06, d = the 25% add + S03h beats 2.10 on every list and half with a higher win rate; a = 2.12 + S03h loses check fair 11% vs 2.12)
+
+The user: "we adding a lot of variance here. we need to balance with some extracting gain. I remember you spoke about
+one strategy to exit with gain that was close to the champ", then "go". `add_balance.py` (2.10 and 2.12 reproduced to
+the dollar), real quotes. Set before running, one version an idea, all on check: a 2.12 + S03h (spy_turn.py: on a SPY
+day 1%+ our way, half sold when SPY gives back 0.3% from its best, the option up); b 2.12 + L04 (lock_gain.py, never
+checked: once up 100 / 200 / 300 / 500 / 1000%, all out at 25 / 75 / 100 / 200 / 400%); c 2.10 + the add at 25%; d c +
+S03h. Look 2 of S03h (look 1 on 2.12), look 2 of L04, look 2 of the 25% add (its first check).
+
+| 2% (fair / Favorites) | Tune: money vs 2.10 · vs 2.12, winners, drop | Check: money vs 2.10 · vs 2.12, winners, drop |
+|---|---|---|
+| 2.10 | 1 · -; 15.7% / 16.5%; 15.7% / 14.5% | 1 · -; 14.6% / 15.6%; 23.6% / 22.6% |
+| 2.12 (50% add) | 1.568 / 1.554 · 1; 15.1% / 15.8%; 21.5% / 25.7% | 1.987 / 1.392 · 1; 13.8% / 14.5%; 29.1% / 27.3% |
+| a: 2.12 + S03h | 1.759 / 1.741 · 1.122 / 1.120; 16.2% / 17.1%; 21.5% / 25.7% | 1.760 / 1.421 · **0.886** / 1.021; 14.7% / 15.6%; 29.1% / 27.3% |
+| b: 2.12 + L04 | **0.701 / 0.794** · 0.447 / 0.511; 20.6% / 21.0%; 32.2% / 34.5% | 1.061 / 0.957 · 0.534 / 0.687; 18.5% / 19.7%; 36.5% / 27.1% |
+| c: 25% add | 1.329 / 1.286 · 0.848 / 0.828; 15.1% / 15.6%; 17.0% / 19.9% | 1.473 / 1.224 · 0.741 / 0.879; 14.0% / 15.1%; 26.5% / 24.8% |
+| **d: 25% add + S03h** | **1.451 / 1.403** · 0.925 / 0.903; **16.2% / 16.9%**; 16.6% / 19.9% | **1.280 / 1.233** · 0.644 / 0.886; **15.5% / 16.5%**; 26.4% / 24.8% |
+
+d without the best 5: tune $173,088 / $133,221 (2.10 $138,044 / $110,057), check $208,389 / $81,448 ($169,718 /
+$74,497). At 2% d makes more than 2.10 at 3% with a smaller drop on all four (2.10 3%: tune $794,867 / 24.4%, $546,403 /
+27.0%; check $1,082,694 / 32.2%, $240,889 / 32.1%). Changed trades (d, check fair, 153): winners 48 -> 52, median -$1,400
+-> -$1,833, giants 14 -> 15.
+
+Reading: S03h on top of the add gives back the add's lost win rate (+1.1 points on tune, +0.9-1.1 on check) and leaves
+the drop where it was; on check it trims the fair list's 2024 giants again (as on 2.10, -11%). L04 breaks with the add
+(armed on the first buy's price, its floor read on the higher average cost: the floor is hit soon after +100%; -50%
+and a deeper drop). The 25% add halves the add's extra drop. d is the balance: more than 2.10 on both halves and both
+lists, without the best 5 too, win rate above 2.10's, the drop between 2.10's and 2.12's. Candidate choice for the owner:
+2.12 (the most money, the most variance), a, or d.
+
 ### 2.12's add as half a full-size entry; the half bought back at the add's point (2026-11-06, not better: the add size splits the halves, the buy-back ties or loses; 2.12 stays)
 
 The user, on candidate 2.12: "I want 50% to get another 50% (full enter) 100 -> 150 all others get 50% from the original
