@@ -291,6 +291,28 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### The strength exit at t 1.0, not 0.5 (2026-11-06, not better: check -40% fair / -38% Favorites; it sells the giants early)
+
+The user: "can you run a test with "lost T steight = 1" and not 0.5?". Tested before: t <= 1 as a neighbour on
+2026-10-24 (the minute model, the bot before the ladder and the break-even lock, fair list + unseen: worse) and looser
+0.25 / 0.0 / off in strength_exit.py (2026-10-28: lose tune). `strength_t1.py` on 2.10 (reproduced to the dollar), real
+quotes, CHAMP `thesis` {"t": x}. Set before running: U t10 (the user's, all legs, always on check); N t075, t125, t10m
+(1.0 on the t >= 1.8 entries only; the D2 legs enter at t 1.2-1.8, median 1.33, and keep 0.5). Pick: money at least
+0.98 of 2.10 on both lists, then the win rate. Look 1 on 2.10.
+
+| 2%, vs 2.10 (fair / Favorites) | Tune: money, winners, median | Check: money, winners, median | Changed (tune / check, fair) |
+|---|---|---|---|
+| 2.10 | $620,535 / $449,178; 15.7% / 16.5%; -1,504 / -1,564 | $957,771 / $226,846; 14.6% / 15.6%; -1,622 / -1,563 | - |
+| t10 🎯 (the user's) | 1.081 / 1.003; 14.8% / 15.1%; -1,400 / -1,423 | **0.598 / 0.624**; 14.3% / 15.4%; -1,488 / -1,477 | 135 / 159 |
+| t075 / t125 | 0.993 / 0.977 · 0.509 / 0.524 | - | 70 / 253 |
+| t10m 🎯 | 1.026 / 0.982; 14.9% / 16.0% | **0.724 / 0.774**; 13.7% / 15.2% | 56 / 69 |
+
+No candidate. At 1.0 the exit fires on a quarter of the trades and lowers the win rate (it sells legs that would have
+recovered). It does cut the typical loss (median about +$100-150 a trade on both halves), but it sells the giants
+before they run: check fair giants 22 -> 20, the changed trades -$80K -> -$279K (2 giants -> 0), and 2025 on the fair
+list goes from +$115K to about zero. Tune looked fine only because the changed tune trades held 0-1 giants. t 1.25 halves
+the money. 0.5 stays.
+
 ### Take the profit when SPY turns on a big SPY day (2026-11-06, not better: wins tune +7-8%, loses check on the fair list by 11%)
 
 The user (2026-11-06, after the big SPY day of 2026-11-05): "my paper buy a lot in the direction of the fallen, which
