@@ -553,6 +553,8 @@ test("mid steps: from the mid evenly toward the bid, whole cents, under the ask"
   assert.deepEqual(midSteps(0.8, 1.0, 1), [0.9]);
   // A one-cent spread: the mid is capped at the ask less a cent, the bid.
   assert.deepEqual(midSteps(0.1, 0.11, 2), [0.1, 0.1]);
+  // From $3 the option trades in nickels: each level rounded down to one.
+  assert.deepEqual(midSteps(3.1, 3.35, 5), [3.2, 3.2, 3.15, 3.15, 3.1]);
   // No bid, a crossed book or no steps: nothing to walk.
   assert.deepEqual(midSteps(0, 1, 5), []);
   assert.deepEqual(midSteps(1, 1, 5), []);
@@ -593,6 +595,29 @@ test("sell from the mid: no buyer over the walk, then the bid", async () => {
     "reprice @ 0.8",
   ]);
   assert.equal(result.price, 0.8);
+});
+
+test("sell from the mid: the steps follow the clock, not the polls", async () => {
+  // Each poll takes 30 seconds at the broker: the second poll is a minute in.
+  let clock = 0;
+  const { client, calls } = holding([0.8], 0.84, 8, 0.6, 1.0);
+  const slow = {
+    sleep: async (ms: number) => {
+      clock += ms + 30_000;
+    },
+    now: () => clock,
+    intervalMs: 30_000,
+    maxMs: 600_000,
+    fromMid: { steps: 5, stepMs: 60_000 },
+  };
+  await sellAtBid(client, symbol, "all", slow);
+  assert.deepEqual(calls, [
+    "cancel stop",
+    "sell 8 @ 0.9",
+    "reprice @ 0.88",
+    "reprice @ 0.86",
+    "reprice @ 0.84",
+  ]);
 });
 
 test("sell from the mid: never under the bid of the moment", async () => {

@@ -54,6 +54,7 @@ import {
 import {
   chaseBuyMs,
   IndiBot,
+  saleSteps,
   sellWaitMs,
   toSessionBars,
   type BotMarket,
@@ -2219,4 +2220,16 @@ test("2.10: after a 150% first leg the add keeps the position within 5% of the a
     Math.abs(Number(add[0]!.body.sizePct) - 0.75) < 1e-9,
     String(add[0]?.body.sizePct),
   );
+});
+
+test("2.11 sale steps: the setting, or none when the walk would not end before the close", () => {
+  // 15:50 on a full day (close 16:00 = 960): 950 + 5 + 1 < 960.
+  assert.equal(saleSteps(5, { date: "2026-11-05", minute: 950 }), 5);
+  assert.equal(saleSteps(5, { date: "2026-11-05", minute: 954 }), 0);
+  assert.equal(saleSteps(0, { date: "2026-11-05", minute: 600 }), 0);
+  // The day after Thanksgiving closes at 13:00 (780).
+  assert.equal(saleSteps(5, { date: "2026-11-27", minute: 775 }), 0);
+  assert.equal(saleSteps(5, { date: "2026-11-27", minute: 700 }), 5);
+  // No session: nothing to walk.
+  assert.equal(saleSteps(5, { date: "2026-11-07", minute: 600 }), 0);
 });

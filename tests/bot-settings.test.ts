@@ -147,6 +147,8 @@ test("versions: parse checks the label; a record saved before versions gets the 
   assert.equal(own.ok && own.value.version, "2.2 test");
   // A record from before versions takes its missing rules from 2.6. Saved with those rules: 2.6. Without the cheap fallback: 2.5. With the failed break and no D2 bonus either: 2.4; also no rest stop and holding from +100%: 2.2; without the t-stat exit too: 2.1; also without the failed-break sale: 2.0. Odd rules: the current version.
   assert.equal(withDefaults({ stopPct: 30 }).version, "2.6.0");
+  // A 2.10 record saved before 2.11 keeps selling at the bid until 2.11 is picked.
+  assert.equal(withDefaults({ version: "2.10.0" }).saleStepMin, 0);
   assert.equal(withDefaults({ cheapFallback: false }).version, "2.5.0");
   const before25 = {
     sellFailedBreak: true,

@@ -683,20 +683,22 @@ async function walkQuotes(
     state = { ...state, qty: Math.round(rem * nominal) };
   };
   // The sale walked down from the mid (2.11, research sale_limit.py M<n>):
-  // the levels from the decision book; the sale fills at a level when the
-  // option trades at or above it in its minute, or that minute closes with
-  // the bid up to it; after the last level, the bid as that minute closed.
+  // the levels from the decision book; from the minute after the decision,
+  // the sale fills at a level when the option trades at or above it in its
+  // minute, or that minute closes with the bid up to it; after the last level,
+  // the bid as that minute closed. None when the walk and a minute at the bid
+  // would not end before the close (the live bot's saleSteps).
   let walkDay: {
     quotes: readonly QuoteMinute[];
     bars: Map<number, MinuteBar>;
     length: number;
   } | null = null;
-  const salePrice = (book: QuoteMinute) => {
+  const salePrice = (book: QuoteMinute, at: number) => {
     const levels = midSteps(book.bid, book.ask, s.saleStepMin);
     if (!walkDay || !levels.length || levels[0]! <= book.bid) return book.bid;
+    if (at + levels.length + 1 >= walkDay.length) return book.bid;
     for (let i = 0; i < levels.length; i++) {
-      const j = book.m + 1 + i;
-      if (j >= walkDay.length) return book.bid;
+      const j = at + 1 + i;
       const level = levels[i]!;
       if (level <= book.bid) return book.bid;
       const bar = walkDay.bars.get(j);
@@ -704,14 +706,14 @@ async function walkQuotes(
       if ((bar && bar.h >= level - 1e-9) || (q && q.bid >= level - 1e-9))
         return level;
     }
-    const last = Math.min(book.m + levels.length, walkDay.length - 1);
-    return bookAt(walkDay.quotes, last)?.bid ?? book.bid;
+    return bookAt(walkDay.quotes, at + levels.length)?.bid ?? book.bid;
   };
   const sell = (
     date: string,
     book: QuoteMinute,
     share: number,
     reason: ExitReason,
+    at = book.m,
   ) => {
     const q = Math.min(rem, share);
     rem -= q;
@@ -720,7 +722,7 @@ async function walkQuotes(
       minute: book.m,
       kind: "sell",
       share: q,
-      price: salePrice(book),
+      price: salePrice(book, at),
       reason,
       book: { bid: book.bid, ask: book.ask },
     });
@@ -797,6 +799,7 @@ async function walkQuotes(
           book,
           pending.share === "all" ? rem : pending.share,
           pending.reason,
+          m,
         );
         const failed = pending.reason === "failed-break";
         pending = null;
@@ -865,6 +868,7 @@ async function walkQuotes(
             book,
             pending.share === "all" ? rem : pending.share,
             pending.reason,
+            m,
           );
           pending = null;
           if (rem <= 1e-9) return done();
@@ -894,7 +898,8 @@ async function walkQuotes(
       return done();
     }
     if (!end) continue; // no quote and no trade that day: on to the next
-    sell(date, end, rem, reason);
+    // At the close: no time left to walk.
+    sell(date, end, rem, reason, length);
     return done();
   }
   // Held past the last session with data: valued at the newest mark.

@@ -1,6 +1,6 @@
 import type { Broker, Order } from "./broker.js";
 import { finished } from "./ladder.js";
-import { stopPrice } from "./options.js";
+import { roundToTick, stopPrice } from "./options.js";
 import { uncovered } from "./safety.js";
 
 // Selling at the bid (user-confirmed 2026-10-10): a limit sell at the current
@@ -32,6 +32,8 @@ export interface ExitOptions {
   // under the bid of the moment; then the bid. None = the bid at once.
   fromMid?: { steps: number; stepMs?: number };
   sleep?: (ms: number) => Promise<void>;
+  // The clock the walk's steps follow (a poll can take seconds at IBKR).
+  now?: () => number;
   log?: (line: string) => void;
 }
 
@@ -69,8 +71,8 @@ export function exitQty(wanted: string, held: number): number {
 /**
  * The limits of a sale walked down from the mid over `steps` steps: the mid,
  * then (steps - k) / steps of the way above the bid, in whole cents rounded
- * down, never above the ask less a cent. Empty when the book has no spread to
- * walk (the sale is then at the bid).
+ * down to the option's tick (a nickel from $3), never above the ask less a
+ * cent. Empty when the book has no spread to walk (the sale is then at the bid).
  */
 export function midSteps(bid: number, ask: number, steps: number): number[] {
   if (!(bid > 0) || !(ask > bid) || steps < 1) return [];
@@ -78,7 +80,7 @@ export function midSteps(bid: number, ask: number, steps: number): number[] {
   const out: number[] = [];
   for (let k = 0; k < steps; k++) {
     const level = Math.min(bid + (mid - bid) * (1 - k / steps), ask - 0.01);
-    out.push(Math.floor(level * 100 + 1e-6) / 100);
+    out.push(roundToTick(level, "down"));
   }
   return out;
 }
@@ -140,8 +142,12 @@ export async function sellAtBid(
   // The walk's levels, from the first quote the sale reads.
   let levels: number[] | null = null;
   const stepMs = options.fromMid?.stepMs ?? 60_000;
+  const now = options.now ?? (options.sleep ? null : () => Date.now());
+  const started = now?.() ?? 0;
   try {
-    while (stopsGone && waited <= maxMs) {
+    // Time spent so far: the clock when there is one, else the sleeps.
+    const spent = () => (now ? now() - started : waited);
+    while (stopsGone && spent() <= maxMs) {
       if (order) {
         order = await client.order(order.id);
         if (finished.has(order.status)) break;
@@ -153,7 +159,7 @@ export async function sellAtBid(
           ? midSteps(q.bid, q.ask, options.fromMid.steps)
           : [];
       // Inside the walk, its level for this minute unless the bid is higher.
-      const level = levels[Math.floor(waited / stepMs)] ?? 0;
+      const level = levels[Math.floor(spent() / stepMs)] ?? 0;
       const bid = q.bid > 0 ? Math.max(q.bid, level) : q.bid;
       if (bid > 0 && bid !== price) {
         try {
@@ -176,7 +182,7 @@ export async function sellAtBid(
           log(`could not sell @ ${bid.toFixed(2)}: ${message(error)}`);
         }
       }
-      if (waited >= maxMs) break;
+      if (spent() >= maxMs) break;
       await sleep(interval);
       waited += interval;
     }
