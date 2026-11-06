@@ -45,42 +45,56 @@ async function run() {
     ? JSON.parse(readFileSync(qcacheFile, "utf8"))
     : {};
   let qcalls = 0;
+  // One D1 query per stock for the whole period (every contract's books), not
+  // one per contract: each wrangler call costs seconds of start-up.
+  const d1 = (sql: string) => {
+    for (let i = 0; ; i++) {
+      try {
+        const text = execFileSync(
+          "npx",
+          [
+            "wrangler@4",
+            "d1",
+            "execute",
+            "sma-bars-cache",
+            "--remote",
+            "--json",
+            "--command",
+            sql,
+          ],
+          { maxBuffer: 1 << 30, stdio: ["ignore", "pipe", "ignore"] },
+        ).toString();
+        return JSON.parse(text)[0].results;
+      } catch (e) {
+        if (i === 3) throw e;
+      }
+    }
+  };
+  const shift = (d: string, days: number) =>
+    new Date(Date.parse(`${d}T12:00:00Z`) + days * 86400000)
+      .toISOString()
+      .slice(0, 10);
   const quotes = {
     async get(contract: string, a: string, z: string) {
-      const key = `${contract}|${a}|${z}`;
+      const root = contract.replace(/\d{6}[CP]\d{8}$/, "");
+      const key = `stock|${root}|${from}|${to}`;
       if (!(key in qcache)) {
         qcalls++;
-        const sql = `SELECT date, source, quotes FROM option_quotes WHERE contract = '${contract.replace(/'/g, "")}' AND date BETWEEN '${a}' AND '${z}' AND source = 'databento'`;
-        let text = "";
-        for (let i = 0; i < 4; i++) {
-          try {
-            text = execFileSync(
-              "npx",
-              [
-                "wrangler@4",
-                "d1",
-                "execute",
-                "sma-bars-cache",
-                "--remote",
-                "--json",
-                "--command",
-                sql,
-              ],
-              { maxBuffer: 1 << 28, stdio: ["ignore", "pipe", "ignore"] },
-            ).toString();
-            break;
-          } catch (e) {
-            if (i === 3) throw e;
-          }
-        }
-        qcache[key] = JSON.parse(text)[0].results;
+        const safe = root.replace(/[^A-Z.]/g, "");
+        // Every contract of the stock: the root then the expiry's digits.
+        qcache[key] = d1(
+          `SELECT contract, date, source, quotes FROM option_quotes WHERE contract >= '${safe}0' AND contract < '${safe}:' AND date BETWEEN '${shift(from!, -10)}' AND '${shift(to!, 45)}' AND source = 'databento'`,
+        );
         writeFileSync(qcacheFile, JSON.stringify(qcache));
       }
-      const rows = qcache[key] as {
-        date: string;
-        source: string;
-        quotes: string;
-      }[];
+      const rows = (
+        qcache[key] as {
+          contract: string;
+          date: string;
+          source: string;
+          quotes: string;
+        }[]
+      ).filter((r) => r.contract === contract && a <= r.date && r.date <= z);
       const byDate = new Map<
         string,
         { source: string; quotes: [number, number, number][] }[]
