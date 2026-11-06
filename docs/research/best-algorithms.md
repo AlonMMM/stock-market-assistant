@@ -297,6 +297,31 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### 2.12's add as half a full-size entry; the half bought back at the add's point (2026-11-06, not better: the add size splits the halves, the buy-back ties or loses; 2.12 stays)
+
+The user, on candidate 2.12: "I want 50% to get another 50% (full enter) 100 -> 150 all others get 50% from the original
+100%.... (never more than 50% from the basic size)", and on a buy-back after the half: "lets test it again - this time,
+when the stock is up to the point we would double, and the rules of exist are again the same". `add_back.py` on 2.12
+(2.10 and 2.12 reproduced to the dollar), sim.py stock_stages `up` {move, within, repeat} (new): after the staged half
+sale, the part sold is bought back once the stock is +1.0 S30 our way again, then the staged exit is armed again. Set
+before running: S the user's add size (a 50% leg -> 100%, 100% -> 150%, 150% -> 200%; 2.12: 75% / 150% / 225%); B
+B10 / Bd / Bdr the buy-back within 10 minutes (as the add) / any time on the entry day once / every cycle; SB both. Pick
+on tune by money; S always on check. Look 1 of the add size, look 1 of this buy-back trigger (the 5th buy-back test).
+
+| 2%, vs 2.12 (fair / Favorites) | Tune: money, drop, winners | Check: money, drop, winners |
+|---|---|---|
+| 2.12 | $972,938 / $698,068; 21.5% / 25.7%; 15.1% / 15.8% | $1,902,939 / $315,829; 29.1% / 27.3%; 13.8% / 14.5% |
+| S 🎯 (the user's) | 0.968 / **0.917**; 21.6% / 25.1%; 14.9% / 15.4% | **1.144 / 1.054**; 28.2% / 27.4%; 13.8% / 14.5% |
+| B10 🎯 | 0.977 / 0.990 | 0.998 / 0.996 |
+| Bd / Bdr | **0.910 / 0.896** · 0.904 / 0.898; 22.4% / 27.0% | - |
+| SB10 🎯 / SBd / SBdr | 0.945 / 0.908 · 0.879 / 0.824 · 0.873 / 0.826 | SB10 1.136 / 1.051 |
+
+Verdict: not better than 2.12. The add size moves money from the 150% legs (an add of 50%, not 75%) to the 50% legs (100%,
+not 75%): it loses tune 3% / 8% and wins check 14% / 5%, the same 133 / 141 trades; the halves disagree. The buy-back at
++1.0 within 10 minutes almost never happens (a tie); any time on the day it changes ~65 more trades a half and loses 10%
+on tune (median of the changed trades -$1.7K -> -$3.6K, non-giant sum -$189K -> -$501K fair): the half comes back at
+the ask after a 1.5 S30 swing and the stock turns again, as every buy-back test since 2026-10-24. 2.12 stays the candidate.
+
 ### Add once the stock confirms the move, on 2.10 (2026-11-06, CANDIDATE 2.12: a10m10s50 wins tune and check on both lists, without the best 5 too; more drop, the typical trade worse)
 
 The user: "big move in the stock is for sure a better place to use options to gain. I just wonder what's the best way

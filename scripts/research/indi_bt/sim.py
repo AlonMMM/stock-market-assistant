@@ -899,11 +899,22 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                     # minutes, then the 2-step exit for all the premium"): once, `share` of the first buy more, bought at the
                     # next minute (the rebuy fill), when the stock is `move` S30 our way within `within` minutes of the signal
                     A = SS.get("add")
-                    if A and not st.get("added") and t - minute <= A["within"] and mv >= A["move"]:
-                        st["added"] = True; st["rb_q"] = A.get("share", 0.5); st["rb_pending"] = True; continue
+                    # up {move, within, repeat} (add_back.py, the user 2026-11-06: "when the stock is up to the point we
+                    # would double, and the rules of exist are again the same"): after the half sale, the part sold is
+                    # bought back once the stock is `move` S30 our way again within `within` minutes of the signal; the
+                    # staged exit is then armed again (half, full); `repeat`: more than one half / buy-back cycle
+                    UP = SS.get("up")
+                    q_add = A.get("share", 0.5) if A and not st.get("added") and t - minute <= A["within"] and mv >= A["move"] else 0.0
+                    q_up = st.get("ss_sold", 0.0) if UP and st.get("ss_sold") and t - minute <= UP["within"] and mv >= UP["move"] \
+                        and (UP.get("repeat") or not st.get("ss_up")) else 0.0
+                    if q_add or q_up:
+                        if q_add: st["added"] = True
+                        if q_up: st["ss_up"] = True; st["ss_sold"] = 0.0; st["ss_half"] = False
+                        st["rb_q"] = q_add + q_up; st["rb_pending"] = True; continue
                     if SS.get("full") is not None and mv <= -SS["full"]: pending = ("all", "T_full"); continue
                     if SS.get("half") is not None and not st.get("ss_half") and mv <= -SS["half"]:
                         st["ss_half"] = True; st["rb_q"] = rem * SS.get("share", 0.5); st["rebought"] = False
+                        st["ss_sold"] = st["rb_q"]
                         pending = (st["rb_q"], "T_half"); continue
                     if SS.get("back") is not None and st.get("ss_half") and not st.get("rebought") and not st.get("rb_pending") \
                             and mv >= SS["back"] and t <= SS.get("until", 330):
