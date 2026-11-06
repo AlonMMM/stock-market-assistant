@@ -15,6 +15,14 @@
 // VOLUME_REPLAY_STOCKS: the stocks (comma-separated); default the backtest's top 50 below.
 // VOLUME_REPLAY_SECONDS: the backtest's 1-second stock folder (sec_cache/stock).
 // VOLUME_REPLAY_BACKTEST: leg_seconds.py's STR_DUMP_ALL file, for the comparison.
+// VOLUME_REPLAY_TICK_SEC: the second of each 10 the tick runs on (default 0;
+//   production's falls anywhere, so 7 shows a late alert read); the 1-second
+//   minute read runs every second either way.
+// VOLUME_REPLAY_FROM / VOLUME_REPLAY_TO: New York wall minutes of the window
+//   (default the whole session); the warm-up still runs at 09:25.
+// VOLUME_REPLAY_SHOCK=off: no shock or 60-second alert (no 20-session tape).
+// VOLUME_REPLAY_MINUTE_READ=off: the tick alone reads the closed minutes.
+// VOLUME_REPLAY_SIGNALS: a JSON file for every alert's outcome.
 import {
   existsSync,
   mkdtempSync,
@@ -401,6 +409,9 @@ bot.setSettings({
   maxOpen: 50,
   maxTradesPerDay: 100,
   dayLossPct: 100,
+  ...(process.env.VOLUME_REPLAY_SHOCK === "off"
+    ? { shockAlert: false, fastAlert: false }
+    : {}),
 });
 
 // ---- the clock: the side watch every second, the tick every 10 ----
@@ -409,11 +420,18 @@ const close = coreClose(date)!;
 const settle = async () => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
 };
-for (let wall = 565; wall <= close + 15; wall++) {
+const tickSec = Number(process.env.VOLUME_REPLAY_TICK_SEC ?? 0);
+const windowFrom = Number(process.env.VOLUME_REPLAY_FROM ?? 565);
+const windowTo = Number(process.env.VOLUME_REPLAY_TO ?? close + 15);
+for (let wall = 565; wall <= windowTo; wall++) {
+  // The warm-up at 09:25, then the window.
+  if (wall > 565 && wall < windowFrom) continue;
   for (let sec = 0; sec < 60; sec++) {
     now = newYorkToUtc(date, wall) + sec * 1000;
+    if (process.env.VOLUME_REPLAY_MINUTE_READ !== "off")
+      await bot.watchMinute();
     await bot.watchSides();
-    if (sec % 10 === 0) {
+    if (sec % 10 === tickSec) {
       const held = (await broker.positions()).map((p) => p.symbol);
       for (const s of held) await quoteNow(s);
       await bot.tick();
@@ -423,6 +441,12 @@ for (let wall = 565; wall <= close + 15; wall++) {
   if (wall % 30 === 0) process.stderr.write(`${clock()} `);
 }
 process.stderr.write("\n");
+
+if (process.env.VOLUME_REPLAY_SIGNALS)
+  writeFileSync(
+    process.env.VOLUME_REPLAY_SIGNALS,
+    JSON.stringify(store.signals(date), null, 1),
+  );
 
 // ---- the report: the bot's trades beside the backtest's ----
 
