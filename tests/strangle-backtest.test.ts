@@ -87,6 +87,8 @@ function harness(o: {
   seconds?: [number, number][];
   books?: (contract: string) => QuoteMinute[];
   optionSeconds?: SecondBook[];
+  optionSecondsFor?: (contract: string) => SecondBook[];
+  barPrice?: number; // every strike's minute bars at this price, instead of the model's
   shocks?: ShockAlert[];
   premarket?: number;
   expiries?: string[];
@@ -109,16 +111,10 @@ function harness(o: {
           right === "C",
         )[0];
         // A print every minute around the alert (the pick reads the last one by its minute).
+        const p = o.barPrice ?? price;
         optionBars.set(
           symbol,
-          [36, 37, 38, 39].map((m) => ({
-            m,
-            o: price,
-            h: price,
-            l: price,
-            c: price,
-            v: 50,
-          })),
+          [36, 37, 38, 39].map((m) => ({ m, o: p, h: p, l: p, c: p, v: 50 })),
         );
       }
   const asked: string[] = [];
@@ -152,6 +148,9 @@ function harness(o: {
     },
   };
   if (o.optionSeconds) data.optionSeconds = async () => o.optionSeconds!;
+  if (o.optionSecondsFor)
+    data.optionSeconds = async (c, _d, from, to) =>
+      o.optionSecondsFor!(c).filter((r) => r.s >= from && r.s <= to);
   return { data, today, spot, asked };
 }
 
@@ -796,4 +795,39 @@ test("longestGap (2026-11-06): the longest stretch with no stock price in the de
     ),
     null,
   );
+});
+
+test("volume backtest (2026-11-06): the leg is picked from the 1-second books at the buy, not the minute before (META 2026-06-05: $0.05 at 14:11, about $1 at the buy)", async () => {
+  const today = climbThenFall();
+  const price = today[39]!.c;
+  const up = price * 1.002;
+  const seconds: [number, number][] = [2385, 2386, 2387, 2388, 2389, 2390].map(
+    (s) => [s, up],
+  );
+  const shocks = [{ date: DAY, second: 2380, price, up: true }];
+  // Every strike printed 5 cents in the minutes before: too cheap there.
+  const cheap = harness({ today, seconds, shocks, books, barPrice: 0.05 });
+  const before = (await run(cheap.data)).signals.find(
+    (s) => s.kind === "shock",
+  )!;
+  assert.equal(before.outcome, "too_cheap");
+  // The saved books at the buy second price them as the move has.
+  const moved = harness({
+    today,
+    seconds,
+    shocks,
+    books,
+    barPrice: 0.05,
+    optionSecondsFor: (c) => {
+      const k = Number(c.slice(-8)) / 1000;
+      const call = c.includes("C0");
+      const mid = bsPrice(up, k, yearsToExpiry(DAY, 39, DAY), 0.6, call)[0];
+      return [{ s: 2388, bid: mid * 0.97, ask: mid * 1.03 }];
+    },
+  });
+  const sig = (await run(moved.data)).signals.find((s) => s.kind === "shock")!;
+  assert.equal(sig.outcome, "traded", sig.detail);
+  assert.equal(sig.trade!.right, "C");
+  assert.ok(sig.trade!.buy >= settings.minPrice);
+  assert.equal(sig.trade!.buyPriced, "seconds");
 });

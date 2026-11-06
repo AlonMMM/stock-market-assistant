@@ -249,6 +249,7 @@ const priorDays = 20;
 const lag = 2; // seconds from the side to the buy (the bot's reaction)
 const chaseAfter = 10; // seconds: a bid above the price by then means no fill at it
 const barMaxAge = 10; // minutes: the last bar a strike's price is read from
+const bookMaxAge = 10; // seconds: the oldest 1-second book a strike's pick reads
 const firstPrint = 3; // minutes after the side the walk waits for the option's first trade
 
 /** The last bar at or before `minute`, no older than `age` minutes. */
@@ -455,7 +456,14 @@ function walkExit(
   return { minute: end, reason: "end" };
 }
 
-/** The strikes of the leg's side and expiry as quotes at their last price by `minute`, delta by Black-Scholes. */
+/**
+ * The strikes of the leg's side and expiry as quotes, delta by Black-Scholes:
+ * each strike's 1-second book at the buy second `at` when one was saved (the
+ * chain the live bot reads then), else its last price by `minute`, the last
+ * whole minute before the buy. On a fast move the minute before is stale: META
+ * 2026-06-05 14:12:56, the 600 put was $0.05 at 14:11 and about $1 at the buy,
+ * so the minute before read "too cheap" (the user, 2026-11-06).
+ */
 async function chainQuotes(
   data: VolumeBacktestData,
   symbol: string,
@@ -464,6 +472,7 @@ async function chainQuotes(
   right: Leg,
   spot: number,
   expiry: string,
+  at: number,
 ): Promise<{ quotes: OptionQuote[]; bars: Map<string, MinuteBar[]> }> {
   const side = right === "C" ? "call" : "put";
   const call = right === "C";
@@ -484,24 +493,59 @@ async function chainQuotes(
       )
     : new Map<string, MinuteBar[]>();
   const years = yearsToExpiry(date, minute, expiry);
+  const atYears = yearsToExpiry(date, Math.floor(at / 60), expiry);
+  const books = await Promise.all(
+    near.map((c) => bookAtBuy(data, c.symbol, date, at)),
+  );
   const quotes: OptionQuote[] = [];
-  for (const c of near) {
-    const b = lastBar(bars.get(c.symbol) ?? [], minute, barMaxAge);
-    if (!b) continue;
-    const delta = impliedDelta(b.c, spot, c.strike, years, call);
-    if (delta === null) continue;
+  near.forEach((c, i) => {
+    const book = books[i];
+    let price: number;
+    let bid: number;
+    let ask: number;
+    let t = years;
+    if (book) {
+      price = (book.bid + book.ask) / 2;
+      bid = book.bid;
+      ask = book.ask;
+      t = atYears;
+    } else {
+      const b = lastBar(bars.get(c.symbol) ?? [], minute, barMaxAge);
+      if (!b) return;
+      price = b.c;
+      bid = b.c;
+      ask = b.c;
+    }
+    const delta = impliedDelta(price, spot, c.strike, t, call);
+    if (delta === null) return;
     quotes.push({
       symbol: c.symbol,
       underlying: symbol,
       expiry,
       right: side,
       strike: c.strike,
-      bid: b.c,
-      ask: b.c,
+      bid,
+      ask,
       delta: call ? delta : -delta,
     });
-  }
+  });
   return { quotes, bars };
+}
+
+/** A contract's saved 1-second book at second `at`, at most bookMaxAge old; null without one. */
+async function bookAtBuy(
+  data: VolumeBacktestData,
+  contract: string,
+  date: string,
+  at: number,
+): Promise<SecondBook | null> {
+  if (!data.optionSeconds) return null;
+  const rows = (
+    await data
+      .optionSeconds(contract, date, at - bookMaxAge, at)
+      .catch(() => [])
+  ).filter((r) => r.bid > 0 && r.ask > 0);
+  return bookAtSecond(rows, at);
 }
 
 /** The day's alerts in time order: the plan's fresh minute alerts and the shock's. */
@@ -721,6 +765,7 @@ export async function runVolumeStock(
         side.side,
         side.price,
         expiry,
+        side.second + lag,
       );
       const volume30 = async (contract: string) =>
         (optionBars.get(contract) ?? [])
