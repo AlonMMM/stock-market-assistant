@@ -841,6 +841,13 @@ better by the log's rule; the size is the owner's risk choice.
 
 ### Sell above the bid: from the mid, stepped down to the bid over 5 minutes (2026-11-04; WITHDRAWN 2026-11-05: a backtest bug; looks 3-4 with real fill sizes and a 16-second ladder: not better)
 
+**2.11 shipped by mistake and rolled back (2026-11-06).** A session that had not read this withdrawal released 2.11
+on its look-2 figures: the release checks (sale_limit.py SL_TICK / SL_BUSY / SL_LATE, app_twin.py TWIN_SALE_MIN=5, 42d1283 /
+ce02821) still had the stale bid, and so had the app backtest (`backtest.ts` salePrice), so app and twin agreed (October:
+66 / 66 trades, 51 identical, 15 sales 1-13 cents lower in the app, the walk's option bars lost on a failed read). Deployed
+~11:40 Israel (PR #270); the live settings back to 2.10.0 at ~16:50. Fixed: the stale bid in sale_limit.py, app_twin.py and
+the app backtest, and the silent bar loss (PR #280). The app's own October run, 2.10 vs 2.11 on the fixed code, follows.
+
 **Look 4, a 16-second ladder (2026-11-05, not better: a tie at best; the sale at the bid stays).** The user: "what about
 try for 1sec the mids, than hold 5sec for mid-25% spread, than move to -50%, 75 than big" (read: the mid 1 s, then 25 /
 50 / 75% of the way to the bid, 5 s each, then the bid), then "go". `sale_sec4.py` on 2.10 (bid reproduces to the

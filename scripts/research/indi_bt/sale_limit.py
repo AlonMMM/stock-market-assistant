@@ -105,7 +105,7 @@ def sell(mode, c, und, right, d, m, rule, iv0):
     for i, L in enumerate(steps):
         j = m + i
         if j > 389: break
-        if L <= bid: return bid, info
+        # (2026-11-06) no early sale at the decision's bid when a step rounds down to it: the 2.11 audit's stale bid
         b = bar(c[0], d, j + 1 if LATE else j)   # SL_LATE: only prints after the order (it goes in as minute m closes)
         q = RB.quote(c[0], d, j)
         if (b and b[2] >= L - 1e-9) or (q and q[0] >= L - 1e-9):

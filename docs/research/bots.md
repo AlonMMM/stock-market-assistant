@@ -60,7 +60,11 @@ position. Research overlay `{"stock_stages": {"add": {"within": 10, "move": 1.0,
 $972,938 / 21.5%, Favorites $698,068 / 25.7%; check $1,902,939 / 29.1%, $315,829 / 27.3% (2.10: $620,535 / $449,178 /
 $957,771 / $226,846). To settle in the review: the 5% position cap with the add and the D2 pyramid.
 
-**WITHDRAWN 2026-11-05 (the release audit, NO-GO; see best-algorithms.md "Sell above the bid").** A backtest bug
+**WITHDRAWN 2026-11-05 (the release audit, NO-GO; see best-algorithms.md "Sell above the bid").** **Shipped by mistake 2026-11-06, rolled back the same day:** a later session ran the release from the stale candidate
+entry (it never read this withdrawal) and deployed 2.11 (PR #270, main 728107e) at ~11:40 Israel; the live settings
+went back to 2.10.0 (`saleStepMin` 0, the owner's size steps kept) at ~16:50 Israel, after the open. The live check of
+that release had already found 15 of 66 October sales 1-13 cents lower in the app than in the twin (the walk's option
+bars lost on a failed read, fixed in PR #280 with the stale bid). **2.10 stays the champion.** A backtest bug
 (`sale_limit.py:94` books the decision minute's bid when a later step reaches the bid, 1-4 minutes stale) inflated it;
 fixed, M5 is 1.053 / 1.132 tune, 1.109 / 1.117 check, and the gain disappears once the minute's prints must cover our
 contracts (0.99 / 1.02 / 0.98 / 0.97). Look 3 (the fix + fills proven by Databento print sizes, plus the last-print start) loses on tune and check: 0.94 / 0.94; look 4 (the user's 16-second ladder from the mid) ties, within 2% on every list; no candidate, the sale stays at the bid. Was:
