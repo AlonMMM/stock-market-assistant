@@ -201,6 +201,37 @@ def walk_late(job):
                 d2=int(float(r["c_t"]) < 1.8), rvol=float(r["c_rvol"]), v=v, pick={u: info for u in v})
 
 
+def curve(E, pct):
+    """score_sum.account's walk, the account by day (closed + open marked): [(date, equity)] (for the page's charts)."""
+    R = sorted(E, key=lambda e: e[:5])
+    T = [dict(date=e[0], pnl=1e4 * e[2] * max(-1, e[3]), exit_day=e[5]["exit_day"], marks={d: e[2] * v for d, v in e[5]["marks"].items()}) for e in R]
+    by = collections.defaultdict(list)
+    for t in T: by[t["date"]].append(t)
+    days = sorted(set(by) | {t["exit_day"] or t["date"] for t in T})
+    eq, open_, prev, pts = 1e5, [], None, []
+    for d in days:
+        base = eq + sum(stake * t["marks"].get(prev, 0.0) for stake, t in open_)
+        for t in by.get(d, []): open_.append((pct * base, t))
+        keep = []
+        for stake, t in open_:
+            if (t["exit_day"] or t["date"]) == d: eq += stake * max(-1, t["pnl"] / 1e4)
+            else: keep.append((stake, t))
+        open_ = keep
+        pts.append((d, round(eq + sum(stake * t["marks"].get(d, 0.0) for stake, t in open_))))
+        prev = d
+    return pts
+
+
+def curves(R, adds):
+    out = {}
+    for part in ("tune", "check"):
+        for v in MODES:
+            for src, a in (("fair", ""), ("fav", FR.A24)):
+                for size in (0.02, 0.03):
+                    out[f"{part}|{v}|{src}|{size}"] = curve(TS.entries(R, adds, src, v, part, size, a), size)
+    return out
+
+
 def report(R, part, out, rows_out):
     print(f"\n#### {part} weeks: the late trades (main legs at $10K, 1% basis)\n")
     print("| Version | List | Late trades (new) | Winners | Median | Sum | Giants | Non-giant sum | Held overnight | 2.10's own legs in the window: count, sum vs 2.10 | By year | Top names |")
@@ -281,6 +312,7 @@ def main():
     bk = [r["pick"][next(iter(r["pick"]))]["book"] for r in R if r.get("late")]
     print(f"\nlate legs walked: {len(bk)}; a real book at entry: {sum(bk) / max(1, len(bk)):.0%}")
     json.dump(out, open(f"{B}/late_reset_summary.json", "w"), indent=1)
+    json.dump(curves(R, adds), open(f"{B}/late_reset_curves.json", "w"), separators=(",", ":"))
     with open(f"{B}/late_reset_legs.csv", "w") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
 
