@@ -707,3 +707,45 @@ test("volume backtest data (2026-11-06): the minutes Databento has not uploaded 
     ],
   );
 });
+
+test("volume backtest (2026-11-06): each alert keeps how close the stock got to a side line, and an alert not traded its what-if on a model", async () => {
+  const today = climbThenFall();
+  const stock0 = today[39]!.c;
+  // Too slow: a small move inside the 15 s, the line only after them.
+  const late = await run(
+    harness({
+      today,
+      seconds: [
+        [2405, stock0 * 1.0002],
+        [2420, stock0 * 1.001],
+      ],
+      books,
+    }).data,
+  );
+  const slow = late.signals.find((s) => s.kind === "plan")!;
+  assert.equal(slow.outcome, "slow_cross");
+  assert.ok(slow.reach! > 0 && slow.reach! < 1, `reach ${slow.reach}`);
+  // Its what-if: no side, so the alert's way (up, a call) at the alert, priced by the model.
+  assert.equal(slow.whatIf!.right, "C");
+  assert.equal(slow.whatIf!.sideSecond, null);
+  assert.equal(slow.whatIf!.buyMinute, 40);
+  assert.ok(slow.whatIf!.buy > 0);
+  assert.equal(slow.whatIf!.ret, slow.whatIf!.sell / slow.whatIf!.buy - 1);
+  // A side against the burst: the model trades the side that was crossed.
+  const against = await run(
+    harness({ today, seconds: [[2403, stock0 * 0.999]], books }).data,
+  );
+  const burst = against.signals.find((s) => s.kind === "plan")!;
+  assert.equal(burst.outcome, "burst");
+  assert.ok(burst.reach! >= 1);
+  assert.equal(burst.whatIf!.right, "P");
+  assert.equal(burst.whatIf!.sideSecond, 2403);
+  // A traded alert has its trade, its leg's 30-minute volume, and no what-if.
+  const traded = await run(
+    harness({ today, seconds: [[2403, stock0 * 1.001]], books }).data,
+  );
+  const t = traded.signals.find((s) => s.kind === "plan")!;
+  assert.equal(t.outcome, "traded");
+  assert.equal(t.whatIf, undefined);
+  assert.equal(typeof t.trade!.volume30, "number");
+});

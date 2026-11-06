@@ -1,8 +1,11 @@
 import {
   bookAt,
+  bsPrice,
   impliedDelta,
   newsBlock,
   occSymbol,
+  stockVol,
+  strikeAt,
   yearsToExpiry,
   type BacktestCalendar,
   type BacktestData,
@@ -148,6 +151,30 @@ export interface VolumeTrade {
   sell: number;
   sellPriced: PricedBy;
   stockOut: number | null;
+  volume30?: number | null; // contracts of the leg traded in the 30 minutes before the pick (absent on older runs)
+}
+
+/**
+ * An alert not traded, as a model trades it (the Main bot's what-if): the side
+ * crossed, else the alert's way; the strike at the bot's delta and the prices
+ * by Black-Scholes at the stock's volatility; the same give-back walk. A model,
+ * not the market: no book, no fees, no broker stop.
+ */
+export interface VolumeWhatIf {
+  contract: string;
+  right: Leg;
+  strike: number;
+  expiry: string;
+  sideSecond: number | null; // the side's second; null: no side, the alert's way at the alert
+  buyMinute: number;
+  exitMinute: number;
+  exitReason: "giveback" | "end";
+  stockIn: number;
+  stockOut: number;
+  buy: number;
+  sell: number;
+  iv: number; // the stock's volatility, annualised
+  ret: number;
 }
 
 /** One alert of the run and what came of it. */
@@ -166,6 +193,11 @@ export interface VolumeSignal {
   outcome: VolumeOutcome;
   detail: string;
   trade?: VolumeTrade;
+  // How far the stock got toward a side line within the cross window (the
+  // shock's touch window), the nearer line's share: 1 = on the line. Only when
+  // the stock's seconds were read.
+  reach?: number;
+  whatIf?: VolumeWhatIf; // an alert not traded, when a model can price it
 }
 
 export interface VolumeStockRun {
@@ -539,6 +571,11 @@ export async function runVolumeStock(
       ? o.news(symbol, date)
       : await newsBlock(symbol, date, s, data, cal);
     let expiry: string | null | undefined;
+    const first = signals.length;
+    const sides = new Map<
+      VolumeSignal,
+      { second: number; side: Leg; price: number }
+    >();
     for (const a of day) {
       const minute = Math.floor(a.second / 60) - (a.kind === "plan" ? 1 : 0);
       const shock = a.kind === "shock";
@@ -612,6 +649,13 @@ export async function runVolumeStock(
         a.second,
         a.second + within,
       );
+      signal.reach = reachOf(
+        seconds,
+        a.second + (shock ? s.shockTouchSeconds : within),
+        a.price,
+        unit,
+        s,
+      );
       // The shock: a side line touched within shockTouchSeconds, as the live bot.
       if (
         shock &&
@@ -638,6 +682,7 @@ export async function runVolumeStock(
         done(s.crossFilter || shock ? "slow_cross" : "no_side");
         continue;
       }
+      sides.set(signal, side);
       const weekly = !shock && expiry > cal.nextSessions(date, 1)[0]!;
       let burstRule: Pick<StrangleSettings, "burstFilter" | "burstMin"> = s;
       if (weekly) burstRule = { ...s, burstMin: s.burstMinWeek };
@@ -779,11 +824,126 @@ export async function runVolumeStock(
         sell,
         sellPriced,
         stockOut: lastBar(bars, exitMinute, 5)?.c ?? null,
+        volume30: await volume30(contract),
       };
       done("traded");
     }
+    // The alerts not traded, as a model trades them.
+    if (!unit) continue;
+    if (expiry === undefined)
+      expiry = await expiryFor(data, cal, symbol, date, s).catch(() => null);
+    if (!expiry) continue;
+    const priorBars = prior.map((d) => data.bars(symbol, d));
+    const vol = stockVol(priorBars) ?? minuteVol(priorBars);
+    if (vol === null) continue;
+    for (const sig of signals.slice(first)) {
+      if (sig.trade) continue;
+      const model = whatIf(sig, sides.get(sig) ?? null, bars, {
+        expiry: sig.expiry ?? expiry,
+        vol,
+        unit,
+        end,
+        s,
+      });
+      if (model) sig.whatIf = model;
+    }
   }
   return { symbol, signals, ignored };
+}
+
+/** The stock's volatility from its minute closes, annualised; null under 100 moves (the daily closes' fallback). */
+function minuteVol(days: readonly (readonly MinuteBar[])[]): number | null {
+  const moves: number[] = [];
+  for (const d of days)
+    for (let i = 1; i < d.length; i++) {
+      const a = d[i - 1]!.c;
+      const b = d[i]!.c;
+      if (a > 0 && b > 0) moves.push(Math.log(b / a));
+    }
+  if (moves.length < 100) return null;
+  const mean = moves.reduce((x, y) => x + y, 0) / moves.length;
+  const variance =
+    moves.reduce((x, y) => x + (y - mean) ** 2, 0) / (moves.length - 1);
+  const v = Math.sqrt(variance * 390 * 252);
+  return v > 0 ? v : null;
+}
+
+/** The nearer side line's share the stock reached by `until` (session seconds), from the alert price. */
+function reachOf(
+  seconds: readonly [number, number][],
+  until: number,
+  price: number,
+  unit: number,
+  s: Pick<StrangleSettings, "confirmUnits">,
+): number {
+  const line = s.confirmUnits * unit;
+  let most = 0;
+  for (const [sec, p] of seconds) {
+    if (sec > until) break;
+    most = Math.max(most, Math.abs(p / price - 1) / line);
+  }
+  return Number(most.toFixed(3));
+}
+
+/** An alert not traded, as a model trades it; null when it cannot be modelled. */
+function whatIf(
+  sig: VolumeSignal,
+  side: { second: number; side: Leg; price: number } | null,
+  bars: readonly MinuteBar[],
+  m: {
+    expiry: string;
+    vol: number;
+    unit: number;
+    end: number;
+    s: StrangleSettings;
+  },
+): VolumeWhatIf | null {
+  const second = side?.second ?? sig.second;
+  const stockIn = side?.price ?? sig.price;
+  if (stockIn === null || !(stockIn > 0)) return null;
+  let right: Leg = sig.alert === "up" ? "C" : "P";
+  if (side) right = side.side;
+  const call = right === "C";
+  const buyMinute = Math.floor(second / 60);
+  if (buyMinute >= m.end) return null;
+  const exit = walkExit(
+    bars,
+    [],
+    buyMinute,
+    right,
+    stockIn,
+    m.unit,
+    m.end,
+    m.s,
+  );
+  const stockOut = lastBar(bars, exit.minute, 5)?.c;
+  if (!stockOut) return null;
+  const years = yearsToExpiry(sig.date, buyMinute, m.expiry);
+  const strike = strikeAt(stockIn, years, m.vol, call, m.s.delta);
+  const buy = Number(
+    bsPrice(stockIn, strike, years, m.vol, call)[0].toFixed(4),
+  );
+  if (!(buy > 0)) return null;
+  const later = yearsToExpiry(sig.date, exit.minute, m.expiry);
+  const sell = Number(
+    bsPrice(stockOut, strike, later, m.vol, call)[0].toFixed(4),
+  );
+  return {
+    contract: occSymbol(sig.symbol, m.expiry, right, strike),
+    right,
+    strike,
+    expiry: m.expiry,
+    sideSecond: side?.second ?? null,
+    buyMinute,
+    exitMinute: exit.minute,
+    exitReason: exit.reason,
+    stockIn,
+    stockOut,
+    buy,
+    sell,
+    iv: Number(m.vol.toFixed(4)),
+    ret: sell / buy - 1,
+  };
 }
 
 export { occSymbol };
