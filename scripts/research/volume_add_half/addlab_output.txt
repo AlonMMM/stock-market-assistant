@@ -1,0 +1,64 @@
+alerts 8792 {"premarket":3284,"burst":804,"traded":128,"against_move":208,"slow_cross":3877,"no_expiry":236,"earnings":112,"too_cheap":93,"thin":33,"wide_spread":4,"no_fill":3,"no_prices":10}
+engine account (year): 2% $153927 drop 11.1% taken 111 won 40; 3% $186705 drop 16.3%
+account statuses (2%): {"busy":17,"taken":111}
+
+my re-walk, year, base: 2% $153.9K (11.1%) trades 111; 3% $186.7K (16.3%)
+
+Add events (year, before the account): same-right busy alerts in the open window / no book / under K / events / by book
+A K 0%: 12 / 0 / 5 / 7 / {"seconds":2,"minutes":5} (other-right busy 1)
+A K 10% (thesis): 12 / 0 / 6 / 6 / {"seconds":1,"minutes":5} (other-right busy 1)
+A K 25%: 12 / 0 / 6 / 6 / {"seconds":1,"minutes":5} (other-right busy 1)
+B K 10%: 12 / 0 / 6 / 6 / {"seconds":1,"minutes":5} (other-right busy 1)
+
+## Tune (even ISO entry weeks)
+| Version | Trades | Adds | Winners | Median | 2% (worst drop) | 3% (worst drop) | Without the best 5 | Non-giant sum | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.3.0 (base) | 62 | 0 | 20 | -32% | $116.5K (8%) | $125.1K (12%) | -$19.2K | -$16.6K | 4 | -$2.4K / $18.8K |
+| A K 0% | 62 | 3 | 20 | -33% | $112.1K (10%) | $117.3K (14%) | -$20.7K | -$17.8K | 4 | -$2.4K / $14.4K |
+| A K 10% (thesis) | 62 | 2 | 20 | -32% | $112.5K (9%) | $117.9K (14%) | -$20.4K | -$17.5K | 4 | -$2.4K / $14.8K |
+| A K 25% | 62 | 2 | 20 | -32% | $112.5K (9%) | $117.9K (14%) | -$20.4K | -$17.5K | 4 | -$2.4K / $14.8K |
+| B K 10% | 62 | 2 | 20 | -32% | $115.0K (8%) | $122.9K (12%) | -$19.8K | -$18.2K | 4 | -$2.4K / $17.4K |
+
+🎯 pick A: A K 10% (thesis); 🎯 pick B: B K 10%
+
+## Check (odd ISO entry weeks), base and the picks
+| Version | Trades | Adds | Winners | Median | 2% (worst drop) | 3% (worst drop) | Without the best 5 | Non-giant sum | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.3.0 (base) | 49 | 0 | 20 | -11% | $132.7K (8%) | $149.2K (13%) | -$14.1K | -$9.0K | 3 | -$3.7K / $36.3K |
+| A K 10% (thesis) | 49 | 4 | 21 | -17% | $137.1K (9%) | $156.2K (13%) | -$14.8K | -$10.2K | 4 | -$3.7K / $40.7K |
+| B K 10% | 49 | 4 | 22 | -11% | $138.8K (8%) | $159.4K (13%) | -$11.7K | -$9.1K | 4 | -$3.7K / $42.5K |
+
+## Year (one account), base and the picks
+| Version | Trades | Adds | Winners | Median | 2% (worst drop) | 3% (worst drop) | Without the best 5 | Non-giant sum | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.3.0 (base) | 111 | 0 | 40 | -26% | $153.9K (11%) | $186.7K (16%) | -$12.3K | -$25.6K | 7 | -$5.9K / $59.9K |
+| A K 10% (thesis) | 111 | 6 | 41 | -28% | $155.7K (11%) | $186.1K (16%) | -$9.6K | -$27.7K | 8 | -$5.9K / $61.7K |
+| B K 10% | 111 | 6 | 42 | -26% | $159.1K (12%) | $194.7K (17%) | -$13.6K | -$27.3K | 8 | -$5.9K / $65.1K |
+
+## The adds alone, 2% (sum / median / winners / sum without their best 5)
+tune A K 0%: 3 adds, sum -$4.8K, median -40%, won 0, w/o best 5 $0.0K
+tune A K 10% (thesis): 2 adds, sum -$4.4K, median -45%, won 0, w/o best 5 $0.0K
+tune A K 25%: 2 adds, sum -$4.4K, median -45%, won 0, w/o best 5 $0.0K
+tune B K 10%: 2 adds, sum -$1.6K, median -81%, won 0, w/o best 5 $0.0K
+check A K 0%: 4 adds, sum $5.5K, median -35%, won 1, w/o best 5 $0.0K
+check A K 10% (thesis): 4 adds, sum $5.5K, median -35%, won 1, w/o best 5 $0.0K
+check A K 25%: 4 adds, sum $5.5K, median -35%, won 1, w/o best 5 $0.0K
+check B K 10%: 4 adds, sum $5.4K, median +11%, won 2, w/o best 5 $0.0K
+year A K 0%: 7 adds, sum -$0.2K, median -40%, won 1, w/o best 5 -$6.1K
+year A K 10% (thesis): 6 adds, sum $0.3K, median -41%, won 1, w/o best 5 -$3.6K
+year A K 25%: 6 adds, sum $0.3K, median -41%, won 1, w/o best 5 -$3.6K
+year B K 10%: 6 adds, sum $3.7K, median -22%, won 2, w/o best 5 -$1.0K
+
+A K 0% best adds: META 2026-04-08 add META260408C00610000 at +103% (shock) +420% $9.9K; SLV 2026-08-20 add SLV260821C00064000 at +2% (plan) -35% -$0.5K; SLV 2026-02-12 add SLV260213P00070000 at +247% (plan) -28% -$1.0K
+A K 0% worst adds: GOOGL 2026-08-05 add GOOGL260805P00367500 at +382% (plan) -40% -$3.6K; ORCL 2026-10-08 add ORCL261009P00137000 at +181% (plan) -43% -$2.5K; INTC 2026-01-09 add INTC260109C00045000 at +180% (plan) -49% -$1.4K
+
+A K 10% (thesis) best adds: META 2026-04-08 add META260408C00610000 at +103% (shock) +420% $9.9K; SLV 2026-02-12 add SLV260213P00070000 at +247% (plan) -28% -$1.0K; AMZN 2026-01-02 add AMZN260102P00227500 at +112% (plan) -51% -$1.1K
+A K 10% (thesis) worst adds: GOOGL 2026-08-05 add GOOGL260805P00367500 at +382% (plan) -40% -$3.6K; ORCL 2026-10-08 add ORCL261009P00137000 at +181% (plan) -43% -$2.5K; INTC 2026-01-09 add INTC260109C00045000 at +180% (plan) -49% -$1.4K
+
+A K 25% best adds: META 2026-04-08 add META260408C00610000 at +103% (shock) +420% $9.9K; SLV 2026-02-12 add SLV260213P00070000 at +247% (plan) -28% -$1.0K; AMZN 2026-01-02 add AMZN260102P00227500 at +112% (plan) -51% -$1.1K
+A K 25% worst adds: GOOGL 2026-08-05 add GOOGL260805P00367500 at +382% (plan) -40% -$3.6K; ORCL 2026-10-08 add ORCL261009P00137000 at +181% (plan) -43% -$2.5K; INTC 2026-01-09 add INTC260109C00045000 at +180% (plan) -49% -$1.4K
+
+B K 10% best adds: META 2026-04-08 own shock META260408C00615000 (open +103%) +627% $5.5K; AMZN 2026-01-02 own plan AMZN260102P00225000 (open +112%) +36% $0.3K; ORCL 2026-10-08 own plan ORCL261009P00134000 (open +181%) -15% -$0.2K
+B K 10% worst adds: GOOGL 2026-08-05 own plan GOOGL260805P00355000 (open +382%) -83% -$1.0K; INTC 2026-01-09 own plan INTC260109C00046000 (open +180%) -78% -$0.8K; SLV 2026-02-12 own plan SLV260213P00065000 (open +247%) -30% -$0.3K
+
+base best 5 (year): META 2026-04-08 plan META260408C00610000 +1251%; META 2026-05-27 shock META260527C00625000 +496%; ORCL 2026-10-28 shock ORCL261030C00140000 +390%; SLV 2026-08-28 plan SLV260828P00062000 +414%; QQQ 2026-01-21 shock QQQ260121C00616000 +505%

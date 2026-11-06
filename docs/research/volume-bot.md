@@ -9,6 +9,62 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### Add half on a same-direction alert while the open leg is up (2026-11-06, look 1): not better
+
+The user, 2026-11-06: "What if we put extra half of the position if we get another alert during an open position in the
+same direction, and the position is up small, like maybe more than 10%, let's say." Never tested in this form: the
+"Missed big winners" study (2026-10-27) priced the 87 busy alerts as separate full trades (-5.8% average) with no gain
+condition, and variant D of the 2026-11-03 exits test was a roll (sell the open leg at 2x / 3x, take the new alert).
+
+Built on **Volume 1.3.0** (live): the app's engine (origin/main 63b0321 through handleVolumeBacktest), the saved
+settings (50 stocks, 3% size, 15 a day, 2 a stock, 5 open, 7.5% day loss, -80% broker stop, delta 0.20, floor 200),
+2025-11-03 .. 2026-10-30, real books only, read from a read-only snapshot of production D1 (2025-10-01 .. 2026-10-30).
+Every alert keeps its own simulated trade, also the ones the account refuses as busy. The event: a busy alert of the
+same right (call on a call, put on a put; plan or shock) bought after the open leg's buy and before its sale, while the
+open leg's bid >= (1 + K) x its buy (the open contract's 1-second book at the new alert's buy second, else its minute
+book as the last minute closed). One add a position. Levels set before the run:
+A = buy floor(half the open contracts), at least 1, of the **open contract** (mid + a quarter of the spread, the
+engine's buy), sold with the position; K 0% / 10% (the thesis) / 25%; counts toward the 15 a day, not a position slot.
+B = take the **new alert's own trade** at half size instead of refusing it, K 10%; counts toward the 15 a day and the
+5 open. Fees $0.62 a contract each way. Scripts: `scripts/research/volume_add_half/` (`addyear.ts`, `addlab.ts`).
+
+Baseline reproduced: the engine's own account and the re-walk agree to the dollar, year $153.9K (11.1%) at 2%,
+$186.7K (16.3%) at 3%, 111 trades (the 1.3.0 release re-walk: $152.4K (13%); tune $116.5K vs $113.2K, check $132.7K vs
+$134.4K: the engine since then reads the saved 1-second books for sales (#271) and the earnings calendar moved).
+
+Tune (even ISO entry weeks), from $100K (non-giant: trades under +300% at a flat $2K, adds at $1K):
+
+| Version | Trades | Adds | Winners | Median | 2% (drop) | 3% (drop) | W/o best 5 | Non-giant | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.3.0 (base) | 62 | 0 | 20 | -32% | $116.5K (8%) | $125.1K (12%) | -$19.2K | -$16.6K | 4 | -$2.4K / +$18.8K |
+| A K 0% | 62 | 3 | 20 | -33% | $112.1K (10%) | $117.3K (14%) | -$20.7K | -$17.8K | 4 | -$2.4K / +$14.4K |
+| A K 10% (thesis) 🎯 | 62 | 2 | 20 | -32% | $112.5K (9%) | $117.9K (14%) | -$20.4K | -$17.5K | 4 | -$2.4K / +$14.8K |
+| A K 25% | 62 | 2 | 20 | -32% | $112.5K (9%) | $117.9K (14%) | -$20.4K | -$17.5K | 4 | -$2.4K / +$14.8K |
+| B K 10% 🎯 | 62 | 2 | 20 | -32% | $115.0K (8%) | $122.9K (12%) | -$19.8K | -$18.2K | 4 | -$2.4K / +$17.4K |
+
+Check (odd weeks), the base and the picks:
+
+| Version | Trades | Adds | Winners | Median | 2% (drop) | 3% (drop) | W/o best 5 | Non-giant | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.3.0 (base) | 49 | 0 | 20 | -11% | $132.7K (8%) | $149.2K (13%) | -$14.1K | -$9.0K | 3 | -$3.7K / +$36.3K |
+| A K 10% (thesis) | 49 | 4 | 21 | -17% | $137.1K (9%) | $156.2K (13%) | -$14.8K | -$10.2K | 4 | -$3.7K / +$40.7K |
+| B K 10% | 49 | 4 | 22 | -11% | $138.8K (8%) | $159.4K (13%) | -$11.7K | -$9.1K | 4 | -$3.7K / +$42.5K |
+
+Year (one account): base $153.9K (11%) / $186.7K (16%); A K 10% $155.7K (11%) / $186.1K (16%); B $159.1K (12%) /
+$194.7K (17%).
+
+- **Rare**: 17 busy alerts a year, 12 of the same right inside the open window, 7 with the open leg up (all had a book:
+  2 on 1-second books, 5 on minute books). The open leg was never "up small": the gains at the add were +2% (SLV
+  08-20), +103%, +112%, +180%, +181%, +247%, +382%. K 10% and 25% pick the same 6 adds; only K 0% adds SLV 08-20.
+- **The adds alone** (A K 10%, 2%): 6 adds, +$0.3K, median -41%, 1 winner; without the best one -$3.6K. The one
+  winner is META 2026-04-08 (open 610 call +103% at the 19:13 Israel shock, add +420%, +$9.9K, check half); the rest
+  lose -28% to -51% (GOOGL 08-05 put added at +382%, -40%, -$3.6K; ORCL 10-08 at +181%, -43%; INTC 01-09 at +180%,
+  -49%; AMZN 01-02, SLV 02-12). An add on a leg that already doubled buys near the top of the move and sells on the
+  give-back. B (the new alert's own leg): 6, +$3.7K, median -22%, 2 winners; without META 04-08 (+627%, +$5.5K) -$1.8K.
+- **Verdict: not better.** Both picks lose tune (A -$4.0K with a deeper drop, B -$1.5K) and win check only through
+  META 2026-04-08; A's check without the best 5 is worse too. K is not a knife edge but there is no event under +100%
+  to judge "up small" on: the idea has ~6 events a year. No candidate; no data bought ($0).
+
 ### Exit when the stock goes flat after the buy (2026-11-03, look 1)
 
 The user, on the task-11 lead (AVGO 2026-10-30 put, bled 53 min to -68%): "go with the stock - if it start to be flat we
