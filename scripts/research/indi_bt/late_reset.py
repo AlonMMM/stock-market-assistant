@@ -28,7 +28,8 @@ sig_lasthour.py 2026-11-01, the day's signals bought at 15:57; retry_skip.py 202
 late_carry.py 2026-10-28, late alerts carried overnight lost in every slice).
 Real quotes: LR_PASS=list writes the late legs with no book at their entry minute -> open39_dbx_list.csv.
 
-  node --env-file=.env <dir>/run.mjs late_reset.py      (from the app repo root; defence_signals.py BT_LATE=330 first)
+  node --env-file=.env <dir>/run.mjs late_reset.py      (from the app repo root; defence_signals.py BT_LATE=330 BT_LATE_ALL=1
+  BT_LATE_TMIN=0.5 BT_SIG_SUFFIX=_t05 first: every late minute with t >= 0.5; each version keeps its own rows rule)
 -> data/local/x/bt/late_reset_summary.json, late_reset_legs.csv
 """
 import collections, csv, datetime as dt, glob, json, math, multiprocessing as mp, os, statistics as st, sys
