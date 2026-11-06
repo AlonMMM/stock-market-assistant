@@ -346,9 +346,29 @@ At 3% the pick: tune +117% / +30%, check −67% / −73%. The late trades (main 
 11% (23 with the morning sale), median −$6.2K (−$3.9K), sum +$216K (+$98K), 8 giants: MU, ARM, HOOD, COIN each run
 further (ARM +786% -> +1,494%, HOOD +756% -> +1,365%, COIN +882% -> +1,524%). Check fair 120 trades, win 6% (17%),
 median −$6.4K, −$518K (−$285K), 2 giants; Favorites −$575K (−$351K). The page's 163 bought tune trades: +1000% 1 -> 5,
-sum +$142K -> +$223K, won 32 -> 23. The morning sale is what keeps the losers small: without it a gap against is held
-into the day's stops. Verdict: the giants grow on tune, the losers grow on both halves; the check is worse than with the
+sum +$142K -> +$223K, won 32 -> 23. The morning sale is 2.10's only profit take on a carried day (`takes` is empty): without it a
+next-morning winner rides back to the −30% stop (check HOOD 2026-07-01: the option $0.44 -> $5.65 at 09:45, sold $0.15,
+−68% vs +454% with the sale; WMT 2025-02-25, TSLA 2026-08-13 alike; 108 check trades worse, 27 better). So -nm tests
+"no profit take at all the next day", not "let winners run"; a fair version needs a trail instead (`night_trail`). Verdict: the giants grow on tune, the losers grow on both halves; the check is worse than with the
 morning sale. 2.10 stays.
+
+**Follow-up, without the three filters (2026-11-06, look 3, worse).** The user: "run it without the 3 filters: contract
+too cheap, thin, and busy pre". `-nf` versions, the late trades only: the 0.15 pick at any price over 0 (no $0.20 / $0.10
+floor), no 200-contract rule, and late rows on pre-market 4x+ days allowed (2.10's own legs unchanged). r30-a-nf and
+r30-a-nm-nf, same run (2.10 to the dollar). 55% of late legs on a real book at entry, the rest the bar +-2% (fill
+unproven on the thin ones).
+
+| 2%, vs 2.10 | Tune fair | Tune Favorites | Check fair | Check Favorites |
+|---|---|---|---|---|
+| r30-a (filters on) | +44% / 26% | +21% / 23% | −34% / 32% | −42% / 32% |
+| r30-a-nf | −37% / 43% | −37% / 48% | −54% / 41% | −40% / 44% |
+| r30-a-nm-nf | −29% / 49% | −58% / 64% | −80% / 65% | −63% / 60% |
+
+3%: r30-a-nf tune −56% / −58%, check −70% / −56%. The late trades at $10K: the filters off triple them (tune fair 128 ->
+365, check 120 -> 358) and roughly double the giants (tune 7 -> 13, check 2 -> 8; Favorites 5 -> 16, 2 -> 15), but the
+median stays −$3.3K to −$3.8K and the sum falls: tune fair +$98K -> −$273K, check −$285K -> −$578K (Favorites check −$351K
+-> −$303K, carried by INTC +$207K and ASTS +$156K). Verdict: the filtered-out trades are the same lottery at the same
+loss per ticket, more of them. 2.10 stays.
 
 ### The strength exit: t 1.0 held 15-45 minutes, on top of 0.5 (2026-11-06, a tie: dw15 -0.4% / -0.5% on check; the giants are no longer cut)
 

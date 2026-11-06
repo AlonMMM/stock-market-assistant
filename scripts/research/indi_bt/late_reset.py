@@ -57,6 +57,9 @@ MODES = ("champ",) + tuple(f"{v}{w}-{c}" for v in VOLS for w in WINS for c in CA
 # -nm (the user, 2026-11-06: "remove the morning exit for these trade"): no morning sale the day after the late entry
 # (2.10 sells half on a gap our way, all on a gap against); the whole position stays under the day's stops
 MODES += ("n30-a-nm", "r30-5-nm", "r30-10-nm", "r30-a-nm")
+# -nf (the user, 2026-11-06: "run it without the 3 filters: contract too cheap, thin, and busy pre"): the late trades
+# only, no $0.20 floor (any price > 0), no 200-contract rule, and no pre-market volume 4x filter (2.10's own legs as they are)
+MODES += ("r30-a-nf", "r30-a-nm-nf")
 NO_MORNING = {"gap_keep": -1e9, "gap_sell_share": 0.0}   # the morning rule then sells 0 (the 0-share step is dropped)
 LAST = 374   # 15:44
 _pick = TS.pick
@@ -75,10 +78,12 @@ def floor_of(sym):
     return 0.10 if sym == "IBIT" else 0.20
 
 
-def champ_pick(sym, date, m, right, spot):
+def champ_pick(sym, date, m, right, spot, free=False):
+    """2.10's 0.15 pick; free: no floor and no 30-minute volume rule (any price over 0)."""
     cands = cu.candidates(sym, date, m, right, spot)
     if not cands: return None
     b = min(cands, key=lambda c: abs(c[3] - 0.15))
+    if free: return b if b[4] > 0 else None
     if b[4] < floor_of(sym) or b[5] < 200: return None
     return b
 
@@ -112,7 +117,11 @@ def nonzero(steps):
 def carry_of(mode):
     """-> (the carry level's key, no morning sale)"""
     p = mode.split("-")
-    return p[1], len(p) > 2 and p[2] == "nm"
+    return p[1], "nm" in p[2:]
+
+
+def nofilter(mode):
+    return "nf" in mode.split("-")[2:]
 
 
 def dbx(src):
@@ -145,7 +154,8 @@ def late_rows():
     nf.features(rows)
     out = []
     for r in rows:
-        if r["e_next"] == 0 or (r["pre_rvol"] is not None and r["pre_rvol"] >= 4) or r["date"] > RB.LAST: continue
+        if r["e_next"] == 0 or r["date"] > RB.LAST: continue
+        r["busy_pre"] = r["pre_rvol"] is not None and r["pre_rvol"] >= 4   # only the -nf versions trade these
         if dt.date.fromisoformat(r["date"]).weekday() == 4: continue
         if r["sym"] in HIS40 and r["sym"] in PRIOR[r["date"][:4]]: out.append(("fair", r))
         if r["sym"] in FR.FAV and FR.A24 <= r["date"] <= FR.Z: out.append(("fav", r))
@@ -159,15 +169,18 @@ def find_late(job):
     got, tried = {}, {}
     for vol in VOLS:
         for w, m1 in WINS.items():
-            if any(c["minute"] >= m1 for c in champ): continue   # 2.10's own signal is the late trade
-            for r in rows:
-                m = r["minute"]
-                if m < m1 or m > LAST: continue
-                if vol == "r" and float(r["c_rv30"]) < 1.25: continue
-                if any(c["minute"] < m and c["open"].get(m, 0) > 0 for c in champ): continue
-                k = (m, r["right"])
-                if k not in tried: tried[k] = champ_pick(sym, date, m, r["right"], float(r["price"]))
-                if tried[k]: got[(vol, w)] = (r, tried[k]); break
+            for free in (False, True):
+                if free and (vol, w) != ("r", "30"): continue
+                if any(c["minute"] >= m1 for c in champ): continue   # 2.10's own signal is the late trade
+                for r in rows:
+                    m = r["minute"]
+                    if m < m1 or m > LAST: continue
+                    if r["busy_pre"] and not free: continue
+                    if vol == "r" and float(r["c_rv30"]) < 1.25: continue
+                    if any(c["minute"] < m and c["open"].get(m, 0) > 0 for c in champ): continue
+                    k = (m, r["right"], free)
+                    if k not in tried: tried[k] = champ_pick(sym, date, m, r["right"], float(r["price"]), free)
+                    if tried[k]: got[(vol, w, free)] = (r, tried[k]); break
     return (src, sym, date), got
 
 
@@ -237,9 +250,9 @@ def main():
     with mp.Pool(8) as pool: F = pool.map(find_late, jobs, chunksize=8)
     legs = {}
     for (src, sym, date), got in F:
-        for (vol, w), (r, b) in got.items():
+        for (vol, w, free), (r, b) in got.items():
             k = (src, sym, date, r["minute"], r["right"], b[0])
-            legs.setdefault(k, [r, b, set()])[2].update(u for u in MODES[1:] if u.startswith(f"{vol}{w}-"))
+            legs.setdefault(k, [r, b, set()])[2].update(u for u in MODES[1:] if u.startswith(f"{vol}{w}-") and nofilter(u) == free)
     print(f"late legs: {len(legs)}; by vol + window:",
           dict(collections.Counter(u[:3] for v in legs.values() for u in v[2] if u.endswith("-a"))), flush=True)
     if LISTING:

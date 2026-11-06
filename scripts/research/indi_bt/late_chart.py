@@ -30,6 +30,8 @@ from zoneinfo import ZoneInfo
 import csv, glob
 
 M1, LAST = 360, 374
+PART = os.environ.get("LC_HALF", "tune")
+FREE = os.environ.get("LC_FREE") == "1"   # r30-a-nf: no floor, no 200-contract rule, no pre-market 4x block   # tune (even entry weeks) or check (odd)
 CAL = TS.CAL
 NY, IL = ZoneInfo("America/New_York"), ZoneInfo("Asia/Jerusalem")
 
@@ -90,7 +92,7 @@ def leg(sym, date, m, right, price, b):
 def rows():
     """Every r30 alert minute 15:30-15:44 in the tune weeks on the two lists, with why it is not a candidate."""
     R = [r for f in sorted(glob.glob(f"{LR.B}/s_late_20*.csv")) for r in csv.DictReader(open(f))]
-    R = [r for r in R if M1 <= int(r["minute"]) <= LAST and float(r["c_rv30"]) >= 1.25 and half(r["date"]) == "tune" and r["date"] <= RB.LAST]
+    R = [r for r in R if M1 <= int(r["minute"]) <= LAST and float(r["c_rv30"]) >= 1.25 and half(r["date"]) == PART and r["date"] <= RB.LAST]
     for r in R: r["minute"] = int(r["minute"])
     nf.features(R)
     out = collections.defaultdict(list)
@@ -102,7 +104,7 @@ def rows():
         r["lists"] = lists
         r["block"] = None
         if r["e_next"] == 0: r["block"] = "Earnings reaction day"
-        elif r["pre_rvol"] is not None and r["pre_rvol"] >= 4: r["block"] = "Pre-market volume 4x+"
+        elif r["pre_rvol"] is not None and r["pre_rvol"] >= 4 and not FREE: r["block"] = "Pre-market volume 4x+"
         elif dt.date.fromisoformat(r["date"]).weekday() == 4: r["block"] = "Friday (no night)"
         out[(r["sym"], r["date"])].append(r)
     return out
@@ -111,7 +113,7 @@ def rows():
 def champ_legs():
     """2.10's main signals by stock-day: (minute, the walk's open share by minute or {} when it did not trade)."""
     mains = [("fair", t) for t in LR.fe.fair_signals("sg_c12_15")] + [("fav", t) for t in FR.signals("25")]
-    mains = [(s, t) for s, t in mains if half(t["date"]) == "tune"]
+    mains = [(s, t) for s, t in mains if half(t["date"]) == PART]
     with mp.Pool(8) as pool: C = pool.map(champ_one, mains, chunksize=4)
     out = collections.defaultdict(list)
     for (src, t), x in zip(mains, C):
@@ -147,12 +149,16 @@ def one(job):
             cands = cu.candidates(sym, date, m, r["right"], float(r["price"]))
             b = min(cands, key=lambda c: abs(c[3] - 0.15)) if cands else None
             if not b: e["status"] = "No contract"
-            elif b[4] < LR.floor_of(sym): e["status"] = f"Too cheap (${b[4]:.2f})"
-            elif b[5] < 200: e["status"] = f"Thin ({b[5]} in 30 min)"
+            elif b[4] <= 0: e["status"] = "No price"
+            elif b[4] < LR.floor_of(sym) and not FREE: e["status"] = f"Too cheap (${b[4]:.2f})"
+            elif b[5] < 200 and not FREE: e["status"] = f"Thin ({b[5]} in 30 min)"
             else:
                 w = leg(sym, date, m, r["right"], r["price"], b)
                 if w is None: e["status"] = "No price path"
-                else: e["status"] = "Traded"; trade = w
+                else:
+                    e["status"] = "Traded"; trade = w
+                    w["was"] = [n for n, hit in (("Too cheap", b[4] < LR.floor_of(sym)), ("Thin", b[5] < 200),
+                                                 ("Busy pre-market", r["pre_rvol"] is not None and r["pre_rvol"] >= 4)) if hit]
         ev.append(e)
     model = False
     if not trade:   # the what-if: the first alert's 0.15 pick bought anyway, the same exits (the app's "model" row)
@@ -195,7 +201,7 @@ def main():
     A = rows()
     C = champ_legs()
     jobs = [(k, v, C.get(k, [])) for k, v in sorted(A.items(), key=lambda kv: (kv[0][1], kv[0][0]))]
-    print(len(jobs), "stock-days with an alert (tune)", flush=True)
+    print(len(jobs), f"stock-days with an alert ({PART})", flush=True)
     with mp.Pool(8) as pool: X = pool.map(one, jobs, chunksize=2)
     months = collections.defaultdict(dict)
     for info, chart in X: months[info["date"][:7]][f"{info['sym']}|{info['date']}"] = chart
