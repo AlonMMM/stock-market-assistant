@@ -68,7 +68,7 @@ def mid_sale(sym, r, n):
         j = m + i
         if j > 389: break
         if L <= bid: return (d, m, side, q, bid, rule), None
-        b, kq = bar_at(sym, d, j), RB.quote(sym, d, j)
+        b, kq = bar_at(sym, d, j), RB.quote(sym, d, j)   # the app's walk (2026-11-06 parity: 40 / 45 identical, 5 within 4 cents)
         if (b and b[2] >= L - 1e-9) or (kq and kq[0] >= L - 1e-9): return (d, m, side, q, round(L, 4), rule), m + i + 1
     kq = RB.quote(sym, d, min(m + n - 1, 389))
     return (d, m, side, q, kq[0] if kq else bid, rule), m + n

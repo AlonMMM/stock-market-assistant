@@ -54,7 +54,8 @@ for v in MODES: SV.SIZEV[v] = SV.SIZEV["t3A-c5"]
 
 OUT = os.environ.get("SL_OUT", "")   # a suffix for the output files
 TICK = os.environ.get("SL_TICK") == "1"
-BUSY = os.environ.get("SL_BUSY") == "1"   # the live 2.11: a sale decided while another walks waits for it to end   # the release check (2026-11-06): levels on the option's tick, as live 2.11
+BUSY = os.environ.get("SL_BUSY") == "1"
+LATE = os.environ.get("SL_LATE") == "1"   # the live 2.11 (2026-11-06 parity): the order goes in as the decision minute closes   # the live 2.11: a sale decided while another walks waits for it to end   # the release check (2026-11-06): levels on the option's tick, as live 2.11
 if os.environ.get("SL_MODES"): MODES = tuple(os.environ["SL_MODES"].split(","))
 
 
@@ -105,7 +106,7 @@ def sell(mode, c, und, right, d, m, rule, iv0):
         j = m + i
         if j > 389: break
         if L <= bid: return bid, info
-        b = bar(c[0], d, j)
+        b = bar(c[0], d, j + 1 if LATE else j)   # SL_LATE: only prints after the order (it goes in as minute m closes)
         q = RB.quote(c[0], d, j)
         if (b and b[2] >= L - 1e-9) or (q and q[0] >= L - 1e-9):
             info["filled_min"] = i + 1
