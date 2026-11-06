@@ -83,6 +83,8 @@ const overlapMs = 10_000;
 /** Today's 10-second bars of the watched stocks, from their trades, polled. */
 export class FastTape {
   private builders = new Map<string, TradeBarBuilder>();
+  // Each stock's 1-second bars: the side's seconds since an alert.
+  private secondBuilders = new Map<string, TradeBarBuilder>();
   private recent = new Set<string>();
   private recentAt: { key: string; ms: number }[] = [];
   /** Every trade before this time (Unix ms) is in. */
@@ -105,29 +107,48 @@ export class FastTape {
     return b;
   }
 
+  private secondBuilder(symbol: string) {
+    let b = this.secondBuilders.get(symbol);
+    if (!b)
+      this.secondBuilders.set(
+        symbol,
+        (b = new TradeBarBuilder(1, this.openMs, this.endMs)),
+      );
+    return b;
+  }
+
+  /** Adds a trade once, whether it came from a poll or the stream. */
+  add(symbol: string, t: AlpacaTrade) {
+    const ms = Date.parse(t.t);
+    if (!(ms >= this.openMs) || !(ms < this.endMs)) return;
+    const key = `${symbol}|${t.x}|${t.i}|${ms}`;
+    if (this.recent.has(key)) return;
+    this.recent.add(key);
+    this.recentAt.push({ key, ms });
+    const trade = toTrade(t);
+    this.builder(symbol).add(trade);
+    this.secondBuilder(symbol).add(trade);
+  }
+
   async poll(market: BotMarket, now: number): Promise<void> {
     if (!market.trades) return;
     const to = Math.min(now, this.endMs);
     const from = Math.max(this.openMs, this.cursor - overlapMs);
     if (to <= from) return;
-    const keep = to - overlapMs;
     for (const part of chunk(this.symbols, 25))
       await market.trades(part, from, to, (symbol, list) => {
-        const builder = this.builder(symbol);
-        for (const t of list) {
-          const ms = Date.parse(t.t);
-          if (!(ms >= from)) continue;
-          const key = `${symbol}|${t.x}|${t.i}|${t.t}`;
-          if (this.recent.has(key)) continue;
-          if (ms >= keep) {
-            this.recent.add(key);
-            this.recentAt.push({ key, ms });
-          }
-          builder.add(toTrade(t));
-        }
+        for (const t of list) if (Date.parse(t.t) >= from) this.add(symbol, t);
       });
-    this.cursor = to;
-    // Forget the keys older than the next poll's overlap.
+    this.reached(to);
+  }
+
+  /**
+   * Every trade before `to` is in: by a poll, or by the stream that has run
+   * since before then. Forgets the keys older than the next poll's overlap.
+   */
+  reached(to: number) {
+    if (to > this.cursor) this.cursor = Math.min(to, this.endMs);
+    const keep = this.cursor - overlapMs * 2;
     let drop = 0;
     while (drop < this.recentAt.length && this.recentAt[drop]!.ms < keep)
       this.recent.delete(this.recentAt[drop++]!.key);
@@ -139,9 +160,45 @@ export class FastTape {
     return this.builders.get(symbol)?.bars() ?? [];
   }
 
+  /** The last whole session second the tape has every trade of. */
+  covered(): number {
+    return Math.floor((this.cursor - this.openMs) / 1000) - 1;
+  }
+
+  /**
+   * The stock's last trade each second from session second `from` to `to`,
+   * by Alpaca's bar rules (as stockSeconds), up to the seconds covered.
+   */
+  seconds(symbol: string, from: number, to: number): [number, number][] {
+    const open = this.openMs / 1000;
+    const hi = open + Math.min(to, this.covered());
+    return (this.secondBuilders.get(symbol)?.bars() ?? [])
+      .filter((b) => b.start >= open + from && b.start <= hi)
+      .map((b) => [b.start - open, b.close] as [number, number]);
+  }
+
   day(symbol: string): FastDay {
     return dayFromBars(this.builders.get(symbol)?.bars() ?? [], this.openMs);
   }
+}
+
+/**
+ * The 10-second slots to read now, in order, after `done`: every one at
+ * least 3 s old (`ready`), then the newer whole ones (`early`) while each
+ * fires; a quiet one waits for its late prints, which can only add volume.
+ */
+export function slotsToRead(
+  done: number,
+  early: number,
+  ready: number,
+  fires: (t: number) => boolean,
+): number[] {
+  const out: number[] = [];
+  for (let t = done + 1; t <= early; t++) {
+    if (t > ready && !fires(t)) break;
+    out.push(t);
+  }
+  return out;
 }
 
 /** A whole past session of one stock in 10-second bars; null without trades. */

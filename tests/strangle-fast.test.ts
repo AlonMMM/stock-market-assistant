@@ -19,7 +19,15 @@ import {
   burstAtSecond,
   burstOf,
 } from "../packages/trading/src/strangle/decide.js";
-import { FastTape, stockSeconds } from "../apps/trader/src/strangle-fast.js";
+import {
+  FastTape,
+  slotsToRead,
+  stockSeconds,
+} from "../apps/trader/src/strangle-fast.js";
+import {
+  TradeStream,
+  type StreamSocket,
+} from "../apps/trader/src/trade-stream.js";
 import { secondsFromTrades } from "../packages/market-data/src/volume-backtest.js";
 import type { BotMarket } from "../apps/trader/src/bot.js";
 import type { AlpacaTrade } from "../packages/market-data/src/alpaca.js";
@@ -239,4 +247,126 @@ test("cross look-back (2026-11-06): the bot's seconds since the alert are the ba
   const bot = await stockSeconds(market, "MU", open, 5940, 5955);
   assert.deepEqual(bot, secondsFromTrades(trades, open, 5940, 5955));
   assert.deepEqual(bot.at(-2), [5952, 675.375]);
+});
+
+test("shock speed (2026-11-06): a slot that fires is read a second after it ends; a quiet one waits 3 s for its late prints, and the next ones wait behind it", () => {
+  // done 9; slots 10-12 are whole (early), only 10 is 3 s old (ready).
+  assert.deepEqual(
+    slotsToRead(9, 12, 10, () => false),
+    [10],
+  );
+  assert.deepEqual(
+    slotsToRead(9, 12, 10, () => true),
+    [10, 11, 12],
+  );
+  // 11 is quiet: 12 waits behind it, even when it fires.
+  assert.deepEqual(
+    slotsToRead(9, 12, 10, (t) => t === 12),
+    [10],
+  );
+  assert.deepEqual(
+    slotsToRead(12, 12, 10, () => true),
+    [],
+  );
+});
+
+test("shock speed (2026-11-06): the tape takes each trade once from the stream and the polls, and gives the seconds it covers", () => {
+  const open = Date.parse("2026-11-05T14:30:00Z");
+  const tape = new FastTape(["MU"], open, open + 23_400_000);
+  const at = (sec: number, ms = 0) =>
+    new Date(open + sec * 1000 + ms).toISOString();
+  const a: AlpacaTrade = {
+    t: at(100, 200),
+    x: "V",
+    p: 10,
+    s: 100,
+    i: 1,
+    z: "C",
+  };
+  const b: AlpacaTrade = {
+    t: at(101, 500),
+    x: "V",
+    p: 10.2,
+    s: 300,
+    i: 2,
+    z: "C",
+  };
+  tape.add("MU", a);
+  tape.add("MU", a); // the same trade again (a poll's overlap)
+  tape.add("MU", { ...a, t: a.t.replace("Z", "000Z") }); // nanoseconds
+  tape.add("MU", b);
+  assert.equal(tape.day("MU").v[10], 400);
+  // Seconds only up to what the tape covers.
+  assert.deepEqual(tape.seconds("MU", 100, 105), []);
+  tape.reached(open + 101_000);
+  assert.equal(tape.covered(), 100);
+  assert.deepEqual(tape.seconds("MU", 100, 105), [[100, 10]]);
+  tape.reached(open + 106_000);
+  assert.deepEqual(tape.seconds("MU", 100, 105), [
+    [100, 10],
+    [101, 10.2],
+  ]);
+});
+
+test("shock speed (2026-11-06): the trade stream logs in, subscribes to the trades, hands each trade over, and on a refusal (406) goes down and retries", () => {
+  const sent: string[] = [];
+  const listeners = new Map<string, (e: { data?: unknown }) => void>();
+  const sockets: string[] = [];
+  const socket = (url: string): StreamSocket => {
+    sockets.push(url);
+    return {
+      send: (d) => sent.push(d),
+      close: () => {},
+      addEventListener: (type, l) => listeners.set(type, l),
+    };
+  };
+  const got: [string, number][] = [];
+  const stream = new TradeStream({
+    key: "k",
+    secret: "s",
+    socket,
+    now: () => 1000,
+    retryMs: 60_000,
+    onTrade: (symbol, t) => got.push([symbol, t.p]),
+  });
+  const say = (m: unknown[]) =>
+    listeners.get("message")!({ data: JSON.stringify(m) });
+  stream.start(["NVDA", "MU"]);
+  assert.equal(sockets[0], "wss://stream.data.alpaca.markets/v2/sip");
+  listeners.get("open")!({});
+  assert.deepEqual(JSON.parse(sent[0]!), {
+    action: "auth",
+    key: "k",
+    secret: "s",
+  });
+  say([{ T: "success", msg: "authenticated" }]);
+  assert.deepEqual(JSON.parse(sent[1]!), {
+    action: "subscribe",
+    trades: ["MU", "NVDA"],
+  });
+  // Not live before the subscription is confirmed: no trades taken.
+  say([{ T: "t", S: "MU", p: 1, s: 1, t: "2026-11-05T15:00:00Z" }]);
+  assert.equal(stream.live(), false);
+  say([{ T: "subscription", trades: ["MU", "NVDA"] }]);
+  assert.equal(stream.live(), true);
+  assert.equal(stream.since, 1000);
+  say([
+    {
+      T: "t",
+      S: "MU",
+      p: 675.8,
+      s: 5,
+      i: 7,
+      x: "V",
+      z: "C",
+      t: "2026-11-05T16:09:12.1Z",
+    },
+  ]);
+  assert.deepEqual(got, [["MU", 675.8]]);
+  say([{ T: "error", code: 406, msg: "connection limit exceeded" }]);
+  assert.equal(stream.state, "down");
+  assert.equal(stream.since, null);
+  assert.match(stream.lastError!, /406/);
+  stream.stop();
+  assert.equal(stream.state, "off");
 });
