@@ -9,7 +9,7 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
-### Add half on a same-direction alert while the open leg is up (2026-11-06, look 1): not better
+### Add half on a same-direction alert while the open leg is up (2026-11-06, looks 1-2): not better
 
 The user, 2026-11-06: "What if we put extra half of the position if we get another alert during an open position in the
 same direction, and the position is up small, like maybe more than 10%, let's say." Never tested in this form: the
@@ -64,6 +64,56 @@ $194.7K (17%).
 - **Verdict: not better.** Both picks lose tune (A -$4.0K with a deeper drop, B -$1.5K) and win check only through
   META 2026-04-08; A's check without the best 5 is worse too. K is not a knife edge but there is no event under +100%
   to judge "up small" on: the idea has ~6 events a year. No candidate; no data bought ($0).
+
+**Look 2 (2026-11-06): any same-direction alert, not only alerts that are trades.** The user, on look 1's 17 events:
+"On how many trades you test the half? It's weird. I see it happens all the time..." Look 1 only saw busy alerts that
+passed every entry filter. New rule (approved): ANY alert of the stock-day (plan or shock, whatever its own outcome:
+the cross, burst, news and expiry checks ignored) in the open leg's direction (up = call, down = put), at its second
++ 2 s, after the leg's buy and in a minute before its exit; the open leg's bid there >= (1 + K) x its buy -> add half
+the open contracts of the open contract (its 1-second book, else the minute book as the last minute closed; mid + a
+quarter of the spread; sold with the position). Set before the run: A K 0% / 10% (thesis) / 25% (the first
+qualifying alert, one add a position) and A10-multi (each qualifying alert adds half the original contracts, at most
+2 adds). B dropped (an alert with no trade has no leg). Same signals and base as look 1. Script `addlab2.ts` (`planAny`).
+
+Events: **87 same-direction alerts** fall inside the 111 kept trades' open windows (the coordinator's count 84 used the
+buy minute; mine starts at the buy second + 2), own outcomes slow cross 42, burst 26, traded 14, no expiry 2, too
+cheap 2, no fill 1; every one had a book (the K 10% adds: 17 on 1-second books, 8 on minute books). The open leg's gain at them: under 0% 26, 0-10% 5,
+**10-25% 9, 25-50% 8 ("up small": 17)**, 50-100% 9, >= 100% 30. Qualify: K 0% 61, 10% 56, 25% 47 alerts; one add a
+position -> 27 / 25 / 20 adds; multi 38 adds on 25 positions.
+
+Tune (even ISO entry weeks), from $100K:
+
+| Version | Trades | Adds | Winners | Median | 2% (drop) | 3% (drop) | W/o best 5 | Non-giant | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.3.0 (base) | 62 | 0 | 20 | -32% | $116.5K (8%) | $125.1K (12%) | -$19.2K | -$16.6K | 4 | -$2.4K / +$18.8K |
+| A any K 0% | 62 | 14 | 25 | -32% | $112.8K (11%) | $118.9K (16%) | -$20.2K | -$16.9K | 4 | -$2.4K / +$15.1K |
+| A any K 10% (thesis) | 62 | 13 | 25 | -31% | $113.1K (11%) | $119.2K (16%) | -$19.9K | -$16.3K | 4 | -$2.4K / +$15.5K |
+| A any K 25% 🎯 | 62 | 8 | 24 | -32% | $113.5K (10%) | $120.1K (15%) | -$19.6K | -$16.5K | 4 | -$2.4K / +$15.8K |
+| A10-multi (up to 2) | 62 | 18 | 26 | -28% | $111.5K (12%) | $116.9K (18%) | -$19.9K | -$16.4K | 4 | -$2.4K / +$13.8K |
+
+Check (odd weeks):
+
+| Version | Trades | Adds | Winners | Median | 2% (drop) | 3% (drop) | W/o best 5 | Non-giant | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.3.0 (base) | 49 | 0 | 20 | -11% | $132.7K (8%) | $149.2K (13%) | -$14.1K | -$9.0K | 3 | -$3.7K / +$36.3K |
+| A any K 25% 🎯 | 49 | 12 | 24 | -16% | $141.5K (8%) | $162.7K (13%) | -$15.8K | -$6.0K | 3 | -$3.7K / +$45.2K |
+
+Year (one account), 2% (3%): base $153.9K (11%) ($186.7K, 16%); K 0% $163.8K (12%) ($200.5K, 18%); K 10% $163.7K
+(12%) ($201.2K, 18%); K 25% $160.6K (12%) ($196.1K, 17%); multi $171.5K (12%) ($213.8K, 18%). Without the best 5 the
+year is worse in every variant (-$15.0K to -$16.9K vs -$12.3K).
+
+- **The adds alone (K 10%, 2%)**: year 25 adds, +$8.0K, median -15%, 10 won, **without their best 5 -$11.2K**; tune 13,
+  -$3.5K (w/o best 5 -$7.1K); check 12, +$12.2K (w/o best 5 -$6.4K). Best: META 2026-04-08 (added at +289%, +179%,
+  +$7.8K), SLV 2026-08-28 put (at +55%, +164%, +$4.3K), QCOM 2026-05-07 (at +59%, +166%, +$3.5K). Worst: GOOGL
+  2026-08-05 put (at +382%, -40%, -$3.6K), ORCL 2026-10-08 (at +181%, -43%), INTC 2026-01-09 (at +180%, -49%).
+  Multi: 38 adds, +$14.1K, w/o best 5 -$11.8K.
+- By the leg's gain at the add (K 10%, post-hoc, not a tested level): 10-50% 14 adds, +$4.1K, median +10%, 7 won
+  (tune 10: +$1.5K, -$0.3K without its best; check 4: +$2.5K); 50-100% 5, +$5.3K (SLV 08-28, QCOM 05-07); >= 100% 6,
+  -$1.4K, median -41%. The "up small" adds are the thesis's own band and roughly break even.
+- **Verdict: not better (look 2).** Every level loses tune (-$3.0K to -$5.0K at 2%) with a deeper drop (8% -> 10-12%);
+  the check gain (+$8.8K for the pick) and the year gain are a few check-half winners: the adds lose without their
+  best 5 on both halves. No candidate. The "up small" band (10-50%) is a weak lead only: +$4.1K on 14 adds a year,
+  near zero on tune; an upper cap would be a new level chosen after seeing this (look 3 if ever run). $0 data.
 
 ### Exit when the stock goes flat after the buy (2026-11-03, look 1)
 

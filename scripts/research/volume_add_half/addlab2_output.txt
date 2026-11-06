@@ -1,0 +1,64 @@
+alerts 8792 {"premarket":3284,"burst":804,"traded":128,"against_move":208,"slow_cross":3877,"no_expiry":236,"earnings":112,"too_cheap":93,"thin":33,"wide_spread":4,"no_fill":3,"no_prices":10}
+engine account (year): 2% $153927 drop 11.1% taken 111 won 40; 3% $186705 drop 16.3%
+account statuses (2%): {"busy":17,"taken":111}
+
+Same-direction alerts inside open windows of the kept trades (before the account): 87; own outcomes {"slow_cross":42,"traded":14,"burst":26,"no_expiry":2,"too_cheap":2,"no_fill":1}; no book 0
+open leg's gain at each alert (with a book, 87): < 0% 26, 0-10% 5, 10-25% 9, 25-50% 8, 50-100% 9, >= 100% 30; qualify at K 0% 61, 10% 56, 25% 47
+A any K 0%: add events 27 ({"seconds":19,"minutes":8}) on 27 positions
+A any K 10% (thesis): add events 25 ({"seconds":17,"minutes":8}) on 25 positions
+A any K 25%: add events 20 ({"seconds":12,"minutes":8}) on 20 positions
+A10-multi (up to 2): add events 38 ({"seconds":23,"minutes":15}) on 25 positions
+
+base year: 2% $153.9K (11.1%) 3% $186.7K (16.3%) trades 111
+
+## Tune (even ISO entry weeks)
+| Version | Trades | Adds | Winners | Median | 2% (worst drop) | 3% (worst drop) | Without the best 5 | Non-giant sum | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.3.0 (base) | 62 | 0 | 20 | -32% | $116.5K (8%) | $125.1K (12%) | -$19.2K | -$16.6K | 4 | -$2.4K / $18.8K |
+| A any K 0% | 62 | 14 | 25 | -32% | $112.8K (11%) | $118.9K (16%) | -$20.2K | -$16.9K | 4 | -$2.4K / $15.1K |
+| A any K 10% (thesis) | 62 | 13 | 25 | -31% | $113.1K (11%) | $119.2K (16%) | -$19.9K | -$16.3K | 4 | -$2.4K / $15.5K |
+| A any K 25% | 62 | 8 | 24 | -32% | $113.5K (10%) | $120.1K (15%) | -$19.6K | -$16.5K | 4 | -$2.4K / $15.8K |
+| A10-multi (up to 2) | 62 | 18 | 26 | -28% | $111.5K (12%) | $116.9K (18%) | -$19.9K | -$16.4K | 4 | -$2.4K / $13.8K |
+
+🎯 pick (most 2% money on tune): A any K 25%
+
+## Check (odd ISO entry weeks), base and the pick
+| Version | Trades | Adds | Winners | Median | 2% (worst drop) | 3% (worst drop) | Without the best 5 | Non-giant sum | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.3.0 (base) | 49 | 0 | 20 | -11% | $132.7K (8%) | $149.2K (13%) | -$14.1K | -$9.0K | 3 | -$3.7K / $36.3K |
+| A any K 25% | 49 | 12 | 24 | -16% | $141.5K (8%) | $162.7K (13%) | -$15.8K | -$6.0K | 3 | -$3.7K / $45.2K |
+
+## Year (one account), base and every variant
+| Version | Trades | Adds | Winners | Median | 2% (worst drop) | 3% (worst drop) | Without the best 5 | Non-giant sum | Giants | 2025 / 2026 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.3.0 (base) | 111 | 0 | 40 | -26% | $153.9K (11%) | $186.7K (16%) | -$12.3K | -$25.6K | 7 | -$5.9K / $59.9K |
+| A any K 0% | 111 | 27 | 51 | -22% | $163.8K (12%) | $200.5K (18%) | -$15.0K | -$21.1K | 7 | -$5.9K / $69.8K |
+| A any K 10% (thesis) | 111 | 25 | 50 | -23% | $163.7K (12%) | $201.2K (18%) | -$15.1K | -$20.8K | 7 | -$5.9K / $69.6K |
+| A any K 25% | 111 | 20 | 48 | -24% | $160.6K (12%) | $196.1K (17%) | -$16.5K | -$22.4K | 7 | -$5.9K / $66.5K |
+| A10-multi (up to 2) | 111 | 38 | 55 | -20% | $171.5K (12%) | $213.8K (18%) | -$16.9K | -$18.0K | 7 | -$5.9K / $77.4K |
+
+## The adds alone, 2% (sum / median / winners / sum without their best 5)
+tune A any K 0%: 14 adds, sum -$3.9K, median -21%, won 5, w/o best 5 -$7.6K
+tune A any K 10% (thesis): 13 adds, sum -$3.5K, median -10%, won 5, w/o best 5 -$7.1K
+tune A any K 25%: 8 adds, sum -$3.2K, median -4%, won 4, w/o best 5 -$5.3K
+tune A10-multi (up to 2): 18 adds, sum -$5.3K, median -19%, won 6, w/o best 5 -$10.0K
+check A any K 0%: 13 adds, sum $12.6K, median -8%, won 6, w/o best 5 -$6.0K
+check A any K 10% (thesis): 12 adds, sum $12.2K, median -19%, won 5, w/o best 5 -$6.4K
+check A any K 25%: 12 adds, sum $9.3K, median -20%, won 4, w/o best 5 -$6.8K
+check A10-multi (up to 2): 20 adds, sum $21.1K, median -15%, won 9, w/o best 5 -$4.4K
+year A any K 0%: 27 adds, sum $8.2K, median -10%, won 11, w/o best 5 -$11.1K
+year A any K 10% (thesis): 25 adds, sum $8.0K, median -15%, won 10, w/o best 5 -$11.2K
+year A any K 25%: 20 adds, sum $5.6K, median -20%, won 8, w/o best 5 -$12.3K
+year A10-multi (up to 2): 38 adds, sum $14.1K, median -16%, won 15, w/o best 5 -$11.8K
+
+A any K 0% best adds: META 2026-04-08 add META260408C00610000 at +289% (plan) +179% $7.8K; SLV 2026-08-28 add SLV260828P00062000 at +55% (plan) +164% $4.3K; QCOM 2026-05-07 add QCOM260508C00215000 at +59% (plan) +166% $3.5K
+A any K 0% worst adds: GOOGL 2026-08-05 add GOOGL260805P00367500 at +382% (plan) -40% -$3.6K; ORCL 2026-10-08 add ORCL261009P00137000 at +181% (plan) -43% -$2.7K; INTC 2026-01-09 add INTC260109C00045000 at +180% (plan) -49% -$1.4K
+
+A any K 10% (thesis) best adds: META 2026-04-08 add META260408C00610000 at +289% (plan) +179% $7.8K; SLV 2026-08-28 add SLV260828P00062000 at +55% (plan) +164% $4.3K; QCOM 2026-05-07 add QCOM260508C00215000 at +59% (plan) +166% $3.5K
+A any K 10% (thesis) worst adds: GOOGL 2026-08-05 add GOOGL260805P00367500 at +382% (plan) -40% -$3.6K; ORCL 2026-10-08 add ORCL261009P00137000 at +181% (plan) -43% -$2.7K; INTC 2026-01-09 add INTC260109C00045000 at +180% (plan) -49% -$1.4K
+
+A any K 25% best adds: META 2026-04-08 add META260408C00610000 at +289% (plan) +179% $7.8K; SLV 2026-08-28 add SLV260828P00062000 at +55% (plan) +164% $4.3K; QCOM 2026-05-07 add QCOM260508C00215000 at +59% (plan) +166% $3.5K
+A any K 25% worst adds: GOOGL 2026-08-05 add GOOGL260805P00367500 at +382% (plan) -40% -$3.6K; ORCL 2026-10-08 add ORCL261009P00137000 at +181% (plan) -43% -$2.7K; INTC 2026-01-09 add INTC260109C00045000 at +180% (plan) -49% -$1.4K
+
+A10-multi (up to 2) best adds: META 2026-04-08 add META260408C00610000 at +289% (plan) +179% $7.8K; META 2026-04-08 add META260408C00610000 at +569% (plan) +86% $5.7K; SLV 2026-08-28 add SLV260828P00062000 at +55% (plan) +164% $4.5K
+A10-multi (up to 2) worst adds: GOOGL 2026-08-05 add GOOGL260805P00367500 at +382% (plan) -40% -$3.6K; ORCL 2026-10-08 add ORCL261009P00137000 at +181% (plan) -43% -$2.8K; ORCL 2026-10-08 add ORCL261009P00137000 at +300% (plan) -43% -$2.8K
