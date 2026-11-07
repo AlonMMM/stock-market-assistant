@@ -200,7 +200,7 @@ test("volume backtest page: New York clock and CSV", () => {
   assert.match(csv[0]!, /^date,symbol,alert,time_ny/);
   assert.match(
     csv[1]!,
-    /^2024-02-07,MRVL,shock,10:30:00,up,1.40,,,traded,Traded,MRVL240207C00070000,10:30:05,0.41,seconds,0.82,minutes,giveback,,,,,60,0.4,0.42,5.0,,,,,,$/,
+    /^2024-02-07,MRVL,shock,10:30:00,up,1.40,,,traded,Traded,MRVL240207C00070000,10:30:05,0.41,seconds,0.82,minutes,giveback,,,,,60,0.4,0.42,5.0,,,,,,,$/,
   );
   assert.match(
     csv[2]!,
@@ -248,6 +248,18 @@ test("volume alerts table (2026-11-06): the return of a trade, of one the accoun
   assert.equal(ifTaken.kind, "refused");
   assert.equal(ifTaken.ret, (0.4 * 100 - 0.62) / (0.5 * 100 + 0.62) - 1);
   assert.deepEqual(rowReturn(by(slow.id), 0.62), { ret: 0.5, kind: "model" });
+  // On the saved books (2026-11-07): "book", not a model price.
+  const onBooks = by(slow.id);
+  assert.deepEqual(
+    rowReturn(
+      {
+        ...onBooks,
+        signal: { ...onBooks.signal, whatIf: { ...whatIf, priced: "book" } },
+      },
+      0.62,
+    ),
+    { ret: 0.5, kind: "book" },
+  );
   assert.deepEqual(rowHeld(by(taken.id)), { minutes: 60, model: false });
   assert.deepEqual(rowHeld(by(slow.id)), { minutes: 30, model: true });
   // Sorting: how close, high first; the empty ones last.
@@ -263,18 +275,18 @@ test("volume alerts table (2026-11-06): the return of a trade, of one the accoun
   const csv = volumeCsv(rows).split("\n");
   assert.match(
     csv[0]!,
-    /reach_pct,held_min,bid,ask,spread_pct,volume30,whatif_contract,whatif_buy,whatif_sell,whatif_return_pct,data_gap_s$/,
+    /reach_pct,held_min,bid,ask,spread_pct,volume30,whatif_contract,whatif_buy,whatif_sell,whatif_return_pct,whatif_priced,data_gap_s$/,
   );
   assert.match(
     csv.find((l) => l.includes("slow_cross"))!,
-    /,87,30,,,,,MRVL240207C00071000,0.2,0.3,50.0,$/,
+    /,87,30,,,,,MRVL240207C00071000,0.2,0.3,50.0,model,$/,
   );
   // The what-if opens as a one-contract trade with its own story.
   const one = whatIfTrade(slow)!;
   assert.equal(one.qty, 1);
   assert.equal(one.signal.trade!.toSide, 0);
   const story = volumeWhatIfStory(slow, "Side too slow", settings)!;
-  assert.match(story.story.entryTitle, /a model/);
+  assert.match(story.story.entryTitle, /model price/);
   assert.match(
     story.story.entry[0]!,
     /Not bought: Side too slow\. In the window the stock reached 87%/,

@@ -255,6 +255,7 @@ export function volumeCsv(rows: readonly VolumeRow[]): string {
     "whatif_buy",
     "whatif_sell",
     "whatif_return_pct",
+    "whatif_priced",
     "data_gap_s",
   ];
   const lines = rows.map((r) => {
@@ -293,6 +294,7 @@ export function volumeCsv(rows: readonly VolumeRow[]): string {
       s.whatIf?.buy,
       s.whatIf?.sell,
       s.whatIf && priced ? (s.whatIf.ret * 100).toFixed(1) : null,
+      s.whatIf ? (s.whatIf.priced ?? "model") : null,
       s.dataGap ? s.dataGap.to - s.dataGap.from : null,
     ]
       .map(csvCell)
@@ -410,13 +412,13 @@ export function dataGapWords(sig: VolumeSignal): string | null {
 
 /**
  * A row's return: the taken trade's; the trade's own when the account refused
- * it ("if taken"); else the what-if's (a model); null without any, or when
- * the buy was under MIN_PRICED_BUY.
+ * it ("if taken"); else the what-if's ("book" on the saved books, "model" by
+ * Black-Scholes); null without any, or when the buy was under MIN_PRICED_BUY.
  */
 export function rowReturn(
   r: VolumeRow,
   fee: number,
-): { ret: number; kind: "trade" | "refused" | "model" } | null {
+): { ret: number; kind: "trade" | "refused" | "book" | "model" } | null {
   const t = r.signal.trade;
   const w = r.signal.whatIf;
   let buy: number | null = null;
@@ -425,6 +427,7 @@ export function rowReturn(
   if (buy !== null && buy < MIN_PRICED_BUY) return null;
   if (r.bought && r.account) return { ret: r.account.ret, kind: "trade" };
   if (t) return { ret: tradeReturn(t, fee), kind: "refused" };
+  if (w?.priced === "book") return { ret: w.ret, kind: "book" };
   if (w) return { ret: w.ret, kind: "model" };
   return null;
 }
@@ -505,6 +508,8 @@ export function whatIfTrade(sig: VolumeSignal): VolumeAccountTrade | null {
   const w = sig.whatIf;
   if (!w) return null;
   const side = w.sideSecond ?? sig.second;
+  let priced: PricedBy = "bars";
+  if (w.priced === "book") priced = "minutes";
   return {
     signal: {
       ...sig,
@@ -522,11 +527,11 @@ export function whatIfTrade(sig: VolumeSignal): VolumeAccountTrade | null {
         buy: w.buy,
         book: null,
         spread: null,
-        buyPriced: "bars",
+        buyPriced: priced,
         exitMinute: w.exitMinute,
         exitReason: w.exitReason,
         sell: w.sell,
-        sellPriced: "bars",
+        sellPriced: priced,
         stockOut: w.stockOut,
       },
     },
@@ -537,7 +542,7 @@ export function whatIfTrade(sig: VolumeSignal): VolumeAccountTrade | null {
   };
 }
 
-/** The trade story of an alert not bought: why, and the trade a model makes of it. */
+/** The trade story of an alert not bought: why, and the trade it would have made (books, else a model). */
 function gapLine(sig: VolumeSignal): string[] {
   const words = dataGapWords(sig);
   return words ? [`⚠ Data gap. ${words}`] : [];
@@ -560,16 +565,22 @@ export function volumeWhatIfStory(
   let reach = "";
   if (sig.reach !== undefined)
     reach = ` In the window the stock reached ${Math.round(sig.reach * 100)}% of the nearer side line.`;
+  let price = `The model price: ${w.contract}, the ${s.delta.toFixed(2)}-delta strike, Black-Scholes at the stock's volatility (${(w.iv * 100).toFixed(0)}% a year): bought ${w.buy.toFixed(2)}, sold ${w.sell.toFixed(2)}. No book was saved for this leg, so this is not a market price; on a day of a big move it is far too cheap at the buy. No fees, no broker stop.`;
+  let title = "Not bought: the trade it would have made (⚠ model price)";
+  if (w.priced === "book") {
+    price = `On the saved books: ${w.contract}, the leg the bot picks, bought at the ask ${w.buy.toFixed(2)}, sold at the bid ${w.sell.toFixed(2)}. No fees, no broker stop.`;
+    title = "Not bought: the trade it would have made (real books)";
+  }
   return {
     trade,
     story: {
       ...story,
-      entryTitle: "Not bought: the trade it would have made (a model)",
+      entryTitle: title,
       entry: [
         `${kind} ${sig.alert} at ${nyClock(sig.second)} New York${sig.burst === null ? "" : `, burst ${sig.burst.toFixed(2)}`}. Not bought: ${why}.${reach}`,
         ...gapLine(sig),
         side,
-        `The model: ${w.contract}, the ${s.delta.toFixed(2)}-delta strike, Black-Scholes at the stock's volatility (${(w.iv * 100).toFixed(0)}% a year): bought ${w.buy.toFixed(2)}, sold ${w.sell.toFixed(2)}. No book, no fees, no broker stop.`,
+        price,
       ],
       stop: null,
       entryQuote: null,
