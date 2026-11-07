@@ -287,10 +287,14 @@ export function VolumeSignalList({
   const refusedByAccount = reasons
     .filter((r) => r.account)
     .reduce((n, r) => n + r.count, 0);
-  const modelled = rows.filter(
-    (r) => !r.bought && rowReturn(r, 0)?.kind === "model",
-  );
-  const modelWon = modelled.filter((r) => rowReturn(r, 0)!.ret > 0).length;
+  const whatIfs = rows.filter((r) => {
+    const kind = rowReturn(r, 0)?.kind;
+    return !r.bought && (kind === "model" || kind === "book");
+  });
+  const whatIfWon = whatIfs.filter((r) => rowReturn(r, 0)!.ret > 0).length;
+  const modelPriced = whatIfs.filter(
+    (r) => rowReturn(r, 0)!.kind === "model",
+  ).length;
   const gaps = rows.filter((r) => r.signal.dataGap).length;
   const download = () => {
     const url = URL.createObjectURL(
@@ -323,8 +327,8 @@ export function VolumeSignalList({
         {rows.length - bought} not bought
         {refusedByAccount > 0 &&
           ` (${refusedByAccount} by the account's limits)`}
-        {modelled.length > 0 &&
-          ` · if bought: ${modelWon} of ${modelled.length} would have gained (a model)`}
+        {whatIfs.length > 0 &&
+          ` · if bought: ${whatIfWon} of ${whatIfs.length} would have gained (${modelPriced} at a model price)`}
         {gaps > 0 && (
           <span
             className="state-chip weak"
@@ -386,7 +390,7 @@ export function VolumeSignalList({
               {th(
                 "ret",
                 "Return",
-                "The trade's return after fees. Refused by the account: the trade's own, if taken. Not bought: the trade a model makes of it (Black-Scholes at the stock's volatility, no book, no fees)",
+                "The trade's return after fees. Refused by the account: the trade's own, if taken. Not bought: the trade it would have made, on the saved books (\"if bought\"), else at a model price (⚠ model price: Black-Scholes at the stock's volatility, too cheap on a big move), no fees",
               )}
               {th(
                 "reach",
@@ -436,7 +440,8 @@ export function VolumeSignalList({
         Times in {israelLabel}. A plan alert is the minute volume alert, read at
         its minute&apos;s close; a shock alert is the 60-second one at 15×
         volume. A stock&apos;s name opens its chart: the trade, or for an alert
-        not bought the trade a model makes of it.
+        not bought the trade it would have made, on the saved books, else at a
+        model price (marked ⚠).
       </p>
     </details>
   );
@@ -498,7 +503,7 @@ function VolumeSignalLine({
   const gap = dataGapWords(s);
   let retNote = "";
   if (ret?.kind === "refused") retNote = " if taken";
-  if (ret?.kind === "model") retNote = " model";
+  if (ret?.kind === "book") retNote = " if bought";
   let reach = "—";
   if (s.reach !== undefined) reach = `${Math.round(s.reach * 100)}%`;
   let contract = "—";
@@ -526,7 +531,7 @@ function VolumeSignalLine({
             title={
               r.bought
                 ? "The trade's window"
-                : "Why it was not bought, and the trade a model makes of it"
+                : "Why it was not bought, and the trade it would have made"
             }
             onClick={() => onOpen(r)}
           >
@@ -550,6 +555,14 @@ function VolumeSignalLine({
       <td className={ret ? `num${tone(ret.ret)}` : "num muted"}>
         {ret ? signedPct(ret.ret * 100) : "—"}
         {retNote && <span className="small muted">{retNote}</span>}
+        {ret?.kind === "model" && (
+          <span
+            className="state-chip weak"
+            title="Model price: no book was saved for this leg, so Black-Scholes at the stock's normal volatility. On a day of a big move it is far too cheap at the buy, so the return is too high."
+          >
+            ⚠ model price
+          </span>
+        )}
       </td>
       <td className="num">{reach}</td>
       <td className="num">{t ? `${t.toSide} s` : "—"}</td>

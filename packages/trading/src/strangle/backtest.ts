@@ -156,12 +156,16 @@ export interface VolumeTrade {
 }
 
 /**
- * An alert not traded, as a model trades it (the Main bot's what-if): the side
- * crossed, else the alert's way; the strike at the bot's delta and the prices
- * by Black-Scholes at the stock's volatility; the same give-back walk. A model,
- * not the market: no book, no fees, no broker stop.
+ * An alert not traded, as it would have traded: the side crossed, else the
+ * alert's way; the same give-back walk. Priced from the saved books when they
+ * hold the bot's leg at the buy and at the sale ("book": the leg the bot picks,
+ * bought at the ask, sold at the bid), else by a model ("model": the strike at
+ * the bot's delta, Black-Scholes at the stock's volatility). The model is far
+ * too cheap on a day of a big move (DELL 2026-05-08: the 250 call $0.23 by the
+ * model, $3.75 on the book), so it is the fallback. No fees, no broker stop.
  */
 export interface VolumeWhatIf {
+  priced?: "book" | "model"; // absent on older runs: the model
   contract: string;
   right: Leg;
   strike: number;
@@ -906,7 +910,10 @@ export async function runVolumeStock(
         end,
         s,
       });
-      if (model) sig.whatIf = model;
+      if (!model) continue;
+      sig.whatIf =
+        (await bookWhatIf(data, sig, model, bars, { unit, end, s, o })) ??
+        model;
     }
   }
   return { symbol, signals, ignored };
@@ -968,6 +975,107 @@ export function longestGap(
   return best;
 }
 
+/**
+ * The what-if on the saved books: the leg the bot picks at the model's buy
+ * second (the model's strike when the pick fails), bought as a trade is (the
+ * 1-second book, else the minute book) and sold at the minute book's bid at
+ * the give-back; null when a book is missing.
+ */
+async function bookWhatIf(
+  data: VolumeBacktestData,
+  sig: VolumeSignal,
+  model: VolumeWhatIf,
+  bars: readonly MinuteBar[],
+  m: { unit: number; end: number; s: StrangleSettings; o: VolumeRunOptions },
+): Promise<VolumeWhatIf | null> {
+  if (!data.optionQuotes) return null;
+  const { date } = sig;
+  const second = model.sideSecond ?? sig.second;
+  const cm = Math.floor(second / 60) - 1;
+  const right = model.right === "C" ? "call" : "put";
+  const { quotes, bars: optionBars } = await chainQuotes(
+    data,
+    sig.symbol,
+    date,
+    cm,
+    model.right,
+    model.stockIn,
+    model.expiry,
+    second + lag,
+  );
+  const volume30 = async (contract: string) =>
+    (optionBars.get(contract) ?? [])
+      .filter((b) => cm - 30 < b.m && b.m <= cm)
+      .reduce((sum, b) => sum + b.v, 0);
+  let leg: Awaited<ReturnType<typeof legAt>> | null = null;
+  for (const delta of legDeltas(m.s, sig.kind === "shock")) {
+    leg = await legAt(
+      quotes,
+      model.stockIn,
+      right,
+      date,
+      daysBetween(date, model.expiry),
+      delta,
+      m.s,
+      volume30,
+      (c) => c,
+    );
+    if (leg.ok) break;
+  }
+  // The bot's leg; when its pick fails (thin, too cheap: DELL 2026-05-08), the model's strike on its book.
+  let contract = model.contract;
+  let strike = model.strike;
+  if (leg?.ok) {
+    contract = leg.quote.symbol;
+    strike = leg.quote.strike;
+  }
+  const legBars = optionBars.get(contract) ?? [];
+  const dayQuotes =
+    (
+      await data
+        .optionQuotes(contract, date, date)
+        .catch(() => new Map<string, QuoteMinute[]>())
+    ).get(date) ?? [];
+  // The 1-second book, else the minute book; never the bar model.
+  const bought = await priceBuy(
+    data,
+    contract,
+    date,
+    second,
+    dayQuotes,
+    legBars,
+    { ...m.o, strictQuotes: false },
+  );
+  if (!bought || bought.priced === "bars") return null;
+  const ct = Math.floor(second / 60);
+  const exit = walkExit(
+    bars,
+    legBars,
+    ct,
+    model.right,
+    model.stockIn,
+    m.unit,
+    m.end,
+    m.s,
+  );
+  const sale = bookAt(dayQuotes, exit.minute);
+  const stockOut = lastBar(bars, exit.minute, 5)?.c;
+  if (!sale || !stockOut) return null;
+  return {
+    ...model,
+    priced: "book",
+    contract,
+    strike,
+    buyMinute: ct,
+    exitMinute: exit.minute,
+    exitReason: exit.reason,
+    stockOut,
+    buy: bought.buy,
+    sell: sale.bid,
+    ret: sale.bid / bought.buy - 1,
+  };
+}
+
 /** An alert not traded, as a model trades it; null when it cannot be modelled. */
 function whatIf(
   sig: VolumeSignal,
@@ -1012,6 +1120,7 @@ function whatIf(
     bsPrice(stockOut, strike, later, m.vol, call)[0].toFixed(4),
   );
   return {
+    priced: "model",
     contract: occSymbol(sig.symbol, m.expiry, right, strike),
     right,
     strike,
