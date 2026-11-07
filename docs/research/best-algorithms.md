@@ -320,6 +320,13 @@ $1.95M / 28.6%, $206K / 29.5% vs $321K / 28.3%. The rule cuts the drop, but flat
 of 52 fair, 25 of 44 Favorites): the giant that ends a drop arrives while the size is down. To cut the drop, cut the
 flat size. e stays.
 
+Both lists in one account (`dd_base_both.py`, the user: "combined the 2 lists together to see"; a trade on both lists
+counted once; 1,084 fair + 269 Favorites-only entries), 2%, tune / check / all weeks: e $679,190 / 20.6%, $1,416,271 /
+28.1%, $9.01M / 32.7%; flat 1.75% $615,606 / 18.1%, $1,134,843 / 25.0%, $6.61M / 30.1%; flat 1.5% $541,162 / 15.6%,
+$885,631 / 21.8%, $4.58M / 27.5%; DD $471,210 / 20.8%, $1,257,710 / 24.7%, $4.47M / 28.9% (34 of 55 giants at the cut
+size). At 3%: DD $528,374 / 29.3%, $1.53M / 32.2%, $6.43M / 35.7% vs flat 2.25% $715,541 / 24.5%, $1.66M / 31.0%, $11.03M
+/ 35.8%. The same verdict: DD wins only check; flat 1.5% has DD's all-weeks money with a smaller drop.
+
 ### The break-even lock's line rising with time, on e (2026-11-07, R05 passes the rule set before the run by a hair; all weeks joined its drop is larger; not a candidate)
 
 The user, on GOOGL 2025-05-21 (+367% at 11:20 ET, sold by the lock at a loss at 15:27): "Can you make it be more high as
