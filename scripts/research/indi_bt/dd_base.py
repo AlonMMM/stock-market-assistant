@@ -32,12 +32,13 @@ def ret(x, size):
     raise ValueError(size)
 
 
-def entries(R, adds, src, part, a, v="e-c5"):
+def entries(R, adds, src, part, a, v="e-c5", keep=None):
     """be_ramp.entries, keeping the row (x) and a unit factor (1 main, 0.5 an add) instead of one size's return."""
     E = []
     for r in R:
         if r["src"] != src or r["kind"] != "main" or r["date"] < a: continue
         if part != "all" and half(r["date"]) != part: continue
+        if keep and not keep(r): continue   # a skipped main leg takes its adds with it
         x, m = r["v"][v], r["at"][v]
         w = SV.SIZEV[v](r.get("rvol", 0))
         E.append((r["date"], m, w, x, 1.0))
@@ -59,6 +60,7 @@ def account(E, pct, rule):
     for e in E: by[e[0]].append(e)
     days = sorted(set(by) | {e[3]["h"]["exit_day"] or e[0] for e in E})
     eq, peak, dd, open_, prev, mult = 1e5, 1e5, 0.0, [], None, 1.0
+    bpk, bdd = 1e5, 0.0   # the drop on booked money: a trade counts only on its sale day
     cut, n, usd = 0, 0, []
     for d in days:
         base = eq + sum(st * t[3]["h"]["marks"].get(prev, 0.0) * t[2] for st, t, _ in open_)
@@ -80,8 +82,9 @@ def account(E, pct, rule):
         open_ = keep
         now = eq + sum(st * t[3]["h"]["marks"].get(d, 0.0) * t[2] for st, t, _ in open_)
         peak = max(peak, now); dd = max(dd, 1 - now / peak); prev = d
+        bpk = max(bpk, eq); bdd = max(bdd, 1 - eq / bpk)
     end = eq + sum(st * r_ for st, _, r_ in open_)
-    return dict(acct=round(end), dd=round(dd, 3), trades=n, cut=cut, gcut=sum(1 for u, g, m in usd if g and m < 1),
+    return dict(acct=round(end), dd=round(dd, 3), bdd=round(bdd, 3), trades=n, cut=cut, gcut=sum(1 for u, g, m in usd if g and m < 1),
                 giants=sum(1 for u, g, m in usd if g))
 
 

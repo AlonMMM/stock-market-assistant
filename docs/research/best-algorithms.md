@@ -297,6 +297,31 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### Skip a new entry when SPY is down 0.5%+ on the day, on e (2026-11-07, S05 wins every list and half on 2024-26 with a smaller drop; 2022 loses its giant, 2023 wins)
+
+The user: "Yes. Check this theses" (from the drop diagnostic below; "dont we have bigger winner to the put side?" - no, 0
+put giants there). `spy_down.py` on e (be_ramp_R.pkl), 2%: the main leg and its adds are skipped when SPY's last minute
+close before the entry is x under the prior close; x = 0.5% / 0.75% / 1.0% set before running. The bucket was seen on
+both halves in the diagnostic: weak evidence; 2022-23 is the unseen part. From here drops are shown marked AND booked
+(the user: "a trade is mark on his end, so drop from the top of a trade is not relevant, only after the mony is in our
+account"; dd_base.account `bdd`: the account counts a trade on its sale day only).
+
+| 2%, end vs e · booked drop (marked) | Tune fair | Tune Fav | Check fair | Check Fav | All fair | All Fav |
+| --- | --- | --- | --- | --- | --- | --- |
+| e | $944,913 · 19.5% (18.6%) | $647,457 · 17.5% (19.8%) | $1,617,618 · 22.3% (26.0%) | $306,532 · 25.7% (25.5%) | $14.27M · 24.2% (30.0%) | $1.88M · 24.8% (30.5%) |
+| 🎯 S05 | 1.290 · 17.3% (16.2%) | 1.157 · 16.0% (19.7%) | 1.143 · 22.1% (25.8%) | 1.148 · 25.2% (25.0%) | 1.476 · 21.3% (27.4%) | 1.328 · 23.2% (28.3%) |
+| S075 | 1.221 · 19.0% | 1.102 · 17.5% | 1.068 · 22.5% | 1.050 · 25.6% | 1.303 · 22.9% | 1.157 · 24.9% |
+| S10 | 1.095 · 19.5% | 1.001 · 18.0% | 1.032 · 22.6% | 1.012 · 25.6% | 1.131 · 23.6% | 1.012 · 25.6% |
+
+S05 skips 9-15% of the main legs; winners +0.2-1.1 points; without the best 5 higher on every cell (tune $234,008 /
+$158,424 vs $181,756 / $136,769; check $289,708 / $102,777 vs $252,831 / $89,488); giants kept (fair 25 / 21 of 25 / 21,
+Fav 22 / 17 of 23 / 17); the median is unchanged (-$1,737 vs -$1,722): it removes non-giant losers, not a worse kind of
+trade. Skipped +100% trades: MSFT 2026-06-26 +228%, AAPL / TSLA puts 2025-03-10 +290% / +120%, RKLB 2024-11-15 +191%, IWM
+2025-10-14 +1,500% (Fav). Unseen 2022-23 (2.10's main legs, trades_v210x.csv, booked on the entry day, 2% x tier): 2022
+S05 66 trades $83,186 / 17.3% vs 94 $96,917 / 19.8% (sum -$90,660 vs -$188 at $10K: MSFT 2022-02-24 +1,264% skipped,
+SPY -1.9% that morning); 2023 105 $101,368 / 18.2% vs 124 $98,015 / 22.5% (AMZN 2023-01-25 +517% skipped). The risk is
+the crash morning that turns. Passes the tune / check rule; the 2022 half of the last feature test fails on one giant.
+
 ### e's big drops, what they are made of (2026-11-07, a diagnostic)
 
 The user: "Wdyt can help with the drop / Can you show me analyse of big drops?". `drop_anal.py` / `drop_anal2.py`, e at
