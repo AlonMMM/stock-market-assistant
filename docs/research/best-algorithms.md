@@ -297,6 +297,20 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### e's big drops, what they are made of (2026-11-07, a diagnostic)
+
+The user: "Wdyt can help with the drop / Can you show me analyse of big drops?". `drop_anal.py` / `drop_anal2.py`, e at
+2%, all weeks, each list its own account. 11 drops of 12.5%+ on the fair list, 10 on the Favorites (14-30% deep, 12-54
+trading days, 0-16 winners, 70-85% of the trades never +50%). The first day after the high is 35-46% of the fall in
+the five biggest (2024-11-12, 2025-05-15, 2025-10-28, 2026-04-15, 2026-06-02): an open giant gives back part of its mark
+overnight (+2,817% -> +2,290%, +3,514% -> +2,274%), so the high is a mark. Each drop ends in 1-3 days with giants. At
+entry, the account's drop, the last 10 trades' winners, SPY's 20-day move and volatility, trades that day, the tier:
+the median trade is -$1,600 to -$1,900 in every bucket (no streak effect, so drawdown sizing has nothing to read). One
+signal holds on both lists and halves: SPY down 0.5%+ on the day at the entry (fair 124 trades, 0 giants, -$119K tune /
+-$58K check at $10K x tier; Favorites 132, 1 giant, -$65K / -$61K; calls and puts alike); its median is not worse, the
+giants are missing. About 40 buckets scanned, both halves seen: a filter test on it is weak evidence; 2022-23 is the
+unseen check.
+
 ### Cut the basic size in a drawdown, on e (2026-11-07, not better: a flat smaller size does more, the third time)
 
 The user: "what about now when we know to trade big to cut afrer many loosers the basic trade size? for example, after
