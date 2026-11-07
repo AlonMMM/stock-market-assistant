@@ -297,6 +297,35 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### Cut a big position at 10% of the account, and sell the add's part, on e (2026-11-07, not better: every cut costs the giants; the drop moves only at 5%, where it is the size)
+
+The user: "now on top of E I would like to cut some winners in order to increase the winner rate and reduce the drop",
+then "when a position become 10% of the acount, cut 25% of it", "it will also increase the winrate in 5% size" and "I
+meant to keep cuting not only the first one - keep cutting". `pos_cap.py` on e (add_small.py; 2.10 and e reproduced to
+the dollar), real quotes, sim.py `pos_cap` / `add_take` / `q_take` (new). Set before running: P10r (the user's: 25% of
+what is left each time the position is worth 10% of the account at the buy), P15r at 15%, P10 once; A100 / A50 the
+add's part sold at +100% / +50% over the average cost; T25 25% once at +100%. P walks at 2%, 3% and 5%. Picks on tune at
+2%: P by the lower drop among money >= 0.90 of e (P15r); A / T money >= 0.98 of e, then the win rate (none passed). Look
+1 of the position cut; the 25% sale is look 4 of the gain trims (1DTE trim / ladder / fast take).
+
+| vs e (fair / Favorites) | Tune 2%: money, winners, drop | Check 2%: money, winners, drop | All weeks 2%: money, winners, drop | All weeks 5%: money, drop |
+|---|---|---|---|---|
+| e | 1; 15.9% / 16.7%; 18.6% / 19.8% | 1; 14.9% / 15.7%; 26.0% / 25.5% | $14.27M / $1.88M; 15.4% / 16.2%; 30.0% / 30.5% | $56.1M / $2.14M; 63.9% / 70.0% |
+| P10r (the user's) | 0.695 / 0.947; 16.1% / 17.3%; 19.1% / 17.2% | **0.312 / 0.698**; 15.1% / 15.7%; 25.6% / 25.5% | 0.224 / 0.680; 15.6% / 16.5%; 27.9% / 26.5% | **0.015 / 0.131**; 47.3% / 53.5% (winners 19.9% / 20.7%) |
+| P15r 🎯 | 0.997 / 1.216; 16.1% / 16.9%; 18.6% / 19.6% | **0.517 / 0.929**; 14.9% / 15.7%; 25.9% / 25.5% | 0.525 / 1.151; 29.4% / 30.4% | 0.060 / 0.513; 49.1% / 49.4% |
+| P10 (once) | 0.824 / 0.915; 16.1% / 17.3% | - | 0.539 / 0.759; 29.3% / 27.3% | 0.392 / 0.527; 56.4% / 62.1% |
+| A100 | 0.719 / 0.693; 18.0% / 18.4%; 16.5% / 16.2% | - | 0.428 / 0.562; 17.3% / 18.0%; 29.6% / 26.0% | 0.400 / 0.546 |
+| A50 | 0.670 / 0.675; **20.4% / 21.0%**; 17.3% / 15.9% | - | 0.391 / 0.524; 20.0% / 20.8%; 28.7% / 29.5% | 0.353 / 0.505 |
+| T25 | 0.667 / 0.682; 19.1% / 19.5%; 16.1% / 16.1% | - | 0.367 / 0.532; 18.8% / 19.8%; 29.0% / 27.3% | 0.364 / 0.537 |
+
+Reading: at 2% the 10% line is +233-400% on the option, so the cut touches 17-24 legs a half, nearly all giants, and
+the repeat trims each giant again every +33% (a +2000% giant keeps about a tenth): -30% to -69% of the money on check
+for the same drop (25.6% vs 26.0%) and +0.2 points of win rate. At 5% the line is +100%, so it cuts ~90 legs a half:
+winners +4 points and the drop 64% -> 47%, but the money falls to 1.5% / 13% of e; e at 2% has a smaller drop (30%)
+and far more money than any 5% cut. A50 / T25 / A100 buy 2-5 points of win rate for a third of the money on tune; the
+drop moves 1-3 points at most. As in every lock / trim test: the drop is the run of losers that never went up, and the
+giants a cut sells are what pay for it. The lever for the drop is the size, not a cut. e stays.
+
 ### A small entry adds up to a full size, never past 2x (2026-11-07, e passes on every list and half vs d, and vs 2.10; less money than 2.12, a smaller drop and a higher win rate)
 
 The user: "I want the add quater to be add for a full size in case we are using small size. we also do not need to add

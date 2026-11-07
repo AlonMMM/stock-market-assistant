@@ -748,6 +748,17 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
             if GT and peak / cost - 1 >= GT[0][0]:
                 want = max((sh for gn, sh in GT if peak / cost - 1 >= gn), default=0)
                 if want > 1 - rem + 1e-9: pending = (want - (1 - rem), "GT_trim"); continue
+            PC = X.get("pos_cap")  # pos_cap.py (the user, 2026-11-07: "when a position become 10% of the acount, cut 25% of it",
+            # then "keep cutting"): {units, share, repeat}: once what is held is worth `units` first-buy costs (the account's
+            # share / the buy's share of it), `share` of what is left sold; with `repeat` again each time it is back there
+            if PC and rem * c / cost >= PC["units"] and (PC.get("repeat") or not st.get("pc_done")):
+                st["pc_done"] = True; pending = (rem * PC["share"], "P_cap"); continue
+            AT = X.get("add_take")  # pos_cap.py: {gain}: once the option is `gain` over the average cost with the add, the add's part sold, once
+            if AT and st.get("rebought") and st.get("add_q") and not st.get("at_done") and g >= AT["gain"]:
+                st["at_done"] = True; pending = (min(rem, st["add_q"]), "A_take"); continue
+            QT = X.get("q_take")  # pos_cap.py: {gain, share}: once the option is `gain` over the average cost, `share` of what is left sold, once
+            if QT and not st.get("qt_done") and g >= QT["gain"]:
+                st["qt_done"] = True; pending = (rem * QT["share"], "Q_take"); continue
             LK = X.get("locks")  # step locks [[arm, floor], ...]: once the option has been up `arm`, sell all at `floor`
             if LK:
                 pg = peak / cost - 1
@@ -908,7 +919,7 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                     q_up = st.get("ss_sold", 0.0) if UP and st.get("ss_sold") and t - minute <= UP["within"] and mv >= UP["move"] \
                         and (UP.get("repeat") or not st.get("ss_up")) else 0.0
                     if q_add or q_up:
-                        if q_add: st["added"] = True
+                        if q_add: st["added"] = True; st["add_q"] = q_add
                         if q_up: st["ss_up"] = True; st["ss_sold"] = 0.0; st["ss_half"] = False
                         st["rb_q"] = q_add + q_up; st["rb_pending"] = True; continue
                     if SS.get("full") is not None and mv <= -SS["full"]: pending = ("all", "T_full"); continue
