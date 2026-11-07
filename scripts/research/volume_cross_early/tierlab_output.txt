@@ -1,0 +1,36 @@
+## Tune (even ISO entry weeks)
+| Version | Trades | Winners | Median | 2% (drop) | 3% (drop) | W/o best 5 (2%) | Non-giant (flat $2K) | Giants | 2025 / 2026 (2%) |
+|---|---|---|---|---|---|---|---|---|---|
+| base | 71 (32 shock) | 20 | -36% | $107.0K (17%) | $108.6K (25%) | -$35.5K | -$29.0K | 4 | -$2.4K / +$9.4K |
+| T | 85 (47 shock) | 23 | -36% | $112.4K (15%) | $116.5K (22%) | -$38.5K | -$29.5K | 4 | -$3.3K / +$15.7K |
+| T-c30 | 85 (47 shock, 9 sold at the check) | 19 | -32% | $102.4K (21%) | $102.2K (30%) | -$45.2K | -$38.4K | 4 | -$3.3K / +$5.7K |
+| T12 | 84 (46 shock) | 23 | -34% | $113.2K (15%) | $118.0K (22%) | -$38.2K | -$28.6K | 4 | -$2.4K / +$15.7K |
+| T23 | 74 (35 shock) | 20 | -36% | $102.4K (18%) | $102.5K (26%) | -$39.2K | -$33.2K | 4 | -$3.3K / +$5.7K |
+
+🎯 picks on tune: T12
+
+## Check (odd ISO entry weeks), base and the picks
+| Version | Trades | Winners | Median | 2% (drop) | 3% (drop) | W/o best 5 (2%) | Non-giant (flat $2K) | Giants | 2025 / 2026 (2%) |
+|---|---|---|---|---|---|---|---|---|---|
+| base | 58 (29 shock) | 21 | -28% | $142.5K (9%) | $162.8K (14%) | -$27.4K | -$13.7K | 3 | -$3.7K / +$46.1K |
+| T12 | 69 (40 shock) | 25 | -28% | $138.6K (10%) | $157.1K (15%) | -$31.7K | -$18.6K | 3 | -$5.6K / +$44.2K |
+T: shared 63 trades +$41.6K (median -31%) vs base 63 trades +$30.4K (median -34%); added 30 trades -$2.3K (median -31%); lost 1 trades -$1.2K (median -58%)
+  big: added AMD 2026-03-06 20480 211%; QCOM 2026-05-07 5120: 689% -> 843%; QQQ 2026-01-21 17880: 709% -> 1018%; lost SLV 2026-06-24 16080 -58% (too_cheap); added SLV 2026-08-28 8760 281%; added SMCI 2026-05-28 4170 233%
+T12: shared 63 trades +$41.6K (median -31%) vs base 63 trades +$30.4K (median -34%); added 28 trades -$0.0K (median -24%); lost 1 trades -$1.2K (median -58%)
+  big: added AMD 2026-03-06 20480 211%; QCOM 2026-05-07 5120: 689% -> 843%; QQQ 2026-01-21 17880: 709% -> 1018%; lost SLV 2026-06-24 16080 -58% (too_cheap); added SLV 2026-08-28 8760 281%; added SMCI 2026-05-28 4170 233%
+T23: shared 64 trades +$29.2K (median -34%) vs base 64 trades +$29.3K (median -34%); added 7 trades -$7.0K (median -74%); lost 0 trades +$0.0K (median 0%)
+  big: 
+T-c30: shared 63 trades +$41.6K (median -31%) vs base 63 trades +$30.4K (median -34%); added 30 trades -$10.2K (median -19%); lost 1 trades -$1.2K (median -58%)
+  big: QCOM 2026-05-07 5120: 689% -> 843%; QQQ 2026-01-21 17880: 709% -> 1018%; lost SLV 2026-06-24 16080 -58% (too_cheap); added SLV 2026-08-28 8760 281%
+== tune
+T12: shared 33 trades +$24.7K (median -32%) vs base 33 trades +$18.3K (median -36%); added 15 trades -$1.5K (median -31%); lost 1 trades -$1.2K (median -58%)
+T23: shared 34 trades +$17.0K (median -36%) vs base 34 trades +$17.1K (median -36%); added 3 trades -$4.1K (median -76%); lost 0 trades +$0.0K (median 0%)
+T-c30: shared 33 trades +$24.6K (median -32%) vs base 33 trades +$18.3K (median -36%); added 16 trades -$11.3K (median -19%); lost 1 trades -$1.2K (median -58%)
+== check
+T12: shared 30 trades +$17.0K (median -30%) vs base 30 trades +$12.2K (median -30%); added 13 trades +$1.5K (median -14%); lost 0 trades +$0.0K (median 0%)
+T23: shared 30 trades +$12.2K (median -30%) vs base 30 trades +$12.2K (median -30%); added 4 trades -$3.0K (median -73%); lost 0 trades +$0.0K (median 0%)
+T-c30: shared 30 trades +$17.0K (median -30%) vs base 30 trades +$12.2K (median -30%); added 14 trades +$1.1K (median -14%); lost 0 trades +$0.0K (median 0%)
+tune: both base 69 8.8K -> 69 14.6K; only base 2 -1.8K; only T12 15 -1.3K
+  only base: SLV 2026-06-09 11340 plan -0.6K; SLV 2026-06-24 16080 shock -1.2K
+check: both base 58 42.5K -> 58 44.6K; only base 0 0.0K; only T12 11 -6.0K
+  only base: 

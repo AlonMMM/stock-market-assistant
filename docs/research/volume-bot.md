@@ -9,6 +9,33 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### Shock entry steps: 50% at 10 s, or 100% by 20 s, or 150% at 30 s (2026-11-07, early shock look 2): not better
+
+The user, 2026-11-07: "I would like to enter if 50% if the move after 10s Or 100% after 20s Or 150% after 30s."
+Built on Volume 1.3.0 (live), the same engine, data and year as the entry below (2025-11-03 .. 2026-10-30, real books,
+full-tape stock seconds). A shock is bought on the first step (in time) whose side passes the burst check: 50% of the
+way to a side line at 10 s (bought at 10 s), today's rule (the line touched within 20 s, then the 5 checks), 150% at
+30 s (bought at 30 s). A step whose side disagrees with the burst falls through to the next (the look-1 loss).
+Versions set before the run: T (the thesis), T-c30 (T, the 10 s buy sold at the bid at 30 s unless the line is
+touched), T12 (50% and today's rule), T23 (today's rule and 150%). "rule" alone reproduced the base (102 alerts, 0
+differences on GOOGL NVDA TSLA). From $100K, live limits.
+
+| Version | Tune 2% (drop) | Tune 3% | W/o best 5 | Check 2% (drop) | Check 3% | W/o best 5 |
+|---|---|---|---|---|---|---|
+| Base 1.3.0 | $107.0K (17%) | $108.6K | -$35.5K | $142.5K (9%) | $162.8K | -$27.4K |
+| T (thesis) | $112.4K (15%) | $116.5K | -$38.5K | - | - | - |
+| T-c30 | $102.4K (21%) | $102.2K | -$45.2K | - | - | - |
+| T12 (pick) | $113.2K (15%) | $118.0K | -$38.2K | $138.6K (10%) | $157.1K | -$31.7K |
+| T23 | $102.4K (18%) | $102.5K | -$39.2K | - | - | - |
+
+By alert (flat $2K): the shocks today's rule takes, bought at 10 s instead: +$24.7K vs +$18.3K on tune, +$17.0K vs
++$12.2K on check (better on both halves, as in look 1). The extra shocks that reach 50% but not the line: 15 on tune
+-$1.5K, 13 on check +$1.5K flat, but -$6.0K in the check account (11 taken). The 150% step: 7 trades a year, -$7.0K,
+median -74%. The 30 s check sale: about -$10K on tune. Verdict: no candidate. Lead: the earlier price on shocks
+that do reach the line is real on both halves; the extra 50%-only shocks are the cost.
+Scripts: scripts/research/volume_cross_early/ (engine.patch with SHOCK_TIERS / SHOCK_CONFIRM, tierdiag.ts,
+tieracct.ts, tierlab_output.txt).
+
 ### A slower plan cross (30 / 60 s) and an early shock buy at 50% after 10 s (2026-11-06, look 1): not better
 
 The user, 2026-11-06: "can you try on the plan 30-60 seconds? and for the shock use 50% from the current rult after 10

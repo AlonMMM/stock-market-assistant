@@ -1,8 +1,8 @@
 diff --git a/packages/market-data/src/volume-backtest.ts b/packages/market-data/src/volume-backtest.ts
-index 18da6ca..896df69 100644
+index 18da6ca..55464b6 100644
 --- a/packages/market-data/src/volume-backtest.ts
 +++ b/packages/market-data/src/volume-backtest.ts
-@@ -341,7 +341,19 @@ export async function handleVolumeBacktest(
+@@ -341,7 +341,34 @@ export async function handleVolumeBacktest(
        // Real books only (the user, 2026-11-01: "stop fallback as we have the
        // data now"): a buy needs its 1-second book, a sale its minute book;
        // without them the alert is not traded, as in the research simulator.
@@ -19,12 +19,27 @@ index 18da6ca..896df69 100644
 +              ),
 +            }
 +          : {}),
++        // Research only (2026-11-07): SHOCK_TIERS="10:0.5,rule,30:1.5" and SHOCK_CONFIRM="30".
++        ...(globalThis.process?.env?.SHOCK_TIERS
++          ? {
++              shockTiers: {
++                tiers: globalThis.process.env.SHOCK_TIERS.split(",").map((t) => {
++                  if (t === "rule") return "rule" as const;
++                  const [at, reach] = t.split(":").map(Number);
++                  return { at: at!, reach: reach! };
++                }),
++                ...(globalThis.process.env.SHOCK_CONFIRM
++                  ? { confirmBy: Number(globalThis.process.env.SHOCK_CONFIRM) }
++                  : {}),
++              },
++            }
++          : {}),
 +      },
      );
      return {
        status: 200,
 diff --git a/packages/trading/src/strangle/backtest.ts b/packages/trading/src/strangle/backtest.ts
-index 64ae7d4..58d52de 100644
+index 64ae7d4..c36c5d0 100644
 --- a/packages/trading/src/strangle/backtest.ts
 +++ b/packages/trading/src/strangle/backtest.ts
 @@ -148,7 +148,7 @@ export interface VolumeTrade {
@@ -36,7 +51,7 @@ index 64ae7d4..58d52de 100644
    sell: number;
    sellPriced: PricedBy;
    stockOut: number | null;
-@@ -232,6 +232,13 @@ export interface VolumeRunOptions {
+@@ -232,6 +232,21 @@ export interface VolumeRunOptions {
     * less safetyStopPct sells at that bid, before the give-back or the end.
     */
    safetyStop?: boolean;
@@ -47,14 +62,23 @@ index 64ae7d4..58d52de 100644
 +   * full line was touched by then. Shocks that do not reach it keep the rule.
 +   */
 +  shockEarly?: { at: number; reach: number; confirmBy: number };
++  /**
++   * Research (2026-11-07, not live): a shock is bought on the first of these
++   * that holds and passes the burst check: `at` s after the alert the stock has
++   * gone `reach` of the way to a side line (that side, bought then), or "rule"
++   * (today's touch within shockTouchSeconds and 5 checks). `confirmBy` sells a
++   * buy made before it at the bid then unless that side's full line was touched.
++   */
++  shockTiers?: { tiers: ({ at: number; reach: number } | "rule")[]; confirmBy?: number };
    /** The day's alerts instead of the computed ones (the parity check reads the research's). */
    alerts?: (
      symbol: string,
-@@ -716,8 +723,30 @@ export async function runVolumeStock(
+@@ -716,8 +731,75 @@ export async function runVolumeStock(
        signal.reach = reachOf(seconds, decideBy, a.price, unit, s);
        const gap = longestGap(seconds, a.second, decideBy);
        if (gap) signal.dataGap = gap;
 +      let early: { second: number; side: Leg; price: number } | null = null;
++      let tierSide: { second: number; side: Leg; price: number } | null = null;
 +      if (shock && o.shockEarly) {
 +        const e = o.shockEarly;
 +        const line = s.confirmUnits * unit;
@@ -75,13 +99,57 @@ index 64ae7d4..58d52de 100644
 +          early = { second: a.second + e.at, side, price: last };
 +        }
 +      }
++      // Research: the shock's tiers, each a possible side, the first in time that passes the burst check is bought.
++      if (shock && o.shockTiers) {
++        const line = s.confirmUnits * unit;
++        const picks: { second: number; side: Leg; price: number; early: boolean }[] = [];
++        for (const t of o.shockTiers.tiers) {
++          if (t === "rule") {
++            const touched = seconds.some(
++              ([sec, price]) => sec <= a.second + s.shockTouchSeconds && sideOf(price, a.price, unit, s),
++            );
++            const r = touched
++              ? findSide(seconds.filter(([sec]) => sec <= a.second + within), a.price, unit, s, shock)
++              : null;
++            if (r) picks.push({ ...r, early: false });
++            continue;
++          }
++          let upMost = 0;
++          let downMost = 0;
++          let last: number | null = null;
++          for (const [sec, p] of seconds) {
++            if (sec > a.second + t.at) break;
++            const r = (p / a.price - 1) / line;
++            upMost = Math.max(upMost, r);
++            downMost = Math.max(downMost, -r);
++            last = p;
++          }
++          if (last === null || Math.max(upMost, downMost) < t.reach) continue;
++          let side: Leg = "P";
++          if (upMost >= downMost) side = "C";
++          picks.push({ second: a.second + t.at, side, price: last, early: true });
++        }
++        picks.sort((x, y) => x.second - y.second);
++        const burstOk = picks.filter((p) => burstAgrees(p.side, signal.burst, { burstFilter: true, burstMin: 0 }));
++        const chosen = burstOk[0];
++        if (!chosen) {
++          if (picks.length) done("burst", `burst ${signal.burst === null ? "—" : signal.burst.toFixed(2)}×`);
++          else done("slow_cross", "no tier reached");
++          continue;
++        }
++        const by = o.shockTiers.confirmBy;
++        if (by !== undefined && chosen.second < a.second + by)
++          early = { second: chosen.second, side: chosen.side, price: chosen.price };
++        tierSide = { second: chosen.second, side: chosen.side, price: chosen.price };
++      }
        // The shock: a side line touched within shockTouchSeconds, as the live bot.
        if (
++        !tierSide &&
 +        !early &&
          shock &&
          !seconds.some(
            ([sec, price]) =>
-@@ -731,13 +760,15 @@ export async function runVolumeStock(
+@@ -731,13 +813,16 @@ export async function runVolumeStock(
          );
          continue;
        }
@@ -93,6 +161,7 @@ index 64ae7d4..58d52de 100644
 -        shock,
 -      );
 +      const side =
++        tierSide ??
 +        early ??
 +        findSide(
 +          seconds.filter(([sec]) => sec <= a.second + within),
@@ -104,7 +173,7 @@ index 64ae7d4..58d52de 100644
        if (!side) {
          done(s.crossFilter || shock ? "slow_cross" : "no_side");
          continue;
-@@ -850,13 +881,38 @@ export async function runVolumeStock(
+@@ -850,13 +935,39 @@ export async function runVolumeStock(
              bought.buy * (1 - s.safetyStopPct / 100),
            )
          : null;
@@ -119,8 +188,9 @@ index 64ae7d4..58d52de 100644
 -      if (sale) sell = sale.bid;
 -      else if (!o.strictQuotes) {
 +      // The early shock buy's check: that side's full line touched by confirmBy, else sold then at the bid.
-+      if (early && o.shockEarly) {
-+        const by = a.second + o.shockEarly.confirmBy;
++      const confirmBy = o.shockEarly?.confirmBy ?? o.shockTiers?.confirmBy;
++      if (early && confirmBy !== undefined) {
++        const by = a.second + confirmBy;
 +        const confirmed = seconds.some(
 +          ([sec, p]) => sec <= by && sideOf(p, a.price, unit, s) === early.side,
 +        );

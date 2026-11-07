@@ -86,7 +86,7 @@ for (const r of tune) console.log(r.line);
 // The pick of each idea on tune: the most 2% money (the drop read in words).
 const pick = (prefix: string) =>
   tune.filter((r) => r.name.startsWith(prefix)).sort((a, b) => b.end2 - a.end2)[0]?.name;
-const picks = [pick("P"), pick("E")].filter(Boolean) as string[];
+const picks = (process.env.IDEAS ?? "P,E").split(",").map(pick).filter(Boolean) as string[];
 console.log(`\n🎯 picks on tune: ${picks.join(", ")}`);
 console.log("\n## Check (odd ISO entry weeks), base and the picks\n" + head);
 for (const n of ["base", ...picks]) console.log(row(n, all.get(n)!, "check").line);
