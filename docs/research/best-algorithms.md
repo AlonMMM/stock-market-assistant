@@ -297,6 +297,29 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### Cut the basic size in a drawdown, on e (2026-11-07, not better: a flat smaller size does more, the third time)
+
+The user: "what about now when we know to trade big to cut afrer many loosers the basic trade size? for example, after
+drop of 12.5% to 75% size (until it up above 7.5% again) and under 25% to 50%. all the big sizing will stay as today
+calculate from the basic." Tested before on 2.8 (dd_sizing.py 10-23, dd_sizing_rule.py 10-27, 15% / 5% 10-31): never
+better than a flat smaller size. Re-run on e because the add and the tiers changed the trades. `dd_base.py` on e's
+trades (be_ramp_R.pkl, e reproduced to the dollar); the drop from the account's marked high at each entry day's open
+sets x0.75 from 12.5% (x1 again under 7.5%) and x0.5 from 25% (x0.75 again under 20%; DDb: under 25%, the same within
+1%); every tier and add scales; each return at its own size (night cap, linear between stored sizes). Look 1.
+
+| 2%, end / worst drop | Tune fair | Tune Fav | Check fair | Check Fav | All fair | All Fav |
+| --- | --- | --- | --- | --- | --- | --- |
+| e flat 2% | $944,913 / 18.6% | $647,457 / 19.8% | $1,617,618 / 26.0% | $306,532 / 25.5% | $14.27M / 30.0% | $1.88M / 30.5% |
+| e flat 1.75% | $833,360 / 16.4% | $580,015 / 15.9% | $1,269,333 / 23.3% | $286,023 / 22.7% | $9.97M / 27.7% | $1.58M / 26.9% |
+| e flat 1.5% | $710,108 / 14.3% | $505,849 / 14.9% | $971,171 / 20.4% | $262,573 / 19.8% | $6.57M / 25.2% | $1.28M / 24.7% |
+| DD | $701,753 / 17.2% | $468,942 / 16.6% | $1,337,607 / 22.5% | $258,965 / 22.7% | $7.65M / 25.8% | $1.19M / 26.8% |
+
+At 3% DD vs flat 2.25%: tune $861K / 26.9% vs $1.02M / 20.4%, $545K / 25.1% vs $689K / 24.0%; check $1.99M / 29.0% vs
+$1.95M / 28.6%, $206K / 29.5% vs $321K / 28.3%. The rule cuts the drop, but flat 1.75% beats it on 5 of the 6 parts at 2%
+(only check fair goes to DD) and flat 2.25% on 3% nearly everywhere. Half the giants come at the cut size (all weeks 25
+of 52 fair, 25 of 44 Favorites): the giant that ends a drop arrives while the size is down. To cut the drop, cut the
+flat size. e stays.
+
 ### The break-even lock's line rising with time, on e (2026-11-07, R05 passes the rule set before the run by a hair; all weeks joined its drop is larger; not a candidate)
 
 The user, on GOOGL 2025-05-21 (+367% at 11:20 ET, sold by the lock at a loss at 15:27): "Can you make it be more high as
