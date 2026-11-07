@@ -175,6 +175,43 @@ export const volumeVersions: readonly VolumeVersion[] = [
 
 export const currentVolumeVersion = volumeVersions.at(-1)!.id;
 
+// Candidates: versions under test, for the backtest page only (the user,
+// 2026-11-07, on the backtest's version list: "Where?"). Not in volumeVersions,
+// so never the live default nor on the settings page; the live bot does not
+// know their ids or run their backtest-only rules.
+export interface VolumeCandidate extends VolumeVersion {
+  // The backtest page's account it was tested with.
+  account: { limits: boolean; openCostPct: number };
+}
+
+export const volumeCandidates: readonly VolumeCandidate[] = [
+  {
+    id: "1.4.0",
+    name: "Volume 1.4.0 (candidate)",
+    since: "",
+    notes:
+      "Candidate, backtest only (research BW10, volume-bot.md 2026-11-07): 1.3.0 + a plan alert also passes on a 10-minute burst of 1.1 the side's way, the side within 30 s, up to 3 trades a stock a day; the account without the day limits, the open trades' cost at most 35%. Year 2025-11 .. 2026-10, 2%: tune $113.4K vs $107.0K, check $143.0K vs $142.5K, about 2.5x the trades.",
+    rules: {
+      ...v1,
+      shockTouchSeconds: 20,
+      cheapRescue: true,
+      shockAgainstUnits: 2,
+      shockPaceMin: 3,
+      crossMaxSeconds: 30,
+      burstLongMinutes: 10,
+      burstLongMin: 1.1,
+      maxPerStock: 3,
+    },
+    account: { limits: false, openCostPct: 35 },
+  },
+];
+
+/** A version or a candidate, for the backtest page. */
+export const backtestVolumeVersionById = (
+  id: string,
+): VolumeVersion | VolumeCandidate | undefined =>
+  volumeVersionById(id) ?? volumeCandidates.find((v) => v.id === id);
+
 export const volumeVersionById = (id: string): VolumeVersion | undefined =>
   volumeVersions.find((v) => v.id === id);
 
@@ -195,8 +232,11 @@ export function volumeRuleChanges(s: VolumeRules, v: VolumeVersion): string[] {
 }
 
 /** The version in force: its id, with a star when the saved rules differ from it. */
-export function volumeVersionLabel(s: StrangleSettings): string {
-  const known = volumeVersionById(s.version);
+export function volumeVersionLabel(
+  s: StrangleSettings,
+  find: (id: string) => VolumeVersion | undefined = volumeVersionById,
+): string {
+  const known = find(s.version);
   if (!known) return s.version;
   if (sameVolumeRules(s, known.rules)) return known.id;
   return `${known.id}*`;
@@ -206,8 +246,9 @@ export function volumeVersionLabel(s: StrangleSettings): string {
 export function applyVolumeVersion(
   s: StrangleSettings,
   id: string,
+  find: (id: string) => VolumeVersion | undefined = volumeVersionById,
 ): StrangleSettings {
-  const v = volumeVersionById(id);
+  const v = find(id);
   if (!v) return s;
   return { ...s, ...v.rules, version: v.id };
 }

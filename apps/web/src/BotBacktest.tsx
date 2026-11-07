@@ -109,8 +109,9 @@ import {
 } from "../../../packages/trading/src/strangle/settings.js";
 import {
   applyVolumeVersion,
+  backtestVolumeVersionById,
   currentVolumeVersion,
-  volumeVersionById,
+  volumeCandidates,
   volumeVersionLabel,
   volumeVersions,
 } from "../../../packages/trading/src/strangle/versions.js";
@@ -631,8 +632,11 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
     : 0;
   // The Volume bot's version (strangle/versions.ts): the one picked, its
   // label (starred when the rules differ) and the one the live bot runs.
-  const vVersion = volumeVersionById(setup.volume.settings.version);
-  const vLabel = volumeVersionLabel(setup.volume.settings);
+  const vVersion = backtestVolumeVersionById(setup.volume.settings.version);
+  const vLabel = volumeVersionLabel(
+    setup.volume.settings,
+    backtestVolumeVersionById,
+  );
   const vLive = setup.volume.base?.version ?? currentVolumeVersion;
 
   const stale =
@@ -851,24 +855,41 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                     Version
                     <select
                       value={vVersion?.id ?? ""}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        const candidate = volumeCandidates.find(
+                          (c) => c.id === id,
+                        );
+                        let money = setup.volume.money;
+                        const fromCandidate = volumeCandidates.some(
+                          (c) => c.id === setup.volume.settings.version,
+                        );
+                        if (candidate)
+                          money = { ...money, ...candidate.account };
+                        else if (fromCandidate)
+                          money = { ...money, limits: true, openCostPct: 100 };
                         patch({
                           volume: {
                             ...setup.volume,
+                            money,
                             settings: applyVolumeVersion(
                               setup.volume.settings,
-                              e.target.value,
+                              id,
+                              backtestVolumeVersionById,
                             ),
                           },
-                        })
-                      }
+                        });
+                      }}
                     >
                       {!vVersion && (
                         <option value="" disabled>
                           {setup.volume.settings.version || "Unknown"}
                         </option>
                       )}
-                      {[...volumeVersions].reverse().map((v) => (
+                      {[
+                        ...volumeCandidates,
+                        ...[...volumeVersions].reverse(),
+                      ].map((v) => (
                         <option key={v.id} value={v.id}>
                           {v.name}
                           {v.id === vLive ? " (live)" : ""}

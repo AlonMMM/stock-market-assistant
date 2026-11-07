@@ -18,8 +18,12 @@ import { liquidOrder } from "../packages/trading/src/bot/picker.js";
 import { legAt } from "../packages/trading/src/strangle/pick.js";
 import {
   applyVolumeVersion,
+  currentVolumeVersion,
+  volumeVersionById,
   volumeVersionLabel,
   volumeVersions,
+  backtestVolumeVersionById,
+  volumeCandidates,
 } from "../packages/trading/src/strangle/versions.js";
 import {
   alertCloseness,
@@ -1638,4 +1642,28 @@ test("strangle settings (2026-11-07): the backtest-only longer burst is off by d
   // A 1.3.0 save from before the rule keeps its version, no star.
   const saved = strangleWithDefaults({ ...older, version: "1.3.0" });
   assert.equal(saved.burstLongMinutes, 0);
+});
+
+test("volume candidates (2026-11-07): the backtest page lists 1.4.0, the live bot's versions do not", () => {
+  assert.equal(currentVolumeVersion, "1.3.0");
+  assert.ok(!volumeVersions.some((v) => v.id === "1.4.0"));
+  assert.equal(volumeVersionById("1.4.0"), undefined);
+  const c = volumeCandidates.find((v) => v.id === "1.4.0")!;
+  assert.deepEqual(c.account, { limits: false, openCostPct: 35 });
+  const s = applyVolumeVersion(
+    defaultStrangleSettings,
+    "1.4.0",
+    backtestVolumeVersionById,
+  );
+  assert.equal(s.version, "1.4.0");
+  assert.equal(s.burstLongMinutes, 10);
+  assert.equal(s.crossMaxSeconds, 30);
+  assert.equal(s.maxPerStock, 3);
+  assert.equal(volumeVersionLabel(s, backtestVolumeVersionById), "1.4.0");
+  // The live lookup does not apply it.
+  assert.equal(
+    applyVolumeVersion(defaultStrangleSettings, "1.4.0"),
+    defaultStrangleSettings,
+  );
+  assert.ok(parseStrangleSettings(s).ok);
 });
