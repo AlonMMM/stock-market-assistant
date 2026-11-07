@@ -297,6 +297,33 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### A small entry adds up to a full size, never past 2x (2026-11-07, e passes on every list and half vs d, and vs 2.10; less money than 2.12, a smaller drop and a higher win rate)
+
+The user: "I want the add quater to be add for a full size in case we are using small size. we also do not need to add
+to more tha 2X". `add_small.py` (2.10, 2.12 and d reproduced to the dollar), real quotes, on d (add_balance.py: the 25%
+add + S03h). Set before running: e d, but a small entry (the 0.5 tier, volume ratio under 1.75) adds 100% of its first
+leg (0.5 -> 1.0), the others 25%, never past 2x the first leg (after a 100% add the D2 pyramid add is skipped); en e
+without the 2x line; f e without S03h. Then all weeks in one account (tune and check joined). Look 1 of the small add.
+
+| 2% (fair / Favorites) | Tune: money vs 2.10 · vs d, winners, drop | Check: money vs 2.10 · vs d, winners, drop | All weeks joined: end, winners, drop |
+|---|---|---|---|
+| 2.10 | 1 · -; 15.7% / 16.5%; 15.7% / 14.5% | 1 · -; 14.6% / 15.6%; 23.6% / 22.6% | $5.64M / $978K; 15.1% / 16.1%; 27.8% / 25.9% |
+| 2.12 (50% add) | 1.568 / 1.554 · -; 15.1% / 15.8%; 21.5% / 25.7% | 1.987 / 1.392 · -; 13.8% / 14.5%; 29.1% / 27.3% | $16.98M / $2.06M; 14.5% / 15.2%; 31.0% / 36.7% |
+| d (25% add + S03h) | 1.451 / 1.403 · 1; 16.2% / 16.9%; 16.6% / 19.9% | 1.280 / 1.233 · 1; 15.5% / 16.5%; 26.4% / 24.8% | $10.28M / $1.67M; 15.8% / 16.7%; 29.5% / 29.4% |
+| **e: small to full, 2x line** | **1.523 / 1.441** · 1.049 / 1.027; 15.9% / 16.7%; 18.6% / 19.8% | **1.689 / 1.351** · 1.319 / 1.096; 14.9% / 15.7%; 26.0% / 25.5% | $14.27M / $1.88M; 15.4% / 16.2%; 30.0% / 30.5% |
+| en: e without the 2x line | 1.520 / 1.433; 16.0% / 16.7%; 18.8% / 19.8% | - | $13.90M / $1.84M; 15.6% / 16.4%; 30.3% / 30.5% |
+| f: e without S03h | 1.374 / 1.297 · 0.947 / 0.924; 14.6% / 15.2%; 18.8% / 19.8% | 1.987 / 1.348 · 1.552 / 1.093; 13.8% / 14.4%; 25.9% / 25.5% | $15.14M / $1.69M; 14.2% / 14.8%; 30.0% / 30.5% |
+
+e without the best 5: tune $181,756 / $136,769 (d $173,088 / $133,221), check $252,831 / $89,488 (d $208,389 /
+$81,448), joined $2.02M / $408K (d $1.45M / $362K, 2.12 $2.06M / $412K). Joined at 3%: e $21.8M / 41.9%, $2.27M / 47.9%;
+2.12 $21.8M / 47.6%, $2.40M / 54.1%; d $15.2M / 40.5%, $2.10M / 46.6%.
+
+Reading: the small entries are where the add pays (a low-volume start that runs 1 S30 in 10 minutes); e takes most of
+2.12's money (joined 0.84 / 0.91 of it) at d's drop (+0.5 / +1.1 points) and a win rate above 2.12's (+0.9 / +1.0).
+The 2x line is a small plus (joined +2.7% / +2.2%, same drop). S03h is the win rate: without it (f) winners fall 1.3-1.4
+points and tune money drops 5-8%; f's check fair is higher (S03h trims the 2024 giants on check, as before). e is the
+balance pick: candidate choice for the owner is now 2.12, d or e.
+
 ### Balancing 2.12's variance: the SPY-turn sale, the L04 locks, a 25% add (2026-11-06, d = the 25% add + S03h beats 2.10 on every list and half with a higher win rate; a = 2.12 + S03h loses check fair 11% vs 2.12)
 
 The user: "we adding a lot of variance here. we need to balance with some extracting gain. I remember you spoke about
