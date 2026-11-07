@@ -326,6 +326,14 @@ E5-T26 0.6%. Favorites: S05 1.328 vs 0.702 (95th 1.312), 4.5%; E5-T26 5.0%. Rare
 was picked from ~40 and the lists share most trades: a 1-in-100 bucket turns up about one time in three in such a scan.
 Open: an independent sample (Indi's own trades, the Volume bot's trades) or a live shadow flag.
 
+Indi's own trades (the user: "Try 1."; `spy_indi.py`, the hand-built ledgers 2023-2026, 1,313 stock / ETF option trades,
+return = realized / paid, giants +300%): on days SPY is down 0.5%+ at his entry, 190 trades, 30-32% winners (25-30%
+otherwise), median -9% / -10% (-12% to -16%), giants 3.7% vs 3.1% for random day sets (as low or lower 75%), $ a trade
++$15,276 vs random +$8,774. Calls and puts alike; by year the falling days have fewer giants in 2024 (1 of 41) and 2026
+(1 of 43), more in 2023 (3 of 49). The market's falling days do not starve a trader of giants; if our skip's edge is real
+it is in our signal on those days (the user's thesis: volume and t polluted by the market's volatility), which only a
+live shadow flag can show. Not a candidate.
+
 ### Skip a new entry when SPY is down 0.5%+ on the day, on e (2026-11-07, NOT a candidate: fitted to where the giants fell; S05 wins every 2024-26 cell, but on unseen 2022-23 the skipped trades hold giants at the normal rate)
 
 The user: "Yes. Check this theses" (from the drop diagnostic below; "dont we have bigger winner to the put side?" - no, 0
