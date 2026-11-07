@@ -41,8 +41,18 @@ side). `bw.sh`, `bwlab_output.txt`.
 Verdict: not better. BW10 wins tune (+$14.0K, smaller drop) but loses check at 2% (-$3.1K, drop 9% -> 14%, worse
 without the best 5 and without giants); the typical trade improves (median -22% / -21% vs -36% / -28%), yet the extra
 plan trades fill the account's slots (5 open, 15 a day, 2 a stock) and push out shocks (32 -> 30, 29 -> 25), which earn
-more. The neighbours are all below BW10 on tune, so no level fixes it. A follow-up that could differ: BW10 with the plan
-extras kept out of the shocks' slots (a separate cap for plan trades).
+more. The neighbours are all below BW10 on tune, so no level fixes it.
+
+**Look 2, a new account** (the user, 2026-11-07: "You can remove the limitation. Keep only these - max 3 per stock and
+no more than 35% of the account can be opened at once"; `capacct.ts` on the same runs, no re-run): up to 3 trades a
+stock a day, one at a time; a buy refused when the open trades' cost plus its own passes 35% of the morning's account;
+no trades-a-day, open-count or day-loss limit. The cap refuses no trade in any version (at 2-3% a trade it allows
+11-17 open). Base is unchanged ($107.0K / $142.5K: it never reached the old limits). Tune: BW10 $113.4K (15%), BW10-08
+$106.4K, 🎯 BW10-15 $113.6K (15%), BW15 $105.1K, BW10-c15 $100.8K. Check: BW10-15 $141.5K (13%) vs $142.5K (9%),
+without the best 5 -$32.4K vs -$27.4K, non-giant -$22.5K vs -$13.7K. Not better. Correction to look 1: the shocks lost
+were not lost to account slots but to the one-trade-a-stock-at-a-time rule: an extra plan trade still open on the same
+stock blocks the shock (BW10: 7 shocks vs base 3, among them GOOGL 2026-08-05 +314%). Without the day limits BW10 is
+worse on tune ($121.0K -> $113.4K): the limits were cutting losing extra plans.
 
 ### Every slow plan alert as a trade (2026-11-07, diagnostic): no group to tune
 
