@@ -327,6 +327,15 @@ $885,631 / 21.8%, $4.58M / 27.5%; DD $471,210 / 20.8%, $1,257,710 / 24.7%, $4.47
 size). At 3%: DD $528,374 / 29.3%, $1.53M / 32.2%, $6.43M / 35.7% vs flat 2.25% $715,541 / 24.5%, $1.66M / 31.0%, $11.03M
 / 35.8%. The same verdict: DD wins only check; flat 1.5% has DD's all-weeks money with a smaller drop.
 
+With the ladder (the user: "it's with the ladder?"; `dd_base_ladder.py`: 3%, 2.5% from $300K, 1.5% from $1M, 1% from
+$4M; DD multiplies the ladder's size; yardsticks the whole ladder x0.875 / x0.75; the add's 5% line as at 2%), tune /
+check / all weeks: fair e $1,130,059 / 31.1%, $2,287,267 / 20.7%, $13.30M / 25.8%; DD $883,512 / 23.5%, $1,877,906 /
+20.6%, $9.56M / 28.2%. Favorites e $771,533 / 35.6%, $350,012 / 35.9%, $2.21M / 48.2%; x0.75 $695,258 / 24.0%,
+$343,755 / 28.3%, $1.79M / 35.4%; DD $559,149 / 25.1%, $206,494 / 29.5%, $1.73M / 32.7%. Both lists e $743,561 / 36.2%,
+$2,095,923 / 21.8%, $9.70M / 27.9%; DD $550,571 / 29.3%, $1,863,609 / 23.0%, $5.84M / 30.2%. All weeks DD has less money
+and a deeper drop on the fair list and both lists: a cut keeps the account under the ladder's steps, at the higher %.
+Not better with the ladder either.
+
 ### The break-even lock's line rising with time, on e (2026-11-07, R05 passes the rule set before the run by a hair; all weeks joined its drop is larger; not a candidate)
 
 The user, on GOOGL 2025-05-21 (+367% at 11:20 ET, sold by the lock at a loss at 15:27): "Can you make it be more high as

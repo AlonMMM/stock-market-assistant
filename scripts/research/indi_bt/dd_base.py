@@ -23,7 +23,8 @@ RULES = {"DD": [(0.125, 0.075, 0.75), (0.25, 0.20, 0.5)], "DDb": [(0.125, 0.075,
 
 
 def ret(x, size):
-    """The return at this size, linear between the stored sizes."""
+    """The return at this size, linear between the stored sizes (under 0.5%: the 0.5% row)."""
+    size = max(size, KEYS[0][0])
     for (a, ka), (b, kb) in zip(KEYS, KEYS[1:]):
         if a <= size <= b:
             f = (size - a) / (b - a)
@@ -66,10 +67,11 @@ def account(E, pct, rule):
             if down >= lvl: mult = min(mult, m)
         for lvl, back, m in reversed(rule or []):   # step back up once the drop is under the line
             if mult <= m and down < back: mult = 1.0 if m == rule[0][2] else rule[rule.index((lvl, back, m)) - 1][2]
+        p_ = pct(base) if callable(pct) else pct
         for e in by.get(d, []):
-            size = pct * mult * e[4]
+            size = p_ * mult * e[4]
             r_ = max(-1, ret(e[3], size)) * e[2]   # an add: its half-size return, weight aw (already half), never halved again
-            open_.append((pct * mult * base, e, r_)); n += 1; cut += mult < 1
+            open_.append((p_ * mult * base, e, r_)); n += 1; cut += mult < 1
             usd.append((1e4 * mult * r_, e[3][BR.SV.SIZES[0.02][0]] >= 3.0, mult))
         keep = []
         for st, t, r_ in open_:
