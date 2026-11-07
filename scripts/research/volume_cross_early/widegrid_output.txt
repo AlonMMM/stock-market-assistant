@@ -1,0 +1,36 @@
+pool (plan, traded in WIDE, not in base): {'tune': '1214  -19% ng -357.1K g5', 'check': '1194  -18% ng -251.0K g15'}
+buys under $0.05: 0
+
+## time to side x burst toward the side
+
+tune: n, median, non-giant sum (flat $2K), giants
+              burst <0 (against)            0-0.5                         0.5-1.1                       >=1.1                         
+15-30 s        249  -24% ng -102.0K g1         8  -15% ng   -0.2K g0       129  -22% ng  -19.5K g0        96  -23% ng  -16.8K g3      
+30-60 s        113  -16% ng  -26.4K g0        13   -8% ng   -3.5K g0       106  -18% ng  -22.6K g0        34  -35% ng  -15.7K g0      
+60-120 s       134  -14% ng  -39.1K g0        17  -26% ng  -10.5K g0        90  -15% ng  -22.9K g1        20  -14% ng   -1.9K g0      
+120-300 s       94  -18% ng  -33.6K g0        16  -22% ng   -7.1K g0        75  -22% ng  -23.0K g0         6  -17% ng   -2.6K g0      
+300-600 s        6  -18% ng   -3.4K g0         3  -23% ng   -2.3K g0         5  -37% ng   -4.0K g0            –                       
+
+check: n, median, non-giant sum (flat $2K), giants
+              burst <0 (against)            0-0.5                         0.5-1.1                       >=1.1                         
+15-30 s        243  -21% ng  -63.1K g3         8   -8% ng   +2.5K g0       112  -15% ng   +1.3K g3        69  -20% ng  -22.7K g2      
+30-60 s        135  -22% ng  -47.8K g2        11  -14% ng   +1.0K g0        87  -17% ng   -9.8K g1        42  -12% ng   -0.2K g1      
+60-120 s       127  -16% ng  -31.1K g0        20  -15% ng   -6.5K g0       108  -13% ng  -16.2K g1        24   -3% ng   +6.0K g1      
+120-300 s       86  -17% ng  -25.4K g0        13  -38% ng   -7.8K g0        86  -19% ng  -20.5K g1        12   -7% ng   +0.0K g0      
+300-600 s        5  -25% ng   -3.2K g0         2  -49% ng   -2.3K g0         4  -66% ng   -5.2K g0            –                       
+
+## time of day (NY)
+
+tune: n, median, non-giant sum (flat $2K), giants
+              all                           burst >= 0                    
+09:30-10:30    299  -24% ng  -93.9K g4       155  -24% ng  -43.2K g3      
+10:30-12:00    556  -18% ng -136.6K g0       279  -16% ng  -33.7K g0      
+12:00-14:00    359  -18% ng -126.6K g1       184  -21% ng  -75.7K g1      
+14:00-16:00         –                             –                       
+
+check: n, median, non-giant sum (flat $2K), giants
+              all                           burst >= 0                    
+09:30-10:30    280  -21% ng  -51.5K g3       141  -17% ng   -7.2K g1      
+10:30-12:00    543  -17% ng -123.4K g4       280  -17% ng  -49.5K g3      
+12:00-14:00    371  -18% ng  -76.1K g8       177  -16% ng  -23.6K g6      
+14:00-16:00         –                             –                       

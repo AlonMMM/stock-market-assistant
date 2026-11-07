@@ -9,6 +9,18 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### Every slow plan alert as a trade (2026-11-07, diagnostic): no group to tune
+
+The user, 2026-11-07: "I want to find a rule that add hundreds of them, like the slow side move. than we can tune it".
+Volume 1.3.0 with crossFilter off (the side any time within the 10-minute wait) and burstFilter off (settings_wide),
+the same year, engine and data as above. The plan trades it makes that the base does not: tune 1,214, check 1,194
+(about 2,400 a year). Flat $2K a trade, after fees: tune -$317.4K (27% winners, median -19%, 5 giants), check -$36.6K
+(30% winners, median -18%, 15 giants, mostly one day repeated: SLV 2026-01-30 x6, ASTS 2026-10-09 x3).
+Grid time to the side (15-30 / 30-60 / 60-120 / 120-300 / 300-600 s) x burst toward the side (<0 / 0-0.5 / 0.5-1.1 /
+>=1.1) and time of day: every tune cell has a negative median and a negative non-giant sum; no cell is positive in both
+halves. Verdict: the slow alerts carry no direction edge (as the 2026-09-27 alert study); no rule to tune from these
+two measures. Scripts: volume_cross_early/widegrid.py, widegrid_output.txt.
+
 ### A lower burst: plan 0.5 / 0.8, shock 0.5 (2026-11-07, burst level look 2): not better
 
 The user, 2026-11-07: "lets lower the burst to 0.5, try only for plan or only for shock". Look 1 was the 2026-10-27
