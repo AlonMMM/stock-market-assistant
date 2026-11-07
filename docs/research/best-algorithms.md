@@ -297,6 +297,33 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### e (and 2.12, d) on 2022-23, the last feature test (2026-11-07, a WARNING: 2023 loses 30% vs 2.10 on two giants the add cuts; 2022 +3%)
+
+The user, on "Something against e as it is?": "Go." (run e and 2.10 on 2022-23 before the release). `e2223.py` (each year
+its own $100,000, the static lists of the earlier 2.10 run, real Databento quotes, add_small.py's walk and sizing; the
+year's signals as dbx22.py). Set before running: 2.10, 2.12, d, e. Look 1 of the add on 2022-23 (5th sample outside the
+fair list for an add). **2.10's logged 2022-23 figures (d9d33c3: $96,817 / $97,454) do not reproduce**: the same 116 /
+147 trades, other returns, also through dbx22.walk on today's sim.py (frozen-29 of 11-01/02 is gone, never committed);
+today's 2.10 below is the yardstick, consistent with e's 2024-26 numbers.
+
+| 2% (3%), each year from $100,000 | 2022: end, marked / **booked** drop, winners | 2023: end, marked / **booked** drop, winners |
+|---|---|---|
+| 2.10 | $111,519 (115,318); 20.3% / **20.3%**; 19.0% | $113,570 (112,645); 13.2% / **13.2%**; 16.2% |
+| 2.12 | $121,050 (133,502) x1.085; 27.1% / **22.2%**; 19.0% | $80,410 (73,455) x0.708; 33.9% / **33.9%**; 13.8% |
+| d | $117,561 (126,357) x1.054; 23.5% / **20.3%**; 22.0% | $80,689 (71,100) x0.710; 32.8% / **32.8%**; 15.4% |
+| **e** | $115,281 (122,850) **x1.034**; 23.1% / **20.6%**; 21.4% | $79,258 (69,157) **x0.698**; 34.7% / **34.7%**; 14.7% |
+
+Without the best 5, e / 2.10: 2022 $67,569 / $69,802, 2023 $58,722 / $66,162. 2022's gain is MSFT 2022-02-24 (+$152K ->
++$190K at $10K). 2023's loss is two giants, the same in every add version: AAPL 2023-09-06 (+$164.6K -> -$160): bought
+0.30, the add at 0.46 three minutes later, the break-even lock then sells the 2x position at 0.39 (the lock is the
+average cost, 0.38; 2.10's lock at 0.30 holds, x15 by the next morning); GOOGL 2023-05-10 (+$76.3K -> +$5.7K): with the
+add the close is +46% on the average cost instead of +58%, so the day closes it instead of carrying it overnight.
+
+Reading: not noise. The add moves the average cost up, and the exits measured on it (the break-even lock, the overnight
+carry) then cut a fast giant at its first dip. On 2024-26 the add's gains outweigh this; on 2023 two such giants are 30%
+of the year. A fix to test (look 2): keep the lock and the carry on the first leg's price, not the average cost.
+e stays the candidate choice, with this open for the release review.
+
 ### A higher t / volume bar on a falling day, on e (2026-11-07, not a candidate: every version fails one unseen year; the drop moves 0-3 points)
 
 The user: "in a falling day (spy started in 0.75 and more) we should be extra carefull and maybe raise thae bar. Both
