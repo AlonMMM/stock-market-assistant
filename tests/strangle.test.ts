@@ -1623,3 +1623,19 @@ test("shock speed (2026-11-06): on the live stream the side is read from the tap
   assert.equal(h.calls.filter((c) => c.kind === "buy").length, 1);
   assert.equal(h.store.openTrades()[0]!.side, "C");
 });
+
+test("strangle settings (2026-11-07): the backtest-only longer burst is off by default and optional in a save", () => {
+  const d = defaultStrangleSettings;
+  assert.equal(d.burstLongMinutes, 0);
+  const { burstLongMinutes, burstLongMin, ...older } = d;
+  const parsed = parseStrangleSettings(older);
+  assert.ok(parsed.ok);
+  if (parsed.ok) {
+    assert.equal(parsed.value.burstLongMinutes, burstLongMinutes);
+    assert.equal(parsed.value.burstLongMin, burstLongMin);
+  }
+  assert.equal(parseStrangleSettings({ ...d, burstLongMinutes: 31 }).ok, false);
+  // A 1.3.0 save from before the rule keeps its version, no star.
+  const saved = strangleWithDefaults({ ...older, version: "1.3.0" });
+  assert.equal(saved.burstLongMinutes, 0);
+});

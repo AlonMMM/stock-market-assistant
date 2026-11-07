@@ -755,7 +755,16 @@ export async function runVolumeStock(
       let burstRule: Pick<StrangleSettings, "burstFilter" | "burstMin"> = s;
       if (weekly) burstRule = { ...s, burstMin: s.burstMinWeek };
       if (shock) burstRule = { burstFilter: true, burstMin: 0 };
-      if (!burstAgrees(side.side, signal.burst, burstRule)) {
+      if (
+        !burstAgrees(side.side, signal.burst, burstRule) &&
+        !(
+          !shock &&
+          burstAgrees(side.side, longBurst(bars, minute, unit, s), {
+            burstFilter: s.burstFilter,
+            burstMin: s.burstLongMin,
+          })
+        )
+      ) {
         done(
           "burst",
           `burst ${signal.burst === null ? "—" : signal.burst.toFixed(2)}×${weekly ? ` (a same-week expiry needs ${s.burstMinWeek})` : ""}`,
@@ -924,6 +933,7 @@ export async function runVolumeStock(
           model,
           cal.nextSessions(date, 1)[0]!,
           s,
+          longBurst(bars, sig.minute, unit, s),
         );
     }
   }
@@ -992,20 +1002,39 @@ export function longestGap(
  * 1-second book, else the minute book) and sold at the minute book's bid at
  * the give-back; null when a book is missing.
  */
+/** The move over burstLongMinutes up to the alert minute, in typical 30-minute moves; null when off or without the bars. */
+function longBurst(
+  bars: readonly MinuteBar[],
+  minute: number,
+  unit: number,
+  s: StrangleSettings,
+): number | null {
+  if (s.burstLongMinutes <= 0) return null;
+  const at = bars.find((b) => b.m === minute)?.c;
+  const before = bars.find((b) => b.m === minute - s.burstLongMinutes)?.c;
+  if (!(at && before && unit > 0)) return null;
+  return (at / before - 1) / unit;
+}
+
 /** Whether a slow side's burst would have passed toward the what-if's side, by the same rule as a side in time. */
 function slowBurstOf(
   sig: VolumeSignal,
   model: VolumeWhatIf,
   nextSession: string,
   s: StrangleSettings,
+  long: number | null,
 ): { passes: boolean; need: number } {
   let need = s.burstMin;
   if (sig.kind !== "shock" && model.expiry > nextSession) need = s.burstMinWeek;
   if (sig.kind === "shock") need = 0;
-  const passes = burstAgrees(model.right, sig.burst, {
-    burstFilter: true,
-    burstMin: need,
-  });
+  const rule = { burstFilter: true, burstMin: need };
+  const longPasses =
+    sig.kind !== "shock" &&
+    burstAgrees(model.right, long, {
+      burstFilter: true,
+      burstMin: s.burstLongMin,
+    });
+  const passes = burstAgrees(model.right, sig.burst, rule) || longPasses;
   return { passes, need };
 }
 
@@ -1180,6 +1209,11 @@ export interface VolumeMoney {
   maxTradesPerDay: number;
   maxOpen: number;
   dayLossPct: number;
+  // The open trades' cost at most this share of the morning's account, a
+  // buy that would pass it refused; absent or 100: off (the user, 2026-11-07:
+  // "no more than 35% of the account can be opened at once"). Kept with the
+  // day limits off too.
+  maxOpenCostPct?: number;
 }
 
 export type VolumeRefusal =
@@ -1188,6 +1222,7 @@ export type VolumeRefusal =
   | "max_trades"
   | "max_open"
   | "day_loss"
+  | "open_cost" // the open trades' cost would pass maxOpenCostPct
   | "too_small";
 
 export interface VolumeAccountTrade {
@@ -1268,7 +1303,7 @@ export function volumeAccount(
   let drop = 0;
   for (const date of [...byDay.keys()].sort()) {
     const start = equity;
-    const done: { exit: number; pnl: number }[] = [];
+    const done: { exit: number; pnl: number; cost: number }[] = [];
     const taken: VolumeAccountTrade[] = [];
     const day = byDay
       .get(date)!
@@ -1300,8 +1335,19 @@ export function volumeAccount(
         refuse(sig, "too_small");
         continue;
       }
+      const cost = qty * t.buy * 100;
+      const capPct = m.maxOpenCostPct ?? 100;
+      if (capPct < 100) {
+        const inUse = done
+          .filter((d) => d.exit >= t.buyMinute)
+          .reduce((sum, d) => sum + d.cost, 0);
+        if (inUse + cost > (capPct / 100) * start) {
+          refuse(sig, "open_cost");
+          continue;
+        }
+      }
       const pnl = qty * (t.sell - t.buy) * 100 - m.feePerContract * 2 * qty;
-      done.push({ exit: t.exitMinute, pnl });
+      done.push({ exit: t.exitMinute, pnl, cost });
       taken.push({
         signal: sig,
         status: "taken",

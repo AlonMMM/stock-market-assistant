@@ -35,6 +35,8 @@ export type VolumeRuleKey =
   | "burstMin"
   | "weekExpiry"
   | "burstMinWeek"
+  | "burstLongMinutes"
+  | "burstLongMin"
   | "noStopMinutes"
   | "exitOnMinuteClose"
   | "fastAlert"
@@ -68,6 +70,8 @@ export const volumeRuleKeys: readonly VolumeRuleKey[] = [
   "burstMin",
   "weekExpiry",
   "burstMinWeek",
+  "burstLongMinutes",
+  "burstLongMin",
   "noStopMinutes",
   "exitOnMinuteClose",
   "fastAlert",
@@ -110,6 +114,8 @@ const v1: VolumeRules = {
   burstMin: 1.1,
   weekExpiry: true,
   burstMinWeek: 2.5,
+  burstLongMinutes: 0,
+  burstLongMin: 1.1,
   noStopMinutes: 30,
   exitOnMinuteClose: true,
   fastAlert: false,

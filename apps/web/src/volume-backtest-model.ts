@@ -44,6 +44,7 @@ export const refusalWords: Record<VolumeRefusal, string> = {
   max_trades: "The day's trades were used",
   max_open: "Too many open trades",
   day_loss: "The day's loss limit",
+  open_cost: "The open trades' cost limit",
   too_small: "The size buys no contract",
 };
 
@@ -78,12 +79,16 @@ export interface VolumeMoneySetup {
   feePerContract: number;
   // The live bot's day limits (trades a day, open trades, the day's loss).
   limits: boolean;
+  // The open trades' cost at most this % of the morning's account; 100: off.
+  // Absent in a setup saved before it existed.
+  openCostPct?: number;
 }
 
 export const defaultVolumeMoney: VolumeMoneySetup = {
   start: 100_000,
   feePerContract: 0.62,
   limits: true,
+  openCostPct: 100,
 };
 
 /** The account's money from the page: the start and fees, size and limits from the bot's settings. */
@@ -100,6 +105,7 @@ export function volumeMoney(
     maxTradesPerDay: s.maxTradesPerDay,
     maxOpen: s.maxOpen,
     dayLossPct: s.dayLossPct,
+    maxOpenCostPct: m.openCostPct ?? 100,
   };
 }
 
