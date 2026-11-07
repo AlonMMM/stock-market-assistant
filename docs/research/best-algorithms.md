@@ -319,6 +319,13 @@ inherit its problem: every t bar removes MSFT 2022-02-24 (+1,264%, t under 2.2 o
 -$100K at $10K); the volume bar keeps it (2022 better) but loses 2023 (AMZN 2023-01-25, a small-tier giant). The gap
 versions lose both unseen years. The booked drop moves 0-3 points. Not a candidate; e stays.
 
+The user: "2022 and 2023 is too wek for the test as they have few trades and they are flat". A placebo instead
+(`spy_placebo.py`): skip the trades of random trading days, as many trades as the rule, 1,000 draws, all weeks. Fair:
+S05 1.476 vs random median 0.579 (95th pct 1.180), as good or better 0.9%, as few giants 0.1%, a drop as small 9.2%;
+E5-T26 0.6%. Favorites: S05 1.328 vs 0.702 (95th 1.312), 4.5%; E5-T26 5.0%. Rare for one bucket (top 1% fair), but it
+was picked from ~40 and the lists share most trades: a 1-in-100 bucket turns up about one time in three in such a scan.
+Open: an independent sample (Indi's own trades, the Volume bot's trades) or a live shadow flag.
+
 ### Skip a new entry when SPY is down 0.5%+ on the day, on e (2026-11-07, NOT a candidate: fitted to where the giants fell; S05 wins every 2024-26 cell, but on unseen 2022-23 the skipped trades hold giants at the normal rate)
 
 The user: "Yes. Check this theses" (from the drop diagnostic below; "dont we have bigger winner to the put side?" - no, 0
