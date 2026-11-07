@@ -7,6 +7,7 @@ import type {
 } from "../../../packages/trading/src/strangle/backtest.js";
 import {
   strangleLimits,
+  type StrangleNumberKey,
   type StrangleSettings,
 } from "../../../packages/trading/src/strangle/settings.js";
 import { NumberRow } from "./backtest-ui.js";
@@ -42,6 +43,24 @@ const notReplayed = new Set<keyof StrangleSettings>([
   "fastAlert",
   "followFavorites",
 ]);
+
+// Rules the backtest runs and the live bot does not yet (settings.ts backtestOnly).
+const researchSpecs: {
+  key: StrangleNumberKey;
+  label: string;
+  fmt: (v: number) => string;
+}[] = [
+  {
+    key: "burstLongMinutes",
+    label: "Plan burst over a longer window (0 = off)",
+    fmt: (v) => (v > 0 ? `${v} min` : "off"),
+  },
+  {
+    key: "burstLongMin",
+    label: "Longer window's burst at least",
+    fmt: (v) => `${v.toFixed(1)}×`,
+  },
+];
 
 /** The rules form: the Volume bot's settings as its settings page shows them. */
 export function VolumeRules({
@@ -81,6 +100,25 @@ export function VolumeRules({
             })}
         </fieldset>
       ))}
+      <fieldset className="rule-group">
+        <legend>Backtest only (the live bot does not run these yet)</legend>
+        {researchSpecs.map((f) => {
+          const [min, max, step] = strangleLimits[f.key];
+          return (
+            <NumberRow
+              key={f.key}
+              label={f.label}
+              unit={f.fmt(settings[f.key])}
+              value={settings[f.key]}
+              min={min}
+              max={max}
+              step={step}
+              changed={changed(f.key)}
+              onChange={(v) => onChange({ ...settings, [f.key]: v })}
+            />
+          );
+        })}
+      </fieldset>
       <fieldset className="rule-group">
         <legend>Switches</legend>
         {switches
@@ -239,6 +277,9 @@ export function VolumeSummary({
           ? ` · limits: ${money.maxTradesPerDay} trades a day, ${money.maxOpen} open, ${money.dayLossPct}% day loss`
           : " · no day limits"}
         {` · ${money.maxPerStock} a stock a day`}
+        {(money.maxOpenCostPct ?? 100) < 100
+          ? ` · open trades' cost at most ${money.maxOpenCostPct}% of the account`
+          : ""}
         {refused > 0
           ? ` · ${refused} trade${refused === 1 ? "" : "s"} refused by the account`
           : ""}

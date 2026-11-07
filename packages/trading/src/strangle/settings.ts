@@ -84,6 +84,14 @@ export interface StrangleSettings {
   // stock: 258 trades, $100K -> $513K at 2% in 3 years). Still sold the same day.
   weekExpiry: boolean;
   burstMinWeek: number;
+  // A plan alert whose 3-minute burst fails still passes when the move over
+  // this many minutes up to the alert is at least burstLongMin the side's way;
+  // 0 = off (the user, 2026-11-07: "not cancel the burst ... maybe go for a
+  // bigger time frame"; volume-bot.md "A plan burst over 10 minutes": BW10,
+  // 10 min at 1.1 with the side within 30 s, ~2.5x the trades). Backtest only
+  // until a version adds it: the live bot does not read it yet.
+  burstLongMinutes: number;
+  burstLongMin: number;
   noStopMinutes: number;
   exitOnMinuteClose: boolean;
   // The second alert, F60x2 (the user, 2026-10-29: "I want the f60 to be live
@@ -181,6 +189,8 @@ export const defaultStrangleSettings: StrangleSettings = {
   burstMin: 1.1,
   weekExpiry: true,
   burstMinWeek: 2.5,
+  burstLongMinutes: 0,
+  burstLongMin: 1.1,
   noStopMinutes: 30,
   exitOnMinuteClose: true,
   // Off since the shock (2026-10-30): on real quotes it made the bot worse.
@@ -219,6 +229,8 @@ export const strangleLimits: Record<
   crossMaxSeconds: [5, 120, 1],
   burstMin: [0, 3, 0.1],
   burstMinWeek: [0, 4, 0.1],
+  burstLongMinutes: [0, 30, 1],
+  burstLongMin: [0, 3, 0.1],
   noStopMinutes: [0, 60, 5],
   shockTouchSeconds: [10, 300, 5],
   shockAgainstUnits: [0, 10, 0.5],
@@ -231,6 +243,12 @@ export const strangleUntested: ReadonlySet<keyof StrangleSettings> = new Set([
   "maxTradesPerDay",
   "maxOpen",
   "dayLossPct",
+]);
+
+// Rules only the backtest runs so far: absent from a save, they keep their default.
+export const backtestOnly: ReadonlySet<StrangleNumberKey> = new Set([
+  "burstLongMinutes",
+  "burstLongMin",
 ]);
 
 const booleans: BooleanKey[] = [
@@ -281,6 +299,8 @@ export function parseStrangleSettings(
     [number, number, number],
   ][]) {
     const v = body[key];
+    // A rule newer than the saved settings keeps its default (off).
+    if (v === undefined && backtestOnly.has(key)) continue;
     if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max)
       return {
         ok: false,

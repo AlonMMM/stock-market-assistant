@@ -1275,6 +1275,22 @@ export function BotBacktest({ modes }: { modes: ReactNode }) {
                     />
                   </label>
                   <NumberRow
+                    label="Open trades' cost at most"
+                    unit="% of the account (100 = off)"
+                    value={setup.volume.money.openCostPct ?? 100}
+                    min={5}
+                    max={100}
+                    step={5}
+                    onChange={(v) =>
+                      patch({
+                        volume: {
+                          ...setup.volume,
+                          money: { ...setup.volume.money, openCostPct: v },
+                        },
+                      })
+                    }
+                  />
+                  <NumberRow
                     label="Fill cost (needs a new run)"
                     unit="% of the price"
                     value={setup.fillPct}

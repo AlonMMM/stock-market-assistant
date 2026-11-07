@@ -383,3 +383,25 @@ test("volume alerts table (2026-11-07): a side too slow says whether its burst w
   assert.match(ok.title, /1\.50×/);
   assert.equal(slowBurstWords(signal({})), null);
 });
+
+test("volume account (2026-11-07): the open trades' cost cap refuses a buy that would pass it", () => {
+  const at = (symbol: string) =>
+    signal({ id: `${symbol}|2024-02-07|shock|3600`, symbol, trade: trade() });
+  const runs = [run([at("MRVL"), at("AMD"), at("NVDA")])];
+  // 2% of $100K buys 48 contracts at $0.41: $1,968 each; 5% of the account holds two.
+  const capped = volumeAccount(runs, { ...money, maxOpenCostPct: 5 });
+  assert.deepEqual(capped.trades.map((t) => t.status).sort(), [
+    "open_cost",
+    "taken",
+    "taken",
+  ]);
+  const off = volumeAccount(runs, { ...money, maxOpenCostPct: 100 });
+  assert.equal(off.taken, 3);
+  assert.equal(
+    volumeMoney(
+      { start: 100_000, feePerContract: 0.62, limits: true },
+      settings,
+    ).maxOpenCostPct,
+    100,
+  );
+});
