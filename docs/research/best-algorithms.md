@@ -333,6 +333,9 @@ otherwise), median -9% / -10% (-12% to -16%), giants 3.7% vs 3.1% for random day
 (1 of 43), more in 2023 (3 of 49). The market's falling days do not starve a trader of giants; if our skip's edge is real
 it is in our signal on those days (the user's thesis: volume and t polluted by the market's volatility), which only a
 live shadow flag can show. Not a candidate.
+Without 0DTE (the user: "Filter out 0dte"; NO_0DTE=1, 1,068 trades): falling days 154 trades, 29-36% winners, giants
+3.9% vs 3.2% random (as low or lower 79%), $ a trade +$19,661 vs +$9,320. 2026 alone: 0 giants in 34 falling-day trades
+(9 in 159 otherwise); 2023 3 in 42 (3 in 214). The same answer.
 
 ### Skip a new entry when SPY is down 0.5%+ on the day, on e (2026-11-07, NOT a candidate: fitted to where the giants fell; S05 wins every 2024-26 cell, but on unseen 2022-23 the skipped trades hold giants at the normal rate)
 

@@ -3,7 +3,7 @@ spy_bar.py). His option trades 2023-2026 from data/local/x/ultrawavetrader-<year
 one row a trade, opened at its first "open" (ET), return = the trade's realized total / everything he paid for it.
 Stocks and ETFs only (no SPX / SPXW / XSP / NDX, no futures), no shorts, no trade whose entry is not shown. SPY's move at
 his entry = the last minute close before it vs the prior close. Buckets as in drop_anal; giants = +300% or more on
-cost; and the random-days placebo (as spy_placebo.py) on his sum and giants.
+cost; NO_0DTE=1 drops trades opened on their expiry day (the user: "Filter out 0dte"); and the random-days placebo (as spy_placebo.py) on his sum and giants.
 
   node --env-file=.env <dir>/run.mjs spy_indi.py
 """
@@ -25,8 +25,9 @@ def trades():
             if acts & {"short", "add short", "exit (entry not shown)"}: continue
             first = next((a for a in A if a["action"] == "open"), None)
             if not first or not first["time_from"]: continue
-            m = re.match(r"(\S+) \S+ [\d.]+([CP])$", first["contract"])
+            m = re.match(r"(\S+) (\S+) [\d.]+([CP])$", first["contract"])
             if not m or m.group(1) in INDEX: continue
+            if os.environ.get("NO_0DTE") and m.group(2) == first["date"]: continue   # the user: "Filter out 0dte"
             cost = sum(float(a["qty"]) * float(a["avg_price"]) * 100 for a in A if a["side"] == "B")
             real = [a["realized_total"] for a in A if a["realized_total"]]
             if not cost or not real: continue
@@ -34,7 +35,7 @@ def trades():
             minute = h * 60 + mi - 570
             if not 0 <= minute < 390: continue
             pnl = float(real[-1])
-            out.append(dict(year=y, date=first["date"], minute=minute, und=m.group(1), side=m.group(2), cost=cost, pnl=pnl, ret=pnl / cost,
+            out.append(dict(year=y, date=first["date"], minute=minute, und=m.group(1), side=m.group(3), cost=cost, pnl=pnl, ret=pnl / cost,
                             spy=SD.spy_day(first["date"], minute)))
     return out
 
