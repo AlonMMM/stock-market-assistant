@@ -9,6 +9,26 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### A lower burst: plan 0.5 / 0.8, shock 0.5 (2026-11-07, burst level look 2): not better
+
+The user, 2026-11-07: "lets lower the burst to 0.5, try only for plan or only for shock". Look 1 was the 2026-10-27
+grid (old simulator, 3 years): burst 0.5-1.1 +0.5% a trade vs 1.1-2 +31.8%. Re-run on Volume 1.3.0 (live), the app's
+engine, real books, full-tape seconds, 2025-11-03 .. 2026-10-30. Versions set before the run: PB05 (plan burstMin
+0.5), PB08 (plan 0.8), SB05 (shock minimum burst 0.5; live is 0, direction only, so this is stricter). Same-week plan
+expiries keep 2.5. From $100K, live limits.
+
+| Version | Tune 2% (drop) | Tune 3% | W/o best 5 | Check 2% (drop) | Check 3% | W/o best 5 |
+|---|---|---|---|---|---|---|
+| Base 1.3.0 | $107.0K (17%) | $108.6K | -$35.5K | $142.5K (9%) | $162.8K | -$27.4K |
+| PB05 (thesis) | $98.8K (19%) | $96.4K | -$41.6K | - | - | - |
+| PB08 (pick) | $99.1K (19%) | $97.4K | -$41.5K | $156.0K (10%) | $188.3K | -$23.0K |
+| SB05 (pick) | $107.6K (17%) | $109.5K | -$34.9K | $142.5K (9%) | $162.8K | -$27.4K |
+
+Added plan trades (flat $2K): PB05 tune 29, -$10.4K, median -37%, no giant; check 30, +$9.8K with 1 giant (non-giant
+-$0.6K). PB08 tune 22, -$10.5K; check 16, +$10.6K, all from SLV 2026-01-30 +520% (non-giant +$0.2K). SB05 drops 2 tune
+shocks (-$0.6K), none on check. Verdict: no candidate; keep plan 1.1, shock 0. Scripts: volume_cross_early
+(engine.patch: SHOCK_BURST_MIN), burstlab_output.txt; plan levels via the settings' burstMin.
+
 ### Shock entry steps: 50% at 10 s, or 100% by 20 s, or 150% at 30 s (2026-11-07, early shock look 2): not better
 
 The user, 2026-11-07: "I would like to enter if 50% if the move after 10s Or 100% after 20s Or 150% after 30s."

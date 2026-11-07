@@ -39,7 +39,7 @@ index 18da6ca..55464b6 100644
      return {
        status: 200,
 diff --git a/packages/trading/src/strangle/backtest.ts b/packages/trading/src/strangle/backtest.ts
-index 64ae7d4..c36c5d0 100644
+index 64ae7d4..a6511e2 100644
 --- a/packages/trading/src/strangle/backtest.ts
 +++ b/packages/trading/src/strangle/backtest.ts
 @@ -148,7 +148,7 @@ export interface VolumeTrade {
@@ -173,7 +173,21 @@ index 64ae7d4..c36c5d0 100644
        if (!side) {
          done(s.crossFilter || shock ? "slow_cross" : "no_side");
          continue;
-@@ -850,13 +935,39 @@ export async function runVolumeStock(
+@@ -746,7 +831,12 @@ export async function runVolumeStock(
+       const weekly = !shock && expiry > cal.nextSessions(date, 1)[0]!;
+       let burstRule: Pick<StrangleSettings, "burstFilter" | "burstMin"> = s;
+       if (weekly) burstRule = { ...s, burstMin: s.burstMinWeek };
+-      if (shock) burstRule = { burstFilter: true, burstMin: 0 };
++      // Research only (2026-11-07): SHOCK_BURST_MIN, the shock's minimum burst (live 0).
++      if (shock)
++        burstRule = {
++          burstFilter: true,
++          burstMin: Number(globalThis.process?.env?.SHOCK_BURST_MIN ?? 0),
++        };
+       if (!burstAgrees(side.side, signal.burst, burstRule)) {
+         done(
+           "burst",
+@@ -850,13 +940,39 @@ export async function runVolumeStock(
              bought.buy * (1 - s.safetyStopPct / 100),
            )
          : null;
