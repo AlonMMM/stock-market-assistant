@@ -297,6 +297,32 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### The break-even lock's line rising with time, on e (2026-11-07, R05 passes the rule set before the run by a hair; all weeks joined its drop is larger; not a candidate)
+
+The user, on GOOGL 2025-05-21 (+367% at 11:20 ET, sold by the lock at a loss at 15:27): "Can you make it be more high as
+far as we go? ... I expect exit somwhere around 20:20 [Israel] ... the position broke the thessis there and do not go up -
+we should exit", then "I just want to Lift the curve in function of time", and "run this test on all? show drop and
+winners. test cn pass even if it make less money". `be_ramp.py` on e (add_small.py), real quotes, sim.py be_lock `ramp`
+(new): from the minute the lock arms (+50% over the average cost) its stock level rises R x S30 an hour our way, never
+lowered (the break-even update still runs). R05 / R10 / R15 = 0.5 / 1.0 / 1.5 S30 an hour. Passing, set before the run:
+a smaller worst drop AND a higher win rate than e on both lists, tune and check, at 2%; money shown, not a gate. Every
+version on check. Look 1. (A gain-share version, `be_keep.py` K25 / K50 / K25s: keep a share of the best gain, was
+built and stopped at the user's word before it finished; not a result.) On the chart GOOGL sells at 20:31 / 20:21 /
+20:03 Israel (R05 / R10 / R15) at $0.64 / $0.94 / $1.26 vs e's 22:27 at $0.51; FSLR 2025-01-02 (1DTE) sells at
+17:06-17:08 at $0.68 on an early dip that e survives (e $0.94 at 19:50).
+
+| 2% (fair / Favorites) | Tune: winners, drop, money vs e | Check: winners, drop, money vs e | All weeks: winners, drop, money vs e |
+|---|---|---|---|
+| e | 15.9% / 16.7%; 18.6% / 19.8%; 1 | 14.9% / 15.7%; 26.0% / 25.5%; 1 | 15.4% / 16.2%; 30.0% / 30.5%; $14.27M / $1.88M |
+| **R05** (PASS) | **17.4% / 17.8%**; **17.9% / 19.7%**; 0.970 / 0.973 | **16.7% / 17.6%**; **25.7% / 24.7%**; 0.762 / 0.760 | 17.1% / 17.7%; **32.8% / 32.3%**; 0.738 / 0.735 |
+| R10 | 20.4% / 22.3%; 19.8% / 21.7%; 0.577 / 0.637 | 18.9% / 22.0%; 23.7% / 24.0%; 0.673 / 0.749 | 19.7% / 22.2%; 33.9% / 33.9%; 0.398 / 0.487 |
+| R15 | 22.1% / 23.8%; 21.6% / 24.1%; 0.157 / 0.228 | 20.8% / 23.6%; 24.0% / 22.0%; 0.298 / 0.490 | 21.4% / 23.7%; 33.2% / 28.9%; 0.050 / 0.118 |
+
+Reading: the faster the line, the more winners (+1.5 / +5 / +7 points) and the less money; the drop barely moves. R05's
+drop gain is 0.1-0.8 points on the halves and turns into +2-3 points when the weeks are joined (a run of losers is not
+reached by a lock, and a smaller cushion from the giants makes it deeper); it pays 24% of the check money for 1.6-1.9
+points of win rate. Passing by the rule set before, but not a candidate: the drop it was meant to cut is not cut. e stays.
+
 ### Cut a big position at 10% of the account, and sell the add's part, on e (2026-11-07, not better: every cut costs the giants; the drop moves only at 5%, where it is the size)
 
 The user: "now on top of E I would like to cut some winners in order to increase the winner rate and reduce the drop",

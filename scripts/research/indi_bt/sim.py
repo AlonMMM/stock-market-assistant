@@ -281,6 +281,7 @@ def walk_bars(und, sym, d, start, last):
 # BT_X='{"carry_min_gain": 0.25}': exit settings laid over whatever the caller set (nested dicts merged), for a test
 # that changes one exit rule without editing the scripts (the user 2026-10-31: overnight from +25%, stops -35% to -50%)
 OVR = __import__("json").loads(os.environ.get("BT_X", "{}"))
+TRACE = None   # a list: the break-even lock's stock level each minute it is set, (minute, level), for charts
 
 
 def overlay(x, o):
@@ -891,6 +892,27 @@ def walk(und, date, minute, right, sym, exp, cal, limit=None, paid=None):
                 if spx and g >= BE["arm"] and (st.get("be") is None or BE.get("update")):
                     lvl = be_level(sym, d, t, exp, bet, c, spx, basis * (1 + BE.get("target", 0.0)))
                     if lvl: st["be"] = lvl if st.get("be") is None else (max if bet > 0 else min)(st["be"], lvl)
+                KP = BE.get("keep")  # be_keep.py (the user, 2026-11-07: "make it be more high as far as we go ... We do not have
+                # to wat for break even if it take so much time. the position broke the thessis there and do not go up - we
+                # should exit"): once armed, the level is where the option is worth the average cost plus `keep` of its best
+                # gain so far, worked out every minute (above or under the arm), the tighter one kept; "stall": [minutes,
+                # keep]: after `minutes` with no new best, the second share
+                if KP and spx:
+                    if g > st.get("gpk", -9.0): st["gpk"], st["gpk_t"] = g, t
+                    if st.get("be"):
+                        kp = KP; SL = BE.get("stall")
+                        if SL and t - st["gpk_t"] >= SL[0]: kp = SL[1]
+                        lvl = be_level(sym, d, t, exp, bet, c, spx, basis * (1 + max(BE.get("target", 0.0), kp * st["gpk"])))
+                        if lvl: st["be"] = (max if bet > 0 else min)(st["be"], lvl)
+                RP = BE.get("ramp")  # be_ramp.py (the user, 2026-11-07: "I just want to Lift the curve in function of time"): from
+                # the minute the lock arms, its level rises `ramp` x S30 (the stock's 30-minute unit) an hour our way, never
+                # lowered; with "from": "entry" the hours count from the buy
+                unit = (st.get("ss") or (None,))[0]
+                if RP and spx and st.get("be") and unit:
+                    if "be_t0" not in st: st["be_t0"], st["be_l0"] = (minute if BE.get("from") == "entry" else t), st["be"]
+                    ramp = st["be_l0"] + bet * RP * unit * (t - st["be_t0"]) / 60
+                    st["be"] = (max if bet > 0 else min)(st["be"], ramp)
+                if TRACE is not None and st.get("be"): TRACE.append((t, st["be"]))
                 if spx and st.get("be") and bet * (spx - st["be"]) <= 0: pending = ("all", "BE_lock"); continue
             SS = X.get("stock_stages")  # the user 2026-10-31 ("multiple exit half than exit full phases. exit half than
             # bring back when it looks good again"), the entry day, on the stock's move from the signal price in S30 units:
