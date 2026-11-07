@@ -39,7 +39,7 @@ index 18da6ca..55464b6 100644
      return {
        status: 200,
 diff --git a/packages/trading/src/strangle/backtest.ts b/packages/trading/src/strangle/backtest.ts
-index 64ae7d4..a6511e2 100644
+index 64ae7d4..7d16891 100644
 --- a/packages/trading/src/strangle/backtest.ts
 +++ b/packages/trading/src/strangle/backtest.ts
 @@ -148,7 +148,7 @@ export interface VolumeTrade {
@@ -173,21 +173,37 @@ index 64ae7d4..a6511e2 100644
        if (!side) {
          done(s.crossFilter || shock ? "slow_cross" : "no_side");
          continue;
-@@ -746,7 +831,12 @@ export async function runVolumeStock(
+@@ -746,8 +831,27 @@ export async function runVolumeStock(
        const weekly = !shock && expiry > cal.nextSessions(date, 1)[0]!;
        let burstRule: Pick<StrangleSettings, "burstFilter" | "burstMin"> = s;
        if (weekly) burstRule = { ...s, burstMin: s.burstMinWeek };
 -      if (shock) burstRule = { burstFilter: true, burstMin: 0 };
+-      if (!burstAgrees(side.side, signal.burst, burstRule)) {
 +      // Research only (2026-11-07): SHOCK_BURST_MIN, the shock's minimum burst (live 0).
 +      if (shock)
 +        burstRule = {
 +          burstFilter: true,
 +          burstMin: Number(globalThis.process?.env?.SHOCK_BURST_MIN ?? 0),
 +        };
-       if (!burstAgrees(side.side, signal.burst, burstRule)) {
++      // Research only (2026-11-07): PLAN_BURST_ALT="10:1.1", a plan whose 3-minute burst fails still
++      // passes when its burst over that many minutes points the side's way by that much.
++      let altBurst = false;
++      const alt = globalThis.process?.env?.PLAN_BURST_ALT;
++      if (alt && !shock) {
++        const [n, level] = alt.split(":").map(Number);
++        const at = bars.find((b) => b.m === minute)?.c;
++        const before = bars.find((b) => b.m === minute - n!)?.c;
++        if (at && before && unit > 0)
++          altBurst = burstAgrees(side.side, (at / before - 1) / unit, {
++            burstFilter: true,
++            burstMin: level!,
++          });
++      }
++      if (!altBurst && !burstAgrees(side.side, signal.burst, burstRule)) {
          done(
            "burst",
-@@ -850,13 +940,39 @@ export async function runVolumeStock(
+           `burst ${signal.burst === null ? "—" : signal.burst.toFixed(2)}×${weekly ? ` (a same-week expiry needs ${s.burstMinWeek})` : ""}`,
+@@ -850,13 +954,39 @@ export async function runVolumeStock(
              bought.buy * (1 - s.safetyStopPct / 100),
            )
          : null;

@@ -9,6 +9,41 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### A plan burst over 10 minutes (2026-11-07, burst window look 1): not better
+
+The user, 2026-11-07: "not cancel the burst, because it's important, but maybe relieve it a bit ... maybe go for a
+bigger time frame, maybe check somehow if there was a low, or it's only go in one direction". First, which filter
+blocks the slow plan alerts (`filtersplit.py` on the WIDE run): of about 2,400 a year, only 4 fail the 15-s side alone;
+about 500 fail the burst alone (fast side), about 1,900 both. So the burst is the filter; the side's speed adds little.
+
+**Screen** (`burstideas.py`, the WIDE run's extra plan trades with the side within 30 s, 914; flat $2K; rules set
+before, each only adds alerts to today's 3-minute burst): A 5-min burst >= 1.1; B 10-min >= 1.1; C one way (5-min >=
+0.5, never > 0.25 unit against); D burst minus SPY >= 1.1; E day's move >= 1 unit with burst >= 0; F past VWAP by
+>= 0.5 unit with burst >= 0. Only B held on both halves without giants (tune 151, median -16%, non-giant -$5.9K;
+check 123, -17%, -$2.3K); C won tune (+$3.1K) and lost check (-$18.8K); D/E/F lose without giants on both.
+
+**Test** on Volume 1.3.0, the app's engine (research switch `PLAN_BURST_ALT="minutes:level"`, `engine.patch`), real
+books, full-tape seconds, 2025-11-03 .. 2026-10-30, the account with the live limits. Versions set before:
+BW10 (side within 30 s, a 10-min burst >= 1.1 also passes), BW10-08, BW10-15, BW15 (15 min), BW10-c15 (today's 15-s
+side). `bw.sh`, `bwlab_output.txt`.
+
+| Version | Trades | Median | 2% (drop) | 3% (drop) | W/o best 5 | Non-giant | Giants |
+|---|---|---|---|---|---|---|---|
+| tune base | 71 (32 shock) | -36% | $107.0K (17%) | $108.6K (25%) | -$35.5K | -$29.0K | 4 |
+| tune 🎯 BW10 | 172 (30 shock) | -22% | $121.0K (13%) | $129.5K (20%) | -$30.3K | -$33.3K | 6 |
+| tune BW10-08 | 191 | -23% | $113.7K (13%) | $118.9K (19%) | -$35.6K | -$39.5K | 6 |
+| tune BW10-15 | 148 | -26% | $116.3K (13%) | $122.7K (20%) | -$34.1K | -$37.6K | 6 |
+| tune BW15 | 185 | -24% | $112.1K (14%) | $115.1K (21%) | -$37.0K | -$41.5K | 6 |
+| tune BW10-c15 | 125 | -29% | $105.0K (12%) | $105.2K (19%) | -$36.8K | -$31.4K | 4 |
+| check base | 58 (29 shock) | -28% | $142.5K (9%) | $162.8K (14%) | -$27.4K | -$13.7K | 3 |
+| check BW10 | 152 (25 shock) | -21% | $139.4K (14%) | $163.5K (21%) | -$34.2K | -$23.7K | 4 |
+
+Verdict: not better. BW10 wins tune (+$14.0K, smaller drop) but loses check at 2% (-$3.1K, drop 9% -> 14%, worse
+without the best 5 and without giants); the typical trade improves (median -22% / -21% vs -36% / -28%), yet the extra
+plan trades fill the account's slots (5 open, 15 a day, 2 a stock) and push out shocks (32 -> 30, 29 -> 25), which earn
+more. The neighbours are all below BW10 on tune, so no level fixes it. A follow-up that could differ: BW10 with the plan
+extras kept out of the shocks' slots (a separate cap for plan trades).
+
 ### Every slow plan alert as a trade (2026-11-07, diagnostic): no group to tune
 
 The user, 2026-11-07: "I want to find a rule that add hundreds of them, like the slow side move. than we can tune it".

@@ -1,0 +1,27 @@
+pool: 914 extra plan trades with the side within 30 s (no bars: 0)
+  all extra, tune:  482 trades, win  27%, median  -22%, total -105.9K, non-giant -138.5K, giants 4 MSTR 04-17 +496%; GOOGL 08-05 +386%; BABA 01-08 +323%; SPCX 08-07 +425%
+  all extra, check:  432 trades, win  33%, median  -19%, total  +52.9K, non-giant  -82.0K, giants 8 ASTS 10-09 +812%; QCOM 05-07 +1304%; ORCL 04-24 +395%; SLV 01-30 +674%; SLV 01-30 +933%; SLV 01-30 +832%; SLV 01-30 +520%; META 04-08 +1273%
+
+A burst over 5 min >= 1.1
+  tune :  121 trades, win  32%, median  -17%, total  +17.3K, non-giant   -6.8K, giants 3 MSTR 04-17 +496%; GOOGL 08-05 +386%; BABA 01-08 +323%
+  check:   85 trades, win  33%, median  -23%, total   -6.1K, non-giant  -22.4K, giants 1 ASTS 10-09 +812%
+
+B burst over 10 min >= 1.1
+  tune :  151 trades, win  33%, median  -16%, total  +18.2K, non-giant   -5.9K, giants 3 MSTR 04-17 +496%; GOOGL 08-05 +386%; BABA 01-08 +323%
+  check:  123 trades, win  40%, median  -17%, total  +24.3K, non-giant   -2.3K, giants 2 ASTS 10-09 +812%; SLV 01-30 +520%
+
+C one way: 5 min >= 0.5, never > 0.25 against
+  tune :  125 trades, win  36%, median  -12%, total  +27.2K, non-giant   +3.1K, giants 3 MSTR 04-17 +496%; GOOGL 08-05 +386%; BABA 01-08 +323%
+  check:   97 trades, win  33%, median  -23%, total  -18.8K, non-giant  -18.8K, giants 0 
+
+D burst minus SPY >= 1.1
+  tune :   80 trades, win  28%, median  -23%, total   +9.2K, non-giant  -14.9K, giants 3 MSTR 04-17 +496%; GOOGL 08-05 +386%; BABA 01-08 +323%
+  check:   63 trades, win  35%, median  -21%, total  +19.8K, non-giant  -21.9K, giants 2 ASTS 10-09 +812%; META 04-08 +1273%
+
+E day agrees >= 1 unit, burst >= 0
+  tune :  166 trades, win  33%, median  -21%, total   +6.8K, non-giant  -17.4K, giants 3 MSTR 04-17 +496%; GOOGL 08-05 +386%; BABA 01-08 +323%
+  check:  133 trades, win  38%, median  -18%, total  +59.2K, non-giant  -12.2K, giants 4 ASTS 10-09 +812%; QCOM 05-07 +1304%; SLV 01-30 +933%; SLV 01-30 +520%
+
+F past VWAP >= 0.5 unit, burst >= 0
+  tune :  173 trades, win  32%, median  -21%, total   +6.3K, non-giant  -17.8K, giants 3 MSTR 04-17 +496%; GOOGL 08-05 +386%; BABA 01-08 +323%
+  check:  141 trades, win  38%, median  -20%, total  +56.4K, non-giant  -15.0K, giants 4 ASTS 10-09 +812%; QCOM 05-07 +1304%; SLV 01-30 +933%; SLV 01-30 +520%
