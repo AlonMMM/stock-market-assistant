@@ -9,6 +9,36 @@ Scripts in `scripts/research/indi_bt/` (run from the app repo root with `node --
 
 ## Log
 
+### An exit on the stock inside the 30-minute grace (2026-11-07, look 1): not better, no rule lifts the win rate
+
+The user, 2026-11-07, after the plan / shock split of BW10 (`capacct.ts SPLIT`: the ~100 extra plans a half are about
+break-even, +$12.7K tune / -$0.9K check, median -21% vs -45%): "Lets do an exit study. I want it to be on the stock
+movement but remember that its a valotile moments when the volume surge. Also I can accept lower mony if its caused by
+exit a gaint or to. I neet to increase the precentile". Earlier grace tests: the 2026-10-27 winner's grace 30 / 60 /
+120 / none (3 years, same-week trades: not the exit) and 2026-11-03 A3 / A4 (a longer grace); no stock stop inside the
+grace was tested. Today's exit: the give-back 0.75 unit from the best on minute closes, none for 30 minutes after the
+buy, the -80% safety stop, out by 15:30.
+
+`exitwalk.py` re-walks every trade of base and BW10 on the snapshot (stock minute closes, real option minute books and
+bars, the -80% stop) and reproduces today's sale on 147 / 149 and 431 / 434 (the rest: a -80% stop a minute apart,
+a cent). Rules set before, all inside the grace: S10 / S15 / S20 a stop at 1.0 / 1.5 / 2.0 units against the price at
+the side; TF back past the other side's line; G15 a 15-minute grace; GW a 1.5-unit give-back in the grace; NP at +10
+min, out unless the stock has closed 0.5 unit the side's way. The new account (3 a stock, 35% open cost), 2%.
+
+- Tune, base 71 trades / 20 winners $107.0K: S10 $103.7K (16 winners), S15 $106.1K, S20 $107.8K, TF $108.2K, 🎯 G15
+  $112.0K (18), GW $111.8K, NP $92.4K. BW10 180 / 54 $113.4K: S10 $113.6K, S15 $116.0K, S20 $115.2K, TF $115.9K, G15
+  $110.6K, 🎯 GW $117.7K (52), NP $103.5K. An early sale frees the stock, so a few more trades follow.
+- Check: base $142.5K (21 winners) -> G15 $123.8K (17): META 2026-04-08 cut (+1663% -> +886%, +631% -> +275%, +496% ->
+  +172%). BW10 $143.0K (56) -> GW $124.8K (55), non-giant -$21.2K -> -$35.3K: it sells trades that recover (RKLB
+  2026-05-08 +246% -> -62%, SLV 2026-01-30 +105% -> -8%).
+- No rule raises the share of winners on either bot. Why (`mae.py`, BW10): the worst point against in the grace sorts
+  the trades sharply (< 0.5 unit: 65% / 76% winners, median +19% / +20%, all the giants; >= 2 units: 0% / 5%, median
+  -55% / -50%), but a trade is known to be 2 units against only once its option is already near that price, so the sale
+  saves little, and the 1-2 unit swings of the surge also hit trades that recover. An exit cuts losses; it cannot turn
+  a loser into a winner. Follow-up that can lift the win rate: a take or a tighter give-back once the stock is well in
+  the money (winners that faded to a loss), on the stock.
+- Also from the split: on the new account BW10 checks at $143.0K vs base $142.5K (tune $113.4K vs $107.0K).
+
 ### A plan burst over 10 minutes (2026-11-07, burst window look 1): not better
 
 The user, 2026-11-07: "not cancel the burst, because it's important, but maybe relieve it a bit ... maybe go for a

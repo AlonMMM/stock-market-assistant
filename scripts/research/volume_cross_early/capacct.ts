@@ -103,3 +103,20 @@ for (const r of tune) console.log(r.line);
 const picks = (process.env.IDEAS ?? "BW").split(",").map((p) => tune.filter((r) => r.name.startsWith(p)).sort((a, b) => b.end2 - a.end2)[0]?.name).filter(Boolean) as string[];
 console.log(`\n🎯 picks on tune: ${picks.join(", ")}\n\n## Check (base and the picks)\n${head}`);
 for (const n of ["base", ...picks]) console.log(row(n, all.get(n)!, "check").line);
+
+// Plan vs shock (the user, 2026-11-07: "can you please do for me the differentiation between the plan and the shock?").
+if (process.env.SPLIT) {
+  const sh = "| Version | Kind | Trades | Winners | Mean | Median | Account P&L (2%) | Flat $2K | Non-giant | Giants | Worst |\n|---|---|---|---|---|---|---|---|---|---|---|";
+  for (const h of ["tune", "check"]) {
+    console.log(`\n## ${h}: plan vs shock\n${sh}`);
+    for (const n of process.env.SPLIT.split(",")) {
+      const a = account(all.get(n)!.filter((s) => halfOf(s.date) === h), 2);
+      for (const kind of ["plan", "shock"]) {
+        const xs = a.taken.filter((x) => x.s.kind === kind);
+        const rets = xs.map((x) => tradeReturn(x.s.trade!, fee));
+        const mean = rets.length ? rets.reduce((p, r) => p + r, 0) / rets.length : 0;
+        console.log(`| ${n} | ${kind} | ${xs.length} | ${rets.filter((r) => r > 0).length} | ${(mean * 100).toFixed(0)}% | ${(median(rets) * 100).toFixed(0)}% | ${k(xs.reduce((p, x) => p + x.pnl, 0))} | ${k(rets.reduce((p, r) => p + 2000 * r, 0))} | ${k(rets.filter((r) => r < 3).reduce((p, r) => p + 2000 * r, 0))} | ${rets.filter((r) => r >= 3).length} | ${(Math.min(...rets) * 100).toFixed(0)}% |`);
+      }
+    }
+  }
+}
