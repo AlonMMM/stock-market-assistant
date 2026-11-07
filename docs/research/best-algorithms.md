@@ -297,7 +297,7 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
-### Skip a new entry when SPY is down 0.5%+ on the day, on e (2026-11-07, S05 wins every list and half on 2024-26 with a smaller drop; 2022 loses its giant, 2023 wins)
+### Skip a new entry when SPY is down 0.5%+ on the day, on e (2026-11-07, NOT a candidate: fitted to where the giants fell; S05 wins every 2024-26 cell, but on unseen 2022-23 the skipped trades hold giants at the normal rate)
 
 The user: "Yes. Check this theses" (from the drop diagnostic below; "dont we have bigger winner to the put side?" - no, 0
 put giants there). `spy_down.py` on e (be_ramp_R.pkl), 2%: the main leg and its adds are skipped when SPY's last minute
@@ -321,6 +321,13 @@ trade. Skipped +100% trades: MSFT 2026-06-26 +228%, AAPL / TSLA puts 2025-03-10 
 S05 66 trades $83,186 / 17.3% vs 94 $96,917 / 19.8% (sum -$90,660 vs -$188 at $10K: MSFT 2022-02-24 +1,264% skipped,
 SPY -1.9% that morning); 2023 105 $101,368 / 18.2% vs 124 $98,015 / 22.5% (AMZN 2023-01-25 +517% skipped). The risk is
 the crash morning that turns. Passes the tune / check rule; the 2022 half of the last feature test fails on one giant.
+
+Verdict (the user: "Doesnt it look too fine tune and connect to our gaint? You have logic explanation for this?"): not a
+candidate. The bucket was chosen from ~40 after both halves were seen; the fair list and the Favorites share most
+trades, so "both lists" is close to one sample; the gain is only "0-1 giants in ~130 trades" where ~6 were expected (the
+median and the per-trade non-giant loss are the usual). On unseen 2022-23 the skipped trades held 2 giants of 47 (4.3%)
+vs 6 of 218 overall (2.8%): the property did not hold. The logic cuts both ways: a breakout against a falling tape
+fails more, but the crash morning that turns makes the biggest call giants (MSFT 2022-02-24, IWM 2025-10-14). e stays.
 
 ### e's big drops, what they are made of (2026-11-07, a diagnostic)
 
