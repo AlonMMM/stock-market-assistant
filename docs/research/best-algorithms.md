@@ -297,6 +297,28 @@ paper bot: $257,698 / 26% on the fair list, $107,869 / 21% on the unseen.
 
 ## Log
 
+### A higher t / volume bar on a falling day, on e (2026-11-07, not a candidate: every version fails one unseen year; the drop moves 0-3 points)
+
+The user: "in a falling day (spy started in 0.75 and more) we should be extra carefull and maybe raise thae bar. Both
+volume and t might be polluted by the volatillity of the market", then "Go with all". `spy_bar.py` (+ `spy_bar75.py` for
+the user's 0.75% level, not a tune pick) on e, 2%; the falling day = SPY x under the prior close at the entry (E) or at
+the open (G), x 0.5 / 0.75 / 1.0%; the bar t >= 2.2 / 2.6, volume ratio >= 1.75 / 2.5, or t 2.2 + 1.75; set before the
+run. Drops booked (marked).
+
+| 2%, vs e · booked drop | Tune fair | Tune Fav | Check fair | Check Fav | All fair | All Fav | 2022 (unseen) | 2023 (unseen) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| e | $944,913 · 19.5% | $647,457 · 17.5% | $1,617,618 · 22.3% | $306,532 · 25.7% | $14.27M · 24.2% | $1.88M · 24.8% | $96,917 · 19.8% | $98,015 · 22.5% |
+| 🎯 E5-T26 | 1.270 · 17.3% | 1.136 · 16.2% | 1.168 · 22.3% | 1.150 · 25.6% | 1.484 · 21.3% | 1.307 · 23.2% | $81,706 · 18.3% | $100,551 · 18.9% |
+| 🎯 E5-V175 | 1.156 · 17.9% | 1.011 · 16.9% | 1.028 · 22.1% | 1.051 · 25.2% | 1.188 · 24.0% | 1.064 · 24.0% | $100,189 · 17.8% | $95,969 · 21.5% |
+| 🎯 E5-TV | 1.271 · 17.3% | 1.139 · 16.5% | 1.128 · 22.1% | 1.148 · 25.2% | 1.434 · 21.9% | 1.308 · 23.8% | $82,377 · 17.6% | $100,551 · 18.9% |
+| E7.5-T26 (the user's level) | 1.208 · 19.0% | 1.089 · 17.5% | 1.096 · 22.5% | 1.057 · 25.6% | 1.324 · 22.9% | 1.151 · 24.9% | $80,359 · 19.6% | $97,634 · 19.6% |
+| 🎯 G10-T26 (the gap) | 1.086 · 19.5% | 1.162 · 17.5% | 1.086 · 22.1% | 1.016 · 25.7% | 1.180 · 24.2% | 1.180 · 24.8% | $78,509 · 21.5% | $93,755 · 22.5% |
+
+The 0.5%-at-entry bars remove nearly the same trades as the plain skip above (E5-T26 434 of 504 kept vs S05 428) and
+inherit its problem: every t bar removes MSFT 2022-02-24 (+1,264%, t under 2.2 on a -1.9% SPY morning; 2022 about
+-$100K at $10K); the volume bar keeps it (2022 better) but loses 2023 (AMZN 2023-01-25, a small-tier giant). The gap
+versions lose both unseen years. The booked drop moves 0-3 points. Not a candidate; e stays.
+
 ### Skip a new entry when SPY is down 0.5%+ on the day, on e (2026-11-07, NOT a candidate: fitted to where the giants fell; S05 wins every 2024-26 cell, but on unseen 2022-23 the skipped trades hold giants at the normal rate)
 
 The user: "Yes. Check this theses" (from the drop diagnostic below; "dont we have bigger winner to the put side?" - no, 0
