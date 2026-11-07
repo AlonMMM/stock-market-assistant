@@ -23,6 +23,7 @@ import {
   refusalWords,
   rowHeld,
   dataGapWords,
+  slowBurstWords,
   rowReturn,
   sortVolumeRows,
   volumeCsv,
@@ -501,6 +502,7 @@ function VolumeSignalLine({
   const ret = rowReturn(r, fee);
   const held = rowHeld(r);
   const gap = dataGapWords(s);
+  const slowBurst = slowBurstWords(s);
   let retNote = "";
   if (ret?.kind === "refused") retNote = " if taken";
   if (ret?.kind === "book") retNote = " if bought";
@@ -546,6 +548,14 @@ function VolumeSignalLine({
       </td>
       <td title={s.detail || undefined}>
         {outcome}
+        {slowBurst && (
+          <span
+            className={slowBurst.passes ? "state-chip" : "state-chip weak"}
+            title={slowBurst.title}
+          >
+            {slowBurst.label}
+          </span>
+        )}
         {gap && (
           <span className="state-chip weak" title={gap}>
             ⚠ Data gap {s.dataGap!.to - s.dataGap!.from} s

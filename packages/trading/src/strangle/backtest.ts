@@ -213,6 +213,10 @@ export interface VolumeSignal {
   // error for me to be able to see it and fix it later").
   dataGap?: { from: number; to: number };
   whatIf?: VolumeWhatIf; // an alert not traded, when a model can price it
+  // A side too slow: whether the burst would have passed toward the side the
+  // what-if took, and the burst it needs (the user, 2026-11-07: the slow sides
+  // are mostly a weak burst too).
+  slowBurst?: { passes: boolean; need: number };
 }
 
 /** A stretch this long with no stock price in an alert's decision window is flagged. */
@@ -914,6 +918,13 @@ export async function runVolumeStock(
       sig.whatIf =
         (await bookWhatIf(data, sig, model, bars, { unit, end, s, o })) ??
         model;
+      if (sig.outcome === "slow_cross")
+        sig.slowBurst = slowBurstOf(
+          sig,
+          model,
+          cal.nextSessions(date, 1)[0]!,
+          s,
+        );
     }
   }
   return { symbol, signals, ignored };
@@ -981,6 +992,23 @@ export function longestGap(
  * 1-second book, else the minute book) and sold at the minute book's bid at
  * the give-back; null when a book is missing.
  */
+/** Whether a slow side's burst would have passed toward the what-if's side, by the same rule as a side in time. */
+function slowBurstOf(
+  sig: VolumeSignal,
+  model: VolumeWhatIf,
+  nextSession: string,
+  s: StrangleSettings,
+): { passes: boolean; need: number } {
+  let need = s.burstMin;
+  if (sig.kind !== "shock" && model.expiry > nextSession) need = s.burstMinWeek;
+  if (sig.kind === "shock") need = 0;
+  const passes = burstAgrees(model.right, sig.burst, {
+    burstFilter: true,
+    burstMin: need,
+  });
+  return { passes, need };
+}
+
 async function bookWhatIf(
   data: VolumeBacktestData,
   sig: VolumeSignal,
