@@ -21,6 +21,7 @@ import {
   volumeRows,
   rowHeld,
   dataGapWords,
+  slowBurstWords,
   rowReturn,
   sortVolumeRows,
   volumeWhatIfStory,
@@ -339,4 +340,46 @@ test("volume alerts table (2026-11-06): a data gap is a warning in words and a C
     "\n",
   );
   assert.match(csv[1]!, /,13$/);
+});
+
+test("volume alerts table (2026-11-07): a side too slow says whether its burst would have passed too", () => {
+  const whatIf = {
+    contract: "MRVL240207P00066000",
+    right: "P" as const,
+    strike: 66,
+    expiry: "2024-02-07",
+    sideSecond: 3700,
+    buyMinute: 61,
+    exitMinute: 90,
+    exitReason: "giveback" as const,
+    stockIn: 68,
+    stockOut: 67,
+    buy: 0.5,
+    sell: 0.4,
+    iv: 0.55,
+    ret: -0.2,
+  };
+  const weak = slowBurstWords(
+    signal({
+      kind: "plan",
+      outcome: "slow_cross",
+      burst: 0.4,
+      whatIf,
+      slowBurst: { passes: false, need: 1.1 },
+    }),
+  )!;
+  assert.equal(weak.label, "burst weak too");
+  assert.match(weak.title, /-0\.40× \(it needs 1\.1×\)/);
+  const ok = slowBurstWords(
+    signal({
+      kind: "plan",
+      outcome: "slow_cross",
+      burst: -1.5,
+      whatIf,
+      slowBurst: { passes: true, need: 1.1 },
+    }),
+  )!;
+  assert.equal(ok.passes, true);
+  assert.match(ok.title, /1\.50×/);
+  assert.equal(slowBurstWords(signal({})), null);
 });

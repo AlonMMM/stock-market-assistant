@@ -410,6 +410,30 @@ export function dataGapWords(sig: VolumeSignal): string | null {
   return `No stock price from ${nyClock(g.from)} to ${nyClock(g.to)} New York (${g.to - g.from} s) while the alert was being decided: the saved seconds may miss trades there, so this outcome may be wrong.`;
 }
 
+/** A side too slow: whether its burst would have passed too, as a short label and its words; null otherwise. */
+export function slowBurstWords(
+  sig: VolumeSignal,
+): { label: string; title: string; passes: boolean } | null {
+  const b = sig.slowBurst;
+  if (!b) return null;
+  let toward = "—";
+  if (sig.burst !== null && sig.whatIf) {
+    const signed = sig.whatIf.right === "C" ? sig.burst : -sig.burst;
+    toward = `${signed.toFixed(2)}×`;
+  }
+  if (b.passes)
+    return {
+      label: "burst ok",
+      passes: true,
+      title: `The burst toward the side was ${toward} (it needs ${b.need}×): only the side's speed stopped this alert.`,
+    };
+  return {
+    label: "burst weak too",
+    passes: false,
+    title: `The burst toward the side was ${toward} (it needs ${b.need}×): with a side in time, the burst would have stopped this alert too.`,
+  };
+}
+
 /**
  * A row's return: the taken trade's; the trade's own when the account refused
  * it ("if taken"); else the what-if's ("book" on the saved books, "model" by
